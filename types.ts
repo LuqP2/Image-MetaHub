@@ -33,7 +33,27 @@ export interface ExportBatchProgress {
   processed: number;
   exportedCount: number;
   failedCount: number;
-  stage: 'copying' | 'finalizing' | 'done';
+  stage: 'copying' | 'finalizing' | 'done' | 'canceled';
+}
+
+export type MetadataExportPolicy = 'preserve' | 'strip' | 'metahub_standard';
+export type ExportScope = 'single' | 'selected' | 'filtered' | 'folder';
+export type ExportTargetFormat = 'original' | 'png';
+
+export interface ExportFileDescriptor {
+  imageId?: string;
+  directoryPath: string;
+  relativePath: string;
+  effectiveMetadata?: BaseMetadata | null;
+}
+
+export interface ExportBatchRequest {
+  files: ExportFileDescriptor[];
+  exportId?: string;
+  metadataPolicy?: MetadataExportPolicy;
+  applyShadowEdits?: boolean;
+  scope?: ExportScope;
+  targetFormat?: ExportTargetFormat;
 }
 
 export type IndexedImageTransferMode = 'copy' | 'move';
@@ -132,8 +152,9 @@ export interface ElectronAPI {
   readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
-  exportBatchToFolder: (args: { files: { directoryPath: string; relativePath: string }[]; destDir: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
-  exportBatchToZip: (args: { files: { directoryPath: string; relativePath: string }[]; destZipPath: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
+  exportBatchToFolder: (args: ExportBatchRequest & { destDir: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
+  exportBatchToZip: (args: ExportBatchRequest & { destZipPath: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
+  cancelBatchExport: (args: { exportId: string }) => Promise<{ success: boolean; error?: string }>;
   transferIndexedImages: (args: {
     files: { directoryPath: string; relativePath: string }[];
     destDir: string;
@@ -222,20 +243,37 @@ export interface ShadowResource {
   weight?: number;
 }
 
-export interface ShadowMetadata {
-  imageId: string; // Key, links to IndexedImage.id
-  // Essentials
+export interface EditableMetadataFields {
   prompt?: string;
   negativePrompt?: string;
+  model?: string;
   seed?: number;
+  steps?: number;
+  cfg_scale?: number;
+  clip_skip?: number;
+  sampler?: string;
+  scheduler?: string;
+  generator?: string;
+  version?: string;
+  module?: string;
   width?: number;
   height?: number;
   duration?: number;
-  // Resources
   resources?: ShadowResource[];
-  // Workflow
+  tags?: string[];
   notes?: string;
+}
+
+export interface ShadowMetadata extends EditableMetadataFields {
+  imageId: string; // Key, links to IndexedImage.id
   updatedAt: number;
+}
+
+export interface MetadataClipboardPayload {
+  schemaVersion: 1;
+  copiedAt: number;
+  sourceImageId?: string | null;
+  metadata: EditableMetadataFields;
 }
 
 export type Automatic1111Metadata = Omit<SharedAutomatic1111Metadata, 'normalizedMetadata'> & {

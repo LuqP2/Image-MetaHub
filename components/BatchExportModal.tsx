@@ -1,39 +1,101 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, X } from 'lucide-react';
-import { type ExportBatchProgress, type IndexedImage } from '../types';
+import { getShadowMetadata } from '../services/imageAnnotationsStorage';
+import { buildEffectiveMetadata } from '../utils/editableMetadata';
+import {
+  type ExportFileDescriptor,
+  type ExportBatchProgress,
+  type IndexedImage,
+  type MetadataExportPolicy,
+} from '../types';
 
 interface BatchExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedImageIds: Set<string>;
   filteredImages: IndexedImage[];
+  allImages?: IndexedImage[];
   directories: { id: string; path: string }[];
+  requestedImageIds?: string[] | null;
+  preferredSource?: BatchSource | null;
+  restrictToRequestedSelection?: boolean;
 }
 
 type BatchSource = 'selected' | 'filtered';
 type BatchOutput = 'folder' | 'zip';
+
+const PNG_REWRITE_SUPPORTED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+
+const getScopeFromSelection = (source: BatchSource, count: number) => {
+  if (source === 'selected') {
+    return count === 1 ? 'single' : 'selected';
+  }
+
+  return 'filtered';
+};
+
+const resolveDefaultSource = (
+  hasSelected: boolean,
+  preferredSource?: BatchSource | null
+): BatchSource => {
+  if (preferredSource === 'filtered') {
+    return 'filtered';
+  }
+
+  if (hasSelected) {
+    return 'selected';
+  }
+
+  return 'filtered';
+};
 
 const BatchExportModal: React.FC<BatchExportModalProps> = ({
   isOpen,
   onClose,
   selectedImageIds,
   filteredImages,
+  allImages,
   directories,
+  requestedImageIds,
+  preferredSource,
+  restrictToRequestedSelection = false,
 }) => {
-  const selectedImages = useMemo(
-    () => filteredImages.filter(image => selectedImageIds.has(image.id)),
-    [filteredImages, selectedImageIds]
+  const availableImages = allImages ?? filteredImages;
+  const effectiveSelectedImageIds = useMemo(
+    () => (requestedImageIds && requestedImageIds.length > 0 ? requestedImageIds : Array.from(selectedImageIds)),
+    [requestedImageIds, selectedImageIds]
   );
+  const selectedImages = useMemo(() => {
+    const imageLookup = new Map<string, IndexedImage>();
+
+    for (const image of availableImages) {
+      imageLookup.set(image.id, image);
+    }
+
+    for (const image of filteredImages) {
+      if (!imageLookup.has(image.id)) {
+        imageLookup.set(image.id, image);
+      }
+    }
+
+    return effectiveSelectedImageIds
+      .map((imageId) => imageLookup.get(imageId))
+      .filter((image): image is IndexedImage => Boolean(image));
+  }, [availableImages, effectiveSelectedImageIds, filteredImages]);
   const hasSelected = selectedImages.length > 0;
 
-  const [source, setSource] = useState<BatchSource>(hasSelected ? 'selected' : 'filtered');
+  const [source, setSource] = useState<BatchSource>(resolveDefaultSource(hasSelected));
   const [output, setOutput] = useState<BatchOutput>('folder');
+  const [metadataPolicy, setMetadataPolicy] = useState<MetadataExportPolicy>('preserve');
+  const [applyShadowEdits, setApplyShadowEdits] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [progress, setProgress] = useState<ExportBatchProgress | null>(null);
   const [activeExportId, setActiveExportId] = useState<string | null>(null);
   const [exportPath, setExportPath] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   const activeExportIdRef = useRef<string | null>(null);
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
     if (!hasSelected && source === 'selected') {
@@ -42,22 +104,41 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   }, [hasSelected, source]);
 
   useEffect(() => {
-    if (isOpen) {
+    // Only enforce 'selected' source when restricted AND images are actually available
+    // This prevents oscillation with the fallback effect below
+    if (restrictToRequestedSelection && hasSelected && source !== 'selected') {
+      setSource('selected');
+    }
+  }, [restrictToRequestedSelection, hasSelected, source]);
+
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
       setStatus(null);
       setIsExporting(false);
-      setSource(hasSelected ? 'selected' : 'filtered');
+      setSource(resolveDefaultSource(hasSelected, preferredSource));
       setOutput('folder');
+      setMetadataPolicy('preserve');
+      setApplyShadowEdits(true);
       setProgress(null);
       setActiveExportId(null);
       setExportPath(null);
+      setIsCancelling(false);
     }
-  }, [isOpen, hasSelected]);
+    wasOpenRef.current = isOpen;
+  }, [isOpen, hasSelected, preferredSource]);
 
   useEffect(() => {
     activeExportIdRef.current = activeExportId;
   }, [activeExportId]);
 
   const exportCount = source === 'selected' ? selectedImages.length : filteredImages.length;
+  const imagesToExport = source === 'selected' ? selectedImages : filteredImages;
+  const unsupportedRewriteCount = useMemo(() => (
+    imagesToExport.filter((image) => {
+      const ext = image.name.includes('.') ? image.name.slice(image.name.lastIndexOf('.')).toLowerCase() : '';
+      return !PNG_REWRITE_SUPPORTED_EXTENSIONS.has(ext);
+    }).length
+  ), [imagesToExport]);
   const progressPercent = progress && progress.total > 0
     ? Math.min(100, Math.round((progress.processed / progress.total) * 100))
     : 0;
@@ -87,31 +168,64 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
     }
   };
 
+  const handleRequestClose = async () => {
+    if (!isExporting) {
+      onClose();
+      return;
+    }
+
+    const exportId = activeExportIdRef.current;
+    if (!exportId || !window.electronAPI?.cancelBatchExport || isCancelling) {
+      return;
+    }
+
+    setIsCancelling(true);
+    setStatus({ type: 'error', message: 'Canceling export...' });
+
+    try {
+      await window.electronAPI.cancelBatchExport({ exportId });
+    } catch (error: any) {
+      setStatus({ type: 'error', message: error?.message || 'Failed to cancel export.' });
+      setIsCancelling(false);
+    }
+  };
+
   const handleExport = async () => {
     if (!window.electronAPI) {
       setStatus({ type: 'error', message: 'Export is only available in the desktop app.' });
       return;
     }
 
-    const imagesToExport = source === 'selected' ? selectedImages : filteredImages;
     if (imagesToExport.length === 0) {
       setStatus({ type: 'error', message: 'No images available for export.' });
       return;
     }
 
+    if (restrictToRequestedSelection && source !== 'selected') {
+      setStatus({ type: 'error', message: 'This export entry is limited to the requested image.' });
+      return;
+    }
+
     const directoryMap = new Map(directories.map(dir => [dir.id, dir.path]));
-    const files = imagesToExport
-      .map(image => {
+    const files = (await Promise.all(imagesToExport.map(async (image) => {
         const dirPath = directoryMap.get(image.directoryId || '');
         if (!dirPath) {
           return null;
         }
+
+        const shadowMetadata = applyShadowEdits ? await getShadowMetadata(image.id) : null;
+        const effectiveMetadata = metadataPolicy === 'metahub_standard'
+          ? buildEffectiveMetadata(image.metadata?.normalizedMetadata, shadowMetadata)
+          : null;
+
         return {
+          imageId: image.id,
           directoryPath: dirPath,
           relativePath: image.name,
+          effectiveMetadata,
         };
-      })
-      .filter(Boolean) as Array<{ directoryPath: string; relativePath: string }>;
+      })))
+      .filter(Boolean) as ExportFileDescriptor[];
 
     if (files.length === 0) {
       setStatus({ type: 'error', message: 'Selected images are missing their source folders.' });
@@ -119,6 +233,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
     }
 
     setIsExporting(true);
+    setIsCancelling(false);
     setStatus(null);
     setExportPath(null);
 
@@ -146,6 +261,10 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           files,
           destDir: destResult.path,
           exportId,
+          metadataPolicy,
+          applyShadowEdits,
+          scope: getScopeFromSelection(source, files.length),
+          targetFormat: metadataPolicy === 'metahub_standard' ? 'png' : 'original',
         });
 
         if (!exportResult.success) {
@@ -185,6 +304,10 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           files,
           destZipPath: saveResult.path,
           exportId,
+          metadataPolicy,
+          applyShadowEdits,
+          scope: getScopeFromSelection(source, files.length),
+          targetFormat: metadataPolicy === 'metahub_standard' ? 'png' : 'original',
         });
 
         if (!exportResult.success) {
@@ -203,6 +326,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
     } finally {
       setIsExporting(false);
       setActiveExportId(null);
+      setIsCancelling(false);
     }
   };
 
@@ -216,13 +340,13 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             <div className="p-2 bg-blue-500/10 rounded-lg">
               <Download className="w-5 h-5 text-blue-300" />
             </div>
-            <h2 className="text-lg font-semibold text-white">Batch Export</h2>
+            <h2 className="text-lg font-semibold text-white">Export Images</h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => { void handleRequestClose(); }}
             className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-            title="Close"
-            disabled={isExporting}
+            title={isExporting ? 'Cancel export' : 'Close'}
+            disabled={isCancelling}
           >
             <X className="w-4 h-4 text-gray-400" />
           </button>
@@ -247,15 +371,21 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               <button
                 type="button"
                 onClick={() => setSource('filtered')}
+                disabled={restrictToRequestedSelection}
                 className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
                   source === 'filtered'
                     ? 'border-blue-500 bg-blue-500/10 text-blue-100'
                     : 'border-gray-700 text-gray-300 hover:border-gray-500'
-                }`}
+                } ${restrictToRequestedSelection ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 Filtered ({filteredImages.length})
               </button>
             </div>
+            {restrictToRequestedSelection && (
+              <p className="text-xs text-amber-300/90">
+                This entry point is limited to the requested image. Multi-image export still requires Pro.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -286,16 +416,69 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             </div>
           </div>
 
+          <div className="space-y-2">
+            <p className="text-sm text-gray-400">Metadata in exported file</p>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setMetadataPolicy('preserve')}
+                className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                  metadataPolicy === 'preserve'
+                    ? 'border-blue-500 bg-blue-500/10 text-blue-100'
+                    : 'border-gray-700 text-gray-300 hover:border-gray-500'
+                }`}
+              >
+                Preserve original
+              </button>
+              <button
+                type="button"
+                onClick={() => setMetadataPolicy('strip')}
+                className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                  metadataPolicy === 'strip'
+                    ? 'border-blue-500 bg-blue-500/10 text-blue-100'
+                    : 'border-gray-700 text-gray-300 hover:border-gray-500'
+                }`}
+              >
+                Remove all metadata
+              </button>
+              <button
+                type="button"
+                onClick={() => setMetadataPolicy('metahub_standard')}
+                className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                  metadataPolicy === 'metahub_standard'
+                    ? 'border-blue-500 bg-blue-500/10 text-blue-100'
+                    : 'border-gray-700 text-gray-300 hover:border-gray-500'
+                }`}
+              >
+                Save as MetaHub + A1111
+              </button>
+            </div>
+
+            {metadataPolicy === 'metahub_standard' && (
+              <label className="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-2 text-sm text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={applyShadowEdits}
+                  onChange={(event) => setApplyShadowEdits(event.target.checked)}
+                  className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                />
+                Apply local metadata edits when available
+              </label>
+            )}
+          </div>
+
           <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-3 text-sm text-gray-300">
             {isExporting && progress ? (
               <span>
-                {progress.stage === 'finalizing'
+                {progress.stage === 'canceled'
+                  ? 'Canceling export...'
+                  : progress.stage === 'finalizing'
                   ? 'Finalizing ZIP...'
                   : `Exporting ${progress.processed} of ${progress.total} images.`}
               </span>
             ) : (
               <span>
-                Exporting <span className="font-semibold text-white">{exportCount}</span> images.
+                Exporting <span className="font-semibold text-white">{exportCount}</span> image{exportCount === 1 ? '' : 's'}.
               </span>
             )}
             {output === 'folder' && (
@@ -303,6 +486,16 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             )}
             {output === 'zip' && (
               <span className="block text-xs text-gray-400 mt-1">ZIP will contain flattened files with auto-renamed collisions.</span>
+            )}
+            {metadataPolicy !== 'preserve' && (
+              <span className="block text-xs text-amber-300/90 mt-1">
+                Metadata stripping keeps the original format for PNG, JPEG, and WebP when possible. MetaHub metadata export still saves PNG copies for compatibility.
+              </span>
+            )}
+            {metadataPolicy !== 'preserve' && unsupportedRewriteCount > 0 && (
+              <span className="block text-xs text-amber-300/90 mt-1">
+                {unsupportedRewriteCount} file{unsupportedRewriteCount === 1 ? '' : 's'} in this export can only be preserved in v1 and may fail if rewritten.
+              </span>
             )}
             {isExporting && progress && (
               <div className="mt-3">
@@ -343,11 +536,11 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
         <div className="flex items-center justify-end gap-3 p-5 border-t border-gray-700">
           <button
-            onClick={onClose}
-            className="px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-            disabled={isExporting}
+            onClick={() => { void handleRequestClose(); }}
+            className="px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-60"
+            disabled={isCancelling}
           >
-            Cancel
+            {isExporting ? (isCancelling ? 'Canceling...' : 'Cancel Export') : 'Cancel'}
           </button>
           <button
             onClick={handleExport}

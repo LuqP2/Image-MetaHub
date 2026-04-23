@@ -3,6 +3,7 @@ import { type IndexedImage } from '../types';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useImageStore } from '../store/useImageStore';
 import { formatMetadataForA1111 } from '../utils/a1111Formatter';
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 import { useFeatureAccess } from './useFeatureAccess';
@@ -26,6 +27,7 @@ interface ContextMenuState {
 }
 
 const CONTEXT_MENU_MARGIN = 8;
+const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
 
 const showNotification = (message: string) => {
   const notification = document.createElement('div');
@@ -41,6 +43,7 @@ const showNotification = (message: string) => {
 
 export const useContextMenu = () => {
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const selectedImages = useImageStore((state) => state.selectedImages);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
     y: 0,
@@ -226,62 +229,33 @@ export const useContextMenu = () => {
     showInExplorer(`${contextMenu.directoryPath}/${contextMenu.image.name}`);
   };
 
-  const exportImage = async () => {
-    if (!contextMenu.image || !contextMenu.directoryPath) return;
+  const getContextTargetImageIds = () => {
+    if (!contextMenu.image) {
+      return [];
+    }
+
+    if (selectedImages.has(contextMenu.image.id)) {
+      return Array.from(selectedImages);
+    }
+
+    return [contextMenu.image.id];
+  };
+
+  const exportImage = () => {
+    if (!contextMenu.image) return;
     hideContextMenu();
 
-    if (!window.electronAPI) {
-      alert('Export feature is only available in the desktop app version.');
+    const imageIds = getContextTargetImageIds();
+    if (imageIds.length === 0) {
       return;
     }
 
-    try {
-      // 1. Ask user for destination directory
-      const destResult = await window.electronAPI.showDirectoryDialog();
-      if (destResult.canceled || !destResult.path) {
-        return; // User cancelled
-      }
-      const destDir = destResult.path;
-
-      // Get safe paths using joinPaths
-      const sourcePathResult = await window.electronAPI.joinPaths(contextMenu.directoryPath, contextMenu.image.name);
-      if (!sourcePathResult.success || !sourcePathResult.path) {
-        throw new Error(`Failed to construct source path: ${sourcePathResult.error}`);
-      }
-
-      // Fix: Extract just the filename from the relative path to flatten the export structure
-      // image.name might be "subfolder/image.png", we just want "image.png" for the destination
-      const fileName = contextMenu.image.name.split(/[/\\]/).pop() || contextMenu.image.name;
-      
-      const destPathResult = await window.electronAPI.joinPaths(destDir, fileName);
-      if (!destPathResult.success || !destPathResult.path) {
-        throw new Error(`Failed to construct destination path: ${destPathResult.error}`);
-      }
-
-      const sourcePath = sourcePathResult.path;
-      const destPath = destPathResult.path;
-
-      // 2. Read the source file
-      const readResult = await window.electronAPI.readFile(sourcePath);
-      if (!readResult.success || !readResult.data) {
-        alert(`Failed to read original file: ${readResult.error}`);
-        return;
-      }
-
-      // 3. Write the new file
-      const writeResult = await window.electronAPI.writeFile(destPath, readResult.data);
-      if (!writeResult.success) {
-        alert(`Failed to export image: ${writeResult.error}`);
-        return;
-      }
-
-      // 4. Success!
-      alert(`Image exported successfully to: ${destPath}`);
-
-    } catch (error: unknown) {
-      console.error('Export error:', error);
-      alert(`An unexpected error occurred during export: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    window.dispatchEvent(new CustomEvent(OPEN_BATCH_EXPORT_EVENT, {
+      detail: {
+        imageIds,
+        preferredSource: 'selected',
+      },
+    }));
   };
 
   const copyMetadataToA1111 = async () => {

@@ -1311,6 +1311,41 @@ export async function saveShadowMetadata(metadata: ShadowMetadata): Promise<void
 }
 
 /**
+ * Save shadow metadata for multiple images in a single transaction.
+ */
+export async function bulkSaveShadowMetadata(metadataRecords: ShadowMetadata[]): Promise<void> {
+  const db = await openDatabase();
+  if (!db || metadataRecords.length === 0) return;
+
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains(SHADOW_METADATA_STORE_NAME)) {
+      reject(new Error('Shadow metadata store not found'));
+      return;
+    }
+
+    const transaction = db.transaction([SHADOW_METADATA_STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(SHADOW_METADATA_STORE_NAME);
+
+    for (const record of metadataRecords) {
+      const cleanedRecord = Object.fromEntries(
+        Object.entries(record).filter(([, value]) => value !== null && value !== undefined),
+      ) as ShadowMetadata;
+
+      store.put({
+        ...cleanedRecord,
+        updatedAt: Date.now(),
+      });
+    }
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => {
+      console.error('Error bulk saving shadow metadata:', transaction.error);
+      reject(transaction.error);
+    };
+  });
+}
+
+/**
  * Delete shadow metadata for an image
  */
 export async function deleteShadowMetadata(imageId: string): Promise<void> {

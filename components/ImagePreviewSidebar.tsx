@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, ChevronRight, Heart, X, Zap, CheckCircle, ArrowUp, Copy, Search } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, ChevronRight, Heart, X, Zap, CheckCircle, ArrowUp, Copy, Search, Pencil, Download, Eye, EyeOff } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
-import { type BaseMetadata, type LoRAInfo } from '../types';
+import { type BaseMetadata, type IndexedImage, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -22,6 +22,12 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { getRecentTagChips } from '../utils/tagSuggestions';
 import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import AudioPlayer from './AudioPlayer';
+import { useShadowMetadata } from '../hooks/useShadowMetadata';
+import { bulkSaveShadowMetadata } from '../services/imageAnnotationsStorage';
+import { copyEditableMetadata, readEditableMetadataClipboard } from '../services/metadataClipboard';
+import { buildEffectiveMetadata, getEditableMetadataFields } from '../utils/editableMetadata';
+import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorModal';
+import BatchExportModal from './BatchExportModal';
 
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
@@ -128,7 +134,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const {
     previewImage,
     setPreviewImage,
-    directories,
     toggleFavorite,
     setImageRating,
     addTagToImage,
@@ -139,6 +144,11 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     setSelectedImage,
   } = useImageStore();
   const recentTags = useImageStore((state) => state.recentTags);
+  const directories = useImageStore((state) => state.directories);
+  const filteredImages = useImageStore((state) => state.filteredImages);
+  const selectedImages = useImageStore((state) => state.selectedImages);
+  const activeImageScope = useImageStore((state) => state.activeImageScope);
+  const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
   const previewImageFromStore = useImageStore((state) => {
     if (!state.previewImage) return null;
     const id = state.previewImage.id;
@@ -152,6 +162,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const [tagInput, setTagInput] = useState('');
   const [showPerformance, setShowPerformance] = useState(true);
   const [showRawMetadata, setShowRawMetadata] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
+  const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
     y: 0,
@@ -165,10 +178,12 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const { copyToComfyUI, isCopying: isCopyingComfyUI, copyStatus: copyStatusComfyUI } = useCopyToComfyUI();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI, generateStatus: generateStatusComfyUI } = useGenerateWithComfyUI();
 
-  const { canUseA1111, canUseComfyUI, showProModal, initialized } = useFeatureAccess();
+  const { canUseA1111, canUseComfyUI, canUseBatchExport, showProModal, initialized } = useFeatureAccess();
   const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
 
   const activeImage = previewImageFromStore || previewImage;
+  const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata } = useShadowMetadata(activeImage?.id);
+  const allImages = useImageStore((state) => state.images);
   const thumbnail = useResolvedThumbnail(activeImage);
   const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
   const isAudio = !!activeImage && isAudioFileName(activeImage.name, activeImage.fileType);
@@ -253,9 +268,52 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   }
 
   const nMeta: BaseMetadata | undefined = activeImage.metadata?.normalizedMetadata;
+  const effectiveMetadata = buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal);
+  const generationImage: IndexedImage = effectiveMetadata
+    ? {
+        ...activeImage,
+        metadata: {
+          ...activeImage.metadata,
+          normalizedMetadata: effectiveMetadata,
+        },
+      }
+    : activeImage;
+  const editorInitialMetadata = useMemo<MetadataEditorDraft | null>(() => ({
+    imageId: activeImage.id,
+    updatedAt: shadowMetadata?.updatedAt ?? Date.now(),
+    ...getEditableMetadataFields(nMeta, shadowMetadata),
+  }), [activeImage.id, nMeta, shadowMetadata]);
+  const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds ?? (nMeta as any)?.audio?.duration_seconds;
+  const exportScopeImages = (() => {
+    const candidateScopes = [
+      clusterNavigationContext,
+      activeImageScope,
+      filteredImages,
+    ].filter((scope): scope is typeof filteredImages => Array.isArray(scope) && scope.length > 0);
+
+    for (const scope of candidateScopes) {
+      if (scope.some((candidate) => candidate.id === activeImage.id)) {
+        return scope;
+      }
+    }
+
+    return [activeImage];
+  })();
+  const exportSelectionIds = selectedImages.has(activeImage.id)
+    ? new Set(selectedImages)
+    : new Set([activeImage.id]);
   const videoInfo = (nMeta as any)?.video;
   const audioInfo = (nMeta as any)?.audio;
   const motionModel = (nMeta as any)?.motion_model;
+  const notesValue = shadowMetadata?.notes ?? effectiveMetadata?.notes ?? nMeta?.notes;
+  const openBatchExport = () => {
+    if (exportSelectionIds.size > 1 && !canUseBatchExport) {
+      showProModal('batch_export');
+      return;
+    }
+
+    setIsBatchExportModalOpen(true);
+  };
 
   const copyToClipboard = (text: string, type: string) => {
     if(!text) return;
@@ -521,7 +579,41 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
         {nMeta ? (
           <>
-            <h3 className="text-base font-semibold text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 pb-2">Metadata</h3>
+            <div className="flex items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-600 pb-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-semibold text-gray-700 dark:text-gray-300">Metadata</h3>
+                {shadowMetadata && (
+                  <span className="text-[10px] bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded border border-blue-800">
+                    EDITED
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                {shadowMetadata && (
+                  <button
+                    onClick={() => setShowOriginal((current) => !current)}
+                    className={`p-1.5 rounded-md transition-colors ${showOriginal ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'}`}
+                    title={showOriginal ? 'Show edited metadata' : 'Show original metadata'}
+                  >
+                    {showOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsMetadataEditorOpen(true)}
+                  className="p-1.5 rounded-md transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                  title="Edit metadata overrides"
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  onClick={openBatchExport}
+                  className="p-1.5 rounded-md transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                  title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
+                >
+                  <Download size={14} />
+                </button>
+              </div>
+            </div>
             <div className="space-y-3">
               <ImageLineageSection
                 image={activeImage}
@@ -532,21 +624,21 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 }}
               />
               <MetadataItem label="Format" value={nMeta.format} onCopy={(v) => copyToClipboard(v, "Format")} />
-              <MetadataItem label="Prompt" value={nMeta.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
-              <MetadataItem label="Negative Prompt" value={nMeta.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
-              <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model")} />
+              <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
+              <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
+              <MetadataItem label="Model" value={effectiveMetadata?.model} onCopy={(v) => copyToClipboard(v, "Model")} />
               {((nMeta as any).vae || (nMeta as any).vaes?.[0]?.name) && (
                 <MetadataItem label="VAE" value={(nMeta as any).vae || (nMeta as any).vaes?.[0]?.name} />
               )}
 
               <div className="grid grid-cols-2 gap-2 text-sm">
                   <MetadataItem label="Generation Type" value={nMeta.generationType ? getGenerationTypeLabel(nMeta.generationType) : undefined} />
-                  <MetadataItem label="Steps" value={nMeta.steps} />
-                  <MetadataItem label="CFG Scale" value={nMeta.cfgScale ?? nMeta.cfg_scale} />
-                  <MetadataItem label="Seed" value={nMeta.seed} />
-                  <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}x${nMeta.height}` : undefined} />
-                  <MetadataItem label="Sampler" value={nMeta.sampler} />
-                  <MetadataItem label="Scheduler" value={nMeta.scheduler} />
+                  <MetadataItem label="Steps" value={effectiveMetadata?.steps} />
+                  <MetadataItem label="CFG Scale" value={effectiveMetadata?.cfg_scale ?? effectiveMetadata?.cfgScale} />
+                  <MetadataItem label="Seed" value={effectiveMetadata?.seed} />
+                  <MetadataItem label="Dimensions" value={effectiveMetadata?.width && effectiveMetadata?.height ? `${effectiveMetadata.width}x${effectiveMetadata.height}` : undefined} />
+                  <MetadataItem label="Sampler" value={effectiveMetadata?.sampler} />
+                  <MetadataItem label="Scheduler" value={effectiveMetadata?.scheduler} />
                   {(nMeta as any).denoise != null && (nMeta as any).denoise < 1 && (
                     <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
                   )}
@@ -555,8 +647,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <MetadataItem label="Frames" value={videoInfo.frame_count} />
                   <MetadataItem label="FPS" value={videoInfo.frame_rate != null ? Number(videoInfo.frame_rate).toFixed(2) : undefined} />
-                  {videoInfo.duration_seconds != null && (
-                    <MetadataItem label="Duration" value={formatDurationSeconds(Number(videoInfo.duration_seconds))} />
+                  {effectiveDuration != null && (
+                    <MetadataItem label="Duration" value={formatDurationSeconds(Number(effectiveDuration))} />
                   )}
                   <MetadataItem label="Video Codec" value={videoInfo.codec} />
                   <MetadataItem label="Video Format" value={videoInfo.format} />
@@ -564,8 +656,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               )}
               {audioInfo && (
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  {audioInfo.duration_seconds != null && (
-                    <MetadataItem label="Duration" value={formatDurationSeconds(Number(audioInfo.duration_seconds))} />
+                  {effectiveDuration != null && (
+                    <MetadataItem label="Duration" value={formatDurationSeconds(Number(effectiveDuration))} />
                   )}
                   <MetadataItem label="Audio Codec" value={audioInfo.codec} />
                   <MetadataItem label="Audio Format" value={audioInfo.format} />
@@ -585,18 +677,20 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               )}
             </div>
 
-            {nMeta.loras && nMeta.loras.length > 0 && (
+            {effectiveMetadata?.loras && effectiveMetadata.loras.length > 0 && (
                <>
                   <h3 className="text-base font-semibold text-gray-700 dark:text-gray-300 pt-2 border-b border-gray-200 dark:border-gray-600 pb-2">LoRAs</h3>
-                  <MetadataItem label="LoRAs" value={nMeta.loras.map(formatLoRA).join(', ')} />
+                  <MetadataItem label="LoRAs" value={effectiveMetadata.loras.map(formatLoRA).join(', ')} />
                </>
             )}
 
             {/* MetaHub Save Node Notes */}
-            {nMeta.notes && (
+            {notesValue && (
               <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50">
-                <p className="font-semibold text-purple-300 text-xs uppercase tracking-wider mb-2">Notes (MetaHub Save Node)</p>
-                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-gray-800/50 p-2 rounded">{nMeta.notes}</pre>
+                <p className="font-semibold text-purple-300 text-xs uppercase tracking-wider mb-2">
+                  {shadowMetadata?.notes ? 'Notes (Edited)' : 'Notes (MetaHub Save Node)'}
+                </p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-gray-800/50 p-2 rounded">{notesValue}</pre>
               </div>
             )}
 
@@ -673,7 +767,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   }
                   setIsGenerateModalOpen(true);
                 }}
-                disabled={canUseA1111 && !nMeta.prompt}
+                disabled={canUseA1111 && !effectiveMetadata?.prompt}
                 className="w-full bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-blue-200 dark:border-blue-500/50 hover:border-blue-300 dark:hover:border-blue-400 text-blue-700 dark:text-blue-100 px-4 py-3 rounded-md text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200"
               >
                 {isGenerating && canUseA1111 ? (
@@ -700,9 +794,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                     showProModal('a1111');
                     return;
                   }
-                  copyToA1111(activeImage);
+                  copyToA1111(generationImage, effectiveMetadata);
                 }}
-                disabled={canUseA1111 && (isCopying || !nMeta.prompt)}
+                disabled={canUseA1111 && (isCopying || !effectiveMetadata?.prompt)}
                 className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200"
               >
                 {isCopying && canUseA1111 ? (
@@ -734,11 +828,11 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               )}
 
               {/* Generate Variation Modal */}
-              {showA1111Actions && isGenerateModalOpen && nMeta && (
+              {showA1111Actions && isGenerateModalOpen && effectiveMetadata && (
                 <A1111GenerateModal
                   isOpen={isGenerateModalOpen}
                   onClose={() => setIsGenerateModalOpen(false)}
-                  image={activeImage}
+                  image={generationImage}
                   onGenerate={async (params: A1111GenerationParams) => {
                     const customMetadata: Partial<BaseMetadata> = {
                       prompt: params.prompt,
@@ -748,10 +842,10 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                       seed: params.randomSeed ? -1 : params.seed,
                       width: params.width,
                       height: params.height,
-                      model: params.model || nMeta?.model,
+                      model: params.model || effectiveMetadata?.model,
                       ...(params.sampler ? { sampler: params.sampler } : {}),
                     };
-                    await generateWithA1111(activeImage, customMetadata, params.numberOfImages);
+                    await generateWithA1111(generationImage, customMetadata, params.numberOfImages);
                     setIsGenerateModalOpen(false);
                   }}
                   isGenerating={isGenerating}
@@ -776,7 +870,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   }
                   setIsComfyUIGenerateModalOpen(true);
                 }}
-                disabled={canUseComfyUI && !nMeta.prompt}
+                disabled={canUseComfyUI && !effectiveMetadata?.prompt}
                 className="w-full bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-purple-200 dark:border-purple-500/50 hover:border-purple-300 dark:hover:border-purple-400 text-purple-700 dark:text-purple-100 px-4 py-3 rounded-md text-sm font-semibold flex items-center justify-center gap-2 mb-2 transition-all duration-200"
               >
                 {isGeneratingComfyUI && canUseComfyUI ? (
@@ -803,9 +897,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                     showProModal('comfyui');
                     return;
                   }
-                  copyToComfyUI(activeImage);
+                  copyToComfyUI(generationImage, effectiveMetadata);
                 }}
-                disabled={canUseComfyUI && (isCopyingComfyUI || !nMeta.prompt)}
+                disabled={canUseComfyUI && (isCopyingComfyUI || !effectiveMetadata?.prompt)}
                 className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200"
               >
                 {isCopyingComfyUI && canUseComfyUI ? (
@@ -837,11 +931,11 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               )}
 
               {/* ComfyUI Generate Modal */}
-              {showComfyUIActions && isComfyUIGenerateModalOpen && nMeta && (
+              {showComfyUIActions && isComfyUIGenerateModalOpen && effectiveMetadata && (
                 <ComfyUIGenerateModal
                   isOpen={isComfyUIGenerateModalOpen}
                   onClose={() => setIsComfyUIGenerateModalOpen(false)}
-                  image={activeImage}
+                  image={generationImage}
                   onGenerate={async (params: ComfyUIGenerationParams) => {
                     const customMetadata: Partial<BaseMetadata> = {
                       prompt: params.prompt,
@@ -852,11 +946,11 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                       width: params.width,
                       height: params.height,
                       batch_size: params.numberOfImages,
-                      model: params.model?.name || nMeta?.model,
+                      model: params.model?.name || effectiveMetadata?.model,
                       ...(params.sampler ? { sampler: params.sampler } : {}),
                       ...(params.scheduler ? { scheduler: params.scheduler } : {}),
                     };
-                    await generateWithComfyUI(activeImage, {
+                    await generateWithComfyUI(generationImage, {
                       customMetadata,
                       overrides: {
                         model: params.model || undefined,
@@ -900,6 +994,53 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
           </div>
         )}
       </div>
+
+      <MetadataEditorModal
+        isOpen={isMetadataEditorOpen}
+        onClose={() => setIsMetadataEditorOpen(false)}
+        initialMetadata={editorInitialMetadata}
+        onSave={async (metadata) => { await saveShadowMetadata(metadata); }}
+        onExportEditedCopy={openBatchExport}
+        onApplyToSelected={exportSelectionIds.size > 1 ? async (metadata) => {
+          await bulkSaveShadowMetadata(Array.from(exportSelectionIds).map((imageId) => ({
+            ...metadata,
+            imageId,
+            updatedAt: Date.now(),
+          })));
+        } : null}
+        selectedImageCount={exportSelectionIds.size}
+        onCopyEditableMetadata={(metadata) => {
+          copyEditableMetadata(metadata, activeImage.id);
+        }}
+        onPasteEditableMetadata={() => {
+          const clipboardMetadata = readEditableMetadataClipboard()?.metadata;
+          if (!clipboardMetadata) {
+            return null;
+          }
+
+          return {
+            ...(editorInitialMetadata ?? {
+              imageId: activeImage.id,
+              updatedAt: Date.now(),
+            }),
+            ...clipboardMetadata,
+            imageId: activeImage.id,
+            updatedAt: Date.now(),
+          };
+        }}
+        imageId={activeImage.id}
+      />
+
+      <BatchExportModal
+        isOpen={isBatchExportModalOpen}
+        onClose={() => setIsBatchExportModalOpen(false)}
+        selectedImageIds={exportSelectionIds}
+        filteredImages={exportScopeImages}
+        allImages={allImages}
+        directories={directories}
+        requestedImageIds={Array.from(exportSelectionIds)}
+        preferredSource="selected"
+      />
 
       {contextMenu.visible && (
         <div

@@ -23,6 +23,8 @@ import TagManagerModal from './TagManagerModal';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import Tooltip from './Tooltip';
 
+const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
+
 interface GridToolbarProps {
 
   selectedImages: Set<string>;
@@ -135,40 +137,18 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     showInExplorer(`${directory.path}/${firstSelectedImage.name}`);
   };
 
-  const handleExport = async () => {
-    if (selectedCount > 1) {
-      onBatchExport();
-      return;
-    }
-    if (!firstSelectedImage) return;
-    const directory = directories.find(d => d.id === firstSelectedImage.directoryId);
-    if (!directory) return;
-
-    if (!window.electronAPI) {
-      showNotification('Export only available in desktop app', 'error');
+  const handleExport = () => {
+    if (selectedCount === 1 && firstSelectedImage) {
+      window.dispatchEvent(new CustomEvent(OPEN_BATCH_EXPORT_EVENT, {
+        detail: {
+          imageIds: [firstSelectedImage.id],
+          preferredSource: 'selected',
+        },
+      }));
       return;
     }
 
-    try {
-      const destResult = await window.electronAPI.showDirectoryDialog();
-      if (destResult.canceled || !destResult.path) return;
-
-      const sourcePathResult = await window.electronAPI.joinPaths(directory.path, firstSelectedImage.name);
-      if (!sourcePathResult.success || !sourcePathResult.path) throw new Error('Failed to construct source path');
-
-      const destPathResult = await window.electronAPI.joinPaths(destResult.path, firstSelectedImage.name);
-      if (!destPathResult.success || !destPathResult.path) throw new Error('Failed to construct destination path');
-
-      const readResult = await window.electronAPI.readFile(sourcePathResult.path);
-      if (!readResult.success || !readResult.data) throw new Error('Failed to read file');
-
-      const writeResult = await window.electronAPI.writeFile(destPathResult.path, readResult.data);
-      if (!writeResult.success) throw new Error('Failed to write file');
-
-      showNotification('Image exported successfully!');
-    } catch (error: any) {
-      showNotification(`Export failed: ${error.message}`, 'error');
-    }
+    onBatchExport();
   };
 
   const handleToggleFavorites = () => {

@@ -89,7 +89,11 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     // MetaHub Save Node detection (PRIORITY: before generic ComfyUI)
     // Check for imagemetahub_data chunk (iTXt format from MetaHub Save Node)
     if ('imagemetahub_data' in metadata) {
-        console.log('🎯 Selected parser: ComfyUI (MetaHub Save Node)');
+        const metaHubGenerator = typeof (metadata as Record<string, any>).imagemetahub_data?.generator === 'string'
+            ? (metadata as Record<string, any>).imagemetahub_data.generator
+            : 'Image MetaHub';
+        const parserGenerator = metaHubGenerator === 'ComfyUI' ? 'ComfyUI' : 'Image MetaHub';
+        console.log(`🎯 Selected parser: ${parserGenerator} (MetaHub payload)`);
         return {
             parse: async (data: ComfyUIMetadata) => {
                 const result = await parseComfyUIMetadataEnhanced(data);
@@ -114,7 +118,7 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
                     _detection_method: result._detection_method,
                 } as BaseMetadata;
             },
-            generator: 'ComfyUI'
+            generator: parserGenerator
         };
     }
 

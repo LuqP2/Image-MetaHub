@@ -334,6 +334,48 @@ describe('ComfyUI Parser - Detection Methods', () => {
 });
 
 describe('ComfyUI Parser - MetaHub lineage metadata', () => {
+  it('parses Image MetaHub export payloads written with the standard metadata chunk', async () => {
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'Image MetaHub',
+        prompt: 'studio portrait',
+        negativePrompt: 'blur',
+        seed: 456,
+        steps: 32,
+        cfg: 7,
+        sampler_name: 'dpmpp_2m',
+        scheduler: 'karras',
+        model: 'portrait-xl.safetensors',
+        width: 768,
+        height: 1024,
+        loras: [{ name: 'skin-detail', weight: 0.65 }],
+        imh_pro: {
+          user_tags: 'portrait, retouch',
+          notes: 'Edited in Image MetaHub',
+        },
+      },
+    } as any);
+
+    expect(result).toMatchObject({
+      prompt: 'studio portrait',
+      negativePrompt: 'blur',
+      model: 'portrait-xl.safetensors',
+      seed: 456,
+      steps: 32,
+      cfg_scale: 7,
+      sampler: 'dpmpp_2m',
+      scheduler: 'karras',
+      width: 768,
+      height: 1024,
+      _detection_method: 'metahub_chunk',
+      _metahub_pro: {
+        user_tags: 'portrait, retouch',
+        notes: 'Edited in Image MetaHub',
+      },
+    });
+    expect(result?.loras).toEqual([{ name: 'skin-detail', weight: 0.65 }]);
+  });
+
   it('prefers parent_image for library lineage and keeps source_image as workflowSourceImage', async () => {
     const metadata: any = {
       imagemetahub_data: {
