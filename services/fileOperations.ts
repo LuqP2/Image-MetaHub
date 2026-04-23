@@ -1,6 +1,7 @@
 // File operations service for Electron environment
 import { IndexedImage } from '../types';
 import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
+import { getRelativeImagePath } from '../utils/imagePaths';
 
 // Check if we're running in Electron
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
@@ -59,7 +60,8 @@ export class FileOperations {
           return { success: false, error: 'Image is missing directory information.' };
         }
 
-        const originalNameParts = image.name.split('/');
+        const originalRelativePath = getRelativeImagePath(image);
+        const originalNameParts = originalRelativePath.split('/');
         const originalFilename = originalNameParts[originalNameParts.length - 1];
         const originalExtension = originalFilename.includes('.') ? originalFilename.split('.').pop() : '';
 
@@ -67,11 +69,11 @@ export class FileOperations {
           newName += `.${originalExtension}`;
         }
 
-        const pathParts = image.name.split('/');
+        const pathParts = originalRelativePath.split('/');
         pathParts.pop(); // remove old filename
         const newRelativePath = [...pathParts, newName].join('/');
 
-        const oldPathResult = await window.electronAPI.joinPaths(image.directoryId, image.name);
+        const oldPathResult = await window.electronAPI.joinPaths(image.directoryId, originalRelativePath);
         const newPathResult = await window.electronAPI.joinPaths(image.directoryId, newRelativePath);
 
         if (!oldPathResult.success || !oldPathResult.path) {

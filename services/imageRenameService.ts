@@ -3,6 +3,7 @@ import cacheManager from './cacheManager';
 import { transferImagePersistence } from './imageAnnotationsStorage';
 import { FileOperations } from './fileOperations';
 import { useImageStore } from '../store/useImageStore';
+import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
 
 export interface RenameImageResult {
   success: boolean;
@@ -12,29 +13,19 @@ export interface RenameImageResult {
   image?: IndexedImage;
 }
 
-const splitRelativePath = (relativePath: string) => {
-  const normalized = relativePath.replace(/\\/g, '/');
-  const segments = normalized.split('/');
-  const fileName = segments.pop() || normalized;
-  return {
-    folderPath: segments.join('/'),
-    fileName,
-  };
-};
-
 const extensionOf = (fileName: string) => {
   const dotIndex = fileName.lastIndexOf('.');
   return dotIndex > 0 ? fileName.slice(dotIndex) : '';
 };
 
 export const getRenameBasename = (image: IndexedImage) => {
-  const { fileName } = splitRelativePath(image.name);
+  const { fileName } = splitRelativePath(getRelativeImagePath(image));
   const extension = extensionOf(fileName);
   return extension ? fileName.slice(0, -extension.length) : fileName;
 };
 
 export const buildRenamedRelativePath = (image: IndexedImage, nextName: string) => {
-  const { folderPath, fileName } = splitRelativePath(image.name);
+  const { folderPath, fileName } = splitRelativePath(getRelativeImagePath(image));
   const extension = extensionOf(fileName);
   const trimmedName = nextName.trim();
   const nextFileName = extension && !trimmedName.toLowerCase().endsWith(extension.toLowerCase())
@@ -55,7 +46,7 @@ export async function renameIndexedImage(
   }
 
   const oldImageId = image.id;
-  const oldRelativePath = image.name;
+  const oldRelativePath = getRelativeImagePath(image);
   const newRelativePath = buildRenamedRelativePath(image, normalizedName);
   if (newRelativePath === oldRelativePath) {
     return { success: true, newImageId: oldImageId, newRelativePath, image };

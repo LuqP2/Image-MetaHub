@@ -13,7 +13,7 @@ vi.mock('../services/folderSelectionStorage', () => ({
 
 const image = {
   id: 'dir::nested/old-name.png',
-  name: 'nested/old-name.png',
+  name: 'old-name.png',
 } as any;
 
 const createImage = (id: string, name: string): IndexedImage => ({
@@ -59,5 +59,22 @@ describe('imageRenameService', () => {
     expect(result.error).toBe('An image with that filename already exists in this folder.');
     expect(renameSpy).not.toHaveBeenCalled();
     expect(useImageStore.getState().images.map((entry) => entry.id)).toEqual(['dir::old.png', 'dir::target.png']);
+  });
+
+  it('preserves the source subfolder for collision checks when name only stores the basename', async () => {
+    const source = createImage('dir::nested/old.png', 'old.png');
+    const existingTarget = createImage('dir::nested/target.png', 'target.png');
+    const renameSpy = vi.spyOn(FileOperations, 'renameFile').mockResolvedValue({ success: true });
+    useImageStore.setState({
+      images: [source, existingTarget],
+      filteredImages: [source, existingTarget],
+    } as any);
+
+    const result = await renameIndexedImage(source, 'target');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('An image with that filename already exists in this folder.');
+    expect(renameSpy).not.toHaveBeenCalled();
+    expect(useImageStore.getState().images.map((entry) => entry.id)).toEqual(['dir::nested/old.png', 'dir::nested/target.png']);
   });
 });
