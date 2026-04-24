@@ -4,10 +4,10 @@ import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 const MAX_THUMBNAIL_EDGE = 320;
 const THUMBNAIL_CACHE_VERSION = 2;
-const MAX_CONCURRENT_THUMBNAILS = 12;
-const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 10;
-const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 2;
-const MAX_ACTIVE_THUMBNAIL_URLS = 800;
+const MAX_CONCURRENT_THUMBNAILS = 3;
+const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 2;
+const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 1;
+const MAX_ACTIVE_THUMBNAIL_URLS = 200;
 
 type ElectronFileHandle = FileSystemFileHandle & { _filePath?: string };
 
@@ -673,9 +673,15 @@ class ThumbnailManager {
         return;
       }
 
-      const thumbnailKey = `v${THUMBNAIL_CACHE_VERSION}:${image.id}-${image.lastModified}`;
-      const cachedBlob = await cacheManager.getCachedThumbnail(thumbnailKey);
+      const legacyThumbnailKey = `${image.id}-${image.lastModified}`;
+      const thumbnailKey = `v${THUMBNAIL_CACHE_VERSION}:${legacyThumbnailKey}`;
+      let cachedBlob = await cacheManager.getCachedThumbnail(thumbnailKey);
+      const isLegacyCacheHit = !cachedBlob;
+      cachedBlob = cachedBlob || (await cacheManager.getCachedThumbnail(legacyThumbnailKey));
       if (cachedBlob) {
+        if (isLegacyCacheHit) {
+          void cacheManager.cacheThumbnail(thumbnailKey, cachedBlob).catch(() => {});
+        }
         const url = this.updateObjectUrl(image.id, cachedBlob);
         setSafe({ thumbnailStatus: 'ready', thumbnailUrl: url, thumbnailError: null });
         return;
