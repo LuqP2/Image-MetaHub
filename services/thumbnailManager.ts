@@ -545,8 +545,8 @@ class ThumbnailManager {
   private hasReadyThumbnail(image: IndexedImage): boolean {
     const activeState = this.getActiveRuntimeState(image);
     return Boolean(
-      (activeState?.thumbnailStatus === 'ready' && activeState.thumbnailUrl) ||
-      (!activeState && image.thumbnailStatus === 'ready' && image.thumbnailUrl)
+      activeState?.thumbnailStatus === 'ready' ||
+      (!activeState && image.thumbnailStatus === 'ready' && (image.thumbnailUrl || isVideoAsset(image) || isAudioAsset(image)))
     );
   }
 

@@ -567,14 +567,29 @@ function scheduleThumbnailManifestWrite(rootPath, state) {
       .catch(() => undefined)
       .then(async () => {
         try {
+          if (thumbnailManifestStates.get(rootPath) !== state) {
+            return;
+          }
           const cacheDir = await getThumbnailCacheDir(rootPath);
           const manifestPath = path.join(cacheDir, THUMBNAIL_MANIFEST_FILE);
+          if (thumbnailManifestStates.get(rootPath) !== state) {
+            return;
+          }
           await fs.writeFile(manifestPath, JSON.stringify(state.manifest, null, 2), 'utf8');
         } catch (error) {
           console.warn('[ThumbnailManifest] Failed to write thumbnail manifest:', error.message);
         }
       });
   }, 250);
+}
+
+function clearThumbnailManifestState(rootPath) {
+  const state = thumbnailManifestStates.get(rootPath);
+  if (state?.writeTimer) {
+    clearTimeout(state.writeTimer);
+    state.writeTimer = null;
+  }
+  thumbnailManifestStates.delete(rootPath);
 }
 
 async function upsertThumbnailManifestEntry(rootPath, entry) {
@@ -636,19 +651,6 @@ function isManifestEntryCompatible(entry, candidate) {
   return true;
 }
 
-async function repairMissingManifestEntry(rootPath, entry) {
-  if (!entry?.thumbnailId) {
-    return;
-  }
-
-  try {
-    const filePath = await getThumbnailCachePath(entry.thumbnailId, entry.extension || 'webp', rootPath);
-    await fs.access(filePath);
-  } catch {
-    await removeThumbnailManifestEntry(rootPath, entry.thumbnailId);
-  }
-}
-
 async function findCachedThumbnail(rootPath, candidate) {
   if (!candidate?.thumbnailId) {
     return null;
@@ -657,14 +659,23 @@ async function findCachedThumbnail(rootPath, candidate) {
   const state = await loadThumbnailManifest(rootPath);
   const manifestEntry = state.manifest.entries[candidate.thumbnailId];
   if (isManifestEntryCompatible(manifestEntry, candidate)) {
-    void repairMissingManifestEntry(rootPath, manifestEntry);
-    return {
-      thumbnailId: manifestEntry.thumbnailId,
-      url: buildThumbnailProtocolUrl(manifestEntry.thumbnailId, manifestEntry.extension || 'webp'),
-      extension: manifestEntry.extension || 'webp',
-      source: 'manifest',
-      legacy: false,
-    };
+    const extension = manifestEntry.extension || 'webp';
+    const filePath = await getThumbnailCachePath(manifestEntry.thumbnailId, extension, rootPath);
+    try {
+      await fs.access(filePath);
+      return {
+        thumbnailId: manifestEntry.thumbnailId,
+        url: buildThumbnailProtocolUrl(manifestEntry.thumbnailId, extension),
+        extension,
+        source: 'manifest',
+        legacy: false,
+      };
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+      await removeThumbnailManifestEntry(rootPath, manifestEntry.thumbnailId);
+    }
   }
 
   const idsToCheck = [
@@ -2762,7 +2773,7 @@ function setupFileOperationHandlers() {
         await fs.rm(cacheDir, { recursive: true, force: true });
         await fs.mkdir(cacheDir, { recursive: true });
       }
-      thumbnailManifestStates.delete(rootPath);
+      clearThumbnailManifestState(rootPath);
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
