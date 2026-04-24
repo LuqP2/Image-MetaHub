@@ -1,4 +1,10 @@
-import { type IndexedImage } from '../types';
+import {
+  type IndexedImage,
+  type ThumbnailCacheBatchStats,
+  type ThumbnailCacheCandidate,
+  type ThumbnailCacheResolveResult,
+  type ThumbnailGenerateToCacheRequest,
+} from '../types';
 
 /**
  * Parser version - increment when parser logic changes significantly
@@ -698,6 +704,52 @@ class CacheManager {
       console.error("Failed to get cached thumbnail:", result.error);
     }
     return null;
+  }
+
+  async resolveCachedThumbnails(
+    candidates: ThumbnailCacheCandidate[]
+  ): Promise<{
+    results: Record<string, ThumbnailCacheResolveResult>;
+    stats?: ThumbnailCacheBatchStats;
+  } | null> {
+    if (!this.isElectron || !window.electronAPI.resolveThumbnailCacheBatch || candidates.length === 0) {
+      return null;
+    }
+
+    const result = await window.electronAPI.resolveThumbnailCacheBatch({ candidates });
+    if (!result.success) {
+      if (result.error) {
+        console.error('Failed to resolve thumbnail cache batch:', result.error);
+      }
+      return null;
+    }
+
+    return {
+      results: result.results ?? {},
+      stats: result.stats,
+    };
+  }
+
+  async generateThumbnailToCache(
+    request: ThumbnailGenerateToCacheRequest
+  ): Promise<{ url: string; thumbnailId?: string; extension?: string } | null> {
+    if (!this.isElectron || !window.electronAPI.generateThumbnailToCache) {
+      return null;
+    }
+
+    const result = await window.electronAPI.generateThumbnailToCache(request);
+    if (!result.success || !result.url) {
+      if (result.error) {
+        console.error('Failed to generate thumbnail into cache:', result.error);
+      }
+      return null;
+    }
+
+    return {
+      url: result.url,
+      thumbnailId: result.thumbnailId,
+      extension: result.extension,
+    };
   }
 
   
