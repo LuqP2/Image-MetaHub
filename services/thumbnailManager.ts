@@ -4,8 +4,8 @@ import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 const MAX_THUMBNAIL_EDGE = 320;
 const THUMBNAIL_CACHE_VERSION = 2;
-const MAX_CONCURRENT_THUMBNAILS = 3;
-const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 2;
+const MAX_CONCURRENT_THUMBNAILS = 5;
+const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 3;
 const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 1;
 const MAX_ACTIVE_THUMBNAIL_URLS = 200;
 const MAX_RENDERER_VIDEO_THUMBNAIL_BYTES = 80 * 1024 * 1024;
@@ -677,12 +677,8 @@ class ThumbnailManager {
       const legacyThumbnailKey = `${image.id}-${image.lastModified}`;
       const thumbnailKey = `v${THUMBNAIL_CACHE_VERSION}:${legacyThumbnailKey}`;
       let cachedBlob = await cacheManager.getCachedThumbnail(thumbnailKey);
-      const isLegacyCacheHit = !cachedBlob;
       cachedBlob = cachedBlob || (await cacheManager.getCachedThumbnail(legacyThumbnailKey));
       if (cachedBlob) {
-        if (isLegacyCacheHit) {
-          void cacheManager.cacheThumbnail(thumbnailKey, cachedBlob).catch(() => {});
-        }
         const url = this.updateObjectUrl(image.id, cachedBlob);
         setSafe({ thumbnailStatus: 'ready', thumbnailUrl: url, thumbnailError: null });
         return;
