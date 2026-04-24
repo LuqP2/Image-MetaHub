@@ -419,18 +419,120 @@ async function getCacheRootPath() {
   return app.getPath('userData');
 }
 
-function logRendererCrash(details = {}) {
+function getDiagnosticsLogPaths() {
+  const paths = [];
+
   try {
-    const crashLogPath = path.join(app.getPath('userData'), 'renderer-crashes.log');
+    paths.push(path.join(app.getPath('userData'), 'logs', 'process-events.log'));
+  } catch (error) {
+    console.error('Failed to resolve userData diagnostics log path:', error);
+  }
+
+  try {
+    paths.push(path.join(app.getPath('logs'), 'process-events.log'));
+  } catch (error) {
+    console.error('Failed to resolve app logs diagnostics path:', error);
+  }
+
+  return [...new Set(paths)];
+}
+
+function logProcessEvent(details = {}) {
+  try {
     const payload = {
       timestamp: new Date().toISOString(),
+      appVersion: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+      isPackaged: app.isPackaged,
+      electronVersion: process.versions.electron,
+      chromeVersion: process.versions.chrome,
+      memoryUsage: process.memoryUsage(),
       ...details,
     };
+    const line = `${JSON.stringify(payload)}\n`;
 
-    fsSync.appendFileSync(crashLogPath, `${JSON.stringify(payload)}\n`, 'utf8');
+    for (const logPath of getDiagnosticsLogPaths()) {
+      fsSync.mkdirSync(path.dirname(logPath), { recursive: true });
+      fsSync.appendFileSync(logPath, line, 'utf8');
+    }
+
+    const legacyCrashLogPath = path.join(app.getPath('userData'), 'renderer-crashes.log');
+    fsSync.appendFileSync(legacyCrashLogPath, line, 'utf8');
   } catch (error) {
-    console.error('Failed to write renderer crash log:', error);
+    console.error('Failed to write process diagnostics log:', error);
   }
+}
+
+function registerProcessDiagnostics() {
+  logProcessEvent({
+    kind: 'app-startup',
+    logs: getDiagnosticsLogPaths(),
+    gpuMitigationEnabled,
+    gpuFeatureStatus: app.getGPUFeatureStatus?.() ?? null,
+  });
+
+  app.on('child-process-gone', (_event, details) => {
+    console.error('Child process gone:', details);
+    logProcessEvent({
+      kind: 'child-process-gone',
+      type: details?.type ?? null,
+      reason: details?.reason ?? null,
+      exitCode: details?.exitCode ?? null,
+      serviceName: details?.serviceName ?? null,
+      name: details?.name ?? null,
+    });
+  });
+
+  app.on('gpu-process-crashed', (_event, killed) => {
+    console.error('GPU process crashed:', { killed });
+    logProcessEvent({
+      kind: 'gpu-process-crashed',
+      killed: Boolean(killed),
+    });
+  });
+
+  app.on('render-process-gone', (_event, webContents, details) => {
+    console.error('App render process gone:', details);
+    logProcessEvent({
+      kind: 'app-render-process-gone',
+      reason: details?.reason ?? null,
+      exitCode: details?.exitCode ?? null,
+      url: webContents?.getURL?.() ?? null,
+    });
+  });
+}
+
+function attachWindowProcessDiagnostics(window) {
+  const webContents = window?.webContents;
+  if (!webContents) {
+    return;
+  }
+
+  webContents.on('render-process-gone', (_event, details) => {
+    console.error('Renderer process gone:', details);
+    logProcessEvent({
+      kind: 'webcontents-render-process-gone',
+      reason: details?.reason ?? null,
+      exitCode: details?.exitCode ?? null,
+      url: webContents.getURL(),
+    });
+  });
+
+  webContents.on('unresponsive', () => {
+    console.error('Renderer became unresponsive');
+    logProcessEvent({
+      kind: 'webcontents-unresponsive',
+      url: webContents.getURL(),
+    });
+  });
+
+  webContents.on('responsive', () => {
+    logProcessEvent({
+      kind: 'webcontents-responsive',
+      url: webContents.getURL(),
+    });
+  });
 }
 // --- End Settings Management ---
 
@@ -990,7 +1092,7 @@ async function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.15.0');
+    mainWindow.setTitle('Image MetaHub v0.15.1');
   }
 
   // Load the app
@@ -1136,25 +1238,12 @@ async function createWindow(startupDirectory = null) {
     }
   });
 
-  mainWindow.webContents.on('render-process-gone', (_event, details) => {
-    console.error('Renderer process gone:', details);
-    logRendererCrash({
-      kind: 'render-process-gone',
-      reason: details?.reason ?? null,
-      exitCode: details?.exitCode ?? null,
-    });
-  });
-
-  mainWindow.webContents.on('unresponsive', () => {
-    console.error('Renderer became unresponsive');
-    logRendererCrash({
-      kind: 'unresponsive',
-    });
-  });
+  attachWindowProcessDiagnostics(mainWindow);
 }
 
 // App event handlers
 app.whenReady().then(async () => {
+  registerProcessDiagnostics();
   registerMediaProtocol();
 
   // Listen for theme changes and notify renderer

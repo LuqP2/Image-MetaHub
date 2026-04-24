@@ -1,6 +1,6 @@
 import { IndexedImage } from '../types';
 import { thumbnailManager } from './thumbnailManager';
-import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
+import { inferMimeTypeFromName, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import {
   recordPerformanceCounter,
   recordPerformanceDuration,
@@ -20,7 +20,28 @@ type MediaSourceLoadOptions = {
 
 const MAX_STREAM_URL_CACHE_ENTRIES = 64;
 const MAX_OBJECT_URL_CACHE_ENTRIES = 16;
+const MAX_RENDERER_READ_BYTES = 200 * 1024 * 1024;
 type ElectronFileHandle = FileSystemFileHandle & { _filePath?: string };
+
+const getFileDataByteLength = (data: unknown): number | undefined => {
+  if (typeof data === 'string') {
+    return Math.ceil((data.length * 3) / 4);
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return data.byteLength;
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    return data.byteLength;
+  }
+
+  if (data && typeof data === 'object' && 'data' in data && Array.isArray((data as { data: unknown }).data)) {
+    return (data as { data: number[] }).data.length;
+  }
+
+  return undefined;
+};
 
 const createImageUrlFromFileData = (data: unknown, fileName: string): { url: string; revoke: boolean } => {
   const mimeType = inferMimeTypeFromName(fileName, 'image/png');
@@ -178,6 +199,8 @@ class MediaSourceCache {
         : fallbackHandle && typeof fallbackHandle.getFile === 'function'
           ? fallbackHandle
           : null;
+    const isLargeStreamingMedia =
+      isVideoFileName(image.name, image.fileType) || isAudioFileName(image.name, image.fileType);
 
     if (window.electronAPI) {
       let absolutePath = electronAbsoluteMediaPath;
@@ -220,10 +243,19 @@ class MediaSourceCache {
       }
 
       if (absolutePath) {
+        if (isLargeStreamingMedia) {
+          throw new Error('Could not create streaming media URL; refusing to read full media file into renderer memory.');
+        }
+
         const readStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const fileResult = await window.electronAPI.readFile(absolutePath);
         if (!fileResult.success || !fileResult.data) {
           throw new Error(fileResult.error || 'Failed to read file via Electron API.');
+        }
+
+        const byteLength = getFileDataByteLength(fileResult.data);
+        if (byteLength !== undefined && byteLength > MAX_RENDERER_READ_BYTES) {
+          throw new Error(`Refusing to load ${Math.round(byteLength / 1024 / 1024)}MB file into renderer memory.`);
         }
 
         const createUrlStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -233,7 +265,7 @@ class MediaSourceCache {
           detail: {
             urlKind: 'object-url',
             sourceMode: 'electron-read-file',
-            fileSize: fileResult.data instanceof Uint8Array ? fileResult.data.byteLength : ('byteLength' in (fileResult.data as object) ? (fileResult.data as ArrayBuffer).byteLength : undefined),
+            fileSize: byteLength,
             usedHandlePath: Boolean(electronAbsoluteMediaPath),
             joinPathMs,
             readFileMs: Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - readStartedAt) * 100) / 100,
@@ -242,6 +274,10 @@ class MediaSourceCache {
           },
         };
       }
+    }
+
+    if (window.electronAPI && isLargeStreamingMedia) {
+      throw new Error('Could not create streaming media URL; refusing to read full media file into renderer memory.');
     }
 
     if (fileHandle) {

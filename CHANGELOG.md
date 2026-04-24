@@ -5,19 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.15.1] - 2026-04-23
 
-### Added
+### Fixed
+
+- **Desktop Media Memory Safety**: Fixed a v0.15.0 regression where large video or audio files could be read fully into renderer memory when the desktop streaming media URL path failed, potentially causing black screens or renderer crashes on macOS.
+- **Video Thumbnail Guardrails**: Reduced thumbnail generation concurrency, capped active thumbnail object URLs, reused legacy thumbnail cache entries where possible, and skipped renderer-side video thumbnail generation for videos with unknown size or over 80 MB to avoid memory spikes during cache refresh.
 
 
-
-### Improved
-
-- **Viewer Metadata Actions**: Image Modal and Image Preview Sidebar now share clearer entry points for editing metadata, exporting edited copies, exporting without metadata, and switching between original and edited metadata views.
-- **Export Pipeline Consistency**: Unified desktop export handling behind a single request model so regular export, batch export, metadata stripping, and metadata rewrite all follow the same scope-aware workflow.
-- **MetaHub Standard Metadata Compatibility**: Standardized exported metadata payloads so files saved from edited metadata remain parseable by the app and keep compatibility with A1111-style generation parameter import.
-
-## [0.15.0] - 2026-04-22
+## [0.15.0] - 2026-04-23
 
 ### Added
 
@@ -38,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Indexed Subfolder Transfers**: Bulk copy/move actions can now target indexed subfolders, including nested folders and symlinked or aliased destinations.
 - **Unified Export Metadata Policies**: Added a shared export flow for single-image and batch export with metadata policies to preserve original metadata, strip metadata entirely, or save a standardized `Image MetaHub + A1111` compatible PNG copy.
 - **Large Library Responsiveness**: Improved Smart Library clustering behavior and added optional performance diagnostics for troubleshooting search, grid, thumbnail, and viewer responsiveness.
+- **Viewer Metadata Actions**: Image Modal and Image Preview Sidebar now share clearer entry points for editing metadata, exporting edited copies, exporting without metadata, and switching between original and edited metadata views.
+- **Export Pipeline Consistency**: Unified desktop export handling behind a single request model so regular export, batch export, metadata stripping, and metadata rewrite all follow the same scope-aware workflow.
 
 ### Fixed
 

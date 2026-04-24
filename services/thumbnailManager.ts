@@ -4,10 +4,11 @@ import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 const MAX_THUMBNAIL_EDGE = 320;
 const THUMBNAIL_CACHE_VERSION = 2;
-const MAX_CONCURRENT_THUMBNAILS = 12;
-const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 10;
-const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 2;
-const MAX_ACTIVE_THUMBNAIL_URLS = 800;
+const MAX_CONCURRENT_THUMBNAILS = 3;
+const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 2;
+const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 1;
+const MAX_ACTIVE_THUMBNAIL_URLS = 200;
+const MAX_RENDERER_VIDEO_THUMBNAIL_BYTES = 80 * 1024 * 1024;
 
 type ElectronFileHandle = FileSystemFileHandle & { _filePath?: string };
 
@@ -673,17 +674,31 @@ class ThumbnailManager {
         return;
       }
 
-      const thumbnailKey = `v${THUMBNAIL_CACHE_VERSION}:${image.id}-${image.lastModified}`;
-      const cachedBlob = await cacheManager.getCachedThumbnail(thumbnailKey);
+      const legacyThumbnailKey = `${image.id}-${image.lastModified}`;
+      const thumbnailKey = `v${THUMBNAIL_CACHE_VERSION}:${legacyThumbnailKey}`;
+      let cachedBlob = await cacheManager.getCachedThumbnail(thumbnailKey);
+      const isLegacyCacheHit = !cachedBlob;
+      cachedBlob = cachedBlob || (await cacheManager.getCachedThumbnail(legacyThumbnailKey));
       if (cachedBlob) {
+        if (isLegacyCacheHit) {
+          void cacheManager.cacheThumbnail(thumbnailKey, cachedBlob).catch(() => {});
+        }
         const url = this.updateObjectUrl(image.id, cachedBlob);
         setSafe({ thumbnailStatus: 'ready', thumbnailUrl: url, thumbnailError: null });
         return;
       }
 
       let blob: Blob | null = null;
+      const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI);
+      const isVideo = isVideoAsset(image);
+      const fileSize = image.fileSize;
 
-      if (typeof window !== 'undefined' && window.electronAPI && !isVideoAsset(image)) {
+      if (isElectron && isVideo && (!fileSize || fileSize > MAX_RENDERER_VIDEO_THUMBNAIL_BYTES)) {
+        setSafe({ thumbnailStatus: 'ready', thumbnailUrl: null, thumbnailError: null });
+        return;
+      }
+
+      if (isElectron && !isVideo) {
         blob = await generateElectronThumbnailBlob(image);
       }
 
