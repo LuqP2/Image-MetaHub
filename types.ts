@@ -131,6 +131,40 @@ export interface ElectronReadFilesBatchItem {
   errorCode?: string;
 }
 
+export interface ThumbnailCacheCandidate {
+  requestId: string;
+  thumbnailId: string;
+  legacyThumbnailId?: string;
+  imageId?: string;
+  originalRelativePath?: string;
+  lastModified?: number;
+  contentModifiedMs?: number;
+  fileSize?: number;
+  algorithmVersion?: string;
+}
+
+export interface ThumbnailCacheResolveResult {
+  hit: boolean;
+  url?: string;
+  thumbnailId?: string;
+  extension?: string;
+  source?: 'manifest' | 'filesystem';
+  legacy?: boolean;
+}
+
+export interface ThumbnailCacheBatchStats {
+  requested: number;
+  hits: number;
+  misses: number;
+  durationMs: number;
+}
+
+export interface ThumbnailGenerateToCacheRequest extends ThumbnailCacheCandidate {
+  filePath: string;
+  maxEdge?: number;
+  quality?: number;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -192,9 +226,18 @@ export interface ElectronAPI {
   writeCacheChunk: (args: { cacheId: string; chunkIndex: number; data: any }) => Promise<{ success: boolean; error?: string }>;
   finalizeCacheWrite: (args: { cacheId: string; record: any }) => Promise<{ success: boolean; error?: string }>;
   clearCacheData: (cacheId: string) => Promise<{ success: boolean; error?: string }>;
+  resolveThumbnailCacheBatch: (args: {
+    candidates: ThumbnailCacheCandidate[];
+  }) => Promise<{
+    success: boolean;
+    results?: Record<string, ThumbnailCacheResolveResult>;
+    stats?: ThumbnailCacheBatchStats;
+    error?: string;
+  }>;
   getThumbnail: (thumbnailId: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
   cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   generateThumbnailFromPath: (args: { filePath: string; maxEdge?: number; quality?: number }) => Promise<{ success: boolean; data?: Buffer; mimeType?: string; error?: string }>;
+  generateThumbnailToCache: (args: ThumbnailGenerateToCacheRequest) => Promise<{ success: boolean; url?: string; thumbnailId?: string; extension?: string; error?: string }>;
   clearMetadataCache: () => Promise<{ success: boolean; error?: string }>;
   clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
   deleteCacheFolder: () => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;

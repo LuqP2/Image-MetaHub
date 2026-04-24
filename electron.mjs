@@ -59,10 +59,25 @@ const MIN_WINDOW_WIDTH = 800;
 const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
 const MEDIA_PROTOCOL_SCHEME = 'imh-media';
+const THUMBNAIL_PROTOCOL_SCHEME = 'imh-thumb';
+const THUMBNAIL_CACHE_VERSION = 2;
+const THUMBNAIL_MANIFEST_VERSION = 1;
+const THUMBNAIL_MANIFEST_FILE = 'thumbnail-manifest-v1.json';
+const THUMBNAIL_ALLOWED_EXTENSIONS = new Set(['webp', 'png', 'jpg', 'jpeg']);
 
 protocol.registerSchemesAsPrivileged([
   {
     scheme: MEDIA_PROTOCOL_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
+  {
+    scheme: THUMBNAIL_PROTOCOL_SCHEME,
     privileges: {
       standard: true,
       secure: true,
@@ -78,6 +93,34 @@ const getMimeTypeFromName = (name) => inferMimeTypeFromName(name);
 const buildMediaProtocolUrl = (filePath) => {
   const normalizedFilePath = path.resolve(filePath);
   return `${MEDIA_PROTOCOL_SCHEME}://local/?path=${encodeURIComponent(normalizedFilePath)}`;
+};
+
+const normalizeThumbnailExtension = (extension) => {
+  const normalized = String(extension || 'webp').replace(/^\./, '').toLowerCase();
+  return THUMBNAIL_ALLOWED_EXTENSIONS.has(normalized) ? normalized : 'webp';
+};
+
+const getThumbnailSafeId = (thumbnailId) => {
+  const id = String(thumbnailId || '');
+  const MAX_FILENAME_LENGTH = 160;
+
+  if (id.length > MAX_FILENAME_LENGTH) {
+    return crypto.createHash('md5').update(id).digest('hex');
+  }
+
+  return id.replace(/[^a-zA-Z0-9-_]/g, '_');
+};
+
+const getThumbnailFileName = (thumbnailId, extension = 'webp') => {
+  return `${getThumbnailSafeId(thumbnailId)}.${normalizeThumbnailExtension(extension)}`;
+};
+
+const buildThumbnailProtocolUrl = (thumbnailId, extension = 'webp') => {
+  const params = new URLSearchParams({
+    id: String(thumbnailId || ''),
+    ext: normalizeThumbnailExtension(extension),
+  });
+  return `${THUMBNAIL_PROTOCOL_SCHEME}://local/?${params.toString()}`;
 };
 
 const registerMediaProtocol = () => {
@@ -104,6 +147,40 @@ const registerMediaProtocol = () => {
       callback({ path: normalizedFilePath });
     } catch (error) {
       console.error('Error serving media protocol request:', request.url, error);
+      callback({ error: -2 });
+    }
+  });
+};
+
+const registerThumbnailProtocol = () => {
+  protocol.registerFileProtocol(THUMBNAIL_PROTOCOL_SCHEME, async (request, callback) => {
+    try {
+      const requestUrl = new URL(request.url);
+      const thumbnailId = requestUrl.searchParams.get('id');
+      const extension = normalizeThumbnailExtension(requestUrl.searchParams.get('ext'));
+
+      if (!thumbnailId) {
+        callback({ error: -6 });
+        return;
+      }
+
+      const rootPath = await getCacheRootPath();
+      const cacheDir = await getThumbnailCacheDir(rootPath);
+      const filePath = path.resolve(cacheDir, getThumbnailFileName(thumbnailId, extension));
+
+      if (!isSameOrChildPath(normalizeAllowedPath(filePath), normalizeAllowedPath(cacheDir))) {
+        console.error('SECURITY VIOLATION: Attempted to load thumbnail outside of cache directory.');
+        console.error('  [imh-thumb] Requested id:', thumbnailId);
+        console.error('  [imh-thumb] Resolved path:', filePath);
+        console.error('  [imh-thumb] Cache dir:', cacheDir);
+        callback({ error: -10 });
+        return;
+      }
+
+      await fs.access(filePath);
+      callback({ path: filePath });
+    } catch (error) {
+      console.error('Error serving thumbnail protocol request:', request.url, error);
       callback({ error: -2 });
     }
   });
@@ -417,6 +494,209 @@ async function getCacheRootPath() {
     return settings.cachePath;
   }
   return app.getPath('userData');
+}
+
+async function getThumbnailCacheDir(rootPath = null) {
+  const resolvedRoot = rootPath || await getCacheRootPath();
+  const cacheDir = path.join(resolvedRoot, 'thumbnails');
+  await fs.mkdir(cacheDir, { recursive: true });
+  return cacheDir;
+}
+
+async function getThumbnailCachePath(thumbnailId, extension = 'webp', rootPath = null) {
+  const cacheDir = await getThumbnailCacheDir(rootPath);
+  return path.join(cacheDir, getThumbnailFileName(thumbnailId, extension));
+}
+
+function getThumbnailManifestPath(rootPath) {
+  return path.join(rootPath, 'thumbnails', THUMBNAIL_MANIFEST_FILE);
+}
+
+const thumbnailManifestStates = new Map();
+
+function createEmptyThumbnailManifest() {
+  return {
+    version: THUMBNAIL_MANIFEST_VERSION,
+    entries: {},
+  };
+}
+
+async function loadThumbnailManifest(rootPath) {
+  const existing = thumbnailManifestStates.get(rootPath);
+  if (existing?.loaded) {
+    return existing;
+  }
+
+  const state = existing || {
+    loaded: false,
+    manifest: createEmptyThumbnailManifest(),
+    writeTimer: null,
+    writePromise: Promise.resolve(),
+  };
+
+  try {
+    const manifestPath = getThumbnailManifestPath(rootPath);
+    const raw = await fs.readFile(manifestPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    state.manifest = {
+      version: THUMBNAIL_MANIFEST_VERSION,
+      entries: parsed && typeof parsed.entries === 'object' && parsed.entries
+        ? parsed.entries
+        : {},
+    };
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.warn('[ThumbnailManifest] Failed to read thumbnail manifest, starting fresh:', error.message);
+    }
+    state.manifest = createEmptyThumbnailManifest();
+  }
+
+  state.loaded = true;
+  thumbnailManifestStates.set(rootPath, state);
+  return state;
+}
+
+function scheduleThumbnailManifestWrite(rootPath, state) {
+  if (state.writeTimer) {
+    clearTimeout(state.writeTimer);
+  }
+
+  state.writeTimer = setTimeout(() => {
+    state.writeTimer = null;
+    state.writePromise = state.writePromise
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const cacheDir = await getThumbnailCacheDir(rootPath);
+          const manifestPath = path.join(cacheDir, THUMBNAIL_MANIFEST_FILE);
+          await fs.writeFile(manifestPath, JSON.stringify(state.manifest, null, 2), 'utf8');
+        } catch (error) {
+          console.warn('[ThumbnailManifest] Failed to write thumbnail manifest:', error.message);
+        }
+      });
+  }, 250);
+}
+
+async function upsertThumbnailManifestEntry(rootPath, entry) {
+  const state = await loadThumbnailManifest(rootPath);
+  state.manifest.entries[entry.thumbnailId] = {
+    ...state.manifest.entries[entry.thumbnailId],
+    ...entry,
+    manifestVersion: THUMBNAIL_MANIFEST_VERSION,
+  };
+  scheduleThumbnailManifestWrite(rootPath, state);
+}
+
+async function removeThumbnailManifestEntry(rootPath, thumbnailId) {
+  const state = await loadThumbnailManifest(rootPath);
+  if (!state.manifest.entries[thumbnailId]) {
+    return;
+  }
+  delete state.manifest.entries[thumbnailId];
+  scheduleThumbnailManifestWrite(rootPath, state);
+}
+
+function buildThumbnailManifestEntry(candidate, thumbnailId, extension, filePath, generatedAt = Date.now()) {
+  return {
+    imageId: candidate.imageId || candidate.id || null,
+    originalRelativePath: candidate.originalRelativePath || candidate.name || null,
+    lastModified: Number.isFinite(candidate.lastModified) ? candidate.lastModified : null,
+    contentModifiedMs: Number.isFinite(candidate.contentModifiedMs) ? candidate.contentModifiedMs : null,
+    fileSize: Number.isFinite(candidate.fileSize) ? candidate.fileSize : null,
+    thumbnailId,
+    thumbnailKey: thumbnailId,
+    fileName: path.basename(filePath),
+    extension: normalizeThumbnailExtension(extension),
+    generatedAt,
+    algorithmVersion: candidate.algorithmVersion || `v${THUMBNAIL_CACHE_VERSION}`,
+  };
+}
+
+function isManifestEntryCompatible(entry, candidate) {
+  if (!entry) {
+    return false;
+  }
+
+  if (
+    Number.isFinite(candidate.lastModified) &&
+    Number.isFinite(entry.lastModified) &&
+    entry.lastModified !== candidate.lastModified
+  ) {
+    return false;
+  }
+
+  if (
+    Number.isFinite(candidate.fileSize) &&
+    Number.isFinite(entry.fileSize) &&
+    entry.fileSize !== candidate.fileSize
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+async function repairMissingManifestEntry(rootPath, entry) {
+  if (!entry?.thumbnailId) {
+    return;
+  }
+
+  try {
+    const filePath = await getThumbnailCachePath(entry.thumbnailId, entry.extension || 'webp', rootPath);
+    await fs.access(filePath);
+  } catch {
+    await removeThumbnailManifestEntry(rootPath, entry.thumbnailId);
+  }
+}
+
+async function findCachedThumbnail(rootPath, candidate) {
+  if (!candidate?.thumbnailId) {
+    return null;
+  }
+
+  const state = await loadThumbnailManifest(rootPath);
+  const manifestEntry = state.manifest.entries[candidate.thumbnailId];
+  if (isManifestEntryCompatible(manifestEntry, candidate)) {
+    void repairMissingManifestEntry(rootPath, manifestEntry);
+    return {
+      thumbnailId: manifestEntry.thumbnailId,
+      url: buildThumbnailProtocolUrl(manifestEntry.thumbnailId, manifestEntry.extension || 'webp'),
+      extension: manifestEntry.extension || 'webp',
+      source: 'manifest',
+      legacy: false,
+    };
+  }
+
+  const idsToCheck = [
+    { thumbnailId: candidate.thumbnailId, legacy: false },
+    ...(candidate.legacyThumbnailId ? [{ thumbnailId: candidate.legacyThumbnailId, legacy: true }] : []),
+  ];
+
+  for (const { thumbnailId, legacy } of idsToCheck) {
+    for (const extension of ['webp', 'png', 'jpg', 'jpeg']) {
+      const filePath = await getThumbnailCachePath(thumbnailId, extension, rootPath);
+      try {
+        await fs.access(filePath);
+        await upsertThumbnailManifestEntry(
+          rootPath,
+          buildThumbnailManifestEntry(candidate, thumbnailId, extension, filePath)
+        );
+        return {
+          thumbnailId,
+          url: buildThumbnailProtocolUrl(thumbnailId, extension),
+          extension,
+          source: 'filesystem',
+          legacy,
+        };
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 function getDiagnosticsLogPaths() {
@@ -1245,6 +1525,7 @@ async function createWindow(startupDirectory = null) {
 app.whenReady().then(async () => {
   registerProcessDiagnostics();
   registerMediaProtocol();
+  registerThumbnailProtocol();
 
   // Listen for theme changes and notify renderer
   nativeTheme.on('updated', () => {
@@ -2221,46 +2502,80 @@ function setupFileOperationHandlers() {
 
 
   // --- Thumbnail Cache IPC Handlers ---
-  const getThumbnailCachePath = async (thumbnailId) => {
+  ipcMain.handle('resolve-thumbnail-cache-batch', async (event, { candidates } = {}) => {
+    const startedAt = Date.now();
+    const list = Array.isArray(candidates) ? candidates.slice(0, 512) : [];
     const rootPath = await getCacheRootPath();
-    const cacheDir = path.join(rootPath, 'thumbnails');
-    await fs.mkdir(cacheDir, { recursive: true });
+    await getThumbnailCacheDir(rootPath);
 
-    // Use MD5 hash for long IDs to avoid Windows MAX_PATH (260 char) limit
-    // Windows path limit includes the full path, not just the filename
-    // Reserve ~100 chars for the base path, leaving ~160 for the filename
-    const MAX_FILENAME_LENGTH = 160;
+    let hitCount = 0;
+    let missCount = 0;
 
-    let safeId;
-    if (thumbnailId.length > MAX_FILENAME_LENGTH) {
-      // Use MD5 hash for very long IDs (32 hex chars)
-      const hash = crypto.createHash('md5').update(thumbnailId).digest('hex');
-      safeId = hash;
-    } else {
-      // For shorter IDs, just sanitize special characters
-      safeId = thumbnailId.replace(/[^a-zA-Z0-9-_]/g, '_');
+    try {
+      const resolved = await mapWithConcurrency(list, 32, async (candidate) => {
+        const requestId = candidate?.requestId || candidate?.imageId || candidate?.thumbnailId;
+        const cached = await findCachedThumbnail(rootPath, candidate);
+
+        if (cached) {
+          hitCount++;
+          return [requestId, {
+            hit: true,
+            url: cached.url,
+            thumbnailId: cached.thumbnailId,
+            extension: cached.extension,
+            source: cached.source,
+            legacy: cached.legacy,
+          }];
+        }
+
+        missCount++;
+        return [requestId, { hit: false }];
+      });
+
+      return {
+        success: true,
+        results: Object.fromEntries(resolved.filter(([key]) => Boolean(key))),
+        stats: {
+          requested: list.length,
+          hits: hitCount,
+          misses: missCount,
+          durationMs: Date.now() - startedAt,
+        },
+      };
+    } catch (error) {
+      return { success: false, error: error.message };
     }
-
-    return path.join(cacheDir, `${safeId}.webp`);
-  };
+  });
 
   ipcMain.handle('get-thumbnail', async (event, thumbnailId) => {
-    const filePath = await getThumbnailCachePath(thumbnailId);
     try {
-      const data = await fs.readFile(filePath);
-      return { success: true, data };
-    } catch (error) {
-      if (error.code === 'ENOENT') {
-        return { success: true, data: null }; // Not an error
+      for (const extension of ['webp', 'png', 'jpg', 'jpeg']) {
+        const filePath = await getThumbnailCachePath(thumbnailId, extension);
+        try {
+          const data = await fs.readFile(filePath);
+          return { success: true, data };
+        } catch (error) {
+          if (error.code !== 'ENOENT') {
+            throw error;
+          }
+        }
       }
+
+      return { success: true, data: null };
+    } catch (error) {
       return { success: false, error: error.message };
     }
   });
 
   ipcMain.handle('cache-thumbnail', async (event, { thumbnailId, data }) => {
-    const filePath = await getThumbnailCachePath(thumbnailId);
+    const rootPath = await getCacheRootPath();
+    const filePath = await getThumbnailCachePath(thumbnailId, 'webp', rootPath);
     try {
       await fs.writeFile(filePath, data);
+      await upsertThumbnailManifestEntry(
+        rootPath,
+        buildThumbnailManifestEntry({ algorithmVersion: `v${THUMBNAIL_CACHE_VERSION}` }, thumbnailId, 'webp', filePath)
+      );
       return { success: true };
     } catch (error) {
       // Log the error with context for debugging
@@ -2278,6 +2593,97 @@ function setupFileOperationHandlers() {
       }
 
       return { success: false, error: error.message, errorCode: error.code };
+    }
+  });
+
+  ipcMain.handle('generate-thumbnail-to-cache', async (event, {
+    thumbnailId,
+    filePath,
+    maxEdge = 320,
+    quality = 82,
+    imageId,
+    originalRelativePath,
+    lastModified,
+    contentModifiedMs,
+    fileSize,
+    algorithmVersion,
+  } = {}) => {
+    try {
+      if (!thumbnailId) {
+        return { success: false, error: 'No thumbnail id provided' };
+      }
+
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      if (!isPathAllowed(filePath)) {
+        return { success: false, error: 'Access denied: Cannot generate thumbnails outside of allowed directories.' };
+      }
+
+      let image;
+      if (typeof nativeImage.createThumbnailFromPath === 'function') {
+        image = await nativeImage.createThumbnailFromPath(filePath, {
+          width: maxEdge,
+          height: maxEdge,
+        });
+      } else {
+        image = nativeImage.createFromPath(filePath);
+      }
+
+      if (!image || image.isEmpty()) {
+        return { success: false, error: 'Failed to decode image for thumbnail generation.' };
+      }
+
+      const { width, height } = image.getSize();
+      const safeWidth = Math.max(1, width || maxEdge);
+      const safeHeight = Math.max(1, height || maxEdge);
+      const scale = Math.min(1, maxEdge / Math.max(safeWidth, safeHeight));
+
+      const resizedImage = scale < 1
+        ? image.resize({
+            width: Math.max(1, Math.round(safeWidth * scale)),
+            height: Math.max(1, Math.round(safeHeight * scale)),
+            quality: 'better',
+          })
+        : image;
+
+      const lowerExt = path.extname(filePath).toLowerCase();
+      const preserveAlpha = lowerExt === '.png' || lowerExt === '.webp' || lowerExt === '.gif';
+      const extension = preserveAlpha ? 'png' : 'jpg';
+      const data = preserveAlpha
+        ? resizedImage.toPNG()
+        : resizedImage.toJPEG(Math.max(1, Math.min(100, Math.round(quality))));
+
+      const rootPath = await getCacheRootPath();
+      const thumbnailPath = await getThumbnailCachePath(thumbnailId, extension, rootPath);
+      await fs.writeFile(thumbnailPath, data);
+
+      await upsertThumbnailManifestEntry(
+        rootPath,
+        buildThumbnailManifestEntry(
+          {
+            imageId,
+            originalRelativePath,
+            lastModified,
+            contentModifiedMs,
+            fileSize,
+            algorithmVersion: algorithmVersion || `v${THUMBNAIL_CACHE_VERSION}`,
+          },
+          thumbnailId,
+          extension,
+          thumbnailPath
+        )
+      );
+
+      return {
+        success: true,
+        url: buildThumbnailProtocolUrl(thumbnailId, extension),
+        thumbnailId,
+        extension,
+      };
+    } catch (error) {
+      return { success: false, error: error.message };
     }
   });
 
@@ -2352,10 +2758,11 @@ function setupFileOperationHandlers() {
     try {
       const rootPath = await getCacheRootPath();
       const cacheDir = path.join(rootPath, 'thumbnails');
-      if (fs.existsSync(cacheDir)) {
-        await fs.promises.rm(cacheDir, { recursive: true, force: true });
-        await fs.promises.mkdir(cacheDir, { recursive: true });
+      if (fsSync.existsSync(cacheDir)) {
+        await fs.rm(cacheDir, { recursive: true, force: true });
+        await fs.mkdir(cacheDir, { recursive: true });
       }
+      thumbnailManifestStates.delete(rootPath);
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
