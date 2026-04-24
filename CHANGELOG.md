@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Video Thumbnail Guardrails**: Reduced thumbnail generation concurrency, capped active thumbnail object URLs, reused legacy thumbnail cache entries where possible, and skipped renderer-side video thumbnail generation for videos with unknown size or over 80 MB to avoid memory spikes during cache refresh.
 
 
-## [0.15.1] - 2026-04-23
+## [0.15.0] - 2026-04-23
 
 ### Added
 
