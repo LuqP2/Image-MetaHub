@@ -244,27 +244,6 @@ class MediaSourceCache {
 
       if (absolutePath) {
         if (isLargeStreamingMedia) {
-          if (fileHandle) {
-            const getFileStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-            const file = await fileHandle.getFile();
-            const objectUrlStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-            const url = URL.createObjectURL(file);
-            return {
-              url,
-              revoke: true,
-              detail: {
-                urlKind: 'object-url',
-                sourceMode: 'file-handle-large-media-fallback',
-                fileSize: file.size,
-                usedHandlePath: Boolean(electronAbsoluteMediaPath),
-                joinPathMs,
-                getFileMs: Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - getFileStartedAt) * 100) / 100,
-                objectUrlMs: Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - objectUrlStartedAt) * 100) / 100,
-                totalLoadMs: Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - loadStartedAt) * 100) / 100,
-              },
-            };
-          }
-
           throw new Error('Could not create streaming media URL; refusing to read full media file into renderer memory.');
         }
 
@@ -295,6 +274,10 @@ class MediaSourceCache {
           },
         };
       }
+    }
+
+    if (window.electronAPI && isLargeStreamingMedia) {
+      throw new Error('Could not create streaming media URL; refusing to read full media file into renderer memory.');
     }
 
     if (fileHandle) {
