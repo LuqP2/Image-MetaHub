@@ -173,7 +173,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
   const audioDuration = formatAudioDuration((image.metadata as any)?.normalizedMetadata?.audio?.duration_seconds);
-  const resolvedThumbnailUrl = !thumbnailsDisabled && !isVideo && !isAudio && thumbnail?.thumbnailStatus === 'ready'
+  const resolvedThumbnailUrl =
+!thumbnailsDisabled && !isAudio && thumbnail?.thumbnailStatus === 'ready'
     ? thumbnail.thumbnailUrl
     : null;
   const hasThumbnailError = !thumbnailsDisabled && thumbnail?.thumbnailStatus === 'error';
