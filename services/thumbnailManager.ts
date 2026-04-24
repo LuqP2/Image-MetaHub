@@ -1,11 +1,19 @@
 import { IndexedImage, ThumbnailStatus } from '../types';
 import cacheManager from './cacheManager';
 import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import {
+  getLegacyThumbnailId,
+  getThumbnailCacheCandidate,
+  getVersionedThumbnailId,
+} from './thumbnailCache';
+import {
+  recordPerformanceCounter,
+  recordPerformanceDuration,
+} from '../utils/performanceDiagnostics';
 
 const MAX_THUMBNAIL_EDGE = 320;
-const THUMBNAIL_CACHE_VERSION = 2;
-const MAX_CONCURRENT_THUMBNAILS = 3;
-const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 2;
+const MAX_CONCURRENT_THUMBNAILS = 5;
+const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 3;
 const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 1;
 const MAX_ACTIVE_THUMBNAIL_URLS = 200;
 const MAX_RENDERER_VIDEO_THUMBNAIL_BYTES = 80 * 1024 * 1024;
@@ -24,6 +32,7 @@ type ThumbnailJob = {
   token: number;
   priority: 'high' | 'low';
   markLoading: boolean;
+  skipCacheLookup: boolean;
   resolve: () => void;
   reject: (error: unknown) => void;
 };
@@ -192,6 +201,9 @@ class ThumbnailManager {
   private warmupTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private warmupTokens = new Map<string, number>();
   private backgroundPauseCount = 0;
+  private viewportScheduleToken = 0;
+  private pendingEmitIds = new Set<string>();
+  private emitFrame: number | null = null;
 
   subscribe(imageId: string, listener: () => void): () => void {
     const listeners = this.listeners.get(imageId);
@@ -267,15 +279,73 @@ class ThumbnailManager {
     visibleImages,
     aheadImages = [],
     keepImageIds,
-    cancelQueue = 'low',
+    cancelQueue = 'all',
   }: ViewportSchedule): void {
     const nextVisible = this.dedupeImages(visibleImages);
     const nextAhead = this.dedupeImages(aheadImages, new Set(nextVisible.map((image) => image.id)));
     const retainedIds = keepImageIds ?? new Set([...nextVisible, ...nextAhead].map((image) => image.id));
+    const scheduleToken = ++this.viewportScheduleToken;
 
     this.cancelQueuedJobs({ queue: cancelQueue, keepImageIds: retainedIds });
-    this.prefetchImages(nextVisible, 'high', { markLoading: false });
-    this.prefetchImages(nextAhead, 'low', { markLoading: false });
+    const supportsUrlCacheLookup = typeof window !== 'undefined' && Boolean(window.electronAPI?.resolveThumbnailCacheBatch);
+    if (!supportsUrlCacheLookup) {
+      this.prefetchImages(nextVisible, 'high', { markLoading: false });
+      this.prefetchImages(nextAhead, 'low', { markLoading: false });
+      return;
+    }
+
+    void this.resolveAndQueueViewport(nextVisible, nextAhead, scheduleToken).catch((error) => {
+      console.error('Failed to schedule thumbnail viewport:', error);
+      if (this.viewportScheduleToken !== scheduleToken) {
+        return;
+      }
+      this.prefetchImages(nextVisible, 'high', { markLoading: false });
+      this.prefetchImages(nextAhead, 'low', { markLoading: false });
+    });
+  }
+
+  private async resolveAndQueueViewport(
+    visibleImages: IndexedImage[],
+    aheadImages: IndexedImage[],
+    scheduleToken: number
+  ): Promise<void> {
+    const visibleStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const visibleMisses = await this.resolveCachedThumbnailBatch(visibleImages, {
+      priority: 'visible',
+    });
+
+    recordPerformanceDuration(
+      'thumbnail.viewport.visible-cache-lookup',
+      (typeof performance !== 'undefined' ? performance.now() : Date.now()) - visibleStartedAt,
+      {
+        requested: visibleImages.length,
+        misses: visibleMisses.length,
+      }
+    );
+
+    if (this.viewportScheduleToken !== scheduleToken) {
+      return;
+    }
+
+    this.prefetchImages(visibleMisses, 'high', { markLoading: false, skipCacheLookup: true });
+
+    if (visibleMisses.some((image) => !this.hasReadyThumbnail(image))) {
+      recordPerformanceCounter('thumbnail.viewport.defer-overscan', {
+        visibleMisses: visibleMisses.length,
+        overscanCount: aheadImages.length,
+      });
+      return;
+    }
+
+    const aheadMisses = await this.resolveCachedThumbnailBatch(aheadImages, {
+      priority: 'overscan',
+    });
+
+    if (this.viewportScheduleToken !== scheduleToken) {
+      return;
+    }
+
+    this.prefetchImages(aheadMisses, 'low', { markLoading: false, skipCacheLookup: true });
   }
 
   pauseBackgroundWork(): () => void {
@@ -391,7 +461,7 @@ class ThumbnailManager {
   prefetchImages(
     images: IndexedImage[],
     priority: 'high' | 'low' = 'low',
-    options: { markLoading?: boolean } = {}
+    options: { markLoading?: boolean; skipCacheLookup?: boolean } = {}
   ): void {
     if (!images || images.length === 0) {
       return;
@@ -400,6 +470,7 @@ class ThumbnailManager {
     for (const image of this.dedupeImages(images)) {
       void this.ensureThumbnail(image, priority, {
         markLoading: options.markLoading ?? false,
+        skipCacheLookup: options.skipCacheLookup ?? false,
       }).catch(() => {
         // Visible viewport work is retried when the item is scheduled again.
       });
@@ -409,7 +480,7 @@ class ThumbnailManager {
   async ensureThumbnail(
     image: IndexedImage,
     priority: 'high' | 'low' = 'high',
-    options: { markLoading?: boolean } = {}
+    options: { markLoading?: boolean; skipCacheLookup?: boolean } = {}
   ): Promise<void> {
     if (!image?.id) {
       return;
@@ -454,6 +525,7 @@ class ThumbnailManager {
         token,
         priority,
         markLoading: options.markLoading ?? true,
+        skipCacheLookup: options.skipCacheLookup ?? false,
         resolve,
         reject,
       };
@@ -468,6 +540,66 @@ class ThumbnailManager {
 
     this.inflight.set(image.id, promise);
     return promise;
+  }
+
+  private hasReadyThumbnail(image: IndexedImage): boolean {
+    const activeState = this.getActiveRuntimeState(image);
+    return Boolean(
+      activeState?.thumbnailStatus === 'ready' ||
+      (!activeState && image.thumbnailStatus === 'ready' && (image.thumbnailUrl || isVideoAsset(image) || isAudioAsset(image)))
+    );
+  }
+
+  private async resolveCachedThumbnailBatch(
+    images: IndexedImage[],
+    detail: { priority: 'visible' | 'overscan' | 'single' }
+  ): Promise<IndexedImage[]> {
+    const candidates = this.dedupeImages(images)
+      .filter((image) => !this.hasReadyThumbnail(image) && !isAudioAsset(image))
+      .map((image) => getThumbnailCacheCandidate(image));
+
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const batch = await cacheManager.resolveCachedThumbnails(candidates);
+    const durationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt;
+
+    if (!batch) {
+      return images;
+    }
+
+    const misses: IndexedImage[] = [];
+    const imagesById = new Map(images.map((image) => [image.id, image]));
+
+    for (const candidate of candidates) {
+      const image = imagesById.get(candidate.requestId);
+      if (!image) {
+        continue;
+      }
+
+      const result = batch.results[candidate.requestId];
+      if (result?.hit && result.url) {
+        this.setRuntimeState(image, {
+          thumbnailStatus: 'ready',
+          thumbnailUrl: result.url,
+          thumbnailError: null,
+        });
+      } else {
+        misses.push(image);
+      }
+    }
+
+    recordPerformanceDuration('thumbnail.cache-batch.resolve', durationMs, {
+      priority: detail.priority,
+      requested: candidates.length,
+      hits: candidates.length - misses.length,
+      misses: misses.length,
+      mainProcessMs: batch.stats?.durationMs,
+    });
+
+    return misses;
   }
 
   private dedupeImages(images: IndexedImage[], seedIds?: Set<string>): IndexedImage[] {
@@ -486,6 +618,29 @@ class ThumbnailManager {
   }
 
   private emit(imageId: string): void {
+    this.pendingEmitIds.add(imageId);
+    if (this.emitFrame !== null) {
+      return;
+    }
+
+    const flush = () => {
+      this.emitFrame = null;
+      const imageIds = Array.from(this.pendingEmitIds);
+      this.pendingEmitIds.clear();
+
+      for (const pendingImageId of imageIds) {
+        this.emitNow(pendingImageId);
+      }
+    };
+
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      this.emitFrame = window.requestAnimationFrame(flush);
+    } else {
+      this.emitFrame = window.setTimeout(flush, 0);
+    }
+  }
+
+  private emitNow(imageId: string): void {
     const listeners = this.listeners.get(imageId);
     if (!listeners) {
       return;
@@ -629,7 +784,7 @@ class ThumbnailManager {
       this.activeBackgroundWorkers++;
     }
 
-    this.loadThumbnail(job.image, job.token, job.markLoading)
+    this.loadThumbnail(job.image, job.token, job.markLoading, job.skipCacheLookup)
       .then(() => job.resolve())
       .catch((err) => job.reject(err))
       .finally(() => {
@@ -647,7 +802,12 @@ class ThumbnailManager {
       });
   }
 
-  private async loadThumbnail(image: IndexedImage, token: number, markLoading: boolean): Promise<void> {
+  private async loadThumbnail(
+    image: IndexedImage,
+    token: number,
+    markLoading: boolean,
+    skipCacheLookup: boolean
+  ): Promise<void> {
     const setSafe = (payload: {
       thumbnailUrl?: string | null;
       thumbnailStatus: ThumbnailStatus;
@@ -674,22 +834,28 @@ class ThumbnailManager {
         return;
       }
 
-      const legacyThumbnailKey = `${image.id}-${image.lastModified}`;
-      const thumbnailKey = `v${THUMBNAIL_CACHE_VERSION}:${legacyThumbnailKey}`;
-      let cachedBlob = await cacheManager.getCachedThumbnail(thumbnailKey);
-      const isLegacyCacheHit = !cachedBlob;
-      cachedBlob = cachedBlob || (await cacheManager.getCachedThumbnail(legacyThumbnailKey));
-      if (cachedBlob) {
-        if (isLegacyCacheHit) {
-          void cacheManager.cacheThumbnail(thumbnailKey, cachedBlob).catch(() => {});
+      const electronAPI = typeof window !== 'undefined' ? window.electronAPI : undefined;
+      const isElectron = Boolean(electronAPI);
+      const supportsUrlCacheLookup = Boolean(electronAPI?.resolveThumbnailCacheBatch);
+
+      if (!skipCacheLookup && supportsUrlCacheLookup) {
+        const misses = await this.resolveCachedThumbnailBatch([image], { priority: 'single' });
+        if (misses.length === 0) {
+          return;
         }
-        const url = this.updateObjectUrl(image.id, cachedBlob);
-        setSafe({ thumbnailStatus: 'ready', thumbnailUrl: url, thumbnailError: null });
-        return;
+      } else if (!skipCacheLookup) {
+        const thumbnailKey = getVersionedThumbnailId(image);
+        const legacyThumbnailKey = getLegacyThumbnailId(image);
+        let cachedBlob = await cacheManager.getCachedThumbnail(thumbnailKey);
+        cachedBlob = cachedBlob || (await cacheManager.getCachedThumbnail(legacyThumbnailKey));
+        if (cachedBlob) {
+          const url = this.updateObjectUrl(image.id, cachedBlob);
+          setSafe({ thumbnailStatus: 'ready', thumbnailUrl: url, thumbnailError: null });
+          return;
+        }
       }
 
       let blob: Blob | null = null;
-      const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI);
       const isVideo = isVideoAsset(image);
       const fileSize = image.fileSize;
 
@@ -699,7 +865,30 @@ class ThumbnailManager {
       }
 
       if (isElectron && !isVideo) {
-        blob = await generateElectronThumbnailBlob(image);
+        const fileHandle = (image.thumbnailHandle ?? image.handle) as ElectronFileHandle | undefined;
+        const filePath = fileHandle?._filePath;
+        if (filePath) {
+          const generated = await cacheManager.generateThumbnailToCache({
+            ...getThumbnailCacheCandidate(image),
+            filePath,
+            maxEdge: MAX_THUMBNAIL_EDGE,
+            quality: 82,
+          });
+
+          if (generated?.url) {
+            setSafe({ thumbnailStatus: 'ready', thumbnailUrl: generated.url, thumbnailError: null });
+            recordPerformanceCounter('thumbnail.generated-to-cache', {
+              imageId: image.id,
+              imageName: image.name,
+              source: 'electron-main',
+            });
+            return;
+          }
+        }
+
+        if (!electronAPI?.generateThumbnailToCache) {
+          blob = await generateElectronThumbnailBlob(image);
+        }
       }
 
       if (!blob) {
@@ -713,7 +902,7 @@ class ThumbnailManager {
         throw new Error('Thumbnail generation failed');
       }
 
-      await cacheManager.cacheThumbnail(thumbnailKey, blob);
+      await cacheManager.cacheThumbnail(getVersionedThumbnailId(image), blob);
       const url = this.updateObjectUrl(image.id, blob);
       setSafe({ thumbnailStatus: 'ready', thumbnailUrl: url, thumbnailError: null });
     } catch (error) {
