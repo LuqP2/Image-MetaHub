@@ -527,32 +527,45 @@ async function loadThumbnailManifest(rootPath) {
     return existing;
   }
 
+  // Wait for loading if already in progress (race condition prevention)
+  if (existing?.loadingPromise) {
+    await existing.loadingPromise;
+    return existing;
+  }
+
   const state = existing || {
     loaded: false,
     manifest: createEmptyThumbnailManifest(),
     writeTimer: null,
     writePromise: Promise.resolve(),
+    loadingPromise: null,
   };
 
-  try {
-    const manifestPath = getThumbnailManifestPath(rootPath);
-    const raw = await fs.readFile(manifestPath, 'utf8');
-    const parsed = JSON.parse(raw);
-    state.manifest = {
-      version: THUMBNAIL_MANIFEST_VERSION,
-      entries: parsed && typeof parsed.entries === 'object' && parsed.entries
-        ? parsed.entries
-        : {},
-    };
-  } catch (error) {
-    if (error.code !== 'ENOENT') {
-      console.warn('[ThumbnailManifest] Failed to read thumbnail manifest, starting fresh:', error.message);
+  // Create shared loading promise and store state in Map BEFORE I/O
+  state.loadingPromise = (async () => {
+    try {
+      const manifestPath = getThumbnailManifestPath(rootPath);
+      const raw = await fs.readFile(manifestPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      state.manifest = {
+        version: THUMBNAIL_MANIFEST_VERSION,
+        entries: parsed && typeof parsed.entries === 'object' && parsed.entries
+          ? parsed.entries
+          : {},
+      };
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.warn('[ThumbnailManifest] Failed to read thumbnail manifest, starting fresh:', error.message);
+      }
+      state.manifest = createEmptyThumbnailManifest();
     }
-    state.manifest = createEmptyThumbnailManifest();
-  }
 
-  state.loaded = true;
+    state.loaded = true;
+    state.loadingPromise = null;
+  })();
+
   thumbnailManifestStates.set(rootPath, state);
+  await state.loadingPromise;
   return state;
 }
 
@@ -657,7 +670,9 @@ async function findCachedThumbnail(rootPath, candidate) {
   }
 
   const state = await loadThumbnailManifest(rootPath);
-  const manifestEntry = state.manifest.entries[candidate.thumbnailId];
+  
+  // Check versioned thumbnail ID first
+  let manifestEntry = state.manifest.entries[candidate.thumbnailId];
   if (isManifestEntryCompatible(manifestEntry, candidate)) {
     const extension = manifestEntry.extension || 'webp';
     const filePath = await getThumbnailCachePath(manifestEntry.thumbnailId, extension, rootPath);
@@ -675,6 +690,30 @@ async function findCachedThumbnail(rootPath, candidate) {
         throw error;
       }
       await removeThumbnailManifestEntry(rootPath, manifestEntry.thumbnailId);
+    }
+  }
+
+  // Check legacy thumbnail ID in manifest (avoids filesystem scan for users with old cache)
+  if (candidate.legacyThumbnailId) {
+    manifestEntry = state.manifest.entries[candidate.legacyThumbnailId];
+    if (isManifestEntryCompatible(manifestEntry, candidate)) {
+      const extension = manifestEntry.extension || 'webp';
+      const filePath = await getThumbnailCachePath(manifestEntry.thumbnailId, extension, rootPath);
+      try {
+        await fs.access(filePath);
+        return {
+          thumbnailId: manifestEntry.thumbnailId,
+          url: buildThumbnailProtocolUrl(manifestEntry.thumbnailId, extension),
+          extension,
+          source: 'manifest',
+          legacy: true,
+        };
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+        await removeThumbnailManifestEntry(rootPath, manifestEntry.thumbnailId);
+      }
     }
   }
 
