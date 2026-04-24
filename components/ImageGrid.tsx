@@ -2182,7 +2182,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                       );
                       const aheadStopIndex = Math.min(
                         itemsToRender.length - 1,
-                        (((overscanRowStopIndex + 4) * safeColumnCount) - 1)
+                        (((overscanRowStopIndex + 1) * safeColumnCount) - 1)
                       );
                       const windowKey = `${visibleStartIndex}:${visibleStopIndex}:${aheadStopIndex}:${itemsToRender.length}:${safeColumnCount}`;
 
