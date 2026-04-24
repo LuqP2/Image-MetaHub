@@ -266,7 +266,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <img src="logo1.png" alt="Image MetaHub" className="h-11 w-11 flex-shrink-0 rounded-xl object-contain" />
           <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
             <h1 className="truncate text-lg font-semibold tracking-tight text-white">Image MetaHub</h1>
-            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.15.0</span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.15.1</span>
           </div>
           <button
             onClick={onToggleCollapse}
