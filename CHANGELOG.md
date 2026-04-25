@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.3] - 2026-04-25
+
+### Fixed
+
+- **React Hook Ordering in Arrow Navigation**: Fixed a critical React hooks violation in `ImagePreviewSidebar` that caused the app to display a black screen when using arrow key navigation. The `useMemo` hook is now properly called before any conditional early returns, ensuring hooks are always called in the same order on every render.
+- **Arrow Key Event Propagation**: Enhanced arrow key navigation in `ImageModal` by preventing event propagation, resolving conflicts with other keyboard handlers that could interrupt navigation flow.
+
 ## [0.15.2] - 2026-04-24
 
 ### Improved
