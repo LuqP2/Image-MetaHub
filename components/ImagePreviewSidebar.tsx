@@ -263,13 +263,10 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     };
   }, [contextMenu.visible]);
 
-  if (!activeImage) {
-    return null;
-  }
-
-  const nMeta: BaseMetadata | undefined = activeImage.metadata?.normalizedMetadata;
-  const effectiveMetadata = buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal);
-  const generationImage: IndexedImage = effectiveMetadata
+  // Calculate these BEFORE the early return to maintain hook order
+  const nMeta: BaseMetadata | undefined = activeImage?.metadata?.normalizedMetadata;
+  const effectiveMetadata = activeImage ? buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal) : undefined;
+  const generationImage: IndexedImage = activeImage && effectiveMetadata
     ? {
         ...activeImage,
         metadata: {
@@ -277,14 +274,22 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
           normalizedMetadata: effectiveMetadata,
         },
       }
-    : activeImage;
-  const editorInitialMetadata = useMemo<MetadataEditorDraft | null>(() => ({
-    imageId: activeImage.id,
-    updatedAt: shadowMetadata?.updatedAt ?? Date.now(),
-    ...getEditableMetadataFields(nMeta, shadowMetadata),
-  }), [activeImage.id, nMeta, shadowMetadata]);
+    : (activeImage as IndexedImage);
+  const editorInitialMetadata = useMemo<MetadataEditorDraft | null>(() => {
+    if (!activeImage) return null;
+    return {
+      imageId: activeImage.id,
+      updatedAt: shadowMetadata?.updatedAt ?? Date.now(),
+      ...getEditableMetadataFields(nMeta, shadowMetadata),
+    };
+  }, [activeImage?.id, nMeta, shadowMetadata]);
+
+  if (!activeImage) {
+    return null;
+  }
   const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds ?? (nMeta as any)?.audio?.duration_seconds;
   const exportScopeImages = (() => {
+    if (!activeImage) return [];
     const candidateScopes = [
       clusterNavigationContext,
       activeImageScope,
