@@ -1881,11 +1881,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
+        event.stopPropagation();
         onNavigatePrevious?.();
+        return;
       }
+
       if (event.key === 'ArrowRight') {
         event.preventDefault();
+        event.stopPropagation();
         onNavigateNext?.();
+        return;
       }
     };
 
