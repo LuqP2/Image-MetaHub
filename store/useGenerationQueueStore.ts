@@ -25,6 +25,16 @@ export type ComfyUIQueuePayload = {
 
 export type GenerationQueuePayload = A1111QueuePayload | ComfyUIQueuePayload;
 
+export interface GeneratedQueueOutput {
+  id: string;
+  kind: 'data-url' | 'remote-url' | 'indexed-image';
+  url?: string;
+  imageId?: string;
+  name?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface GenerationQueueItem {
   id: string;
   provider: GenerationProvider;
@@ -41,6 +51,8 @@ export interface GenerationQueueItem {
   providerJobId?: string;
   error?: string;
   payload?: GenerationQueuePayload;
+  generatedOutputs?: GeneratedQueueOutput[];
+  completedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -128,9 +140,9 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
     })),
   getNextWaitingJobId: (provider) => {
     const { items } = get();
-    const next = items.find(
-      (item) => item.provider === provider && item.status === 'waiting'
-    );
+    const next = items
+      .filter((item) => item.provider === provider && item.status === 'waiting')
+      .sort((a, b) => a.createdAt - b.createdAt)[0];
     return next?.id ?? null;
   },
   removeJob: (id) => {

@@ -575,6 +575,15 @@ export class ComfyUIApiClient {
     }
   }
 
+  getViewUrl(image: { filename: string; subfolder?: string; type?: string }): string {
+    const params = new URLSearchParams({
+      filename: image.filename,
+      subfolder: image.subfolder || '',
+      type: image.type || 'output',
+    });
+    return `${this.config.serverUrl}/view?${params.toString()}`;
+  }
+
   /**
    * Get current queue status
    */

@@ -24,6 +24,7 @@ import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import GenerationQueueSidebar from './components/GenerationQueueSidebar';
+import GeneratedOutputModal from './components/GeneratedOutputModal';
 import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
@@ -40,13 +41,14 @@ import BatchExportModal from './components/BatchExportModal';
 import CollectionFormModal, { CollectionFormValues } from './components/CollectionFormModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
+import { useGenerationQueueRunner } from './hooks/useGenerationQueueRunner';
 import {
   beginPerformanceFlow,
   createProfilerOnRender,
   finishPerformanceFlowAfterNextPaint,
   markPerformanceFlow,
 } from './utils/performanceDiagnostics';
-import { useGenerationQueueStore } from './store/useGenerationQueueStore';
+import { GeneratedQueueOutput, useGenerationQueueStore } from './store/useGenerationQueueStore';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './components/A1111GenerateModal';
@@ -186,6 +188,7 @@ export default function App() {
   // Data selectors
   const images = useImageStore((state) => state.images);
   const filteredImages = useImageStore((state) => state.filteredImages);
+  useGenerationQueueRunner({ images, filteredImages });
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
   const directories = useImageStore((state) => state.directories);
@@ -390,6 +393,12 @@ export default function App() {
   const [modelPromptPickerState, setModelPromptPickerState] = useState<{
     modelName: string;
     groups: ModelPromptOverlapGroup[];
+  } | null>(null);
+  const [generatedOutputPreview, setGeneratedOutputPreview] = useState<{
+    itemId: string;
+    outputs: GeneratedQueueOutput[];
+    initialIndex: number;
+    jobName?: string;
   } | null>(null);
   const lastOpenedModalImageIdRef = useRef<string | null>(null);
   const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
@@ -2085,12 +2094,29 @@ export default function App() {
           width={rightSidebarWidth}
           isResizing={isRightSidebarResizing}
           onResizeStart={handleRightSidebarResizeStart}
+          onOpenGeneratedOutputs={(item) => {
+            setGeneratedOutputPreview({
+              itemId: item.id,
+              outputs: item.generatedOutputs || [],
+              initialIndex: 0,
+              jobName: item.imageName,
+            });
+          }}
         />
       ) : (
         <ImagePreviewSidebar
           width={rightSidebarWidth}
           isResizing={isRightSidebarResizing}
           onResizeStart={handleRightSidebarResizeStart}
+        />
+      )}
+
+      {generatedOutputPreview && (
+        <GeneratedOutputModal
+          outputs={generatedOutputPreview.outputs}
+          initialIndex={generatedOutputPreview.initialIndex}
+          jobName={generatedOutputPreview.jobName}
+          onClose={() => setGeneratedOutputPreview(null)}
         />
       )}
 

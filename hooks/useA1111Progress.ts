@@ -54,10 +54,19 @@ export function useA1111Progress() {
       const overallProgress = totalImagesInBatch > 1
         ? (completedImages + currentImageProgress) / totalImagesInBatch
         : currentImageProgress;
+      const fallbackCurrentImage = totalImagesInBatch > 1
+        ? Math.min(
+            totalImagesInBatch,
+            Math.max(1, Math.floor(overallProgress * totalImagesInBatch) + 1)
+          )
+        : 1;
+      const displayCurrentImage = currentImageInBatch > 0
+        ? Math.min(currentImageInBatch + 1, totalImagesInBatch)
+        : fallbackCurrentImage;
 
       setProgressState({
         isGenerating: data.progress > 0 && data.progress < 1,
-        currentImage: currentImageInBatch + 1, // 1-indexed for display
+        currentImage: displayCurrentImage,
         totalImages: totalImagesInBatch,
         progress: overallProgress,
         currentStep: data.state.sampling_step || 0,
