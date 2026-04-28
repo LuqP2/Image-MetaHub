@@ -101,6 +101,58 @@ const joinElectronPath = async (...paths: string[]): Promise<string | null> => {
   return null;
 };
 
+const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: string) => {
+  const store = useImageStore.getState();
+  const replaceImageId = (imageId: string) => (
+    imageId.startsWith(`${oldPath}::`) ? `${newPath}::${imageId.slice(oldPath.length + 2)}` : imageId
+  );
+
+  const nextDirectories = store.directories.map((directory) =>
+    normalizePath(directory.path) === normalizePath(oldPath)
+      ? { ...directory, id: newPath, path: newPath, name: newName }
+      : directory
+  );
+
+  const nextImages = store.images.map((image) =>
+    normalizePath(image.directoryId ?? '') === normalizePath(oldPath)
+      ? {
+          ...image,
+          id: replaceImageId(image.id),
+          directoryId: newPath,
+        }
+      : image
+  );
+
+  const nextSelectedImages = new Set(Array.from(store.selectedImages).map(replaceImageId));
+  const nextSelectedFolders = new Set(Array.from(store.selectedFolders).map((folderPath) =>
+    normalizePath(folderPath) === normalizePath(oldPath) ||
+    normalizePath(folderPath).startsWith(`${normalizePath(oldPath)}/`)
+      ? `${newPath}${folderPath.slice(oldPath.length)}`
+      : folderPath
+  ));
+
+  const nextAnnotations = new Map<string, any>();
+  store.annotations.forEach((annotation, imageId) => {
+    const nextImageId = replaceImageId(imageId);
+    nextAnnotations.set(nextImageId, { ...annotation, imageId: nextImageId });
+  });
+
+  useImageStore.setState({
+    directories: nextDirectories,
+    images: nextImages,
+    filteredImages: store.filteredImages.map((image) =>
+      normalizePath(image.directoryId ?? '') === normalizePath(oldPath)
+        ? { ...image, id: replaceImageId(image.id), directoryId: newPath }
+        : image
+    ),
+    selectedImages: nextSelectedImages,
+    selectedFolders: nextSelectedFolders,
+    annotations: nextAnnotations,
+  });
+
+  localStorage.setItem('image-metahub-directories', JSON.stringify(nextDirectories.map((directory) => directory.path)));
+};
+
 export default function DirectoryList({
   directories,
   onRemoveDirectory,
@@ -1000,7 +1052,17 @@ export default function DirectoryList({
                       return;
                     }
                     const rootDir = findRootDirectoryForPath(directories, targetPath);
-                    if (rootDir) onUpdateDirectory(rootDir.id, targetPath);
+                    if (rootDir) {
+                      const nodeKey = makeNodeKey(rootDir.id, getRelativePath(rootDir.path, targetPath));
+                      setSubfolderCache(prev => {
+                        const next = new Map(prev);
+                        next.delete(nodeKey);
+                        return next;
+                      });
+                      setExpandedNodes(prev => new Set(prev).add(nodeKey));
+                      await loadSubfolders(nodeKey, targetPath, rootDir);
+                      onUpdateDirectory(rootDir.id, targetPath);
+                    }
                   }
                 },
               });
@@ -1039,7 +1101,25 @@ export default function DirectoryList({
                         return;
                       }
                       const rootDir = findRootDirectoryForPath(directories, targetPath);
-                      if (rootDir) onUpdateDirectory(rootDir.id);
+                      if (rootDir) {
+                        const isRootRename = normalizePath(rootDir.path) === normalizePath(targetPath);
+                        if (isRootRename) {
+                          renameIndexedRootInStore(targetPath, newPath, newName.trim());
+                          onUpdateDirectory(newPath);
+                          return;
+                        }
+
+                        const parentKey = makeNodeKey(rootDir.id, getRelativePath(rootDir.path, parentPath));
+                        setSubfolderCache(prev => {
+                          const next = new Map(prev);
+                          next.delete(parentKey);
+                          next.delete(makeNodeKey(rootDir.id, getRelativePath(rootDir.path, targetPath)));
+                          return next;
+                        });
+                        setExpandedNodes(prev => new Set(prev).add(parentKey));
+                        await loadSubfolders(parentKey, parentPath, rootDir);
+                        onUpdateDirectory(rootDir.id);
+                      }
                     }
                   }
                 },

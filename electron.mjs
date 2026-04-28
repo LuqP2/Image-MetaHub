@@ -1776,6 +1776,19 @@ function setupFileOperationHandlers() {
     return normalized === userDataPath || normalized.startsWith(userDataPath + path.sep);
   };
   const isAllowedOrInternal = (filePath) => isPathAllowed(filePath) || isInternalPath(filePath);
+  const isRenameTargetAllowed = (oldPath, newPath) => {
+    if (isAllowedOrInternal(newPath)) {
+      return true;
+    }
+
+    if (!isPathAllowed(oldPath) || !newPath) {
+      return false;
+    }
+
+    const normalizedOldPath = normalizeAllowedPath(oldPath);
+    const normalizedNewPath = normalizeAllowedPath(newPath);
+    return path.dirname(normalizedOldPath) === path.dirname(normalizedNewPath);
+  };
   const normalizeNameKey = (name) => name.toLowerCase();
   const getUniqueName = (name, usedNames) => {
     const parsed = path.parse(name);
@@ -2972,7 +2985,7 @@ function setupFileOperationHandlers() {
   // Handle file renaming
   ipcMain.handle('rename-file', async (event, oldPath, newPath) => {
     try {
-      if (!isAllowedOrInternal(oldPath) || !isAllowedOrInternal(newPath)) {
+      if (!isAllowedOrInternal(oldPath) || !isRenameTargetAllowed(oldPath, newPath)) {
         console.error('SECURITY VIOLATION: Attempted to rename file outside of allowed directories.');
         return { success: false, error: 'Access denied: Cannot rename files outside of the allowed directories.' };
       }
@@ -2992,6 +3005,13 @@ function setupFileOperationHandlers() {
       }
 
       await fs.rename(oldPath, newPath);
+
+      const normalizedOldAllowedPath = normalizeAllowedPath(oldPath);
+      if (allowedDirectoryPaths.has(normalizedOldAllowedPath)) {
+        allowedDirectoryPaths.delete(normalizedOldAllowedPath);
+        allowedDirectoryPaths.add(normalizeAllowedPath(newPath));
+      }
+
       return { success: true };
     } catch (error) {
       console.error('Error renaming file:', error);
