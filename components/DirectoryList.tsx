@@ -101,8 +101,23 @@ const joinElectronPath = async (...paths: string[]): Promise<string | null> => {
   return null;
 };
 
+const getElectronDirname = async (filePath: string): Promise<string | null> => {
+  const result = await window.electronAPI?.dirname(filePath);
+  if (result?.success && typeof result.path === 'string') {
+    return result.path;
+  }
+  useImageStore.getState().setError(result?.error || 'Failed to resolve parent folder.');
+  return null;
+};
+
 const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: string) => {
   const store = useImageStore.getState();
+  const remapPathPrefix = (targetPath: string) => (
+    normalizePath(targetPath) === normalizePath(oldPath) ||
+    normalizePath(targetPath).startsWith(`${normalizePath(oldPath)}/`)
+      ? `${newPath}${targetPath.slice(oldPath.length)}`
+      : targetPath
+  );
   const replaceImageId = (imageId: string) => (
     imageId.startsWith(`${oldPath}::`) ? `${newPath}::${imageId.slice(oldPath.length + 2)}` : imageId
   );
@@ -135,12 +150,8 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
   const nextClipboard = store.clipboard
     ? { ...store.clipboard, imageIds: store.clipboard.imageIds.map(replaceImageId) }
     : null;
-  const nextSelectedFolders = new Set(Array.from(store.selectedFolders).map((folderPath) =>
-    normalizePath(folderPath) === normalizePath(oldPath) ||
-    normalizePath(folderPath).startsWith(`${normalizePath(oldPath)}/`)
-      ? `${newPath}${folderPath.slice(oldPath.length)}`
-      : folderPath
-  ));
+  const nextSelectedFolders = new Set(Array.from(store.selectedFolders).map(remapPathPrefix));
+  const nextExcludedFolders = new Set(Array.from(store.excludedFolders).map(remapPathPrefix));
 
   const nextAnnotations = new Map<string, any>();
   store.annotations.forEach((annotation, imageId) => {
@@ -164,6 +175,7 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
     selectedImages: nextSelectedImages,
     clipboard: nextClipboard,
     selectedFolders: nextSelectedFolders,
+    excludedFolders: nextExcludedFolders,
     annotations: nextAnnotations,
   });
 
@@ -1135,7 +1147,8 @@ export default function DirectoryList({
                   if (newName.trim() && newName.trim() !== folderName) {
                     const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
                     if (isElectron) {
-                      const parentPath = targetPath.substring(0, targetPath.length - folderName.length - 1);
+                      const parentPath = await getElectronDirname(targetPath);
+                      if (!parentPath) return;
                       const newPath = await joinElectronPath(parentPath, newName.trim());
                       if (!newPath) return;
                       const result = await (window as any).electronAPI.renameFile(targetPath, newPath);

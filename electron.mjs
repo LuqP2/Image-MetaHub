@@ -3786,6 +3786,18 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('dirname', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No path provided' };
+      }
+      return { success: true, path: path.dirname(String(filePath)) };
+    } catch (error) {
+      console.error('Error getting dirname:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Handle batch path joining - optimized for processing multiple paths at once
   ipcMain.handle('join-paths-batch', async (event, { basePath, fileNames }) => {
     try {
