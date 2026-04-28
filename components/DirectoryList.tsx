@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Directory } from '../types';
+import { Directory, IndexedImage } from '../types';
 import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X, EyeOff, Eye, FolderPlus, Edit2, Clipboard } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { transferIndexedImages } from '../services/fileTransferService';
@@ -106,6 +106,14 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
   const replaceImageId = (imageId: string) => (
     imageId.startsWith(`${oldPath}::`) ? `${newPath}::${imageId.slice(oldPath.length + 2)}` : imageId
   );
+  const remapImage = (image: IndexedImage | null): IndexedImage | null => (
+    image && normalizePath(image.directoryId ?? '') === normalizePath(oldPath)
+      ? { ...image, id: replaceImageId(image.id), directoryId: newPath }
+      : image
+  );
+  const remapImageList = (images: IndexedImage[] | null): IndexedImage[] | null => (
+    images ? images.map((image) => remapImage(image) ?? image) : null
+  );
 
   const nextDirectories = store.directories.map((directory) =>
     normalizePath(directory.path) === normalizePath(oldPath)
@@ -124,6 +132,9 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
   );
 
   const nextSelectedImages = new Set(Array.from(store.selectedImages).map(replaceImageId));
+  const nextClipboard = store.clipboard
+    ? { ...store.clipboard, imageIds: store.clipboard.imageIds.map(replaceImageId) }
+    : null;
   const nextSelectedFolders = new Set(Array.from(store.selectedFolders).map((folderPath) =>
     normalizePath(folderPath) === normalizePath(oldPath) ||
     normalizePath(folderPath).startsWith(`${normalizePath(oldPath)}/`)
@@ -136,21 +147,53 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
     const nextImageId = replaceImageId(imageId);
     nextAnnotations.set(nextImageId, { ...annotation, imageId: nextImageId });
   });
+  const nextFilteredImages = remapImageList(store.filteredImages) ?? [];
+  const nextActiveImageScope = remapImageList(store.activeImageScope);
+  const nextClusterNavigationContext = remapImageList(store.clusterNavigationContext);
+  const nextComparisonImages = remapImageList(store.comparisonImages) ?? [];
 
   useImageStore.setState({
     directories: nextDirectories,
     images: nextImages,
-    filteredImages: store.filteredImages.map((image) =>
-      normalizePath(image.directoryId ?? '') === normalizePath(oldPath)
-        ? { ...image, id: replaceImageId(image.id), directoryId: newPath }
-        : image
-    ),
+    filteredImages: nextFilteredImages,
+    selectedImage: remapImage(store.selectedImage),
+    previewImage: remapImage(store.previewImage),
+    activeImageScope: nextActiveImageScope,
+    clusterNavigationContext: nextClusterNavigationContext,
+    comparisonImages: nextComparisonImages,
     selectedImages: nextSelectedImages,
+    clipboard: nextClipboard,
     selectedFolders: nextSelectedFolders,
     annotations: nextAnnotations,
   });
 
   localStorage.setItem('image-metahub-directories', JSON.stringify(nextDirectories.map((directory) => directory.path)));
+  localStorage.setItem(
+    'image-metahub-directory-watchers',
+    JSON.stringify(Object.fromEntries(nextDirectories.map((directory) => [
+      directory.id,
+      { enabled: !!directory.autoWatch, path: directory.path },
+    ]))),
+  );
+};
+
+const rebindRootWatcher = async (oldDirectoryId: string, newDirectoryId: string, newPath: string) => {
+  if (typeof window === 'undefined' || !window.electronAPI) {
+    return;
+  }
+
+  const stopResult = await window.electronAPI.stopWatchingDirectory?.({ directoryId: oldDirectoryId });
+  if (stopResult && !stopResult.success) {
+    console.warn('Failed to stop watcher for renamed folder:', (stopResult as { error?: string }).error);
+  }
+
+  const startResult = await window.electronAPI.startWatchingDirectory?.({
+    directoryId: newDirectoryId,
+    dirPath: newPath,
+  });
+  if (startResult && !startResult.success) {
+    useImageStore.getState().setError(startResult.error || 'Folder renamed, but auto-watch could not be restarted.');
+  }
 };
 
 export default function DirectoryList({
@@ -1105,6 +1148,9 @@ export default function DirectoryList({
                         const isRootRename = normalizePath(rootDir.path) === normalizePath(targetPath);
                         if (isRootRename) {
                           renameIndexedRootInStore(targetPath, newPath, newName.trim());
+                          if (rootDir.autoWatch) {
+                            await rebindRootWatcher(targetPath, newPath, newPath);
+                          }
                           onUpdateDirectory(newPath);
                           return;
                         }
