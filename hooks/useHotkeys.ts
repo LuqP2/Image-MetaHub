@@ -203,15 +203,15 @@ export const useHotkeys = ({
         const imagesToTransfer = state.images.filter(img => clipboard.imageIds.includes(img.id));
         if (imagesToTransfer.length > 0 && destinationDirectory) {
           try {
-            await transferIndexedImages({
+            const result = await transferIndexedImages({
               images: imagesToTransfer,
               destinationDirectory,
               mode: clipboard.mode,
             });
-            if (clipboard.mode === 'move') {
+            if (result.success && clipboard.mode === 'move') {
               state.setClipboard(null);
             }
-            if (!destinationDirectory.autoWatch) {
+            if (result.success && !destinationDirectory.autoWatch) {
                handleLoadFromStorage().catch(console.error);
             }
           } catch (err) {

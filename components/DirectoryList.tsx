@@ -115,7 +115,7 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
   const remapPathPrefix = (targetPath: string) => (
     normalizePath(targetPath) === normalizePath(oldPath) ||
     normalizePath(targetPath).startsWith(`${normalizePath(oldPath)}/`)
-      ? `${newPath}${targetPath.slice(oldPath.length)}`
+      ? normalizePath(`${newPath}${targetPath.slice(oldPath.length)}`)
       : targetPath
   );
   const replaceImageId = (imageId: string) => (
@@ -444,12 +444,14 @@ export default function DirectoryList({
       const destinationDirectory = createTransferDestination(directories, destPath);
       if (imagesToTransfer.length > 0 && destinationDirectory) {
         setIsTransferring(true);
-        await transferIndexedImages({
+        const result = await transferIndexedImages({
           images: imagesToTransfer,
           destinationDirectory,
           mode: e.ctrlKey || e.altKey ? 'copy' : 'move',
         });
-        onUpdateDirectory(destinationDirectory.id, destPath);
+        if (result.success) {
+          onUpdateDirectory(destinationDirectory.id, destPath);
+        }
       }
     } catch (err) {
       console.error('Drop transfer failed:', err);
@@ -1059,15 +1061,17 @@ export default function DirectoryList({
                 if (imagesToTransfer.length > 0 && destinationDirectory) {
                   setIsTransferring(true);
                   try {
-                    await transferIndexedImages({
+                    const result = await transferIndexedImages({
                       images: imagesToTransfer,
                       destinationDirectory,
                       mode: clipboard.mode,
                     });
-                    if (clipboard.mode === 'move') {
+                    if (result.success && clipboard.mode === 'move') {
                       useImageStore.getState().setClipboard(null);
                     }
-                    onUpdateDirectory(destinationDirectory.id, destPath);
+                    if (result.success) {
+                      onUpdateDirectory(destinationDirectory.id, destPath);
+                    }
                   } catch (err) {
                     console.error('Paste failed:', err);
                   } finally {
