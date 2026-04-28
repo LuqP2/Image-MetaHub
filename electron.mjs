@@ -4282,9 +4282,9 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('ensure-directory', async (event, dirPath) => {
     try {
-      if (!isInternalPath(dirPath)) {
-        console.error('SECURITY VIOLATION: Attempted to create directory outside userData.');
-        return { success: false, error: 'Access denied: Cannot create directories outside userData.' };
+      if (!isAllowedOrInternal(dirPath)) {
+        console.error('SECURITY VIOLATION: Attempted to create directory outside allowed paths.');
+        return { success: false, error: 'Access denied: Cannot create directories outside allowed paths.' };
       }
       await fs.mkdir(dirPath, { recursive: true });
       return { success: true };

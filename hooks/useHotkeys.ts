@@ -6,6 +6,7 @@ import { useImageSelection } from './useImageSelection';
 import { useImageLoader } from './useImageLoader';
 import { useFeatureAccess } from './useFeatureAccess';
 import { transferIndexedImages } from '../services/fileTransferService';
+import type { Directory } from '../types';
 
 interface HotkeyProps {
   isCommandPaletteOpen: boolean;
@@ -15,6 +16,39 @@ interface HotkeyProps {
   isSettingsModalOpen: boolean;
   setIsSettingsModalOpen: (isOpen: boolean) => void;
 }
+
+const normalizePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
+
+const getRelativePath = (rootPath: string, targetPath: string) => {
+  const normalizedRoot = normalizePath(rootPath);
+  const normalizedTarget = normalizePath(targetPath);
+  if (normalizedRoot === normalizedTarget) return '';
+  return normalizedTarget.startsWith(`${normalizedRoot}/`)
+    ? normalizedTarget.slice(normalizedRoot.length + 1)
+    : '';
+};
+
+const createTransferDestination = (directories: Directory[], destinationPath: string) => {
+  const normalizedDestination = normalizePath(destinationPath).toLowerCase();
+  const rootDirectory = directories
+    .filter((directory) => {
+      const normalizedRoot = normalizePath(directory.path).toLowerCase();
+      return normalizedDestination === normalizedRoot || normalizedDestination.startsWith(`${normalizedRoot}/`);
+    })
+    .sort((a, b) => b.path.length - a.path.length)[0];
+
+  if (!rootDirectory) return null;
+
+  const relativePath = getRelativePath(rootDirectory.path, destinationPath);
+  return {
+    ...rootDirectory,
+    path: destinationPath,
+    name: relativePath || rootDirectory.name,
+    rootDirectoryPath: rootDirectory.path,
+    destinationRelativePath: relativePath,
+    displayName: relativePath ? `${rootDirectory.name}/${relativePath}` : rootDirectory.name,
+  };
+};
 
 export const useHotkeys = ({
   isCommandPaletteOpen,
@@ -113,27 +147,40 @@ export const useHotkeys = ({
 
     hotkeyManager.registerAction('copyImages', () => {
       const state = useImageStore.getState();
-      if (state.selectedImages.size > 0 && canUseFileManagement) {
-        state.setClipboard({
-          imageIds: Array.from(state.selectedImages),
-          mode: 'copy',
-        });
-        // Optional: show a toast
-      } else if (!canUseFileManagement && state.selectedImages.size > 0) {
+      const imageIds = state.selectedImages.size > 0
+        ? Array.from(state.selectedImages)
+        : state.selectedImage
+          ? [state.selectedImage.id]
+          : [];
+      if (imageIds.length === 0) return;
+      if (!canUseFileManagement) {
         showProModal('file_management');
+        return;
       }
+      state.setClipboard({
+        imageIds,
+        mode: 'copy',
+      });
+      state.setSuccess(`${imageIds.length} image${imageIds.length === 1 ? '' : 's'} copied.`);
     });
 
     hotkeyManager.registerAction('cutImages', () => {
       const state = useImageStore.getState();
-      if (state.selectedImages.size > 0 && canUseFileManagement) {
-        state.setClipboard({
-          imageIds: Array.from(state.selectedImages),
-          mode: 'move',
-        });
-      } else if (!canUseFileManagement && state.selectedImages.size > 0) {
+      const imageIds = state.selectedImages.size > 0
+        ? Array.from(state.selectedImages)
+        : state.selectedImage
+          ? [state.selectedImage.id]
+          : [];
+      if (imageIds.length === 0) return;
+      if (!canUseFileManagement) {
         showProModal('file_management');
+        return;
       }
+      state.setClipboard({
+        imageIds,
+        mode: 'move',
+      });
+      state.setSuccess(`${imageIds.length} image${imageIds.length === 1 ? '' : 's'} ready to move.`);
     });
 
     hotkeyManager.registerAction('pasteImages', () => {
@@ -147,23 +194,24 @@ export const useHotkeys = ({
         if (!clipboard || clipboard.imageIds.length === 0) return;
 
         const destPath = Array.from(state.selectedFolders)[0];
-        if (!destPath) return;
+        if (!destPath) {
+          state.setError('Select a destination folder before pasting images.');
+          return;
+        }
 
-        const rootDir = state.directories.find(d => destPath.startsWith(d.path));
+        const destinationDirectory = createTransferDestination(state.directories, destPath);
         const imagesToTransfer = state.images.filter(img => clipboard.imageIds.includes(img.id));
-        if (imagesToTransfer.length > 0 && rootDir) {
+        if (imagesToTransfer.length > 0 && destinationDirectory) {
           try {
             await transferIndexedImages({
               images: imagesToTransfer,
-              destinationDirectory: { ...rootDir, path: destPath },
+              destinationDirectory,
               mode: clipboard.mode,
             });
             if (clipboard.mode === 'move') {
               state.setClipboard(null);
             }
-            // Request reload of the destination directory
-            if (!rootDir.autoWatch) {
-               // Fallback: trigger rescan manually
+            if (!destinationDirectory.autoWatch) {
                handleLoadFromStorage().catch(console.error);
             }
           } catch (err) {
@@ -223,6 +271,8 @@ export const useHotkeys = ({
     setSelectedImage,
     handleNavigatePrevious,
     handleNavigateNext,
+    canUseFileManagement,
+    showProModal,
     isCommandPaletteOpen,
     isHotkeyHelpOpen,
     isSettingsModalOpen,

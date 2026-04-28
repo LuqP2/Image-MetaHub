@@ -4,6 +4,7 @@ import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X, EyeO
 import { useImageStore } from '../store/useImageStore';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { getActiveDragImageIds, clearActiveDragImageIds } from './ImageGrid';
 
 interface DirectoryListProps {
   directories: Directory[];
@@ -59,6 +60,47 @@ const getRelativePath = (rootPath: string, targetPath: string) => {
   return normalizedTarget;
 };
 
+const findRootDirectoryForPath = (directories: Directory[], targetPath: string): Directory | undefined => {
+  const normalizedTarget = toForwardSlashes(targetPath).toLowerCase();
+
+  return directories
+    .filter((directory) => {
+      const normalizedRoot = toForwardSlashes(directory.path).toLowerCase();
+      return normalizedTarget === normalizedRoot || normalizedTarget.startsWith(`${normalizedRoot}/`);
+    })
+    .sort((a, b) => b.path.length - a.path.length)[0];
+};
+
+const createTransferDestination = (directories: Directory[], destinationPath: string) => {
+  const rootDirectory = findRootDirectoryForPath(directories, destinationPath);
+  if (!rootDirectory) {
+    return null;
+  }
+
+  const relativePath = getRelativePath(rootDirectory.path, destinationPath);
+
+  return {
+    ...rootDirectory,
+    path: destinationPath,
+    name: relativePath || rootDirectory.name,
+    rootDirectoryPath: rootDirectory.path,
+    destinationRelativePath: relativePath,
+    displayName: relativePath ? `${rootDirectory.name}/${relativePath}` : rootDirectory.name,
+  };
+};
+
+const joinElectronPath = async (...paths: string[]): Promise<string | null> => {
+  const result = await (window as any).electronAPI.joinPaths(...paths);
+  if (typeof result === 'string') {
+    return result;
+  }
+  if (result?.success && typeof result.path === 'string') {
+    return result.path;
+  }
+  useImageStore.getState().setError(result?.error || 'Failed to resolve folder path.');
+  return null;
+};
+
 export default function DirectoryList({
   directories,
   onRemoveDirectory,
@@ -87,6 +129,14 @@ export default function DirectoryList({
   const [isTransferring, setIsTransferring] = useState(false);
   const clipboard = useImageStore(state => state.clipboard);
   const { canUseFileManagement, showProModal } = useFeatureAccess();
+  const [folderPrompt, setFolderPrompt] = useState<{
+    mode: 'new' | 'rename';
+    targetPath: string;
+    defaultValue: string;
+    onConfirm: (value: string) => void;
+  } | null>(null);
+  const [folderPromptValue, setFolderPromptValue] = useState('');
+  const folderPromptInputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
@@ -95,6 +145,14 @@ export default function DirectoryList({
   } | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const treeKeyboardActiveRef = useRef(false);
+
+  // Focus input when prompt opens
+  useEffect(() => {
+    if (folderPrompt) {
+      setFolderPromptValue(folderPrompt.defaultValue);
+      setTimeout(() => folderPromptInputRef.current?.focus(), 50);
+    }
+  }, [folderPrompt]);
 
   const loadSubfolders = useCallback(async (
     nodeKey: string,
@@ -226,8 +284,9 @@ export default function DirectoryList({
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
     if (contextMenu) {
-      window.addEventListener('click', handleClickOutside, true);
-      return () => window.removeEventListener('click', handleClickOutside, true);
+      // Use bubble phase (not capture) so stopPropagation on the menu container works
+      window.addEventListener('click', handleClickOutside);
+      return () => window.removeEventListener('click', handleClickOutside);
     }
   }, [contextMenu]);
 
@@ -256,32 +315,41 @@ export default function DirectoryList({
       return;
     }
 
-    try {
-      const data = e.dataTransfer.getData('application/x-image-metahub-drag');
-      if (data) {
-        const payload = JSON.parse(data);
-        const { imageIds } = payload;
-        if (imageIds && Array.isArray(imageIds)) {
-          const imagesToTransfer = useImageStore.getState().images.filter(img => imageIds.includes(img.id));
-          const rootDir = directories.find(d => destPath.startsWith(d.path));
-          if (imagesToTransfer.length > 0 && rootDir) {
-            setIsTransferring(true);
-            await transferIndexedImages({
-              images: imagesToTransfer,
-              destinationDirectory: { ...rootDir, path: destPath },
-              mode: e.ctrlKey || e.altKey ? 'copy' : 'move',
-            });
-            // refresh dest dir
-            onUpdateDirectory(rootDirId, destPath);
-          }
+    // Prefer module-level variable (works in Electron native drag)
+    // Fall back to dataTransfer for browser env
+    let imageIds: string[] = getActiveDragImageIds();
+    clearActiveDragImageIds();
+
+    if (imageIds.length === 0) {
+      try {
+        const data = e.dataTransfer.getData('application/x-image-metahub-drag');
+        if (data) {
+          const payload = JSON.parse(data);
+          imageIds = payload.imageIds || [];
         }
+      } catch (_) { /* ignore */ }
+    }
+
+    if (imageIds.length === 0) return;
+
+    try {
+      const imagesToTransfer = useImageStore.getState().images.filter(img => imageIds.includes(img.id));
+      const destinationDirectory = createTransferDestination(directories, destPath);
+      if (imagesToTransfer.length > 0 && destinationDirectory) {
+        setIsTransferring(true);
+        await transferIndexedImages({
+          images: imagesToTransfer,
+          destinationDirectory,
+          mode: e.ctrlKey || e.altKey ? 'copy' : 'move',
+        });
+        onUpdateDirectory(destinationDirectory.id, destPath);
       }
     } catch (err) {
-      console.error('Failed to parse internal drag data or transfer files:', err);
+      console.error('Drop transfer failed:', err);
     } finally {
       setIsTransferring(false);
     }
-  }, [canUseFileManagement, showProModal, onUpdateDirectory]);
+  }, [canUseFileManagement, showProModal, onUpdateDirectory, directories]);
 
   const renderSubfolderList = useCallback((rootDirectory: Directory, parentKey: string): React.ReactNode => {
     const children = subfolderCache.get(parentKey) || [];
@@ -406,7 +474,25 @@ export default function DirectoryList({
         </li>
       );
     });
-  }, [expandedNodes, handleFolderClick, handleContextMenu, handleToggleNode, isFolderSelected, loadingNodes, subfolderCache, excludedFolders]);
+  }, [
+    dragOverPath,
+    expandedNodes,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+    handleFolderClick,
+    handleContextMenu,
+    handleToggleNode,
+    isFolderSelected,
+    loadingNodes,
+    subfolderCache,
+    excludedFolders,
+    onIncludeFolder,
+    onExcludeFolder,
+    isIndexing,
+    onUpdateDirectory,
+    loadSubfolders,
+  ]);
 
   const visibleNodes = useMemo<VisibleDirectoryNode[]>(() => {
     const nodes: VisibleDirectoryNode[] = [];
@@ -861,22 +947,20 @@ export default function DirectoryList({
                   return;
                 }
                 const destPath = contextMenu.path;
-                const rootDir = directories.find(d => destPath.startsWith(d.path));
+                const destinationDirectory = createTransferDestination(directories, destPath);
                 const imagesToTransfer = useImageStore.getState().images.filter(img => clipboard.imageIds.includes(img.id));
-                if (imagesToTransfer.length > 0 && rootDir) {
+                if (imagesToTransfer.length > 0 && destinationDirectory) {
                   setIsTransferring(true);
                   try {
                     await transferIndexedImages({
                       images: imagesToTransfer,
-                      destinationDirectory: { ...rootDir, path: destPath },
+                      destinationDirectory,
                       mode: clipboard.mode,
                     });
                     if (clipboard.mode === 'move') {
                       useImageStore.getState().setClipboard(null);
                     }
-                    if (rootDir) {
-                      onUpdateDirectory(rootDir.id, destPath);
-                    }
+                    onUpdateDirectory(destinationDirectory.id, destPath);
                   } catch (err) {
                     console.error('Paste failed:', err);
                   } finally {
@@ -893,25 +977,33 @@ export default function DirectoryList({
 
           <button
             className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"
-            onClick={async () => {
+            onClick={() => {
               if (!canUseFileManagement) {
                 showProModal('file_management');
                 setContextMenu(null);
                 return;
               }
-              const newName = window.prompt("New folder name:");
-              if (newName) {
-                const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
-                if (isElectron) {
-                  const newPath = await (window as any).electronAPI.joinPaths(contextMenu.path, newName);
-                  await (window as any).electronAPI.ensureDirectory(newPath);
-                  const rootDir = directories.find(d => contextMenu.path.startsWith(d.path));
-                  if (rootDir) {
-                    onUpdateDirectory(rootDir.id, contextMenu.path);
-                  }
-                }
-              }
+              const targetPath = contextMenu.path;
               setContextMenu(null);
+              setFolderPrompt({
+                mode: 'new',
+                targetPath,
+                defaultValue: '',
+                onConfirm: async (newName) => {
+                  const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+                  if (isElectron && newName.trim()) {
+                    const newPath = await joinElectronPath(targetPath, newName.trim());
+                    if (!newPath) return;
+                    const result = await (window as any).electronAPI.ensureDirectory(newPath);
+                    if (!result?.success) {
+                      useImageStore.getState().setError(result?.error || 'Failed to create folder.');
+                      return;
+                    }
+                    const rootDir = findRootDirectoryForPath(directories, targetPath);
+                    if (rootDir) onUpdateDirectory(rootDir.id, targetPath);
+                  }
+                },
+              });
             }}
           >
             <FolderPlus className="w-4 h-4 text-green-400" />
@@ -920,31 +1012,38 @@ export default function DirectoryList({
 
           <button
             className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"
-            onClick={async () => {
+            onClick={() => {
               if (!canUseFileManagement) {
                 showProModal('file_management');
                 setContextMenu(null);
                 return;
               }
-              const folderName = contextMenu.path.split(/[\\/]/).pop();
-              if (!folderName) {
-                setContextMenu(null);
-                return;
-              }
-              const newName = window.prompt("Rename folder:", folderName);
-              if (newName && newName !== folderName) {
-                const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
-                if (isElectron) {
-                  const parentPath = contextMenu.path.substring(0, contextMenu.path.length - folderName.length - 1);
-                  const newPath = await (window as any).electronAPI.joinPaths(parentPath, newName);
-                  await (window as any).electronAPI.renameFile(contextMenu.path, newPath);
-                  const rootDir = directories.find(d => contextMenu.path.startsWith(d.path));
-                  if (rootDir) {
-                    onUpdateDirectory(rootDir.id); // Refresh root safely
-                  }
-                }
-              }
+              const folderName = contextMenu.path.split(/[\\/]/).pop() ?? '';
+              if (!folderName) { setContextMenu(null); return; }
+              const targetPath = contextMenu.path;
               setContextMenu(null);
+              setFolderPrompt({
+                mode: 'rename',
+                targetPath,
+                defaultValue: folderName,
+                onConfirm: async (newName) => {
+                  if (newName.trim() && newName.trim() !== folderName) {
+                    const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+                    if (isElectron) {
+                      const parentPath = targetPath.substring(0, targetPath.length - folderName.length - 1);
+                      const newPath = await joinElectronPath(parentPath, newName.trim());
+                      if (!newPath) return;
+                      const result = await (window as any).electronAPI.renameFile(targetPath, newPath);
+                      if (!result?.success) {
+                        useImageStore.getState().setError(result?.error || 'Failed to rename folder.');
+                        return;
+                      }
+                      const rootDir = findRootDirectoryForPath(directories, targetPath);
+                      if (rootDir) onUpdateDirectory(rootDir.id);
+                    }
+                  }
+                },
+              });
             }}
           >
             <Edit2 className="w-4 h-4 text-yellow-400" />
@@ -981,6 +1080,58 @@ export default function DirectoryList({
               </button>
             )
           )}
+        </div>
+      )}
+
+      {/* Custom folder prompt modal (replaces window.prompt which is unsupported in Electron) */}
+      {folderPrompt && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setFolderPrompt(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-5 w-80 flex flex-col gap-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-white">
+              {folderPrompt.mode === 'new' ? 'New Folder' : 'Rename Folder'}
+            </h3>
+            <input
+              ref={folderPromptInputRef}
+              type="text"
+              value={folderPromptValue}
+              onChange={(e) => setFolderPromptValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  folderPrompt.onConfirm(folderPromptValue);
+                  setFolderPrompt(null);
+                } else if (e.key === 'Escape') {
+                  setFolderPrompt(null);
+                }
+              }}
+              placeholder={folderPrompt.mode === 'new' ? 'Folder name…' : 'New name…'}
+              className="bg-gray-700 border border-gray-500 rounded px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-sm text-gray-400 hover:text-white rounded hover:bg-gray-700 transition-colors"
+                onClick={() => setFolderPrompt(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                onClick={() => {
+                  folderPrompt.onConfirm(folderPromptValue);
+                  setFolderPrompt(null);
+                }}
+              >
+                {folderPrompt.mode === 'new' ? 'Create' : 'Rename'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
