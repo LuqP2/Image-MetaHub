@@ -7,7 +7,7 @@ const { autoUpdater } = electronUpdater;
 // console.log('📦 Loaded electron-updater module, autoUpdater available:', !!autoUpdater);
 
 import path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import crypto from 'crypto';
@@ -264,10 +264,6 @@ async function readMediaMetadataWithFfprobe(filePath) {
   };
 }
 
-async function readVideoMetadataWithFfprobe(filePath) {
-  return readMediaMetadataWithFfprobe(filePath);
-}
-
 let mainWindow;
 let skippedVersions = new Set();
 let isManualUpdateCheck = false;
@@ -346,7 +342,6 @@ const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 const settingsTempPath = `${settingsPath}.tmp`;
 const settingsBackupPath = `${settingsPath}.bak`;
 let cachedSettings = null;
-let cachedSettingsTime = 0;
 let settingsWriteQueue = Promise.resolve();
 
 const SETTINGS_WRITE_RETRY_DELAYS_MS = [0, 50, 150];
@@ -1233,7 +1228,7 @@ if (autoUpdater) {
     }
   });
 
-  autoUpdater.on('update-not-available', (info) => {
+  autoUpdater.on('update-not-available', () => {
     // console.log('Update not available');
     isManualUpdateCheck = false;
   });
@@ -1420,7 +1415,7 @@ async function createWindow(startupDirectory = null) {
   try {
     const appVersion = app.getVersion();
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
-  } catch (e) {
+  } catch {
     // Fallback if app.getVersion is not available
     mainWindow.setTitle('Image MetaHub v0.15.3');
   }
@@ -4058,7 +4053,9 @@ function setupFileOperationHandlers() {
       if (wasCanceled) {
         try {
           await fs.rm(destZipPath, { force: true });
-        } catch {}
+        } catch {
+          // ignore error
+        }
         if (progressId) {
           activeCanceledExportIds.delete(progressId);
         }
@@ -4182,7 +4179,7 @@ function setupFileOperationHandlers() {
             destinationAbsolutePath: candidatePath,
             fileName: candidate
           });
-        } catch (error) {
+        } catch {
           failedCount += 1;
           processed += 1;
           sendProgress(
@@ -4237,7 +4234,7 @@ function setupFileOperationHandlers() {
             const task = plannedTransfers[currentIndex];
             try {
               await executeTransfer(task);
-            } catch (error) {
+            } catch {
               failedCount += 1;
             } finally {
               processed += 1;

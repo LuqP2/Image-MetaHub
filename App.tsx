@@ -278,12 +278,12 @@ export default function App() {
   const createCollection = useImageStore((state) => state.createCollection);
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
 
-  const safeImages = Array.isArray(images) ? images : [];
-  const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
-  const safeClusterNavigationContext = Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [];
-  const safeActiveImageScope = Array.isArray(activeImageScope) ? activeImageScope : null;
-  const safeCollections = Array.isArray(collections) ? collections : [];
-  const safeDirectories = Array.isArray(directories) ? directories : [];
+  const safeImages = useMemo(() => Array.isArray(images) ? images : [], [images]);
+  const safeFilteredImages = useMemo(() => Array.isArray(filteredImages) ? filteredImages : [], [filteredImages]);
+  const safeClusterNavigationContext = useMemo(() => Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [], [clusterNavigationContext]);
+  const safeActiveImageScope = useMemo(() => Array.isArray(activeImageScope) ? activeImageScope : null, [activeImageScope]);
+  const safeCollections = useMemo(() => Array.isArray(collections) ? collections : [], [collections]);
+  const safeDirectories = useMemo(() => Array.isArray(directories) ? directories : [], [directories]);
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
   const hasDirectories = safeDirectories.length > 0;
   const directoryPathById = useMemo(
