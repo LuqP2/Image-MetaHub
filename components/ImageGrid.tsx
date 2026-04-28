@@ -345,7 +345,11 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     suppressNextClickRef.current = true;
     e.preventDefault();
     if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.effectAllowed = 'copyMove';
+      const imageIds = selectedImages.has(image.id) ? Array.from(selectedImages) : [image.id];
+      e.dataTransfer.setData('application/x-image-metahub-drag', JSON.stringify({
+        imageIds,
+      }));
     }
     window.electronAPI?.startFileDrag({ directoryPath, relativePath });
   };

@@ -4,6 +4,8 @@ import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageSelection } from './useImageSelection';
 import { useImageLoader } from './useImageLoader';
+import { useFeatureAccess } from './useFeatureAccess';
+import { transferIndexedImages } from '../services/fileTransferService';
 
 interface HotkeyProps {
   isCommandPaletteOpen: boolean;
@@ -38,6 +40,7 @@ export const useHotkeys = ({
   const { handleDeleteSelectedImages } = useImageSelection();
   const { handleSelectFolder, handleLoadFromStorage } = useImageLoader();
   const { toggleViewMode, theme, setTheme, keymap } = useSettingsStore();
+  const { canUseFileManagement, showProModal } = useFeatureAccess();
 
   const focusArea = (area: 'sidebar' | 'grid' | 'preview') => {
     const selector = area === 'sidebar'
@@ -107,6 +110,73 @@ export const useHotkeys = ({
     hotkeyManager.registerAction('toggleListGridView', toggleViewMode);
     hotkeyManager.registerAction('navigatePrevious', handleNavigatePrevious);
     hotkeyManager.registerAction('navigateNext', handleNavigateNext);
+
+    hotkeyManager.registerAction('copyImages', () => {
+      const state = useImageStore.getState();
+      if (state.selectedImages.size > 0 && canUseFileManagement) {
+        state.setClipboard({
+          imageIds: Array.from(state.selectedImages),
+          mode: 'copy',
+        });
+        // Optional: show a toast
+      } else if (!canUseFileManagement && state.selectedImages.size > 0) {
+        showProModal('file_management');
+      }
+    });
+
+    hotkeyManager.registerAction('cutImages', () => {
+      const state = useImageStore.getState();
+      if (state.selectedImages.size > 0 && canUseFileManagement) {
+        state.setClipboard({
+          imageIds: Array.from(state.selectedImages),
+          mode: 'move',
+        });
+      } else if (!canUseFileManagement && state.selectedImages.size > 0) {
+        showProModal('file_management');
+      }
+    });
+
+    hotkeyManager.registerAction('pasteImages', async () => {
+      if (!canUseFileManagement) {
+        showProModal('file_management');
+        return;
+      }
+      const state = useImageStore.getState();
+      const clipboard = state.clipboard;
+      if (!clipboard || clipboard.imageIds.length === 0) return;
+
+      const destPath = Array.from(state.selectedFolders)[0];
+      if (!destPath) return;
+
+      const imagesToTransfer = state.images.filter(img => clipboard.imageIds.includes(img.id));
+      if (imagesToTransfer.length > 0) {
+        try {
+          await transferIndexedImages({
+            images: imagesToTransfer,
+            destinationDirectory: { path: destPath },
+            mode: clipboard.mode,
+          });
+          if (clipboard.mode === 'move') {
+            state.setClipboard(null);
+          }
+          // Request reload of the destination directory
+          const rootDir = state.directories.find(d => destPath.startsWith(d.path));
+          if (rootDir) {
+            // How to call onUpdateDirectory?
+            // Since useImageLoader handles this, we might need a way to refresh it.
+            // But we don't have onUpdateDirectory here.
+            // For now, doing it via rescanFolders or just let auto-watch pick it up.
+            if (!rootDir.autoWatch) {
+               // Fallback: trigger rescan manually
+               handleLoadFromStorage().catch(console.error);
+            }
+          }
+        } catch (err) {
+          console.error('Paste failed:', err);
+        }
+      }
+    });
+
     hotkeyManager.registerAction('closeModalsOrClearSelection', () => {
       if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
       else if (isHotkeyHelpOpen) setIsHotkeyHelpOpen(false);
