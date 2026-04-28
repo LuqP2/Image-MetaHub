@@ -346,7 +346,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     e.preventDefault();
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'copyMove';
-      const imageIds = selectedImages.has(image.id) ? Array.from(selectedImages) : [image.id];
+      const currentSelectedImages = useImageStore.getState().selectedImages;
+      const imageIds = currentSelectedImages.has(image.id) ? Array.from(currentSelectedImages) : [image.id];
       e.dataTransfer.setData('application/x-image-metahub-drag', JSON.stringify({
         imageIds,
       }));

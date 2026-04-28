@@ -136,45 +136,41 @@ export const useHotkeys = ({
       }
     });
 
-    hotkeyManager.registerAction('pasteImages', async () => {
-      if (!canUseFileManagement) {
-        showProModal('file_management');
-        return;
-      }
-      const state = useImageStore.getState();
-      const clipboard = state.clipboard;
-      if (!clipboard || clipboard.imageIds.length === 0) return;
+    hotkeyManager.registerAction('pasteImages', () => {
+      (async () => {
+        if (!canUseFileManagement) {
+          showProModal('file_management');
+          return;
+        }
+        const state = useImageStore.getState();
+        const clipboard = state.clipboard;
+        if (!clipboard || clipboard.imageIds.length === 0) return;
 
-      const destPath = Array.from(state.selectedFolders)[0];
-      if (!destPath) return;
+        const destPath = Array.from(state.selectedFolders)[0];
+        if (!destPath) return;
 
-      const imagesToTransfer = state.images.filter(img => clipboard.imageIds.includes(img.id));
-      if (imagesToTransfer.length > 0) {
-        try {
-          await transferIndexedImages({
-            images: imagesToTransfer,
-            destinationDirectory: { path: destPath },
-            mode: clipboard.mode,
-          });
-          if (clipboard.mode === 'move') {
-            state.setClipboard(null);
-          }
-          // Request reload of the destination directory
-          const rootDir = state.directories.find(d => destPath.startsWith(d.path));
-          if (rootDir) {
-            // How to call onUpdateDirectory?
-            // Since useImageLoader handles this, we might need a way to refresh it.
-            // But we don't have onUpdateDirectory here.
-            // For now, doing it via rescanFolders or just let auto-watch pick it up.
+        const rootDir = state.directories.find(d => destPath.startsWith(d.path));
+        const imagesToTransfer = state.images.filter(img => clipboard.imageIds.includes(img.id));
+        if (imagesToTransfer.length > 0 && rootDir) {
+          try {
+            await transferIndexedImages({
+              images: imagesToTransfer,
+              destinationDirectory: { ...rootDir, path: destPath },
+              mode: clipboard.mode,
+            });
+            if (clipboard.mode === 'move') {
+              state.setClipboard(null);
+            }
+            // Request reload of the destination directory
             if (!rootDir.autoWatch) {
                // Fallback: trigger rescan manually
                handleLoadFromStorage().catch(console.error);
             }
+          } catch (err) {
+            console.error('Paste failed:', err);
           }
-        } catch (err) {
-          console.error('Paste failed:', err);
         }
-      }
+      })();
     });
 
     hotkeyManager.registerAction('closeModalsOrClearSelection', () => {

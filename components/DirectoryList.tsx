@@ -82,6 +82,7 @@ export default function DirectoryList({
   const [loadingNodes, setLoadingNodes] = useState<Set<string>>(new Set());
   const [autoMarkedNodes, setAutoMarkedNodes] = useState<Set<string>>(new Set());
   const [isExpanded, setIsExpanded] = useState(true);
+  const [autoExpandedDirs, setAutoExpandedDirs] = useState<Set<string>>(new Set());
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
   const clipboard = useImageStore(state => state.clipboard);
@@ -262,11 +263,12 @@ export default function DirectoryList({
         const { imageIds } = payload;
         if (imageIds && Array.isArray(imageIds)) {
           const imagesToTransfer = useImageStore.getState().images.filter(img => imageIds.includes(img.id));
-          if (imagesToTransfer.length > 0) {
+          const rootDir = directories.find(d => destPath.startsWith(d.path));
+          if (imagesToTransfer.length > 0 && rootDir) {
             setIsTransferring(true);
             await transferIndexedImages({
               images: imagesToTransfer,
-              destinationDirectory: { path: destPath },
+              destinationDirectory: { ...rootDir, path: destPath },
               mode: e.ctrlKey || e.altKey ? 'copy' : 'move',
             });
             // refresh dest dir
@@ -859,19 +861,19 @@ export default function DirectoryList({
                   return;
                 }
                 const destPath = contextMenu.path;
+                const rootDir = directories.find(d => destPath.startsWith(d.path));
                 const imagesToTransfer = useImageStore.getState().images.filter(img => clipboard.imageIds.includes(img.id));
-                if (imagesToTransfer.length > 0) {
+                if (imagesToTransfer.length > 0 && rootDir) {
                   setIsTransferring(true);
                   try {
                     await transferIndexedImages({
                       images: imagesToTransfer,
-                      destinationDirectory: { path: destPath },
+                      destinationDirectory: { ...rootDir, path: destPath },
                       mode: clipboard.mode,
                     });
                     if (clipboard.mode === 'move') {
                       useImageStore.getState().setClipboard(null);
                     }
-                    const rootDir = directories.find(d => destPath.startsWith(d.path));
                     if (rootDir) {
                       onUpdateDirectory(rootDir.id, destPath);
                     }

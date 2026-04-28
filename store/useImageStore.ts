@@ -3648,7 +3648,6 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
         setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
         setClipboard: (clipboard) => set({ clipboard }),
-        setViewingStackPrompt: (prompt) => set({ viewingStackPrompt: prompt }),
         setFullscreenMode: (isFullscreen) => set({ isFullscreenMode: isFullscreen }),
 
         // Clustering Actions (Phase 2)
