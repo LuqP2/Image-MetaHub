@@ -773,6 +773,7 @@ interface ImageState {
   isAutomationRulesLoaded: boolean;
   activeCollectionId: string | null;
   previewImage: IndexedImage | null;
+  clipboard: { mode: 'copy' | 'move'; imageIds: string[] } | null;
   focusedImageIndex: number | null;
   isStackingEnabled: boolean;
   scanSubfolders: boolean;
@@ -931,6 +932,7 @@ interface ImageState {
   deleteSelectedImages: () => Promise<void>; // This will require file operations logic
   setScanSubfolders: (scan: boolean) => void;
   setFocusedImageIndex: (index: number | null) => void;
+  setClipboard: (clipboard: { mode: 'copy' | 'move'; imageIds: string[] } | null) => void;
   setViewingStackPrompt: (prompt: string | null) => void;
   setFullscreenMode: (isFullscreen: boolean) => void;
 
@@ -2484,6 +2486,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         transferProgress: null,
         selectedImage: null,
         previewImage: null,
+        clipboard: null,
         selectedImages: new Set(),
         activeImageScope: null,
         collections: [],
@@ -3644,6 +3647,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             return resolveSmartCollectionImageIds(collection, state.images).length;
         },
         setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
+        setClipboard: (clipboard) => set({ clipboard }),
         setFullscreenMode: (isFullscreen) => set({ isFullscreenMode: isFullscreen }),
 
         // Clustering Actions (Phase 2)

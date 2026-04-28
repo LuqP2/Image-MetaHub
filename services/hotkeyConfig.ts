@@ -25,6 +25,9 @@ export const hotkeyConfig: HotkeyDefinition[] = [
   { id: 'toggleQuickPreview', name: 'Toggle Quick Preview', scope: 'global', defaultKey: 'space' },
   { id: 'openFullscreen', name: 'Open Fullscreen', scope: 'global', defaultKey: 'enter' },
   { id: 'toggleListGridView', name: 'Toggle List/Grid View', scope: 'global', defaultKey: 'ctrl+l, cmd+l' },
+  { id: 'copyImages', name: 'Copy Images', scope: 'global', defaultKey: 'ctrl+c, cmd+c' },
+  { id: 'cutImages', name: 'Cut Images', scope: 'global', defaultKey: 'ctrl+x, cmd+x' },
+  { id: 'pasteImages', name: 'Paste Images', scope: 'global', defaultKey: 'ctrl+v, cmd+v' },
   { id: 'closeModalsOrClearSelection', name: 'Close Modals / Clear Selection', scope: 'global', defaultKey: 'esc' },
 
   // Preview Scope

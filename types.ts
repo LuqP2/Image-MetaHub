@@ -211,6 +211,7 @@ export interface ElectronAPI {
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
   joinPathsBatch: (args: { basePath: string; fileNames: string[] }) => Promise<{ success: boolean; paths?: string[]; error?: string }>;
+  dirname: (filePath: string) => Promise<{ success: boolean; path?: string; error?: string }>;
   resolveMediaUrl: (filePath: string) => Promise<{ success: boolean; url?: string; error?: string; errorType?: string; errorCode?: string }>;
   startFileDrag: (args: { directoryPath: string; relativePath: string }) => void;
   copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>;

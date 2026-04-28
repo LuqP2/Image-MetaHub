@@ -155,6 +155,7 @@ const electronAPI = {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
   joinPathsBatch: (args) => ipcRenderer.invoke('join-paths-batch', args),
+  dirname: (filePath) => ipcRenderer.invoke('dirname', filePath),
   toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
   getFullscreenState: () => ipcRenderer.invoke('get-fullscreen-state'),
   setFullscreen: (isFullscreen) => ipcRenderer.invoke('set-fullscreen', isFullscreen),
