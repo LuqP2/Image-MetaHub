@@ -112,18 +112,34 @@ const getElectronDirname = async (filePath: string): Promise<string | null> => {
 
 const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: string) => {
   const store = useImageStore.getState();
-  const remapPathPrefix = (targetPath: string) => (
-    normalizePath(targetPath) === normalizePath(oldPath) ||
-    normalizePath(targetPath).startsWith(`${normalizePath(oldPath)}/`)
-      ? normalizePath(`${newPath}${targetPath.slice(oldPath.length)}`)
-      : targetPath
-  );
-  const replaceImageId = (imageId: string) => (
-    imageId.startsWith(`${oldPath}::`) ? `${newPath}::${imageId.slice(oldPath.length + 2)}` : imageId
-  );
+  const normalizedOldPath = normalizePath(oldPath);
+  const normalizedNewPath = normalizePath(newPath);
+  const isSameOrNestedPath = (targetPath: string) => {
+    const normalizedTarget = normalizePath(targetPath);
+    return normalizedTarget === normalizedOldPath || normalizedTarget.startsWith(`${normalizedOldPath}/`);
+  };
+  const remapPathPrefix = (targetPath: string) => {
+    const normalizedTarget = normalizePath(targetPath);
+    if (!isSameOrNestedPath(normalizedTarget)) {
+      return targetPath;
+    }
+    return `${normalizedNewPath}${normalizedTarget.slice(normalizedOldPath.length)}`;
+  };
+  const replaceImageId = (imageId: string) => {
+    const separatorIndex = imageId.indexOf('::');
+    if (separatorIndex < 0) {
+      return imageId;
+    }
+
+    const directoryId = imageId.slice(0, separatorIndex);
+    const remappedDirectoryId = remapPathPrefix(directoryId);
+    return remappedDirectoryId === directoryId
+      ? imageId
+      : `${remappedDirectoryId}${imageId.slice(separatorIndex)}`;
+  };
   const remapImage = (image: IndexedImage | null): IndexedImage | null => (
-    image && normalizePath(image.directoryId ?? '') === normalizePath(oldPath)
-      ? { ...image, id: replaceImageId(image.id), directoryId: newPath }
+    image?.directoryId && isSameOrNestedPath(image.directoryId)
+      ? { ...image, id: replaceImageId(image.id), directoryId: remapPathPrefix(image.directoryId) }
       : image
   );
   const remapImageList = (images: IndexedImage[] | null): IndexedImage[] | null => (
@@ -131,19 +147,18 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
   );
 
   const nextDirectories = store.directories.map((directory) =>
-    normalizePath(directory.path) === normalizePath(oldPath)
-      ? { ...directory, id: newPath, path: newPath, name: newName }
+    isSameOrNestedPath(directory.path)
+      ? {
+          ...directory,
+          id: remapPathPrefix(directory.id),
+          path: remapPathPrefix(directory.path),
+          name: normalizePath(directory.path) === normalizedOldPath ? newName : directory.name,
+        }
       : directory
   );
 
   const nextImages = store.images.map((image) =>
-    normalizePath(image.directoryId ?? '') === normalizePath(oldPath)
-      ? {
-          ...image,
-          id: replaceImageId(image.id),
-          directoryId: newPath,
-        }
-      : image
+    remapImage(image) ?? image
   );
 
   const nextSelectedImages = new Set(Array.from(store.selectedImages).map(replaceImageId));
@@ -187,24 +202,28 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
       { enabled: !!directory.autoWatch, path: directory.path },
     ]))),
   );
+
+  return nextDirectories;
 };
 
-const rebindRootWatcher = async (oldDirectoryId: string, newDirectoryId: string, newPath: string) => {
+const rebindRootWatchers = async (watchers: Array<{ oldDirectoryId: string; newDirectoryId: string; newPath: string }>) => {
   if (typeof window === 'undefined' || !window.electronAPI) {
     return;
   }
 
-  const stopResult = await window.electronAPI.stopWatchingDirectory?.({ directoryId: oldDirectoryId });
-  if (stopResult && !stopResult.success) {
-    console.warn('Failed to stop watcher for renamed folder:', (stopResult as { error?: string }).error);
-  }
+  for (const watcher of watchers) {
+    const stopResult = await window.electronAPI.stopWatchingDirectory?.({ directoryId: watcher.oldDirectoryId });
+    if (stopResult && !stopResult.success) {
+      console.warn('Failed to stop watcher for renamed folder:', (stopResult as { error?: string }).error);
+    }
 
-  const startResult = await window.electronAPI.startWatchingDirectory?.({
-    directoryId: newDirectoryId,
-    dirPath: newPath,
-  });
-  if (startResult && !startResult.success) {
-    useImageStore.getState().setError(startResult.error || 'Folder renamed, but auto-watch could not be restarted.');
+    const startResult = await window.electronAPI.startWatchingDirectory?.({
+      directoryId: watcher.newDirectoryId,
+      dirPath: watcher.newPath,
+    });
+    if (startResult && !startResult.success) {
+      useImageStore.getState().setError(startResult.error || 'Folder renamed, but auto-watch could not be restarted.');
+    }
   }
 };
 
@@ -1164,9 +1183,26 @@ export default function DirectoryList({
                       if (rootDir) {
                         const isRootRename = normalizePath(rootDir.path) === normalizePath(targetPath);
                         if (isRootRename) {
-                          renameIndexedRootInStore(targetPath, newPath, newName.trim());
-                          if (rootDir.autoWatch) {
-                            await rebindRootWatcher(targetPath, newPath, newPath);
+                          const affectedDirectories = useImageStore.getState().directories
+                            .filter((directory) => {
+                              const normalizedPath = normalizePath(directory.path);
+                              const normalizedTarget = normalizePath(targetPath);
+                              return normalizedPath === normalizedTarget || normalizedPath.startsWith(`${normalizedTarget}/`);
+                            })
+                            .map((directory) => {
+                              const remappedPath = `${normalizePath(newPath)}${normalizePath(directory.path).slice(normalizePath(targetPath).length)}`;
+                              return {
+                                oldDirectoryId: directory.id,
+                                newDirectoryId: remappedPath,
+                                newPath: remappedPath,
+                                autoWatch: directory.autoWatch,
+                              };
+                            });
+                          const nextDirectories = renameIndexedRootInStore(targetPath, newPath, newName.trim());
+                          await window.electronAPI?.updateAllowedPaths(nextDirectories.map((directory) => directory.path));
+                          const watcherRebinds = affectedDirectories.filter((directory) => directory.autoWatch);
+                          if (watcherRebinds.length > 0) {
+                            await rebindRootWatchers(watcherRebinds);
                           }
                           onUpdateDirectory(newPath);
                           return;
