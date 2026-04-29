@@ -29,11 +29,16 @@ export function useGenerationQueueRunner({ images, filteredImages }: ImageLookup
   const { startPolling, stopPolling } = useA1111ProgressContext();
   const { startTracking, stopTracking } = useComfyUIProgressContext();
   const runningJobsRef = useRef<Set<string>>(new Set());
+  const runningProvidersRef = useRef<Set<GenerationProvider>>(new Set());
 
   useEffect(() => {
     const startProvider = (provider: GenerationProvider) => {
       const state = useGenerationQueueStore.getState();
       const activeJobId = state.activeJobs[provider];
+
+      if (runningProvidersRef.current.has(provider)) {
+        return;
+      }
 
       if (!activeJobId) {
         const nextJobId = state.getNextWaitingJobId(provider);
@@ -64,6 +69,7 @@ export function useGenerationQueueRunner({ images, filteredImages }: ImageLookup
 
     const executeProviderJob = async (job: GenerationQueueItem) => {
       runningJobsRef.current.add(job.id);
+      runningProvidersRef.current.add(job.provider);
       const state = useGenerationQueueStore.getState();
       const image = findImage({ images, filteredImages }, job.imageId);
 
@@ -73,6 +79,7 @@ export function useGenerationQueueRunner({ images, filteredImages }: ImageLookup
           state.setActiveJob(job.provider, null);
         }
         runningJobsRef.current.delete(job.id);
+        runningProvidersRef.current.delete(job.provider);
         return;
       }
 
@@ -111,6 +118,7 @@ export function useGenerationQueueRunner({ images, filteredImages }: ImageLookup
         }
       } finally {
         runningJobsRef.current.delete(job.id);
+        runningProvidersRef.current.delete(job.provider);
         const latestState = useGenerationQueueStore.getState();
         if (latestState.activeJobs[job.provider] === job.id) {
           latestState.setActiveJob(job.provider, null);

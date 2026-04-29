@@ -1661,18 +1661,8 @@ export default function App() {
       return output.imageId;
     }
 
-    if (!output.name) {
-      return undefined;
-    }
-
-    const normalizedOutputName = output.name.toLowerCase();
-    const match = [...images, ...filteredImages].find((candidate) => {
-      const candidateName = candidate.name.toLowerCase();
-      return candidateName === normalizedOutputName || candidate.id.toLowerCase().endsWith(`::${normalizedOutputName}`);
-    });
-
-    return match?.id;
-  }, [filteredImages, getImageByIdFromStore, images]);
+    return undefined;
+  }, [getImageByIdFromStore]);
 
   const enrichGeneratedOutputs = useCallback((outputs: GeneratedQueueOutput[]): GeneratedQueueOutput[] =>
     outputs.map((output) => ({
