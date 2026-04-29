@@ -707,13 +707,11 @@ export function analyzeComfyWorkflow(source: IndexedImage | UnknownRecord, norma
       timerNodeIds.push(nodeId);
     }
 
-    if (typeof node.inputs?.width === 'number' || typeof node.inputs?.height === 'number') {
-      if ('width' in (node.inputs || {})) {
-        dimensionTargets.push({ nodeId, inputKey: 'width' });
-      }
-      if ('height' in (node.inputs || {})) {
-        dimensionTargets.push({ nodeId, inputKey: 'height' });
-      }
+    if ('width' in (node.inputs || {})) {
+      dimensionTargets.push({ nodeId, inputKey: 'width' });
+    }
+    if ('height' in (node.inputs || {})) {
+      dimensionTargets.push({ nodeId, inputKey: 'height' });
     }
 
     if ('batch_size' in (node.inputs || {})) {
