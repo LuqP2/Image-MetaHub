@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ExternalLink, FileText, X } from 'lucide-react';
 import { GeneratedQueueOutput } from '../store/useGenerationQueueStore';
 
 interface GeneratedOutputModalProps {
   outputs: GeneratedQueueOutput[];
   initialIndex?: number;
   jobName?: string;
+  onOpenIndexedImage?: (imageId: string) => void;
   onClose: () => void;
 }
 
@@ -13,6 +14,7 @@ const GeneratedOutputModal: React.FC<GeneratedOutputModalProps> = ({
   outputs,
   initialIndex = 0,
   jobName,
+  onOpenIndexedImage,
   onClose,
 }) => {
   const [index, setIndex] = useState(() => Math.min(initialIndex, Math.max(outputs.length - 1, 0)));
@@ -69,6 +71,17 @@ const GeneratedOutputModal: React.FC<GeneratedOutputModalProps> = ({
               >
                 <ExternalLink size={18} />
               </a>
+            )}
+            {current.imageId && onOpenIndexedImage && (
+              <button
+                onClick={() => onOpenIndexedImage(current.imageId!)}
+                className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-500"
+                aria-label="View full metadata"
+                title="View full metadata"
+              >
+                <FileText size={16} />
+                <span>View full metadata</span>
+              </button>
             )}
             <button
               onClick={onClose}

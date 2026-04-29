@@ -1605,6 +1605,82 @@ export default function App() {
     });
   }, [beginModalOpenFlow, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
 
+  const handleOpenImageModalFromGeneratedOutput = useCallback((imageId: string) => {
+    const image = getImageByIdFromStore(imageId);
+    if (!image) {
+      return;
+    }
+
+    const navigationSource = safeActiveImageScope ?? safeFilteredImages;
+    const navigationImageIds = navigationSource.map((entry) => entry.id);
+    const modalId = `image-modal-${Date.now()}-${image.id}`;
+    const existingModalForImage = openImageModals.find((modal) => modal.imageId === image.id);
+    const activeModalId = existingModalForImage?.modalId ?? modalId;
+
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const nextZIndex = highestZIndex + 1;
+      const existingModal = current.find((modal) => modal.imageId === image.id);
+
+      if (existingModal) {
+        return current.map((modal) =>
+          modal.modalId === existingModal.modalId
+            ? {
+                ...modal,
+                navigationImageIds,
+                navigationSource: safeActiveImageScope ? 'scope' : 'filtered',
+                zIndex: nextZIndex,
+                isMinimized: false,
+              }
+            : modal
+        );
+      }
+
+      return [
+        ...current,
+        {
+          modalId,
+          imageId: image.id,
+          navigationImageIds,
+          navigationSource: safeActiveImageScope ? 'scope' : 'filtered',
+          zIndex: nextZIndex,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(image.id, 'generated-output'),
+        },
+      ];
+    });
+
+    setActiveImageModalId(activeModalId);
+    setSelectedImage(image);
+    setGeneratedOutputPreview(null);
+  }, [beginModalOpenFlow, getImageByIdFromStore, openImageModals, safeActiveImageScope, safeFilteredImages, setSelectedImage]);
+
+  const resolveGeneratedOutputImageId = useCallback((output: GeneratedQueueOutput): string | undefined => {
+    if (output.imageId && getImageByIdFromStore(output.imageId)) {
+      return output.imageId;
+    }
+
+    if (!output.name) {
+      return undefined;
+    }
+
+    const normalizedOutputName = output.name.toLowerCase();
+    const match = [...images, ...filteredImages].find((candidate) => {
+      const candidateName = candidate.name.toLowerCase();
+      return candidateName === normalizedOutputName || candidate.id.toLowerCase().endsWith(`::${normalizedOutputName}`);
+    });
+
+    return match?.id;
+  }, [filteredImages, getImageByIdFromStore, images]);
+
+  const enrichGeneratedOutputs = useCallback((outputs: GeneratedQueueOutput[]): GeneratedQueueOutput[] =>
+    outputs.map((output) => ({
+      ...output,
+      imageId: resolveGeneratedOutputImageId(output),
+    })),
+  [resolveGeneratedOutputImageId]);
+
   const handleGridImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
     if (event.button === 1) {
       event.preventDefault();
@@ -2095,9 +2171,10 @@ export default function App() {
           isResizing={isRightSidebarResizing}
           onResizeStart={handleRightSidebarResizeStart}
           onOpenGeneratedOutputs={(item) => {
+            const outputs = enrichGeneratedOutputs(item.generatedOutputs || []);
             setGeneratedOutputPreview({
               itemId: item.id,
-              outputs: item.generatedOutputs || [],
+              outputs,
               initialIndex: 0,
               jobName: item.imageName,
             });
@@ -2116,6 +2193,7 @@ export default function App() {
           outputs={generatedOutputPreview.outputs}
           initialIndex={generatedOutputPreview.initialIndex}
           jobName={generatedOutputPreview.jobName}
+          onOpenIndexedImage={handleOpenImageModalFromGeneratedOutput}
           onClose={() => setGeneratedOutputPreview(null)}
         />
       )}
