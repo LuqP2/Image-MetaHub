@@ -25,6 +25,17 @@ export type ComfyUIQueuePayload = {
 
 export type GenerationQueuePayload = A1111QueuePayload | ComfyUIQueuePayload;
 
+export interface GeneratedQueueOutput {
+  id: string;
+  kind: 'data-url' | 'object-url' | 'remote-url' | 'indexed-image';
+  url?: string;
+  imageId?: string;
+  relativePath?: string;
+  name?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface GenerationQueueItem {
   id: string;
   provider: GenerationProvider;
@@ -41,6 +52,8 @@ export interface GenerationQueueItem {
   providerJobId?: string;
   error?: string;
   payload?: GenerationQueuePayload;
+  generatedOutputs?: GeneratedQueueOutput[];
+  completedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -70,6 +83,20 @@ const MAX_ITEMS = 200;
 
 const createQueueId = () =>
   `job_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+
+const revokeGeneratedOutputUrls = (items: GenerationQueueItem[]) => {
+  if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') {
+    return;
+  }
+
+  items.forEach((item) => {
+    item.generatedOutputs?.forEach((output) => {
+      if (output.kind === 'object-url' && output.url) {
+        URL.revokeObjectURL(output.url);
+      }
+    });
+  });
+};
 
 export const useGenerationQueueStore = create<GenerationQueueState>((set, get) => ({
   items: [],
@@ -128,13 +155,14 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
     })),
   getNextWaitingJobId: (provider) => {
     const { items } = get();
-    const next = items.find(
-      (item) => item.provider === provider && item.status === 'waiting'
-    );
+    const next = items
+      .filter((item) => item.provider === provider && item.status === 'waiting')
+      .sort((a, b) => a.createdAt - b.createdAt)[0];
     return next?.id ?? null;
   },
   removeJob: (id) => {
     set((state) => {
+      revokeGeneratedOutputUrls(state.items.filter((item) => item.id === id));
       const activeJobs = { ...state.activeJobs };
       if (activeJobs.a1111 === id) {
         activeJobs.a1111 = null;
@@ -152,7 +180,9 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
     const statusSet = new Set(statuses);
     set((state) => {
       const activeJobs = { ...state.activeJobs };
+      const removedItems = state.items.filter((item) => statusSet.has(item.status));
       const nextItems = state.items.filter((item) => !statusSet.has(item.status));
+      revokeGeneratedOutputUrls(removedItems);
       if (activeJobs.a1111 && !nextItems.some((item) => item.id === activeJobs.a1111)) {
         activeJobs.a1111 = null;
       }

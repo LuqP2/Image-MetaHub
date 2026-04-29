@@ -42,6 +42,7 @@ export interface GenerationParams {
 }
 
 type WorkspaceTab = 'parameters' | 'visual';
+const WORKSPACE_TAB_STORAGE_KEY = 'IMH_COMFYUI_LAST_WORKSPACE_TAB';
 
 interface ComfyUIWorkflowWorkspaceProps {
   image: IndexedImage;
@@ -357,6 +358,17 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     }
   };
 
+  const persistActiveTab = (tab: WorkspaceTab) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(WORKSPACE_TAB_STORAGE_KEY, tab);
+    }
+  };
+
+  const changeActiveTab = (tab: WorkspaceTab) => {
+    setActiveTab(tab);
+    persistActiveTab(tab);
+  };
+
   useEffect(() => {
     if (!normalizedMetadata) {
       return;
@@ -371,6 +383,9 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     const storedModel = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_MODEL_OBJECT') : null;
     const storedLoras = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_LORAS') : null;
     const storedRandomSeed = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_RANDOM_SEED') : null;
+    const storedWorkspaceTab = typeof window !== 'undefined'
+      ? localStorage.getItem(WORKSPACE_TAB_STORAGE_KEY) as WorkspaceTab | null
+      : null;
 
     const parsedModel = parseStoredJson<ComfyUIModelResource>(storedModel, 'stored ComfyUI model');
     const parsedLoras = parseStoredJson<ComfyUILoRAConfig[]>(storedLoras, 'stored ComfyUI LoRAs') ?? [];
@@ -415,7 +430,8 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     setValidationError('');
     setModelSearch('');
     setLoraSearch('');
-    setActiveTab(defaultTab === 'visual' && workflowAnalysis.originalAvailable ? 'visual' : 'parameters');
+    const preferredTab = storedWorkspaceTab || defaultTab;
+    setActiveTab(preferredTab === 'visual' && workflowAnalysis.originalAvailable ? 'visual' : 'parameters');
     setSelectedVisualNodeId(null);
   }, [
     defaultTab,
@@ -429,6 +445,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
   useEffect(() => {
     if (params.workflowMode !== 'original' && activeTab === 'visual') {
       setActiveTab('parameters');
+      persistActiveTab('parameters');
     }
   }, [activeTab, params.workflowMode]);
 
@@ -715,6 +732,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
       localStorage.setItem('IMH_COMFYUI_LAST_MODE', params.workflowMode);
       localStorage.setItem('IMH_COMFYUI_LAST_SOURCE_POLICY', params.sourceImagePolicy);
       localStorage.setItem('IMH_COMFYUI_LAST_RANDOM_SEED', String(params.randomSeed));
+      localStorage.setItem(WORKSPACE_TAB_STORAGE_KEY, activeTab);
       if (params.model) {
         localStorage.setItem('IMH_COMFYUI_LAST_MODEL_OBJECT', JSON.stringify(params.model));
       } else {
@@ -813,7 +831,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setActiveTab('parameters')}
+            onClick={() => changeActiveTab('parameters')}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
               activeTab === 'parameters'
                 ? 'bg-purple-500/15 text-purple-100 ring-1 ring-purple-400/40'
@@ -826,7 +844,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
           <button
             type="button"
             disabled={visualTabDisabled}
-            onClick={() => !visualTabDisabled && setActiveTab('visual')}
+            onClick={() => !visualTabDisabled && changeActiveTab('visual')}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
               activeTab === 'visual'
                 ? 'bg-blue-500/15 text-blue-100 ring-1 ring-blue-400/40'
@@ -1197,18 +1215,6 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
         </div>
       )}
 
-      {(status || validationError) && (
-        <div
-          className={`rounded-lg border px-3 py-2 text-sm ${
-            status?.success && !validationError
-              ? 'border-green-700/40 bg-green-500/10 text-green-200'
-              : 'border-red-700/40 bg-red-500/10 text-red-200'
-          }`}
-        >
-          {validationError || status?.message}
-        </div>
-      )}
-
       <div className="flex items-center justify-end gap-3">
         {showCancelButton && onCancel && (
           <button
@@ -1226,6 +1232,18 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
           {isGenerating ? 'Generating...' : 'Generate'}
         </button>
       </div>
+
+      {(status || validationError) && (
+        <div
+          className={`rounded-lg border px-3 py-2 text-sm ${
+            status?.success && !validationError
+              ? 'border-green-700/40 bg-green-500/10 text-green-200'
+              : 'border-red-700/40 bg-red-500/10 text-red-200'
+          }`}
+        >
+          {validationError || status?.message}
+        </div>
+      )}
     </div>
   );
 };
