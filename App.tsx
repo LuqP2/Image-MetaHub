@@ -1661,8 +1661,23 @@ export default function App() {
       return output.imageId;
     }
 
-    return undefined;
-  }, [getImageByIdFromStore]);
+    if (!output.relativePath) {
+      return undefined;
+    }
+
+    const normalizeRelativePath = (value: string) => value.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+    const targetRelativePath = normalizeRelativePath(output.relativePath);
+    const matchedIds = new Set<string>();
+
+    for (const candidate of [...images, ...filteredImages]) {
+      const candidateRelativePath = normalizeRelativePath(candidate.id.split('::').slice(1).join('::') || candidate.name);
+      if (candidateRelativePath === targetRelativePath) {
+        matchedIds.add(candidate.id);
+      }
+    }
+
+    return matchedIds.size === 1 ? Array.from(matchedIds)[0] : undefined;
+  }, [filteredImages, getImageByIdFromStore, images]);
 
   const enrichGeneratedOutputs = useCallback((outputs: GeneratedQueueOutput[]): GeneratedQueueOutput[] =>
     outputs.map((output) => ({

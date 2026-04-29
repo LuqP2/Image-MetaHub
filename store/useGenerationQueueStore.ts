@@ -30,6 +30,7 @@ export interface GeneratedQueueOutput {
   kind: 'data-url' | 'remote-url' | 'indexed-image';
   url?: string;
   imageId?: string;
+  relativePath?: string;
   name?: string;
   width?: number;
   height?: number;

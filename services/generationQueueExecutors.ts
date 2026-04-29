@@ -118,6 +118,7 @@ function extractComfyUIOutputs(
 
       const subfolder = typeof image.subfolder === 'string' ? image.subfolder : '';
       const type = typeof image.type === 'string' ? image.type : 'output';
+      const relativePath = subfolder ? `${subfolder}/${image.filename}` : image.filename;
       images.push({
         id: `${job.id}_comfyui_${nodeIndex}_${imageIndex}`,
         kind: 'remote-url',
@@ -126,6 +127,7 @@ function extractComfyUIOutputs(
           subfolder,
           type,
         }),
+        relativePath,
         name: image.filename,
       });
     });

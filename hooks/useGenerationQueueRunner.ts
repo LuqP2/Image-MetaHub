@@ -120,7 +120,12 @@ export function useGenerationQueueRunner({ images, filteredImages }: ImageLookup
         runningJobsRef.current.delete(job.id);
         runningProvidersRef.current.delete(job.provider);
         const latestState = useGenerationQueueStore.getState();
-        if (latestState.activeJobs[job.provider] === job.id) {
+        const activeJobId = latestState.activeJobs[job.provider];
+        if (activeJobId === job.id) {
+          latestState.setActiveJob(job.provider, null);
+        } else if (activeJobId) {
+          latestState.updateJob(activeJobId, {});
+        } else {
           latestState.setActiveJob(job.provider, null);
         }
       }
