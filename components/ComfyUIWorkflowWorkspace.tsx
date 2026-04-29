@@ -745,12 +745,11 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
       }
     }
 
-    const shouldUseWorkingWorkflowJson = activeTab === 'visual' || showAdvancedEditor;
     const resolvedAdvancedPromptJson = params.workflowMode === 'original'
-      ? (manualPromptJson || (shouldUseWorkingWorkflowJson && workingPromptGraph ? JSON.stringify(workingPromptGraph) : undefined))
+      ? (manualPromptJson || (workingPromptGraph ? JSON.stringify(workingPromptGraph) : ''))
       : undefined;
     const resolvedAdvancedWorkflowJson = params.workflowMode === 'original'
-      ? (manualWorkflowJson || (shouldUseWorkingWorkflowJson && workingWorkflowUi ? JSON.stringify(workingWorkflowUi) : undefined))
+      ? (manualWorkflowJson || (workingWorkflowUi ? JSON.stringify(workingWorkflowUi) : undefined))
       : undefined;
 
     await onGenerate({
