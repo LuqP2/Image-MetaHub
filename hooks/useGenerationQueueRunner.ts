@@ -96,6 +96,10 @@ export function useGenerationQueueRunner({ images, filteredImages }: ImageLookup
               serverUrl: comfyUIServerUrl,
               startTracking,
               stopTracking,
+              isCanceled: () => {
+                const latest = useGenerationQueueStore.getState().items.find((item) => item.id === job.id);
+                return latest?.status === 'canceled';
+              },
             });
 
         const latest = useGenerationQueueStore.getState().items.find((item) => item.id === job.id);

@@ -19,6 +19,7 @@ type ProgressPollingControls = {
 type ProgressTrackingControls = {
   startTracking: (serverUrl: string, promptId: string, clientId?: string) => void;
   stopTracking: () => void;
+  isCanceled?: () => boolean;
 };
 
 export type QueueExecutionResult = {
@@ -156,13 +157,22 @@ function extractComfyUIOutputs(
 async function waitForComfyUIOutputs(
   client: ComfyUIApiClient,
   promptId: string,
-  job: GenerationQueueItem
+  job: GenerationQueueItem,
+  isCanceled?: () => boolean
 ): Promise<GeneratedQueueOutput[]> {
   const startedAt = Date.now();
   const timeoutMs = 5 * 60 * 1000;
 
   while (Date.now() - startedAt < timeoutMs) {
+    if (isCanceled?.()) {
+      return [];
+    }
+
     const history = await client.getHistory(promptId) as Record<string, unknown>;
+    if (isCanceled?.()) {
+      return [];
+    }
+
     const outputs = extractComfyUIOutputs(history, promptId, client, job);
     if (outputs.length > 0) {
       return outputs;
@@ -214,7 +224,7 @@ export async function executeComfyUIQueueJob(
   try {
     return {
       providerJobId: result.prompt_id,
-      generatedOutputs: await waitForComfyUIOutputs(client, result.prompt_id, job),
+      generatedOutputs: await waitForComfyUIOutputs(client, result.prompt_id, job, context.isCanceled),
     };
   } catch (error) {
     throw new Error(getErrorMessage(error));
