@@ -14,6 +14,7 @@ import {
 type ProgressPollingControls = {
   startPolling: (serverUrl: string, numberOfImages?: number) => void;
   stopPolling: () => void;
+  isCanceled?: () => boolean;
 };
 
 type ProgressTrackingControls = {
@@ -72,13 +73,24 @@ export async function executeA1111QueueJob(
 
   const numberOfImages = payload?.numberOfImages || job.totalImages || 1;
   const client = new A1111ApiClient({ serverUrl: context.serverUrl });
+  const controller = new AbortController();
+  const cancelCheckId = setInterval(() => {
+    if (context.isCanceled?.()) {
+      controller.abort();
+    }
+  }, 250);
 
   context.startPolling(context.serverUrl, numberOfImages);
   try {
     const result = await client.sendToTxt2Img(metadata, {
       autoStart: true,
       numberOfImages,
+      signal: controller.signal,
     });
+
+    if (context.isCanceled?.()) {
+      return {};
+    }
 
     if (!result.success) {
       throw new Error(result.error || 'Generation failed');
@@ -93,6 +105,7 @@ export async function executeA1111QueueJob(
       })),
     };
   } finally {
+    clearInterval(cancelCheckId);
     context.stopPolling();
   }
 }

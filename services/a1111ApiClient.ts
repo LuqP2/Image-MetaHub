@@ -290,8 +290,10 @@ export class A1111ApiClient {
    */
   async sendToTxt2Img(
     metadata: BaseMetadata,
-    options: { autoStart: boolean; numberOfImages?: number } = { autoStart: false, numberOfImages: 1 }
+    options: { autoStart: boolean; numberOfImages?: number; signal?: AbortSignal } = { autoStart: false, numberOfImages: 1 }
   ): Promise<A1111Response> {
+    let didTimeout = false;
+
     try {
       const params = await this.metadataToA1111Params(metadata);
 
@@ -317,19 +319,33 @@ export class A1111ApiClient {
       }
 
       const controller = new AbortController();
+      const abortFromSignal = () => controller.abort();
       // 3 minute timeout for generation (some models/steps can take longer)
-      const timeoutId = setTimeout(() => controller.abort(), 180000);
+      const timeoutId = setTimeout(() => {
+        didTimeout = true;
+        controller.abort();
+      }, 180000);
 
-      const response = await fetch(`${this.config.serverUrl}/sdapi/v1/txt2img`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
+      if (options.signal?.aborted) {
+        abortFromSignal();
+      } else {
+        options.signal?.addEventListener('abort', abortFromSignal, { once: true });
+      }
 
-      clearTimeout(timeoutId);
+      let response: Response;
+      try {
+        response = await fetch(`${this.config.serverUrl}/sdapi/v1/txt2img`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+        options.signal?.removeEventListener('abort', abortFromSignal);
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -354,7 +370,11 @@ export class A1111ApiClient {
       if (error instanceof DOMException && error.name === 'AbortError') {
         return {
           success: false,
-          error: 'Request timeout. Generation may take longer.',
+          error: options.signal?.aborted
+            ? 'Request canceled.'
+            : didTimeout
+              ? 'Request timeout. Generation may take longer.'
+              : 'Request aborted.',
         };
       }
       return {

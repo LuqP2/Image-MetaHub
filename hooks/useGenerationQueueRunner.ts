@@ -90,6 +90,10 @@ export function useGenerationQueueRunner({ images, filteredImages }: ImageLookup
               serverUrl: a1111ServerUrl,
               startPolling,
               stopPolling,
+              isCanceled: () => {
+                const latest = useGenerationQueueStore.getState().items.find((item) => item.id === job.id);
+                return latest?.status === 'canceled';
+              },
             })
           : await executeComfyUIQueueJob(job, {
               image,
