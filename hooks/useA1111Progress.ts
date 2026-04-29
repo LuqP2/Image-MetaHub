@@ -25,6 +25,7 @@ interface A1111ProgressResponse {
 export function useA1111Progress() {
   const [progressState, setProgressState] = useState<A1111ProgressState | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const clearProgressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const serverUrlRef = useRef<string>('');
   const totalImagesRef = useRef<number>(0);
 
@@ -87,6 +88,10 @@ export function useA1111Progress() {
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
     }
+    if (clearProgressTimeoutRef.current) {
+      clearTimeout(clearProgressTimeoutRef.current);
+      clearProgressTimeoutRef.current = null;
+    }
 
     serverUrlRef.current = serverUrl;
     totalImagesRef.current = numberOfImages;
@@ -110,10 +115,14 @@ export function useA1111Progress() {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
     }
+    if (clearProgressTimeoutRef.current) {
+      clearTimeout(clearProgressTimeoutRef.current);
+    }
 
     // Keep the final state visible for 2 seconds before clearing
-    setTimeout(() => {
+    clearProgressTimeoutRef.current = setTimeout(() => {
       setProgressState(null);
+      clearProgressTimeoutRef.current = null;
     }, 2000);
   }, []);
 

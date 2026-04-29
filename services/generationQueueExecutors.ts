@@ -31,6 +31,23 @@ const getErrorMessage = (error: unknown): string =>
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const base64PngToObjectUrl = (base64: string): string => {
+  const binary = atob(base64);
+  const chunks: BlobPart[] = [];
+  const chunkSize = 8192;
+
+  for (let offset = 0; offset < binary.length; offset += chunkSize) {
+    const slice = binary.slice(offset, offset + chunkSize);
+    const bytes = new Uint8Array(slice.length);
+    for (let index = 0; index < slice.length; index += 1) {
+      bytes[index] = slice.charCodeAt(index);
+    }
+    chunks.push(bytes);
+  }
+
+  return URL.createObjectURL(new Blob(chunks, { type: 'image/png' }));
+};
+
 const assertRunnableMetadata = (metadata: BaseMetadata) => {
   if (!hasPromptMetadata(metadata)) {
     throw new Error(NO_METADATA_MESSAGE);
@@ -69,8 +86,8 @@ export async function executeA1111QueueJob(
     return {
       generatedOutputs: (result.images || []).map((base64, index) => ({
         id: `${job.id}_a1111_${index}`,
-        kind: 'data-url',
-        url: `data:image/png;base64,${base64}`,
+        kind: 'object-url',
+        url: base64PngToObjectUrl(base64),
         name: `${job.imageName} result ${index + 1}`,
       })),
     };
