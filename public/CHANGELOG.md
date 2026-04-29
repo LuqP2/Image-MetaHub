@@ -5,11 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.4] - Unreleased
+
+### Added
+
+- **Executable Generation Queue**: Added a real queue runner for A1111 and ComfyUI jobs so waiting generations start automatically when the active provider job finishes.
+
+### Improved
+
+- **Generated Output Preview**: Added generated result thumbnails in the queue and a dedicated preview modal for completed queue jobs, including navigation for multi-image outputs and a path to full image metadata when the generated file is indexed.
+- **Generation Queue UX**: Clarified queue card actions with more intuitive cancel, stop, retry, and remove controls, improved accessible labels, made completed result cards clickable, and removed the confusing destructive "Clear all" behavior.
+- **Queue Ordering and Cancellation**: Queue scheduling now drains in FIFO order, and canceling a waiting job no longer interrupts the currently active provider generation.
+- **A1111 Batch Progress Display**: Improved the `Image X/Y` fallback logic so batch progress tracks the progress bar even when A1111 keeps reporting the same `job_no`.
+- **Generated Output Memory Handling**: A1111 queue previews now use temporary Blob URLs instead of storing full base64 image payloads directly in queue state.
+
+### Fixed
+
+- **Maximum Update Depth Error**: Fixed a critical "Maximum update depth exceeded" error during heavy indexing. Stabilized array references in the application state to prevent infinite re-rendering loops when new batches of images are loaded.
+- **Queued Generation Deadlock**: Fixed a structural queue bug where jobs created as `waiting` could remain stuck forever because no runner existed to consume them after the active job completed.
+- **Provider Runner Races**: Reduced overlapping provider execution and stale scheduling states when active queue jobs are canceled or removed while the underlying executor is still unwinding.
+- **A1111 Progress Race**: Fixed stale delayed progress cleanup from one A1111 job clearing progress for the next queued A1111 job.
+
+### Known Bugs
+
+- **Queue Preview Blob URL Eviction Leak**: When the queue exceeds its 200-item cap, entries trimmed by the cap may not revoke their generated preview Blob URLs.
+- **Canceled A1111 Output Blob URL Leak**: If an in-flight A1111 job is canceled or removed after outputs have already been materialized, discarded generated preview Blob URLs may not be revoked.
+
 ## [0.15.3] - 2026-04-25
 
 ### Fixed
 
-- **React Hook Ordering in Arrow Navigation**: Fixed a critical React hooks violation in `ImagePreviewSidebar` that caused the app to display a black screen when using arrow key navigation. The `useMemo` hook is now properly called before any conditional early returns, ensuring hooks are always called in the same order on every render.
+- **React Hook Ordering in Preview/Viewer Navigation**: Fixed a React hooks violation in `ImagePreviewSidebar` that could turn the app black when changing the active preview image, opening thumbnails, or navigating the image viewer.
 - **Arrow Key Event Propagation**: Enhanced arrow key navigation in `ImageModal` by preventing event propagation, resolving conflicts with other keyboard handlers that could interrupt navigation flow.
 
 ## [0.15.2] - 2026-04-24
