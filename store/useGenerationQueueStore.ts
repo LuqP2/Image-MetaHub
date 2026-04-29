@@ -124,12 +124,18 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
       updatedAt: now,
     };
 
-    set((current) => ({
-      items: [item, ...current.items].slice(0, MAX_ITEMS),
-      activeJobs: hasActive
-        ? current.activeJobs
-        : { ...current.activeJobs, [input.provider]: id },
-    }));
+    set((current) => {
+      const nextItems = [item, ...current.items];
+      const removedItems = nextItems.slice(MAX_ITEMS);
+      revokeGeneratedOutputUrls(removedItems);
+
+      return {
+        items: nextItems.slice(0, MAX_ITEMS),
+        activeJobs: hasActive
+          ? current.activeJobs
+          : { ...current.activeJobs, [input.provider]: id },
+      };
+    });
 
     return id;
   },

@@ -211,9 +211,6 @@ export const useHotkeys = ({
             if (result.success && clipboard.mode === 'move') {
               state.setClipboard(null);
             }
-            if (result.success && !destinationDirectory.autoWatch) {
-               handleLoadFromStorage().catch(console.error);
-            }
           } catch (err) {
             console.error('Paste failed:', err);
           }
