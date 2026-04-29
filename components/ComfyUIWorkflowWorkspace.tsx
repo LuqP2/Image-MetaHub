@@ -745,11 +745,12 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
       }
     }
 
+    const shouldUseWorkingWorkflowJson = activeTab === 'visual' || showAdvancedEditor;
     const resolvedAdvancedPromptJson = params.workflowMode === 'original'
-      ? (manualPromptJson || (workingPromptGraph ? JSON.stringify(workingPromptGraph) : ''))
+      ? (manualPromptJson || (shouldUseWorkingWorkflowJson && workingPromptGraph ? JSON.stringify(workingPromptGraph) : undefined))
       : undefined;
     const resolvedAdvancedWorkflowJson = params.workflowMode === 'original'
-      ? (manualWorkflowJson || (workingWorkflowUi ? JSON.stringify(workingWorkflowUi) : undefined))
+      ? (manualWorkflowJson || (shouldUseWorkingWorkflowJson && workingWorkflowUi ? JSON.stringify(workingWorkflowUi) : undefined))
       : undefined;
 
     await onGenerate({
@@ -1215,17 +1216,19 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
         </div>
       )}
 
-      {(status || validationError) && (
-        <div
-          className={`rounded-lg border px-3 py-2 text-sm ${
-            status?.success && !validationError
-              ? 'border-green-700/40 bg-green-500/10 text-green-200'
-              : 'border-red-700/40 bg-red-500/10 text-red-200'
-          }`}
-        >
-          {validationError || status?.message}
-        </div>
-      )}
+      <div className="min-h-[38px]">
+        {(status || validationError) && (
+          <div
+            className={`rounded-lg border px-3 py-2 text-sm ${
+              status?.success && !validationError
+                ? 'border-green-700/40 bg-green-500/10 text-green-200'
+                : 'border-red-700/40 bg-red-500/10 text-red-200'
+            }`}
+          >
+            {validationError || status?.message}
+          </div>
+        )}
+      </div>
 
       <div className="flex items-center justify-end gap-3">
         {showCancelButton && onCancel && (
