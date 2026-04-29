@@ -25,6 +25,7 @@ interface A1111ProgressResponse {
 export function useA1111Progress() {
   const [progressState, setProgressState] = useState<A1111ProgressState | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const clearProgressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const serverUrlRef = useRef<string>('');
   const totalImagesRef = useRef<number>(0);
 
@@ -54,10 +55,19 @@ export function useA1111Progress() {
       const overallProgress = totalImagesInBatch > 1
         ? (completedImages + currentImageProgress) / totalImagesInBatch
         : currentImageProgress;
+      const fallbackCurrentImage = totalImagesInBatch > 1
+        ? Math.min(
+            totalImagesInBatch,
+            Math.max(1, Math.floor(overallProgress * totalImagesInBatch) + 1)
+          )
+        : 1;
+      const displayCurrentImage = currentImageInBatch > 0
+        ? Math.min(currentImageInBatch + 1, totalImagesInBatch)
+        : fallbackCurrentImage;
 
       setProgressState({
         isGenerating: data.progress > 0 && data.progress < 1,
-        currentImage: currentImageInBatch + 1, // 1-indexed for display
+        currentImage: displayCurrentImage,
         totalImages: totalImagesInBatch,
         progress: overallProgress,
         currentStep: data.state.sampling_step || 0,
@@ -77,6 +87,10 @@ export function useA1111Progress() {
     // Stop any existing polling
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
+    }
+    if (clearProgressTimeoutRef.current) {
+      clearTimeout(clearProgressTimeoutRef.current);
+      clearProgressTimeoutRef.current = null;
     }
 
     serverUrlRef.current = serverUrl;
@@ -101,10 +115,14 @@ export function useA1111Progress() {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
     }
+    if (clearProgressTimeoutRef.current) {
+      clearTimeout(clearProgressTimeoutRef.current);
+    }
 
     // Keep the final state visible for 2 seconds before clearing
-    setTimeout(() => {
+    clearProgressTimeoutRef.current = setTimeout(() => {
       setProgressState(null);
+      clearProgressTimeoutRef.current = null;
     }, 2000);
   }, []);
 

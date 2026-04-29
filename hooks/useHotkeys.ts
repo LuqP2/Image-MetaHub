@@ -4,6 +4,9 @@ import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageSelection } from './useImageSelection';
 import { useImageLoader } from './useImageLoader';
+import { useFeatureAccess } from './useFeatureAccess';
+import { transferIndexedImages } from '../services/fileTransferService';
+import type { Directory } from '../types';
 
 interface HotkeyProps {
   isCommandPaletteOpen: boolean;
@@ -13,6 +16,39 @@ interface HotkeyProps {
   isSettingsModalOpen: boolean;
   setIsSettingsModalOpen: (isOpen: boolean) => void;
 }
+
+const normalizePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
+
+const getRelativePath = (rootPath: string, targetPath: string) => {
+  const normalizedRoot = normalizePath(rootPath);
+  const normalizedTarget = normalizePath(targetPath);
+  if (normalizedRoot === normalizedTarget) return '';
+  return normalizedTarget.startsWith(`${normalizedRoot}/`)
+    ? normalizedTarget.slice(normalizedRoot.length + 1)
+    : '';
+};
+
+const createTransferDestination = (directories: Directory[], destinationPath: string) => {
+  const normalizedDestination = normalizePath(destinationPath).toLowerCase();
+  const rootDirectory = directories
+    .filter((directory) => {
+      const normalizedRoot = normalizePath(directory.path).toLowerCase();
+      return normalizedDestination === normalizedRoot || normalizedDestination.startsWith(`${normalizedRoot}/`);
+    })
+    .sort((a, b) => b.path.length - a.path.length)[0];
+
+  if (!rootDirectory) return null;
+
+  const relativePath = getRelativePath(rootDirectory.path, destinationPath);
+  return {
+    ...rootDirectory,
+    path: destinationPath,
+    name: relativePath || rootDirectory.name,
+    rootDirectoryPath: rootDirectory.path,
+    destinationRelativePath: relativePath,
+    displayName: relativePath ? `${rootDirectory.name}/${relativePath}` : rootDirectory.name,
+  };
+};
 
 export const useHotkeys = ({
   isCommandPaletteOpen,
@@ -38,6 +74,7 @@ export const useHotkeys = ({
   const { handleDeleteSelectedImages } = useImageSelection();
   const { handleSelectFolder, handleLoadFromStorage } = useImageLoader();
   const { toggleViewMode, theme, setTheme, keymap } = useSettingsStore();
+  const { canUseFileManagement, showProModal } = useFeatureAccess();
 
   const focusArea = (area: 'sidebar' | 'grid' | 'preview') => {
     const selector = area === 'sidebar'
@@ -107,6 +144,80 @@ export const useHotkeys = ({
     hotkeyManager.registerAction('toggleListGridView', toggleViewMode);
     hotkeyManager.registerAction('navigatePrevious', handleNavigatePrevious);
     hotkeyManager.registerAction('navigateNext', handleNavigateNext);
+
+    hotkeyManager.registerAction('copyImages', () => {
+      const state = useImageStore.getState();
+      const imageIds = state.selectedImages.size > 0
+        ? Array.from(state.selectedImages)
+        : state.selectedImage
+          ? [state.selectedImage.id]
+          : [];
+      if (imageIds.length === 0) return;
+      if (!canUseFileManagement) {
+        showProModal('file_management');
+        return;
+      }
+      state.setClipboard({
+        imageIds,
+        mode: 'copy',
+      });
+      state.setSuccess(`${imageIds.length} image${imageIds.length === 1 ? '' : 's'} copied.`);
+    });
+
+    hotkeyManager.registerAction('cutImages', () => {
+      const state = useImageStore.getState();
+      const imageIds = state.selectedImages.size > 0
+        ? Array.from(state.selectedImages)
+        : state.selectedImage
+          ? [state.selectedImage.id]
+          : [];
+      if (imageIds.length === 0) return;
+      if (!canUseFileManagement) {
+        showProModal('file_management');
+        return;
+      }
+      state.setClipboard({
+        imageIds,
+        mode: 'move',
+      });
+      state.setSuccess(`${imageIds.length} image${imageIds.length === 1 ? '' : 's'} ready to move.`);
+    });
+
+    hotkeyManager.registerAction('pasteImages', () => {
+      (async () => {
+        if (!canUseFileManagement) {
+          showProModal('file_management');
+          return;
+        }
+        const state = useImageStore.getState();
+        const clipboard = state.clipboard;
+        if (!clipboard || clipboard.imageIds.length === 0) return;
+
+        const destPath = Array.from(state.selectedFolders)[0];
+        if (!destPath) {
+          state.setError('Select a destination folder before pasting images.');
+          return;
+        }
+
+        const destinationDirectory = createTransferDestination(state.directories, destPath);
+        const imagesToTransfer = state.images.filter(img => clipboard.imageIds.includes(img.id));
+        if (imagesToTransfer.length > 0 && destinationDirectory) {
+          try {
+            const result = await transferIndexedImages({
+              images: imagesToTransfer,
+              destinationDirectory,
+              mode: clipboard.mode,
+            });
+            if (result.success && clipboard.mode === 'move') {
+              state.setClipboard(null);
+            }
+          } catch (err) {
+            console.error('Paste failed:', err);
+          }
+        }
+      })();
+    });
+
     hotkeyManager.registerAction('closeModalsOrClearSelection', () => {
       if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
       else if (isHotkeyHelpOpen) setIsHotkeyHelpOpen(false);
@@ -157,6 +268,8 @@ export const useHotkeys = ({
     setSelectedImage,
     handleNavigatePrevious,
     handleNavigateNext,
+    canUseFileManagement,
+    showProModal,
     isCommandPaletteOpen,
     isHotkeyHelpOpen,
     isSettingsModalOpen,

@@ -49,6 +49,13 @@ import {
   recordPerformanceDuration,
 } from '../utils/performanceDiagnostics';
 
+// Module-level variable to track internal image drag state (survives native file drag)
+let _activeDragImageIds: string[] = [];
+let _activeExternalDragPayload: { directoryPath: string; relativePath: string } | null = null;
+let _nativeDragStarted = false;
+export const getActiveDragImageIds = () => _activeDragImageIds;
+export const clearActiveDragImageIds = () => { _activeDragImageIds = []; };
+
 interface ImageRenameResult {
   oldImageId: string;
   newImageId: string;
@@ -343,11 +350,40 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     const relativePath = relativeFromId || image.name;
 
     suppressNextClickRef.current = true;
-    e.preventDefault();
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'copy';
+    // Do NOT call e.preventDefault() — that kills HTML5 dragover/drop on page elements.
+    // Suppress the browser ghost image with a transparent pixel so the OS cursor
+    // from startFileDrag is the only visible indicator.
+    const transparentPixel = document.createElement('canvas');
+    transparentPixel.width = 1;
+    transparentPixel.height = 1;
+    e.dataTransfer.setDragImage(transparentPixel, 0, 0);
+    const currentSelectedImages = useImageStore.getState().selectedImages;
+    const imageIds = currentSelectedImages.has(image.id) ? Array.from(currentSelectedImages) : [image.id];
+    // Store in module-level variables so DirectoryList can consume internal drops.
+    _activeDragImageIds = imageIds;
+    _activeExternalDragPayload = { directoryPath, relativePath };
+    _nativeDragStarted = false;
+    e.dataTransfer.effectAllowed = 'copyMove';
+    try {
+      e.dataTransfer.setData('application/x-image-metahub-drag', JSON.stringify({ imageIds }));
+    } catch (_) { /* ignore in Electron native drag context */ }
+  };
+
+  const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!_activeExternalDragPayload || _nativeDragStarted || !window.electronAPI?.startFileDrag) {
+      return;
     }
-    window.electronAPI?.startFileDrag({ directoryPath, relativePath });
+
+    const hasLeftWindow =
+      e.clientX <= 0 ||
+      e.clientY <= 0 ||
+      e.clientX >= window.innerWidth - 1 ||
+      e.clientY >= window.innerHeight - 1;
+
+    if (hasLeftWindow) {
+      _nativeDragStarted = true;
+      window.electronAPI.startFileDrag(_activeExternalDragPayload);
+    }
   };
 
   const handleDragEnd = () => {
@@ -358,7 +394,11 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     dragResetTimeoutRef.current = window.setTimeout(() => {
       suppressNextClickRef.current = false;
       dragResetTimeoutRef.current = null;
-    }, 0);
+      // Clear drag IDs if not consumed by a drop handler
+      clearActiveDragImageIds();
+      _activeExternalDragPayload = null;
+      _nativeDragStarted = false;
+    }, 100);
   };
 
   const handlePointerLikeDown = (clientX: number, clientY: number, button: number) => {
@@ -445,6 +485,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
 
         onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
         onDragStart={handleDragStart}
+        onDrag={handleDrag}
         onDragEnd={handleDragEnd}
         draggable={canDragExternally}
       >

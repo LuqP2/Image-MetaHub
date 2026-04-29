@@ -24,6 +24,7 @@ import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import GenerationQueueSidebar from './components/GenerationQueueSidebar';
+import GeneratedOutputModal from './components/GeneratedOutputModal';
 import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
@@ -40,13 +41,14 @@ import BatchExportModal from './components/BatchExportModal';
 import CollectionFormModal, { CollectionFormValues } from './components/CollectionFormModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
+import { useGenerationQueueRunner } from './hooks/useGenerationQueueRunner';
 import {
   beginPerformanceFlow,
   createProfilerOnRender,
   finishPerformanceFlowAfterNextPaint,
   markPerformanceFlow,
 } from './utils/performanceDiagnostics';
-import { useGenerationQueueStore } from './store/useGenerationQueueStore';
+import { GeneratedQueueOutput, useGenerationQueueStore } from './store/useGenerationQueueStore';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './components/A1111GenerateModal';
@@ -186,6 +188,7 @@ export default function App() {
   // Data selectors
   const images = useImageStore((state) => state.images);
   const filteredImages = useImageStore((state) => state.filteredImages);
+  useGenerationQueueRunner({ images, filteredImages });
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
   const directories = useImageStore((state) => state.directories);
@@ -278,12 +281,12 @@ export default function App() {
   const createCollection = useImageStore((state) => state.createCollection);
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
 
-  const safeImages = Array.isArray(images) ? images : [];
-  const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
-  const safeClusterNavigationContext = Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [];
-  const safeActiveImageScope = Array.isArray(activeImageScope) ? activeImageScope : null;
-  const safeCollections = Array.isArray(collections) ? collections : [];
-  const safeDirectories = Array.isArray(directories) ? directories : [];
+  const safeImages = useMemo(() => Array.isArray(images) ? images : [], [images]);
+  const safeFilteredImages = useMemo(() => Array.isArray(filteredImages) ? filteredImages : [], [filteredImages]);
+  const safeClusterNavigationContext = useMemo(() => Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [], [clusterNavigationContext]);
+  const safeActiveImageScope = useMemo(() => Array.isArray(activeImageScope) ? activeImageScope : null, [activeImageScope]);
+  const safeCollections = useMemo(() => Array.isArray(collections) ? collections : [], [collections]);
+  const safeDirectories = useMemo(() => Array.isArray(directories) ? directories : [], [directories]);
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
   const hasDirectories = safeDirectories.length > 0;
   const directoryPathById = useMemo(
@@ -390,6 +393,12 @@ export default function App() {
   const [modelPromptPickerState, setModelPromptPickerState] = useState<{
     modelName: string;
     groups: ModelPromptOverlapGroup[];
+  } | null>(null);
+  const [generatedOutputPreview, setGeneratedOutputPreview] = useState<{
+    itemId: string;
+    outputs: GeneratedQueueOutput[];
+    initialIndex: number;
+    jobName?: string;
   } | null>(null);
   const lastOpenedModalImageIdRef = useRef<string | null>(null);
   const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
@@ -1596,6 +1605,87 @@ export default function App() {
     });
   }, [beginModalOpenFlow, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
 
+  const handleOpenImageModalFromGeneratedOutput = useCallback((imageId: string) => {
+    const image = getImageByIdFromStore(imageId);
+    if (!image) {
+      return;
+    }
+
+    const navigationSource = safeActiveImageScope ?? safeFilteredImages;
+    const navigationImageIds = navigationSource.map((entry) => entry.id);
+    const modalId = `image-modal-${Date.now()}-${image.id}`;
+    const existingModalForImage = openImageModals.find((modal) => modal.imageId === image.id);
+    const activeModalId = existingModalForImage?.modalId ?? modalId;
+
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const nextZIndex = highestZIndex + 1;
+      const existingModal = current.find((modal) => modal.imageId === image.id);
+
+      if (existingModal) {
+        return current.map((modal) =>
+          modal.modalId === existingModal.modalId
+            ? {
+                ...modal,
+                navigationImageIds,
+                navigationSource: safeActiveImageScope ? 'scope' : 'filtered',
+                zIndex: nextZIndex,
+                isMinimized: false,
+              }
+            : modal
+        );
+      }
+
+      return [
+        ...current,
+        {
+          modalId,
+          imageId: image.id,
+          navigationImageIds,
+          navigationSource: safeActiveImageScope ? 'scope' : 'filtered',
+          zIndex: nextZIndex,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(image.id, 'generated-output'),
+        },
+      ];
+    });
+
+    setActiveImageModalId(activeModalId);
+    setSelectedImage(image);
+    setGeneratedOutputPreview(null);
+  }, [beginModalOpenFlow, getImageByIdFromStore, openImageModals, safeActiveImageScope, safeFilteredImages, setSelectedImage]);
+
+  const resolveGeneratedOutputImageId = useCallback((output: GeneratedQueueOutput): string | undefined => {
+    if (output.imageId && getImageByIdFromStore(output.imageId)) {
+      return output.imageId;
+    }
+
+    if (!output.relativePath) {
+      return undefined;
+    }
+
+    const normalizeRelativePath = (value: string) => value.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+    const targetRelativePath = normalizeRelativePath(output.relativePath);
+    const matchedIds = new Set<string>();
+
+    for (const candidate of [...images, ...filteredImages]) {
+      const candidateRelativePath = normalizeRelativePath(candidate.id.split('::').slice(1).join('::') || candidate.name);
+      if (candidateRelativePath === targetRelativePath) {
+        matchedIds.add(candidate.id);
+      }
+    }
+
+    return matchedIds.size === 1 ? Array.from(matchedIds)[0] : undefined;
+  }, [filteredImages, getImageByIdFromStore, images]);
+
+  const enrichGeneratedOutputs = useCallback((outputs: GeneratedQueueOutput[]): GeneratedQueueOutput[] =>
+    outputs.map((output) => ({
+      ...output,
+      imageId: resolveGeneratedOutputImageId(output),
+    })),
+  [resolveGeneratedOutputImageId]);
+
   const handleGridImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
     if (event.button === 1) {
       event.preventDefault();
@@ -2085,12 +2175,31 @@ export default function App() {
           width={rightSidebarWidth}
           isResizing={isRightSidebarResizing}
           onResizeStart={handleRightSidebarResizeStart}
+          onOpenGeneratedOutputs={(item) => {
+            const outputs = enrichGeneratedOutputs(item.generatedOutputs || []);
+            setGeneratedOutputPreview({
+              itemId: item.id,
+              outputs,
+              initialIndex: 0,
+              jobName: item.imageName,
+            });
+          }}
         />
       ) : (
         <ImagePreviewSidebar
           width={rightSidebarWidth}
           isResizing={isRightSidebarResizing}
           onResizeStart={handleRightSidebarResizeStart}
+        />
+      )}
+
+      {generatedOutputPreview && (
+        <GeneratedOutputModal
+          outputs={generatedOutputPreview.outputs}
+          initialIndex={generatedOutputPreview.initialIndex}
+          jobName={generatedOutputPreview.jobName}
+          onOpenIndexedImage={handleOpenImageModalFromGeneratedOutput}
+          onClose={() => setGeneratedOutputPreview(null)}
         />
       )}
 

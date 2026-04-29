@@ -26,6 +26,9 @@ const hotkeysAllowedInTypingContext = new Set([
   'openQuickSettings',
   'openKeyboardShortcuts',
 ]);
+const hotkeysAllowedWithTextSelection = new Set([
+  'copyImages',
+]);
 
 // Track nested pause requests so overlapping modals do not resume hotkeys too early.
 let hotkeysPauseCount = 0;
@@ -68,6 +71,11 @@ const bindAllActions = () => {
       const isTypingContext = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
       if (isTypingContext && !hotkeysAllowedInTypingContext.has(action.id)) {
+        return;
+      }
+
+      const selectedText = window.getSelection()?.toString() ?? '';
+      if (!isTypingContext && selectedText.length > 0 && hotkeysAllowedWithTextSelection.has(action.id)) {
         return;
       }
 

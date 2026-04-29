@@ -2963,15 +2963,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </button>
 
               {/* Status messages */}
-              {(copyStatus || generateStatus) && (
-                <div className={`mt-2 p-2 rounded text-xs ${
-                  (copyStatus?.success || generateStatus?.success)
-                    ? 'bg-green-900/50 border border-green-700 text-green-300'
-                    : 'bg-red-900/50 border border-red-700 text-red-300'
-                }`}>
-                  {copyStatus?.message || generateStatus?.message}
-                </div>
-              )}
+              <div className="mt-2 min-h-[34px]">
+                {(copyStatus || generateStatus) && (
+                  <div className={`p-2 rounded text-xs ${
+                    (copyStatus?.success || generateStatus?.success)
+                      ? 'bg-green-900/50 border border-green-700 text-green-300'
+                      : 'bg-red-900/50 border border-red-700 text-red-300'
+                  }`}>
+                    {copyStatus?.message || generateStatus?.message}
+                  </div>
+                )}
+              </div>
 
               {/* Generate Variation Modal */}
               {showA1111Actions && isGenerateModalOpen && effectiveMetadata && (
@@ -3053,15 +3055,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </button>
 
               {/* Status messages */}
-              {(copyStatusComfyUI || generateStatusComfyUI) && (
-                <div className={`mt-2 p-2 rounded text-xs ${
-                  (copyStatusComfyUI?.success || generateStatusComfyUI?.success)
-                    ? 'bg-green-900/50 border border-green-700 text-green-300'
-                    : 'bg-red-900/50 border border-red-700 text-red-300'
-                }`}>
-                  {copyStatusComfyUI?.message || generateStatusComfyUI?.message}
-                </div>
-              )}
+              <div className="mt-2 min-h-[34px]">
+                {(copyStatusComfyUI || generateStatusComfyUI) && (
+                  <div className={`p-2 rounded text-xs ${
+                    (copyStatusComfyUI?.success || generateStatusComfyUI?.success)
+                      ? 'bg-green-900/50 border border-green-700 text-green-300'
+                      : 'bg-red-900/50 border border-red-700 text-red-300'
+                  }`}>
+                    {copyStatusComfyUI?.message || generateStatusComfyUI?.message}
+                  </div>
+                )}
+              </div>
 
             </div>
           )}
@@ -3163,7 +3167,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   }}
                   isGenerating={isGeneratingComfyUI}
                   status={generateStatusComfyUI}
-                  defaultTab="visual"
+                  defaultTab="parameters"
                   viewportHeight={showSidebarOnBottom ? 420 : 520}
                   showCancelButton={false}
                 />
