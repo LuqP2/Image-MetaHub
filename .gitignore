@@ -6,6 +6,7 @@ test-*.ts
 debug-*.js
 debug-*.md
 simulate-*.js
+scripts/debug-license-packaged.md
 
 # Logs
 logs

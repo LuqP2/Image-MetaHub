@@ -98,6 +98,7 @@ interface ImageModalProps {
   isMinimized?: boolean;
   onMinimize?: () => void;
   startSlideshow?: boolean;
+  closeOnSlideshowExit?: boolean;
   diagnosticsFlowId?: string | null;
   onSlideshowStartAcknowledged?: () => void;
 }
@@ -456,7 +457,8 @@ const VideoPlayer: React.FC<{
   onLoadedMetadata?: React.ReactEventHandler<HTMLVideoElement>;
   onCanPlay?: React.ReactEventHandler<HTMLVideoElement>;
   onPlaying?: React.ReactEventHandler<HTMLVideoElement>;
-}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying }) => {
+  onEnded?: React.ReactEventHandler<HTMLVideoElement>;
+}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying, onEnded }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   
@@ -564,7 +566,10 @@ const VideoPlayer: React.FC<{
         onPlaying={onPlaying}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
-        onEnded={() => setIsPlaying(false)}
+        onEnded={(event) => {
+          setIsPlaying(false);
+          onEnded?.(event);
+        }}
       />
 
       {/* Center Play Button Overlay (only when paused and not hovering controls) */}
@@ -657,6 +662,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   isMinimized = false,
   onMinimize,
   startSlideshow = false,
+  closeOnSlideshowExit = false,
   diagnosticsFlowId,
   onSlideshowStartAcknowledged,
 }) => {
@@ -667,6 +673,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSlideshowMode, setIsSlideshowMode] = useState(false);
   const [isSlideshowPlaying, setIsSlideshowPlaying] = useState(false);
+  const [slideshowVideoDuration, setSlideshowVideoDuration] = useState<number | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
     y: 0,
@@ -705,6 +712,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const modalWindowRef = useRef<ModalWindowState>(modalWindow);
   const liveModalWindowRef = useRef<ModalWindowState>(modalWindow);
   const modalPaintFrameRef = useRef<number | null>(null);
+  const slideshowTimeoutRef = useRef<number | null>(null);
   const restoredModalWindowRef = useRef<ModalWindowState | null>(null);
   const isMinimizeAnimatingRef = useRef(false);
   const wasMinimizedRef = useRef(isMinimized);
@@ -717,6 +725,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const hasMarkedModalShellRef = useRef(false);
   const hasMarkedPreviewVisibleRef = useRef(false);
   const hasMarkedFullMediaReadyRef = useRef(false);
+  const isFullViewportModal = isFullscreen || isSlideshowMode;
 
   useEffect(() => {
     if (!isMinimized) {
@@ -860,7 +869,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
   const toggleFullscreenKeybinding = previewKeymap?.toggleFullscreenInViewer || 'alt+enter';
   const isWindowInteractionActive = modalInteraction.mode !== 'idle';
-  const showSidebar = !isFullscreen && !isSidebarCollapsed;
+  const showSidebar = !isFullViewportModal && !isSidebarCollapsed;
   const showSidebarOnBottom = showSidebar && detailsPlacement === 'bottom';
   const showSidebarOnRight = showSidebar && detailsPlacement === 'right';
   const imageFullPath = directoryPath
@@ -904,7 +913,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [contextMenu.visible]);
 
   const applyModalWindowStyles = useCallback((windowState: ModalWindowState) => {
-    if (isFullscreen || !modalShellRef.current) {
+    if (isFullViewportModal || !modalShellRef.current) {
       return;
     }
 
@@ -912,7 +921,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     modalShellRef.current.style.top = `${windowState.y}px`;
     modalShellRef.current.style.width = `${windowState.width}px`;
     modalShellRef.current.style.height = `${windowState.height}px`;
-  }, [isFullscreen]);
+  }, [isFullViewportModal]);
 
   const scheduleModalWindowPaint = useCallback((windowState: ModalWindowState) => {
     liveModalWindowRef.current = windowState;
@@ -933,10 +942,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (result.success) {
         setIsFullscreen(result.isFullscreen ?? nextIsFullscreen);
       }
-      return;
-    }
-
-    if (nextIsFullscreen === isFullscreen) {
       return;
     }
 
@@ -1054,6 +1059,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     onSlideshowStartAcknowledged?.();
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    setSlideshowVideoDuration(null);
     setIsSlideshowMode(true);
     setIsSlideshowPlaying(totalImages > 1);
     setFullscreenMode(true).catch((error) => {
@@ -1077,7 +1083,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isFullscreen) {
+    if (isFullViewportModal) {
       return;
     }
 
@@ -1092,10 +1098,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isFullscreen, isWindowMaximized]);
+  }, [isFullViewportModal, isWindowMaximized]);
 
   useEffect(() => {
-    if (isFullscreen || modalInteraction.mode === 'idle') {
+    if (isFullViewportModal || modalInteraction.mode === 'idle') {
       return;
     }
 
@@ -1211,7 +1217,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [applyModalWindowStyles, isFullscreen, modalInteraction, scheduleModalWindowPaint]);
+  }, [applyModalWindowStyles, isFullViewportModal, modalInteraction, scheduleModalWindowPaint]);
 
   const nMeta: BaseMetadata | undefined = liveImage.metadata?.normalizedMetadata;
   const canFindSimilar = Boolean(nMeta?.prompt) && Boolean(onFindSimilar);
@@ -1249,7 +1255,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [nMeta, showComfyUIActions]);
 
   const beginWindowDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (isFullscreen || isWindowMaximized || event.button !== 0) {
+    if (isFullViewportModal || isWindowMaximized || event.button !== 0) {
       return;
     }
 
@@ -1262,7 +1268,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       initialX: currentWindow.x,
       initialY: currentWindow.y,
     });
-  }, [isFullscreen, isWindowMaximized]);
+  }, [isFullViewportModal, isWindowMaximized]);
 
   const shouldStartWindowDrag = useCallback((target: EventTarget | null) => {
     if (!(target instanceof Element)) {
@@ -1300,13 +1306,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const handleImageContainerPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     revealMediaOverlay();
 
-    if (!isFullscreen) {
+    if (!isFullViewportModal) {
       handleWindowSurfacePointerDown(event);
     }
-  }, [handleWindowSurfacePointerDown, isFullscreen, revealMediaOverlay]);
+  }, [handleWindowSurfacePointerDown, isFullViewportModal, revealMediaOverlay]);
 
   const beginWindowResize = useCallback((direction: 'top' | 'right' | 'bottom' | 'left' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right') => (event: React.PointerEvent<HTMLDivElement>) => {
-    if (isFullscreen || isWindowMaximized || event.button !== 0) {
+    if (isFullViewportModal || isWindowMaximized || event.button !== 0) {
       return;
     }
 
@@ -1323,7 +1329,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       initialX: currentWindow.x,
       initialY: currentWindow.y,
     });
-  }, [isFullscreen, isWindowMaximized]);
+  }, [isFullViewportModal, isWindowMaximized]);
 
   const toggleWindowMaximize = useCallback(() => {
     if (isWindowMaximized) {
@@ -1522,8 +1528,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    setSlideshowVideoDuration(null);
     revealMediaOverlay();
   }, [image.id, revealMediaOverlay]);
+
+  useEffect(() => {
+    if (!isSlideshowMode) {
+      return;
+    }
+
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [image.id, isSlideshowMode]);
 
   useEffect(() => {
     setZoom(1);
@@ -1605,6 +1621,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setZoom(1);
     setPan({ x: 0, y: 0 });
   };
+
+  const clearSlideshowTimer = useCallback(() => {
+    if (typeof window === 'undefined' || slideshowTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(slideshowTimeoutRef.current);
+    slideshowTimeoutRef.current = null;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -1694,14 +1719,29 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [image.id, setImageRating]);
 
   const exitSlideshow = useCallback(() => {
+    clearSlideshowTimer();
     setIsSlideshowMode(false);
     setIsSlideshowPlaying(false);
-    if (isFullscreen) {
-      setFullscreenMode(false).catch((error) => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+
+    setFullscreenMode(false)
+      .catch((error) => {
         console.error('Failed to exit slideshow fullscreen:', error);
+      })
+      .finally(() => {
+        if (!closeOnSlideshowExit) {
+          return;
+        }
+
+        if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+          window.requestAnimationFrame(() => onClose());
+          return;
+        }
+
+        onClose();
       });
-    }
-  }, [isFullscreen, setFullscreenMode]);
+  }, [clearSlideshowTimer, closeOnSlideshowExit, onClose, setFullscreenMode]);
 
   const focusTagInput = useCallback(async () => {
     const focusInput = () => {
@@ -1744,25 +1784,50 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
+    const intervalDelayMs = slideshowIntervalSeconds * 1000;
+    const videoDelayMs = isVideo && slideshowVideoDuration && Number.isFinite(slideshowVideoDuration)
+      ? (slideshowVideoDuration + 0.5) * 1000
+      : 0;
+    const delayMs = Math.max(intervalDelayMs, videoDelayMs);
+
+    clearSlideshowTimer();
+    slideshowTimeoutRef.current = window.setTimeout(() => {
+      slideshowTimeoutRef.current = null;
       if (currentIndex >= totalImages - 1) {
         setIsSlideshowPlaying(false);
         return;
       }
 
       onNavigateNext?.();
-    }, slideshowIntervalSeconds * 1000);
+    }, delayMs);
 
-    return () => window.clearTimeout(timeoutId);
+    return clearSlideshowTimer;
   }, [
+    clearSlideshowTimer,
     currentIndex,
     isActive,
     isSlideshowMode,
     isSlideshowPlaying,
+    isVideo,
     onNavigateNext,
     slideshowIntervalSeconds,
+    slideshowVideoDuration,
     totalImages,
   ]);
+
+  const handleSlideshowVideoEnded = useCallback(() => {
+    if (!isSlideshowMode || !isSlideshowPlaying) {
+      return;
+    }
+
+    clearSlideshowTimer();
+    if (currentIndex >= totalImages - 1) {
+      setIsSlideshowPlaying(false);
+      return;
+    }
+
+    onNavigateNext?.();
+  }, [clearSlideshowTimer, currentIndex, isSlideshowMode, isSlideshowPlaying, onNavigateNext, totalImages]);
 
   const handleDelete = useCallback(async () => {
     if (isIndexing) {
@@ -1926,8 +1991,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   useEffect(() => {
     return () => {
       clearMediaOverlayHideTimer();
+      clearSlideshowTimer();
     };
-  }, [clearMediaOverlayHideTimer]);
+  }, [clearMediaOverlayHideTimer, clearSlideshowTimer]);
 
   useEffect(() => {
     if (!sidebarResizeState || typeof window === 'undefined') {
@@ -2086,16 +2152,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
     <React.Profiler id="ImageModal" onRender={modalProfilerOnRender}>
     <div
       className={`fixed inset-0 transition-all duration-300 ${
-        isFullscreen ? 'pointer-events-auto bg-black' : 'pointer-events-none'
+        isFullViewportModal ? 'pointer-events-auto bg-black' : 'pointer-events-none'
       }`}
-      style={{ zIndex }}
-      onClick={isFullscreen ? onClose : undefined}
+      style={{ zIndex: isFullViewportModal ? Math.max(zIndex, 9999) : zIndex }}
+      onClick={isFullscreen && !isSlideshowMode ? onClose : undefined}
     >
       <div
         ref={modalShellRef}
         className={`${
-          isFullscreen 
-            ? 'fixed inset-0 h-full w-full rounded-none'
+          isFullViewportModal
+            ? 'fixed inset-0 z-[9999] h-screen w-screen rounded-none bg-black'
             : `fixed bg-gray-900 border rounded-2xl overflow-hidden ${modalShellStateClass}`
         } pointer-events-auto flex flex-col ${modalEntryAnimationClass} ${isWindowInteractionActive ? 'select-none' : ''}`}
         onPointerDown={() => onActivate?.()}
@@ -2104,7 +2170,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           hideContextMenu();
         }}
         style={
-          isFullscreen
+          isFullViewportModal
             ? undefined
             : {
                 left: `${modalWindow.x}px`,
@@ -2115,7 +2181,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               }
         }
       >
-        {!isFullscreen && (
+        {!isFullViewportModal && (
           <div
             className={`flex items-center justify-between gap-3 border-b px-4 py-1.5 backdrop-blur-sm cursor-move transition-colors duration-150 ${titleBarStateClass}`}
             onPointerDown={handleWindowSurfacePointerDown}
@@ -2238,14 +2304,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
         <div
           ref={imageContainerRef}
           className={`w-full ${
-            isFullscreen
+            isFullViewportModal
               ? 'h-full'
               : !showSidebar
                 ? 'h-full'
               : showSidebarOnBottom
                 ? 'min-h-[280px] flex-1'
                 : 'h-full flex-1 min-w-0'
-          } bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
+          } bg-black flex items-center justify-center ${isFullViewportModal ? 'p-0' : 'p-2'} relative group overflow-hidden`}
           onPointerDown={handleImageContainerPointerDown}
           onPointerMove={revealMediaOverlay}
           onMouseDown={isPlayableMedia ? undefined : handleMouseDown}
@@ -2285,7 +2351,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   src={imageUrl}
                   poster={preferredThumbnailUrl ?? undefined}
                   onContextMenu={handleContextMenu}
-                  onLoadedMetadata={() => markPerformanceFlow(diagnosticsFlowId, 'video-loadedmetadata', { imageId: image.id })}
+                  onLoadedMetadata={(event) => {
+                    const duration = event.currentTarget.duration;
+                    setSlideshowVideoDuration(Number.isFinite(duration) && duration > 0 ? duration : null);
+                    markPerformanceFlow(diagnosticsFlowId, 'video-loadedmetadata', { imageId: image.id });
+                  }}
                   onCanPlay={() => markPerformanceFlow(diagnosticsFlowId, 'video-canplay', { imageId: image.id })}
                   onPlaying={() => {
                     if (!hasMarkedFullMediaReadyRef.current) {
@@ -2298,6 +2368,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       });
                     }
                   }}
+                  onEnded={handleSlideshowVideoEnded}
                 />
               </div>
             ) : (
@@ -2431,6 +2502,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           )}
 
+          {!isSlideshowMode && (
           <div data-no-window-drag="true" className={`absolute top-4 right-4 z-30 flex items-end gap-2 transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
             {isFullscreen ? (
               <div className="flex flex-row items-center gap-2">
@@ -2476,6 +2548,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Metadata Panel */}
@@ -3179,7 +3252,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         )}
         </div>
 
-        {!isFullscreen && (
+        {!isFullViewportModal && (
           <>
             <div
               className="absolute inset-x-5 top-0 h-1.5 cursor-ns-resize bg-transparent"
@@ -3518,6 +3591,7 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.initialWindowState?.height === nextProps.initialWindowState?.height &&
     prevProps.isMinimized === nextProps.isMinimized &&
     prevProps.startSlideshow === nextProps.startSlideshow &&
+    prevProps.closeOnSlideshowExit === nextProps.closeOnSlideshowExit &&
     prevProps.diagnosticsFlowId === nextProps.diagnosticsFlowId;
 
   return propsEqual;
