@@ -72,6 +72,7 @@ interface OpenImageModalState {
   diagnosticsFlowId?: string | null;
   windowState?: ImageModalWindowState;
   startSlideshow?: boolean;
+  closeOnSlideshowExit?: boolean;
 }
 
 interface ImageModalWindowState {
@@ -1853,6 +1854,7 @@ export default function App() {
                 zIndex: nextZIndex,
                 isMinimized: false,
                 startSlideshow: true,
+                closeOnSlideshowExit: false,
               }
             : modal
         );
@@ -1870,6 +1872,7 @@ export default function App() {
           isMinimized: false,
           diagnosticsFlowId: beginModalOpenFlow(firstImage.id, 'slideshow'),
           startSlideshow: true,
+          closeOnSlideshowExit: true,
         },
       ];
     });
@@ -2500,6 +2503,7 @@ export default function App() {
             isMinimized={modal.isMinimized}
             onMinimize={() => handleMinimizeImageModal(modal.modalId)}
             startSlideshow={modal.startSlideshow}
+            closeOnSlideshowExit={modal.closeOnSlideshowExit}
             diagnosticsFlowId={modal.diagnosticsFlowId}
             onSlideshowStartAcknowledged={() => handleSlideshowStartAcknowledged(modal.modalId)}
             onFindSimilar={(image) => openFindSimilar(image, modal.navigationImages)}
