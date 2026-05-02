@@ -3059,10 +3059,30 @@ function setupFileOperationHandlers() {
     }
   });
 
-  // Handle open cache location (without security restrictions since it's app's internal cache)
+  // Handle open cache location
   ipcMain.handle('open-cache-location', async (event, cachePath) => {
     try {
+      if (!cachePath) {
+        return { success: false, error: 'No cache path provided' };
+      }
+
       const normalizedCachePath = path.normalize(cachePath);
+      const securityPath = normalizeAllowedPath(normalizedCachePath);
+      const cacheRoot = await getCacheRootPath();
+      const normalizedCacheRoot = normalizeAllowedPath(cacheRoot);
+
+      const isAllowed =
+        isAllowedOrInternal(securityPath) ||
+        isApprovedWritePath(securityPath) ||
+        isSameOrChildPath(securityPath, normalizedCacheRoot);
+
+      if (!isAllowed) {
+        console.error('SECURITY VIOLATION: Attempted to open unauthorized cache location.');
+        console.error('  Requested path:', cachePath);
+        console.error('  Normalized path:', securityPath);
+        return { success: false, error: 'Access denied' };
+      }
+
       const parentPath = path.dirname(normalizedCachePath);
       console.log('📂 Opening cache parent directory:', parentPath);
 
