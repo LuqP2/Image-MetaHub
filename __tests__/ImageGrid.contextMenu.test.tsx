@@ -1,13 +1,14 @@
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageGrid from '../components/ImageGrid';
 import { useImageSelection } from '../hooks/useImageSelection';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import type { IndexedImage } from '../types';
+import type { ImageStack, IndexedImage } from '../types';
 
 const renameIndexedImageMock = vi.hoisted(() => vi.fn());
+const stackedItemsMock = vi.hoisted(() => ({ value: null as (IndexedImage | ImageStack)[] | null }));
 const showContextMenuMock = vi.fn();
 const hideContextMenuMock = vi.fn();
 const contextMenuStateMock = {
@@ -34,6 +35,11 @@ vi.mock('../hooks/useContextMenu', () => ({
     copyRawMetadata: vi.fn(),
     addTag: vi.fn(),
   }),
+}));
+
+vi.mock('react-virtualized-auto-sizer', () => ({
+  default: ({ children }: { children: (size: { height: number; width: number }) => React.ReactNode }) =>
+    children({ height: 600, width: 408 }),
 }));
 
 vi.mock('../services/imageRenameService', () => ({
@@ -97,7 +103,7 @@ vi.mock('../hooks/useFeatureAccess', () => ({
 
 vi.mock('../hooks/useImageStacking', () => ({
   useImageStacking: (images: IndexedImage[]) => ({
-    stackedItems: images,
+    stackedItems: stackedItemsMock.value ?? images,
   }),
 }));
 
@@ -140,6 +146,14 @@ const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
   ...overrides,
 });
 
+const createImages = (count: number): IndexedImage[] =>
+  Array.from({ length: count }, (_, index) =>
+    createImage({
+      id: `img-${index}`,
+      name: `image-${index}.png`,
+    }),
+  );
+
 const Harness = ({ images, onFindSimilar }: { images: IndexedImage[]; onFindSimilar?: (image: IndexedImage) => void }) => {
   const selectedImages = useImageStore((state) => state.selectedImages);
 
@@ -155,6 +169,28 @@ const Harness = ({ images, onFindSimilar }: { images: IndexedImage[]; onFindSimi
       onFindSimilar={onFindSimilar}
     />
   );
+};
+
+const setupImageGridState = (images: IndexedImage[], focusedImageIndex: number | null = null) => {
+  useImageStore.setState({
+    images,
+    filteredImages: images,
+    directories: [{ id: 'dir-1', path: 'D:/library' }],
+    selectedImages: new Set(),
+    isStackingEnabled: false,
+    focusedImageIndex,
+    previewImage: focusedImageIndex != null && focusedImageIndex >= 0 ? images[focusedImageIndex] : null,
+    transferProgress: null,
+    filterAndSortImages: vi.fn(),
+  } as any);
+};
+
+const focusGridAndPress = (container: HTMLElement, key: string) => {
+  const grid = container.querySelector<HTMLElement>('[data-area="grid"]');
+  expect(grid).toBeTruthy();
+
+  fireEvent.focus(grid!);
+  fireEvent.keyDown(document, { key });
 };
 
 const SelectionHarness = ({ images }: { images: IndexedImage[] }) => {
@@ -176,7 +212,9 @@ const SelectionHarness = ({ images }: { images: IndexedImage[] }) => {
 
 describe('ImageGrid context menu', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     showContextMenuMock.mockReset();
+    stackedItemsMock.value = null;
     hideContextMenuMock.mockReset();
     renameIndexedImageMock.mockReset();
     renameIndexedImageMock.mockResolvedValue({
@@ -199,6 +237,10 @@ describe('ImageGrid context menu', () => {
       blurSensitiveImages: false,
       enableSafeMode: false,
     } as any);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('keeps multi-selection when right-clicking an image and opens the context menu', () => {
@@ -258,6 +300,133 @@ describe('ImageGrid context menu', () => {
 
     expect(useImageStore.getState().focusedImageIndex).toBe(0);
     expect(useImageStore.getState().previewImage?.id).toBe('img-1');
+  });
+
+  it('establishes focus on the first rendered image when pressing ArrowDown without current focus', () => {
+    const images = createImages(6);
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images);
+
+    const { container } = render(<Harness images={images} />);
+
+    focusGridAndPress(container, 'ArrowDown');
+
+    expect(useImageStore.getState().focusedImageIndex).toBe(0);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-0');
+  });
+
+  it('moves down and up by the rendered column count', () => {
+    const images = createImages(7);
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images, 1);
+
+    const { container } = render(<Harness images={images} />);
+
+    focusGridAndPress(container, 'ArrowDown');
+    expect(useImageStore.getState().focusedImageIndex).toBe(4);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-4');
+
+    focusGridAndPress(container, 'ArrowUp');
+    expect(useImageStore.getState().focusedImageIndex).toBe(1);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-1');
+  });
+
+  it('moves Home to the first image and End to the last rendered image', () => {
+    const images = createImages(6);
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images, 3);
+
+    const { container } = render(<Harness images={images} />);
+
+    focusGridAndPress(container, 'Home');
+    expect(useImageStore.getState().focusedImageIndex).toBe(0);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-0');
+
+    focusGridAndPress(container, 'End');
+    expect(useImageStore.getState().focusedImageIndex).toBe(5);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-5');
+  });
+
+  it('clamps ArrowDown to the last image when navigating from the last partial row', () => {
+    const images = createImages(8);
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images, 5);
+
+    const { container } = render(<Harness images={images} />);
+
+    focusGridAndPress(container, 'ArrowDown');
+
+    expect(useImageStore.getState().focusedImageIndex).toBe(7);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-7');
+  });
+
+  it('defers preview updates during repeated keyboard navigation and flushes on keyup', () => {
+    vi.useFakeTimers();
+    const images = createImages(7);
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images, 1);
+
+    const { container } = render(<Harness images={images} />);
+    const grid = container.querySelector<HTMLElement>('[data-area="grid"]');
+    expect(grid).toBeTruthy();
+
+    fireEvent.focus(grid!);
+    fireEvent.keyDown(document, { key: 'ArrowDown', repeat: true });
+
+    expect(useImageStore.getState().focusedImageIndex).toBe(4);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-1');
+
+    fireEvent.keyUp(document, { key: 'ArrowDown' });
+
+    expect(useImageStore.getState().previewImage?.id).toBe('img-4');
+  });
+
+  it('navigates stack cards by rendered position while storing the stack cover image index', () => {
+    const images = createImages(5);
+    const onImageClick = vi.fn();
+    const firstStack: ImageStack = {
+      id: 'stack-img-0',
+      coverImage: images[0],
+      images: [images[0], images[1]],
+      count: 2,
+    };
+    const secondStack: ImageStack = {
+      id: 'stack-img-3',
+      coverImage: images[3],
+      images: [images[3], images[4]],
+      count: 2,
+    };
+    stackedItemsMock.value = [firstStack, images[2], secondStack];
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images, 0);
+    useImageStore.setState({ isStackingEnabled: true } as any);
+
+    const { container } = render(
+      <ImageGrid
+        images={images}
+        onImageClick={onImageClick}
+        selectedImages={useImageStore.getState().selectedImages}
+        currentPage={1}
+        totalPages={1}
+        onPageChange={vi.fn()}
+        onBatchExport={vi.fn()}
+      />,
+    );
+
+    focusGridAndPress(container, 'ArrowRight');
+    expect(useImageStore.getState().focusedImageIndex).toBe(2);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-2');
+
+    focusGridAndPress(container, 'ArrowRight');
+    expect(useImageStore.getState().focusedImageIndex).toBe(3);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-3');
+    expect(
+      Array.from(container.querySelectorAll<HTMLElement>('[data-image-id="img-3"]'))
+        .some((element) => element.className.includes('outline-blue-400')),
+    ).toBe(true);
+
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(onImageClick).toHaveBeenCalledWith(images[3], expect.any(Object));
   });
 
   it('renames a thumbnail inline after double-clicking the filename', async () => {

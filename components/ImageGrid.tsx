@@ -155,6 +155,9 @@ const collectWarmupImages = (
   return images;
 };
 
+const getWarmupWindowImageKey = (images: IndexedImage[]): string =>
+  images.map((image) => image.id).join('|');
+
 const visibleGridThumbnailFlows = new Map<string, string>();
 
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, onRenameComplete, isRenaming = false, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
@@ -432,7 +435,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       <div
         ref={mergedRef}
         data-image-id={image.id}
-        className={`relative group flex items-center justify-center bg-gray-800 rounded-xl overflow-hidden cursor-pointer transition-all duration-300 ease-out border border-gray-700/50 ${
+        className={`relative group flex items-center justify-center bg-gray-800 rounded-xl overflow-hidden cursor-pointer border border-gray-700/50 ${
           isSelected 
             ? 'ring-4 ring-blue-500 ring-opacity-75 shadow-lg shadow-blue-500/20 translate-y-[-2px]' 
             : 'hover:shadow-2xl hover:shadow-black/50 hover:border-gray-600 hover:translate-y-[-4px]'
@@ -712,13 +715,18 @@ const FILENAME_HEIGHT = 40;
 const getItemHeight = (imageSize: number, showFilenames: boolean): number =>
   (imageSize * CARD_HEIGHT_RATIO) + (showFilenames ? FILENAME_HEIGHT : 0);
 
+const clampIndex = (index: number, itemCount: number): number =>
+  Math.max(0, Math.min(itemCount - 1, index));
+
+const KEYBOARD_NAVIGATION_KEYS = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'];
+
 interface CellData {
   items: (IndexedImage | ImageStack)[];
   columnCount: number;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   onStackClick: (stack: ImageStack) => void;
   selectedImages: Set<string>;
-  focusedImageIndex: number | null;
+  focusedImageId: string | null;
   imageSize: number;
   handleImageLoad: (id: string, aspectRatio: number) => void;
   handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -742,7 +750,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     onImageClick,
     onStackClick,
     selectedImages,
-    focusedImageIndex,
+    focusedImageId,
     imageSize,
     handleImageLoad,
     handleContextMenu,
@@ -797,7 +805,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               }}
               enableAuxClickOpen={false}
               isSelected={selectedImages.has(item.coverImage.id)}
-              isFocused={false}
+              isFocused={item.images.some(stackImage => stackImage.id === focusedImageId)}
               onImageLoad={handleImageLoad}
               onContextMenu={(img, e) => handleContextMenu(img, e)}
               onRenameRequest={handleRenameRequest}
@@ -805,7 +813,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               isRenaming={renamingImageId === item.coverImage.id}
               baseWidth={imageSize}
               isComparisonFirst={false}
-              cardRef={createCardRef(item.id)}
+              cardRef={createCardRef(item.coverImage.id)}
               isMarkedBest={markedBestIds?.has(item.coverImage.id)}
               isMarkedArchived={markedArchivedIds?.has(item.coverImage.id)}
               isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
@@ -824,7 +832,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
   }
 
   const image = item;
-  const isFocused = focusedImageIndex === index;
+  const isFocused = image.id === focusedImageId;
   const isSensitive = enableSafeMode &&
     sensitiveTagSet && sensitiveTagSet.size > 0 &&
     !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
@@ -918,6 +926,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const lastWarmupWindowRef = useRef<string>('');
   const releasePaginatedBackgroundPauseRef = useRef<(() => void) | null>(null);
   const lastScrollSampleRef = useRef<{ top: number; at: number }>({ top: 0, at: 0 });
+  const focusedImageIndexRef = useRef<number | null>(null);
+  const pendingKeyboardPreviewRef = useRef<IndexedImage | null>(null);
+  const pendingPageBoundaryFocusRef = useRef<'first' | 'last' | null>(null);
 
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
@@ -999,6 +1010,66 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const submenuHorizontalClass = contextMenu.horizontalDirection === 'left' ? 'right-full' : 'left-full';
 
   const getGridScrollElement = useCallback(() => gridScrollRef.current ?? gridScopeRef.current, []);
+
+  const getActiveColumnCount = useCallback(() => {
+    if (isInfinite) {
+      return Math.max(1, columnCountRef.current || 1);
+    }
+
+    const gridBackground = gridScopeRef.current?.querySelector<HTMLElement>('[data-grid-background]');
+    const measuredWidth = gridBackground?.clientWidth ?? gridScopeRef.current?.clientWidth ?? 0;
+    const measuredColumnCount = Math.floor((measuredWidth + GAP_SIZE) / (imageSize + GAP_SIZE));
+    return Math.max(1, measuredColumnCount || columnCountRef.current || 1);
+  }, [imageSize, isInfinite]);
+
+  const getRenderedIndexForImageIndex = useCallback((imageIndex: number | null): number => {
+    if (imageIndex == null || imageIndex < 0) {
+      return -1;
+    }
+
+    const focusedImage = images[imageIndex];
+    if (!focusedImage) {
+      return -1;
+    }
+
+    return itemsToRender.findIndex((item) =>
+      isImageStack(item)
+        ? item.images.some((stackImage) => stackImage.id === focusedImage.id)
+        : item.id === focusedImage.id
+    );
+  }, [images, itemsToRender]);
+
+  const getImageIndexForRenderedItem = useCallback((item: IndexedImage | ImageStack): number => {
+    const itemImage = getWarmupImage(item);
+    return images.findIndex((image) => image.id === itemImage.id);
+  }, [images]);
+
+  useEffect(() => {
+    focusedImageIndexRef.current = focusedImageIndex;
+  }, [focusedImageIndex]);
+
+  useEffect(() => {
+    const pendingFocus = pendingPageBoundaryFocusRef.current;
+    if (!pendingFocus || images.length === 0 || !gridKeyboardActiveRef.current) {
+      return;
+    }
+
+    const nextIndex = pendingFocus === 'first' ? 0 : images.length - 1;
+    pendingPageBoundaryFocusRef.current = null;
+    focusedImageIndexRef.current = nextIndex;
+    setFocusedImageIndex(nextIndex);
+    setPreviewImage(images[nextIndex]);
+  }, [images, setFocusedImageIndex, setPreviewImage]);
+
+  const flushKeyboardPreview = useCallback(() => {
+    const pendingPreview = pendingKeyboardPreviewRef.current;
+    if (!pendingPreview) {
+      return;
+    }
+
+    pendingKeyboardPreviewRef.current = null;
+    setPreviewImage(pendingPreview);
+  }, [setPreviewImage]);
 
   const setNonVirtualGridRef = useCallback((node: HTMLDivElement | null) => {
     gridScopeRef.current = node;
@@ -1480,95 +1551,148 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         }
       }
 
-      const currentIndex = focusedImageIndex ?? -1;
-      let nextIndex = currentIndex;
+      if (KEYBOARD_NAVIGATION_KEYS.includes(e.key)) {
+        e.preventDefault();
 
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        nextIndex = currentIndex + 1;
-        if (nextIndex < images.length) {
-          setFocusedImageIndex(nextIndex);
-          setPreviewImage(images[nextIndex]);
-        } else if (currentPage < totalPages) {
-          onPageChange(currentPage + 1);
-          setFocusedImageIndex(0);
-          nextIndex = -1;
-        } else {
-            nextIndex = -1;
+        const itemCount = itemsToRender.length;
+        if (itemCount === 0) {
+          return;
         }
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        nextIndex = currentIndex - 1;
-        if (nextIndex >= 0) {
-          setFocusedImageIndex(nextIndex);
-          setPreviewImage(images[nextIndex]);
-        } else if (currentPage > 1) {
-          onPageChange(currentPage - 1);
-          setFocusedImageIndex(-1);
-          nextIndex = -1;
-        } else {
-            nextIndex = -1;
+
+        const currentRenderedIndex = getRenderedIndexForImageIndex(focusedImageIndexRef.current);
+        let nextRenderedIndex = 0;
+
+        if (currentRenderedIndex >= 0) {
+          const columnCount = getActiveColumnCount();
+
+          if (!isInfinite && e.key === 'ArrowRight' && currentRenderedIndex >= itemCount - 1) {
+            if (currentPage < totalPages) {
+              pendingKeyboardPreviewRef.current = null;
+              pendingPageBoundaryFocusRef.current = 'first';
+              focusedImageIndexRef.current = 0;
+              setFocusedImageIndex(0);
+              onPageChange(currentPage + 1);
+            }
+            return;
+          }
+
+          if (!isInfinite && e.key === 'ArrowLeft' && currentRenderedIndex <= 0) {
+            if (currentPage > 1) {
+              pendingKeyboardPreviewRef.current = null;
+              pendingPageBoundaryFocusRef.current = 'last';
+              focusedImageIndexRef.current = -1;
+              setFocusedImageIndex(-1);
+              onPageChange(currentPage - 1);
+            }
+            return;
+          }
+
+          if (e.key === 'ArrowRight') {
+            nextRenderedIndex = currentRenderedIndex + 1;
+          } else if (e.key === 'ArrowLeft') {
+            nextRenderedIndex = currentRenderedIndex - 1;
+          } else if (e.key === 'ArrowDown') {
+            nextRenderedIndex = currentRenderedIndex + columnCount;
+          } else if (e.key === 'ArrowUp') {
+            nextRenderedIndex = currentRenderedIndex - columnCount;
+          } else if (e.key === 'Home') {
+            nextRenderedIndex = 0;
+          } else if (e.key === 'End') {
+            nextRenderedIndex = itemCount - 1;
+          }
+        }
+
+        const resolvedRenderedIndex = clampIndex(nextRenderedIndex, itemCount);
+        const nextItem = itemsToRender[resolvedRenderedIndex];
+        const previewTarget: IndexedImage | undefined = nextItem
+          ? isImageStack(nextItem)
+            ? nextItem.coverImage
+            : nextItem
+          : undefined;
+        const resolvedImageIndex = nextItem ? getImageIndexForRenderedItem(nextItem) : -1;
+
+        if (previewTarget && resolvedImageIndex >= 0) {
+          focusedImageIndexRef.current = resolvedImageIndex;
+          setFocusedImageIndex(resolvedImageIndex);
+          if (e.repeat) {
+            pendingKeyboardPreviewRef.current = previewTarget;
+          } else {
+            pendingKeyboardPreviewRef.current = null;
+            setPreviewImage(previewTarget);
+          }
         }
       } else if (e.key === 'PageDown') {
         e.preventDefault();
         if (currentPage < totalPages) {
           onPageChange(currentPage + 1);
+          focusedImageIndexRef.current = 0;
           setFocusedImageIndex(0);
-          nextIndex = -1;
         }
       } else if (e.key === 'PageUp') {
         e.preventDefault();
         if (currentPage > 1) {
           onPageChange(currentPage - 1);
+          focusedImageIndexRef.current = 0;
           setFocusedImageIndex(0);
-          nextIndex = -1;
         }
-      } else if (e.key === 'Home') {
-        e.preventDefault();
-        onPageChange(1);
-        setFocusedImageIndex(0);
-        nextIndex = -1;
-      } else if (e.key === 'End') {
-        e.preventDefault();
-        onPageChange(totalPages);
-        setFocusedImageIndex(0);
-        nextIndex = -1;
       }
 
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (KEYBOARD_NAVIGATION_KEYS.includes(e.key)) {
+        flushKeyboardPreview();
+      }
+    };
+
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [focusedImageIndex, images, setFocusedImageIndex, setPreviewImage, onImageClick, currentPage, totalPages, onPageChange]);
+    document.addEventListener('keyup', handleKeyUp);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [flushKeyboardPreview, getActiveColumnCount, getImageIndexForRenderedItem, getRenderedIndexForImageIndex, itemsToRender, setFocusedImageIndex, setPreviewImage, onImageClick, focusedImageIndex, images, currentPage, totalPages, onPageChange]);
+
+  useEffect(() => {
+    return () => {
+      pendingKeyboardPreviewRef.current = null;
+      pendingPageBoundaryFocusRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!gridKeyboardActiveRef.current || focusedImageIndex == null || focusedImageIndex < 0) {
       return;
     }
 
+    const renderedIndex = getRenderedIndexForImageIndex(focusedImageIndex);
+    if (renderedIndex < 0) {
+      return;
+    }
+
     if (isInfinite) {
       const columnCount = Math.max(1, columnCountRef.current);
       virtualGridRef.current?.scrollToItem({
-        rowIndex: Math.floor(focusedImageIndex / columnCount),
-        columnIndex: focusedImageIndex % columnCount,
+        rowIndex: Math.floor(renderedIndex / columnCount),
+        columnIndex: renderedIndex % columnCount,
         align: 'auto',
       });
       return;
     }
 
-    const focusedImage = images[focusedImageIndex];
-    if (!focusedImage) {
+    const focusedItem = itemsToRender[renderedIndex];
+    if (!focusedItem) {
       return;
     }
 
-    const focusedElement = imageCardsRef.current.get(focusedImage.id);
+    const focusedElement = imageCardsRef.current.get(getWarmupImage(focusedItem).id);
     if (typeof focusedElement?.scrollIntoView === 'function') {
       focusedElement.scrollIntoView({
         block: 'nearest',
         inline: 'nearest',
       });
     }
-  }, [focusedImageIndex, images, isInfinite]);
+  }, [focusedImageIndex, getRenderedIndexForImageIndex, isInfinite, itemsToRender]);
 
   // Add global mouseup listener to handle selection end even outside the grid
   useEffect(() => {
@@ -2116,6 +2240,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const handleImageLoad = useCallback((id: string, aspectRatio: number) => {
   }, []);
 
+  const focusedImageId = focusedImageIndex != null && focusedImageIndex >= 0
+    ? images[focusedImageIndex]?.id ?? null
+    : null;
+
   if (isEmpty) {
      return (
         <React.Profiler id="ImageGrid" onRender={imageGridProfilerOnRender}>
@@ -2165,7 +2293,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     onImageClick,
                     onStackClick: handleStackClick,
                     selectedImages,
-                    focusedImageIndex,
+                    focusedImageId,
                     imageSize,
                     handleImageLoad,
                     handleContextMenu,
@@ -2226,15 +2354,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                         itemsToRender.length - 1,
                         (((overscanRowStopIndex + 1) * safeColumnCount) - 1)
                       );
-                      const windowKey = `${visibleStartIndex}:${visibleStopIndex}:${aheadStopIndex}:${itemsToRender.length}:${safeColumnCount}`;
+                      const primaryImages = collectWarmupImages(itemsToRender, visibleStartIndex, visibleStopIndex);
+                      const secondaryImages = collectWarmupImages(itemsToRender, visibleStopIndex + 1, aheadStopIndex);
+                      const visibleImageKey = getWarmupWindowImageKey(primaryImages);
+                      const aheadImageKey = getWarmupWindowImageKey(secondaryImages);
+                      const windowKey = `${visibleStartIndex}:${visibleStopIndex}:${aheadStopIndex}:${itemsToRender.length}:${safeColumnCount}:${visibleImageKey}:${aheadImageKey}`;
 
                       if (lastWarmupWindowRef.current === windowKey) {
                         return;
                       }
                       lastWarmupWindowRef.current = windowKey;
 
-                      const primaryImages = collectWarmupImages(itemsToRender, visibleStartIndex, visibleStopIndex);
-                      const secondaryImages = collectWarmupImages(itemsToRender, visibleStopIndex + 1, aheadStopIndex);
                       const visibleImageIds = new Set(primaryImages.map((image) => image.id));
 
                       for (const [imageId, flowId] of visibleGridThumbnailFlows.entries()) {
@@ -2373,7 +2503,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                                 onImageClick={() => handleStackClick(item)}
                                 enableAuxClickOpen={false}
                                 isSelected={selectedImages.has(item.coverImage.id)}
-                                isFocused={false}
+                                isFocused={item.images.some(stackImage => stackImage.id === focusedImageId)}
                                 onImageLoad={handleImageLoad}
                 onContextMenu={(img, e) => handleContextMenu(img, e)}
                 onRenameRequest={openInlineRename}
@@ -2381,7 +2511,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 isRenaming={renamingImageId === item.coverImage.id}
                 baseWidth={imageSize}
                                 isComparisonFirst={false}
-                                cardRef={createCardRef(item.id)}
+                                cardRef={createCardRef(item.coverImage.id)}
                                 isMarkedBest={markedBestIds?.has(item.coverImage.id)}
                                 isMarkedArchived={markedArchivedIds?.has(item.coverImage.id)}
                                 isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
@@ -2399,7 +2529,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             }
 
             const image = item;
-            const isFocused = focusedImageIndex === index;
+            const isFocused = image.id === focusedImageId;
             const isSensitive = enableSafeMode &&
               sensitiveTagSet.size > 0 &&
               !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
