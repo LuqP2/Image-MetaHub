@@ -1,5 +1,5 @@
 import { processFiles } from './fileIndexer';
-import { transferImagePersistence } from './imageAnnotationsStorage';
+import { bulkTransferImagePersistence } from './imageAnnotationsStorage';
 import { useImageStore } from '../store/useImageStore';
 import type {
   Directory,
@@ -181,7 +181,6 @@ export async function transferIndexedImages({
 
     const targetImageId = `${destinationDirectory.id}::${item.destinationRelativePath}`;
     persistenceTransfers.push({ sourceImage, targetImageId });
-    await transferImagePersistence(sourceImage.id, targetImageId, 'copy');
 
     const sourceAnnotation = annotationsMap.get(sourceImage.id);
     if (sourceAnnotation) {
@@ -192,6 +191,11 @@ export async function transferIndexedImages({
       });
     }
   }
+
+  await bulkTransferImagePersistence(
+    persistenceTransfers.map((t) => ({ sourceImageId: t.sourceImage.id, targetImageId: t.targetImageId })),
+    'copy',
+  );
 
   const transferredEntries = transferredItems.map(buildTransferredEntry);
   const fileStatsMap = new Map(
@@ -228,9 +232,10 @@ export async function transferIndexedImages({
 
   if (shouldRelyOnWatcher) {
     if (mode === 'move') {
-      for (const transfer of persistenceTransfers) {
-        await transferImagePersistence(transfer.sourceImage.id, transfer.targetImageId, 'move');
-      }
+      await bulkTransferImagePersistence(
+        persistenceTransfers.map((t) => ({ sourceImageId: t.sourceImage.id, targetImageId: t.targetImageId })),
+        'move',
+      );
     }
 
     if (mode === 'move') {
@@ -287,9 +292,10 @@ export async function transferIndexedImages({
   flushPendingImages();
 
   if (mode === 'move') {
-    for (const transfer of persistenceTransfers) {
-      await transferImagePersistence(transfer.sourceImage.id, transfer.targetImageId, 'move');
-    }
+    await bulkTransferImagePersistence(
+      persistenceTransfers.map((t) => ({ sourceImageId: t.sourceImage.id, targetImageId: t.targetImageId })),
+      'move',
+    );
     removeImages(images.map((image) => image.id));
   }
 

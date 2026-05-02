@@ -315,6 +315,116 @@ export async function transferImagePersistence(
 }
 
 /**
+ * Bulk transfer persistence (annotations and shadow metadata) for multiple images
+ */
+export async function bulkTransferImagePersistence(
+  transfers: { sourceImageId: string; targetImageId: string }[],
+  mode: 'copy' | 'move',
+): Promise<void> {
+  if (transfers.length === 0) {
+    return;
+  }
+
+  const timestamp = Date.now();
+
+  // Update in-memory cache for those already present
+  for (const { sourceImageId, targetImageId } of transfers) {
+    if (!sourceImageId || !targetImageId || sourceImageId === targetImageId) continue;
+
+    const currentAnnotation = inMemoryAnnotations.get(sourceImageId);
+    if (currentAnnotation) {
+      const targetAnnotation = {
+        ...currentAnnotation,
+        imageId: targetImageId,
+        updatedAt: timestamp,
+      };
+      inMemoryAnnotations.set(targetImageId, targetAnnotation);
+      if (mode === 'move') {
+        inMemoryAnnotations.delete(sourceImageId);
+      }
+    }
+  }
+
+  if (isPersistenceDisabled) {
+    return;
+  }
+
+  const db = await openDatabase();
+  if (!db) {
+    return;
+  }
+
+  const hasShadowStore = db.objectStoreNames.contains(SHADOW_METADATA_STORE_NAME);
+  const stores = [STORE_NAME];
+  if (hasShadowStore) {
+    stores.push(SHADOW_METADATA_STORE_NAME);
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(stores, 'readwrite');
+    const annotationStore = transaction.objectStore(STORE_NAME);
+    const shadowStore = hasShadowStore ? transaction.objectStore(SHADOW_METADATA_STORE_NAME) : null;
+
+    transaction.oncomplete = () => {
+      resolve();
+    };
+    transaction.onabort = () => {
+      reject(transaction.error);
+    };
+    transaction.onerror = () => {
+      reject(transaction.error);
+    };
+
+    for (const { sourceImageId, targetImageId } of transfers) {
+      if (!sourceImageId || !targetImageId || sourceImageId === targetImageId) continue;
+
+      // Handle Annotations
+      const annGetRequest = annotationStore.get(sourceImageId);
+      annGetRequest.onsuccess = () => {
+        const currentAnnotation = annGetRequest.result as ImageAnnotations | undefined;
+        if (currentAnnotation) {
+          const targetAnnotation = {
+            ...currentAnnotation,
+            imageId: targetImageId,
+            updatedAt: timestamp,
+          };
+          annotationStore.put(targetAnnotation);
+          inMemoryAnnotations.set(targetImageId, targetAnnotation);
+
+          if (mode === 'move') {
+            annotationStore.delete(sourceImageId);
+            inMemoryAnnotations.delete(sourceImageId);
+          }
+        }
+      };
+
+      // Handle Shadow Metadata
+      if (shadowStore) {
+        const shadowGetRequest = shadowStore.get(sourceImageId);
+        shadowGetRequest.onsuccess = () => {
+          const currentShadow = shadowGetRequest.result as ShadowMetadata | undefined;
+          if (currentShadow) {
+            const targetShadow = {
+              ...currentShadow,
+              imageId: targetImageId,
+              updatedAt: timestamp,
+            };
+            shadowStore.put(targetShadow);
+
+            if (mode === 'move') {
+              shadowStore.delete(sourceImageId);
+            }
+          }
+        };
+      }
+    }
+  }).catch((error) => {
+    console.error('IndexedDB bulk transfer error:', error);
+    disablePersistence(error);
+  });
+}
+
+/**
  * Bulk save multiple annotations in a single transaction (for performance)
  */
 export async function bulkSaveAnnotations(annotations: ImageAnnotations[]): Promise<void> {
