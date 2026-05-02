@@ -155,6 +155,9 @@ const collectWarmupImages = (
   return images;
 };
 
+const getWarmupWindowImageKey = (images: IndexedImage[]): string =>
+  images.map((image) => image.id).join('|');
+
 const visibleGridThumbnailFlows = new Map<string, string>();
 
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, onRenameComplete, isRenaming = false, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
@@ -712,6 +715,9 @@ const FILENAME_HEIGHT = 40;
 const getItemHeight = (imageSize: number, showFilenames: boolean): number =>
   (imageSize * CARD_HEIGHT_RATIO) + (showFilenames ? FILENAME_HEIGHT : 0);
 
+const clampIndex = (index: number, itemCount: number): number =>
+  Math.max(0, Math.min(itemCount - 1, index));
+
 interface CellData {
   items: (IndexedImage | ImageStack)[];
   columnCount: number;
@@ -999,6 +1005,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const submenuHorizontalClass = contextMenu.horizontalDirection === 'left' ? 'right-full' : 'left-full';
 
   const getGridScrollElement = useCallback(() => gridScrollRef.current ?? gridScopeRef.current, []);
+
+  const getActiveColumnCount = useCallback(() => {
+    const measuredWidth = gridScrollRef.current?.clientWidth ?? gridScopeRef.current?.clientWidth ?? 0;
+    const measuredColumnCount = Math.floor(measuredWidth / (imageSize + GAP_SIZE));
+    return Math.max(1, measuredColumnCount || columnCountRef.current || 1);
+  }, [imageSize]);
 
   const setNonVirtualGridRef = useCallback((node: HTMLDivElement | null) => {
     gridScopeRef.current = node;
@@ -1480,66 +1492,67 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         }
       }
 
-      const currentIndex = focusedImageIndex ?? -1;
-      let nextIndex = currentIndex;
+      const navigationKeys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'];
+      if (navigationKeys.includes(e.key)) {
+        e.preventDefault();
 
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        nextIndex = currentIndex + 1;
-        if (nextIndex < images.length) {
-          setFocusedImageIndex(nextIndex);
-          setPreviewImage(images[nextIndex]);
-        } else if (currentPage < totalPages) {
-          onPageChange(currentPage + 1);
-          setFocusedImageIndex(0);
-          nextIndex = -1;
-        } else {
-            nextIndex = -1;
+        const itemCount = itemsToRender.length;
+        if (itemCount === 0) {
+          return;
         }
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        nextIndex = currentIndex - 1;
-        if (nextIndex >= 0) {
-          setFocusedImageIndex(nextIndex);
-          setPreviewImage(images[nextIndex]);
-        } else if (currentPage > 1) {
-          onPageChange(currentPage - 1);
-          setFocusedImageIndex(-1);
-          nextIndex = -1;
-        } else {
-            nextIndex = -1;
+
+        const currentIndex = focusedImageIndex ?? -1;
+        let nextIndex = 0;
+
+        if (currentIndex >= 0) {
+          const columnCount = getActiveColumnCount();
+
+          if (e.key === 'ArrowRight') {
+            nextIndex = currentIndex + 1;
+          } else if (e.key === 'ArrowLeft') {
+            nextIndex = currentIndex - 1;
+          } else if (e.key === 'ArrowDown') {
+            nextIndex = currentIndex + columnCount;
+          } else if (e.key === 'ArrowUp') {
+            nextIndex = currentIndex - columnCount;
+          } else if (e.key === 'Home') {
+            nextIndex = 0;
+          } else if (e.key === 'End') {
+            nextIndex = itemCount - 1;
+          }
+        }
+
+        const resolvedIndex = clampIndex(nextIndex, itemCount);
+        const nextItem = itemsToRender[resolvedIndex];
+        const previewTarget: IndexedImage | undefined = nextItem
+          ? isImageStack(nextItem)
+            ? nextItem.coverImage
+            : nextItem
+          : undefined;
+
+        if (previewTarget) {
+          setFocusedImageIndex(resolvedIndex);
+          setPreviewImage(previewTarget);
         }
       } else if (e.key === 'PageDown') {
         e.preventDefault();
         if (currentPage < totalPages) {
           onPageChange(currentPage + 1);
           setFocusedImageIndex(0);
-          nextIndex = -1;
         }
       } else if (e.key === 'PageUp') {
         e.preventDefault();
         if (currentPage > 1) {
           onPageChange(currentPage - 1);
           setFocusedImageIndex(0);
-          nextIndex = -1;
         }
-      } else if (e.key === 'Home') {
-        e.preventDefault();
-        onPageChange(1);
-        setFocusedImageIndex(0);
-        nextIndex = -1;
-      } else if (e.key === 'End') {
-        e.preventDefault();
-        onPageChange(totalPages);
-        setFocusedImageIndex(0);
-        nextIndex = -1;
       }
 
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [focusedImageIndex, images, setFocusedImageIndex, setPreviewImage, onImageClick, currentPage, totalPages, onPageChange]);
+  }, [focusedImageIndex, getActiveColumnCount, itemsToRender, setFocusedImageIndex, setPreviewImage, onImageClick, currentPage, totalPages, onPageChange]);
 
   useEffect(() => {
     if (!gridKeyboardActiveRef.current || focusedImageIndex == null || focusedImageIndex < 0) {
@@ -2226,15 +2239,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                         itemsToRender.length - 1,
                         (((overscanRowStopIndex + 1) * safeColumnCount) - 1)
                       );
-                      const windowKey = `${visibleStartIndex}:${visibleStopIndex}:${aheadStopIndex}:${itemsToRender.length}:${safeColumnCount}`;
+                      const primaryImages = collectWarmupImages(itemsToRender, visibleStartIndex, visibleStopIndex);
+                      const secondaryImages = collectWarmupImages(itemsToRender, visibleStopIndex + 1, aheadStopIndex);
+                      const visibleImageKey = getWarmupWindowImageKey(primaryImages);
+                      const aheadImageKey = getWarmupWindowImageKey(secondaryImages);
+                      const windowKey = `${visibleStartIndex}:${visibleStopIndex}:${aheadStopIndex}:${itemsToRender.length}:${safeColumnCount}:${visibleImageKey}:${aheadImageKey}`;
 
                       if (lastWarmupWindowRef.current === windowKey) {
                         return;
                       }
                       lastWarmupWindowRef.current = windowKey;
 
-                      const primaryImages = collectWarmupImages(itemsToRender, visibleStartIndex, visibleStopIndex);
-                      const secondaryImages = collectWarmupImages(itemsToRender, visibleStopIndex + 1, aheadStopIndex);
                       const visibleImageIds = new Set(primaryImages.map((image) => image.id));
 
                       for (const [imageId, flowId] of visibleGridThumbnailFlows.entries()) {

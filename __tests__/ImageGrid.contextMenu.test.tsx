@@ -36,6 +36,11 @@ vi.mock('../hooks/useContextMenu', () => ({
   }),
 }));
 
+vi.mock('react-virtualized-auto-sizer', () => ({
+  default: ({ children }: { children: (size: { height: number; width: number }) => React.ReactNode }) =>
+    children({ height: 600, width: 408 }),
+}));
+
 vi.mock('../services/imageRenameService', () => ({
   getRenameBasename: (image: IndexedImage) => {
     const fileName = image.name.replace(/\\/g, '/').split('/').pop() || image.name;
@@ -140,6 +145,14 @@ const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
   ...overrides,
 });
 
+const createImages = (count: number): IndexedImage[] =>
+  Array.from({ length: count }, (_, index) =>
+    createImage({
+      id: `img-${index}`,
+      name: `image-${index}.png`,
+    }),
+  );
+
 const Harness = ({ images, onFindSimilar }: { images: IndexedImage[]; onFindSimilar?: (image: IndexedImage) => void }) => {
   const selectedImages = useImageStore((state) => state.selectedImages);
 
@@ -155,6 +168,28 @@ const Harness = ({ images, onFindSimilar }: { images: IndexedImage[]; onFindSimi
       onFindSimilar={onFindSimilar}
     />
   );
+};
+
+const setupImageGridState = (images: IndexedImage[], focusedImageIndex: number | null = null) => {
+  useImageStore.setState({
+    images,
+    filteredImages: images,
+    directories: [{ id: 'dir-1', path: 'D:/library' }],
+    selectedImages: new Set(),
+    isStackingEnabled: false,
+    focusedImageIndex,
+    previewImage: focusedImageIndex != null && focusedImageIndex >= 0 ? images[focusedImageIndex] : null,
+    transferProgress: null,
+    filterAndSortImages: vi.fn(),
+  } as any);
+};
+
+const focusGridAndPress = (container: HTMLElement, key: string) => {
+  const grid = container.querySelector<HTMLElement>('[data-area="grid"]');
+  expect(grid).toBeTruthy();
+
+  fireEvent.focus(grid!);
+  fireEvent.keyDown(document, { key });
 };
 
 const SelectionHarness = ({ images }: { images: IndexedImage[] }) => {
@@ -258,6 +293,64 @@ describe('ImageGrid context menu', () => {
 
     expect(useImageStore.getState().focusedImageIndex).toBe(0);
     expect(useImageStore.getState().previewImage?.id).toBe('img-1');
+  });
+
+  it('establishes focus on the first rendered image when pressing ArrowDown without current focus', () => {
+    const images = createImages(6);
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images);
+
+    const { container } = render(<Harness images={images} />);
+
+    focusGridAndPress(container, 'ArrowDown');
+
+    expect(useImageStore.getState().focusedImageIndex).toBe(0);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-0');
+  });
+
+  it('moves down and up by the rendered column count', () => {
+    const images = createImages(7);
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images, 1);
+
+    const { container } = render(<Harness images={images} />);
+
+    focusGridAndPress(container, 'ArrowDown');
+    expect(useImageStore.getState().focusedImageIndex).toBe(4);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-4');
+
+    focusGridAndPress(container, 'ArrowUp');
+    expect(useImageStore.getState().focusedImageIndex).toBe(1);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-1');
+  });
+
+  it('moves Home to the first image and End to the last rendered image', () => {
+    const images = createImages(6);
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images, 3);
+
+    const { container } = render(<Harness images={images} />);
+
+    focusGridAndPress(container, 'Home');
+    expect(useImageStore.getState().focusedImageIndex).toBe(0);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-0');
+
+    focusGridAndPress(container, 'End');
+    expect(useImageStore.getState().focusedImageIndex).toBe(5);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-5');
+  });
+
+  it('clamps ArrowDown to the last image when navigating from the last partial row', () => {
+    const images = createImages(8);
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images, 5);
+
+    const { container } = render(<Harness images={images} />);
+
+    focusGridAndPress(container, 'ArrowDown');
+
+    expect(useImageStore.getState().focusedImageIndex).toBe(7);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-7');
   });
 
   it('renames a thumbnail inline after double-clicking the filename', async () => {

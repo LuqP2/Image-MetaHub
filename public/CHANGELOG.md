@@ -5,19 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.15.4] - Unreleased
+## [0.15.4] - 2026-04-29
 
 ### Added
 
-- **Executable Generation Queue**: Added a real queue runner for A1111 and ComfyUI jobs so waiting generations start automatically when the active provider job finishes.
+- **Advanced Folder Management**: Added directory tree view with subfolder navigation, drag-and-drop file transfers, directory renaming, and global hotkey support for clipboard operations.
 
 ### Improved
 
-- **Generated Output Preview**: Added generated result thumbnails in the queue and a dedicated preview modal for completed queue jobs, including navigation for multi-image outputs and a path to full image metadata when the generated file is indexed.
-- **Generation Queue UX**: Clarified queue card actions with more intuitive cancel, stop, retry, and remove controls, improved accessible labels, made completed result cards clickable, and removed the confusing destructive "Clear all" behavior.
-- **Queue Ordering and Cancellation**: Queue scheduling now drains in FIFO order, and canceling a waiting job no longer interrupts the currently active provider generation.
-- **A1111 Batch Progress Display**: Improved the `Image X/Y` fallback logic so batch progress tracks the progress bar even when A1111 keeps reporting the same `job_no`.
-- **Generated Output Memory Handling**: A1111 queue previews now use temporary Blob URLs instead of storing full base64 image payloads directly in queue state.
+- **Generation Queue**: Rebuilt queue UX with clearer actions, clickable results, and thumbnails. Added a dedicated preview modal for completed jobs. Scheduling now drains in FIFO order without interruptions from cancellations. Improved memory handling by using Blob URLs instead of base64 payloads, and refined A1111 batch progress tracking.
+- **Workflow Analysis**: Enhanced ComfyUI workflow JSON handling, resolution, and streamlined dimension target extraction logic.
+- **Workspace Experience**: Improved workspace tab persistence and enhanced image modal functionality.
 
 ### Fixed
 
@@ -56,7 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Desktop Media Memory Safety**: Fixed a v0.15.0 regression where large video or audio files could be read fully into renderer memory when the desktop streaming media URL path failed, potentially causing black screens or renderer crashes on macOS.
 - **Video Thumbnail Guardrails**: Reduced thumbnail generation concurrency, capped active thumbnail object URLs, reused legacy thumbnail cache entries where possible, and skipped renderer-side video thumbnail generation for videos with unknown size or over 80 MB to avoid memory spikes during cache refresh.
-
 
 ## [0.15.0] - 2026-04-23
 
