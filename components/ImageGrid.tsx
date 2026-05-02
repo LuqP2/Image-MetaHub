@@ -726,7 +726,7 @@ interface CellData {
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   onStackClick: (stack: ImageStack) => void;
   selectedImages: Set<string>;
-  focusedImageIndex: number | null;
+  focusedImageId: string | null;
   imageSize: number;
   handleImageLoad: (id: string, aspectRatio: number) => void;
   handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -750,7 +750,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     onImageClick,
     onStackClick,
     selectedImages,
-    focusedImageIndex,
+    focusedImageId,
     imageSize,
     handleImageLoad,
     handleContextMenu,
@@ -805,7 +805,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               }}
               enableAuxClickOpen={false}
               isSelected={selectedImages.has(item.coverImage.id)}
-              isFocused={false}
+              isFocused={item.images.some(stackImage => stackImage.id === focusedImageId)}
               onImageLoad={handleImageLoad}
               onContextMenu={(img, e) => handleContextMenu(img, e)}
               onRenameRequest={handleRenameRequest}
@@ -813,7 +813,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               isRenaming={renamingImageId === item.coverImage.id}
               baseWidth={imageSize}
               isComparisonFirst={false}
-              cardRef={createCardRef(item.id)}
+              cardRef={createCardRef(item.coverImage.id)}
               isMarkedBest={markedBestIds?.has(item.coverImage.id)}
               isMarkedArchived={markedArchivedIds?.has(item.coverImage.id)}
               isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
@@ -832,7 +832,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
   }
 
   const image = item;
-  const isFocused = focusedImageIndex === index;
+  const isFocused = image.id === focusedImageId;
   const isSensitive = enableSafeMode &&
     sensitiveTagSet && sensitiveTagSet.size > 0 &&
     !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
@@ -1015,6 +1015,28 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     const measuredColumnCount = Math.floor(measuredWidth / (imageSize + GAP_SIZE));
     return Math.max(1, measuredColumnCount || columnCountRef.current || 1);
   }, [imageSize]);
+
+  const getRenderedIndexForImageIndex = useCallback((imageIndex: number | null): number => {
+    if (imageIndex == null || imageIndex < 0) {
+      return -1;
+    }
+
+    const focusedImage = images[imageIndex];
+    if (!focusedImage) {
+      return -1;
+    }
+
+    return itemsToRender.findIndex((item) =>
+      isImageStack(item)
+        ? item.images.some((stackImage) => stackImage.id === focusedImage.id)
+        : item.id === focusedImage.id
+    );
+  }, [images, itemsToRender]);
+
+  const getImageIndexForRenderedItem = useCallback((item: IndexedImage | ImageStack): number => {
+    const itemImage = getWarmupImage(item);
+    return images.findIndex((image) => image.id === itemImage.id);
+  }, [images]);
 
   useEffect(() => {
     focusedImageIndexRef.current = focusedImageIndex;
@@ -1518,38 +1540,39 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           return;
         }
 
-        const currentIndex = focusedImageIndexRef.current ?? -1;
-        let nextIndex = 0;
+        const currentRenderedIndex = getRenderedIndexForImageIndex(focusedImageIndexRef.current);
+        let nextRenderedIndex = 0;
 
-        if (currentIndex >= 0) {
+        if (currentRenderedIndex >= 0) {
           const columnCount = getActiveColumnCount();
 
           if (e.key === 'ArrowRight') {
-            nextIndex = currentIndex + 1;
+            nextRenderedIndex = currentRenderedIndex + 1;
           } else if (e.key === 'ArrowLeft') {
-            nextIndex = currentIndex - 1;
+            nextRenderedIndex = currentRenderedIndex - 1;
           } else if (e.key === 'ArrowDown') {
-            nextIndex = currentIndex + columnCount;
+            nextRenderedIndex = currentRenderedIndex + columnCount;
           } else if (e.key === 'ArrowUp') {
-            nextIndex = currentIndex - columnCount;
+            nextRenderedIndex = currentRenderedIndex - columnCount;
           } else if (e.key === 'Home') {
-            nextIndex = 0;
+            nextRenderedIndex = 0;
           } else if (e.key === 'End') {
-            nextIndex = itemCount - 1;
+            nextRenderedIndex = itemCount - 1;
           }
         }
 
-        const resolvedIndex = clampIndex(nextIndex, itemCount);
-        const nextItem = itemsToRender[resolvedIndex];
+        const resolvedRenderedIndex = clampIndex(nextRenderedIndex, itemCount);
+        const nextItem = itemsToRender[resolvedRenderedIndex];
         const previewTarget: IndexedImage | undefined = nextItem
           ? isImageStack(nextItem)
             ? nextItem.coverImage
             : nextItem
           : undefined;
+        const resolvedImageIndex = nextItem ? getImageIndexForRenderedItem(nextItem) : -1;
 
-        if (previewTarget) {
-          focusedImageIndexRef.current = resolvedIndex;
-          setFocusedImageIndex(resolvedIndex);
+        if (previewTarget && resolvedImageIndex >= 0) {
+          focusedImageIndexRef.current = resolvedImageIndex;
+          setFocusedImageIndex(resolvedImageIndex);
           if (e.repeat) {
             pendingKeyboardPreviewRef.current = previewTarget;
           } else {
@@ -1561,12 +1584,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         e.preventDefault();
         if (currentPage < totalPages) {
           onPageChange(currentPage + 1);
+          focusedImageIndexRef.current = 0;
           setFocusedImageIndex(0);
         }
       } else if (e.key === 'PageUp') {
         e.preventDefault();
         if (currentPage > 1) {
           onPageChange(currentPage - 1);
+          focusedImageIndexRef.current = 0;
           setFocusedImageIndex(0);
         }
       }
@@ -1585,7 +1610,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [flushKeyboardPreview, getActiveColumnCount, itemsToRender, setFocusedImageIndex, setPreviewImage, onImageClick, images, currentPage, totalPages, onPageChange]);
+  }, [flushKeyboardPreview, getActiveColumnCount, getImageIndexForRenderedItem, getRenderedIndexForImageIndex, itemsToRender, setFocusedImageIndex, setPreviewImage, onImageClick, focusedImageIndex, images, currentPage, totalPages, onPageChange]);
 
   useEffect(() => {
     return () => {
@@ -1598,29 +1623,34 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       return;
     }
 
+    const renderedIndex = getRenderedIndexForImageIndex(focusedImageIndex);
+    if (renderedIndex < 0) {
+      return;
+    }
+
     if (isInfinite) {
       const columnCount = Math.max(1, columnCountRef.current);
       virtualGridRef.current?.scrollToItem({
-        rowIndex: Math.floor(focusedImageIndex / columnCount),
-        columnIndex: focusedImageIndex % columnCount,
+        rowIndex: Math.floor(renderedIndex / columnCount),
+        columnIndex: renderedIndex % columnCount,
         align: 'auto',
       });
       return;
     }
 
-    const focusedImage = images[focusedImageIndex];
-    if (!focusedImage) {
+    const focusedItem = itemsToRender[renderedIndex];
+    if (!focusedItem) {
       return;
     }
 
-    const focusedElement = imageCardsRef.current.get(focusedImage.id);
+    const focusedElement = imageCardsRef.current.get(getWarmupImage(focusedItem).id);
     if (typeof focusedElement?.scrollIntoView === 'function') {
       focusedElement.scrollIntoView({
         block: 'nearest',
         inline: 'nearest',
       });
     }
-  }, [focusedImageIndex, images, isInfinite]);
+  }, [focusedImageIndex, getRenderedIndexForImageIndex, isInfinite, itemsToRender]);
 
   // Add global mouseup listener to handle selection end even outside the grid
   useEffect(() => {
@@ -2168,6 +2198,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const handleImageLoad = useCallback((id: string, aspectRatio: number) => {
   }, []);
 
+  const focusedImageId = focusedImageIndex != null && focusedImageIndex >= 0
+    ? images[focusedImageIndex]?.id ?? null
+    : null;
+
   if (isEmpty) {
      return (
         <React.Profiler id="ImageGrid" onRender={imageGridProfilerOnRender}>
@@ -2217,7 +2251,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     onImageClick,
                     onStackClick: handleStackClick,
                     selectedImages,
-                    focusedImageIndex,
+                    focusedImageId,
                     imageSize,
                     handleImageLoad,
                     handleContextMenu,
@@ -2427,7 +2461,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                                 onImageClick={() => handleStackClick(item)}
                                 enableAuxClickOpen={false}
                                 isSelected={selectedImages.has(item.coverImage.id)}
-                                isFocused={false}
+                                isFocused={item.images.some(stackImage => stackImage.id === focusedImageId)}
                                 onImageLoad={handleImageLoad}
                 onContextMenu={(img, e) => handleContextMenu(img, e)}
                 onRenameRequest={openInlineRename}
@@ -2435,7 +2469,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 isRenaming={renamingImageId === item.coverImage.id}
                 baseWidth={imageSize}
                                 isComparisonFirst={false}
-                                cardRef={createCardRef(item.id)}
+                                cardRef={createCardRef(item.coverImage.id)}
                                 isMarkedBest={markedBestIds?.has(item.coverImage.id)}
                                 isMarkedArchived={markedArchivedIds?.has(item.coverImage.id)}
                                 isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
@@ -2453,7 +2487,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             }
 
             const image = item;
-            const isFocused = focusedImageIndex === index;
+            const isFocused = image.id === focusedImageId;
             const isSensitive = enableSafeMode &&
               sensitiveTagSet.size > 0 &&
               !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));

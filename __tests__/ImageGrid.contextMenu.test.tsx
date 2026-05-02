@@ -5,9 +5,10 @@ import ImageGrid from '../components/ImageGrid';
 import { useImageSelection } from '../hooks/useImageSelection';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import type { IndexedImage } from '../types';
+import type { ImageStack, IndexedImage } from '../types';
 
 const renameIndexedImageMock = vi.hoisted(() => vi.fn());
+const stackedItemsMock = vi.hoisted(() => ({ value: null as (IndexedImage | ImageStack)[] | null }));
 const showContextMenuMock = vi.fn();
 const hideContextMenuMock = vi.fn();
 const contextMenuStateMock = {
@@ -102,7 +103,7 @@ vi.mock('../hooks/useFeatureAccess', () => ({
 
 vi.mock('../hooks/useImageStacking', () => ({
   useImageStacking: (images: IndexedImage[]) => ({
-    stackedItems: images,
+    stackedItems: stackedItemsMock.value ?? images,
   }),
 }));
 
@@ -213,6 +214,7 @@ describe('ImageGrid context menu', () => {
   beforeEach(() => {
     vi.useRealTimers();
     showContextMenuMock.mockReset();
+    stackedItemsMock.value = null;
     hideContextMenuMock.mockReset();
     renameIndexedImageMock.mockReset();
     renameIndexedImageMock.mockResolvedValue({
@@ -377,6 +379,54 @@ describe('ImageGrid context menu', () => {
     fireEvent.keyUp(document, { key: 'ArrowDown' });
 
     expect(useImageStore.getState().previewImage?.id).toBe('img-4');
+  });
+
+  it('navigates stack cards by rendered position while storing the stack cover image index', () => {
+    const images = createImages(5);
+    const onImageClick = vi.fn();
+    const firstStack: ImageStack = {
+      id: 'stack-img-0',
+      coverImage: images[0],
+      images: [images[0], images[1]],
+      count: 2,
+    };
+    const secondStack: ImageStack = {
+      id: 'stack-img-3',
+      coverImage: images[3],
+      images: [images[3], images[4]],
+      count: 2,
+    };
+    stackedItemsMock.value = [firstStack, images[2], secondStack];
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images, 0);
+    useImageStore.setState({ isStackingEnabled: true } as any);
+
+    const { container } = render(
+      <ImageGrid
+        images={images}
+        onImageClick={onImageClick}
+        selectedImages={useImageStore.getState().selectedImages}
+        currentPage={1}
+        totalPages={1}
+        onPageChange={vi.fn()}
+        onBatchExport={vi.fn()}
+      />,
+    );
+
+    focusGridAndPress(container, 'ArrowRight');
+    expect(useImageStore.getState().focusedImageIndex).toBe(2);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-2');
+
+    focusGridAndPress(container, 'ArrowRight');
+    expect(useImageStore.getState().focusedImageIndex).toBe(3);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-3');
+    expect(
+      Array.from(container.querySelectorAll<HTMLElement>('[data-image-id="img-3"]'))
+        .some((element) => element.className.includes('outline-blue-400')),
+    ).toBe(true);
+
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(onImageClick).toHaveBeenCalledWith(images[3], expect.any(Object));
   });
 
   it('renames a thumbnail inline after double-clicking the filename', async () => {
