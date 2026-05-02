@@ -3022,10 +3022,21 @@ function setupFileOperationHandlers() {
   // Handle show item in folder
   ipcMain.handle('show-item-in-folder', async (event, filePath) => {
     try {
-      // Allow opening any folder/file that the user has access to via the OS dialogs
-      // We removed the isPathAllowed check here because export destinations can be anywhere
-      
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
       const normalizedFilePath = path.normalize(filePath);
+
+      // --- SECURITY CHECK ---
+      if (!isAllowedOrInternal(normalizedFilePath) && !isApprovedWritePath(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to show unauthorized item in folder.');
+        console.error('  Requested path:', filePath);
+        console.error('  Normalized path:', normalizedFilePath);
+        return { success: false, error: 'Access denied' };
+      }
+      // --- END SECURITY CHECK ---
+
       console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 
       // Verify the path exists before trying to open or show it
@@ -3243,6 +3254,14 @@ function setupFileOperationHandlers() {
       if (!dirPath) {
         return { success: false, error: 'No directory path provided' };
       }
+
+      // --- SECURITY CHECK ---
+      if (!isPathAllowed(dirPath)) {
+        console.error('SECURITY VIOLATION: Attempted to list unauthorized directory files.');
+        console.error('  Requested path:', dirPath);
+        return { success: false, error: 'Access denied' };
+      }
+      // --- END SECURITY CHECK ---
 
       const scanStart = Date.now();
 
