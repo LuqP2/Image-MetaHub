@@ -718,6 +718,8 @@ const getItemHeight = (imageSize: number, showFilenames: boolean): number =>
 const clampIndex = (index: number, itemCount: number): number =>
   Math.max(0, Math.min(itemCount - 1, index));
 
+const KEYBOARD_NAVIGATION_KEYS = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'];
+
 interface CellData {
   items: (IndexedImage | ImageStack)[];
   columnCount: number;
@@ -924,6 +926,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const lastWarmupWindowRef = useRef<string>('');
   const releasePaginatedBackgroundPauseRef = useRef<(() => void) | null>(null);
   const lastScrollSampleRef = useRef<{ top: number; at: number }>({ top: 0, at: 0 });
+  const focusedImageIndexRef = useRef<number | null>(null);
+  const pendingKeyboardPreviewRef = useRef<IndexedImage | null>(null);
 
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
@@ -1011,6 +1015,20 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     const measuredColumnCount = Math.floor(measuredWidth / (imageSize + GAP_SIZE));
     return Math.max(1, measuredColumnCount || columnCountRef.current || 1);
   }, [imageSize]);
+
+  useEffect(() => {
+    focusedImageIndexRef.current = focusedImageIndex;
+  }, [focusedImageIndex]);
+
+  const flushKeyboardPreview = useCallback(() => {
+    const pendingPreview = pendingKeyboardPreviewRef.current;
+    if (!pendingPreview) {
+      return;
+    }
+
+    pendingKeyboardPreviewRef.current = null;
+    setPreviewImage(pendingPreview);
+  }, [setPreviewImage]);
 
   const setNonVirtualGridRef = useCallback((node: HTMLDivElement | null) => {
     gridScopeRef.current = node;
@@ -1492,8 +1510,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         }
       }
 
-      const navigationKeys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'];
-      if (navigationKeys.includes(e.key)) {
+      if (KEYBOARD_NAVIGATION_KEYS.includes(e.key)) {
         e.preventDefault();
 
         const itemCount = itemsToRender.length;
@@ -1501,7 +1518,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           return;
         }
 
-        const currentIndex = focusedImageIndex ?? -1;
+        const currentIndex = focusedImageIndexRef.current ?? -1;
         let nextIndex = 0;
 
         if (currentIndex >= 0) {
@@ -1531,8 +1548,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           : undefined;
 
         if (previewTarget) {
+          focusedImageIndexRef.current = resolvedIndex;
           setFocusedImageIndex(resolvedIndex);
-          setPreviewImage(previewTarget);
+          if (e.repeat) {
+            pendingKeyboardPreviewRef.current = previewTarget;
+          } else {
+            pendingKeyboardPreviewRef.current = null;
+            setPreviewImage(previewTarget);
+          }
         }
       } else if (e.key === 'PageDown') {
         e.preventDefault();
@@ -1550,9 +1573,25 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (KEYBOARD_NAVIGATION_KEYS.includes(e.key)) {
+        flushKeyboardPreview();
+      }
+    };
+
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [focusedImageIndex, getActiveColumnCount, itemsToRender, setFocusedImageIndex, setPreviewImage, onImageClick, currentPage, totalPages, onPageChange]);
+    document.addEventListener('keyup', handleKeyUp);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [flushKeyboardPreview, getActiveColumnCount, itemsToRender, setFocusedImageIndex, setPreviewImage, onImageClick, images, currentPage, totalPages, onPageChange]);
+
+  useEffect(() => {
+    return () => {
+      pendingKeyboardPreviewRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!gridKeyboardActiveRef.current || focusedImageIndex == null || focusedImageIndex < 0) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageGrid from '../components/ImageGrid';
 import { useImageSelection } from '../hooks/useImageSelection';
@@ -211,6 +211,7 @@ const SelectionHarness = ({ images }: { images: IndexedImage[] }) => {
 
 describe('ImageGrid context menu', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     showContextMenuMock.mockReset();
     hideContextMenuMock.mockReset();
     renameIndexedImageMock.mockReset();
@@ -234,6 +235,10 @@ describe('ImageGrid context menu', () => {
       blurSensitiveImages: false,
       enableSafeMode: false,
     } as any);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('keeps multi-selection when right-clicking an image and opens the context menu', () => {
@@ -351,6 +356,27 @@ describe('ImageGrid context menu', () => {
 
     expect(useImageStore.getState().focusedImageIndex).toBe(7);
     expect(useImageStore.getState().previewImage?.id).toBe('img-7');
+  });
+
+  it('defers preview updates during repeated keyboard navigation and flushes on keyup', () => {
+    vi.useFakeTimers();
+    const images = createImages(7);
+    useSettingsStore.setState({ itemsPerPage: -1 } as any);
+    setupImageGridState(images, 1);
+
+    const { container } = render(<Harness images={images} />);
+    const grid = container.querySelector<HTMLElement>('[data-area="grid"]');
+    expect(grid).toBeTruthy();
+
+    fireEvent.focus(grid!);
+    fireEvent.keyDown(document, { key: 'ArrowDown', repeat: true });
+
+    expect(useImageStore.getState().focusedImageIndex).toBe(4);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-1');
+
+    fireEvent.keyUp(document, { key: 'ArrowDown' });
+
+    expect(useImageStore.getState().previewImage?.id).toBe('img-4');
   });
 
   it('renames a thumbnail inline after double-clicking the filename', async () => {
