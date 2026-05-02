@@ -928,6 +928,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const lastScrollSampleRef = useRef<{ top: number; at: number }>({ top: 0, at: 0 });
   const focusedImageIndexRef = useRef<number | null>(null);
   const pendingKeyboardPreviewRef = useRef<IndexedImage | null>(null);
+  const pendingPageBoundaryFocusRef = useRef<'first' | 'last' | null>(null);
 
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
@@ -1046,6 +1047,19 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   useEffect(() => {
     focusedImageIndexRef.current = focusedImageIndex;
   }, [focusedImageIndex]);
+
+  useEffect(() => {
+    const pendingFocus = pendingPageBoundaryFocusRef.current;
+    if (!pendingFocus || images.length === 0 || !gridKeyboardActiveRef.current) {
+      return;
+    }
+
+    const nextIndex = pendingFocus === 'first' ? 0 : images.length - 1;
+    pendingPageBoundaryFocusRef.current = null;
+    focusedImageIndexRef.current = nextIndex;
+    setFocusedImageIndex(nextIndex);
+    setPreviewImage(images[nextIndex]);
+  }, [images, setFocusedImageIndex, setPreviewImage]);
 
   const flushKeyboardPreview = useCallback(() => {
     const pendingPreview = pendingKeyboardPreviewRef.current;
@@ -1551,6 +1565,28 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         if (currentRenderedIndex >= 0) {
           const columnCount = getActiveColumnCount();
 
+          if (!isInfinite && e.key === 'ArrowRight' && currentRenderedIndex >= itemCount - 1) {
+            if (currentPage < totalPages) {
+              pendingKeyboardPreviewRef.current = null;
+              pendingPageBoundaryFocusRef.current = 'first';
+              focusedImageIndexRef.current = 0;
+              setFocusedImageIndex(0);
+              onPageChange(currentPage + 1);
+            }
+            return;
+          }
+
+          if (!isInfinite && e.key === 'ArrowLeft' && currentRenderedIndex <= 0) {
+            if (currentPage > 1) {
+              pendingKeyboardPreviewRef.current = null;
+              pendingPageBoundaryFocusRef.current = 'last';
+              focusedImageIndexRef.current = -1;
+              setFocusedImageIndex(-1);
+              onPageChange(currentPage - 1);
+            }
+            return;
+          }
+
           if (e.key === 'ArrowRight') {
             nextRenderedIndex = currentRenderedIndex + 1;
           } else if (e.key === 'ArrowLeft') {
@@ -1620,6 +1656,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   useEffect(() => {
     return () => {
       pendingKeyboardPreviewRef.current = null;
+      pendingPageBoundaryFocusRef.current = null;
     };
   }, []);
 
