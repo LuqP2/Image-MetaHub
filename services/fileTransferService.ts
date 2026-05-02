@@ -1,5 +1,5 @@
 import { processFiles } from './fileIndexer';
-import { transferImagePersistence } from './imageAnnotationsStorage';
+import { bulkTransferImagePersistence } from './imageAnnotationsStorage';
 import { useImageStore } from '../store/useImageStore';
 import type {
   Directory,
@@ -170,7 +170,7 @@ export async function transferIndexedImages({
   );
   const annotationsMap = new Map(useImageStore.getState().annotations);
 
-  const persistenceTransfers: Array<{ sourceImage: IndexedImage; targetImageId: string }> = [];
+  const persistenceTransfers: Array<{ sourceImageId: string; targetImageId: string }> = [];
 
   onStatus?.('Preserving tags and metadata...');
   for (const item of transferredItems) {
@@ -180,8 +180,7 @@ export async function transferIndexedImages({
     }
 
     const targetImageId = `${destinationDirectory.id}::${item.destinationRelativePath}`;
-    persistenceTransfers.push({ sourceImage, targetImageId });
-    await transferImagePersistence(sourceImage.id, targetImageId, 'copy');
+    persistenceTransfers.push({ sourceImageId: sourceImage.id, targetImageId });
 
     const sourceAnnotation = annotationsMap.get(sourceImage.id);
     if (sourceAnnotation) {
@@ -191,6 +190,10 @@ export async function transferIndexedImages({
         updatedAt: Date.now(),
       });
     }
+  }
+
+  if (persistenceTransfers.length > 0) {
+    await bulkTransferImagePersistence(persistenceTransfers, 'copy');
   }
 
   const transferredEntries = transferredItems.map(buildTransferredEntry);
@@ -214,7 +217,7 @@ export async function transferIndexedImages({
 
   if (mode === 'move') {
     for (const transfer of persistenceTransfers) {
-      annotationsMap.delete(transfer.sourceImage.id);
+      annotationsMap.delete(transfer.sourceImageId);
     }
   }
 
@@ -228,8 +231,8 @@ export async function transferIndexedImages({
 
   if (shouldRelyOnWatcher) {
     if (mode === 'move') {
-      for (const transfer of persistenceTransfers) {
-        await transferImagePersistence(transfer.sourceImage.id, transfer.targetImageId, 'move');
+      if (persistenceTransfers.length > 0) {
+        await bulkTransferImagePersistence(persistenceTransfers, 'move');
       }
     }
 
@@ -287,8 +290,8 @@ export async function transferIndexedImages({
   flushPendingImages();
 
   if (mode === 'move') {
-    for (const transfer of persistenceTransfers) {
-      await transferImagePersistence(transfer.sourceImage.id, transfer.targetImageId, 'move');
+    if (persistenceTransfers.length > 0) {
+      await bulkTransferImagePersistence(persistenceTransfers, 'move');
     }
     removeImages(images.map((image) => image.id));
   }
