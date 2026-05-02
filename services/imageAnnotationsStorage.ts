@@ -1107,6 +1107,36 @@ export async function saveSmartCollection(collection: SmartCollection): Promise<
 }
 
 /**
+ * Save multiple smart collections in a single transaction
+ */
+export async function bulkSaveSmartCollections(collections: SmartCollection[]): Promise<void> {
+  const db = await openDatabase();
+  if (!db || collections.length === 0) return;
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([SMART_COLLECTIONS_STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(SMART_COLLECTIONS_STORE_NAME);
+
+    for (const collection of collections) {
+      const normalizedCollection = normalizeSmartCollection(
+        {
+          ...collection,
+          updatedAt: Date.now(),
+        },
+        collection.sortIndex,
+      );
+      store.put(normalizedCollection);
+    }
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => {
+      console.error('Error bulk saving smart collections:', transaction.error);
+      reject(transaction.error);
+    };
+  });
+}
+
+/**
  * Delete smart collection
  */
 export async function deleteSmartCollection(id: string): Promise<void> {
@@ -1196,7 +1226,7 @@ export async function reorderSmartCollections(collections: SmartCollection[]): P
     ),
   );
 
-  await Promise.all(normalizedCollections.map((collection) => saveSmartCollection(collection)));
+  await bulkSaveSmartCollections(normalizedCollections);
   return normalizedCollections;
 }
 
