@@ -114,6 +114,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-gray-50"
             title="Close"
+            aria-label="Close changelog"
           >
             <X size={24} />
           </button>

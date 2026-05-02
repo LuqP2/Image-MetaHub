@@ -263,7 +263,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
         >
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold text-red-400">No Metadata Available</h2>
-            <button onClick={handleClose} className="p-1 rounded-full hover:bg-gray-700">
+            <button onClick={handleClose} className="p-1 rounded-full hover:bg-gray-700" aria-label="Close generate modal">
               <X size={20} />
             </button>
           </div>
@@ -304,6 +304,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
             <button
               onClick={handleClose}
               className="p-1 rounded-full hover:bg-gray-700 transition-colors"
+              aria-label="Close generate modal"
             >
               <X size={24} />
             </button>

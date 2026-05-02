@@ -324,7 +324,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
                 <div className="inline-flex rounded-full border border-gray-700 bg-gray-950/70 p-1">
                   {(['context', 'library'] as AnalyticsScopeMode[]).map((mode) => <button key={mode} type="button" onClick={() => setScopeMode(mode)} className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${scopeMode === mode ? 'bg-cyan-500/15 text-cyan-100' : 'text-gray-400 hover:text-white'}`}>{mode === 'context' ? 'Current Scope' : 'Full Library'}</button>)}
                 </div>
-                <button type="button" onClick={onClose} className="rounded-full border border-gray-700 bg-gray-950/70 p-2 text-gray-400 transition-colors hover:border-gray-600 hover:text-white"><X size={18} /></button>
+                <button type="button" onClick={onClose} className="rounded-full border border-gray-700 bg-gray-950/70 p-2 text-gray-400 transition-colors hover:border-gray-600 hover:text-white" aria-label="Close analytics"><X size={18} /></button>
               </div>
             </div>
             <div className="mt-4 flex flex-col gap-3 border-t border-gray-800 pt-4 lg:flex-row lg:items-center lg:justify-between">

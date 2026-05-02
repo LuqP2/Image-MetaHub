@@ -86,7 +86,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
             >
               {isExpandedModal ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
             </button>
-            <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-700">
+            <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-700" aria-label="Close generate modal">
               <X size={24} />
             </button>
           </div>

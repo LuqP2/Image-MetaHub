@@ -166,6 +166,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors"
+            aria-label="Close tag manager"
           >
             <X size={20} />
           </button>
