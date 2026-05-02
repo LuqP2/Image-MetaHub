@@ -1011,10 +1011,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const getGridScrollElement = useCallback(() => gridScrollRef.current ?? gridScopeRef.current, []);
 
   const getActiveColumnCount = useCallback(() => {
-    const measuredWidth = gridScrollRef.current?.clientWidth ?? gridScopeRef.current?.clientWidth ?? 0;
-    const measuredColumnCount = Math.floor(measuredWidth / (imageSize + GAP_SIZE));
+    if (isInfinite) {
+      return Math.max(1, columnCountRef.current || 1);
+    }
+
+    const gridBackground = gridScopeRef.current?.querySelector<HTMLElement>('[data-grid-background]');
+    const measuredWidth = gridBackground?.clientWidth ?? gridScopeRef.current?.clientWidth ?? 0;
+    const measuredColumnCount = Math.floor((measuredWidth + GAP_SIZE) / (imageSize + GAP_SIZE));
     return Math.max(1, measuredColumnCount || columnCountRef.current || 1);
-  }, [imageSize]);
+  }, [imageSize, isInfinite]);
 
   const getRenderedIndexForImageIndex = useCallback((imageIndex: number | null): number => {
     if (imageIndex == null || imageIndex < 0) {
