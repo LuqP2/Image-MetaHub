@@ -171,6 +171,7 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
               onClick={handleClose}
               className="p-1.5 hover:bg-gray-700/50 text-gray-400 hover:text-white rounded-lg transition-colors"
               title="Close (Escape)"
+              aria-label="Close comparison"
             >
               <X className="w-5 h-5" />
             </button>
