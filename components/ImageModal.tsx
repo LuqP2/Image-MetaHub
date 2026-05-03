@@ -86,6 +86,57 @@ const buildTagSuggestions = (
   return suggestions;
 };
 
+const parseDimensions = (value?: string): { width: number; height: number } => {
+  const match = String(value || '').match(/(\d+)\s*x\s*(\d+)/i);
+  return {
+    width: match ? Number(match[1]) : 0,
+    height: match ? Number(match[2]) : 0,
+  };
+};
+
+const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefined => {
+  const normalized = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+  if (normalized) {
+    return normalized;
+  }
+
+  const hasFlattenedMetadata = Boolean(
+    image.prompt ||
+    image.negativePrompt ||
+    image.models?.length ||
+    image.loras?.length ||
+    image.sampler ||
+    image.scheduler ||
+    image.seed !== undefined ||
+    image.steps !== undefined ||
+    image.cfgScale !== undefined ||
+    image.dimensions
+  );
+
+  if (!hasFlattenedMetadata) {
+    return undefined;
+  }
+
+  const dimensions = parseDimensions(image.dimensions);
+  const model = image.models?.[0] || '';
+  return {
+    prompt: image.prompt || '',
+    negativePrompt: image.negativePrompt || '',
+    model,
+    models: image.models || [],
+    loras: image.loras || [],
+    sampler: image.sampler || '',
+    scheduler: image.scheduler || '',
+    seed: image.seed,
+    steps: image.steps || 0,
+    cfgScale: image.cfgScale,
+    cfg_scale: image.cfgScale,
+    width: dimensions.width,
+    height: dimensions.height,
+    dimensions: image.dimensions,
+  };
+};
+
 interface ImageModalProps {
   modalId?: string;
   image: IndexedImage;
@@ -1250,7 +1301,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [applyModalWindowStyles, isFullViewportModal, modalInteraction, scheduleModalWindowPaint]);
 
-  const nMeta: BaseMetadata | undefined = liveImage.metadata?.normalizedMetadata;
+  const nMeta: BaseMetadata | undefined = getUsableNormalizedMetadata(liveImage);
   const canFindSimilar = Boolean(nMeta?.prompt) && Boolean(onFindSimilar);
   const effectiveMetadata = buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal);
   const generationImage = useMemo<IndexedImage>(() => (
@@ -1724,20 +1775,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (targetDirectory) {
         const indexedImage = await indexImageFileAtPath(saveResult.path, targetDirectory);
         if (indexedImage) {
+          const sourceMetadata = getUsableNormalizedMetadata(liveImage);
+          const savedMetadata = sourceMetadata
+            ? {
+                ...liveImage.metadata,
+                normalizedMetadata: sourceMetadata,
+              }
+            : liveImage.metadata;
           const savedImage: IndexedImage = {
             ...indexedImage,
-            metadata: liveImage.metadata,
-            metadataString: liveImage.metadataString,
-            models: liveImage.models,
-            loras: liveImage.loras,
-            sampler: liveImage.sampler,
-            scheduler: liveImage.scheduler,
-            board: liveImage.board,
-            prompt: liveImage.prompt,
-            negativePrompt: liveImage.negativePrompt,
-            cfgScale: liveImage.cfgScale,
-            steps: liveImage.steps,
-            seed: liveImage.seed,
+            metadata: savedMetadata,
+            metadataString: sourceMetadata ? JSON.stringify(savedMetadata) : liveImage.metadataString,
+            models: sourceMetadata?.models || liveImage.models,
+            loras: sourceMetadata?.loras || liveImage.loras,
+            sampler: sourceMetadata?.sampler || liveImage.sampler,
+            scheduler: sourceMetadata?.scheduler || liveImage.scheduler,
+            board: sourceMetadata?.board || liveImage.board,
+            prompt: sourceMetadata?.prompt || liveImage.prompt,
+            negativePrompt: sourceMetadata?.negativePrompt || liveImage.negativePrompt,
+            cfgScale: sourceMetadata?.cfgScale ?? sourceMetadata?.cfg_scale ?? liveImage.cfgScale,
+            steps: sourceMetadata?.steps || liveImage.steps,
+            seed: sourceMetadata?.seed ?? liveImage.seed,
             workflowNodes: liveImage.workflowNodes,
             enrichmentState: 'enriched',
           };
@@ -1813,21 +1871,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
         throw new Error('The edited image was saved, but metadata reparsing returned no image.');
       }
 
+      const sourceMetadata = getUsableNormalizedMetadata(liveImage);
+      const preservedMetadata = sourceMetadata
+        ? {
+            ...liveImage.metadata,
+            normalizedMetadata: sourceMetadata,
+          }
+        : liveImage.metadata;
       const preservedMetadataImage: IndexedImage = {
         ...liveImage,
         ...reparsed,
-        metadata: liveImage.metadata,
-        metadataString: liveImage.metadataString,
-        models: liveImage.models,
-        loras: liveImage.loras,
-        sampler: liveImage.sampler,
-        scheduler: liveImage.scheduler,
-        board: liveImage.board,
-        prompt: liveImage.prompt,
-        negativePrompt: liveImage.negativePrompt,
-        cfgScale: liveImage.cfgScale,
-        steps: liveImage.steps,
-        seed: liveImage.seed,
+        metadata: preservedMetadata,
+        metadataString: sourceMetadata ? JSON.stringify(preservedMetadata) : liveImage.metadataString,
+        models: sourceMetadata?.models || liveImage.models,
+        loras: sourceMetadata?.loras || liveImage.loras,
+        sampler: sourceMetadata?.sampler || liveImage.sampler,
+        scheduler: sourceMetadata?.scheduler || liveImage.scheduler,
+        board: sourceMetadata?.board || liveImage.board,
+        prompt: sourceMetadata?.prompt || liveImage.prompt,
+        negativePrompt: sourceMetadata?.negativePrompt || liveImage.negativePrompt,
+        cfgScale: sourceMetadata?.cfgScale ?? sourceMetadata?.cfg_scale ?? liveImage.cfgScale,
+        steps: sourceMetadata?.steps || liveImage.steps,
+        seed: sourceMetadata?.seed ?? liveImage.seed,
         workflowNodes: liveImage.workflowNodes,
         handle: liveImage.handle,
         thumbnailHandle: liveImage.thumbnailHandle,
