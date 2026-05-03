@@ -2,7 +2,7 @@
 /// <reference lib="dom.iterable" />
 import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager';
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
+import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './parsers/comfyUIParser';
 import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
@@ -1731,6 +1731,74 @@ export async function reparseIndexedImage(
     image.directoryId || image.id.split('::')[0] || '',
     fileData
   );
+}
+
+const normalizePathForComparison = (value: string): string => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
+const getRelativePathWithinDirectory = (filePath: string, directoryPath: string): string | null => {
+  const normalizedFile = filePath.replace(/\\/g, '/');
+  const normalizedDirectory = directoryPath.replace(/\\/g, '/').replace(/\/+$/, '');
+  const fileKey = normalizePathForComparison(normalizedFile);
+  const directoryKey = normalizePathForComparison(normalizedDirectory);
+
+  if (fileKey === directoryKey || !fileKey.startsWith(`${directoryKey}/`)) {
+    return null;
+  }
+
+  return normalizedFile.slice(normalizedDirectory.length + 1).replace(/^\/+/, '');
+};
+
+export async function indexImageFileAtPath(
+  filePath: string,
+  directory: Pick<Directory, 'id' | 'name' | 'path'>,
+): Promise<IndexedImage | null> {
+  if (!window.electronAPI?.readFile || !window.electronAPI?.getFileStats) {
+    throw new Error('Indexing saved images is only available in the desktop app.');
+  }
+
+  const relativePath = getRelativePathWithinDirectory(filePath, directory.path);
+  if (!relativePath) {
+    return null;
+  }
+
+  const readResult = await window.electronAPI.readFile(filePath);
+  if (!readResult.success || !readResult.data) {
+    throw new Error(readResult.error || 'Failed to read the saved image file.');
+  }
+
+  const statsResult = await window.electronAPI.getFileStats(filePath);
+  const stats = statsResult.success ? statsResult.stats : undefined;
+  const fileName = relativePath.split('/').pop() || relativePath;
+  const bytes = new Uint8Array(readResult.data);
+  const fileData = bytes.slice().buffer;
+  const fileEntry: CatalogFileEntry = {
+    handle: {
+      name: fileName,
+      kind: 'file',
+      _filePath: filePath,
+      getFile: async () => new File([fileData.slice(0) as any], fileName, {
+        type: inferMimeTypeFromName(fileName),
+        lastModified: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : Date.now(),
+      }),
+    } as ElectronFileHandle,
+    path: relativePath,
+    lastModified: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : Date.now(),
+    contentModifiedMs: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : undefined,
+    size: typeof stats?.size === 'number' ? stats.size : fileData.byteLength,
+    type: inferMimeTypeFromName(fileName),
+    birthtimeMs: typeof stats?.birthtimeMs === 'number' ? stats.birthtimeMs : undefined,
+  };
+
+  const indexed = await processSingleFileOptimized(fileEntry, directory.id, fileData);
+  if (!indexed) {
+    return null;
+  }
+
+  return {
+    ...indexed,
+    directoryId: directory.id,
+    directoryName: directory.name,
+  };
 }
 
 /**
