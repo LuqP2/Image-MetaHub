@@ -1,9 +1,9 @@
 import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
-import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection } from '../types';
+import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageAdjustments } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -21,6 +21,15 @@ import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getElectronAbsoluteMediaPath, mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
+import cacheManager from '../services/cacheManager';
+import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndexer';
+import {
+  DEFAULT_IMAGE_ADJUSTMENTS,
+  buildImageAdjustmentFilter,
+  embedMetaHubMetadataInPngBytes,
+  hasImageAdjustments,
+  renderAdjustedImageToPngBytes,
+} from '../services/imageEditingService';
 
 import { bulkSaveShadowMetadata } from '../services/imageAnnotationsStorage';
 import { copyEditableMetadata, readEditableMetadataClipboard } from '../services/metadataClipboard';
@@ -37,7 +46,9 @@ import TagInputCombobox from './TagInputCombobox';
 import { getRecentTagChips } from '../utils/tagSuggestions';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import AudioPlayer from './AudioPlayer';
-import { isAudioFileName, isVideoFileName, SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
+import ImageAdjustmentPanel from './ImageAdjustmentPanel';
+import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
+import { getFileExtension, isAudioFileName, isVideoFileName, SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 import {
   createProfilerOnRender,
   finishPerformanceFlow,
@@ -74,6 +85,57 @@ const buildTagSuggestions = (
   }
 
   return suggestions;
+};
+
+const parseDimensions = (value?: string): { width: number; height: number } => {
+  const match = String(value || '').match(/(\d+)\s*x\s*(\d+)/i);
+  return {
+    width: match ? Number(match[1]) : 0,
+    height: match ? Number(match[2]) : 0,
+  };
+};
+
+const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefined => {
+  const normalized = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+  if (normalized) {
+    return normalized;
+  }
+
+  const hasFlattenedMetadata = Boolean(
+    image.prompt ||
+    image.negativePrompt ||
+    image.models?.length ||
+    image.loras?.length ||
+    image.sampler ||
+    image.scheduler ||
+    image.seed !== undefined ||
+    image.steps !== undefined ||
+    image.cfgScale !== undefined ||
+    image.dimensions
+  );
+
+  if (!hasFlattenedMetadata) {
+    return undefined;
+  }
+
+  const dimensions = parseDimensions(image.dimensions);
+  const model = image.models?.[0] || '';
+  return {
+    prompt: image.prompt || '',
+    negativePrompt: image.negativePrompt || '',
+    model,
+    models: image.models || [],
+    loras: image.loras || [],
+    sampler: image.sampler || '',
+    scheduler: image.scheduler || '',
+    seed: image.seed,
+    steps: image.steps || 0,
+    cfgScale: image.cfgScale,
+    cfg_scale: image.cfgScale,
+    width: dimensions.width,
+    height: dimensions.height,
+    dimensions: image.dimensions,
+  };
 };
 
 interface ImageModalProps {
@@ -695,6 +757,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [detailsPlacement, setDetailsPlacement] = useState<'right' | 'bottom'>('right');
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [isAdjustmentPanelOpen, setIsAdjustmentPanelOpen] = useState(false);
+  const [imageAdjustments, setImageAdjustments] = useState<ImageAdjustments>(DEFAULT_IMAGE_ADJUSTMENTS);
+  const [isSavingEditedImage, setIsSavingEditedImage] = useState(false);
+  const [isFullImageSourceReady, setIsFullImageSourceReady] = useState(false);
   const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => {
     if (initialWindowState) {
       return clampModalWindowToViewport(initialWindowState);
@@ -798,7 +864,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const collections = useImageStore((state) => state.collections);
   const createCollection = useImageStore((state) => state.createCollection);
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
+  const addImages = useImageStore((state) => state.addImages);
+  const mergeImages = useImageStore((state) => state.mergeImages);
+  const setImageThumbnail = useImageStore((state) => state.setImageThumbnail);
+  const setError = useImageStore((state) => state.setError);
+  const setSuccess = useImageStore((state) => state.setSuccess);
   const directories = useImageStore((state) => state.directories);
+  const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const filteredImages = useImageStore((state) => state.filteredImages);
   const allImages = useImageStore((state) => state.images);
   const selectedImages = useImageStore((state) => state.selectedImages);
@@ -821,6 +893,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
   const isPlayableMedia = isVideo || isAudio;
+  const canEditImage = !isPlayableMedia && getFileExtension(liveImage.name) !== '.gif';
   const showA1111Actions = !isPlayableMedia && a1111Enabled;
   const showComfyUIActions = !isPlayableMedia && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
@@ -876,6 +949,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
     ? `${directoryPath}${/[\\/]$/.test(directoryPath) ? '' : '\\'}${image.name}`
     : image.name;
   const mediaOverlayVisibilityClass = isMediaOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
+  const adjustmentFilter = useMemo(
+    () => buildImageAdjustmentFilter(imageAdjustments),
+    [imageAdjustments]
+  );
+  const hasAdjustmentChanges = hasImageAdjustments(imageAdjustments);
+
+  useEffect(() => {
+    setImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS);
+    setIsAdjustmentPanelOpen(false);
+  }, [image.id]);
 
   useEffect(() => {
     const mountStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -1219,7 +1302,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [applyModalWindowStyles, isFullViewportModal, modalInteraction, scheduleModalWindowPaint]);
 
-  const nMeta: BaseMetadata | undefined = liveImage.metadata?.normalizedMetadata;
+  const nMeta: BaseMetadata | undefined = getUsableNormalizedMetadata(liveImage);
   const canFindSimilar = Boolean(nMeta?.prompt) && Boolean(onFindSimilar);
   const effectiveMetadata = buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal);
   const generationImage = useMemo<IndexedImage>(() => (
@@ -1622,6 +1705,243 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setPan({ x: 0, y: 0 });
   };
 
+  const buildEditedDefaultPath = useCallback(async () => {
+    const relativePath = getRelativeImagePath(liveImage);
+    const { folderPath, fileName } = splitRelativePath(relativePath);
+    const dotIndex = fileName.lastIndexOf('.');
+    const basename = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+    const editedRelativePath = folderPath ? `${folderPath}/${basename}-edited.png` : `${basename}-edited.png`;
+
+    if (!directoryPath || !window.electronAPI?.joinPaths) {
+      return `${basename}-edited.png`;
+    }
+
+    const joined = await window.electronAPI.joinPaths(directoryPath, editedRelativePath);
+    return joined.success && joined.path ? joined.path : `${basename}-edited.png`;
+  }, [directoryPath, liveImage]);
+
+  const findDirectoryForAbsolutePath = useCallback((filePath: string) => {
+    const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    const normalizedFile = normalize(filePath);
+    return directories.find((directory) => {
+      const normalizedDirectory = normalize(directory.path);
+      return normalizedFile.startsWith(`${normalizedDirectory}/`);
+    }) ?? null;
+  }, [directories]);
+
+  const writeEditedImage = useCallback(async (targetPath: string, sourceMetadata?: BaseMetadata) => {
+    if (!imageUrl || !isFullImageSourceReady) {
+      throw new Error('The full image is still loading.');
+    }
+
+    if (!window.electronAPI?.writeFile) {
+      throw new Error('Image editing saves are only available in the desktop app.');
+    }
+
+    const pngBytes = await renderAdjustedImageToPngBytes(imageUrl, imageAdjustments);
+    const outputBytes = embedMetaHubMetadataInPngBytes(pngBytes, sourceMetadata, imageAdjustments);
+    const result = await window.electronAPI.writeFile(targetPath, outputBytes);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to write edited image.');
+    }
+
+    return pngBytes;
+  }, [imageAdjustments, imageUrl, isFullImageSourceReady]);
+
+  const handleSaveEditedImageAs = useCallback(async () => {
+    if (!canEditImage || !hasAdjustmentChanges || isSavingEditedImage) {
+      return;
+    }
+
+    if (!window.electronAPI?.showSaveDialog) {
+      setError('Save As is only available in the desktop app.');
+      return;
+    }
+
+    setIsSavingEditedImage(true);
+    try {
+      const defaultPath = await buildEditedDefaultPath();
+      const saveResult = await window.electronAPI.showSaveDialog({
+        title: 'Save edited image',
+        defaultPath,
+        filters: [{ name: 'PNG Image', extensions: ['png'] }],
+      });
+
+      if (saveResult.canceled || !saveResult.path) {
+        return;
+      }
+
+      const sourceMetadata = getUsableNormalizedMetadata(liveImage);
+      await writeEditedImage(saveResult.path, sourceMetadata);
+
+      const targetDirectory = findDirectoryForAbsolutePath(saveResult.path);
+      if (targetDirectory) {
+        const indexedImage = await indexImageFileAtPath(saveResult.path, targetDirectory);
+        if (indexedImage) {
+          const savedMetadata = sourceMetadata
+            ? {
+                ...liveImage.metadata,
+                normalizedMetadata: sourceMetadata,
+              }
+            : liveImage.metadata;
+          const savedImage: IndexedImage = {
+            ...indexedImage,
+            metadata: savedMetadata,
+            metadataString: sourceMetadata ? JSON.stringify(savedMetadata) : liveImage.metadataString,
+            models: sourceMetadata?.models || liveImage.models,
+            loras: sourceMetadata?.loras || liveImage.loras,
+            sampler: sourceMetadata?.sampler || liveImage.sampler,
+            scheduler: sourceMetadata?.scheduler || liveImage.scheduler,
+            board: sourceMetadata?.board || liveImage.board,
+            prompt: sourceMetadata?.prompt || liveImage.prompt,
+            negativePrompt: sourceMetadata?.negativePrompt || liveImage.negativePrompt,
+            cfgScale: sourceMetadata?.cfgScale ?? sourceMetadata?.cfg_scale ?? liveImage.cfgScale,
+            steps: sourceMetadata?.steps || liveImage.steps,
+            seed: sourceMetadata?.seed ?? liveImage.seed,
+            workflowNodes: liveImage.workflowNodes,
+            enrichmentState: 'enriched',
+          };
+          const targetAlreadyIndexed = allImages.some((candidate) => candidate.id === savedImage.id);
+          if (targetAlreadyIndexed) {
+            mergeImages([savedImage]);
+            await cacheManager.updateCachedImages(targetDirectory.path, targetDirectory.name, [savedImage], scanSubfolders);
+          } else {
+            addImages([savedImage]);
+            await cacheManager.appendToCache(targetDirectory.path, targetDirectory.name, [savedImage], scanSubfolders);
+          }
+          setSuccess(`Saved edited image as ${savedImage.name}.`);
+        } else {
+          setSuccess('Saved edited image.');
+        }
+      } else {
+        setSuccess('Saved edited image.');
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to save edited image.');
+    } finally {
+      setIsSavingEditedImage(false);
+    }
+  }, [
+    addImages,
+    allImages,
+    buildEditedDefaultPath,
+    canEditImage,
+    findDirectoryForAbsolutePath,
+    hasAdjustmentChanges,
+    isSavingEditedImage,
+    liveImage,
+    mergeImages,
+    scanSubfolders,
+    setError,
+    setSuccess,
+    writeEditedImage,
+  ]);
+
+  const handleOverwriteEditedImage = useCallback(async () => {
+    if (!canEditImage || !hasAdjustmentChanges || isSavingEditedImage) {
+      return;
+    }
+
+    if (!window.electronAPI?.joinPaths) {
+      setError('Overwrite is only available in the desktop app.');
+      return;
+    }
+
+    const confirmed = window.confirm('Overwrite the original image with these edits? This cannot be undone.');
+    if (!confirmed) {
+      return;
+    }
+
+    const sourceDirectory = directories.find((directory) => directory.id === liveImage.directoryId);
+    if (!sourceDirectory) {
+      setError('Cannot overwrite because the source directory is unavailable.');
+      return;
+    }
+
+    setIsSavingEditedImage(true);
+    try {
+      const relativePath = getRelativeImagePath(liveImage);
+      const joined = await window.electronAPI.joinPaths(sourceDirectory.path, relativePath);
+      if (!joined.success || !joined.path) {
+        throw new Error(joined.error || 'Failed to resolve the original image path.');
+      }
+
+      const sourceMetadata = getUsableNormalizedMetadata(liveImage);
+      await writeEditedImage(joined.path, sourceMetadata);
+
+      const reparsed = await reparseIndexedImage(liveImage, sourceDirectory.path);
+      if (!reparsed) {
+        throw new Error('The edited image was saved, but metadata reparsing returned no image.');
+      }
+
+      const preservedMetadata = sourceMetadata
+        ? {
+            ...liveImage.metadata,
+            normalizedMetadata: sourceMetadata,
+          }
+        : liveImage.metadata;
+      const preservedMetadataImage: IndexedImage = {
+        ...liveImage,
+        ...reparsed,
+        metadata: preservedMetadata,
+        metadataString: sourceMetadata ? JSON.stringify(preservedMetadata) : liveImage.metadataString,
+        models: sourceMetadata?.models || liveImage.models,
+        loras: sourceMetadata?.loras || liveImage.loras,
+        sampler: sourceMetadata?.sampler || liveImage.sampler,
+        scheduler: sourceMetadata?.scheduler || liveImage.scheduler,
+        board: sourceMetadata?.board || liveImage.board,
+        prompt: sourceMetadata?.prompt || liveImage.prompt,
+        negativePrompt: sourceMetadata?.negativePrompt || liveImage.negativePrompt,
+        cfgScale: sourceMetadata?.cfgScale ?? sourceMetadata?.cfg_scale ?? liveImage.cfgScale,
+        steps: sourceMetadata?.steps || liveImage.steps,
+        seed: sourceMetadata?.seed ?? liveImage.seed,
+        workflowNodes: liveImage.workflowNodes,
+        handle: liveImage.handle,
+        thumbnailHandle: liveImage.thumbnailHandle,
+        thumbnailUrl: undefined,
+        thumbnailStatus: 'pending',
+        thumbnailError: null,
+        directoryId: liveImage.directoryId,
+        directoryName: liveImage.directoryName,
+        isFavorite: liveImage.isFavorite,
+        tags: liveImage.tags,
+        rating: liveImage.rating,
+        clusterId: liveImage.clusterId,
+        clusterPosition: liveImage.clusterPosition,
+        autoTags: liveImage.autoTags,
+        autoTagsGeneratedAt: liveImage.autoTagsGeneratedAt,
+        enrichmentState: 'enriched',
+      };
+
+      mergeImages([preservedMetadataImage]);
+      setImageThumbnail(liveImage.id, {
+        thumbnailUrl: null,
+        thumbnailHandle: null,
+        status: 'pending',
+        error: null,
+      });
+      await cacheManager.updateCachedImages(sourceDirectory.path, sourceDirectory.name, [preservedMetadataImage], scanSubfolders);
+      setImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS);
+      setSuccess('Overwrote original image with edits.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to overwrite edited image.');
+    } finally {
+      setIsSavingEditedImage(false);
+    }
+  }, [
+    canEditImage,
+    directories,
+    hasAdjustmentChanges,
+    isSavingEditedImage,
+    liveImage,
+    mergeImages,
+    scanSubfolders,
+    setError,
+    setImageThumbnail,
+    setSuccess,
+    writeEditedImage,
+  ]);
+
   const clearSlideshowTimer = useCallback(() => {
     if (typeof window === 'undefined' || slideshowTimeoutRef.current === null) {
       return;
@@ -1636,12 +1956,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
     const hasPreview = Boolean(preferredThumbnailUrl);
     const sourceLoadStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
+    setIsFullImageSourceReady(false);
     setImageUrl(isPlayableMedia ? null : (preferredThumbnailUrl ?? null));
 
     const loadImage = async () => {
       if (!isMounted) return;
 
-      const electronAbsoluteMediaPath = window.electronAPI ? getElectronAbsoluteMediaPath(image) : null;
+      const electronAbsoluteMediaPath = window.electronAPI ? getElectronAbsoluteMediaPath(liveImage) : null;
 
       if (!directoryPath && window.electronAPI && !electronAbsoluteMediaPath) {
         console.error('Cannot load image: directoryPath is undefined');
@@ -1653,17 +1974,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
 
       try {
-        const url = await mediaSourceCache.getOrLoad(image, directoryPath, { prioritize: true });
+        const url = await mediaSourceCache.getOrLoad(liveImage, directoryPath, { prioritize: true });
         if (isMounted) {
           setImageUrl(url);
+          setIsFullImageSourceReady(true);
           markPerformanceFlow(diagnosticsFlowId, 'full-source-ready', {
-            imageId: image.id,
+            imageId: liveImage.id,
             isPlayableMedia,
           });
 
           const state = useImageStore.getState();
           const navigationImages = state.clusterNavigationContext || state.filteredImages;
-          const currentNavigationIndex = navigationImages.findIndex((candidate) => candidate.id === image.id);
+          const currentNavigationIndex = navigationImages.findIndex((candidate) => candidate.id === liveImage.id);
           if (currentNavigationIndex !== -1) {
             const directoryMap = new Map(state.directories.map((dir) => [dir.id, dir.path]));
             const neighborCandidates = [
@@ -1684,7 +2006,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         }
       } finally {
         recordPerformanceDuration('modal.full-source-load', (typeof performance !== 'undefined' ? performance.now() : Date.now()) - sourceLoadStartedAt, {
-          imageId: image.id,
+          imageId: liveImage.id,
           hasPreview,
           isPlayableMedia,
         });
@@ -1696,7 +2018,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [diagnosticsFlowId, image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl, isPlayableMedia, isVideo]);
+  }, [diagnosticsFlowId, liveImage.id, liveImage.handle, liveImage.thumbnailHandle, liveImage.name, liveImage.lastModified, directoryPath, preferredThumbnailUrl, isPlayableMedia, isVideo]);
 
   useEffect(() => {
     if (!preferredThumbnailUrl || hasMarkedPreviewVisibleRef.current) {
@@ -2391,6 +2713,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onDragStart={handleDragStart}
                 style={{
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  filter: canEditImage ? adjustmentFilter : undefined,
                   transition: isDragging ? 'none' : 'transform 0.1s ease-out',
                 }}
                 draggable={canDragExternally && zoom === 1}
@@ -2524,6 +2847,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </div>
             ) : (
               <div className="flex flex-row items-center gap-2">
+                {canEditImage && (
+                  <button
+                    onClick={() => {
+                      setIsAdjustmentPanelOpen((current) => !current);
+                      setIsSidebarCollapsed(false);
+                      setSidebarTab('details');
+                    }}
+                    className={`rounded-full border p-2 text-white/90 backdrop-blur-sm transition-colors ${
+                      isAdjustmentPanelOpen
+                        ? 'border-cyan-400/40 bg-cyan-500/25'
+                        : 'border-white/10 bg-black/35 hover:bg-black/55'
+                    }`}
+                    title={isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
+                  >
+                    <SlidersHorizontal className="h-4 w-4" />
+                  </button>
+                )}
                 <button
                   onClick={() => setDetailsPlacement((current) => current === 'right' ? 'bottom' : 'right')}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
@@ -2586,6 +2926,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           )}
           <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          {canEditImage && isAdjustmentPanelOpen && (
+            <ImageAdjustmentPanel
+              adjustments={imageAdjustments}
+              onChange={setImageAdjustments}
+              onReset={() => setImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS)}
+              onSaveAs={() => void handleSaveEditedImageAs()}
+              onOverwrite={() => void handleOverwriteEditedImage()}
+              isSaving={isSavingEditedImage}
+              disabled={!isFullImageSourceReady}
+            />
+          )}
+
           {/* Annotations Section */}
           <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
             {/* Favorite, Rating, and Tags */}

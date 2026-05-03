@@ -56,6 +56,23 @@ export interface ExportBatchRequest {
   targetFormat?: ExportTargetFormat;
 }
 
+export interface ImageAdjustments {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  hue: number;
+}
+
+export type ImageEditSaveMode = 'save_as' | 'overwrite';
+
+export interface ImageEditSaveResult {
+  success: boolean;
+  mode: ImageEditSaveMode;
+  path?: string;
+  image?: IndexedImage;
+  error?: string;
+}
+
 export type IndexedImageTransferMode = 'copy' | 'move';
 
 export interface IndexedImageTransferProgress {
