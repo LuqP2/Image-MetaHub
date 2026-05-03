@@ -87,6 +87,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
                 onClick={() => zoomIn()}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Zoom In"
+                aria-label="Zoom In"
               >
                 <ZoomIn className="w-5 h-5 text-white" />
               </button>
@@ -94,6 +95,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
                 onClick={() => zoomOut()}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Zoom Out"
+                aria-label="Zoom Out"
               >
                 <ZoomOut className="w-5 h-5 text-white" />
               </button>
@@ -101,6 +103,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
                 onClick={() => resetTransform()}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Reset Zoom"
+                aria-label="Reset Zoom"
               >
                 <RotateCcw className="w-5 h-5 text-white" />
               </button>
@@ -116,6 +119,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
                 }}
                 className="p-2 bg-purple-600/80 hover:bg-purple-700/90 rounded-lg backdrop-blur-sm transition-colors"
                 title="Generate Variation"
+                aria-label="Generate Variation"
                 disabled={!image.metadata?.normalizedMetadata?.prompt}
               >
                 <Sparkles className="w-5 h-5 text-white" />
