@@ -26,6 +26,7 @@ import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndex
 import {
   DEFAULT_IMAGE_ADJUSTMENTS,
   buildImageAdjustmentFilter,
+  embedMetaHubMetadataInPngBytes,
   hasImageAdjustments,
   renderAdjustedImageToPngBytes,
 } from '../services/imageEditingService';
@@ -1728,7 +1729,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }) ?? null;
   }, [directories]);
 
-  const writeEditedImage = useCallback(async (targetPath: string) => {
+  const writeEditedImage = useCallback(async (targetPath: string, sourceMetadata?: BaseMetadata) => {
     if (!imageUrl || !isFullImageSourceReady) {
       throw new Error('The full image is still loading.');
     }
@@ -1738,7 +1739,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     const pngBytes = await renderAdjustedImageToPngBytes(imageUrl, imageAdjustments);
-    const result = await window.electronAPI.writeFile(targetPath, pngBytes);
+    const outputBytes = embedMetaHubMetadataInPngBytes(pngBytes, sourceMetadata, imageAdjustments);
+    const result = await window.electronAPI.writeFile(targetPath, outputBytes);
     if (!result.success) {
       throw new Error(result.error || 'Failed to write edited image.');
     }
@@ -1769,13 +1771,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
         return;
       }
 
-      await writeEditedImage(saveResult.path);
+      const sourceMetadata = getUsableNormalizedMetadata(liveImage);
+      await writeEditedImage(saveResult.path, sourceMetadata);
 
       const targetDirectory = findDirectoryForAbsolutePath(saveResult.path);
       if (targetDirectory) {
         const indexedImage = await indexImageFileAtPath(saveResult.path, targetDirectory);
         if (indexedImage) {
-          const sourceMetadata = getUsableNormalizedMetadata(liveImage);
           const savedMetadata = sourceMetadata
             ? {
                 ...liveImage.metadata,
@@ -1864,14 +1866,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
         throw new Error(joined.error || 'Failed to resolve the original image path.');
       }
 
-      await writeEditedImage(joined.path);
+      const sourceMetadata = getUsableNormalizedMetadata(liveImage);
+      await writeEditedImage(joined.path, sourceMetadata);
 
       const reparsed = await reparseIndexedImage(liveImage, sourceDirectory.path);
       if (!reparsed) {
         throw new Error('The edited image was saved, but metadata reparsing returned no image.');
       }
 
-      const sourceMetadata = getUsableNormalizedMetadata(liveImage);
       const preservedMetadata = sourceMetadata
         ? {
             ...liveImage.metadata,

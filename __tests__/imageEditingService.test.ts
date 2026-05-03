@@ -3,6 +3,7 @@ import {
   DEFAULT_IMAGE_ADJUSTMENTS,
   buildImageAdjustmentFilter,
   clampImageAdjustment,
+  embedMetaHubMetadataInPngBytes,
   hasImageAdjustments,
   normalizeImageAdjustments,
   renderAdjustedImageToPngBytes,
@@ -77,5 +78,35 @@ describe('imageEditingService', () => {
       globalThis.Image = OriginalImage;
       vi.restoreAllMocks();
     }
+  });
+
+  it('embeds MetaHub metadata chunks into PNG bytes', () => {
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x00,
+      0x49, 0x45, 0x4e, 0x44,
+      0xae, 0x42, 0x60, 0x82,
+    ]);
+
+    const output = embedMetaHubMetadataInPngBytes(pngBytes, {
+      prompt: 'a test prompt',
+      negativePrompt: 'blur',
+      model: 'model.safetensors',
+      models: ['model.safetensors'],
+      width: 64,
+      height: 32,
+      steps: 20,
+      scheduler: 'normal',
+      sampler: 'euler',
+      cfg_scale: 7,
+      seed: 123,
+    }, DEFAULT_IMAGE_ADJUSTMENTS);
+    const text = new TextDecoder().decode(output);
+
+    expect(text).toContain('parameters');
+    expect(text).toContain('a test prompt');
+    expect(text).toContain('imagemetahub_data');
+    expect(text).toContain('Image MetaHub');
+    expect(text).toContain('model.safetensors');
   });
 });
