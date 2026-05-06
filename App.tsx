@@ -2324,13 +2324,13 @@ export default function App() {
             });
           }}
         />
-      ) : (
+      ) : hasRightSidebar ? (
         <ImagePreviewSidebar
           width={rightSidebarWidth}
           isResizing={isRightSidebarResizing}
           onResizeStart={handleRightSidebarResizeStart}
         />
-      )}
+      ) : null}
 
       {generatedOutputPreview && (
         <GeneratedOutputModal

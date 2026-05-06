@@ -297,6 +297,14 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     };
   }, [setComfyUIConnectionStatus, setComfyUIWorkspaceLastUrl]);
 
+  useEffect(() => {
+    if (!shouldShowBrowser || !isElectron || viewState.visible || loadFailure) {
+      return;
+    }
+
+    void openEmbeddedView();
+  }, [isElectron, loadFailure, openEmbeddedView, shouldShowBrowser, viewState]);
+
   const openExternally = async () => {
     const result = await window.electronAPI?.openExternalUrl?.(targetUrl);
     if (!result?.success) {

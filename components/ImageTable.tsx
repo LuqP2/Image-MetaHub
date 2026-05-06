@@ -96,7 +96,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
   const removeImagesFromCollection = useImageStore((state) => state.removeImagesFromCollection);
   const updateCollection = useImageStore((state) => state.updateCollection);
-  const { canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const { canUseComfyUI, canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
   const {
@@ -154,9 +154,15 @@ const ImageTable: React.FC<ImageTableProps> = ({
       return;
     }
 
+    if (!canUseComfyUI) {
+      showProModal('comfyui');
+      hideContextMenu();
+      return;
+    }
+
     onOpenComfyUIWorkspace(contextMenu.image);
     hideContextMenu();
-  }, [contextMenu.image, hideContextMenu, onOpenComfyUIWorkspace]);
+  }, [canUseComfyUI, contextMenu.image, hideContextMenu, onOpenComfyUIWorkspace, showProModal]);
 
   const getContextTargetImages = useCallback(() => {
     if (!contextMenu.image) {

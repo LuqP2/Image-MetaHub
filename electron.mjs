@@ -1782,6 +1782,10 @@ async function createWindow(startupDirectory = null) {
     hideComfyUIView();
   });
 
+  mainWindow.on('restore', () => {
+    updateComfyUIViewState({ visible: false });
+  });
+
   mainWindow.webContents.on('context-menu', (_event, params) => {
     showEditableTextContextMenu(mainWindow.webContents, params);
   });
