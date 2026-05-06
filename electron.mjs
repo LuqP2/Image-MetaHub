@@ -990,6 +990,9 @@ function configureComfyUIViewHandlers(view) {
   contents.on('did-navigate', () => updateComfyUIViewState());
   contents.on('did-navigate-in-page', () => updateComfyUIViewState());
   contents.on('page-title-updated', () => updateComfyUIViewState());
+  contents.on('context-menu', (_event, params) => {
+    showEditableTextContextMenu(contents, params);
+  });
   contents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame || errorCode === -3) {
       return;
@@ -1002,6 +1005,25 @@ function configureComfyUIViewHandlers(view) {
     });
     updateComfyUIViewState({ isLoading: false });
   });
+}
+
+function showEditableTextContextMenu(contents, params) {
+  if (!params.isEditable || !contents || contents.isDestroyed()) {
+    return;
+  }
+
+  const menu = Menu.buildFromTemplate([
+    { label: 'Undo', enabled: params.editFlags?.canUndo ?? false, click: () => contents.undo() },
+    { label: 'Redo', enabled: params.editFlags?.canRedo ?? false, click: () => contents.redo() },
+    { type: 'separator' },
+    { label: 'Cut', enabled: params.editFlags?.canCut ?? false, click: () => contents.cut() },
+    { label: 'Copy', enabled: params.editFlags?.canCopy ?? false, click: () => contents.copy() },
+    { label: 'Paste', enabled: params.editFlags?.canPaste ?? false, click: () => contents.paste() },
+    { type: 'separator' },
+    { label: 'Select All', enabled: params.editFlags?.canSelectAll ?? true, click: () => contents.selectAll() },
+  ]);
+
+  menu.popup({ window: mainWindow });
 }
 
 function ensureComfyUIView() {
@@ -1761,17 +1783,7 @@ async function createWindow(startupDirectory = null) {
   });
 
   mainWindow.webContents.on('context-menu', (_event, params) => {
-    if (!params.isEditable) {
-      return;
-    }
-
-    const menu = Menu.buildFromTemplate([
-      { role: 'cut', enabled: params.editFlags?.canCut ?? false },
-      { role: 'copy', enabled: params.editFlags?.canCopy ?? false },
-      { role: 'paste', enabled: params.editFlags?.canPaste ?? false },
-    ]);
-
-    menu.popup({ window: mainWindow });
+    showEditableTextContextMenu(mainWindow.webContents, params);
   });
 
   mainWindow.webContents.on('before-input-event', (event, input) => {

@@ -27,7 +27,9 @@ import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 
 interface ComfyUIWorkspaceProps {
   image: IndexedImage | null;
+  directoryPath?: string;
   navigationImages?: IndexedImage[];
+  directoryPathByImageId?: Record<string, string>;
   currentIndex?: number;
   isActive: boolean;
   suspendBrowser?: boolean;
@@ -68,8 +70,10 @@ const MetadataLine: React.FC<{ label: string; value: unknown }> = ({ label, valu
 const WorkspaceThumbnailButton: React.FC<{
   image: IndexedImage;
   isActive: boolean;
+  directoryPath?: string;
   onClick: () => void;
-}> = ({ image, isActive, onClick }) => {
+  onDragStart: (event: React.DragEvent<HTMLElement>, image: IndexedImage, directoryPath?: string) => void;
+}> = ({ image, isActive, directoryPath, onClick, onDragStart }) => {
   const thumbnail = useResolvedThumbnail(image);
 
   return (
@@ -80,6 +84,8 @@ const WorkspaceThumbnailButton: React.FC<{
       }`}
       title={image.name}
       aria-label={`Show ${image.name}`}
+      draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
+      onDragStart={(event) => onDragStart(event, image, directoryPath)}
     >
       {thumbnail?.thumbnailUrl ? (
         <img src={thumbnail.thumbnailUrl} alt="" className="h-full w-full object-cover image-alpha-grid" />
@@ -107,7 +113,9 @@ const getWorkflowMetadata = (image: IndexedImage | null): BaseMetadata | null =>
 
 const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   image,
+  directoryPath,
   navigationImages = [],
+  directoryPathByImageId = {},
   currentIndex = -1,
   isActive,
   suspendBrowser = false,
@@ -354,6 +362,23 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     { id: 'workflow' as const, label: 'Workflow', icon: Workflow },
   ];
 
+  const startImageFileDrag = useCallback((
+    event: React.DragEvent<HTMLElement>,
+    dragImage: IndexedImage,
+    dragDirectoryPath?: string,
+  ) => {
+    if (!dragDirectoryPath || !window.electronAPI?.startFileDrag) {
+      return;
+    }
+
+    const [, relativeFromId] = dragImage.id.split('::');
+    const relativePath = relativeFromId || dragImage.name;
+
+    event.preventDefault();
+    event.dataTransfer.effectAllowed = 'copy';
+    window.electronAPI.startFileDrag({ directoryPath: dragDirectoryPath, relativePath });
+  }, []);
+
   if (!isElectron) {
     return (
       <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-gray-800 bg-gray-950 p-8 text-center">
@@ -376,42 +401,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-950">
-      <div className="flex min-h-[32px] items-center justify-between gap-2 border-b border-gray-800 bg-gray-900 px-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <div
-            className={`inline-flex h-5 w-5 items-center justify-center rounded border text-xs ${connectionClasses}`}
-            title={`${comfyUILastConnectionStatus === 'connected' ? 'Connected' : loadFailure ? 'Load failed' : 'ComfyUI'} - ${viewState.url || targetUrl}`}
-          >
-            {viewState.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
-          </div>
-          {connectionMessage && (
-            <div className="max-w-[360px] truncate text-[11px] text-gray-500" title={connectionMessage}>
-              {connectionMessage}
-            </div>
-          )}
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            onClick={togglePanelCollapsed}
-            className="inline-flex h-6 items-center gap-1 rounded border border-gray-700 px-2 text-[11px] font-medium text-gray-200 hover:bg-gray-800"
-            title={isPanelCollapsed ? 'Show IMH context panel' : 'Hide IMH context panel'}
-          >
-            {isPanelCollapsed ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            <span>Context</span>
-          </button>
-          <button onClick={() => window.electronAPI?.comfyUIViewGoBack?.()} disabled={!viewState.canGoBack} className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Back">
-            <ArrowLeft className="h-3.5 w-3.5" />
-          </button>
-          <button onClick={() => window.electronAPI?.comfyUIViewGoForward?.()} disabled={!viewState.canGoForward} className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Forward">
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
-          <button onClick={openExternally} className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open externally">
-            <ExternalLink className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1 bg-black">
           <div ref={browserHostRef} className="absolute inset-0" />
@@ -464,20 +453,39 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             </button>
           ) : (
           <>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-100">Image Inspector</h2>
-              <p className="text-xs text-gray-500">
-                {currentPosition > 0 ? `${currentPosition} / ${normalizedNavigationImages.length}` : 'No image selected'}
-              </p>
-            </div>
-            <div className="flex items-center gap-1">
-              <button onClick={togglePanelCollapsed} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Hide IMH context panel">
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              <button onClick={onOpenSettings} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open integration settings">
-                <SlidersHorizontal className="h-4 w-4" />
-              </button>
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <div
+                    className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs ${connectionClasses}`}
+                    title={`${comfyUILastConnectionStatus === 'connected' ? 'Connected' : loadFailure ? 'Load failed' : 'ComfyUI'} - ${viewState.url || targetUrl}`}
+                  >
+                    {viewState.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+                  </div>
+                  <h2 className="truncate text-sm font-semibold text-gray-100">Image Inspector</h2>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {connectionMessage || (currentPosition > 0 ? `${currentPosition} / ${normalizedNavigationImages.length}` : 'No image selected')}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button onClick={() => window.electronAPI?.comfyUIViewGoBack?.()} disabled={!viewState.canGoBack} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Back">
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <button onClick={() => window.electronAPI?.comfyUIViewGoForward?.()} disabled={!viewState.canGoForward} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Forward">
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+                <button onClick={openExternally} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open externally">
+                  <ExternalLink className="h-4 w-4" />
+                </button>
+                <button onClick={togglePanelCollapsed} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Hide image inspector">
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <button onClick={onOpenSettings} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open integration settings">
+                  <SlidersHorizontal className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -514,7 +522,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                       key={candidate.id}
                       image={candidate}
                       isActive={candidate.id === image.id}
+                      directoryPath={directoryPathByImageId[candidate.id]}
                       onClick={() => onSelectImage?.(candidate)}
+                      onDragStart={startImageFileDrag}
                     />
                   ))}
                 </div>
@@ -546,7 +556,14 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 <>
               <div className="overflow-hidden rounded-lg border border-gray-800 bg-gray-950">
                 {thumbnail?.thumbnailUrl ? (
-                  <img src={thumbnail.thumbnailUrl} alt={image.name} className="h-44 w-full object-contain bg-black" />
+                  <img
+                    src={thumbnail.thumbnailUrl}
+                    alt={image.name}
+                    className="h-44 w-full cursor-grab object-contain bg-black active:cursor-grabbing"
+                    draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
+                    onDragStart={(event) => startImageFileDrag(event, image, directoryPath)}
+                    title="Drag into ComfyUI"
+                  />
                 ) : (
                   <div className="flex h-44 items-center justify-center bg-black text-xs text-gray-600">No thumbnail</div>
                 )}

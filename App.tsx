@@ -1735,6 +1735,7 @@ export default function App() {
 
   useEffect(() => {
     if (libraryView !== 'comfyui') {
+      setComfyUIWorkspaceNavigationImageIds(null);
       return;
     }
 
@@ -1810,6 +1811,26 @@ export default function App() {
       : libraryView === 'node'
       ? nodeViewResultImages
       : safeFilteredImages;
+
+  useEffect(() => {
+    if (libraryView !== 'comfyui' || displayImages.length === 0) {
+      return;
+    }
+
+    setComfyUIWorkspaceNavigationImageIds((current) => current ?? displayImages.map((image) => image.id));
+    setComfyUIWorkspaceImageId((current) => {
+      if (current && displayImages.some((image) => image.id === current)) {
+        return current;
+      }
+
+      const preferredImage =
+        (previewImage && displayImages.some((image) => image.id === previewImage.id) ? previewImage : null) ||
+        (selectedImage && displayImages.some((image) => image.id === selectedImage.id) ? selectedImage : null) ||
+        displayImages[0];
+
+      return preferredImage.id;
+    });
+  }, [displayImages, libraryView, previewImage, selectedImage]);
 
   const openFindSimilar = useCallback((
     sourceImage: IndexedImage,
@@ -1901,6 +1922,18 @@ export default function App() {
       setComfyUIWorkspaceImageId(nextImage.id);
     }
   }, [comfyUIWorkspaceCurrentIndex, comfyUIWorkspaceNavigationImages]);
+  const comfyUIWorkspaceDirectoryPathByImageId = useMemo(() => {
+    const paths: Record<string, string> = {};
+
+    for (const image of comfyUIWorkspaceNavigationImages) {
+      const directoryPath = image.directoryId ? directoryPathById.get(image.directoryId) : undefined;
+      if (directoryPath) {
+        paths[image.id] = directoryPath;
+      }
+    }
+
+    return paths;
+  }, [comfyUIWorkspaceNavigationImages, directoryPathById]);
   const slideshowPlaylistPreview = useMemo(
     () =>
       buildSlideshowPlaylist({
@@ -2548,7 +2581,9 @@ export default function App() {
                 ) : libraryView === 'comfyui' ? (
                   <ComfyUIWorkspace
                     image={comfyUIWorkspaceImage}
+                    directoryPath={comfyUIWorkspaceImage?.directoryId ? directoryPathById.get(comfyUIWorkspaceImage.directoryId) : undefined}
                     navigationImages={comfyUIWorkspaceNavigationImages}
+                    directoryPathByImageId={comfyUIWorkspaceDirectoryPathByImageId}
                     currentIndex={comfyUIWorkspaceCurrentIndex}
                     isActive={shouldShowEmbeddedComfyUIView}
                     onSelectImage={(image) => setComfyUIWorkspaceImageId(image.id)}
