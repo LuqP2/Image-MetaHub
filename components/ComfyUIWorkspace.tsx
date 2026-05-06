@@ -8,11 +8,13 @@ import {
   CheckCircle,
   Clipboard,
   ExternalLink,
+  ImageIcon,
+  Info,
   Loader2,
   Play,
-  RefreshCw,
   Rocket,
   SlidersHorizontal,
+  Workflow,
 } from 'lucide-react';
 import { BaseMetadata, ComfyUIViewLoadFailure, ComfyUIViewState, IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -22,12 +24,16 @@ import { type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGener
 import ComfyUIWorkflowWorkspace from './ComfyUIWorkflowWorkspace';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
-import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 
 interface ComfyUIWorkspaceProps {
   image: IndexedImage | null;
+  navigationImages?: IndexedImage[];
+  currentIndex?: number;
   isActive: boolean;
   suspendBrowser?: boolean;
+  onSelectImage?: (image: IndexedImage) => void;
+  onNavigatePrevious?: () => void;
+  onNavigateNext?: () => void;
   onOpenQueue: () => void;
   onOpenSettings: () => void;
 }
@@ -59,6 +65,33 @@ const MetadataLine: React.FC<{ label: string; value: unknown }> = ({ label, valu
   </div>
 );
 
+const WorkspaceThumbnailButton: React.FC<{
+  image: IndexedImage;
+  isActive: boolean;
+  onClick: () => void;
+}> = ({ image, isActive, onClick }) => {
+  const thumbnail = useResolvedThumbnail(image);
+
+  return (
+    <button
+      onClick={onClick}
+      className={`h-14 w-14 shrink-0 overflow-hidden rounded-md border bg-black transition-colors ${
+        isActive ? 'border-purple-400 ring-1 ring-purple-400/60' : 'border-gray-700 hover:border-gray-500'
+      }`}
+      title={image.name}
+      aria-label={`Show ${image.name}`}
+    >
+      {thumbnail?.thumbnailUrl ? (
+        <img src={thumbnail.thumbnailUrl} alt="" className="h-full w-full object-cover image-alpha-grid" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[10px] text-gray-600">
+          <ImageIcon className="h-4 w-4" />
+        </div>
+      )}
+    </button>
+  );
+};
+
 const getBounds = (element: HTMLElement) => {
   const rect = element.getBoundingClientRect();
   return {
@@ -74,8 +107,13 @@ const getWorkflowMetadata = (image: IndexedImage | null): BaseMetadata | null =>
 
 const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   image,
+  navigationImages = [],
+  currentIndex = -1,
   isActive,
   suspendBrowser = false,
+  onSelectImage,
+  onNavigatePrevious,
+  onNavigateNext,
   onOpenQueue,
   onOpenSettings,
 }) => {
@@ -84,8 +122,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const [viewState, setViewState] = useState<ComfyUIViewState>(DEFAULT_VIEW_STATE);
   const [loadFailure, setLoadFailure] = useState<ComfyUIViewLoadFailure | null>(null);
   const [connectionMessage, setConnectionMessage] = useState<string>('');
-  const [isCheckingConnection, setIsCheckingConnection] = useState(false);
-  const [isLaunchingGenerator, setIsLaunchingGenerator] = useState(false);
+  const [activeInspectorTab, setActiveInspectorTab] = useState<'image' | 'metadata' | 'workflow'>('image');
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
     if (typeof window === 'undefined') {
       return false;
@@ -96,8 +133,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
   const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
-  const generatorLaunchCommand = useSettingsStore((state) => state.generatorLaunchCommand);
-  const generatorLaunchWorkingDirectory = useSettingsStore((state) => state.generatorLaunchWorkingDirectory);
   const comfyUIWorkspaceLastUrl = useSettingsStore((state) => state.comfyUIWorkspaceLastUrl);
   const setComfyUIWorkspaceLastUrl = useSettingsStore((state) => state.setComfyUIWorkspaceLastUrl);
   const panelWidth = useSettingsStore((state) => state.comfyUIWorkspacePanelWidth);
@@ -107,6 +142,24 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const { copyToComfyUI, isCopying, copyStatus } = useCopyToComfyUI();
   const thumbnail = useResolvedThumbnail(image);
   const metadata = getWorkflowMetadata(image);
+  const normalizedNavigationImages = useMemo(
+    () => (navigationImages.length > 0 ? navigationImages : image ? [image] : []),
+    [image, navigationImages],
+  );
+  const currentPosition = currentIndex >= 0 ? currentIndex + 1 : 0;
+  const canNavigatePrevious = currentIndex > 0;
+  const canNavigateNext = currentIndex >= 0 && currentIndex < normalizedNavigationImages.length - 1;
+  const visibleNavigationImages = useMemo(() => {
+    if (normalizedNavigationImages.length <= 24 || currentIndex < 0) {
+      return normalizedNavigationImages;
+    }
+
+    const startIndex = Math.max(0, currentIndex - 11);
+    const endIndex = Math.min(normalizedNavigationImages.length, startIndex + 24);
+    const adjustedStartIndex = Math.max(0, endIndex - 24);
+
+    return normalizedNavigationImages.slice(adjustedStartIndex, endIndex);
+  }, [currentIndex, normalizedNavigationImages]);
   const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.comfyUIViewOpen);
   const targetUrl = comfyUIWorkspaceLastUrl || comfyUIServerUrl;
   const shouldShowBrowser = isActive && !suspendBrowser;
@@ -223,41 +276,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     };
   }, [setComfyUIConnectionStatus, setComfyUIWorkspaceLastUrl]);
 
-  const testConnection = async () => {
-    setIsCheckingConnection(true);
-    setConnectionMessage('');
-    try {
-      const result = await new ComfyUIApiClient({ serverUrl: comfyUIServerUrl, timeout: 2500 }).testConnection();
-      setComfyUIConnectionStatus(result.success ? 'connected' : 'error');
-      setConnectionMessage(result.success ? 'Connected to ComfyUI.' : result.error || 'ComfyUI is unreachable.');
-      if (result.success) {
-        setLoadFailure(null);
-        await openEmbeddedView();
-      }
-    } finally {
-      setIsCheckingConnection(false);
-    }
-  };
-
-  const launchGenerator = async () => {
-    if (!window.electronAPI?.launchGenerator) {
-      setConnectionMessage('Launch is available only in the desktop app.');
-      return;
-    }
-
-    setIsLaunchingGenerator(true);
-    setConnectionMessage('');
-    try {
-      const result = await window.electronAPI.launchGenerator({
-        command: generatorLaunchCommand,
-        workingDirectory: generatorLaunchWorkingDirectory,
-      });
-      setConnectionMessage(result.success ? 'Launch command started.' : result.error || 'Failed to launch ComfyUI.');
-    } finally {
-      setIsLaunchingGenerator(false);
-    }
-  };
-
   const openExternally = async () => {
     const result = await window.electronAPI?.openExternalUrl?.(targetUrl);
     if (!result?.success) {
@@ -330,6 +348,12 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     void syncBounds();
   };
 
+  const inspectorTabs = [
+    { id: 'image' as const, label: 'Image', icon: ImageIcon },
+    { id: 'metadata' as const, label: 'Metadata', icon: Info },
+    { id: 'workflow' as const, label: 'Workflow', icon: Workflow },
+  ];
+
   if (!isElectron) {
     return (
       <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-gray-800 bg-gray-950 p-8 text-center">
@@ -358,7 +382,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             className={`inline-flex h-5 w-5 items-center justify-center rounded border text-xs ${connectionClasses}`}
             title={`${comfyUILastConnectionStatus === 'connected' ? 'Connected' : loadFailure ? 'Load failed' : 'ComfyUI'} - ${viewState.url || targetUrl}`}
           >
-            {viewState.isLoading || isCheckingConnection ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+            {viewState.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
           </div>
           {connectionMessage && (
             <div className="max-w-[360px] truncate text-[11px] text-gray-500" title={connectionMessage}>
@@ -382,17 +406,8 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           <button onClick={() => window.electronAPI?.comfyUIViewGoForward?.()} disabled={!viewState.canGoForward} className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Forward">
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
-          <button onClick={() => window.electronAPI?.comfyUIViewReload?.()} className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Reload">
-            <RefreshCw className="h-3.5 w-3.5" />
-          </button>
           <button onClick={openExternally} className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open externally">
             <ExternalLink className="h-3.5 w-3.5" />
-          </button>
-          <button onClick={testConnection} disabled={isCheckingConnection} className="h-6 rounded border border-gray-700 px-2 text-[11px] font-medium text-gray-200 hover:bg-gray-800 disabled:opacity-50">
-            {isCheckingConnection ? '...' : 'Check'}
-          </button>
-          <button onClick={launchGenerator} disabled={isLaunchingGenerator || !generatorLaunchCommand.trim()} className="h-6 rounded border border-purple-500/40 bg-purple-500/15 px-2 text-[11px] font-medium text-purple-100 hover:bg-purple-500/25 disabled:opacity-50" title={generatorLaunchCommand.trim() ? 'Run saved launch command' : 'Add a launch command in Settings > Integrations'}>
-            {isLaunchingGenerator ? '...' : 'Launch'}
           </button>
         </div>
       </div>
@@ -414,7 +429,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 <p className="mt-2 text-sm text-gray-400">
                   {suspendBrowser
                     ? 'Image MetaHub is generating through the API and temporarily hides the embedded ComfyUI UI to reduce memory pressure.'
-                    : 'Start ComfyUI, check the endpoint, then reconnect. The browser will stay attached to this workspace.'}
+                    : 'Start ComfyUI or open it externally. The browser stays attached to this workspace once the endpoint responds.'}
                 </p>
               </div>
             </div>
@@ -451,8 +466,10 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           <>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-gray-100">IMH Context</h2>
-              <p className="text-xs text-gray-500">API-first workflow handoff</p>
+              <h2 className="text-sm font-semibold text-gray-100">Image Inspector</h2>
+              <p className="text-xs text-gray-500">
+                {currentPosition > 0 ? `${currentPosition} / ${normalizedNavigationImages.length}` : 'No image selected'}
+              </p>
             </div>
             <div className="flex items-center gap-1">
               <button onClick={togglePanelCollapsed} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Hide IMH context panel">
@@ -464,12 +481,69 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             </div>
           </div>
 
-          {!image || !metadata ? (
+          {!image ? (
             <div className="mt-6 rounded-lg border border-gray-800 bg-gray-950/80 p-4 text-sm text-gray-400">
               Select an image to send workflow data from Image MetaHub into ComfyUI.
             </div>
           ) : (
             <div className="mt-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onNavigatePrevious}
+                  disabled={!canNavigatePrevious}
+                  className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <div className="min-w-0 flex-1 truncate text-center text-xs text-gray-500">
+                  {currentPosition} / {normalizedNavigationImages.length}
+                </div>
+                <button
+                  onClick={onNavigateNext}
+                  disabled={!canNavigateNext}
+                  className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+
+              {normalizedNavigationImages.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {visibleNavigationImages.map((candidate) => (
+                    <WorkspaceThumbnailButton
+                      key={candidate.id}
+                      image={candidate}
+                      isActive={candidate.id === image.id}
+                      onClick={() => onSelectImage?.(candidate)}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-1 rounded-lg border border-gray-800 bg-gray-950/80 p-1">
+                {inspectorTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isSelected = activeInspectorTab === tab.id;
+
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveInspectorTab(tab.id)}
+                      className={`inline-flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors ${
+                        isSelected
+                          ? 'bg-purple-500/20 text-purple-100'
+                          : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeInspectorTab === 'image' && (
+                <>
               <div className="overflow-hidden rounded-lg border border-gray-800 bg-gray-950">
                 {thumbnail?.thumbnailUrl ? (
                   <img src={thumbnail.thumbnailUrl} alt={image.name} className="h-44 w-full object-contain bg-black" />
@@ -488,23 +562,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <MetadataLine label="Model" value={metadata.model} />
-                <MetadataLine label="Seed" value={metadata.seed} />
-                <MetadataLine label="Steps" value={metadata.steps} />
-                <MetadataLine label="CFG" value={(metadata as any).cfgScale ?? metadata.cfg_scale} />
-                <MetadataLine label="Sampler" value={metadata.sampler} />
-                <MetadataLine label="Scheduler" value={metadata.scheduler} />
-              </div>
-
-              <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3">
-                <div className="text-[10px] uppercase tracking-wide text-gray-500">Prompt</div>
-                <p className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-gray-200">{metadata.prompt || 'Not found'}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={generateFromMetadata}
-                  disabled={isGenerating || !metadata.prompt}
+                  disabled={isGenerating || !metadata?.prompt}
                   className="inline-flex items-center justify-center gap-2 rounded-md border border-purple-500/40 bg-purple-500/15 px-3 py-2 text-xs font-semibold text-purple-100 hover:bg-purple-500/25 disabled:opacity-50"
                 >
                   <Play className="h-3.5 w-3.5" />
@@ -512,7 +572,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 </button>
                 <button
                   onClick={() => copyToComfyUI(image)}
-                  disabled={isCopying || !metadata.prompt}
+                  disabled={isCopying || !metadata?.prompt}
                   className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-50"
                 >
                   <Clipboard className="h-3.5 w-3.5" />
@@ -525,6 +585,8 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                   Open generation queue
                 </button>
               </div>
+                </>
+              )}
 
               {(copyStatus || generateStatus) && (
                 <div className={`rounded-md border px-3 py-2 text-xs ${
@@ -536,20 +598,57 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 </div>
               )}
 
-              <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3">
-                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Workflow controls
+              {activeInspectorTab === 'metadata' && (
+                metadata ? (
+                  <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <MetadataLine label="Model" value={metadata.model} />
+                    <MetadataLine label="Seed" value={metadata.seed} />
+                    <MetadataLine label="Steps" value={metadata.steps} />
+                    <MetadataLine label="CFG" value={(metadata as any).cfgScale ?? metadata.cfg_scale} />
+                    <MetadataLine label="Sampler" value={metadata.sampler} />
+                    <MetadataLine label="Scheduler" value={metadata.scheduler} />
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3">
+                    <div className="text-[10px] uppercase tracking-wide text-gray-500">Prompt</div>
+                    <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs text-gray-200">{metadata.prompt || 'Not found'}</p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3">
+                    <div className="text-[10px] uppercase tracking-wide text-gray-500">Negative prompt</div>
+                    <p className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-gray-200">{metadata.negativePrompt || 'Not found'}</p>
+                  </div>
                 </div>
-                <ComfyUIWorkflowWorkspace
-                  image={image}
-                  onGenerate={handleGenerateFromWorkspace}
-                  isGenerating={isGenerating}
-                  status={generateStatus}
-                  defaultTab="parameters"
-                  viewportHeight={320}
-                  showCancelButton={false}
-                />
-              </div>
+                ) : (
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-4 text-sm text-gray-400">
+                    No normalized metadata is available for this image.
+                  </div>
+                )
+              )}
+
+              {activeInspectorTab === 'workflow' && (
+                metadata ? (
+                <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Workflow controls
+                  </div>
+                  <ComfyUIWorkflowWorkspace
+                    image={image}
+                    onGenerate={handleGenerateFromWorkspace}
+                    isGenerating={isGenerating}
+                    status={generateStatus}
+                    defaultTab="parameters"
+                    viewportHeight={360}
+                    showCancelButton={false}
+                  />
+                </div>
+                ) : (
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-4 text-sm text-gray-400">
+                    Workflow controls need normalized generation metadata.
+                  </div>
+                )
+              )}
             </div>
           )}
           </>

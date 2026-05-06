@@ -391,6 +391,7 @@ export default function App() {
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [comfyUIWorkspaceImageId, setComfyUIWorkspaceImageId] = useState<string | null>(null);
+  const [comfyUIWorkspaceNavigationImageIds, setComfyUIWorkspaceNavigationImageIds] = useState<string[] | null>(null);
   const [newImagesToast, setNewImagesToast] = useState<{ message: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [batchExportRequest, setBatchExportRequest] = useState<BatchExportRequestState | null>(null);
@@ -1720,12 +1721,37 @@ export default function App() {
     openBatchExportModal();
   }, [openBatchExportModal]);
 
-  const handleOpenComfyUIWorkspace = useCallback((image?: IndexedImage | null) => {
+  const handleOpenComfyUIWorkspace = useCallback((image?: IndexedImage | null, navigationImages?: IndexedImage[]) => {
     if (image) {
       setComfyUIWorkspaceImageId(image.id);
     }
+    if (navigationImages && navigationImages.length > 0) {
+      setComfyUIWorkspaceNavigationImageIds(navigationImages.map((item) => item.id));
+    } else if (image) {
+      setComfyUIWorkspaceNavigationImageIds([image.id]);
+    }
     setLibraryView('comfyui');
   }, []);
+
+  useEffect(() => {
+    if (libraryView !== 'comfyui') {
+      return;
+    }
+
+    setOpenImageModals((current) => {
+      let changed = false;
+      const next = current.map((modal) => {
+        if (modal.isMinimized) {
+          return modal;
+        }
+
+        changed = true;
+        return { ...modal, isMinimized: true };
+      });
+
+      return changed ? next : current;
+    });
+  }, [libraryView]);
 
   const handleCloseBatchExport = useCallback(() => {
     setIsBatchExportModalOpen(false);
@@ -1842,6 +1868,39 @@ export default function App() {
     previewImage,
     selectedImage,
   ]);
+  const comfyUIWorkspaceNavigationImages = useMemo(() => {
+    const imageIds = comfyUIWorkspaceNavigationImageIds ?? (comfyUIWorkspaceImage ? [comfyUIWorkspaceImage.id] : []);
+    const resolvedImages = imageIds
+      .map((imageId) => imageLookup.get(imageId) ?? null)
+      .filter((candidate): candidate is IndexedImage => Boolean(candidate));
+
+    if (comfyUIWorkspaceImage && !resolvedImages.some((candidate) => candidate.id === comfyUIWorkspaceImage.id)) {
+      return [comfyUIWorkspaceImage, ...resolvedImages];
+    }
+
+    return resolvedImages;
+  }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImageIds, imageLookup]);
+  const comfyUIWorkspaceCurrentIndex = useMemo(() => {
+    if (!comfyUIWorkspaceImage) {
+      return -1;
+    }
+
+    return comfyUIWorkspaceNavigationImages.findIndex((candidate) => candidate.id === comfyUIWorkspaceImage.id);
+  }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImages]);
+  const handleComfyUIWorkspaceNavigate = useCallback((direction: 'next' | 'previous') => {
+    if (comfyUIWorkspaceCurrentIndex === -1) {
+      return;
+    }
+
+    const nextIndex = direction === 'next'
+      ? comfyUIWorkspaceCurrentIndex + 1
+      : comfyUIWorkspaceCurrentIndex - 1;
+    const nextImage = comfyUIWorkspaceNavigationImages[nextIndex];
+
+    if (nextImage) {
+      setComfyUIWorkspaceImageId(nextImage.id);
+    }
+  }, [comfyUIWorkspaceCurrentIndex, comfyUIWorkspaceNavigationImages]);
   const slideshowPlaylistPreview = useMemo(
     () =>
       buildSlideshowPlaylist({
@@ -2000,10 +2059,8 @@ export default function App() {
   const hasActiveVisibleImageModal = openImageModalEntries.some(
     (modal) => !modal.isMinimized && modal.modalId === activeImageModalId
   );
-  const hasVisibleImageModal = openImageModalEntries.some((modal) => !modal.isMinimized);
   const shouldShowEmbeddedComfyUIView =
     libraryView === 'comfyui' &&
-    !hasVisibleImageModal &&
     !isSettingsModalOpen &&
     !isHotkeyHelpOpen &&
     !isCommandPaletteOpen &&
@@ -2391,6 +2448,7 @@ export default function App() {
                       setSelectedImageForGeneration(image);
                       setIsComfyUIGenerateModalOpen(true);
                     }}
+                    onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                     onCompare={(images) => {
                       setComparisonImages(images);
                       openComparisonModal();
@@ -2419,6 +2477,7 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                          onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         />
                       ) : (
                         <ImageTable
@@ -2428,6 +2487,7 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                          onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         />
                   )
                 ) : libraryView === 'model' ? (
@@ -2458,6 +2518,7 @@ export default function App() {
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                        onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                       />
                     ) : (
                       <ImageTable
@@ -2469,6 +2530,7 @@ export default function App() {
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                        onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                       />
                     )}
                   </CollectionsWorkspace>
@@ -2486,7 +2548,12 @@ export default function App() {
                 ) : libraryView === 'comfyui' ? (
                   <ComfyUIWorkspace
                     image={comfyUIWorkspaceImage}
+                    navigationImages={comfyUIWorkspaceNavigationImages}
+                    currentIndex={comfyUIWorkspaceCurrentIndex}
                     isActive={shouldShowEmbeddedComfyUIView}
+                    onSelectImage={(image) => setComfyUIWorkspaceImageId(image.id)}
+                    onNavigatePrevious={() => handleComfyUIWorkspaceNavigate('previous')}
+                    onNavigateNext={() => handleComfyUIWorkspaceNavigate('next')}
                     suspendBrowser={isGeneratingComfyUI}
                     onOpenQueue={() => setIsQueueOpen(true)}
                     onOpenSettings={handleOpenGeneratorIntegrations}
@@ -2503,7 +2570,7 @@ export default function App() {
                 )}
               </div>
 
-              {(libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
+              {(libraryView === 'library' || libraryView === 'comfyui' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                 <Footer
                   currentPage={currentPage}
                   totalPages={totalPages}
@@ -2525,8 +2592,14 @@ export default function App() {
                   queueCount={queueCount}
                   isQueueOpen={isQueueOpen}
                   onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                  customText={libraryView === 'comfyui' ? 'ComfyUI Workspace' : undefined}
                   windowItems={footerWindowItems}
-                  onWindowSelect={handleActivateImageModal}
+                  onWindowSelect={(modalId) => {
+                    if (libraryView === 'comfyui') {
+                      setLibraryView('library');
+                    }
+                    handleActivateImageModal(modalId);
+                  }}
                   onWindowClose={handleCloseImageModalFromFooter}
                 />
               )}

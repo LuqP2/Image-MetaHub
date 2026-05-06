@@ -5,7 +5,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil, Workflow } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -29,6 +29,7 @@ interface ImageTableProps {
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
   onFindSimilar?: (image: IndexedImage) => void;
+  onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
 }
 
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
@@ -73,6 +74,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   isCollectionsView = false,
   onImageRenamed,
   onFindSimilar,
+  onOpenComfyUIWorkspace,
 }) => {
   const directories = useImageStore((state) => state.directories);
   const transferProgress = useImageStore((state) => state.transferProgress);
@@ -146,6 +148,15 @@ const ImageTable: React.FC<ImageTableProps> = ({
     onFindSimilar(contextMenu.image);
     hideContextMenu();
   }, [contextMenu.image, hideContextMenu, onFindSimilar]);
+
+  const openComfyUIWorkspace = useCallback(() => {
+    if (!contextMenu.image || !onOpenComfyUIWorkspace) {
+      return;
+    }
+
+    onOpenComfyUIWorkspace(contextMenu.image);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, onOpenComfyUIWorkspace]);
 
   const getContextTargetImages = useCallback(() => {
     if (!contextMenu.image) {
@@ -708,6 +719,17 @@ const ImageTable: React.FC<ImageTableProps> = ({
             <Search className="w-4 h-4" />
             Find similar...
           </button>
+
+          {onOpenComfyUIWorkspace && (
+            <button
+              onClick={openComfyUIWorkspace}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              title="Open this image in the ComfyUI workspace context panel"
+            >
+              <Workflow className="w-4 h-4" />
+              Open ComfyUI Workspace
+            </button>
+          )}
 
           <button
             onClick={handleReparseMetadata}
