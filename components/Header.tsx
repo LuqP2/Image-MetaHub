@@ -28,6 +28,7 @@ const Header: React.FC<HeaderProps> = ({
 }) => {
   const {
     canUseAnalytics,
+    canUseComfyUI,
     showProModal,
     isTrialActive,
     trialDaysRemaining,
@@ -331,6 +332,14 @@ const Header: React.FC<HeaderProps> = ({
     [clustersCount]
   );
   const utilityButtonClassName = 'app-top-icon-button';
+  const handleViewTabClick = useCallback((view: LibraryView) => {
+    if (view === 'comfyui' && !canUseComfyUI) {
+      showProModal('comfyui');
+      return;
+    }
+
+    onLibraryViewChange?.(view);
+  }, [canUseComfyUI, onLibraryViewChange, showProModal]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-4 py-2.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
@@ -354,7 +363,7 @@ const Header: React.FC<HeaderProps> = ({
                   return (
                     <button
                       key={tab.id}
-                      onClick={() => onLibraryViewChange(tab.id)}
+                      onClick={() => handleViewTabClick(tab.id)}
                       className={`app-top-segment whitespace-nowrap ${libraryView === tab.id ? 'app-top-segment-active' : ''}`}
                     >
                       {Icon && <Icon size={14} />}

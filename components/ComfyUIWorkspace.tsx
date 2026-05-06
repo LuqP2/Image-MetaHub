@@ -111,6 +111,17 @@ const getBounds = (element: HTMLElement) => {
 const getWorkflowMetadata = (image: IndexedImage | null): BaseMetadata | null =>
   (image?.metadata?.normalizedMetadata as BaseMetadata | undefined) ?? null;
 
+const getSameOriginUrl = (candidateUrl: string, configuredUrl: string): string => {
+  try {
+    const candidate = new URL(candidateUrl);
+    const configured = new URL(configuredUrl);
+
+    return candidate.origin === configured.origin ? candidate.toString() : configured.toString();
+  } catch {
+    return configuredUrl;
+  }
+};
+
 const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   image,
   directoryPath,
@@ -169,7 +180,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     return normalizedNavigationImages.slice(adjustedStartIndex, endIndex);
   }, [currentIndex, normalizedNavigationImages]);
   const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.comfyUIViewOpen);
-  const targetUrl = comfyUIWorkspaceLastUrl || comfyUIServerUrl;
+  const targetUrl = comfyUIWorkspaceLastUrl
+    ? getSameOriginUrl(comfyUIWorkspaceLastUrl, comfyUIServerUrl)
+    : comfyUIServerUrl;
   const shouldShowBrowser = isActive && !suspendBrowser;
 
   const togglePanelCollapsed = useCallback(() => {
