@@ -2105,6 +2105,7 @@ export default function App() {
     !isSaveFilteredCollectionModalOpen &&
     !isA1111GenerateModalOpen &&
     !isComfyUIGenerateModalOpen &&
+    !generatedOutputPreview &&
     !proModalOpen;
   const libraryContentFocusClass = hasActiveVisibleImageModal
     ? 'blur-[1px] opacity-95'
