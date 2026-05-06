@@ -63,6 +63,54 @@ export interface CacheDiff {
 }
 
 const DEFAULT_INCREMENTAL_CHUNK_SIZE = 1024;
+const MAX_INLINE_RAW_METADATA_BYTES = 32 * 1024;
+const RAW_METADATA_PREVIEW_BYTES = 4096;
+
+function compactCacheMetadataEntry(entry: CacheImageMetadata): CacheImageMetadata {
+  const metadataString = typeof entry.metadataString === 'string' ? entry.metadataString : '';
+  if (metadataString.length <= MAX_INLINE_RAW_METADATA_BYTES) {
+    return entry;
+  }
+
+  const metadata = entry.metadata && typeof entry.metadata === 'object'
+    ? entry.metadata as Record<string, any>
+    : {};
+  const normalizedMetadata = metadata.normalizedMetadata;
+  const compactedMetadata: Record<string, unknown> = {
+    _rawMetadataCompacted: true,
+    _rawMetadataSizeBytes: metadataString.length,
+    _rawMetadataKeys: Object.keys(metadata).filter(key => key !== 'normalizedMetadata'),
+  };
+
+  if (typeof metadata.parameters === 'string') {
+    compactedMetadata.parametersPreview = metadata.parameters.slice(0, RAW_METADATA_PREVIEW_BYTES);
+  }
+
+  if (metadata.imagemetahub_data && typeof metadata.imagemetahub_data === 'object') {
+    const payload = metadata.imagemetahub_data as Record<string, unknown>;
+    compactedMetadata.imagemetahub_data = {
+      generator: payload.generator,
+      analytics: payload.analytics,
+      _analytics: payload._analytics,
+      imh_pro: payload.imh_pro,
+      _metahub_pro: payload._metahub_pro,
+    };
+  }
+
+  if (normalizedMetadata) {
+    compactedMetadata.normalizedMetadata = normalizedMetadata;
+  }
+
+  return {
+    ...entry,
+    metadata: compactedMetadata,
+    metadataString: JSON.stringify(compactedMetadata),
+  };
+}
+
+function compactCacheMetadataEntries(metadata: CacheImageMetadata[]): CacheImageMetadata[] {
+  return metadata.map(compactCacheMetadataEntry);
+}
 
 export function pruneCacheMetadata(
   metadata: CacheImageMetadata[],
@@ -334,7 +382,9 @@ class CacheManager {
       return null;
     }
 
-    let metadata: CacheImageMetadata[] = Array.isArray(summary.metadata) ? summary.metadata : [];
+    let metadata: CacheImageMetadata[] = Array.isArray(summary.metadata)
+      ? compactCacheMetadataEntries(summary.metadata)
+      : [];
     const chunkCount = summary.chunkCount ?? 0;
 
     if (metadata.length === 0 && chunkCount > 0) {
@@ -342,7 +392,7 @@ class CacheManager {
       for (let i = 0; i < chunkCount; i++) {
         const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: i });
         if (chunkResult.success && Array.isArray(chunkResult.data)) {
-          chunks.push(...chunkResult.data);
+          chunks.push(...compactCacheMetadataEntries(chunkResult.data));
         } else if (!chunkResult.success) {
           console.error(`Failed to load cache chunk ${i} for ${cacheId}:`, chunkResult.error);
         }
@@ -414,7 +464,7 @@ class CacheManager {
 
     const summary = result.data;
     if (Array.isArray(summary.metadata) && summary.metadata.length > 0) {
-      await onChunk(summary.metadata);
+      await onChunk(compactCacheMetadataEntries(summary.metadata));
       return;
     }
 
@@ -422,7 +472,7 @@ class CacheManager {
     for (let i = 0; i < chunkCount; i++) {
       const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: i });
       if (chunkResult.success && Array.isArray(chunkResult.data) && chunkResult.data.length > 0) {
-        await onChunk(chunkResult.data);
+        await onChunk(compactCacheMetadataEntries(chunkResult.data));
       } else if (!chunkResult.success) {
         console.error(`Failed to load cache chunk ${i} for ${cacheId}:`, chunkResult.error);
       }

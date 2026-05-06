@@ -1651,6 +1651,8 @@ if (normalizedMetadata && isAudio) {
       profile.totalMs = performance.now() - totalStart;
     }
 
+    const runtimeMetadata = compactRawMetadataForRuntime(rawMetadata, normalizedMetadata);
+
     return {
       id: `${directoryId}::${fileEntry.path}`,
       name: fileEntry.handle.name,
@@ -1658,8 +1660,8 @@ if (normalizedMetadata && isAudio) {
       thumbnailStatus: 'pending',
       thumbnailError: null,
       directoryId,
-      metadata: normalizedMetadata ? { ...(rawMetadata ?? {}), normalizedMetadata } : rawMetadata || {},
-      metadataString: (rawMetadata && Object.keys(rawMetadata).length > 0) ? JSON.stringify(rawMetadata) : '', // OPTIMIZED: Skip stringify if no metadata or empty object
+      metadata: runtimeMetadata.metadata,
+      metadataString: runtimeMetadata.metadataString,
       lastModified: sortDate, // Use the determined sort date
       contentModifiedMs: fileEntry.contentModifiedMs ?? fileEntry.lastModified,
       models: normalizedMetadata?.models || [],
@@ -1862,6 +1864,61 @@ interface ProcessFilesOptions {
 
 export interface ProcessFilesResult {
   phaseB: Promise<void>;
+}
+
+const MAX_INLINE_RAW_METADATA_BYTES = 32 * 1024;
+const RAW_METADATA_PREVIEW_BYTES = 4096;
+
+function compactRawMetadataForRuntime(
+  rawMetadata: ImageMetadata | null,
+  normalizedMetadata?: BaseMetadata
+): { metadata: IndexedImage['metadata']; metadataString: string } {
+  if (!rawMetadata || Object.keys(rawMetadata).length === 0) {
+    return {
+      metadata: normalizedMetadata ? { normalizedMetadata } as IndexedImage['metadata'] : {},
+      metadataString: '',
+    };
+  }
+
+  const rawMetadataString = JSON.stringify(rawMetadata);
+  if (rawMetadataString.length <= MAX_INLINE_RAW_METADATA_BYTES) {
+    return {
+      metadata: normalizedMetadata
+        ? { ...rawMetadata, normalizedMetadata } as IndexedImage['metadata']
+        : rawMetadata,
+      metadataString: rawMetadataString,
+    };
+  }
+
+  const compactedRawMetadata: Record<string, unknown> = {
+    _rawMetadataCompacted: true,
+    _rawMetadataSizeBytes: rawMetadataString.length,
+    _rawMetadataKeys: Object.keys(rawMetadata),
+  };
+
+  if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string') {
+    compactedRawMetadata.parametersPreview = rawMetadata.parameters.slice(0, RAW_METADATA_PREVIEW_BYTES);
+  }
+
+  if ('imagemetahub_data' in rawMetadata && rawMetadata.imagemetahub_data && typeof rawMetadata.imagemetahub_data === 'object') {
+    const payload = rawMetadata.imagemetahub_data as Record<string, unknown>;
+    compactedRawMetadata.imagemetahub_data = {
+      generator: payload.generator,
+      analytics: payload.analytics,
+      _analytics: payload._analytics,
+      imh_pro: payload.imh_pro,
+      _metahub_pro: payload._metahub_pro,
+    };
+  }
+
+  if (normalizedMetadata) {
+    compactedRawMetadata.normalizedMetadata = normalizedMetadata;
+  }
+
+  return {
+    metadata: compactedRawMetadata as IndexedImage['metadata'],
+    metadataString: JSON.stringify(compactedRawMetadata),
+  };
 }
 
 function mapIndexedImageToCache(image: IndexedImage): CacheImageMetadata {
@@ -2699,11 +2756,12 @@ export async function processFiles(
       const rawMetadata = { ...(image.metadata || {}) } as Record<string, unknown>;
       delete rawMetadata.normalizedMetadata;
       rawMetadata.imagemetahub_data = metaHubData;
+      const runtimeMetadata = compactRawMetadataForRuntime(rawMetadata as ImageMetadata, normalizedMetadata);
 
       return {
         ...image,
-        metadata: { ...rawMetadata, normalizedMetadata },
-        metadataString: Object.keys(rawMetadata).length > 0 ? JSON.stringify(rawMetadata) : '',
+        metadata: runtimeMetadata.metadata,
+        metadataString: runtimeMetadata.metadataString,
         models: normalizedMetadata.models || [],
         loras: normalizedMetadata.loras || [],
         sampler: normalizedMetadata.sampler || '',
