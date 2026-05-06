@@ -36,6 +36,7 @@ interface ComfyUIWorkspaceProps {
   onSelectImage?: (image: IndexedImage) => void;
   onNavigatePrevious?: () => void;
   onNavigateNext?: () => void;
+  onGenerationStateChange?: (isGenerating: boolean) => void;
   onOpenQueue: () => void;
   onOpenSettings: () => void;
 }
@@ -133,6 +134,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   onSelectImage,
   onNavigatePrevious,
   onNavigateNext,
+  onGenerationStateChange,
   onOpenQueue,
   onOpenSettings,
 }) => {
@@ -184,6 +186,14 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     ? getSameOriginUrl(comfyUIWorkspaceLastUrl, comfyUIServerUrl)
     : comfyUIServerUrl;
   const shouldShowBrowser = isActive && !suspendBrowser;
+
+  useEffect(() => {
+    onGenerationStateChange?.(isGenerating);
+
+    return () => {
+      onGenerationStateChange?.(false);
+    };
+  }, [isGenerating, onGenerationStateChange]);
 
   const togglePanelCollapsed = useCallback(() => {
     setIsPanelCollapsed((current) => {

@@ -392,6 +392,7 @@ export default function App() {
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [comfyUIWorkspaceImageId, setComfyUIWorkspaceImageId] = useState<string | null>(null);
   const [comfyUIWorkspaceNavigationImageIds, setComfyUIWorkspaceNavigationImageIds] = useState<string[] | null>(null);
+  const [isComfyUIWorkspaceGenerating, setIsComfyUIWorkspaceGenerating] = useState(false);
   const [newImagesToast, setNewImagesToast] = useState<{ message: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [batchExportRequest, setBatchExportRequest] = useState<BatchExportRequestState | null>(null);
@@ -2589,7 +2590,8 @@ export default function App() {
                     onSelectImage={(image) => setComfyUIWorkspaceImageId(image.id)}
                     onNavigatePrevious={() => handleComfyUIWorkspaceNavigate('previous')}
                     onNavigateNext={() => handleComfyUIWorkspaceNavigate('next')}
-                    suspendBrowser={isGeneratingComfyUI}
+                    onGenerationStateChange={setIsComfyUIWorkspaceGenerating}
+                    suspendBrowser={isGeneratingComfyUI || isComfyUIWorkspaceGenerating}
                     onOpenQueue={() => setIsQueueOpen(true)}
                     onOpenSettings={handleOpenGeneratorIntegrations}
                   />
