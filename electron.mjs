@@ -278,6 +278,7 @@ let comfyUIViewState = {
   canGoBack: false,
   canGoForward: false,
   visible: false,
+  lastLoadFailed: false,
 };
 let skippedVersions = new Set();
 let isManualUpdateCheck = false;
@@ -985,10 +986,10 @@ function configureComfyUIViewHandlers(view) {
     });
   });
 
-  contents.on('did-start-loading', () => updateComfyUIViewState({ isLoading: true }));
+  contents.on('did-start-loading', () => updateComfyUIViewState({ isLoading: true, lastLoadFailed: false }));
   contents.on('did-stop-loading', () => updateComfyUIViewState({ isLoading: false }));
-  contents.on('did-navigate', () => updateComfyUIViewState());
-  contents.on('did-navigate-in-page', () => updateComfyUIViewState());
+  contents.on('did-navigate', () => updateComfyUIViewState({ lastLoadFailed: false }));
+  contents.on('did-navigate-in-page', () => updateComfyUIViewState({ lastLoadFailed: false }));
   contents.on('page-title-updated', () => updateComfyUIViewState());
   contents.on('context-menu', (_event, params) => {
     showEditableTextContextMenu(contents, params);
@@ -1003,7 +1004,7 @@ function configureComfyUIViewHandlers(view) {
       errorDescription,
       url: validatedURL,
     });
-    updateComfyUIViewState({ isLoading: false });
+    updateComfyUIViewState({ isLoading: false, lastLoadFailed: true });
   });
 }
 
@@ -1075,7 +1076,7 @@ async function openComfyUIView({ url, bounds } = {}) {
   updateComfyUIViewState({ visible: true });
 
   const currentUrl = view.webContents.getURL();
-  if (!currentUrl || !isComfyNavigationAllowed(currentUrl)) {
+  if (!currentUrl || comfyUIViewState.lastLoadFailed || !isComfyNavigationAllowed(currentUrl)) {
     await view.webContents.loadURL(parsed.toString());
   }
 
