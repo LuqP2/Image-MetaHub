@@ -1340,6 +1340,22 @@ export function useImageLoader() {
                         return;
                     }
 
+                    const currentState = useImageStore.getState();
+                    const storedPathsAlreadyLoaded = paths.every((path: string) =>
+                        currentState.directories.some(directory => directory.path === path)
+                    );
+                    const hasHydratedStoredImages = currentState.images.some(image =>
+                        currentState.directories.some(directory =>
+                            paths.includes(directory.path) && directory.id === image.directoryId
+                        )
+                    );
+
+                    if (storedPathsAlreadyLoaded && hasHydratedStoredImages) {
+                        const allPaths = currentState.directories.map(directory => directory.path);
+                        await window.electronAPI?.updateAllowedPaths(allPaths);
+                        return;
+                    }
+
                     // Use global auto-watch setting for all directories
                     const globalAutoWatch = useSettingsStore.getState().globalAutoWatch;
 
