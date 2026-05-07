@@ -42,6 +42,8 @@ if (gpuMitigationEnabled) {
   console.warn('[GPU] Hardware acceleration disabled via IMH_DISABLE_GPU.');
 }
 
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
+
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
 const PARSER_VERSION = 7; // v7: Add audio media indexing and metadata

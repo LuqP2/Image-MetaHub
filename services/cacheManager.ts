@@ -821,12 +821,10 @@ class CacheManager {
     directoryName: string,
     currentFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }[],
     scanSubfolders: boolean,
-    scopePath?: string
+    scopePath?: string,
+    options: { includeCachedImages?: boolean } = {}
   ): Promise<CacheDiff> {
-    const cached = await this.getCachedData(directoryPath, scanSubfolders);
-    
-    // If no cache exists, all files are new
-    if (!cached) {
+    if (!this.isElectron) {
       return {
         newAndModifiedFiles: currentFiles,
         deletedFileIds: [],
@@ -834,22 +832,74 @@ class CacheManager {
         needsFullRefresh: true,
       };
     }
+
+    const cachedSummary = await this.getCacheSummary(directoryPath, scanSubfolders);
     
-    const cachedMetadataMap = new Map(cached.metadata.map(m => [m.name, m]));
+    // If no cache exists, all files are new
+    if (!cachedSummary) {
+      return {
+        newAndModifiedFiles: currentFiles,
+        deletedFileIds: [],
+        cachedImages: [],
+        needsFullRefresh: true,
+      };
+    }
+
+    const includeCachedImages = options.includeCachedImages ?? true;
     const newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }[] = [];
     const cachedImages: IndexedImage[] = [];
-    const currentFileNames = new Set<string>();
+    const deletedFileIds: string[] = [];
+    const currentFilesMap = new Map<string, { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }>();
+    for (const file of currentFiles) {
+      currentFilesMap.set(file.name, file);
+    }
+    const seenCachedFileNames = new Set<string>();
 
     // Helper to normalize paths for comparison (ensure forward slashes)
     const normalize = (p: string) => p.replace(/\\/g, '/');
     const normalizedScope = scopePath ? normalize(scopePath) : undefined;
 
-    for (const file of currentFiles) {
-      currentFileNames.add(file.name);
-      const cachedFile = cachedMetadataMap.get(file.name);
+    await this.iterateCachedMetadata(directoryPath, scanSubfolders, async (cachedChunk) => {
+      for (const cachedFile of cachedChunk) {
+        seenCachedFileNames.add(cachedFile.name);
+        const file = currentFilesMap.get(cachedFile.name);
 
-      // File is new
-      if (!cachedFile) {
+        if (!file) {
+          if (normalizedScope) {
+            const authorized = cachedFile.name.startsWith(`${normalizedScope}/`) || cachedFile.name === normalizedScope;
+            if (!authorized) {
+              continue;
+            }
+          }
+          deletedFileIds.push(cachedFile.id);
+          continue;
+        }
+
+        const fileModifiedMs = file.contentModifiedMs ?? file.lastModified;
+        const cacheModifiedMs = cachedFile.contentModifiedMs ?? cachedFile.lastModified;
+        if (cacheModifiedMs < fileModifiedMs || cachedFile.enrichmentState === 'catalog') {
+          newAndModifiedFiles.push({
+            name: file.name,
+            lastModified: file.lastModified,
+            size: file.size,
+            type: file.type,
+            birthtimeMs: file.birthtimeMs,
+            contentModifiedMs: file.contentModifiedMs,
+          });
+          continue;
+        }
+
+        if (includeCachedImages) {
+          cachedImages.push({
+            ...cachedFile,
+            handle: { name: cachedFile.name, kind: 'file' } as any,
+          });
+        }
+      }
+    });
+
+    for (const file of currentFiles) {
+      if (!seenCachedFileNames.has(file.name)) {
         newAndModifiedFiles.push({
           name: file.name,
           lastModified: file.lastModified,
@@ -857,48 +907,9 @@ class CacheManager {
           type: file.type,
           birthtimeMs: file.birthtimeMs,
           contentModifiedMs: file.contentModifiedMs,
-        });
-      // File has been modified since last scan
-      } else if ((cachedFile.contentModifiedMs ?? cachedFile.lastModified) < (file.contentModifiedMs ?? file.lastModified)) {
-        newAndModifiedFiles.push({
-          name: file.name,
-          lastModified: file.lastModified,
-          size: file.size,
-          type: file.type,
-          birthtimeMs: file.birthtimeMs,
-          contentModifiedMs: file.contentModifiedMs,
-        });
-      // CRITICAL FIX: If file is in 'catalog' state (incomplete), force re-indexing
-      } else if (cachedFile.enrichmentState === 'catalog') {
-        newAndModifiedFiles.push({
-          name: file.name,
-          lastModified: file.lastModified, // Use current file time to be safe
-          size: file.size,
-          type: file.type,
-          birthtimeMs: file.birthtimeMs,
-          contentModifiedMs: file.contentModifiedMs,
-        });
-      // File is unchanged, add it to the list of images to be loaded from cache
-      } else {
-        cachedImages.push({
-          ...cachedFile,
-          handle: { name: cachedFile.name, kind: 'file' } as any, // Mock handle
         });
       }
     }
-
-    // Find files that were in the cache but are no longer on disk
-    // If scopePath is provided, ONLY consider files within that scope for deletion
-    const deletedFileIds = cached.metadata
-      .filter(m => {
-        // If scope is defined, ignore files outside the scope
-        if (normalizedScope) {
-           const authorized = m.name.startsWith(normalizedScope + '/') || m.name === normalizedScope;
-           if (!authorized) return false;
-        }
-        return !currentFileNames.has(m.name);
-      })
-      .map(m => m.id);
 
     return {
       newAndModifiedFiles,

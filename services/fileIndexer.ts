@@ -1361,8 +1361,37 @@ async function processSingleFileOptimized(
       }
       bufferForDimensions = fileData;
       fileSizeValue = fileSizeValue ?? fileData.byteLength;
+    } else if (isElectron && (fileEntry.handle as ElectronFileHandle)?._filePath && (window as any).electronAPI?.readFile) {
+      const absoluteFilePath = (fileEntry.handle as ElectronFileHandle)._filePath as string;
+      const fileResult = await (window as any).electronAPI.readFile(absoluteFilePath);
+      if (!fileResult.success || !fileResult.data) {
+        throw new Error(fileResult.error || `Failed to read file: ${fileEntry.handle.name}`);
+      }
+      const raw = fileResult.data as ArrayBuffer | ArrayBufferView;
+      if (raw instanceof ArrayBuffer) {
+        fileData = raw;
+      } else if (ArrayBuffer.isView(raw)) {
+        const view = raw as ArrayBufferView;
+        const copy = new Uint8Array(view.byteLength);
+        copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+        fileData = copy.buffer;
+      } else {
+        throw new Error(`Failed to read file: ${fileEntry.handle.name}`);
+      }
+      const view = new DataView(fileData);
+      const detectedType = detectImageType(view);
+      if (detectedType === 'png') {
+        rawMetadata = await parsePNGMetadata(fileData);
+      } else if (detectedType === 'jpeg') {
+        rawMetadata = await parseJPEGMetadata(fileData);
+      } else if (detectedType === 'webp') {
+        rawMetadata = await parseWebPMetadata(fileData);
+      } else {
+        rawMetadata = null;
+      }
+      bufferForDimensions = fileData;
+      fileSizeValue = fileSizeValue ?? fileData.byteLength;
     } else {
-      // Fallback to individual file read (browser path)
       const file = await fileEntry.handle.getFile();
       const parsed = await parseImageMetadata(file);
       rawMetadata = parsed.metadata;

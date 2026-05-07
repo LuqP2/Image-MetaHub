@@ -52,6 +52,41 @@ type DirectoryFileRecord = {
     contentModifiedMs?: number;
 };
 
+const electronHandleGetFile = async function (this: { name: string; _filePath?: string }) {
+    const electronAPI = window.electronAPI;
+    if (!getIsElectron() || !electronAPI || !this._filePath) {
+        throw new Error(`Failed to read file: ${this.name}`);
+    }
+
+    const fileResult = await electronAPI.readFile(this._filePath);
+    if (fileResult.success && fileResult.data) {
+        const freshData = new Uint8Array(fileResult.data);
+        const type = this.name.toLowerCase().endsWith('.png')
+            ? 'image/png'
+            : this.name.toLowerCase().endsWith('.webp')
+                ? 'image/webp'
+                : 'image/jpeg';
+        return new File([freshData as any], this.name, { type });
+    }
+
+    if (fileResult.errorType && fileResult.errorType !== 'FILE_NOT_FOUND') {
+        console.error(`Failed to read file: ${this.name}`, {
+            error: fileResult.error,
+            errorType: fileResult.errorType,
+            errorCode: fileResult.errorCode,
+            path: this._filePath,
+        });
+    }
+    throw new Error(`Failed to read file: ${this.name}`);
+};
+
+const createElectronFileHandle = (name: string, filePath: string) => ({
+    name,
+    kind: 'file' as const,
+    _filePath: filePath,
+    getFile: electronHandleGetFile,
+});
+
 // Function to clear file data cache
 function clearFileDataCache() {
   fileDataCache.clear();
@@ -160,35 +195,7 @@ async function getFileHandles(
             const file = files[i];
             const filePath = filePaths[i];
 
-            const mockHandle = {
-                name: file.name,
-                kind: 'file' as const,
-                _filePath: filePath,
-                getFile: async () => {
-                    // Read file directly when needed (during processFiles)
-                    if (getIsElectron()) {
-                        const fileResult = await electronAPI.readFile(filePath);
-                        if (fileResult.success && fileResult.data) {
-                            const freshData = new Uint8Array(fileResult.data);
-                            const lowerName = file.name.toLowerCase();
-                            const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                            return new File([freshData as any], file.name, { type });
-                        } else {
-                            // Only log non-file-not-found errors to reduce console noise
-                            if (fileResult.errorType && fileResult.errorType !== 'FILE_NOT_FOUND') {
-                                console.error(`Failed to read file: ${file.name}`, {
-                                    error: fileResult.error,
-                                    errorType: fileResult.errorType,
-                                    errorCode: fileResult.errorCode,
-                                    path: filePath
-                                });
-                            }
-                            throw new Error(`Failed to read file: ${file.name}`);
-                        }
-                    }
-                    throw new Error(`Failed to read file: ${filePath}`);
-                }
-            };
+            const mockHandle = createElectronFileHandle(file.name, filePath);
             handles.push({ handle: mockHandle as any, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type, birthtimeMs: file.birthtimeMs, contentModifiedMs: file.contentModifiedMs });
         }
     } else {
@@ -539,6 +546,8 @@ export function useImageLoader() {
             activeDirectory.name,
             allCurrentFiles,
             shouldScanSubfolders,
+            undefined,
+            { includeCachedImages: false },
         );
 
         traceCacheDebug('loader:reconcileCachedDirectory:diff', () => ({
@@ -552,6 +561,14 @@ export function useImageLoader() {
         }));
 
         if (diff.newAndModifiedFiles.length === 0 && diff.deletedFileIds.length === 0) {
+            return false;
+        }
+
+        if (allCurrentFiles.length >= 10000 && diff.cachedImages.length === 0) {
+            console.warn(
+                `[startup-reconcile] Skipping heavy cache rewrite for ${activeDirectory.path}: ` +
+                `${diff.newAndModifiedFiles.length} changed/new, ${diff.deletedFileIds.length} deleted.`
+            );
             return false;
         }
 
@@ -758,34 +775,7 @@ export function useImageLoader() {
                     const chunkImages: IndexedImage[] = metadataChunk.map((meta, i) => {
                         const filePath = filePaths[i];
 
-                        const mockHandle = {
-                            name: meta.name,
-                            kind: 'file' as const,
-                            _filePath: filePath,
-                            getFile: async () => {
-                                if (isElectron && filePath) {
-                                    const fileResult = await electronAPI.readFile(filePath);
-                                    if (fileResult.success && fileResult.data) {
-                                        const freshData = new Uint8Array(fileResult.data);
-                                        const lowerName = meta.name.toLowerCase();
-                                        const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                                        return new File([freshData as any], meta.name, { type });
-                                    } else {
-                                        // Only log non-file-not-found errors to reduce console noise
-                                        if (fileResult.errorType && fileResult.errorType !== 'FILE_NOT_FOUND') {
-                                            console.error(`Failed to read file: ${meta.name}`, {
-                                                error: fileResult.error,
-                                                errorType: fileResult.errorType,
-                                                errorCode: fileResult.errorCode,
-                                                path: filePath
-                                            });
-                                        }
-                                        throw new Error(`Failed to read file: ${meta.name}`);
-                                    }
-                                }
-                                throw new Error(`Failed to read file: ${meta.name}`);
-                            }
-                        };
+                        const mockHandle = createElectronFileHandle(meta.name, filePath);
 
                         return {
                             ...meta,
@@ -1398,30 +1388,7 @@ export function useImageLoader() {
             // Criar mock handles para os arquivos (necess├írio para processFiles)
             // Inclu├¡mos _filePath para que o Electron possa ler os arquivos via IPC batch
             const fileEntries = newFiles.map(file => ({
-                handle: {
-                    name: file.normalizedName,
-                    kind: 'file' as const,
-                    _filePath: file.path, // IMPORTANTE: Path para leitura via IPC no Electron
-                    getFile: async () => {
-                        // Read file directly when needed (during processFiles)
-                        const electronAPI = window.electronAPI;
-                        if (getIsElectron() && electronAPI) {
-                            const fileResult = await electronAPI.readFile(file.path);
-                            if (fileResult.success && fileResult.data) {
-                                const freshData = new Uint8Array(fileResult.data);
-                                const lowerName = file.normalizedName.toLowerCase();
-                                const type = lowerName.endsWith('.png')
-                                    ? 'image/png'
-                                    : lowerName.endsWith('.webp')
-                                        ? 'image/webp'
-                                        : 'image/jpeg';
-                                return new File([freshData as any], file.normalizedName, { type });
-                            }
-                            throw new Error(`Failed to read file: ${file.normalizedName}`);
-                        }
-                        throw new Error(`Failed to read file: ${file.path}`);
-                    }
-                } as any,
+                handle: createElectronFileHandle(file.normalizedName, file.path) as any,
                 path: file.relativePath || file.normalizedName,
                 lastModified: file.lastModified,
                 contentModifiedMs: file.contentModifiedMs ?? file.lastModified,
