@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useEffect, useRef, useState } from 'react';
 import { Layers, Sparkles } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -69,6 +69,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const stackScrollTopRef = useRef(0);
   const shouldRestoreStackScrollRef = useRef(false);
   const restoredClusterCacheKeyRef = useRef<string | null>(null);
+  const clusterMetadataSignatureRef = useRef<string | null>(null);
 
   const imageMap = useMemo(() => {
     return new Map(safeFilteredImages.map((image) => [image.id, image]));
@@ -171,8 +172,45 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const primaryPath = directories[0]?.path ?? '';
   const hasDirectories = directories.length > 0;
 
+  const buildClusteringMetadata = useCallback(() => {
+    const isPro = licenseStatus === 'pro' || licenseStatus === 'lifetime';
+    const isTrialActive = licenseStatus === 'trial';
+    const imagesWithPrompts = images.filter((image) => image.prompt && image.prompt.trim().length > 0);
+    const processingLimit = (isPro || isTrialActive) ? Infinity : CLUSTERING_PREVIEW_LIMIT;
+    const limitedImages = imagesWithPrompts.slice(0, processingLimit);
+    const lockedImageIds = new Set<string>();
+
+    if (!isPro && !isTrialActive && imagesWithPrompts.length > CLUSTERING_FREE_TIER_LIMIT) {
+      imagesWithPrompts
+        .slice(CLUSTERING_FREE_TIER_LIMIT, processingLimit)
+        .forEach((image) => lockedImageIds.add(image.id));
+    }
+
+    return {
+      processedCount: Math.min(limitedImages.length, CLUSTERING_FREE_TIER_LIMIT),
+      remainingCount: Math.max(0, imagesWithPrompts.length - processingLimit),
+      isLimited: imagesWithPrompts.length > processingLimit,
+      lockedImageIds,
+    };
+  }, [images, licenseStatus]);
+
+  const getClusteringMetadataSignature = useCallback((metadata: ReturnType<typeof buildClusteringMetadata>) => {
+    return [
+      metadata.processedCount,
+      metadata.remainingCount,
+      metadata.isLimited ? 'limited' : 'unlimited',
+      metadata.lockedImageIds.size,
+      Array.from(metadata.lockedImageIds).join(','),
+    ].join(':');
+  }, []);
+
   useEffect(() => {
     if (!primaryPath || clusters.length > 0 || isClustering) {
+      return;
+    }
+
+    const hasPromptImages = images.some((image) => image.prompt && image.prompt.trim().length > 0);
+    if (!hasPromptImages) {
       return;
     }
 
@@ -181,31 +219,15 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
       return;
     }
 
-    restoredClusterCacheKeyRef.current = cacheKey;
     let cancelled = false;
 
     loadClusterCache(primaryPath, scanSubfolders)
       .then((cache) => {
         if (!cancelled && cache?.clusters?.length) {
-          const isPro = licenseStatus === 'pro' || licenseStatus === 'lifetime';
-          const isTrialActive = licenseStatus === 'trial';
-          const imagesWithPrompts = images.filter((image) => image.prompt && image.prompt.trim().length > 0);
-          const processingLimit = (isPro || isTrialActive) ? Infinity : CLUSTERING_PREVIEW_LIMIT;
-          const limitedImages = imagesWithPrompts.slice(0, processingLimit);
-          const lockedImageIds = new Set<string>();
-
-          if (!isPro && !isTrialActive && imagesWithPrompts.length > CLUSTERING_FREE_TIER_LIMIT) {
-            imagesWithPrompts
-              .slice(CLUSTERING_FREE_TIER_LIMIT, processingLimit)
-              .forEach((image) => lockedImageIds.add(image.id));
-          }
-
-          setClusters(cache.clusters, {
-            processedCount: Math.min(limitedImages.length, CLUSTERING_FREE_TIER_LIMIT),
-            remainingCount: Math.max(0, imagesWithPrompts.length - processingLimit),
-            isLimited: imagesWithPrompts.length > processingLimit,
-            lockedImageIds,
-          });
+          restoredClusterCacheKeyRef.current = cacheKey;
+          const metadata = buildClusteringMetadata();
+          clusterMetadataSignatureRef.current = getClusteringMetadataSignature(metadata);
+          setClusters(cache.clusters, metadata);
         }
       })
       .catch((error) => {
@@ -215,7 +237,22 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [clusters.length, images, isClustering, licenseStatus, primaryPath, scanSubfolders, setClusters]);
+  }, [buildClusteringMetadata, clusters.length, getClusteringMetadataSignature, images, isClustering, primaryPath, scanSubfolders, setClusters]);
+
+  useEffect(() => {
+    if (clusters.length === 0 || isClustering) {
+      return;
+    }
+
+    const metadata = buildClusteringMetadata();
+    const signature = getClusteringMetadataSignature(metadata);
+    if (clusterMetadataSignatureRef.current === signature) {
+      return;
+    }
+
+    clusterMetadataSignatureRef.current = signature;
+    setClusters(clusters, metadata);
+  }, [buildClusteringMetadata, clusters, getClusteringMetadataSignature, isClustering, setClusters]);
 
   const handleGenerateClusters = () => {
     if (!primaryPath) return;
