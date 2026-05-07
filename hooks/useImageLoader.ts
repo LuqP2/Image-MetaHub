@@ -541,15 +541,16 @@ export function useImageLoader() {
             }])
         );
 
-        const useLightweightReconcile = allCurrentFiles.length >= 10000;
+        const preferLightweightReconcile = allCurrentFiles.length >= 10000;
         const diff = await cacheManager.validateCacheAndGetDiff(
             activeDirectory.path,
             activeDirectory.name,
             allCurrentFiles,
             shouldScanSubfolders,
             undefined,
-            { includeCachedImages: !useLightweightReconcile },
+            { includeCachedImages: !preferLightweightReconcile },
         );
+        const useLightweightReconcile = preferLightweightReconcile && !diff.needsFullRefresh;
 
         traceCacheDebug('loader:reconcileCachedDirectory:diff', () => ({
             directoryId: activeDirectory.id,
@@ -557,6 +558,7 @@ export function useImageLoader() {
                 newAndModifiedFiles: diff.newAndModifiedFiles.length,
                 deletedFileIds: diff.deletedFileIds.length,
                 currentFiles: allCurrentFiles.length,
+                needsFullRefresh: diff.needsFullRefresh,
             },
             snapshot: createCacheDebugSnapshot(useImageStore.getState()),
         }));

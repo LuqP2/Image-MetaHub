@@ -66,6 +66,16 @@ const DEFAULT_INCREMENTAL_CHUNK_SIZE = 1024;
 const MAX_INLINE_RAW_METADATA_BYTES = 32 * 1024;
 const RAW_METADATA_PREVIEW_BYTES = 4096;
 
+const isCurrentParserVersion = (parserVersion: number | undefined): boolean => (
+  parserVersion === PARSER_VERSION
+);
+
+const warnParserVersionMismatch = (cacheId: string, parserVersion: number | undefined) => {
+  console.warn(
+    `Cache parser version mismatch for ${cacheId}. Expected ${PARSER_VERSION}, got ${parserVersion ?? 'none'}. Invalidating cache.`
+  );
+};
+
 function compactCacheMetadataEntry(entry: CacheImageMetadata): CacheImageMetadata {
   const metadataString = typeof entry.metadataString === 'string' ? entry.metadataString : '';
   if (metadataString.length <= MAX_INLINE_RAW_METADATA_BYTES) {
@@ -381,6 +391,10 @@ class CacheManager {
     if (!summary) {
       return null;
     }
+    if (!isCurrentParserVersion(summary.parserVersion)) {
+      warnParserVersionMismatch(cacheId, summary.parserVersion);
+      return null;
+    }
 
     let metadata: CacheImageMetadata[] = Array.isArray(summary.metadata)
       ? compactCacheMetadataEntries(summary.metadata)
@@ -432,6 +446,11 @@ class CacheManager {
     }
 
     const summary = result.data;
+    if (!isCurrentParserVersion(summary.parserVersion)) {
+      warnParserVersionMismatch(cacheId, summary.parserVersion);
+      return null;
+    }
+
     return {
       id: summary.id,
       directoryPath: summary.directoryPath,
@@ -463,6 +482,11 @@ class CacheManager {
     }
 
     const summary = result.data;
+    if (!isCurrentParserVersion(summary.parserVersion)) {
+      warnParserVersionMismatch(cacheId, summary.parserVersion);
+      return;
+    }
+
     if (Array.isArray(summary.metadata) && summary.metadata.length > 0) {
       await onChunk(compactCacheMetadataEntries(summary.metadata));
       return;
