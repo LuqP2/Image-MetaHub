@@ -1,7 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cacheManager, CacheImageMetadata } from './cacheManager';
 
 describe('CacheManager', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    (cacheManager as any).isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+  });
+
   describe('validateCacheAndGetDiff', () => {
     it('should force re-indexing for files in "catalog" state', async () => {
       // Mock cached data
@@ -31,14 +36,19 @@ describe('CacheManager', () => {
         },
       ];
 
-      // Mock cacheManager.getCachedData to return our mock data
-      cacheManager.getCachedData = async () => ({
+      (cacheManager as any).isElectron = true;
+
+      vi.spyOn(cacheManager, 'getCacheSummary').mockResolvedValue({
         id: 'test-cache',
         directoryPath: '/test',
         directoryName: 'test',
         lastScan: Date.now(),
         imageCount: 2,
-        metadata: mockCachedMetadata,
+        chunkCount: 1,
+        parserVersion: 7,
+      });
+      vi.spyOn(cacheManager, 'iterateCachedMetadata').mockImplementation(async (_directoryPath, _scanSubfolders, onChunk) => {
+        await onChunk(mockCachedMetadata);
       });
 
       // Current files on disk (same timestamps as cache)
