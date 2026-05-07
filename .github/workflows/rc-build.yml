@@ -1,0 +1,88 @@
+name: Build RC artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "RC version, e.g. 0.16.0-rc.1"
+        required: true
+        default: "0.16.0-rc.1"
+
+jobs:
+  build-macos:
+    name: Build macOS RC
+    runs-on: macos-latest
+
+    env:
+      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: 0.16.0
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set RC version
+        run: npm version "${{ inputs.version }}" --no-git-tag-version
+
+      - name: Build macOS DMG
+        run: |
+          npm run build
+          npx electron-builder --mac --publish=never
+
+      - name: Upload macOS RC artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImageMetaHub-macOS-${{ inputs.version }}
+          path: |
+            dist-electron/*.dmg
+            dist-electron/*.dmg.blockmap
+
+  build-linux:
+    name: Build Linux RC
+    runs-on: ubuntu-latest
+
+    env:
+      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: 0.16.0
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set RC version
+        run: npm version "${{ inputs.version }}" --no-git-tag-version
+
+      - name: Build Linux AppImage
+        run: |
+          npm run build
+          npx electron-builder --linux --publish=never
+
+      - name: Upload Linux RC artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImageMetaHub-Linux-${{ inputs.version }}
+          path: |
+            dist-electron/*.AppImage
+            dist-electron/*.AppImage.blockmap
