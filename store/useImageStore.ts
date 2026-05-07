@@ -41,6 +41,7 @@ import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTr
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
 import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
+import { buildClusterSourceSignature } from '../utils/smartLibraryClusterState';
 import {
     type LineageBuildState,
     type LineageDirectorySignature,
@@ -3667,14 +3668,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             // Filter images with prompts
             const imagesWithPrompts = images.filter(img => img.prompt && img.prompt.trim().length > 0);
 
-            // For free users: process CLUSTERING_PREVIEW_LIMIT (1500) images
-            // - First 1000: shown normally
-            // - Next 500: shown blurred (locked preview)
+            // For free users, process a bounded preview:
+            // - First CLUSTERING_FREE_TIER_LIMIT images are shown normally
+            // - Remaining preview images up to CLUSTERING_PREVIEW_LIMIT are locked
             const processingLimit = (isPro || isTrialActive) ? Infinity : CLUSTERING_PREVIEW_LIMIT;
             const limitedImages = imagesWithPrompts.slice(0, processingLimit);
             const remainingCount = Math.max(0, imagesWithPrompts.length - processingLimit);
+            const clusterSourceSignature = buildClusterSourceSignature(imagesWithPrompts);
 
-            // Track which images are in the "locked preview" range (1001-1500)
+            // Track which images are in the locked preview range.
             const lockedImageIds = new Set<string>();
             if (!isPro && !isTrialActive && imagesWithPrompts.length > CLUSTERING_FREE_TIER_LIMIT) {
                 const lockedImages = imagesWithPrompts.slice(CLUSTERING_FREE_TIER_LIMIT, processingLimit);
@@ -3719,7 +3721,17 @@ export const useImageStore = create<ImageState>((set, get) => {
                         console.log(`Clustering complete: ${payload.clusters.length} clusters created`);
 
                         import('../services/clusterCacheManager')
-                            .then(({ saveClusterCache }) => saveClusterCache(directoryPath, scanSubfolders, payload.clusters, threshold))
+                            .then(({ saveClusterCache }) =>
+                                saveClusterCache(
+                                    directoryPath,
+                                    scanSubfolders,
+                                    payload.clusters,
+                                    threshold,
+                                    clusterSourceSignature,
+                                    imagesWithPrompts.length,
+                                    limitedImages.length
+                                )
+                            )
                             .catch(error => {
                                 console.warn('Failed to save cluster cache:', error);
                             });

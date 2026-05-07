@@ -1,14 +1,21 @@
-import React, { useCallback, useMemo, useEffect, useRef, useState } from 'react';
+import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { Layers, Sparkles } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { useLicenseStore } from '../store/useLicenseStore';
-import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
 import { ImageCluster, IndexedImage } from '../types';
 import { loadClusterCache } from '../services/clusterCacheManager';
+import {
+  buildClusteringMetadata,
+  buildClusterSourceSignature,
+  buildClusterStateSignature,
+  getPromptImagesForClustering,
+  isClusterCacheCompatible,
+  limitClustersForAccess,
+} from '../utils/smartLibraryClusterState';
 import StackCard from './StackCard';
 import StackExpandedView from './StackExpandedView';
 import ClusterUpgradeBanner from './ClusterUpgradeBanner';
@@ -40,6 +47,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const directories = useImageStore((state) => state.directories);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const isClustering = useImageStore((state) => state.isClustering);
+  const indexingState = useImageStore((state) => state.indexingState);
   const clusteringProgress = useImageStore((state) => state.clusteringProgress);
   const clusteringMetadata = useImageStore((state) => state.clusteringMetadata);
   const isAutoTagging = useImageStore((state) => state.isAutoTagging);
@@ -57,7 +65,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
-  const licenseStatus = useLicenseStore((state) => state.licenseStatus);
+  const { canUseFullClustering, initialized: isLicenseInitialized } = useFeatureAccess();
 
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
 
@@ -172,62 +180,60 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const primaryPath = directories[0]?.path ?? '';
   const hasDirectories = directories.length > 0;
 
-  const buildClusteringMetadata = useCallback(() => {
-    const isPro = licenseStatus === 'pro' || licenseStatus === 'lifetime';
-    const isTrialActive = licenseStatus === 'trial';
-    const imagesWithPrompts = images.filter((image) => image.prompt && image.prompt.trim().length > 0);
-    const processingLimit = (isPro || isTrialActive) ? Infinity : CLUSTERING_PREVIEW_LIMIT;
-    const limitedImages = imagesWithPrompts.slice(0, processingLimit);
-    const lockedImageIds = new Set<string>();
-
-    if (!isPro && !isTrialActive && imagesWithPrompts.length > CLUSTERING_FREE_TIER_LIMIT) {
-      imagesWithPrompts
-        .slice(CLUSTERING_FREE_TIER_LIMIT, processingLimit)
-        .forEach((image) => lockedImageIds.add(image.id));
-    }
-
-    return {
-      processedCount: Math.min(limitedImages.length, CLUSTERING_FREE_TIER_LIMIT),
-      remainingCount: Math.max(0, imagesWithPrompts.length - processingLimit),
-      isLimited: imagesWithPrompts.length > processingLimit,
-      lockedImageIds,
-    };
-  }, [images, licenseStatus]);
-
-  const getClusteringMetadataSignature = useCallback((metadata: ReturnType<typeof buildClusteringMetadata>) => {
-    return [
-      metadata.processedCount,
-      metadata.remainingCount,
-      metadata.isLimited ? 'limited' : 'unlimited',
-      metadata.lockedImageIds.size,
-      Array.from(metadata.lockedImageIds).join(','),
-    ].join(':');
-  }, []);
+  const promptImages = useMemo(() => getPromptImagesForClustering(images), [images]);
+  const clusterSourceSignature = useMemo(() => buildClusterSourceSignature(images), [images]);
+  const currentClusteringMetadata = useMemo(
+    () => buildClusteringMetadata(images, canUseFullClustering),
+    [canUseFullClustering, images]
+  );
 
   useEffect(() => {
-    if (!primaryPath || clusters.length > 0 || isClustering) {
+    if (
+      !primaryPath ||
+      !isLicenseInitialized ||
+      clusters.length > 0 ||
+      isClustering ||
+      indexingState === 'indexing' ||
+      indexingState === 'paused' ||
+      promptImages.length === 0
+    ) {
       return;
     }
 
-    const hasPromptImages = images.some((image) => image.prompt && image.prompt.trim().length > 0);
-    if (!hasPromptImages) {
-      return;
-    }
-
-    const cacheKey = `${primaryPath}::${scanSubfolders ? 'recursive' : 'flat'}`;
+    const cacheKey = [
+      primaryPath,
+      scanSubfolders ? 'recursive' : 'flat',
+      clusterSourceSignature,
+      canUseFullClustering ? 'full' : 'limited',
+    ].join('::');
     if (restoredClusterCacheKeyRef.current === cacheKey) {
       return;
     }
 
     let cancelled = false;
 
-    loadClusterCache(primaryPath, scanSubfolders)
+    loadClusterCache(primaryPath, scanSubfolders, clusterSourceSignature)
       .then((cache) => {
-        if (!cancelled && cache?.clusters?.length) {
-          restoredClusterCacheKeyRef.current = cacheKey;
-          const metadata = buildClusteringMetadata();
-          clusterMetadataSignatureRef.current = getClusteringMetadataSignature(metadata);
-          setClusters(cache.clusters, metadata);
+        if (cancelled) {
+          return;
+        }
+
+        restoredClusterCacheKeyRef.current = cacheKey;
+        if (
+          !cache?.clusters?.length ||
+          !isClusterCacheCompatible({
+            canUseFullClustering,
+            processedImageCount: cache.processedImageCount,
+            sourceImageCount: cache.sourceImageCount,
+          })
+        ) {
+          return;
+        }
+
+        const restoredClusters = limitClustersForAccess(cache.clusters, images, canUseFullClustering);
+        if (restoredClusters.length > 0) {
+          clusterMetadataSignatureRef.current = buildClusterStateSignature(restoredClusters, currentClusteringMetadata);
+          setClusters(restoredClusters, currentClusteringMetadata);
         }
       })
       .catch((error) => {
@@ -237,22 +243,35 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [buildClusteringMetadata, clusters.length, getClusteringMetadataSignature, images, isClustering, primaryPath, scanSubfolders, setClusters]);
+  }, [
+    canUseFullClustering,
+    clusterSourceSignature,
+    clusters.length,
+    currentClusteringMetadata,
+    images,
+    indexingState,
+    isClustering,
+    isLicenseInitialized,
+    primaryPath,
+    promptImages.length,
+    scanSubfolders,
+    setClusters,
+  ]);
 
   useEffect(() => {
-    if (clusters.length === 0 || isClustering) {
+    if (clusters.length === 0 || isClustering || !isLicenseInitialized) {
       return;
     }
 
-    const metadata = buildClusteringMetadata();
-    const signature = getClusteringMetadataSignature(metadata);
+    const limitedClusters = limitClustersForAccess(clusters, images, canUseFullClustering);
+    const signature = buildClusterStateSignature(limitedClusters, currentClusteringMetadata);
     if (clusterMetadataSignatureRef.current === signature) {
       return;
     }
 
     clusterMetadataSignatureRef.current = signature;
-    setClusters(clusters, metadata);
-  }, [buildClusteringMetadata, clusters, getClusteringMetadataSignature, isClustering, setClusters]);
+    setClusters(limitedClusters, currentClusteringMetadata);
+  }, [canUseFullClustering, clusters, currentClusteringMetadata, images, isClustering, isLicenseInitialized, setClusters]);
 
   const handleGenerateClusters = () => {
     if (!primaryPath) return;

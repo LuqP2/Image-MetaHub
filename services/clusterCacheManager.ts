@@ -17,6 +17,9 @@ export interface ClusterCacheEntry {
   directoryPath: string;                // Original directory path
   scanSubfolders: boolean;              // Scan mode
   clusters: ImageCluster[];
+  sourceSignature: string;              // Signature of prompt-bearing images used for cache validity
+  sourceImageCount: number;             // Total prompt-bearing images at generation time
+  processedImageCount: number;          // Images actually clustered under the active license
   lastGenerated: number;                // Timestamp
   parserVersion: number;                // Track clustering version
   similarityThreshold: number;          // Threshold used
@@ -126,7 +129,8 @@ export async function getCacheDirectory(): Promise<string> {
  */
 export async function loadClusterCache(
   directoryPath: string,
-  scanSubfolders: boolean
+  scanSubfolders: boolean,
+  expectedSourceSignature?: string
 ): Promise<ClusterCacheEntry | null> {
   try {
     const cacheDir = await getCacheDirectory();
@@ -144,6 +148,12 @@ export async function loadClusterCache(
       if (cache.parserVersion !== PARSER_VERSION) {
         console.warn(`Cluster cache version mismatch. Expected ${PARSER_VERSION}, got ${cache.parserVersion}. Invalidating cache.`);
         await invalidateClusterCache(directoryPath, scanSubfolders, 'version_mismatch');
+        return null;
+      }
+
+      if (expectedSourceSignature && cache.sourceSignature !== expectedSourceSignature) {
+        console.warn('Cluster cache source signature mismatch. Invalidating cache.');
+        await invalidateClusterCache(directoryPath, scanSubfolders, 'source_signature_mismatch');
         return null;
       }
 
@@ -166,7 +176,10 @@ export async function saveClusterCache(
   directoryPath: string,
   scanSubfolders: boolean,
   clusters: ImageCluster[],
-  similarityThreshold: number
+  similarityThreshold: number,
+  sourceSignature: string,
+  sourceImageCount: number,
+  processedImageCount: number
 ): Promise<void> {
   try {
     const cacheDir = await getCacheDirectory();
@@ -179,6 +192,9 @@ export async function saveClusterCache(
       directoryPath,
       scanSubfolders,
       clusters,
+      sourceSignature,
+      sourceImageCount,
+      processedImageCount,
       lastGenerated: Date.now(),
       parserVersion: PARSER_VERSION,
       similarityThreshold,
