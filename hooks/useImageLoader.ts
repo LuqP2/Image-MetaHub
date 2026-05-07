@@ -601,6 +601,7 @@ export function useImageLoader() {
                 const fileHandles = sortedFilesWithStats.length > 0
                     ? await getFileHandles(activeDirectory.handle, activeDirectory.path, sortedFilesWithStats)
                     : [];
+                const cacheUpserts: IndexedImage[] = [];
 
                 const { phaseB } = await processFiles(
                     fileHandles,
@@ -623,6 +624,7 @@ export function useImageLoader() {
                         concurrency: useSettingsStore.getState().indexingConcurrency ?? 4,
                         fileStats: fileStatsMap,
                         onEnrichmentBatch: (batch) => {
+                            cacheUpserts.push(...batch);
                             mergeImages(batch);
                         },
                         hydratePreloadedImages: false,
@@ -630,6 +632,14 @@ export function useImageLoader() {
                 );
 
                 await phaseB;
+                await cacheManager.applyChunkedCacheDelta(
+                    activeDirectory.path,
+                    activeDirectory.name,
+                    cacheUpserts,
+                    [...diff.deletedFileIds, ...changedIds],
+                    [],
+                    shouldScanSubfolders
+                );
                 await refreshLineageDirectorySignature(activeDirectory);
                 scheduleLineageRebuild(800);
                 traceCacheDebug('loader:reconcileCachedDirectory:lightweightComplete', () => ({

@@ -695,6 +695,102 @@ class CacheManager {
     }
   }
 
+  async applyChunkedCacheDelta(
+    directoryPath: string,
+    directoryName: string,
+    imagesToUpsert: IndexedImage[],
+    removedImageIds: string[],
+    removedImageNames: string[],
+    scanSubfolders: boolean
+  ): Promise<void> {
+    if (!this.isElectron) return;
+    if (imagesToUpsert.length === 0 && removedImageIds.length === 0 && removedImageNames.length === 0) return;
+
+    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    const summary = await this.getCacheSummary(directoryPath, scanSubfolders);
+    if (!summary) {
+      if (imagesToUpsert.length > 0) {
+        await this.cacheData(directoryPath, directoryName, imagesToUpsert, scanSubfolders);
+      }
+      return;
+    }
+
+    const upserts = sanitizeCacheMetadata(toCacheMetadata(imagesToUpsert), { forceClone: true });
+    const pruneIds = [
+      ...removedImageIds,
+      ...upserts.map((image) => image.id),
+    ];
+    const pruneNames = [
+      ...removedImageNames,
+      ...upserts.map((image) => image.name),
+    ];
+    const outputChunkSize = DEFAULT_INCREMENTAL_CHUNK_SIZE;
+    const outputBuffer: CacheImageMetadata[] = [];
+    let outputChunkIndex = 0;
+    let imageCount = 0;
+
+    const flushOutputChunk = async (force = false) => {
+      if (outputBuffer.length === 0 || (!force && outputBuffer.length < outputChunkSize)) {
+        return;
+      }
+
+      const chunk = outputBuffer.splice(0, outputBuffer.length);
+      const result = await window.electronAPI.writeCacheChunk({
+        cacheId,
+        chunkIndex: outputChunkIndex,
+        data: chunk,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to write cache delta chunk');
+      }
+
+      outputChunkIndex += 1;
+    };
+
+    const appendOutputEntries = async (entries: CacheImageMetadata[]) => {
+      for (const entry of entries) {
+        outputBuffer.push(entry);
+        imageCount += 1;
+        await flushOutputChunk();
+      }
+    };
+
+    const chunkCount = summary.chunkCount ?? 0;
+    for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+      const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex });
+      if (!chunkResult.success || !Array.isArray(chunkResult.data)) {
+        throw new Error(chunkResult.error || `Failed to read cache chunk ${chunkIndex}`);
+      }
+
+      const pruned = pruneCacheMetadata(compactCacheMetadataEntries(chunkResult.data), {
+        ids: pruneIds,
+        names: pruneNames,
+      });
+      await appendOutputEntries(pruned);
+    }
+
+    await appendOutputEntries(upserts);
+    await flushOutputChunk(true);
+
+    const finalizeResult = await window.electronAPI.finalizeCacheWrite({
+      cacheId,
+      record: {
+        id: cacheId,
+        directoryPath,
+        directoryName: summary.directoryName ?? directoryName,
+        lastScan: Date.now(),
+        imageCount,
+        chunkCount: outputChunkIndex,
+        parserVersion: PARSER_VERSION,
+      },
+    });
+
+    if (!finalizeResult.success) {
+      throw new Error(finalizeResult.error || 'Failed to finalize cache delta');
+    }
+  }
+
   async replaceCachedImages(
     directoryPath: string,
     directoryName: string,
