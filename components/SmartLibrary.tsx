@@ -2,6 +2,8 @@ import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { Layers, Sparkles } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useLicenseStore } from '../store/useLicenseStore';
+import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
 
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
@@ -33,6 +35,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   onOpenImageInBackground,
 }) => {
   const filteredImages = useImageStore((state) => state.filteredImages);
+  const images = useImageStore((state) => state.images);
   const clusters = useImageStore((state) => state.clusters);
   const directories = useImageStore((state) => state.directories);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
@@ -54,6 +57,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+  const licenseStatus = useLicenseStore((state) => state.licenseStatus);
 
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
 
@@ -183,7 +187,25 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
     loadClusterCache(primaryPath, scanSubfolders)
       .then((cache) => {
         if (!cancelled && cache?.clusters?.length) {
-          setClusters(cache.clusters);
+          const isPro = licenseStatus === 'pro' || licenseStatus === 'lifetime';
+          const isTrialActive = licenseStatus === 'trial';
+          const imagesWithPrompts = images.filter((image) => image.prompt && image.prompt.trim().length > 0);
+          const processingLimit = (isPro || isTrialActive) ? Infinity : CLUSTERING_PREVIEW_LIMIT;
+          const limitedImages = imagesWithPrompts.slice(0, processingLimit);
+          const lockedImageIds = new Set<string>();
+
+          if (!isPro && !isTrialActive && imagesWithPrompts.length > CLUSTERING_FREE_TIER_LIMIT) {
+            imagesWithPrompts
+              .slice(CLUSTERING_FREE_TIER_LIMIT, processingLimit)
+              .forEach((image) => lockedImageIds.add(image.id));
+          }
+
+          setClusters(cache.clusters, {
+            processedCount: Math.min(limitedImages.length, CLUSTERING_FREE_TIER_LIMIT),
+            remainingCount: Math.max(0, imagesWithPrompts.length - processingLimit),
+            isLimited: imagesWithPrompts.length > processingLimit,
+            lockedImageIds,
+          });
         }
       })
       .catch((error) => {
@@ -193,7 +215,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [clusters.length, isClustering, primaryPath, scanSubfolders, setClusters]);
+  }, [clusters.length, images, isClustering, licenseStatus, primaryPath, scanSubfolders, setClusters]);
 
   const handleGenerateClusters = () => {
     if (!primaryPath) return;

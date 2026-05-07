@@ -939,7 +939,7 @@ interface ImageState {
   // Clustering Actions (Phase 2)
   startClustering: (directoryPath: string, scanSubfolders: boolean, threshold: number) => Promise<void>;
   cancelClustering: () => void;
-  setClusters: (clusters: ImageCluster[]) => void;
+  setClusters: (clusters: ImageCluster[], clusteringMetadata?: ImageState['clusteringMetadata']) => void;
   setClusteringProgress: (progress: { current: number; total: number; message: string } | null) => void;
   handleClusterImageDeletion: (deletedImageIds: string[]) => void;
   setClusterNavigationContext: (images: IndexedImage[] | null) => void;
@@ -3768,7 +3768,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
         },
 
-        setClusters: (clusters) => set({ clusters }),
+        setClusters: (clusters, clusteringMetadata) =>
+            set(clusteringMetadata === undefined ? { clusters } : { clusters, clusteringMetadata }),
 
         setClusteringProgress: (progress) => set({ clusteringProgress: progress }),
 
