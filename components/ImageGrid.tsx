@@ -2172,6 +2172,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             setSelectedImageForGeneration(null);
           }}
           image={selectedImageForGeneration}
+          directoryPath={directories.find((directory) => directory.id === selectedImageForGeneration.directoryId)?.path}
           onGenerate={async (params: ComfyUIGenerationParams) => {
             const customMetadata: Partial<BaseMetadata> = {
               prompt: params.prompt,

@@ -567,10 +567,82 @@ export function useImageLoader() {
 
         if (useLightweightReconcile) {
             console.warn(
-                `[startup-reconcile] Skipping heavy cache rewrite for ${activeDirectory.path}: ` +
+                `[startup-reconcile] Applying lightweight UI reconcile for ${activeDirectory.path}: ` +
                 `${diff.newAndModifiedFiles.length} changed/new, ${diff.deletedFileIds.length} deleted.`
             );
-            return false;
+            setDirectoryRefreshing(activeDirectory.id, true);
+
+            try {
+                if (diff.deletedFileIds.length > 0) {
+                    removeImages(diff.deletedFileIds);
+                }
+
+                const changedIds = Array.from(new Set(
+                    diff.newAndModifiedFiles.map(file => `${activeDirectory.id}::${file.name}`)
+                ));
+                if (changedIds.length > 0) {
+                    removeImages(changedIds);
+                }
+
+                const sortedFilesWithStats = diff.newAndModifiedFiles.length > 0
+                    ? [...diff.newAndModifiedFiles]
+                        .sort((a, b) => b.lastModified - a.lastModified)
+                        .map(file => ({
+                            ...file,
+                            size: fileStatsMap.get(file.name)?.size ?? file.size,
+                            type: fileStatsMap.get(file.name)?.type ?? file.type,
+                            birthtimeMs: fileStatsMap.get(file.name)?.birthtimeMs ?? file.birthtimeMs ?? file.lastModified,
+                            contentModifiedMs: fileStatsMap.get(file.name)?.contentModifiedMs ?? file.contentModifiedMs ?? file.lastModified,
+                        }))
+                    : [];
+
+                const fileHandles = sortedFilesWithStats.length > 0
+                    ? await getFileHandles(activeDirectory.handle, activeDirectory.path, sortedFilesWithStats)
+                    : [];
+
+                const { phaseB } = await processFiles(
+                    fileHandles,
+                    () => {},
+                    (batch) => {
+                        addImages(batch);
+                    },
+                    activeDirectory.id,
+                    activeDirectory.name,
+                    shouldScanSubfolders,
+                    (deletedFileIds) => {
+                        if (deletedFileIds.length > 0) {
+                            removeImages(deletedFileIds);
+                        }
+                    },
+                    undefined,
+                    waitWhilePaused,
+                    {
+                        cacheWriter: null,
+                        concurrency: useSettingsStore.getState().indexingConcurrency ?? 4,
+                        fileStats: fileStatsMap,
+                        onEnrichmentBatch: (batch) => {
+                            mergeImages(batch);
+                        },
+                        hydratePreloadedImages: false,
+                    }
+                );
+
+                await phaseB;
+                await refreshLineageDirectorySignature(activeDirectory);
+                scheduleLineageRebuild(800);
+                traceCacheDebug('loader:reconcileCachedDirectory:lightweightComplete', () => ({
+                    directoryId: activeDirectory.id,
+                    snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+                }));
+                return true;
+            } catch (reconcileError) {
+                console.error(`[startup-reconcile] Lightweight reconcile failed for ${activeDirectory.path}:`, reconcileError);
+                return false;
+            } finally {
+                setDirectoryRefreshing(activeDirectory.id, false);
+                setEnrichmentProgress(null);
+                setProgress(null);
+            }
         }
 
         setDirectoryRefreshing(activeDirectory.id, true);

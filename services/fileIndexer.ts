@@ -1326,7 +1326,8 @@ async function processSingleFileOptimized(
   fileEntry: CatalogFileEntry,
   directoryId: string,
   fileData?: ArrayBuffer,
-  profile?: PhaseProfileSample
+  profile?: PhaseProfileSample,
+  options: { compactRawMetadata?: boolean } = {}
 ): Promise<IndexedImage | null> {
   try {
     const totalStart = profile ? performance.now() : 0;
@@ -1680,7 +1681,9 @@ if (normalizedMetadata && isAudio) {
       profile.totalMs = performance.now() - totalStart;
     }
 
-    const runtimeMetadata = compactRawMetadataForRuntime(rawMetadata, normalizedMetadata);
+    const runtimeMetadata = options.compactRawMetadata === false
+      ? buildUncompactedRawMetadataForRuntime(rawMetadata, normalizedMetadata)
+      : compactRawMetadataForRuntime(rawMetadata, normalizedMetadata);
 
     return {
       id: `${directoryId}::${fileEntry.path}`,
@@ -1716,7 +1719,8 @@ if (normalizedMetadata && isAudio) {
 
 export async function reparseIndexedImage(
   image: IndexedImage,
-  directoryPath: string
+  directoryPath: string,
+  options: { compactRawMetadata?: boolean } = {}
 ): Promise<IndexedImage | null> {
   if (!window.electronAPI?.joinPaths || !window.electronAPI?.readFile) {
     throw new Error('Metadata reparsing is only available in the desktop app.');
@@ -1760,7 +1764,9 @@ export async function reparseIndexedImage(
   return processSingleFileOptimized(
     fileEntry,
     image.directoryId || image.id.split('::')[0] || '',
-    fileData
+    fileData,
+    undefined,
+    options
   );
 }
 
@@ -1897,6 +1903,27 @@ export interface ProcessFilesResult {
 
 const MAX_INLINE_RAW_METADATA_BYTES = 32 * 1024;
 const RAW_METADATA_PREVIEW_BYTES = 4096;
+
+function buildUncompactedRawMetadataForRuntime(
+  rawMetadata: ImageMetadata | null,
+  normalizedMetadata?: BaseMetadata
+): { metadata: IndexedImage['metadata']; metadataString: string } {
+  if (!rawMetadata || Object.keys(rawMetadata).length === 0) {
+    return {
+      metadata: normalizedMetadata ? { normalizedMetadata } as IndexedImage['metadata'] : {},
+      metadataString: '',
+    };
+  }
+
+  const metadata = normalizedMetadata
+    ? { ...rawMetadata, normalizedMetadata } as IndexedImage['metadata']
+    : rawMetadata as IndexedImage['metadata'];
+
+  return {
+    metadata,
+    metadataString: JSON.stringify(rawMetadata),
+  };
+}
 
 function compactRawMetadataForRuntime(
   rawMetadata: ImageMetadata | null,

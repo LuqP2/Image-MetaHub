@@ -683,6 +683,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                   </div>
                   <ComfyUIWorkflowWorkspace
                     image={image}
+                    directoryPath={directoryPath}
                     onGenerate={handleGenerateFromWorkspace}
                     isGenerating={isGenerating}
                     status={generateStatus}

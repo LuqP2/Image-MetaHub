@@ -3562,6 +3562,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div className="space-y-4">
               <ComfyUIWorkflowWorkspace
                 image={image}
+                directoryPath={directoryPath}
                 onGenerate={async (params: ComfyUIGenerationParams) => {
                     const customMetadata: Partial<BaseMetadata> = {
                       prompt: params.prompt,
