@@ -541,13 +541,14 @@ export function useImageLoader() {
             }])
         );
 
+        const useLightweightReconcile = allCurrentFiles.length >= 10000;
         const diff = await cacheManager.validateCacheAndGetDiff(
             activeDirectory.path,
             activeDirectory.name,
             allCurrentFiles,
             shouldScanSubfolders,
             undefined,
-            { includeCachedImages: false },
+            { includeCachedImages: !useLightweightReconcile },
         );
 
         traceCacheDebug('loader:reconcileCachedDirectory:diff', () => ({
@@ -564,7 +565,7 @@ export function useImageLoader() {
             return false;
         }
 
-        if (allCurrentFiles.length >= 10000 && diff.cachedImages.length === 0) {
+        if (useLightweightReconcile) {
             console.warn(
                 `[startup-reconcile] Skipping heavy cache rewrite for ${activeDirectory.path}: ` +
                 `${diff.newAndModifiedFiles.length} changed/new, ${diff.deletedFileIds.length} deleted.`
