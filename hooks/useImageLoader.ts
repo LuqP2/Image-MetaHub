@@ -1006,7 +1006,7 @@ export function useImageLoader() {
             const changedIds = Array.from(new Set(
                 diff.newAndModifiedFiles.map(file => `${directory.id}::${file.name}`)
             ));
-            const scopedCacheUpserts: IndexedImage[] = [];
+            const scopedCacheUpsertsById = new Map<string, IndexedImage>();
             let cacheWriter: IncrementalCacheWriter | null = null;
             const shouldUseWriter = getIsElectron() && !isScopedRefresh && (diff.needsFullRefresh || diff.newAndModifiedFiles.length > 0 || diff.deletedFileIds.length > 0);
 
@@ -1040,9 +1040,7 @@ export function useImageLoader() {
             if (shouldHydratePreloadedImages) {
                 clearImages(directory.id);
             } else if (changedIds.length > 0) {
-                if (changedIds.length > 0) {
-                    removeImages(changedIds);
-                }
+                removeImages(changedIds);
             }
 
             // Add cached images (both first load and refresh)
@@ -1095,6 +1093,11 @@ export function useImageLoader() {
             }
 
             const handleBatchProcessed = (batch: IndexedImage[]) => {
+                if (isScopedRefresh) {
+                    for (const image of batch) {
+                        scopedCacheUpsertsById.set(image.id, image);
+                    }
+                }
                 addImages(batch);
                 if (totalCatalogItems > 0) {
                     loadedCatalogItems += batch.length;
@@ -1108,7 +1111,9 @@ export function useImageLoader() {
             const handleEnrichmentBatch = (batch: IndexedImage[]) => {
                 const start = performance.now();
                 if (isScopedRefresh) {
-                    scopedCacheUpserts.push(...batch);
+                    for (const image of batch) {
+                        scopedCacheUpsertsById.set(image.id, image);
+                    }
                 }
                 mergeImages(batch);
                 const durationMs = performance.now() - start;
@@ -1192,7 +1197,7 @@ export function useImageLoader() {
                             await cacheManager.applyChunkedCacheDelta(
                                 directory.path,
                                 directory.name,
-                                scopedCacheUpserts,
+                                Array.from(scopedCacheUpsertsById.values()),
                                 [...diff.deletedFileIds, ...changedIds],
                                 [],
                                 shouldScanSubfolders
