@@ -2,10 +2,20 @@ import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { Layers, Sparkles } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
 import { ImageCluster, IndexedImage } from '../types';
+import { loadClusterCache } from '../services/clusterCacheManager';
+import {
+  buildClusteringMetadata,
+  buildClusterSourceSignature,
+  buildClusterStateSignature,
+  getPromptImagesForClustering,
+  isClusterCacheCompatible,
+  limitClustersForAccess,
+} from '../utils/smartLibraryClusterState';
 import StackCard from './StackCard';
 import StackExpandedView from './StackExpandedView';
 import ClusterUpgradeBanner from './ClusterUpgradeBanner';
@@ -32,16 +42,19 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   onOpenImageInBackground,
 }) => {
   const filteredImages = useImageStore((state) => state.filteredImages);
+  const images = useImageStore((state) => state.images);
   const clusters = useImageStore((state) => state.clusters);
   const directories = useImageStore((state) => state.directories);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const isClustering = useImageStore((state) => state.isClustering);
+  const indexingState = useImageStore((state) => state.indexingState);
   const clusteringProgress = useImageStore((state) => state.clusteringProgress);
   const clusteringMetadata = useImageStore((state) => state.clusteringMetadata);
   const isAutoTagging = useImageStore((state) => state.isAutoTagging);
   const autoTaggingProgress = useImageStore((state) => state.autoTaggingProgress);
   const startClustering = useImageStore((state) => state.startClustering);
   const startAutoTagging = useImageStore((state) => state.startAutoTagging);
+  const setClusters = useImageStore((state) => state.setClusters);
   const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
@@ -52,6 +65,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+  const { canUseFullClustering, initialized: isLicenseInitialized } = useFeatureAccess();
 
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
 
@@ -62,6 +76,8 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const stackScrollRef = useRef<HTMLDivElement | null>(null);
   const stackScrollTopRef = useRef(0);
   const shouldRestoreStackScrollRef = useRef(false);
+  const restoredClusterCacheKeyRef = useRef<string | null>(null);
+  const clusterMetadataSignatureRef = useRef<string | null>(null);
 
   const imageMap = useMemo(() => {
     return new Map(safeFilteredImages.map((image) => [image.id, image]));
@@ -163,6 +179,99 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
 
   const primaryPath = directories[0]?.path ?? '';
   const hasDirectories = directories.length > 0;
+
+  const promptImages = useMemo(() => getPromptImagesForClustering(images), [images]);
+  const clusterSourceSignature = useMemo(() => buildClusterSourceSignature(images), [images]);
+  const currentClusteringMetadata = useMemo(
+    () => buildClusteringMetadata(images, canUseFullClustering),
+    [canUseFullClustering, images]
+  );
+
+  useEffect(() => {
+    if (
+      !primaryPath ||
+      !isLicenseInitialized ||
+      clusters.length > 0 ||
+      isClustering ||
+      indexingState === 'indexing' ||
+      indexingState === 'paused' ||
+      promptImages.length === 0
+    ) {
+      return;
+    }
+
+    const cacheKey = [
+      primaryPath,
+      scanSubfolders ? 'recursive' : 'flat',
+      clusterSourceSignature,
+      canUseFullClustering ? 'full' : 'limited',
+    ].join('::');
+    if (restoredClusterCacheKeyRef.current === cacheKey) {
+      return;
+    }
+
+    let cancelled = false;
+
+    loadClusterCache(primaryPath, scanSubfolders, clusterSourceSignature)
+      .then((cache) => {
+        if (cancelled) {
+          return;
+        }
+
+        restoredClusterCacheKeyRef.current = cacheKey;
+        if (
+          !cache?.clusters?.length ||
+          !isClusterCacheCompatible({
+            canUseFullClustering,
+            processedImageCount: cache.processedImageCount,
+            sourceImageCount: cache.sourceImageCount,
+          })
+        ) {
+          return;
+        }
+
+        const restoredClusters = limitClustersForAccess(cache.clusters, images, canUseFullClustering);
+        if (restoredClusters.length > 0) {
+          clusterMetadataSignatureRef.current = buildClusterStateSignature(restoredClusters, currentClusteringMetadata);
+          setClusters(restoredClusters, currentClusteringMetadata);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to restore Smart Library cluster cache:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    canUseFullClustering,
+    clusterSourceSignature,
+    clusters.length,
+    currentClusteringMetadata,
+    images,
+    indexingState,
+    isClustering,
+    isLicenseInitialized,
+    primaryPath,
+    promptImages.length,
+    scanSubfolders,
+    setClusters,
+  ]);
+
+  useEffect(() => {
+    if (clusters.length === 0 || isClustering || !isLicenseInitialized) {
+      return;
+    }
+
+    const limitedClusters = limitClustersForAccess(clusters, images, canUseFullClustering);
+    const signature = buildClusterStateSignature(limitedClusters, currentClusteringMetadata);
+    if (clusterMetadataSignatureRef.current === signature) {
+      return;
+    }
+
+    clusterMetadataSignatureRef.current = signature;
+    setClusters(limitedClusters, currentClusteringMetadata);
+  }, [canUseFullClustering, clusters, currentClusteringMetadata, images, isClustering, isLicenseInitialized, setClusters]);
 
   const handleGenerateClusters = () => {
     if (!primaryPath) return;

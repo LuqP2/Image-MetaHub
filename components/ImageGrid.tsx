@@ -1637,6 +1637,32 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         }
       } else if (e.key === 'PageDown') {
         e.preventDefault();
+        const itemCount = itemsToRender.length;
+        if (isInfinite && itemCount > 0) {
+          const columnCount = getActiveColumnCount();
+          const rowHeight = getItemHeight(imageSize, showFilenameArea) + GAP_SIZE;
+          const viewportHeight = getGridScrollElement()?.clientHeight ?? rowHeight;
+          const visibleRows = Math.max(1, Math.floor(viewportHeight / rowHeight));
+          const currentRenderedIndex = getRenderedIndexForImageIndex(focusedImageIndexRef.current);
+          const nextRenderedIndex = clampIndex(
+            (currentRenderedIndex >= 0 ? currentRenderedIndex : 0) + (columnCount * visibleRows),
+            itemCount,
+          );
+          const nextItem = itemsToRender[nextRenderedIndex];
+          const previewTarget = nextItem
+            ? isImageStack(nextItem)
+              ? nextItem.coverImage
+              : nextItem
+            : undefined;
+          const resolvedImageIndex = nextItem ? getImageIndexForRenderedItem(nextItem) : -1;
+
+          if (previewTarget && resolvedImageIndex >= 0) {
+            focusedImageIndexRef.current = resolvedImageIndex;
+            setFocusedImageIndex(resolvedImageIndex);
+            setPreviewImage(previewTarget);
+          }
+          return;
+        }
         if (currentPage < totalPages) {
           onPageChange(currentPage + 1);
           focusedImageIndexRef.current = 0;
@@ -1644,6 +1670,32 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         }
       } else if (e.key === 'PageUp') {
         e.preventDefault();
+        const itemCount = itemsToRender.length;
+        if (isInfinite && itemCount > 0) {
+          const columnCount = getActiveColumnCount();
+          const rowHeight = getItemHeight(imageSize, showFilenameArea) + GAP_SIZE;
+          const viewportHeight = getGridScrollElement()?.clientHeight ?? rowHeight;
+          const visibleRows = Math.max(1, Math.floor(viewportHeight / rowHeight));
+          const currentRenderedIndex = getRenderedIndexForImageIndex(focusedImageIndexRef.current);
+          const nextRenderedIndex = clampIndex(
+            (currentRenderedIndex >= 0 ? currentRenderedIndex : 0) - (columnCount * visibleRows),
+            itemCount,
+          );
+          const nextItem = itemsToRender[nextRenderedIndex];
+          const previewTarget = nextItem
+            ? isImageStack(nextItem)
+              ? nextItem.coverImage
+              : nextItem
+            : undefined;
+          const resolvedImageIndex = nextItem ? getImageIndexForRenderedItem(nextItem) : -1;
+
+          if (previewTarget && resolvedImageIndex >= 0) {
+            focusedImageIndexRef.current = resolvedImageIndex;
+            setFocusedImageIndex(resolvedImageIndex);
+            setPreviewImage(previewTarget);
+          }
+          return;
+        }
         if (currentPage > 1) {
           onPageChange(currentPage - 1);
           focusedImageIndexRef.current = 0;
@@ -1665,7 +1717,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [flushKeyboardPreview, getActiveColumnCount, getImageIndexForRenderedItem, getRenderedIndexForImageIndex, itemsToRender, setFocusedImageIndex, setPreviewImage, onImageClick, focusedImageIndex, images, currentPage, totalPages, onPageChange]);
+  }, [flushKeyboardPreview, getActiveColumnCount, getGridScrollElement, getImageIndexForRenderedItem, getRenderedIndexForImageIndex, imageSize, isInfinite, itemsToRender, setFocusedImageIndex, setPreviewImage, onImageClick, focusedImageIndex, images, currentPage, totalPages, onPageChange, showFilenameArea]);
 
   useEffect(() => {
     return () => {

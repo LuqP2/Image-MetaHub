@@ -1033,6 +1033,21 @@ export default function App() {
       if (currentLastViewed !== version) {
         setIsChangelogModalOpen(true);
         setLastViewedVersion(version);
+
+        if (window.electronAPI?.getSettings && window.electronAPI?.saveSettings) {
+          try {
+            const currentSettings = await window.electronAPI.getSettings();
+            const result = await window.electronAPI.saveSettings({
+              ...(currentSettings ?? {}),
+              lastViewedVersion: version,
+            });
+            if (!result?.success) {
+              console.warn('Failed to persist last viewed changelog version:', result?.error);
+            }
+          } catch (error) {
+            console.warn('Failed to persist last viewed changelog version:', error);
+          }
+        }
       }
     };
 

@@ -2667,7 +2667,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 />
               </div>
             ) : isVideo ? (
-              <div data-no-window-drag="true" className="max-h-full max-w-full">
+              <div data-no-window-drag="true" className="h-full min-h-0 w-full min-w-0">
                 <VideoPlayer
                   key={image.id}
                   src={imageUrl}
