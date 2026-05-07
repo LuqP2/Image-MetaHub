@@ -294,7 +294,15 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     return () => {
       isCancelled = true;
     };
-  }, [directoryPath, image.directoryId, image.id]);
+  }, [
+    directoryPath,
+    image.contentModifiedMs,
+    image.directoryId,
+    image.id,
+    image.lastModified,
+    image.metadata,
+    image.metadataString,
+  ]);
 
   const visualPromptAnalysis = useMemo(() => {
     if (!workingPromptGraph) {
