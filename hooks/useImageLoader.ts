@@ -1002,8 +1002,13 @@ export function useImageLoader() {
                 refreshPath ? relativePrefix : undefined
             );
 
+            const isScopedRefresh = Boolean(refreshPath);
+            const changedIds = Array.from(new Set(
+                diff.newAndModifiedFiles.map(file => `${directory.id}::${file.name}`)
+            ));
+            const scopedCacheUpserts: IndexedImage[] = [];
             let cacheWriter: IncrementalCacheWriter | null = null;
-            const shouldUseWriter = getIsElectron() && (diff.needsFullRefresh || diff.newAndModifiedFiles.length > 0 || diff.deletedFileIds.length > 0);
+            const shouldUseWriter = getIsElectron() && !isScopedRefresh && (diff.needsFullRefresh || diff.newAndModifiedFiles.length > 0 || diff.deletedFileIds.length > 0);
 
             if (shouldUseWriter) {
                 try {
@@ -1034,10 +1039,7 @@ export function useImageLoader() {
 
             if (shouldHydratePreloadedImages) {
                 clearImages(directory.id);
-            } else if (diff.newAndModifiedFiles.length > 0) {
-                const changedIds = Array.from(new Set(
-                    diff.newAndModifiedFiles.map(file => `${directory.id}::${file.name}`)
-                ));
+            } else if (changedIds.length > 0) {
                 if (changedIds.length > 0) {
                     removeImages(changedIds);
                 }
@@ -1105,6 +1107,9 @@ export function useImageLoader() {
 
             const handleEnrichmentBatch = (batch: IndexedImage[]) => {
                 const start = performance.now();
+                if (isScopedRefresh) {
+                    scopedCacheUpserts.push(...batch);
+                }
                 mergeImages(batch);
                 const durationMs = performance.now() - start;
                 traceCacheDebug('loader:handleEnrichmentBatch', () => ({
@@ -1127,7 +1132,8 @@ export function useImageLoader() {
                 removeImages(deletedFileIds);
             };
 
-            const shouldProcessPipeline = (fileHandles.length > 0) || !!cacheWriter || (shouldHydratePreloadedImages && preloadedImages.length > 0);
+            const shouldApplyScopedCacheDelta = isScopedRefresh && (diff.newAndModifiedFiles.length > 0 || diff.deletedFileIds.length > 0);
+            const shouldProcessPipeline = (fileHandles.length > 0) || !!cacheWriter || shouldApplyScopedCacheDelta || (shouldHydratePreloadedImages && preloadedImages.length > 0);
 
             if (shouldProcessPipeline) {
                 if (shouldCancelIndexing(suppressIndexingState)) {
@@ -1171,23 +1177,51 @@ export function useImageLoader() {
                     }
                 );
 
-                phaseB
-                    .then(() => {
-                        releaseThumbnailPause();
-                        const indexedImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
-                        scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:indexed`, indexedImages);
-                        // Keep the progress bar visible for 2 seconds after completion
-                        setTimeout(() => setEnrichmentProgress(null), 2000);
-                    })
-                    .catch(err => {
-                        releaseThumbnailPause();
-                        console.error('Phase B enrichment failed', err);
-                        // Keep error visible for 2 seconds
-                        setTimeout(() => setEnrichmentProgress(null), 2000);
-                    });
+                const handlePhaseBComplete = () => {
+                    releaseThumbnailPause();
+                    const indexedImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
+                    scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:indexed`, indexedImages);
+                    // Keep the progress bar visible for 2 seconds after completion
+                    setTimeout(() => setEnrichmentProgress(null), 2000);
+                };
 
-                if (!shouldCancelIndexing(suppressIndexingState)) {
-                    finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
+                if (isScopedRefresh) {
+                    try {
+                        await phaseB;
+                        if (shouldApplyScopedCacheDelta && getIsElectron()) {
+                            await cacheManager.applyChunkedCacheDelta(
+                                directory.path,
+                                directory.name,
+                                scopedCacheUpserts,
+                                [...diff.deletedFileIds, ...changedIds],
+                                [],
+                                shouldScanSubfolders
+                            );
+                        }
+                        handlePhaseBComplete();
+                    } catch (err) {
+                        releaseThumbnailPause();
+                        console.error('Scoped refresh enrichment failed', err);
+                        setTimeout(() => setEnrichmentProgress(null), 2000);
+                        throw err;
+                    }
+
+                    if (!shouldCancelIndexing(suppressIndexingState)) {
+                        finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
+                    }
+                } else {
+                    phaseB
+                        .then(handlePhaseBComplete)
+                        .catch(err => {
+                            releaseThumbnailPause();
+                            console.error('Phase B enrichment failed', err);
+                            // Keep error visible for 2 seconds
+                            setTimeout(() => setEnrichmentProgress(null), 2000);
+                        });
+
+                    if (!shouldCancelIndexing(suppressIndexingState)) {
+                        finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
+                    }
                 }
             } else {
                 releaseThumbnailPause();
