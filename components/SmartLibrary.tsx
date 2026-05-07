@@ -6,6 +6,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
 import { ImageCluster, IndexedImage } from '../types';
+import { loadClusterCache } from '../services/clusterCacheManager';
 import StackCard from './StackCard';
 import StackExpandedView from './StackExpandedView';
 import ClusterUpgradeBanner from './ClusterUpgradeBanner';
@@ -42,6 +43,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const autoTaggingProgress = useImageStore((state) => state.autoTaggingProgress);
   const startClustering = useImageStore((state) => state.startClustering);
   const startAutoTagging = useImageStore((state) => state.startAutoTagging);
+  const setClusters = useImageStore((state) => state.setClusters);
   const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
@@ -62,6 +64,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const stackScrollRef = useRef<HTMLDivElement | null>(null);
   const stackScrollTopRef = useRef(0);
   const shouldRestoreStackScrollRef = useRef(false);
+  const restoredClusterCacheKeyRef = useRef<string | null>(null);
 
   const imageMap = useMemo(() => {
     return new Map(safeFilteredImages.map((image) => [image.id, image]));
@@ -163,6 +166,34 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
 
   const primaryPath = directories[0]?.path ?? '';
   const hasDirectories = directories.length > 0;
+
+  useEffect(() => {
+    if (!primaryPath || clusters.length > 0 || isClustering) {
+      return;
+    }
+
+    const cacheKey = `${primaryPath}::${scanSubfolders ? 'recursive' : 'flat'}`;
+    if (restoredClusterCacheKeyRef.current === cacheKey) {
+      return;
+    }
+
+    restoredClusterCacheKeyRef.current = cacheKey;
+    let cancelled = false;
+
+    loadClusterCache(primaryPath, scanSubfolders)
+      .then((cache) => {
+        if (!cancelled && cache?.clusters?.length) {
+          setClusters(cache.clusters);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to restore Smart Library cluster cache:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clusters.length, isClustering, primaryPath, scanSubfolders, setClusters]);
 
   const handleGenerateClusters = () => {
     if (!primaryPath) return;

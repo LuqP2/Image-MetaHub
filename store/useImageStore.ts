@@ -3717,6 +3717,12 @@ export const useImageStore = create<ImageState>((set, get) => {
                         worker.terminate();
                         set({ clusteringWorker: null });
                         console.log(`Clustering complete: ${payload.clusters.length} clusters created`);
+
+                        import('../services/clusterCacheManager')
+                            .then(({ saveClusterCache }) => saveClusterCache(directoryPath, scanSubfolders, payload.clusters, threshold))
+                            .catch(error => {
+                                console.warn('Failed to save cluster cache:', error);
+                            });
                         break;
 
                     case 'error':

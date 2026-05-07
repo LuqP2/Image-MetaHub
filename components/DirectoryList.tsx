@@ -270,6 +270,7 @@ export default function DirectoryList({
     path: string;
   } | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);
+  const nodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const treeKeyboardActiveRef = useRef(false);
 
   // Focus input when prompt opens
@@ -392,6 +393,24 @@ export default function DirectoryList({
     onToggleFolderSelection(path, event.ctrlKey || event.metaKey);
   }, [onToggleFolderSelection]);
 
+  const registerNodeRef = useCallback((nodeKey: string) => (element: HTMLDivElement | null) => {
+    if (element) {
+      nodeRefs.current.set(nodeKey, element);
+    } else {
+      nodeRefs.current.delete(nodeKey);
+    }
+  }, []);
+
+  const scrollNodeIntoView = useCallback((nodeKey: string) => {
+    requestAnimationFrame(() => {
+      const element = nodeRefs.current.get(nodeKey);
+      element?.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+      });
+    });
+  }, []);
+
   const handleContextMenu = useCallback((
     event: React.MouseEvent,
     path: string
@@ -496,6 +515,7 @@ export default function DirectoryList({
       return (
         <li key={childKey} className="py-1">
           <div
+            ref={registerNodeRef(childKey)}
             className={`flex items-center cursor-pointer rounded px-2 py-1 transition-colors group ${
               isSelected
                 ? 'bg-blue-500/15 ring-1 ring-blue-500/30 hover:bg-blue-500/20'
@@ -727,12 +747,15 @@ export default function DirectoryList({
 
       const selectNodeAt = (index: number) => {
         const safeIndex = Math.max(0, Math.min(visibleNodes.length - 1, index));
+        const nextNode = visibleNodes[safeIndex];
         if (selectedIndex >= 0 && safeIndex === currentIndex) {
           treeRef.current?.focus({ preventScroll: true });
+          scrollNodeIntoView(nextNode.key);
           return;
         }
-        onToggleFolderSelection(visibleNodes[safeIndex].path, false);
+        onToggleFolderSelection(nextNode.path, false);
         treeRef.current?.focus({ preventScroll: true });
+        scrollNodeIntoView(nextNode.key);
       };
 
       if (event.key === 'ArrowDown') {
@@ -892,6 +915,7 @@ export default function DirectoryList({
               return (
                 <li key={dir.id}>
                   <div
+                    ref={registerNodeRef(rootKey)}
                     className={`relative overflow-hidden flex items-center justify-between p-2 rounded-md transition-colors ${
                       isRootSelected
                         ? 'bg-blue-500/15 ring-1 ring-blue-500/30 hover:bg-blue-500/20'
