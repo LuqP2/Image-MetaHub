@@ -17,6 +17,7 @@ interface ComfyUIGenerateModalProps {
   isOpen: boolean;
   onClose: () => void;
   image: IndexedImage;
+  directoryPath?: string;
   onGenerate: (params: GenerationParams) => Promise<void>;
   isGenerating: boolean;
 }
@@ -28,6 +29,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   isOpen,
   onClose,
   image,
+  directoryPath,
   onGenerate,
   isGenerating,
 }) => {
@@ -95,6 +97,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
         <div className="flex-1 overflow-y-auto pr-1">
           <ComfyUIWorkflowWorkspace
             image={image}
+            directoryPath={directoryPath}
             onGenerate={onGenerate}
             isGenerating={isGenerating}
             defaultTab="parameters"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -80,7 +80,6 @@ const ImageTable: React.FC<ImageTableProps> = ({
   const transferProgress = useImageStore((state) => state.transferProgress);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
-  const [sortedImages, setSortedImages] = useState<IndexedImage[]>(images);
   const [transferMode, setTransferMode] = useState<'copy' | 'move' | null>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
@@ -418,11 +417,11 @@ const ImageTable: React.FC<ImageTableProps> = ({
     return <ArrowDown className="w-3 h-3" />;
   };
 
-  // Update sorted images when images prop changes OR when sort settings change
-  useEffect(() => {
-    const sorted = applySorting(images, sortField, sortDirection);
-    setSortedImages(sorted);
-  }, [images, sortField, sortDirection, applySorting]);
+  const sortedImages = useMemo(
+    () => applySorting(images, sortField, sortDirection),
+    [images, sortField, sortDirection, applySorting]
+  );
+  const enableRowThumbnails = sortedImages.length <= 5000;
 
   const columnWidths = [
     '96px', // Preview
@@ -447,6 +446,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
           isSelected={selectedImages.has(image.id)}
           onContextMenu={handleContextMenu}
           gridTemplateColumns={gridTemplateColumns}
+          enableThumbnail={enableRowThumbnails}
         />
       </div>
     );
@@ -853,12 +853,13 @@ interface ImageTableRowProps {
   isSelected: boolean;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
   gridTemplateColumns: string;
+  enableThumbnail: boolean;
 }
 
-const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImageClick, isSelected, onContextMenu, gridTemplateColumns }) => {
+const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImageClick, isSelected, onContextMenu, gridTemplateColumns, enableThumbnail }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const thumbnail = useResolvedThumbnail(image);
+  const thumbnail = useResolvedThumbnail(enableThumbnail ? image : null);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const directories = useImageStore((state) => state.directories);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
@@ -871,10 +872,10 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
   const fullImagePath = joinDisplayPath(directoryPath, relativeImagePath);
   const displayName = showFullFilePath ? fullImagePath : image.handle.name;
 
-  useThumbnail(image);
+  useThumbnail(enableThumbnail ? image : null);
 
   useEffect(() => {
-    if (thumbnailsDisabled) {
+    if (thumbnailsDisabled || !enableThumbnail) {
       setImageUrl(null);
       setIsLoading(false);
       return;
@@ -900,7 +901,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
 
     setImageUrl(null);
     setIsLoading(true);
-  }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo, isAudio]);
+  }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, enableThumbnail, isVideo, isAudio]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -977,6 +978,17 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
                 <Info className="h-4 w-4 text-white" />
               </button>
             </>
+          ) : thumbnailsDisabled || !enableThumbnail ? (
+            <>
+              <Package className="h-4 w-4 text-gray-500" />
+              <button
+                onClick={handlePreviewClick}
+                className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"
+                title="Show details"
+              >
+                <Info className="h-4 w-4 text-white" />
+              </button>
+            </>
           ) : (
             <span className="text-xs text-gray-500">ERR</span>
           )}
@@ -1040,7 +1052,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
     prevProps.image.thumbnailStatus === nextProps.image.thumbnailStatus &&
     prevProps.image.rating === nextProps.image.rating &&
     prevProps.isSelected === nextProps.isSelected &&
-    prevProps.gridTemplateColumns === nextProps.gridTemplateColumns
+    prevProps.gridTemplateColumns === nextProps.gridTemplateColumns &&
+    prevProps.enableThumbnail === nextProps.enableThumbnail
   );
 });
 

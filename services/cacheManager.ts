@@ -63,6 +63,64 @@ export interface CacheDiff {
 }
 
 const DEFAULT_INCREMENTAL_CHUNK_SIZE = 1024;
+const MAX_INLINE_RAW_METADATA_BYTES = 32 * 1024;
+const RAW_METADATA_PREVIEW_BYTES = 4096;
+
+const isCurrentParserVersion = (parserVersion: number | undefined): boolean => (
+  parserVersion === PARSER_VERSION
+);
+
+const warnParserVersionMismatch = (cacheId: string, parserVersion: number | undefined) => {
+  console.warn(
+    `Cache parser version mismatch for ${cacheId}. Expected ${PARSER_VERSION}, got ${parserVersion ?? 'none'}. Invalidating cache.`
+  );
+};
+
+function compactCacheMetadataEntry(entry: CacheImageMetadata): CacheImageMetadata {
+  const metadataString = typeof entry.metadataString === 'string' ? entry.metadataString : '';
+  if (metadataString.length <= MAX_INLINE_RAW_METADATA_BYTES) {
+    return entry;
+  }
+
+  const metadata = entry.metadata && typeof entry.metadata === 'object'
+    ? entry.metadata as Record<string, any>
+    : {};
+  const normalizedMetadata = metadata.normalizedMetadata;
+  const compactedMetadata: Record<string, unknown> = {
+    _rawMetadataCompacted: true,
+    _rawMetadataSizeBytes: metadataString.length,
+    _rawMetadataKeys: Object.keys(metadata).filter(key => key !== 'normalizedMetadata'),
+  };
+
+  if (typeof metadata.parameters === 'string') {
+    compactedMetadata.parametersPreview = metadata.parameters.slice(0, RAW_METADATA_PREVIEW_BYTES);
+  }
+
+  if (metadata.imagemetahub_data && typeof metadata.imagemetahub_data === 'object') {
+    const payload = metadata.imagemetahub_data as Record<string, unknown>;
+    compactedMetadata.imagemetahub_data = {
+      generator: payload.generator,
+      analytics: payload.analytics,
+      _analytics: payload._analytics,
+      imh_pro: payload.imh_pro,
+      _metahub_pro: payload._metahub_pro,
+    };
+  }
+
+  if (normalizedMetadata) {
+    compactedMetadata.normalizedMetadata = normalizedMetadata;
+  }
+
+  return {
+    ...entry,
+    metadata: compactedMetadata,
+    metadataString: JSON.stringify(compactedMetadata),
+  };
+}
+
+function compactCacheMetadataEntries(metadata: CacheImageMetadata[]): CacheImageMetadata[] {
+  return metadata.map(compactCacheMetadataEntry);
+}
 
 export function pruneCacheMetadata(
   metadata: CacheImageMetadata[],
@@ -333,8 +391,14 @@ class CacheManager {
     if (!summary) {
       return null;
     }
+    if (!isCurrentParserVersion(summary.parserVersion)) {
+      warnParserVersionMismatch(cacheId, summary.parserVersion);
+      return null;
+    }
 
-    let metadata: CacheImageMetadata[] = Array.isArray(summary.metadata) ? summary.metadata : [];
+    let metadata: CacheImageMetadata[] = Array.isArray(summary.metadata)
+      ? compactCacheMetadataEntries(summary.metadata)
+      : [];
     const chunkCount = summary.chunkCount ?? 0;
 
     if (metadata.length === 0 && chunkCount > 0) {
@@ -342,7 +406,7 @@ class CacheManager {
       for (let i = 0; i < chunkCount; i++) {
         const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: i });
         if (chunkResult.success && Array.isArray(chunkResult.data)) {
-          chunks.push(...chunkResult.data);
+          chunks.push(...compactCacheMetadataEntries(chunkResult.data));
         } else if (!chunkResult.success) {
           console.error(`Failed to load cache chunk ${i} for ${cacheId}:`, chunkResult.error);
         }
@@ -382,6 +446,11 @@ class CacheManager {
     }
 
     const summary = result.data;
+    if (!isCurrentParserVersion(summary.parserVersion)) {
+      warnParserVersionMismatch(cacheId, summary.parserVersion);
+      return null;
+    }
+
     return {
       id: summary.id,
       directoryPath: summary.directoryPath,
@@ -413,8 +482,13 @@ class CacheManager {
     }
 
     const summary = result.data;
+    if (!isCurrentParserVersion(summary.parserVersion)) {
+      warnParserVersionMismatch(cacheId, summary.parserVersion);
+      return;
+    }
+
     if (Array.isArray(summary.metadata) && summary.metadata.length > 0) {
-      await onChunk(summary.metadata);
+      await onChunk(compactCacheMetadataEntries(summary.metadata));
       return;
     }
 
@@ -422,7 +496,7 @@ class CacheManager {
     for (let i = 0; i < chunkCount; i++) {
       const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: i });
       if (chunkResult.success && Array.isArray(chunkResult.data) && chunkResult.data.length > 0) {
-        await onChunk(chunkResult.data);
+        await onChunk(compactCacheMetadataEntries(chunkResult.data));
       } else if (!chunkResult.success) {
         console.error(`Failed to load cache chunk ${i} for ${cacheId}:`, chunkResult.error);
       }
@@ -621,6 +695,102 @@ class CacheManager {
     }
   }
 
+  async applyChunkedCacheDelta(
+    directoryPath: string,
+    directoryName: string,
+    imagesToUpsert: IndexedImage[],
+    removedImageIds: string[],
+    removedImageNames: string[],
+    scanSubfolders: boolean
+  ): Promise<void> {
+    if (!this.isElectron) return;
+    if (imagesToUpsert.length === 0 && removedImageIds.length === 0 && removedImageNames.length === 0) return;
+
+    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    const summary = await this.getCacheSummary(directoryPath, scanSubfolders);
+    if (!summary) {
+      if (imagesToUpsert.length > 0) {
+        await this.cacheData(directoryPath, directoryName, imagesToUpsert, scanSubfolders);
+      }
+      return;
+    }
+
+    const upserts = sanitizeCacheMetadata(toCacheMetadata(imagesToUpsert), { forceClone: true });
+    const pruneIds = [
+      ...removedImageIds,
+      ...upserts.map((image) => image.id),
+    ];
+    const pruneNames = [
+      ...removedImageNames,
+      ...upserts.map((image) => image.name),
+    ];
+    const outputChunkSize = DEFAULT_INCREMENTAL_CHUNK_SIZE;
+    const outputBuffer: CacheImageMetadata[] = [];
+    let outputChunkIndex = 0;
+    let imageCount = 0;
+
+    const flushOutputChunk = async (force = false) => {
+      if (outputBuffer.length === 0 || (!force && outputBuffer.length < outputChunkSize)) {
+        return;
+      }
+
+      const chunk = outputBuffer.splice(0, outputBuffer.length);
+      const result = await window.electronAPI.writeCacheChunk({
+        cacheId,
+        chunkIndex: outputChunkIndex,
+        data: chunk,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to write cache delta chunk');
+      }
+
+      outputChunkIndex += 1;
+    };
+
+    const appendOutputEntries = async (entries: CacheImageMetadata[]) => {
+      for (const entry of entries) {
+        outputBuffer.push(entry);
+        imageCount += 1;
+        await flushOutputChunk();
+      }
+    };
+
+    const chunkCount = summary.chunkCount ?? 0;
+    for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+      const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex });
+      if (!chunkResult.success || !Array.isArray(chunkResult.data)) {
+        throw new Error(chunkResult.error || `Failed to read cache chunk ${chunkIndex}`);
+      }
+
+      const pruned = pruneCacheMetadata(compactCacheMetadataEntries(chunkResult.data), {
+        ids: pruneIds,
+        names: pruneNames,
+      });
+      await appendOutputEntries(pruned);
+    }
+
+    await appendOutputEntries(upserts);
+    await flushOutputChunk(true);
+
+    const finalizeResult = await window.electronAPI.finalizeCacheWrite({
+      cacheId,
+      record: {
+        id: cacheId,
+        directoryPath,
+        directoryName: summary.directoryName ?? directoryName,
+        lastScan: Date.now(),
+        imageCount,
+        chunkCount: outputChunkIndex,
+        parserVersion: PARSER_VERSION,
+      },
+    });
+
+    if (!finalizeResult.success) {
+      throw new Error(finalizeResult.error || 'Failed to finalize cache delta');
+    }
+  }
+
   async replaceCachedImages(
     directoryPath: string,
     directoryName: string,
@@ -771,12 +941,10 @@ class CacheManager {
     directoryName: string,
     currentFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }[],
     scanSubfolders: boolean,
-    scopePath?: string
+    scopePath?: string,
+    options: { includeCachedImages?: boolean } = {}
   ): Promise<CacheDiff> {
-    const cached = await this.getCachedData(directoryPath, scanSubfolders);
-    
-    // If no cache exists, all files are new
-    if (!cached) {
+    if (!this.isElectron) {
       return {
         newAndModifiedFiles: currentFiles,
         deletedFileIds: [],
@@ -784,22 +952,74 @@ class CacheManager {
         needsFullRefresh: true,
       };
     }
+
+    const cachedSummary = await this.getCacheSummary(directoryPath, scanSubfolders);
     
-    const cachedMetadataMap = new Map(cached.metadata.map(m => [m.name, m]));
+    // If no cache exists, all files are new
+    if (!cachedSummary) {
+      return {
+        newAndModifiedFiles: currentFiles,
+        deletedFileIds: [],
+        cachedImages: [],
+        needsFullRefresh: true,
+      };
+    }
+
+    const includeCachedImages = options.includeCachedImages ?? true;
     const newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }[] = [];
     const cachedImages: IndexedImage[] = [];
-    const currentFileNames = new Set<string>();
+    const deletedFileIds: string[] = [];
+    const currentFilesMap = new Map<string, { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }>();
+    for (const file of currentFiles) {
+      currentFilesMap.set(file.name, file);
+    }
+    const seenCachedFileNames = new Set<string>();
 
     // Helper to normalize paths for comparison (ensure forward slashes)
     const normalize = (p: string) => p.replace(/\\/g, '/');
     const normalizedScope = scopePath ? normalize(scopePath) : undefined;
 
-    for (const file of currentFiles) {
-      currentFileNames.add(file.name);
-      const cachedFile = cachedMetadataMap.get(file.name);
+    await this.iterateCachedMetadata(directoryPath, scanSubfolders, async (cachedChunk) => {
+      for (const cachedFile of cachedChunk) {
+        seenCachedFileNames.add(cachedFile.name);
+        const file = currentFilesMap.get(cachedFile.name);
 
-      // File is new
-      if (!cachedFile) {
+        if (!file) {
+          if (normalizedScope) {
+            const authorized = cachedFile.name.startsWith(`${normalizedScope}/`) || cachedFile.name === normalizedScope;
+            if (!authorized) {
+              continue;
+            }
+          }
+          deletedFileIds.push(cachedFile.id);
+          continue;
+        }
+
+        const fileModifiedMs = file.contentModifiedMs ?? file.lastModified;
+        const cacheModifiedMs = cachedFile.contentModifiedMs ?? cachedFile.lastModified;
+        if (cacheModifiedMs < fileModifiedMs || cachedFile.enrichmentState === 'catalog') {
+          newAndModifiedFiles.push({
+            name: file.name,
+            lastModified: file.lastModified,
+            size: file.size,
+            type: file.type,
+            birthtimeMs: file.birthtimeMs,
+            contentModifiedMs: file.contentModifiedMs,
+          });
+          continue;
+        }
+
+        if (includeCachedImages) {
+          cachedImages.push({
+            ...cachedFile,
+            handle: { name: cachedFile.name, kind: 'file' } as any,
+          });
+        }
+      }
+    });
+
+    for (const file of currentFiles) {
+      if (!seenCachedFileNames.has(file.name)) {
         newAndModifiedFiles.push({
           name: file.name,
           lastModified: file.lastModified,
@@ -807,48 +1027,9 @@ class CacheManager {
           type: file.type,
           birthtimeMs: file.birthtimeMs,
           contentModifiedMs: file.contentModifiedMs,
-        });
-      // File has been modified since last scan
-      } else if ((cachedFile.contentModifiedMs ?? cachedFile.lastModified) < (file.contentModifiedMs ?? file.lastModified)) {
-        newAndModifiedFiles.push({
-          name: file.name,
-          lastModified: file.lastModified,
-          size: file.size,
-          type: file.type,
-          birthtimeMs: file.birthtimeMs,
-          contentModifiedMs: file.contentModifiedMs,
-        });
-      // CRITICAL FIX: If file is in 'catalog' state (incomplete), force re-indexing
-      } else if (cachedFile.enrichmentState === 'catalog') {
-        newAndModifiedFiles.push({
-          name: file.name,
-          lastModified: file.lastModified, // Use current file time to be safe
-          size: file.size,
-          type: file.type,
-          birthtimeMs: file.birthtimeMs,
-          contentModifiedMs: file.contentModifiedMs,
-        });
-      // File is unchanged, add it to the list of images to be loaded from cache
-      } else {
-        cachedImages.push({
-          ...cachedFile,
-          handle: { name: cachedFile.name, kind: 'file' } as any, // Mock handle
         });
       }
     }
-
-    // Find files that were in the cache but are no longer on disk
-    // If scopePath is provided, ONLY consider files within that scope for deletion
-    const deletedFileIds = cached.metadata
-      .filter(m => {
-        // If scope is defined, ignore files outside the scope
-        if (normalizedScope) {
-           const authorized = m.name.startsWith(normalizedScope + '/') || m.name === normalizedScope;
-           if (!authorized) return false;
-        }
-        return !currentFileNames.has(m.name);
-      })
-      .map(m => m.id);
 
     return {
       newAndModifiedFiles,

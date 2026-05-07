@@ -266,6 +266,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   // Calculate these BEFORE the early return to maintain hook order
   const nMeta: BaseMetadata | undefined = activeImage?.metadata?.normalizedMetadata;
   const effectiveMetadata = activeImage ? buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal) : undefined;
+  const activeImageDirectoryPath = activeImage
+    ? directories.find((directory) => directory.id === activeImage.directoryId)?.path
+    : undefined;
   const generationImage: IndexedImage = activeImage && effectiveMetadata
     ? {
         ...activeImage,
@@ -941,6 +944,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   isOpen={isComfyUIGenerateModalOpen}
                   onClose={() => setIsComfyUIGenerateModalOpen(false)}
                   image={generationImage}
+                  directoryPath={activeImageDirectoryPath}
                   onGenerate={async (params: ComfyUIGenerationParams) => {
                     const customMetadata: Partial<BaseMetadata> = {
                       prompt: params.prompt,

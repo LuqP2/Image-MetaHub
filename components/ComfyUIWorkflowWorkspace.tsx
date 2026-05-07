@@ -17,6 +17,10 @@ import {
   type ComfyUISourceImagePolicy,
   type ComfyUIWorkflowMode,
 } from '../services/comfyUIWorkflowBuilder';
+import {
+  hasCompactedRuntimeMetadata,
+  hydrateImageForEmbeddedComfyWorkflow,
+} from '../services/comfyUIWorkflowHydration';
 import { buildVisualWorkflowGraph } from '../services/comfyUIVisualWorkflow';
 import ComfyUIWorkflowVisualEditor from './ComfyUIWorkflowVisualEditor';
 
@@ -54,6 +58,7 @@ interface ComfyUIWorkflowWorkspaceProps {
   showCancelButton?: boolean;
   status?: { success: boolean; message: string } | null;
   generateDisabledReason?: string | null;
+  directoryPath?: string;
 }
 
 const MODEL_FAMILY_LABELS: Record<ComfyUIModelFamily, string> = {
@@ -223,15 +228,20 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
   showCancelButton = true,
   status = null,
   generateDisabledReason = null,
+  directoryPath,
 }) => {
   const { resources, isLoading: isLoadingResources, error: resourcesError } = useComfyUIModels();
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
-  const normalizedMetadata = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+  const [workflowSourceImage, setWorkflowSourceImage] = useState<IndexedImage>(image);
+  const analysisImage = workflowSourceImage.id === image.id ? workflowSourceImage : image;
+  const normalizedMetadata = (
+    image.metadata?.normalizedMetadata ?? analysisImage.metadata?.normalizedMetadata
+  ) as BaseMetadata | undefined;
   const workflowAnalysis = useMemo(
-    () => analyzeComfyWorkflow(image, normalizedMetadata),
-    [image, normalizedMetadata]
+    () => analyzeComfyWorkflow(analysisImage, normalizedMetadata),
+    [analysisImage, normalizedMetadata]
   );
-  const embeddedWorkflow = useMemo(() => extractEmbeddedComfyWorkflow(image), [image]);
+  const embeddedWorkflow = useMemo(() => extractEmbeddedComfyWorkflow(analysisImage), [analysisImage]);
 
   const [params, setParams] = useState<GenerationParams>({
     prompt: '',
@@ -264,6 +274,35 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
   const [selectedVisualNodeId, setSelectedVisualNodeId] = useState<string | null>(null);
   const [workingPromptGraph, setWorkingPromptGraph] = useState<ComfyUIPromptGraph | null>(null);
   const [workingWorkflowUi, setWorkingWorkflowUi] = useState(embeddedWorkflow.workflow);
+
+  useEffect(() => {
+    let isCancelled = false;
+    setWorkflowSourceImage(image);
+
+    if (extractEmbeddedComfyWorkflow(image).prompt || !hasCompactedRuntimeMetadata(image)) {
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    void hydrateImageForEmbeddedComfyWorkflow(image, directoryPath).then((hydratedImage) => {
+      if (!isCancelled) {
+        setWorkflowSourceImage(hydratedImage);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    directoryPath,
+    image.contentModifiedMs,
+    image.directoryId,
+    image.id,
+    image.lastModified,
+    image.metadata,
+    image.metadataString,
+  ]);
 
   const visualPromptAnalysis = useMemo(() => {
     if (!workingPromptGraph) {

@@ -6,6 +6,7 @@
 import { useState, useCallback } from 'react';
 import { BaseMetadata, IndexedImage } from '../types';
 import { formatImageForComfyUI, formatMetadataForComfyUI } from '../utils/comfyUIFormatter';
+import { hydrateImageForEmbeddedComfyWorkflow } from '../services/comfyUIWorkflowHydration';
 import {
   getClipboardErrorMessage,
   getNormalizedMetadata,
@@ -38,9 +39,12 @@ export function useCopyToComfyUI() {
     setCopyStatus(null);
 
     try {
+      const sourceImage = metadataOverride
+        ? image
+        : await hydrateImageForEmbeddedComfyWorkflow(image);
       const workflowJSON = metadataOverride
         ? formatMetadataForComfyUI(metadataOverride)
-        : formatImageForComfyUI(image);
+        : formatImageForComfyUI(sourceImage);
 
       // Copy to clipboard
       await navigator.clipboard.writeText(workflowJSON);
