@@ -52,6 +52,7 @@ import {
     toLightweightLineageImage,
 } from '../services/lineageRegistry';
 import { loadLineageRegistrySnapshot, saveLineageRegistrySnapshot } from '../services/lineageRegistryCache';
+import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
 import { MAX_RECENT_TAG_HISTORY } from '../utils/tagSuggestions';
 import {
     isPerformanceDiagnosticsEnabled,
@@ -1465,6 +1466,33 @@ export const useImageStore = create<ImageState>((set, get) => {
         return state.images.find(img => img.id === imageId) || state.filteredImages.find(img => img.id === imageId);
     };
 
+    const automationRuleUsesRawMetadata = (rule: AutomationRule): boolean => {
+        if (rule.criteria.textConditions.some((condition) => condition.field === 'metadata' || condition.field === 'search')) {
+            return true;
+        }
+        if (rule.criteria.conditionRows?.some((row) => row.field === 'metadata' || row.field === 'search')) {
+            return true;
+        }
+        return Boolean(rule.criteria.filters.searchQuery?.trim());
+    };
+
+    const hydrateAutomationImages = async (
+        rule: AutomationRule,
+        images: IndexedImage[],
+        directories: Directory[],
+    ): Promise<IndexedImage[]> => {
+        if (!automationRuleUsesRawMetadata(rule) || images.every((image) => !hasCompactedRuntimeMetadata(image))) {
+            return images;
+        }
+
+        const directoryPathById = new Map(directories.map((directory) => [directory.id, directory.path]));
+        return Promise.all(images.map((image) => (
+            hasCompactedRuntimeMetadata(image)
+                ? hydrateImageRawMetadata(image, image.directoryId ? directoryPathById.get(image.directoryId) : undefined)
+                : image
+        )));
+    };
+
     const applyAutomationRuleToCurrentState = async (
         rule: AutomationRule,
         sourceImages?: IndexedImage[],
@@ -1473,6 +1501,11 @@ export const useImageStore = create<ImageState>((set, get) => {
         const sourceIds = sourceImages && sourceImages.length > 0
             ? new Set(sourceImages.map((image) => image.id))
             : null;
+        const currentState = get();
+        const currentTargetImages = sourceIds
+            ? currentState.images.filter((image) => sourceIds.has(image.id))
+            : currentState.images;
+        const hydratedTargetImages = await hydrateAutomationImages(rule, currentTargetImages, currentState.directories);
         let preview: AutomationRulePreview = {
             matchedImageIds: [],
             matchCount: 0,
@@ -1486,10 +1519,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         const tagCatalogUpdates = new Set<string>();
 
         set(state => {
-            const targetImages = sourceIds
-                ? state.images.filter((image) => sourceIds.has(image.id))
-                : state.images;
-            const result = applyAutomationRuleToImages(rule, targetImages, state.annotations, state.collections, options);
+            const result = applyAutomationRuleToImages(rule, hydratedTargetImages, state.annotations, state.collections, options);
             preview = {
                 matchedImageIds: result.matchedImageIds,
                 matchCount: result.matchCount,

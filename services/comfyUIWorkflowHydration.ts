@@ -1,14 +1,8 @@
 import { type IndexedImage } from '../types';
 import { extractEmbeddedComfyWorkflow } from './comfyUIWorkflowBuilder';
-import { reparseIndexedImage } from './fileIndexer';
+import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from './rawMetadataHydration';
 
-const getDirectoryPathForImage = (image: IndexedImage, directoryPath?: string): string => (
-  directoryPath || image.directoryId || image.id.split('::')[0] || ''
-);
-
-export const hasCompactedRuntimeMetadata = (image: IndexedImage): boolean => (
-  Boolean((image.metadata as Record<string, unknown> | undefined)?._rawMetadataCompacted)
-);
+export { hasCompactedRuntimeMetadata };
 
 export async function hydrateImageForEmbeddedComfyWorkflow(
   image: IndexedImage,
@@ -19,15 +13,5 @@ export async function hydrateImageForEmbeddedComfyWorkflow(
     return image;
   }
 
-  const resolvedDirectoryPath = getDirectoryPathForImage(image, directoryPath);
-  if (!resolvedDirectoryPath) {
-    return image;
-  }
-
-  try {
-    return await reparseIndexedImage(image, resolvedDirectoryPath, { compactRawMetadata: false }) || image;
-  } catch (error) {
-    console.warn('[ComfyUI] Failed to reload full embedded workflow metadata:', error);
-    return image;
-  }
+  return hydrateImageRawMetadata(image, directoryPath);
 }

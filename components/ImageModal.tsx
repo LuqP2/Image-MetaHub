@@ -23,6 +23,7 @@ import { getElectronAbsoluteMediaPath, mediaSourceCache } from '../services/medi
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import cacheManager from '../services/cacheManager';
 import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndexer';
+import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
 import {
   DEFAULT_IMAGE_ADJUSTMENTS,
   buildImageAdjustmentFilter,
@@ -732,6 +733,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
+  const [hydratedRawMetadataImage, setHydratedRawMetadataImage] = useState<IndexedImage | null>(null);
+  const [isHydratingRawMetadata, setIsHydratingRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSlideshowMode, setIsSlideshowMode] = useState(false);
   const [isSlideshowPlaying, setIsSlideshowPlaying] = useState(false);
@@ -955,10 +958,31 @@ const ImageModal: React.FC<ImageModalProps> = ({
     [imageAdjustments]
   );
   const hasAdjustmentChanges = hasImageAdjustments(imageAdjustments);
+  const rawMetadataImage = hydratedRawMetadataImage?.id === liveImage.id ? hydratedRawMetadataImage : liveImage;
+
+  const ensureFullRawMetadata = useCallback(async (): Promise<IndexedImage> => {
+    if (hydratedRawMetadataImage?.id === liveImage.id) {
+      return hydratedRawMetadataImage;
+    }
+    if (!hasCompactedRuntimeMetadata(liveImage)) {
+      return liveImage;
+    }
+
+    setIsHydratingRawMetadata(true);
+    try {
+      const hydrated = await hydrateImageRawMetadata(liveImage, directoryPath);
+      setHydratedRawMetadataImage(hydrated);
+      return hydrated;
+    } finally {
+      setIsHydratingRawMetadata(false);
+    }
+  }, [directoryPath, hydratedRawMetadataImage, liveImage]);
 
   useEffect(() => {
     setImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS);
     setIsAdjustmentPanelOpen(false);
+    setHydratedRawMetadataImage(null);
+    setIsHydratingRawMetadata(false);
   }, [image.id]);
 
   useEffect(() => {
@@ -3297,7 +3321,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
           <div className="grid grid-cols-2 gap-2 pt-2">
             <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2">Copy Prompt</button>
-            <button onClick={() => copyToClipboard(JSON.stringify(image.metadata, null, 2), 'Raw Metadata')} className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2">Copy Raw Metadata</button>
+            <button onClick={async () => {
+              const metadataImage = await ensureFullRawMetadata();
+              copyToClipboard(JSON.stringify(metadataImage.metadata, null, 2), 'Raw Metadata');
+            }} className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2">Copy Raw Metadata</button>
             <button onClick={async () => {
               if (!directoryPath) {
                 alert('Cannot determine file location: directory path is missing.');
@@ -3553,7 +3580,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   <Download size={14} />
                 </button>
                 <button
-                  onClick={() => setShowRawMetadata(!showRawMetadata)}
+                  onClick={() => {
+                    const nextShowRawMetadata = !showRawMetadata;
+                    setShowRawMetadata(nextShowRawMetadata);
+                    if (nextShowRawMetadata) {
+                      void ensureFullRawMetadata();
+                    }
+                  }}
                   className="text-xs text-gray-400 hover:text-white underline"
                 >
                   {showRawMetadata ? 'Show Parsed' : 'Show JSON'}
@@ -3562,7 +3595,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
             {showRawMetadata && (
               <pre className="bg-black/50 p-2 rounded-lg text-xs text-gray-300 whitespace-pre-wrap break-all max-h-64 overflow-y-auto mt-2">
-                {JSON.stringify(image.metadata, null, 2)}
+                {isHydratingRawMetadata
+                  ? 'Loading full raw metadata...'
+                  : JSON.stringify(rawMetadataImage.metadata, null, 2)}
               </pre>
             )}
           </div>
