@@ -14,6 +14,7 @@ import {
   NO_METADATA_MESSAGE,
   TEMPORARY_STATUS_TIMEOUT_MS,
 } from '../utils/imageMetadata';
+import { useImageStore } from '../store/useImageStore';
 
 interface CopyStatus {
   success: boolean;
@@ -23,6 +24,7 @@ interface CopyStatus {
 export function useCopyToComfyUI() {
   const [isCopying, setIsCopying] = useState(false);
   const [copyStatus, setCopyStatus] = useState<CopyStatus | null>(null);
+  const directories = useImageStore((state) => state.directories);
 
   const copyToComfyUI = useCallback(async (image: IndexedImage, metadataOverride?: BaseMetadata) => {
     const metadata = metadataOverride ?? getNormalizedMetadata(image);
@@ -39,9 +41,10 @@ export function useCopyToComfyUI() {
     setCopyStatus(null);
 
     try {
+      const directoryPath = directories.find((directory) => directory.id === image.directoryId)?.path;
       const sourceImage = metadataOverride
         ? image
-        : await hydrateImageForEmbeddedComfyWorkflow(image);
+        : await hydrateImageForEmbeddedComfyWorkflow(image, directoryPath);
       const workflowJSON = metadataOverride
         ? formatMetadataForComfyUI(metadataOverride)
         : formatImageForComfyUI(sourceImage);
@@ -68,7 +71,7 @@ export function useCopyToComfyUI() {
     } finally {
       setIsCopying(false);
     }
-  }, []);
+  }, [directories]);
 
   return {
     copyToComfyUI,
