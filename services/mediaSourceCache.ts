@@ -181,8 +181,89 @@ class MediaSourceCache {
     void this.getOrLoad(image, directoryPath).catch(() => {});
   }
 
+  async getRendererOwnedObjectUrl(
+    image: IndexedImage,
+    directoryPath?: string
+  ): Promise<{ url: string; revoke: () => void }> {
+    const loaded = await this.loadRendererObjectSource(image, directoryPath);
+    return {
+      url: loaded.url,
+      revoke: () => {
+        if (loaded.revoke) {
+          URL.revokeObjectURL(loaded.url);
+        }
+      },
+    };
+  }
+
   private getCacheKey(image: IndexedImage, directoryPath?: string): string {
     return `${directoryPath || ''}::${image.id}::${image.lastModified}`;
+  }
+
+  private async loadRendererObjectSource(
+    image: IndexedImage,
+    directoryPath?: string
+  ): Promise<{ url: string; revoke: boolean }> {
+    const electronAbsoluteMediaPath = window.electronAPI ? getElectronAbsoluteMediaPath(image) : null;
+    const primaryHandle = image.handle;
+    const fallbackHandle = image.thumbnailHandle;
+    const fileHandle =
+      primaryHandle && typeof primaryHandle.getFile === 'function'
+        ? primaryHandle
+        : fallbackHandle && typeof fallbackHandle.getFile === 'function'
+          ? fallbackHandle
+          : null;
+    const isLargeStreamingMedia =
+      isVideoFileName(image.name, image.fileType) || isAudioFileName(image.name, image.fileType);
+
+    if (window.electronAPI) {
+      let absolutePath = electronAbsoluteMediaPath;
+
+      if (!absolutePath && directoryPath) {
+        const relativeImagePath = getRelativeImagePath(image);
+        const pathResult = await window.electronAPI.joinPaths(directoryPath, relativeImagePath);
+        if (!pathResult.success || !pathResult.path) {
+          throw new Error(pathResult.error || 'Failed to construct image path.');
+        }
+        absolutePath = pathResult.path;
+      }
+
+      if (absolutePath) {
+        if (isLargeStreamingMedia) {
+          throw new Error('Could not create editable object URL; refusing to read full media file into renderer memory.');
+        }
+
+        const fileResult = await window.electronAPI.readFile(absolutePath);
+        if (!fileResult.success || !fileResult.data) {
+          throw new Error(fileResult.error || 'Failed to read file via Electron API.');
+        }
+
+        const byteLength = getFileDataByteLength(fileResult.data);
+        if (byteLength !== undefined && byteLength > MAX_RENDERER_READ_BYTES) {
+          throw new Error(`Refusing to load ${Math.round(byteLength / 1024 / 1024)}MB file into renderer memory.`);
+        }
+
+        const created = createImageUrlFromFileData(fileResult.data, image.name);
+        return {
+          url: created.url,
+          revoke: created.revoke,
+        };
+      }
+    }
+
+    if (window.electronAPI && isLargeStreamingMedia) {
+      throw new Error('Could not create editable object URL; refusing to read full media file into renderer memory.');
+    }
+
+    if (fileHandle) {
+      const file = await fileHandle.getFile();
+      return {
+        url: URL.createObjectURL(file),
+        revoke: true,
+      };
+    }
+
+    throw new Error('No editable image source available.');
   }
 
   private async loadSource(

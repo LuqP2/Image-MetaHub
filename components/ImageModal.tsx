@@ -1763,7 +1763,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
       throw new Error('Image editing saves are only available in the desktop app.');
     }
 
-    const pngBytes = await renderAdjustedImageToPngBytes(imageUrl, imageAdjustments);
+    const editableSource = await mediaSourceCache.getRendererOwnedObjectUrl(liveImage, directoryPath);
+    let pngBytes: Uint8Array;
+    try {
+      pngBytes = await renderAdjustedImageToPngBytes(editableSource.url, imageAdjustments);
+    } finally {
+      editableSource.revoke();
+    }
+
     const outputBytes = embedMetaHubMetadataInPngBytes(pngBytes, sourceMetadata, imageAdjustments);
     const result = await window.electronAPI.writeFile(targetPath, outputBytes);
     if (!result.success) {
@@ -1771,7 +1778,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     return pngBytes;
-  }, [imageAdjustments, imageUrl, isFullImageSourceReady]);
+  }, [directoryPath, imageAdjustments, imageUrl, isFullImageSourceReady, liveImage]);
 
   const handleSaveEditedImageAs = useCallback(async () => {
     if (!canEditImage || !hasAdjustmentChanges || isSavingEditedImage) {

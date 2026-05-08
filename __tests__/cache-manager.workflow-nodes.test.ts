@@ -23,7 +23,7 @@ describe('cacheManager workflowNodes hydration', () => {
           directoryName: 'Library',
           lastScan: Date.now(),
           imageCount: 1,
-          parserVersion: 6,
+          parserVersion: 7,
           metadata: [
             {
               id: 'dir-1::a.png',
@@ -68,7 +68,7 @@ describe('cacheManager workflowNodes hydration', () => {
               directoryName: 'Library',
               lastScan: 1,
               imageCount: 1,
-              parserVersion: 6,
+              parserVersion: 7,
               metadata: [
                 {
                   id: 'dir-1::a.png',
@@ -130,7 +130,7 @@ describe('cacheManager workflowNodes hydration', () => {
               directoryName: 'Library',
               lastScan: 1,
               imageCount: 1,
-              parserVersion: 6,
+              parserVersion: 7,
               metadata: [
                 {
                   id: 'dir-1::a.png',
@@ -254,5 +254,147 @@ describe('cacheManager workflowNodes hydration', () => {
         'dir-1::other.png',
       ]);
     }
+  });
+
+  it('preserves unchanged inline metadata when applying a chunked cache delta', async () => {
+    const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
+    const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
+
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          id: 'D:/library-flat',
+          directoryPath: 'D:/library',
+          directoryName: 'Library',
+          lastScan: 1,
+          imageCount: 2,
+          parserVersion: 7,
+          metadata: [
+            {
+              id: 'dir-1::keep.png',
+              name: 'keep.png',
+              metadataString: '{"keep":true}',
+              metadata: {},
+              lastModified: 1,
+              models: [],
+              loras: [],
+              scheduler: '',
+              enrichmentState: 'enriched',
+            },
+            {
+              id: 'dir-1::update.png',
+              name: 'update.png',
+              metadataString: '{"old":true}',
+              metadata: {},
+              lastModified: 1,
+              models: [],
+              loras: [],
+              scheduler: '',
+              enrichmentState: 'enriched',
+            },
+          ],
+        },
+      }),
+      writeCacheChunk,
+      finalizeCacheWrite,
+    };
+    (cacheManager as any).isElectron = true;
+
+    await cacheManager.applyChunkedCacheDelta(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::update.png',
+          name: 'update.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{"new":true}',
+          lastModified: 2,
+          models: [],
+          loras: [],
+          scheduler: '',
+        } as any,
+      ],
+      [],
+      [],
+      false
+    );
+
+    expect(writeCacheChunk).toHaveBeenCalledTimes(1);
+    expect(writeCacheChunk.mock.calls[0][0].data.map((entry: any) => entry.id)).toEqual([
+      'dir-1::keep.png',
+      'dir-1::update.png',
+    ]);
+    expect(writeCacheChunk.mock.calls[0][0].data[1].metadataString).toBe('{"new":true}');
+    expect(finalizeCacheWrite.mock.calls[0][0].record.imageCount).toBe(2);
+    expect(finalizeCacheWrite.mock.calls[0][0].record.chunkCount).toBe(1);
+  });
+
+  it('migrates inline metadata before appending new cache chunks', async () => {
+    const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
+    const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
+
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          id: 'D:/library-flat',
+          directoryPath: 'D:/library',
+          directoryName: 'Library',
+          lastScan: 1,
+          imageCount: 1,
+          parserVersion: 7,
+          metadata: [
+            {
+              id: 'dir-1::existing.png',
+              name: 'existing.png',
+              metadataString: '{"existing":true}',
+              metadata: {},
+              lastModified: 1,
+              models: [],
+              loras: [],
+              scheduler: '',
+            },
+          ],
+        },
+      }),
+      writeCacheChunk,
+      finalizeCacheWrite,
+    };
+    (cacheManager as any).isElectron = true;
+
+    await cacheManager.appendToCache(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::new.png',
+          name: 'new.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{"new":true}',
+          lastModified: 2,
+          models: [],
+          loras: [],
+          scheduler: '',
+        } as any,
+      ],
+      false,
+      { chunkSize: 1 }
+    );
+
+    expect(writeCacheChunk).toHaveBeenCalledTimes(2);
+    expect(writeCacheChunk.mock.calls[0][0]).toMatchObject({
+      chunkIndex: 0,
+      data: [expect.objectContaining({ id: 'dir-1::existing.png' })],
+    });
+    expect(writeCacheChunk.mock.calls[1][0]).toMatchObject({
+      chunkIndex: 1,
+      data: [expect.objectContaining({ id: 'dir-1::new.png' })],
+    });
+    expect(finalizeCacheWrite.mock.calls[0][0].record.imageCount).toBe(2);
+    expect(finalizeCacheWrite.mock.calls[0][0].record.chunkCount).toBe(2);
   });
 });

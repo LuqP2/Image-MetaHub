@@ -431,7 +431,7 @@ class CacheManager {
   async getCacheSummary(
     directoryPath: string,
     scanSubfolders: boolean,
-  ): Promise<Pick<CacheEntry, 'id' | 'directoryPath' | 'directoryName' | 'lastScan' | 'imageCount' | 'chunkCount' | 'parserVersion'> | null> {
+  ): Promise<Pick<CacheEntry, 'id' | 'directoryPath' | 'directoryName' | 'lastScan' | 'imageCount' | 'chunkCount' | 'parserVersion'> & { metadata?: CacheImageMetadata[] } | null> {
     if (!this.isElectron) return null;
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
@@ -459,6 +459,9 @@ class CacheManager {
       imageCount: summary.imageCount,
       chunkCount: summary.chunkCount,
       parserVersion: summary.parserVersion,
+      metadata: Array.isArray(summary.metadata)
+        ? compactCacheMetadataEntries(summary.metadata)
+        : undefined,
     };
   }
 
@@ -555,7 +558,25 @@ class CacheManager {
     const chunkSize = options?.chunkSize ?? DEFAULT_INCREMENTAL_CHUNK_SIZE;
     const metadata = sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true });
 
-    let chunkIndex = summary.chunkCount ?? 0;
+    const inlineMetadata = Array.isArray(summary.metadata)
+      ? compactCacheMetadataEntries(summary.metadata)
+      : [];
+    let chunkIndex = inlineMetadata.length > 0 ? 0 : (summary.chunkCount ?? 0);
+
+    for (let i = 0; i < inlineMetadata.length; i += chunkSize) {
+      const chunk = inlineMetadata.slice(i, i + chunkSize);
+      const result = await window.electronAPI.writeCacheChunk({
+        cacheId,
+        chunkIndex,
+        data: chunk,
+      });
+      if (!result.success) {
+        console.error('Failed to migrate inline cache chunk:', result.error);
+        return;
+      }
+      chunkIndex += 1;
+    }
+
     for (let i = 0; i < metadata.length; i += chunkSize) {
       const chunk = metadata.slice(i, i + chunkSize);
       const result = await window.electronAPI.writeCacheChunk({
@@ -575,7 +596,7 @@ class CacheManager {
       directoryPath,
       directoryName: summary.directoryName ?? directoryName,
       lastScan: Date.now(),
-      imageCount: (summary.imageCount ?? 0) + images.length,
+      imageCount: (inlineMetadata.length > 0 ? inlineMetadata.length : (summary.imageCount ?? 0)) + images.length,
       chunkCount: chunkIndex,
       parserVersion: PARSER_VERSION,
     } satisfies Omit<CacheEntry, 'metadata'>;
@@ -755,6 +776,14 @@ class CacheManager {
         await flushOutputChunk();
       }
     };
+
+    if (Array.isArray(summary.metadata) && summary.metadata.length > 0) {
+      const pruned = pruneCacheMetadata(summary.metadata, {
+        ids: pruneIds,
+        names: pruneNames,
+      });
+      await appendOutputEntries(pruned);
+    }
 
     const chunkCount = summary.chunkCount ?? 0;
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
