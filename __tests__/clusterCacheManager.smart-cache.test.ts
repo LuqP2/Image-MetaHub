@@ -73,4 +73,35 @@ describe('clusterCacheManager smart library IPC', () => {
     });
     expect(writeFile).not.toHaveBeenCalled();
   });
+
+  it('does not delete cluster cache when the restore signature does not match', async () => {
+    const directoryPath = 'D:/images';
+    const cacheId = generateDirectoryIdHash(directoryPath, true);
+    const deleteSmartLibraryCache = vi.fn();
+
+    (window as any).electronAPI = {
+      readSmartLibraryCache: vi.fn().mockResolvedValue({
+        success: true,
+        data: JSON.stringify({
+          id: cacheId,
+          directoryPath,
+          scanSubfolders: true,
+          clusters: [],
+          sourceSignature: 'complete-library',
+          sourceImageCount: 0,
+          processedImageCount: 0,
+          lastGenerated: 123,
+          parserVersion: PARSER_VERSION,
+          similarityThreshold: 0.75,
+        }),
+      }),
+      writeSmartLibraryCache: vi.fn(),
+      deleteSmartLibraryCache,
+    };
+
+    const cache = await loadClusterCache(directoryPath, true, 'partial-library');
+
+    expect(cache).toBeNull();
+    expect(deleteSmartLibraryCache).not.toHaveBeenCalled();
+  });
 });

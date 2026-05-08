@@ -193,8 +193,7 @@ export async function loadClusterCache(
       }
 
       if (expectedSourceSignature && cache.sourceSignature !== expectedSourceSignature) {
-        console.warn('Cluster cache source signature mismatch. Invalidating cache.');
-        await invalidateClusterCache(directoryPath, scanSubfolders, 'source_signature_mismatch');
+        console.warn('Cluster cache source signature mismatch. Skipping restore.');
         return null;
       }
 

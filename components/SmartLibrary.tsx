@@ -45,6 +45,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const images = useImageStore((state) => state.images);
   const clusters = useImageStore((state) => state.clusters);
   const directories = useImageStore((state) => state.directories);
+  const isLoading = useImageStore((state) => state.isLoading);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const isClustering = useImageStore((state) => state.isClustering);
   const indexingState = useImageStore((state) => state.indexingState);
@@ -191,6 +192,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
     if (
       !primaryPath ||
       !isLicenseInitialized ||
+      isLoading ||
       clusters.length > 0 ||
       isClustering ||
       indexingState === 'indexing' ||
@@ -252,6 +254,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
     indexingState,
     isClustering,
     isLicenseInitialized,
+    isLoading,
     primaryPath,
     promptImages.length,
     scanSubfolders,
