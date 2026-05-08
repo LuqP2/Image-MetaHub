@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0-rc.1] [Unreleased]
+
+### Added
+
+- **Image Adjustment Editing**: Added an adjustment panel in the Image Modal for brightness, contrast, saturation, and hue, with desktop Save As and Overwrite workflows that export PNG output while preserving generation metadata.
+- **Embedded ComfyUI Workspace**: Added a dedicated ComfyUI Workspace view with an embedded ComfyUI browser, image context panel, workflow metadata tabs, thumbnail navigation, copy/generate actions, and direct open actions from grid/table image contexts.
+
+### Improved
+
+- **Large Library Memory Usage**: Reduced OOM risk in large ComfyUI libraries by compacting oversized raw metadata, streaming cache diffing across chunks, using lighter Electron file handles, increasing renderer heap headroom, and avoiding automatic table thumbnails in very large result sets.
+- **Large Library Cache Reconciliation**: Improved startup and manual cache checks for large folders by applying lightweight UI deltas and persisting chunked cache updates without rehydrating the entire library.
+- **Accessibility**: Added accessible labels to search, compare zoom controls, reset zoom, and generate variation icon-only controls.
+
+### Fixed
+
+- **macOS Keyboard Navigation**: Fixed Page Up/Page Down navigation in the image grid and kept folder tree keyboard navigation scrolled to the focused folder.
+- **What's New Persistence**: Fixed the changelog splash screen reopening on every launch after the current version had already been viewed.
+- **Video Viewer Scaling**: Fixed video sizing in the Image Modal so portrait and landscape videos fit the available viewer area without cropping playback controls.
+- **Smart Library Cluster Persistence**: Fixed Smart Library cluster restore so cached stacks persist across sessions.
+- **Cache Version Reindexing**: Fixed stale parser-version cache summaries so app updates reparse invalid cached metadata instead of leaving outdated metadata or empty cached libraries.
+- **Scoped Folder Refresh Cache Persistence**: Fixed scoped folder refreshes so cache updates preserve unrelated cached entries while correctly applying changed and deleted files.
+- **Desktop Saved Image Indexing**: Fixed desktop file handling paths used when saved or overwritten images are indexed/reparsed, including more accurate file type handling for edited outputs.
+
 ## [0.15.4] - 2026-05-02
 
 ### Added
