@@ -211,7 +211,8 @@ const electronAPI = {
   generateThumbnailToCache: (args) => ipcRenderer.invoke('generate-thumbnail-to-cache', args),
   clearMetadataCache: () => ipcRenderer.invoke('clear-metadata-cache'),
   clearThumbnailCache: () => ipcRenderer.invoke('clear-thumbnail-cache'),
-  deleteCacheFolder: () => ipcRenderer.invoke('delete-cache-folder'),
+  clearLibraryCache: () => ipcRenderer.invoke('clear-library-cache'),
+  deleteCacheFolder: (options) => ipcRenderer.invoke('delete-cache-folder', options),
   restartApp: () => ipcRenderer.invoke('restart-app'),
 
   // File watching

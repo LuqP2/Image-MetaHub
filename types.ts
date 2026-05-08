@@ -297,7 +297,8 @@ export interface ElectronAPI {
   generateThumbnailToCache: (args: ThumbnailGenerateToCacheRequest) => Promise<{ success: boolean; url?: string; thumbnailId?: string; extension?: string; error?: string }>;
   clearMetadataCache: () => Promise<{ success: boolean; error?: string }>;
   clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
-  deleteCacheFolder: () => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
+  clearLibraryCache: () => Promise<{ success: boolean; error?: string }>;
+  deleteCacheFolder: (options?: { preserveLicense?: boolean }) => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
   restartApp: () => Promise<{ success: boolean; error?: string }>;
 
   onLoadDirectoryFromCLI: (callback: (dirPath: string) => void) => () => void;

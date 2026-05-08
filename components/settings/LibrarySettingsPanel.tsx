@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useSettingsStore } from '../../store/useSettingsStore';
-import { resetAllCaches } from '../../utils/cacheReset';
+import { clearLibraryCaches, resetAllCaches } from '../../utils/cacheReset';
 import { AdvancedSection } from './AdvancedSection';
 import { SettingRow } from './SettingRow';
 import { SettingsPanel } from './SettingsPanel';
@@ -95,18 +95,46 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
     }
   };
 
-  const handleClearCache = async () => {
+  const handleClearLibraryCache = async () => {
     const confirmed = window.confirm(
       [
-        'Clear all cache and reset the app?',
+        'Clear library cache?',
+        '',
+        'This will remove cached indexed metadata, thumbnails and smart library cache files.',
+        '',
+        'Your image files, saved folders, preferences, tags, ratings and license/trial state will be kept.',
+        'The app will reload so the library can rebuild fresh cache data.',
+      ].join('\n')
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await clearLibraryCaches();
+      alert('Library cache cleared. The app will now reload.');
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to clear library cache:', error);
+      alert('Failed to clear library cache. Check console for details.');
+    }
+  };
+
+  const handleResetAppData = async () => {
+    const confirmed = window.confirm(
+      [
+        'Reset app data?',
         '',
         'This will:',
         '- delete indexed image metadata',
         '- remove loaded directories',
         '- clear search filters and selections',
         '- reset cache location and local settings',
+        '- clear tags, ratings, smart collections and automation rules',
         '',
         'Your image files will not be deleted.',
+        'Your license and trial state will be kept.',
         'The app will reload after the reset.',
         '',
         'This action cannot be undone.',
@@ -119,11 +147,11 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
 
     try {
       await resetAllCaches();
-      alert('Cache cleared. The app will now reload to complete the reset.');
+      alert('App data reset. The app will now reload to complete the reset.');
       onClose();
     } catch (error) {
-      console.error('Failed to clear cache:', error);
-      alert('Failed to clear cache. Check console for details.');
+      console.error('Failed to reset app data:', error);
+      alert('Failed to reset app data. Check console for details.');
     }
   };
 
@@ -229,21 +257,40 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         />
 
         <SettingsSectionCard
-          title="Clear all cache"
-          description="Use this only when the library index or local settings need a full reset."
+          title="Clear library cache"
+          description="Rebuild indexed metadata, thumbnails and smart library cache without changing your preferences."
           tone="danger"
           className="space-y-3"
         >
           <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>This removes indexed metadata, loaded directories and local settings, but keeps your image files intact.</p>
+            <p>This removes only cache data that can be rebuilt. Saved folders, preferences, tags, ratings and license/trial state are kept.</p>
           </div>
           <button
             type="button"
-            onClick={handleClearCache}
+            onClick={handleClearLibraryCache}
             className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
           >
-            Clear all cache
+            Clear library cache
+          </button>
+        </SettingsSectionCard>
+
+        <SettingsSectionCard
+          title="Reset app data"
+          description="Use this when local app state needs a fresh start. License and trial state are preserved."
+          tone="danger"
+          className="space-y-3"
+        >
+          <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>This removes saved folders, preferences, filters, annotations, smart collections and automation rules. Image files, license and trial state are kept.</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleResetAppData}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+          >
+            Reset app data
           </button>
         </SettingsSectionCard>
       </AdvancedSection>

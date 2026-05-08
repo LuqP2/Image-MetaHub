@@ -3225,10 +3225,78 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('clear-library-cache', async () => {
+    try {
+      const rootPath = await getCacheRootPath();
+      const metadataCacheDir = path.join(rootPath, 'json_cache');
+      const thumbnailCacheDir = path.join(rootPath, 'thumbnails');
+      const smartLibraryCacheDir = path.join(app.getPath('userData'), 'smart-library-cache');
+
+      if (fsSync.existsSync(metadataCacheDir)) {
+        await fs.rm(metadataCacheDir, { recursive: true, force: true });
+      }
+      await fs.mkdir(metadataCacheDir, { recursive: true });
+
+      if (fsSync.existsSync(thumbnailCacheDir)) {
+        await fs.rm(thumbnailCacheDir, { recursive: true, force: true });
+      }
+      await fs.mkdir(thumbnailCacheDir, { recursive: true });
+      clearThumbnailManifestState(rootPath);
+
+      if (fsSync.existsSync(smartLibraryCacheDir)) {
+        await fs.rm(smartLibraryCacheDir, { recursive: true, force: true });
+      }
+
+      try {
+        const files = await fs.readdir(rootPath);
+        const cacheRecordFiles = [];
+        for (const file of files) {
+          if (!file.endsWith('.json') || ['settings.json', 'settings.json.bak', 'settings.json.tmp'].includes(file)) {
+            continue;
+          }
+
+          const filePath = path.join(rootPath, file);
+          try {
+            const parsed = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+            if (
+              parsed &&
+              typeof parsed === 'object' &&
+              (
+                typeof parsed.parserVersion === 'number' ||
+                (typeof parsed.schemaVersion === 'number' && typeof parsed.librarySignature === 'string')
+              )
+            ) {
+              cacheRecordFiles.push(filePath);
+            }
+          } catch (error) {
+            console.warn(`Skipping non-cache JSON while clearing library cache: ${file}`, error?.message);
+          }
+        }
+
+        await Promise.all(
+          cacheRecordFiles.map(filePath => fs.unlink(filePath).catch(error => {
+              if (error.code !== 'ENOENT') throw error;
+            }))
+        );
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
   // Delete all cache files and folders (but not userData itself, as app is using it)
-  ipcMain.handle('delete-cache-folder', async () => {
+  ipcMain.handle('delete-cache-folder', async (event, options = {}) => {
     try {
       const userDataDir = app.getPath('userData');
+      const settingsBeforeDelete = await readSettings();
+      const preservedLicense = options?.preserveLicense === true ? settingsBeforeDelete?.license : undefined;
+
       try {
         const files = await fs.readdir(userDataDir);
 
@@ -3251,6 +3319,11 @@ function setupFileOperationHandlers() {
           throw error;
         }
       }
+
+      if (preservedLicense) {
+        await saveSettings({ license: preservedLicense });
+      }
+
       return { success: true, needsRestart: true };
     } catch (error) {
       console.error('Error deleting cache folder:', error);
