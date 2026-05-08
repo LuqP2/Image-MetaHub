@@ -80,12 +80,26 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   const restoredClusterCacheKeyRef = useRef<string | null>(null);
   const clusterMetadataSignatureRef = useRef<string | null>(null);
 
+  const primaryPath = directories[0]?.path ?? '';
+  const hasDirectories = directories.length > 0;
+
+  const promptImages = useMemo(() => getPromptImagesForClustering(images), [images]);
+  const clusterSourceSignature = useMemo(() => buildClusterSourceSignature(images), [images]);
+  const currentClusteringMetadata = useMemo(
+    () => buildClusteringMetadata(images, canUseFullClustering),
+    [canUseFullClustering, images]
+  );
+  const visibleClusters = useMemo(
+    () => limitClustersForAccess(clusters, images, canUseFullClustering),
+    [canUseFullClustering, clusters, images]
+  );
+
   const imageMap = useMemo(() => {
     return new Map(safeFilteredImages.map((image) => [image.id, image]));
   }, [safeFilteredImages]);
 
   const clusterEntries = useMemo(() => {
-    return clusters
+    return visibleClusters
       .map((cluster) => ({
         cluster,
         images: cluster.imageIds
@@ -93,7 +107,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
           .filter((image): image is IndexedImage => Boolean(image)),
       }))
       .filter((entry) => entry.images.length >= 3);
-  }, [clusters, imageMap]);
+  }, [imageMap, visibleClusters]);
 
   const sortedEntries = useMemo(() => {
     const lockedImageIds = clusteringMetadata?.lockedImageIds || new Set();
@@ -178,16 +192,6 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
     }
   }, [expandedClusterId]);
 
-  const primaryPath = directories[0]?.path ?? '';
-  const hasDirectories = directories.length > 0;
-
-  const promptImages = useMemo(() => getPromptImagesForClustering(images), [images]);
-  const clusterSourceSignature = useMemo(() => buildClusterSourceSignature(images), [images]);
-  const currentClusteringMetadata = useMemo(
-    () => buildClusteringMetadata(images, canUseFullClustering),
-    [canUseFullClustering, images]
-  );
-
   useEffect(() => {
     if (
       !primaryPath ||
@@ -232,10 +236,9 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
           return;
         }
 
-        const restoredClusters = limitClustersForAccess(cache.clusters, images, canUseFullClustering);
-        if (restoredClusters.length > 0) {
-          clusterMetadataSignatureRef.current = buildClusterStateSignature(restoredClusters, currentClusteringMetadata);
-          setClusters(restoredClusters, currentClusteringMetadata);
+        if (cache.clusters.length > 0) {
+          clusterMetadataSignatureRef.current = buildClusterStateSignature(cache.clusters, currentClusteringMetadata);
+          setClusters(cache.clusters, currentClusteringMetadata);
         }
       })
       .catch((error) => {
@@ -266,14 +269,13 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
       return;
     }
 
-    const limitedClusters = limitClustersForAccess(clusters, images, canUseFullClustering);
-    const signature = buildClusterStateSignature(limitedClusters, currentClusteringMetadata);
+    const signature = buildClusterStateSignature(clusters, currentClusteringMetadata);
     if (clusterMetadataSignatureRef.current === signature) {
       return;
     }
 
     clusterMetadataSignatureRef.current = signature;
-    setClusters(limitedClusters, currentClusteringMetadata);
+    setClusters(clusters, currentClusteringMetadata);
   }, [canUseFullClustering, clusters, currentClusteringMetadata, images, isClustering, isLicenseInitialized, setClusters]);
 
   const handleGenerateClusters = () => {
