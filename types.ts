@@ -40,6 +40,34 @@ export type MetadataExportPolicy = 'preserve' | 'strip' | 'metahub_standard';
 export type ExportScope = 'single' | 'selected' | 'filtered' | 'folder';
 export type ExportTargetFormat = 'original' | 'png';
 
+export interface ComfyUIViewBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ComfyUIViewState {
+  url: string;
+  title: string;
+  isLoading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  visible: boolean;
+}
+
+export interface ComfyUIViewResult {
+  success: boolean;
+  state?: ComfyUIViewState;
+  error?: string;
+}
+
+export interface ComfyUIViewLoadFailure {
+  errorCode: number;
+  errorDescription: string;
+  url: string;
+}
+
 export interface ExportFileDescriptor {
   imageId?: string;
   directoryPath: string;
@@ -54,6 +82,23 @@ export interface ExportBatchRequest {
   applyShadowEdits?: boolean;
   scope?: ExportScope;
   targetFormat?: ExportTargetFormat;
+}
+
+export interface ImageAdjustments {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  hue: number;
+}
+
+export type ImageEditSaveMode = 'save_as' | 'overwrite';
+
+export interface ImageEditSaveResult {
+  success: boolean;
+  mode: ImageEditSaveMode;
+  path?: string;
+  image?: IndexedImage;
+  error?: string;
 }
 
 export type IndexedImageTransferMode = 'copy' | 'move';
@@ -207,6 +252,17 @@ export interface ElectronAPI {
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
+  comfyUIViewOpen: (payload: { url: string; bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
+  comfyUIViewShow: (payload?: { bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
+  comfyUIViewHide: () => Promise<ComfyUIViewResult>;
+  comfyUIViewSuspend: () => Promise<ComfyUIViewResult>;
+  comfyUIViewSetBounds: (payload: { bounds: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
+  comfyUIViewReload: () => Promise<ComfyUIViewResult>;
+  comfyUIViewGoBack: () => Promise<ComfyUIViewResult>;
+  comfyUIViewGoForward: () => Promise<ComfyUIViewResult>;
+  comfyUIViewGetState: () => Promise<ComfyUIViewResult>;
+  onComfyUIViewStateChanged: (callback: (state: ComfyUIViewState) => void) => () => void;
+  onComfyUIViewLoadFailed: (callback: (failure: ComfyUIViewLoadFailure) => void) => () => void;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
@@ -241,7 +297,11 @@ export interface ElectronAPI {
   generateThumbnailToCache: (args: ThumbnailGenerateToCacheRequest) => Promise<{ success: boolean; url?: string; thumbnailId?: string; extension?: string; error?: string }>;
   clearMetadataCache: () => Promise<{ success: boolean; error?: string }>;
   clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
-  deleteCacheFolder: () => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
+  clearLibraryCache: () => Promise<{ success: boolean; error?: string }>;
+  readSmartLibraryCache: (args: { cacheId: string; kind: 'clusters' | 'autotags' }) => Promise<{ success: boolean; data?: string; error?: string; errorCode?: string }>;
+  writeSmartLibraryCache: (args: { cacheId: string; kind: 'clusters' | 'autotags'; data: any }) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
+  deleteSmartLibraryCache: (args: { cacheId: string; kind: 'clusters' | 'autotags' }) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
+  deleteCacheFolder: (options?: { preserveLicense?: boolean }) => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
   restartApp: () => Promise<{ success: boolean; error?: string }>;
 
   onLoadDirectoryFromCLI: (callback: (dirPath: string) => void) => () => void;
@@ -257,6 +317,7 @@ export interface ElectronAPI {
   setFullscreen: (isFullscreen: boolean) => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onFullscreenStateCheck: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
+  onZoomFactorChanged: (callback: (zoomFactor: number) => void) => () => void;
   onExportBatchProgress: (callback: (progress: ExportBatchProgress) => void) => () => void;
   onTransferIndexedImagesProgress: (callback: (progress: IndexedImageTransferProgress) => void) => () => void;
 

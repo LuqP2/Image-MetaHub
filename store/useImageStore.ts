@@ -41,6 +41,7 @@ import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTr
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
 import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
+import { buildClusterSourceSignature } from '../utils/smartLibraryClusterState';
 import {
     type LineageBuildState,
     type LineageDirectorySignature,
@@ -51,6 +52,7 @@ import {
     toLightweightLineageImage,
 } from '../services/lineageRegistry';
 import { loadLineageRegistrySnapshot, saveLineageRegistrySnapshot } from '../services/lineageRegistryCache';
+import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
 import { MAX_RECENT_TAG_HISTORY } from '../utils/tagSuggestions';
 import {
     isPerformanceDiagnosticsEnabled,
@@ -939,7 +941,7 @@ interface ImageState {
   // Clustering Actions (Phase 2)
   startClustering: (directoryPath: string, scanSubfolders: boolean, threshold: number) => Promise<void>;
   cancelClustering: () => void;
-  setClusters: (clusters: ImageCluster[]) => void;
+  setClusters: (clusters: ImageCluster[], clusteringMetadata?: ImageState['clusteringMetadata']) => void;
   setClusteringProgress: (progress: { current: number; total: number; message: string } | null) => void;
   handleClusterImageDeletion: (deletedImageIds: string[]) => void;
   setClusterNavigationContext: (images: IndexedImage[] | null) => void;
@@ -1464,6 +1466,33 @@ export const useImageStore = create<ImageState>((set, get) => {
         return state.images.find(img => img.id === imageId) || state.filteredImages.find(img => img.id === imageId);
     };
 
+    const automationRuleUsesRawMetadata = (rule: AutomationRule): boolean => {
+        if (rule.criteria.textConditions.some((condition) => condition.field === 'metadata' || condition.field === 'search')) {
+            return true;
+        }
+        if (rule.criteria.conditionRows?.some((row) => row.field === 'metadata' || row.field === 'search')) {
+            return true;
+        }
+        return Boolean(rule.criteria.filters.searchQuery?.trim());
+    };
+
+    const hydrateAutomationImages = async (
+        rule: AutomationRule,
+        images: IndexedImage[],
+        directories: Directory[],
+    ): Promise<IndexedImage[]> => {
+        if (!automationRuleUsesRawMetadata(rule) || images.every((image) => !hasCompactedRuntimeMetadata(image))) {
+            return images;
+        }
+
+        const directoryPathById = new Map(directories.map((directory) => [directory.id, directory.path]));
+        return Promise.all(images.map((image) => (
+            hasCompactedRuntimeMetadata(image)
+                ? hydrateImageRawMetadata(image, image.directoryId ? directoryPathById.get(image.directoryId) : undefined)
+                : image
+        )));
+    };
+
     const applyAutomationRuleToCurrentState = async (
         rule: AutomationRule,
         sourceImages?: IndexedImage[],
@@ -1472,6 +1501,11 @@ export const useImageStore = create<ImageState>((set, get) => {
         const sourceIds = sourceImages && sourceImages.length > 0
             ? new Set(sourceImages.map((image) => image.id))
             : null;
+        const currentState = get();
+        const currentTargetImages = sourceIds
+            ? currentState.images.filter((image) => sourceIds.has(image.id))
+            : currentState.images;
+        const hydratedTargetImages = await hydrateAutomationImages(rule, currentTargetImages, currentState.directories);
         let preview: AutomationRulePreview = {
             matchedImageIds: [],
             matchCount: 0,
@@ -1485,10 +1519,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         const tagCatalogUpdates = new Set<string>();
 
         set(state => {
-            const targetImages = sourceIds
-                ? state.images.filter((image) => sourceIds.has(image.id))
-                : state.images;
-            const result = applyAutomationRuleToImages(rule, targetImages, state.annotations, state.collections, options);
+            const result = applyAutomationRuleToImages(rule, hydratedTargetImages, state.annotations, state.collections, options);
             preview = {
                 matchedImageIds: result.matchedImageIds,
                 matchCount: result.matchCount,
@@ -3667,14 +3698,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             // Filter images with prompts
             const imagesWithPrompts = images.filter(img => img.prompt && img.prompt.trim().length > 0);
 
-            // For free users: process CLUSTERING_PREVIEW_LIMIT (1500) images
-            // - First 1000: shown normally
-            // - Next 500: shown blurred (locked preview)
+            // For free users, process a bounded preview:
+            // - First CLUSTERING_FREE_TIER_LIMIT images are shown normally
+            // - Remaining preview images up to CLUSTERING_PREVIEW_LIMIT are locked
             const processingLimit = (isPro || isTrialActive) ? Infinity : CLUSTERING_PREVIEW_LIMIT;
             const limitedImages = imagesWithPrompts.slice(0, processingLimit);
             const remainingCount = Math.max(0, imagesWithPrompts.length - processingLimit);
+            const clusterSourceSignature = buildClusterSourceSignature(imagesWithPrompts);
 
-            // Track which images are in the "locked preview" range (1001-1500)
+            // Track which images are in the locked preview range.
             const lockedImageIds = new Set<string>();
             if (!isPro && !isTrialActive && imagesWithPrompts.length > CLUSTERING_FREE_TIER_LIMIT) {
                 const lockedImages = imagesWithPrompts.slice(CLUSTERING_FREE_TIER_LIMIT, processingLimit);
@@ -3717,6 +3749,22 @@ export const useImageStore = create<ImageState>((set, get) => {
                         worker.terminate();
                         set({ clusteringWorker: null });
                         console.log(`Clustering complete: ${payload.clusters.length} clusters created`);
+
+                        import('../services/clusterCacheManager')
+                            .then(({ saveClusterCache }) =>
+                                saveClusterCache(
+                                    directoryPath,
+                                    scanSubfolders,
+                                    payload.clusters,
+                                    threshold,
+                                    clusterSourceSignature,
+                                    imagesWithPrompts.length,
+                                    limitedImages.length
+                                )
+                            )
+                            .catch(error => {
+                                console.warn('Failed to save cluster cache:', error);
+                            });
                         break;
 
                     case 'error':
@@ -3762,7 +3810,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
         },
 
-        setClusters: (clusters) => set({ clusters }),
+        setClusters: (clusters, clusteringMetadata) =>
+            set(clusteringMetadata === undefined ? { clusters } : { clusters, clusteringMetadata }),
 
         setClusteringProgress: (progress) => set({ clusteringProgress: progress }),
 

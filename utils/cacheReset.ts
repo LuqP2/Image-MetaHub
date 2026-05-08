@@ -8,6 +8,24 @@
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 
+const LICENSE_STORAGE_KEY = 'image-metahub-license';
+
+export async function clearLibraryCaches(): Promise<void> {
+  console.log('🧹 Clearing library caches...');
+
+  if (window.electronAPI?.clearLibraryCache) {
+    const result = await window.electronAPI.clearLibraryCache();
+    if (!result?.success) {
+      throw new Error(result?.error || 'Failed to clear library cache.');
+    }
+  } else {
+    await Promise.allSettled([
+      window.electronAPI?.clearMetadataCache?.(),
+      window.electronAPI?.clearThumbnailCache?.(),
+    ]);
+  }
+}
+
 export async function resetAllCaches(): Promise<void> {
   console.log('🧹 ========================================');
   console.log('🧹 COMPLETE CACHE RESET STARTED');
@@ -16,6 +34,8 @@ export async function resetAllCaches(): Promise<void> {
   console.log('🔧 This will delete ALL app data and force a fresh start');
 
   let needsRestart = false;
+  const preservedLicenseStorage =
+    typeof localStorage !== 'undefined' ? localStorage.getItem(LICENSE_STORAGE_KEY) : null;
 
   try {
     // 1. Delete all cache files/folders from AppData/Roaming
@@ -29,10 +49,10 @@ export async function resetAllCaches(): Promise<void> {
 
     if (window.electronAPI) {
       try {
-        const deleteResult = await window.electronAPI.deleteCacheFolder();
+        const deleteResult = await window.electronAPI.deleteCacheFolder({ preserveLicense: true });
         if (deleteResult?.success) {
           console.log('✅ Cache files deleted successfully from disk');
-          console.log('   → settings.json is now DELETED (will use defaults on reload)');
+          console.log('   → settings.json was reset while preserving license/trial state');
           needsRestart = deleteResult.needsRestart || false;
         } else {
           console.warn('⚠️ Could not delete cache folder:', deleteResult?.error);
@@ -108,11 +128,16 @@ export async function resetAllCaches(): Promise<void> {
     // Also clear any keys that match patterns (for dynamic directory caches)
     const allKeys = Object.keys(localStorage);
     allKeys.forEach(key => {
-      if (key.startsWith('image-metahub-') || key.startsWith('invokeai-')) {
+      if ((key.startsWith('image-metahub-') || key.startsWith('invokeai-')) && key !== LICENSE_STORAGE_KEY) {
         localStorage.removeItem(key);
         console.log(`🗑️ Removed localStorage key (pattern match): ${key}`);
       }
     });
+
+    if (preservedLicenseStorage) {
+      localStorage.setItem(LICENSE_STORAGE_KEY, preservedLicenseStorage);
+      console.log('✅ Preserved license/trial localStorage state');
+    }
 
     console.log('✅ localStorage cleared');
 
@@ -157,6 +182,9 @@ export async function resetAllCaches(): Promise<void> {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(storageName1);
       localStorage.removeItem(storageName2);
+      if (preservedLicenseStorage) {
+        localStorage.setItem(LICENSE_STORAGE_KEY, preservedLicenseStorage);
+      }
       console.log('✅ Zustand persistence cleared from localStorage');
     }
 
@@ -176,6 +204,7 @@ export async function resetAllCaches(): Promise<void> {
   console.log('   ✅ Disk cache deleted (settings.json, metadata, thumbnails)');
   console.log('   ✅ IndexedDB cleared');
   console.log('   ✅ localStorage cleared');
+  console.log('   ✅ License/trial state preserved');
   console.log('   ✅ sessionStorage cleared');
   console.log('   ✅ Zustand stores reset');
   console.log('');

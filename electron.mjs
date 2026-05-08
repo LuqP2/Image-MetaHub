@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol, WebContentsView } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -25,6 +25,10 @@ import {
   inferMimeTypeFromName,
   isSupportedMediaFileName,
 } from './utils/mediaTypes.js';
+import {
+  isComfyUIViewUrlAllowed,
+  normalizeComfyUIViewUrl,
+} from './utils/comfyUIViewSecurity.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +41,8 @@ if (gpuMitigationEnabled) {
   app.disableHardwareAcceleration();
   console.warn('[GPU] Hardware acceleration disabled via IMH_DISABLE_GPU.');
 }
+
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
@@ -265,6 +271,17 @@ async function readMediaMetadataWithFfprobe(filePath) {
 }
 
 let mainWindow;
+let comfyUIView = null;
+let comfyUIViewConfiguredUrl = '';
+let comfyUIViewState = {
+  url: '',
+  title: '',
+  isLoading: false,
+  canGoBack: false,
+  canGoForward: false,
+  visible: false,
+  lastLoadFailed: false,
+};
 let skippedVersions = new Set();
 let isManualUpdateCheck = false;
 
@@ -287,6 +304,11 @@ function setZoomFactor(factor) {
 
   const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, factor));
   contents.setZoomFactor(clamped);
+  syncComfyUIViewZoomFactor(clamped);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('zoom-factor-changed', clamped);
+  }
 }
 
 function resetZoom() {
@@ -861,6 +883,298 @@ function attachWindowProcessDiagnostics(window) {
 }
 // --- End Settings Management ---
 
+function getMainWindowZoomFactor() {
+  const contents = getSafeWebContents();
+  if (!contents) {
+    return 1;
+  }
+
+  const zoomFactor = contents.getZoomFactor();
+  return Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1;
+}
+
+function syncComfyUIViewZoomFactor(zoomFactor = getMainWindowZoomFactor()) {
+  if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+    return;
+  }
+
+  comfyUIView.webContents.setZoomFactor(zoomFactor);
+}
+
+function sanitizeViewBounds(bounds = {}) {
+  const zoomFactor = getMainWindowZoomFactor();
+  const numberOrZero = (value) => Number.isFinite(value) ? Math.round(value) : 0;
+  return {
+    x: Math.max(0, numberOrZero(bounds.x * zoomFactor)),
+    y: Math.max(0, numberOrZero(bounds.y * zoomFactor)),
+    width: Math.max(0, numberOrZero(bounds.width * zoomFactor)),
+    height: Math.max(0, numberOrZero(bounds.height * zoomFactor)),
+  };
+}
+
+function updateComfyUIViewState(patch = {}) {
+  const webContents = comfyUIView?.webContents;
+  const navigationHistory = webContents?.navigationHistory;
+  const navigationState = webContents && !webContents.isDestroyed()
+    ? {
+        canGoBack: typeof navigationHistory?.canGoBack === 'function'
+          ? navigationHistory.canGoBack()
+          : false,
+        canGoForward: typeof navigationHistory?.canGoForward === 'function'
+          ? navigationHistory.canGoForward()
+          : false,
+      }
+    : {};
+
+  comfyUIViewState = {
+    ...comfyUIViewState,
+    ...patch,
+    ...(webContents && !webContents.isDestroyed()
+      ? {
+          url: webContents.getURL(),
+          title: webContents.getTitle(),
+          isLoading: webContents.isLoading(),
+          ...navigationState,
+        }
+      : {}),
+  };
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('comfy-view-state-changed', comfyUIViewState);
+  }
+
+  return comfyUIViewState;
+}
+
+function sendComfyUIViewLoadFailed(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('comfy-view-load-failed', payload);
+  }
+}
+
+function isComfyNavigationAllowed(url) {
+  return isComfyUIViewUrlAllowed(url, comfyUIViewConfiguredUrl);
+}
+
+async function openExternalIfSafe(url) {
+  const parsed = normalizeComfyUIViewUrl(url);
+  if (parsed) {
+    await shell.openExternal(parsed.toString());
+  }
+}
+
+function configureComfyUIViewHandlers(view) {
+  const contents = view.webContents;
+
+  contents.setWindowOpenHandler(({ url }) => {
+    if (isComfyNavigationAllowed(url)) {
+      return { action: 'allow' };
+    }
+
+    openExternalIfSafe(url).catch((error) => {
+      console.warn('Failed to open external ComfyUI URL:', error);
+    });
+    return { action: 'deny' };
+  });
+
+  contents.on('will-navigate', (event, url) => {
+    if (isComfyNavigationAllowed(url)) {
+      return;
+    }
+
+    event.preventDefault();
+    openExternalIfSafe(url).catch((error) => {
+      console.warn('Failed to open external ComfyUI navigation:', error);
+    });
+  });
+
+  contents.on('did-start-loading', () => updateComfyUIViewState({ isLoading: true, lastLoadFailed: false }));
+  contents.on('did-stop-loading', () => updateComfyUIViewState({ isLoading: false }));
+  contents.on('did-navigate', () => updateComfyUIViewState({ lastLoadFailed: false }));
+  contents.on('did-navigate-in-page', () => updateComfyUIViewState({ lastLoadFailed: false }));
+  contents.on('page-title-updated', () => updateComfyUIViewState());
+  contents.on('context-menu', (_event, params) => {
+    showEditableTextContextMenu(contents, params);
+  });
+  contents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) {
+      return;
+    }
+
+    sendComfyUIViewLoadFailed({
+      errorCode,
+      errorDescription,
+      url: validatedURL,
+    });
+    updateComfyUIViewState({ isLoading: false, lastLoadFailed: true });
+  });
+}
+
+function showEditableTextContextMenu(contents, params) {
+  if (!params.isEditable || !contents || contents.isDestroyed()) {
+    return;
+  }
+
+  const menu = Menu.buildFromTemplate([
+    { label: 'Undo', enabled: params.editFlags?.canUndo ?? false, click: () => contents.undo() },
+    { label: 'Redo', enabled: params.editFlags?.canRedo ?? false, click: () => contents.redo() },
+    { type: 'separator' },
+    { label: 'Cut', enabled: params.editFlags?.canCut ?? false, click: () => contents.cut() },
+    { label: 'Copy', enabled: params.editFlags?.canCopy ?? false, click: () => contents.copy() },
+    { label: 'Paste', enabled: params.editFlags?.canPaste ?? false, click: () => contents.paste() },
+    { type: 'separator' },
+    { label: 'Select All', enabled: params.editFlags?.canSelectAll ?? true, click: () => contents.selectAll() },
+  ]);
+
+  menu.popup({ window: mainWindow });
+}
+
+function ensureComfyUIView() {
+  if (comfyUIView && !comfyUIView.webContents.isDestroyed()) {
+    return comfyUIView;
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('Main window is not available.');
+  }
+
+  if (!WebContentsView) {
+    throw new Error('Embedded ComfyUI view is not supported by this Electron version.');
+  }
+
+  comfyUIView = new WebContentsView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      partition: 'persist:imagemetahub-comfyui',
+      backgroundThrottling: false,
+    },
+  });
+
+  comfyUIView.setVisible(false);
+  mainWindow.contentView.addChildView(comfyUIView);
+  configureComfyUIViewHandlers(comfyUIView);
+  syncComfyUIViewZoomFactor();
+  updateComfyUIViewState({ visible: false });
+  return comfyUIView;
+}
+
+async function openComfyUIView({ url, bounds } = {}) {
+  const parsed = normalizeComfyUIViewUrl(url);
+  if (!parsed) {
+    return { success: false, error: 'Invalid ComfyUI URL.' };
+  }
+
+  comfyUIViewConfiguredUrl = parsed.toString();
+  const view = ensureComfyUIView();
+
+  if (bounds) {
+    view.setBounds(sanitizeViewBounds(bounds));
+  }
+
+  view.setVisible(true);
+  updateComfyUIViewState({ visible: true });
+
+  const currentUrl = view.webContents.getURL();
+  if (!currentUrl || comfyUIViewState.lastLoadFailed || !isComfyNavigationAllowed(currentUrl)) {
+    await view.webContents.loadURL(parsed.toString());
+  }
+
+  return { success: true, state: updateComfyUIViewState({ visible: true }) };
+}
+
+function showComfyUIView(bounds) {
+  const view = ensureComfyUIView();
+  if (bounds) {
+    view.setBounds(sanitizeViewBounds(bounds));
+  }
+  view.setVisible(true);
+  return { success: true, state: updateComfyUIViewState({ visible: true }) };
+}
+
+function hideComfyUIView() {
+  if (comfyUIView && !comfyUIView.webContents.isDestroyed()) {
+    comfyUIView.setVisible(false);
+  }
+  return { success: true, state: updateComfyUIViewState({ visible: false }) };
+}
+
+function disposeComfyUIView(reason = 'disposed') {
+  if (!comfyUIView) {
+    return { success: true, state: updateComfyUIViewState({ visible: false, isLoading: false }) };
+  }
+
+  const view = comfyUIView;
+  const contents = view.webContents;
+  let lastUrl = comfyUIViewState.url;
+  let lastTitle = comfyUIViewState.title;
+
+  try {
+    if (contents && !contents.isDestroyed()) {
+      lastUrl = contents.getURL() || lastUrl;
+      lastTitle = contents.getTitle() || lastTitle;
+    }
+  } catch {
+    // Best effort during native teardown.
+  }
+
+  try {
+    view.setVisible(false);
+  } catch {
+    // Ignore native view teardown errors.
+  }
+
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.contentView.removeChildView(view);
+    }
+  } catch (error) {
+    console.warn('Failed to detach ComfyUI embedded view:', error);
+  }
+
+  comfyUIView = null;
+
+  try {
+    if (contents && !contents.isDestroyed()) {
+      contents.close({ waitForBeforeUnload: false });
+    }
+  } catch (error) {
+    console.warn('Failed to close ComfyUI embedded webContents:', error);
+  }
+
+  logProcessEvent({
+    kind: 'comfy-view-disposed',
+    reason,
+    url: lastUrl || null,
+  });
+
+  return {
+    success: true,
+    state: updateComfyUIViewState({
+      url: lastUrl,
+      title: lastTitle,
+      visible: false,
+      isLoading: false,
+      canGoBack: false,
+      canGoForward: false,
+    }),
+  };
+}
+
+function suspendComfyUIView() {
+  return disposeComfyUIView('suspended');
+}
+
+function setComfyUIViewBounds(bounds) {
+  if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+    return { success: false, error: 'ComfyUI view is not open.' };
+  }
+  comfyUIView.setBounds(sanitizeViewBounds(bounds));
+  return { success: true, state: updateComfyUIViewState() };
+}
+
 const launcherScriptsPath = path.join(app.getPath('userData'), 'launchers');
 async function writeLauncherScript(command) {
   const normalizedCommand = normalizeLauncherCommand(command);
@@ -1417,7 +1731,7 @@ async function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.15.4');
+    mainWindow.setTitle('Image MetaHub v0.16.0-rc.1');
   }
 
   // Load the app
@@ -1467,18 +1781,16 @@ async function createWindow(startupDirectory = null) {
     return { action: 'deny' };
   });
 
+  mainWindow.on('minimize', () => {
+    hideComfyUIView();
+  });
+
+  mainWindow.on('restore', () => {
+    updateComfyUIViewState({ visible: false });
+  });
+
   mainWindow.webContents.on('context-menu', (_event, params) => {
-    if (!params.isEditable) {
-      return;
-    }
-
-    const menu = Menu.buildFromTemplate([
-      { role: 'cut', enabled: params.editFlags?.canCut ?? false },
-      { role: 'copy', enabled: params.editFlags?.canCopy ?? false },
-      { role: 'paste', enabled: params.editFlags?.canPaste ?? false },
-    ]);
-
-    menu.popup({ window: mainWindow });
+    showEditableTextContextMenu(mainWindow.webContents, params);
   });
 
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -1504,8 +1816,8 @@ async function createWindow(startupDirectory = null) {
     }
   });
 
-  // Handle window closed
   mainWindow.on('closed', () => {
+    disposeComfyUIView('main-window-closed');
     mainWindow = null;
   });
 
@@ -1790,6 +2102,18 @@ function setupFileOperationHandlers() {
     return path.dirname(normalizedOldPath) === path.dirname(normalizedNewPath);
   };
   const normalizeNameKey = (name) => name.toLowerCase();
+  const SMART_LIBRARY_CACHE_KINDS = new Set(['clusters', 'autotags']);
+  const getSmartLibraryCachePath = async (cacheId, kind) => {
+    const safeCacheId = String(cacheId || '').replace(/[^a-zA-Z0-9-_]/g, '_');
+    const safeKind = String(kind || '');
+    if (!safeCacheId || !SMART_LIBRARY_CACHE_KINDS.has(safeKind)) {
+      throw new Error('Invalid smart library cache key.');
+    }
+
+    const cacheDir = path.join(app.getPath('userData'), 'smart-library-cache');
+    await fs.mkdir(cacheDir, { recursive: true });
+    return path.join(cacheDir, `${safeCacheId}-${safeKind}.json`);
+  };
   const getUniqueName = (name, usedNames) => {
     const parsed = path.parse(name);
     let candidate = name;
@@ -2351,6 +2675,92 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('comfy-view-open', async (event, payload) => {
+    try {
+      return await openComfyUIView(payload);
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to open embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-show', async (event, payload) => {
+    try {
+      return showComfyUIView(payload?.bounds);
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to show embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-hide', async () => {
+    try {
+      return hideComfyUIView();
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to hide embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-suspend', async () => {
+    try {
+      return suspendComfyUIView();
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to suspend embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-set-bounds', async (event, payload) => {
+    try {
+      return setComfyUIViewBounds(payload?.bounds ?? payload);
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to resize embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-reload', async () => {
+    try {
+      if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+        return { success: false, error: 'ComfyUI view is not open.' };
+      }
+      comfyUIView.webContents.reload();
+      return { success: true, state: updateComfyUIViewState() };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to reload embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-go-back', async () => {
+    try {
+      if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+        return { success: false, error: 'ComfyUI view is not open.' };
+      }
+      const history = comfyUIView.webContents.navigationHistory;
+      if (typeof history?.canGoBack === 'function' && history.canGoBack()) {
+        history.goBack();
+      }
+      return { success: true, state: updateComfyUIViewState() };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to navigate embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-go-forward', async () => {
+    try {
+      if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+        return { success: false, error: 'ComfyUI view is not open.' };
+      }
+      const history = comfyUIView.webContents.navigationHistory;
+      if (typeof history?.canGoForward === 'function' && history.canGoForward()) {
+        history.goForward();
+      }
+      return { success: true, state: updateComfyUIViewState() };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to navigate embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-get-state', async () => {
+    return { success: true, state: updateComfyUIViewState() };
+  });
+
   ipcMain.handle('get-default-cache-path', () => {
     try {
       // Define a specific subfolder for the cache
@@ -2827,10 +3237,117 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('clear-library-cache', async () => {
+    try {
+      const rootPath = await getCacheRootPath();
+      const metadataCacheDir = path.join(rootPath, 'json_cache');
+      const thumbnailCacheDir = path.join(rootPath, 'thumbnails');
+      const smartLibraryCacheDir = path.join(app.getPath('userData'), 'smart-library-cache');
+
+      if (fsSync.existsSync(metadataCacheDir)) {
+        await fs.rm(metadataCacheDir, { recursive: true, force: true });
+      }
+      await fs.mkdir(metadataCacheDir, { recursive: true });
+
+      if (fsSync.existsSync(thumbnailCacheDir)) {
+        await fs.rm(thumbnailCacheDir, { recursive: true, force: true });
+      }
+      await fs.mkdir(thumbnailCacheDir, { recursive: true });
+      clearThumbnailManifestState(rootPath);
+
+      if (fsSync.existsSync(smartLibraryCacheDir)) {
+        await fs.rm(smartLibraryCacheDir, { recursive: true, force: true });
+      }
+
+      try {
+        const files = await fs.readdir(rootPath);
+        const cacheRecordFiles = [];
+        for (const file of files) {
+          if (!file.endsWith('.json') || ['settings.json', 'settings.json.bak', 'settings.json.tmp'].includes(file)) {
+            continue;
+          }
+
+          const filePath = path.join(rootPath, file);
+          try {
+            const parsed = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+            if (
+              parsed &&
+              typeof parsed === 'object' &&
+              (
+                typeof parsed.parserVersion === 'number' ||
+                (typeof parsed.schemaVersion === 'number' && typeof parsed.librarySignature === 'string')
+              )
+            ) {
+              cacheRecordFiles.push(filePath);
+            }
+          } catch (error) {
+            console.warn(`Skipping non-cache JSON while clearing library cache: ${file}`, error?.message);
+          }
+        }
+
+        await Promise.all(
+          cacheRecordFiles.map(filePath => fs.unlink(filePath).catch(error => {
+              if (error.code !== 'ENOENT') throw error;
+            }))
+        );
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('read-smart-library-cache', async (event, { cacheId, kind } = {}) => {
+    try {
+      const cachePath = await getSmartLibraryCachePath(cacheId, kind);
+      const data = await fs.readFile(cachePath, 'utf-8');
+      return { success: true, data };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: false, error: 'Cache file not found.', errorCode: error.code };
+      }
+      return { success: false, error: error.message, errorCode: error.code };
+    }
+  });
+
+  ipcMain.handle('write-smart-library-cache', async (event, { cacheId, kind, data } = {}) => {
+    try {
+      const cachePath = await getSmartLibraryCachePath(cacheId, kind);
+      const tempPath = `${cachePath}.tmp`;
+      const payload = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+
+      await fs.writeFile(tempPath, payload, 'utf-8');
+      await fs.rename(tempPath, cachePath);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message, errorCode: error.code };
+    }
+  });
+
+  ipcMain.handle('delete-smart-library-cache', async (event, { cacheId, kind } = {}) => {
+    try {
+      const cachePath = await getSmartLibraryCachePath(cacheId, kind);
+      await fs.unlink(cachePath).catch(error => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message, errorCode: error.code };
+    }
+  });
+
   // Delete all cache files and folders (but not userData itself, as app is using it)
-  ipcMain.handle('delete-cache-folder', async () => {
+  ipcMain.handle('delete-cache-folder', async (event, options = {}) => {
     try {
       const userDataDir = app.getPath('userData');
+      const settingsBeforeDelete = await readSettings();
+      const preservedLicense = options?.preserveLicense === true ? settingsBeforeDelete?.license : undefined;
+
       try {
         const files = await fs.readdir(userDataDir);
 
@@ -2853,6 +3370,11 @@ function setupFileOperationHandlers() {
           throw error;
         }
       }
+
+      if (preservedLicense) {
+        await saveSettings({ license: preservedLicense });
+      }
+
       return { success: true, needsRestart: true };
     } catch (error) {
       console.error('Error deleting cache folder:', error);

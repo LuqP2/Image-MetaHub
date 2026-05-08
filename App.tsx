@@ -35,6 +35,7 @@ import NodeView from './components/NodeView';
 import FindSimilarModal from './components/FindSimilarModal';
 import ModelPromptPickerModal from './components/ModelPromptPickerModal';
 import CollectionsWorkspace from './components/CollectionsWorkspace';
+import ComfyUIWorkspace from './components/ComfyUIWorkspace';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
@@ -297,6 +298,10 @@ export default function App() {
   const imageLookup = useMemo(() => {
     const lookup = new Map<string, IndexedImage>();
 
+    for (const image of safeImages) {
+      lookup.set(image.id, image);
+    }
+
     for (const image of safeFilteredImages) {
       lookup.set(image.id, image);
     }
@@ -308,7 +313,7 @@ export default function App() {
     }
 
     return lookup;
-  }, [safeClusterNavigationContext, safeFilteredImages]);
+  }, [safeClusterNavigationContext, safeFilteredImages, safeImages]);
 
   // --- Settings Store State ---
   const {
@@ -320,6 +325,7 @@ export default function App() {
     setLastViewedVersion,
     globalAutoWatch,
     generatorLaunchCommand,
+    comfyUIWorkspaceAutoOpenSelectedImage,
   } = useSettingsStore();
 
   // --- Local UI State ---
@@ -378,12 +384,15 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node' | 'collections'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui'>('library');
   const [nodeViewVisibleImages, setNodeViewVisibleImages] = useState<IndexedImage[]>([]);
   const [nodeViewResultImages, setNodeViewResultImages] = useState<IndexedImage[]>([]);
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
+  const [comfyUIWorkspaceImageId, setComfyUIWorkspaceImageId] = useState<string | null>(null);
+  const [comfyUIWorkspaceNavigationImageIds, setComfyUIWorkspaceNavigationImageIds] = useState<string[] | null>(null);
+  const [isComfyUIWorkspaceGenerating, setIsComfyUIWorkspaceGenerating] = useState(false);
   const [newImagesToast, setNewImagesToast] = useState<{ message: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [batchExportRequest, setBatchExportRequest] = useState<BatchExportRequestState | null>(null);
@@ -449,7 +458,7 @@ export default function App() {
       setNodeViewResultImages([]);
     }
   }, [libraryView, nodeViewResultImages.length]);
-  const hasRightSidebar = Boolean(previewImage || isQueueOpen);
+  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && libraryView !== 'comfyui'));
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
       resolveSidebarWidths({
@@ -1024,6 +1033,21 @@ export default function App() {
       if (currentLastViewed !== version) {
         setIsChangelogModalOpen(true);
         setLastViewedVersion(version);
+
+        if (window.electronAPI?.getSettings && window.electronAPI?.saveSettings) {
+          try {
+            const currentSettings = await window.electronAPI.getSettings();
+            const result = await window.electronAPI.saveSettings({
+              ...(currentSettings ?? {}),
+              lastViewedVersion: version,
+            });
+            if (!result?.success) {
+              console.warn('Failed to persist last viewed changelog version:', result?.error);
+            }
+          } catch (error) {
+            console.warn('Failed to persist last viewed changelog version:', error);
+          }
+        }
       }
     };
 
@@ -1713,6 +1737,39 @@ export default function App() {
     openBatchExportModal();
   }, [openBatchExportModal]);
 
+  const handleOpenComfyUIWorkspace = useCallback((image?: IndexedImage | null, navigationImages?: IndexedImage[]) => {
+    if (image) {
+      setComfyUIWorkspaceImageId(image.id);
+    }
+    if (navigationImages && navigationImages.length > 0) {
+      setComfyUIWorkspaceNavigationImageIds(navigationImages.map((item) => item.id));
+    } else if (image) {
+      setComfyUIWorkspaceNavigationImageIds([image.id]);
+    }
+    setLibraryView('comfyui');
+  }, []);
+
+  useEffect(() => {
+    if (libraryView !== 'comfyui') {
+      setComfyUIWorkspaceNavigationImageIds(null);
+      return;
+    }
+
+    setOpenImageModals((current) => {
+      let changed = false;
+      const next = current.map((modal) => {
+        if (modal.isMinimized) {
+          return modal;
+        }
+
+        changed = true;
+        return { ...modal, isMinimized: true };
+      });
+
+      return changed ? next : current;
+    });
+  }, [libraryView]);
+
   const handleCloseBatchExport = useCallback(() => {
     setIsBatchExportModalOpen(false);
     setBatchExportRequest(null);
@@ -1771,6 +1828,26 @@ export default function App() {
       ? nodeViewResultImages
       : safeFilteredImages;
 
+  useEffect(() => {
+    if (libraryView !== 'comfyui' || displayImages.length === 0) {
+      return;
+    }
+
+    setComfyUIWorkspaceNavigationImageIds((current) => current ?? displayImages.map((image) => image.id));
+    setComfyUIWorkspaceImageId((current) => {
+      if (current && displayImages.some((image) => image.id === current)) {
+        return current;
+      }
+
+      const preferredImage =
+        (previewImage && displayImages.some((image) => image.id === previewImage.id) ? previewImage : null) ||
+        (selectedImage && displayImages.some((image) => image.id === selectedImage.id) ? selectedImage : null) ||
+        displayImages[0];
+
+      return preferredImage.id;
+    });
+  }, [displayImages, libraryView, previewImage, selectedImage]);
+
   const openFindSimilar = useCallback((
     sourceImage: IndexedImage,
     currentViewImages?: IndexedImage[],
@@ -1811,6 +1888,68 @@ export default function App() {
   }, [openFindSimilar, safeImages]);
 
   const canSaveCurrentFilteredAsCollection = libraryView !== 'smart' && displayImages.length > 0;
+  const comfyUIWorkspaceImage = useMemo(() => {
+    if (comfyUIWorkspaceImageId) {
+      return imageLookup.get(comfyUIWorkspaceImageId) ?? null;
+    }
+
+    if (!comfyUIWorkspaceAutoOpenSelectedImage) {
+      return null;
+    }
+
+    return previewImage || selectedImage || null;
+  }, [
+    comfyUIWorkspaceAutoOpenSelectedImage,
+    comfyUIWorkspaceImageId,
+    imageLookup,
+    previewImage,
+    selectedImage,
+  ]);
+  const comfyUIWorkspaceNavigationImages = useMemo(() => {
+    const imageIds = comfyUIWorkspaceNavigationImageIds ?? (comfyUIWorkspaceImage ? [comfyUIWorkspaceImage.id] : []);
+    const resolvedImages = imageIds
+      .map((imageId) => imageLookup.get(imageId) ?? null)
+      .filter((candidate): candidate is IndexedImage => Boolean(candidate));
+
+    if (comfyUIWorkspaceImage && !resolvedImages.some((candidate) => candidate.id === comfyUIWorkspaceImage.id)) {
+      return [comfyUIWorkspaceImage, ...resolvedImages];
+    }
+
+    return resolvedImages;
+  }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImageIds, imageLookup]);
+  const comfyUIWorkspaceCurrentIndex = useMemo(() => {
+    if (!comfyUIWorkspaceImage) {
+      return -1;
+    }
+
+    return comfyUIWorkspaceNavigationImages.findIndex((candidate) => candidate.id === comfyUIWorkspaceImage.id);
+  }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImages]);
+  const handleComfyUIWorkspaceNavigate = useCallback((direction: 'next' | 'previous') => {
+    if (comfyUIWorkspaceCurrentIndex === -1) {
+      return;
+    }
+
+    const nextIndex = direction === 'next'
+      ? comfyUIWorkspaceCurrentIndex + 1
+      : comfyUIWorkspaceCurrentIndex - 1;
+    const nextImage = comfyUIWorkspaceNavigationImages[nextIndex];
+
+    if (nextImage) {
+      setComfyUIWorkspaceImageId(nextImage.id);
+    }
+  }, [comfyUIWorkspaceCurrentIndex, comfyUIWorkspaceNavigationImages]);
+  const comfyUIWorkspaceDirectoryPathByImageId = useMemo(() => {
+    const paths: Record<string, string> = {};
+
+    for (const image of comfyUIWorkspaceNavigationImages) {
+      const directoryPath = image.directoryId ? directoryPathById.get(image.directoryId) : undefined;
+      if (directoryPath) {
+        paths[image.id] = directoryPath;
+      }
+    }
+
+    return paths;
+  }, [comfyUIWorkspaceNavigationImages, directoryPathById]);
   const slideshowPlaylistPreview = useMemo(
     () =>
       buildSlideshowPlaylist({
@@ -1969,6 +2108,20 @@ export default function App() {
   const hasActiveVisibleImageModal = openImageModalEntries.some(
     (modal) => !modal.isMinimized && modal.modalId === activeImageModalId
   );
+  const shouldShowEmbeddedComfyUIView =
+    libraryView === 'comfyui' &&
+    !isSettingsModalOpen &&
+    !isHotkeyHelpOpen &&
+    !isCommandPaletteOpen &&
+    !isChangelogModalOpen &&
+    !isAnalyticsOpen &&
+    !isComparisonModalOpen &&
+    !isBatchExportModalOpen &&
+    !isSaveFilteredCollectionModalOpen &&
+    !isA1111GenerateModalOpen &&
+    !isComfyUIGenerateModalOpen &&
+    !generatedOutputPreview &&
+    !proModalOpen;
   const libraryContentFocusClass = hasActiveVisibleImageModal
     ? 'blur-[1px] opacity-95'
     : 'blur-0 opacity-100';
@@ -2188,13 +2341,13 @@ export default function App() {
             });
           }}
         />
-      ) : (
+      ) : hasRightSidebar ? (
         <ImagePreviewSidebar
           width={rightSidebarWidth}
           isResizing={isRightSidebarResizing}
           onResizeStart={handleRightSidebarResizeStart}
         />
-      )}
+      ) : null}
 
       {generatedOutputPreview && (
         <GeneratedOutputModal
@@ -2234,7 +2387,7 @@ export default function App() {
           onSubmit={handleSaveCurrentFilteredAsCollection}
         />
 
-        <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
+        <main className={`flex-1 flex flex-col min-h-0 w-full ${libraryView === 'comfyui' ? 'p-0' : 'mx-auto p-4'}`}>
           {showGeneratorSetupNotice && (
             <div className="my-4 flex items-center justify-between gap-3 rounded-lg border border-blue-700/40 bg-blue-900/30 p-3 text-blue-100">
               <div className="flex-1 text-sm">
@@ -2345,6 +2498,7 @@ export default function App() {
                       setSelectedImageForGeneration(image);
                       setIsComfyUIGenerateModalOpen(true);
                     }}
+                    onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                     onCompare={(images) => {
                       setComparisonImages(images);
                       openComparisonModal();
@@ -2373,6 +2527,7 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                          onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         />
                       ) : (
                         <ImageTable
@@ -2382,6 +2537,7 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                          onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         />
                   )
                 ) : libraryView === 'model' ? (
@@ -2412,6 +2568,7 @@ export default function App() {
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                        onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                       />
                     ) : (
                       <ImageTable
@@ -2423,6 +2580,7 @@ export default function App() {
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                        onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                       />
                     )}
                   </CollectionsWorkspace>
@@ -2437,6 +2595,22 @@ export default function App() {
                     onVisibleImagesChange={setNodeViewVisibleImages}
                     onResultImagesChange={handleNodeViewResultImagesChange}
                   />
+                ) : libraryView === 'comfyui' ? (
+                  <ComfyUIWorkspace
+                    image={comfyUIWorkspaceImage}
+                    directoryPath={comfyUIWorkspaceImage?.directoryId ? directoryPathById.get(comfyUIWorkspaceImage.directoryId) : undefined}
+                    navigationImages={comfyUIWorkspaceNavigationImages}
+                    directoryPathByImageId={comfyUIWorkspaceDirectoryPathByImageId}
+                    currentIndex={comfyUIWorkspaceCurrentIndex}
+                    isActive={shouldShowEmbeddedComfyUIView}
+                    onSelectImage={(image) => setComfyUIWorkspaceImageId(image.id)}
+                    onNavigatePrevious={() => handleComfyUIWorkspaceNavigate('previous')}
+                    onNavigateNext={() => handleComfyUIWorkspaceNavigate('next')}
+                    onGenerationStateChange={setIsComfyUIWorkspaceGenerating}
+                    suspendBrowser={isGeneratingComfyUI || isComfyUIWorkspaceGenerating}
+                    onOpenQueue={() => setIsQueueOpen(true)}
+                    onOpenSettings={handleOpenGeneratorIntegrations}
+                  />
                 ) : (
                   <SmartLibrary
                     isQueueOpen={isQueueOpen}
@@ -2449,7 +2623,7 @@ export default function App() {
                 )}
               </div>
 
-              {(libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
+              {(libraryView === 'library' || libraryView === 'comfyui' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                 <Footer
                   currentPage={currentPage}
                   totalPages={totalPages}
@@ -2471,8 +2645,14 @@ export default function App() {
                   queueCount={queueCount}
                   isQueueOpen={isQueueOpen}
                   onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                  customText={libraryView === 'comfyui' ? 'ComfyUI Workspace' : undefined}
                   windowItems={footerWindowItems}
-                  onWindowSelect={handleActivateImageModal}
+                  onWindowSelect={(modalId) => {
+                    if (libraryView === 'comfyui') {
+                      setLibraryView('library');
+                    }
+                    handleActivateImageModal(modalId);
+                  }}
                   onWindowClose={handleCloseImageModalFromFooter}
                 />
               )}

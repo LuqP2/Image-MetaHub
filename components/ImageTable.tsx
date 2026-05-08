@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil, Workflow } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -29,6 +29,7 @@ interface ImageTableProps {
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
   onFindSimilar?: (image: IndexedImage) => void;
+  onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
 }
 
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
@@ -73,12 +74,12 @@ const ImageTable: React.FC<ImageTableProps> = ({
   isCollectionsView = false,
   onImageRenamed,
   onFindSimilar,
+  onOpenComfyUIWorkspace,
 }) => {
   const directories = useImageStore((state) => state.directories);
   const transferProgress = useImageStore((state) => state.transferProgress);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
-  const [sortedImages, setSortedImages] = useState<IndexedImage[]>(images);
   const [transferMode, setTransferMode] = useState<'copy' | 'move' | null>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
@@ -94,7 +95,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
   const removeImagesFromCollection = useImageStore((state) => state.removeImagesFromCollection);
   const updateCollection = useImageStore((state) => state.updateCollection);
-  const { canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const { canUseComfyUI, canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
   const {
@@ -146,6 +147,21 @@ const ImageTable: React.FC<ImageTableProps> = ({
     onFindSimilar(contextMenu.image);
     hideContextMenu();
   }, [contextMenu.image, hideContextMenu, onFindSimilar]);
+
+  const openComfyUIWorkspace = useCallback(() => {
+    if (!contextMenu.image || !onOpenComfyUIWorkspace) {
+      return;
+    }
+
+    if (!canUseComfyUI) {
+      showProModal('comfyui');
+      hideContextMenu();
+      return;
+    }
+
+    onOpenComfyUIWorkspace(contextMenu.image);
+    hideContextMenu();
+  }, [canUseComfyUI, contextMenu.image, hideContextMenu, onOpenComfyUIWorkspace, showProModal]);
 
   const getContextTargetImages = useCallback(() => {
     if (!contextMenu.image) {
@@ -401,11 +417,11 @@ const ImageTable: React.FC<ImageTableProps> = ({
     return <ArrowDown className="w-3 h-3" />;
   };
 
-  // Update sorted images when images prop changes OR when sort settings change
-  useEffect(() => {
-    const sorted = applySorting(images, sortField, sortDirection);
-    setSortedImages(sorted);
-  }, [images, sortField, sortDirection, applySorting]);
+  const sortedImages = useMemo(
+    () => applySorting(images, sortField, sortDirection),
+    [images, sortField, sortDirection, applySorting]
+  );
+  const enableRowThumbnails = sortedImages.length <= 5000;
 
   const columnWidths = [
     '96px', // Preview
@@ -430,6 +446,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
           isSelected={selectedImages.has(image.id)}
           onContextMenu={handleContextMenu}
           gridTemplateColumns={gridTemplateColumns}
+          enableThumbnail={enableRowThumbnails}
         />
       </div>
     );
@@ -709,6 +726,17 @@ const ImageTable: React.FC<ImageTableProps> = ({
             Find similar...
           </button>
 
+          {onOpenComfyUIWorkspace && (
+            <button
+              onClick={openComfyUIWorkspace}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              title="Open this image in the ComfyUI workspace context panel"
+            >
+              <Workflow className="w-4 h-4" />
+              Open ComfyUI Workspace
+            </button>
+          )}
+
           <button
             onClick={handleReparseMetadata}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
@@ -825,12 +853,13 @@ interface ImageTableRowProps {
   isSelected: boolean;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
   gridTemplateColumns: string;
+  enableThumbnail: boolean;
 }
 
-const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImageClick, isSelected, onContextMenu, gridTemplateColumns }) => {
+const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImageClick, isSelected, onContextMenu, gridTemplateColumns, enableThumbnail }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const thumbnail = useResolvedThumbnail(image);
+  const thumbnail = useResolvedThumbnail(enableThumbnail ? image : null);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const directories = useImageStore((state) => state.directories);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
@@ -843,10 +872,10 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
   const fullImagePath = joinDisplayPath(directoryPath, relativeImagePath);
   const displayName = showFullFilePath ? fullImagePath : image.handle.name;
 
-  useThumbnail(image);
+  useThumbnail(enableThumbnail ? image : null);
 
   useEffect(() => {
-    if (thumbnailsDisabled) {
+    if (thumbnailsDisabled || !enableThumbnail) {
       setImageUrl(null);
       setIsLoading(false);
       return;
@@ -872,7 +901,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
 
     setImageUrl(null);
     setIsLoading(true);
-  }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo, isAudio]);
+  }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, enableThumbnail, isVideo, isAudio]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -949,6 +978,17 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
                 <Info className="h-4 w-4 text-white" />
               </button>
             </>
+          ) : thumbnailsDisabled || !enableThumbnail ? (
+            <>
+              <Package className="h-4 w-4 text-gray-500" />
+              <button
+                onClick={handlePreviewClick}
+                className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"
+                title="Show details"
+              >
+                <Info className="h-4 w-4 text-white" />
+              </button>
+            </>
           ) : (
             <span className="text-xs text-gray-500">ERR</span>
           )}
@@ -1012,7 +1052,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
     prevProps.image.thumbnailStatus === nextProps.image.thumbnailStatus &&
     prevProps.image.rating === nextProps.image.rating &&
     prevProps.isSelected === nextProps.isSelected &&
-    prevProps.gridTemplateColumns === nextProps.gridTemplateColumns
+    prevProps.gridTemplateColumns === nextProps.gridTemplateColumns &&
+    prevProps.enableThumbnail === nextProps.enableThumbnail
   );
 });
 

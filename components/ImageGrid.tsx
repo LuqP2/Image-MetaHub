@@ -18,7 +18,8 @@ import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, S
   Music,
   Tag,
   RefreshCw,
-  Pencil
+  Pencil,
+  Workflow
 } from 'lucide-react';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -882,6 +883,7 @@ interface ImageGridProps {
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
   onFindSimilar?: (image: IndexedImage) => void;
+  onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   markedBestIds?: Set<string>;      // IDs of images marked as best
   markedArchivedIds?: Set<string>;  // IDs of images marked for archive
 }
@@ -902,6 +904,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   isCollectionsView = false,
   onImageRenamed,
   onFindSimilar,
+  onOpenComfyUIWorkspace,
   markedBestIds,
   markedArchivedIds,
 }) => {
@@ -1131,6 +1134,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     setIsComfyUIGenerateModalOpen(true);
     hideContextMenu();
   }, [contextMenu.image, hideContextMenu, canUseComfyUI, showProModal]);
+
+  const openComfyUIWorkspace = useCallback(() => {
+    if (!contextMenu.image || !onOpenComfyUIWorkspace) return;
+    if (!canUseComfyUI) {
+      showProModal('comfyui');
+      hideContextMenu();
+      return;
+    }
+    onOpenComfyUIWorkspace(contextMenu.image);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, onOpenComfyUIWorkspace, canUseComfyUI, showProModal]);
 
   const selectForComparison = useCallback(() => {
     if (!contextMenu.image) return;
@@ -1623,6 +1637,32 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         }
       } else if (e.key === 'PageDown') {
         e.preventDefault();
+        const itemCount = itemsToRender.length;
+        if (isInfinite && itemCount > 0) {
+          const columnCount = getActiveColumnCount();
+          const rowHeight = getItemHeight(imageSize, showFilenameArea) + GAP_SIZE;
+          const viewportHeight = getGridScrollElement()?.clientHeight ?? rowHeight;
+          const visibleRows = Math.max(1, Math.floor(viewportHeight / rowHeight));
+          const currentRenderedIndex = getRenderedIndexForImageIndex(focusedImageIndexRef.current);
+          const nextRenderedIndex = clampIndex(
+            (currentRenderedIndex >= 0 ? currentRenderedIndex : 0) + (columnCount * visibleRows),
+            itemCount,
+          );
+          const nextItem = itemsToRender[nextRenderedIndex];
+          const previewTarget = nextItem
+            ? isImageStack(nextItem)
+              ? nextItem.coverImage
+              : nextItem
+            : undefined;
+          const resolvedImageIndex = nextItem ? getImageIndexForRenderedItem(nextItem) : -1;
+
+          if (previewTarget && resolvedImageIndex >= 0) {
+            focusedImageIndexRef.current = resolvedImageIndex;
+            setFocusedImageIndex(resolvedImageIndex);
+            setPreviewImage(previewTarget);
+          }
+          return;
+        }
         if (currentPage < totalPages) {
           onPageChange(currentPage + 1);
           focusedImageIndexRef.current = 0;
@@ -1630,6 +1670,32 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         }
       } else if (e.key === 'PageUp') {
         e.preventDefault();
+        const itemCount = itemsToRender.length;
+        if (isInfinite && itemCount > 0) {
+          const columnCount = getActiveColumnCount();
+          const rowHeight = getItemHeight(imageSize, showFilenameArea) + GAP_SIZE;
+          const viewportHeight = getGridScrollElement()?.clientHeight ?? rowHeight;
+          const visibleRows = Math.max(1, Math.floor(viewportHeight / rowHeight));
+          const currentRenderedIndex = getRenderedIndexForImageIndex(focusedImageIndexRef.current);
+          const nextRenderedIndex = clampIndex(
+            (currentRenderedIndex >= 0 ? currentRenderedIndex : 0) - (columnCount * visibleRows),
+            itemCount,
+          );
+          const nextItem = itemsToRender[nextRenderedIndex];
+          const previewTarget = nextItem
+            ? isImageStack(nextItem)
+              ? nextItem.coverImage
+              : nextItem
+            : undefined;
+          const resolvedImageIndex = nextItem ? getImageIndexForRenderedItem(nextItem) : -1;
+
+          if (previewTarget && resolvedImageIndex >= 0) {
+            focusedImageIndexRef.current = resolvedImageIndex;
+            setFocusedImageIndex(resolvedImageIndex);
+            setPreviewImage(previewTarget);
+          }
+          return;
+        }
         if (currentPage > 1) {
           onPageChange(currentPage - 1);
           focusedImageIndexRef.current = 0;
@@ -1651,7 +1717,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [flushKeyboardPreview, getActiveColumnCount, getImageIndexForRenderedItem, getRenderedIndexForImageIndex, itemsToRender, setFocusedImageIndex, setPreviewImage, onImageClick, focusedImageIndex, images, currentPage, totalPages, onPageChange]);
+  }, [flushKeyboardPreview, getActiveColumnCount, getGridScrollElement, getImageIndexForRenderedItem, getRenderedIndexForImageIndex, imageSize, isInfinite, itemsToRender, setFocusedImageIndex, setPreviewImage, onImageClick, focusedImageIndex, images, currentPage, totalPages, onPageChange, showFilenameArea]);
 
   useEffect(() => {
     return () => {
@@ -2065,6 +2131,18 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <span className="flex-1">Generate with ComfyUI</span>
             {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
+
+          {onOpenComfyUIWorkspace && (
+            <button
+              onClick={openComfyUIWorkspace}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              title={!canUseComfyUI && initialized ? 'Pro feature - start trial' : 'Open this image in the ComfyUI workspace context panel'}
+            >
+              <Workflow className="w-4 h-4" />
+              <span className="flex-1">Open ComfyUI Workspace</span>
+              {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+            </button>
+          )}
         </div>,
         document.body,
       )
@@ -2146,6 +2224,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             setSelectedImageForGeneration(null);
           }}
           image={selectedImageForGeneration}
+          directoryPath={directories.find((directory) => directory.id === selectedImageForGeneration.directoryId)?.path}
           onGenerate={async (params: ComfyUIGenerationParams) => {
             const customMetadata: Partial<BaseMetadata> = {
               prompt: params.prompt,

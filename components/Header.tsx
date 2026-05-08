@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -7,7 +7,7 @@ import { A1111ApiClient } from '../services/a1111ApiClient';
 import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
 
-type LibraryView = 'library' | 'smart' | 'model' | 'node' | 'collections';
+type LibraryView = 'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui';
 
 interface HeaderProps {
     onOpenSettings: () => void;
@@ -28,6 +28,7 @@ const Header: React.FC<HeaderProps> = ({
 }) => {
   const {
     canUseAnalytics,
+    canUseComfyUI,
     showProModal,
     isTrialActive,
     trialDaysRemaining,
@@ -326,10 +327,19 @@ const Header: React.FC<HeaderProps> = ({
       { id: 'model' as const, label: 'Model View' },
       { id: 'node' as const, label: 'Node View' },
       { id: 'collections' as const, label: 'Collections' },
+      { id: 'comfyui' as const, label: 'ComfyUI', icon: Workflow },
     ],
     [clustersCount]
   );
   const utilityButtonClassName = 'app-top-icon-button';
+  const handleViewTabClick = useCallback((view: LibraryView) => {
+    if (view === 'comfyui' && !canUseComfyUI) {
+      showProModal('comfyui');
+      return;
+    }
+
+    onLibraryViewChange?.(view);
+  }, [canUseComfyUI, onLibraryViewChange, showProModal]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-4 py-2.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
@@ -347,24 +357,29 @@ const Header: React.FC<HeaderProps> = ({
           {libraryView && onLibraryViewChange && (
             <div className="min-w-0 max-w-full overflow-x-auto scrollbar-thin">
               <div className="app-top-segmented w-max">
-                {viewTabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => onLibraryViewChange(tab.id)}
-                    className={`app-top-segment whitespace-nowrap ${libraryView === tab.id ? 'app-top-segment-active' : ''}`}
-                  >
-                    <span>{tab.label}</span>
-                    {tab.count ? (
-                      <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
-                        libraryView === tab.id
-                          ? 'border-white/20 bg-black/20 text-white/90'
-                          : 'border-gray-700/80 bg-gray-950/80 text-gray-500'
-                      }`}>
-                        {tab.count}
-                      </span>
-                    ) : null}
-                  </button>
-                ))}
+                {viewTabs.map((tab) => {
+                  const Icon = 'icon' in tab ? tab.icon : null;
+                  const count = 'count' in tab ? tab.count : null;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => handleViewTabClick(tab.id)}
+                      className={`app-top-segment whitespace-nowrap ${libraryView === tab.id ? 'app-top-segment-active' : ''}`}
+                    >
+                      {Icon && <Icon size={14} />}
+                      <span>{tab.label}</span>
+                      {count ? (
+                        <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                          libraryView === tab.id
+                            ? 'border-white/20 bg-black/20 text-white/90'
+                            : 'border-gray-700/80 bg-gray-950/80 text-gray-500'
+                        }`}>
+                          {count}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

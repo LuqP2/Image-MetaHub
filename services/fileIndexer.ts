@@ -2,7 +2,7 @@
 /// <reference lib="dom.iterable" />
 import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager';
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
+import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './parsers/comfyUIParser';
 import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
@@ -1326,7 +1326,8 @@ async function processSingleFileOptimized(
   fileEntry: CatalogFileEntry,
   directoryId: string,
   fileData?: ArrayBuffer,
-  profile?: PhaseProfileSample
+  profile?: PhaseProfileSample,
+  options: { compactRawMetadata?: boolean } = {}
 ): Promise<IndexedImage | null> {
   try {
     const totalStart = profile ? performance.now() : 0;
@@ -1361,8 +1362,37 @@ async function processSingleFileOptimized(
       }
       bufferForDimensions = fileData;
       fileSizeValue = fileSizeValue ?? fileData.byteLength;
+    } else if (isElectron && (fileEntry.handle as ElectronFileHandle)?._filePath && (window as any).electronAPI?.readFile) {
+      const absoluteFilePath = (fileEntry.handle as ElectronFileHandle)._filePath as string;
+      const fileResult = await (window as any).electronAPI.readFile(absoluteFilePath);
+      if (!fileResult.success || !fileResult.data) {
+        throw new Error(fileResult.error || `Failed to read file: ${fileEntry.handle.name}`);
+      }
+      const raw = fileResult.data as ArrayBuffer | ArrayBufferView;
+      if (raw instanceof ArrayBuffer) {
+        fileData = raw;
+      } else if (ArrayBuffer.isView(raw)) {
+        const view = raw as ArrayBufferView;
+        const copy = new Uint8Array(view.byteLength);
+        copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+        fileData = copy.buffer;
+      } else {
+        throw new Error(`Failed to read file: ${fileEntry.handle.name}`);
+      }
+      const view = new DataView(fileData);
+      const detectedType = detectImageType(view);
+      if (detectedType === 'png') {
+        rawMetadata = await parsePNGMetadata(fileData);
+      } else if (detectedType === 'jpeg') {
+        rawMetadata = await parseJPEGMetadata(fileData);
+      } else if (detectedType === 'webp') {
+        rawMetadata = await parseWebPMetadata(fileData);
+      } else {
+        rawMetadata = null;
+      }
+      bufferForDimensions = fileData;
+      fileSizeValue = fileSizeValue ?? fileData.byteLength;
     } else {
-      // Fallback to individual file read (browser path)
       const file = await fileEntry.handle.getFile();
       const parsed = await parseImageMetadata(file);
       rawMetadata = parsed.metadata;
@@ -1651,6 +1681,10 @@ if (normalizedMetadata && isAudio) {
       profile.totalMs = performance.now() - totalStart;
     }
 
+    const runtimeMetadata = options.compactRawMetadata === false
+      ? buildUncompactedRawMetadataForRuntime(rawMetadata, normalizedMetadata)
+      : compactRawMetadataForRuntime(rawMetadata, normalizedMetadata);
+
     return {
       id: `${directoryId}::${fileEntry.path}`,
       name: fileEntry.handle.name,
@@ -1658,8 +1692,8 @@ if (normalizedMetadata && isAudio) {
       thumbnailStatus: 'pending',
       thumbnailError: null,
       directoryId,
-      metadata: normalizedMetadata ? { ...(rawMetadata ?? {}), normalizedMetadata } : rawMetadata || {},
-      metadataString: (rawMetadata && Object.keys(rawMetadata).length > 0) ? JSON.stringify(rawMetadata) : '', // OPTIMIZED: Skip stringify if no metadata or empty object
+      metadata: runtimeMetadata.metadata,
+      metadataString: runtimeMetadata.metadataString,
       lastModified: sortDate, // Use the determined sort date
       contentModifiedMs: fileEntry.contentModifiedMs ?? fileEntry.lastModified,
       models: normalizedMetadata?.models || [],
@@ -1685,7 +1719,8 @@ if (normalizedMetadata && isAudio) {
 
 export async function reparseIndexedImage(
   image: IndexedImage,
-  directoryPath: string
+  directoryPath: string,
+  options: { compactRawMetadata?: boolean } = {}
 ): Promise<IndexedImage | null> {
   if (!window.electronAPI?.joinPaths || !window.electronAPI?.readFile) {
     throw new Error('Metadata reparsing is only available in the desktop app.');
@@ -1729,8 +1764,78 @@ export async function reparseIndexedImage(
   return processSingleFileOptimized(
     fileEntry,
     image.directoryId || image.id.split('::')[0] || '',
-    fileData
+    fileData,
+    undefined,
+    options
   );
+}
+
+const normalizePathForComparison = (value: string): string => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
+const getRelativePathWithinDirectory = (filePath: string, directoryPath: string): string | null => {
+  const normalizedFile = filePath.replace(/\\/g, '/');
+  const normalizedDirectory = directoryPath.replace(/\\/g, '/').replace(/\/+$/, '');
+  const fileKey = normalizePathForComparison(normalizedFile);
+  const directoryKey = normalizePathForComparison(normalizedDirectory);
+
+  if (fileKey === directoryKey || !fileKey.startsWith(`${directoryKey}/`)) {
+    return null;
+  }
+
+  return normalizedFile.slice(normalizedDirectory.length + 1).replace(/^\/+/, '');
+};
+
+export async function indexImageFileAtPath(
+  filePath: string,
+  directory: Pick<Directory, 'id' | 'name' | 'path'>,
+): Promise<IndexedImage | null> {
+  if (!window.electronAPI?.readFile || !window.electronAPI?.getFileStats) {
+    throw new Error('Indexing saved images is only available in the desktop app.');
+  }
+
+  const relativePath = getRelativePathWithinDirectory(filePath, directory.path);
+  if (!relativePath) {
+    return null;
+  }
+
+  const readResult = await window.electronAPI.readFile(filePath);
+  if (!readResult.success || !readResult.data) {
+    throw new Error(readResult.error || 'Failed to read the saved image file.');
+  }
+
+  const statsResult = await window.electronAPI.getFileStats(filePath);
+  const stats = statsResult.success ? statsResult.stats : undefined;
+  const fileName = relativePath.split('/').pop() || relativePath;
+  const bytes = new Uint8Array(readResult.data);
+  const fileData = bytes.slice().buffer;
+  const fileEntry: CatalogFileEntry = {
+    handle: {
+      name: fileName,
+      kind: 'file',
+      _filePath: filePath,
+      getFile: async () => new File([fileData.slice(0) as any], fileName, {
+        type: inferMimeTypeFromName(fileName),
+        lastModified: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : Date.now(),
+      }),
+    } as ElectronFileHandle,
+    path: relativePath,
+    lastModified: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : Date.now(),
+    contentModifiedMs: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : undefined,
+    size: typeof stats?.size === 'number' ? stats.size : fileData.byteLength,
+    type: inferMimeTypeFromName(fileName),
+    birthtimeMs: typeof stats?.birthtimeMs === 'number' ? stats.birthtimeMs : undefined,
+  };
+
+  const indexed = await processSingleFileOptimized(fileEntry, directory.id, fileData);
+  if (!indexed) {
+    return null;
+  }
+
+  return {
+    ...indexed,
+    directoryId: directory.id,
+    directoryName: directory.name,
+  };
 }
 
 /**
@@ -1794,6 +1899,82 @@ interface ProcessFilesOptions {
 
 export interface ProcessFilesResult {
   phaseB: Promise<void>;
+}
+
+const MAX_INLINE_RAW_METADATA_BYTES = 32 * 1024;
+const RAW_METADATA_PREVIEW_BYTES = 4096;
+
+function buildUncompactedRawMetadataForRuntime(
+  rawMetadata: ImageMetadata | null,
+  normalizedMetadata?: BaseMetadata
+): { metadata: IndexedImage['metadata']; metadataString: string } {
+  if (!rawMetadata || Object.keys(rawMetadata).length === 0) {
+    return {
+      metadata: normalizedMetadata ? { normalizedMetadata } as IndexedImage['metadata'] : {},
+      metadataString: '',
+    };
+  }
+
+  const metadata = normalizedMetadata
+    ? { ...rawMetadata, normalizedMetadata } as IndexedImage['metadata']
+    : rawMetadata as IndexedImage['metadata'];
+
+  return {
+    metadata,
+    metadataString: JSON.stringify(rawMetadata),
+  };
+}
+
+function compactRawMetadataForRuntime(
+  rawMetadata: ImageMetadata | null,
+  normalizedMetadata?: BaseMetadata
+): { metadata: IndexedImage['metadata']; metadataString: string } {
+  if (!rawMetadata || Object.keys(rawMetadata).length === 0) {
+    return {
+      metadata: normalizedMetadata ? { normalizedMetadata } as IndexedImage['metadata'] : {},
+      metadataString: '',
+    };
+  }
+
+  const rawMetadataString = JSON.stringify(rawMetadata);
+  if (rawMetadataString.length <= MAX_INLINE_RAW_METADATA_BYTES) {
+    return {
+      metadata: normalizedMetadata
+        ? { ...rawMetadata, normalizedMetadata } as IndexedImage['metadata']
+        : rawMetadata,
+      metadataString: rawMetadataString,
+    };
+  }
+
+  const compactedRawMetadata: Record<string, unknown> = {
+    _rawMetadataCompacted: true,
+    _rawMetadataSizeBytes: rawMetadataString.length,
+    _rawMetadataKeys: Object.keys(rawMetadata),
+  };
+
+  if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string') {
+    compactedRawMetadata.parametersPreview = rawMetadata.parameters.slice(0, RAW_METADATA_PREVIEW_BYTES);
+  }
+
+  if ('imagemetahub_data' in rawMetadata && rawMetadata.imagemetahub_data && typeof rawMetadata.imagemetahub_data === 'object') {
+    const payload = rawMetadata.imagemetahub_data as Record<string, unknown>;
+    compactedRawMetadata.imagemetahub_data = {
+      generator: payload.generator,
+      analytics: payload.analytics,
+      _analytics: payload._analytics,
+      imh_pro: payload.imh_pro,
+      _metahub_pro: payload._metahub_pro,
+    };
+  }
+
+  if (normalizedMetadata) {
+    compactedRawMetadata.normalizedMetadata = normalizedMetadata;
+  }
+
+  return {
+    metadata: compactedRawMetadata as IndexedImage['metadata'],
+    metadataString: JSON.stringify(compactedRawMetadata),
+  };
 }
 
 function mapIndexedImageToCache(image: IndexedImage): CacheImageMetadata {
@@ -2631,11 +2812,12 @@ export async function processFiles(
       const rawMetadata = { ...(image.metadata || {}) } as Record<string, unknown>;
       delete rawMetadata.normalizedMetadata;
       rawMetadata.imagemetahub_data = metaHubData;
+      const runtimeMetadata = compactRawMetadataForRuntime(rawMetadata as ImageMetadata, normalizedMetadata);
 
       return {
         ...image,
-        metadata: { ...rawMetadata, normalizedMetadata },
-        metadataString: Object.keys(rawMetadata).length > 0 ? JSON.stringify(rawMetadata) : '',
+        metadata: runtimeMetadata.metadata,
+        metadataString: runtimeMetadata.metadataString,
         models: normalizedMetadata.models || [],
         loras: normalizedMetadata.loras || [],
         sampler: normalizedMetadata.sampler || '',

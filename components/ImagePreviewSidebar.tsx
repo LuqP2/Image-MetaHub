@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, FC } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, FC } from 'react';
 import { Clipboard, Sparkles, ChevronDown, ChevronRight, Heart, X, Zap, CheckCircle, ArrowUp, Copy, Search, Pencil, Download, Eye, EyeOff } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type BaseMetadata, type IndexedImage, type LoRAInfo } from '../types';
@@ -28,6 +28,7 @@ import { copyEditableMetadata, readEditableMetadataClipboard } from '../services
 import { buildEffectiveMetadata, getEditableMetadataFields } from '../utils/editableMetadata';
 import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorModal';
 import BatchExportModal from './BatchExportModal';
+import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
 
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
@@ -162,6 +163,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const [tagInput, setTagInput] = useState('');
   const [showPerformance, setShowPerformance] = useState(true);
   const [showRawMetadata, setShowRawMetadata] = useState(false);
+  const [hydratedRawMetadataImage, setHydratedRawMetadataImage] = useState<IndexedImage | null>(null);
+  const [isHydratingRawMetadata, setIsHydratingRawMetadata] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
@@ -266,6 +269,35 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   // Calculate these BEFORE the early return to maintain hook order
   const nMeta: BaseMetadata | undefined = activeImage?.metadata?.normalizedMetadata;
   const effectiveMetadata = activeImage ? buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal) : undefined;
+  const activeImageDirectoryPath = activeImage
+    ? directories.find((directory) => directory.id === activeImage.directoryId)?.path
+    : undefined;
+  const rawMetadataImage = hydratedRawMetadataImage?.id === activeImage?.id ? hydratedRawMetadataImage : activeImage;
+  const ensureFullRawMetadata = useCallback(async (): Promise<IndexedImage | null> => {
+    if (!activeImage) {
+      return null;
+    }
+    if (hydratedRawMetadataImage?.id === activeImage.id) {
+      return hydratedRawMetadataImage;
+    }
+    if (!hasCompactedRuntimeMetadata(activeImage)) {
+      return activeImage;
+    }
+
+    setIsHydratingRawMetadata(true);
+    try {
+      const hydrated = await hydrateImageRawMetadata(activeImage, activeImageDirectoryPath);
+      setHydratedRawMetadataImage(hydrated);
+      return hydrated;
+    } finally {
+      setIsHydratingRawMetadata(false);
+    }
+  }, [activeImage, activeImageDirectoryPath, hydratedRawMetadataImage]);
+
+  useEffect(() => {
+    setHydratedRawMetadataImage(null);
+    setIsHydratingRawMetadata(false);
+  }, [activeImage?.id]);
   const generationImage: IndexedImage = activeImage && effectiveMetadata
     ? {
         ...activeImage,
@@ -941,6 +973,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   isOpen={isComfyUIGenerateModalOpen}
                   onClose={() => setIsComfyUIGenerateModalOpen(false)}
                   image={generationImage}
+                  directoryPath={activeImageDirectoryPath}
                   onGenerate={async (params: ComfyUIGenerationParams) => {
                     const customMetadata: Partial<BaseMetadata> = {
                       prompt: params.prompt,
@@ -979,7 +1012,13 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-base font-semibold text-gray-700 dark:text-gray-300">Generation Parameters</h3>
                 <button
-                  onClick={() => setShowRawMetadata(!showRawMetadata)}
+                  onClick={() => {
+                    const nextShowRawMetadata = !showRawMetadata;
+                    setShowRawMetadata(nextShowRawMetadata);
+                    if (nextShowRawMetadata) {
+                      void ensureFullRawMetadata();
+                    }
+                  }}
                   className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white underline"
                 >
                   {showRawMetadata ? 'Show Parsed' : 'Show JSON'}
@@ -987,7 +1026,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               </div>
               {showRawMetadata && (
                 <pre className="bg-black/50 p-2 rounded-lg text-xs text-gray-300 whitespace-pre-wrap break-all max-h-64 overflow-y-auto mt-2">
-                  {JSON.stringify(activeImage.metadata, null, 2)}
+                  {isHydratingRawMetadata
+                    ? 'Loading full raw metadata...'
+                    : JSON.stringify(rawMetadataImage?.metadata ?? activeImage.metadata, null, 2)}
                 </pre>
               )}
             </div>

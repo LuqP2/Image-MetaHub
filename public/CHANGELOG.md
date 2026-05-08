@@ -5,29 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.15.4] - 2026-04-29
+## [0.16.0] [Unreleased]
+
+### Added
+
+- **Image Adjustment Editing**: Added an adjustment panel in the Image Modal for brightness, contrast, saturation, and hue, with desktop Save As and Overwrite workflows that export PNG output while preserving generation metadata.
+- **Embedded ComfyUI Workspace**: Added a dedicated ComfyUI Workspace view with an embedded ComfyUI browser, image context panel, workflow metadata tabs, thumbnail navigation, copy/generate actions, and direct open actions from grid/table image contexts.
+
+### Improved
+
+- **Large Library Memory Usage**: Reduced OOM risk in large ComfyUI libraries by compacting oversized raw metadata, streaming cache diffing across chunks, using lighter Electron file handles, increasing renderer heap headroom, and avoiding automatic table thumbnails in very large result sets.
+- **Large Library Cache Reconciliation**: Improved startup and manual cache checks for large folders by applying lightweight UI deltas and persisting chunked cache updates without rehydrating the entire library.
+- **Accessibility**: Added accessible labels to search, compare zoom controls, reset zoom, and generate variation icon-only controls.
+
+### Fixed
+
+- **macOS Keyboard Navigation**: Fixed Page Up/Page Down navigation in the image grid and kept folder tree keyboard navigation scrolled to the focused folder.
+- **What's New Persistence**: Fixed the changelog splash screen reopening on every launch after the current version had already been viewed.
+- **Video Viewer Scaling**: Fixed video sizing in the Image Modal so portrait and landscape videos fit the available viewer area without cropping playback controls.
+- **Smart Library Cluster Persistence**: Fixed Smart Library cluster restore so cached stacks persist across sessions.
+- **Cache Version Reindexing**: Fixed stale parser-version cache summaries so app updates reparse invalid cached metadata instead of leaving outdated metadata or empty cached libraries.
+- **Scoped Folder Refresh Cache Persistence**: Fixed scoped folder refreshes so cache updates preserve unrelated cached entries while correctly applying changed and deleted files.
+- **Desktop Saved Image Indexing**: Fixed desktop file handling paths used when saved or overwritten images are indexed/reparsed, including more accurate file type handling for edited outputs.
+
+## [0.15.4] - 2026-05-02
 
 ### Added
 
 - **Advanced Folder Management**: Added directory tree view with subfolder navigation, drag-and-drop file transfers, directory renaming, and global hotkey support for clipboard operations.
+- **Generated Output Preview**: Added a dedicated preview modal for completed generation queue results.
 
 ### Improved
 
-- **Generation Queue**: Rebuilt queue UX with clearer actions, clickable results, and thumbnails. Added a dedicated preview modal for completed jobs. Scheduling now drains in FIFO order without interruptions from cancellations. Improved memory handling by using Blob URLs instead of base64 payloads, and refined A1111 batch progress tracking.
-- **Workflow Analysis**: Enhanced ComfyUI workflow JSON handling, resolution, and streamlined dimension target extraction logic.
-- **Workspace Experience**: Improved workspace tab persistence and enhanced image modal functionality.
+- **Generation Queue**: Rebuilt queue execution and progress tracking for clearer A1111/ComfyUI status, FIFO scheduling, clickable results, thumbnails, and lower-memory previews.
+- **Image Grid Navigation**: Improved keyboard navigation, focused image state, page-boundary handling, preview updates, and thumbnail warmup behavior.
+- **ComfyUI Workflow Experience**: Improved workflow JSON resolution, dimension target detection, error display, workspace tab persistence, and image modal integration.
+- **Slideshow Experience**: Improved slideshow exit behavior and covered it with focused tests.
+- **Accessibility**: Added accessible labels to modal close buttons.
 
 ### Fixed
 
 - **Maximum Update Depth Error**: Fixed a critical "Maximum update depth exceeded" error during heavy indexing. Stabilized array references in the application state to prevent infinite re-rendering loops when new batches of images are loaded.
-- **Queued Generation Deadlock**: Fixed a structural queue bug where jobs created as `waiting` could remain stuck forever because no runner existed to consume them after the active job completed.
-- **Provider Runner Races**: Reduced overlapping provider execution and stale scheduling states when active queue jobs are canceled or removed while the underlying executor is still unwinding.
-- **A1111 Progress Race**: Fixed stale delayed progress cleanup from one A1111 job clearing progress for the next queued A1111 job.
-
-### Known Bugs
-
-- **Queue Preview Blob URL Eviction Leak**: When the queue exceeds its 200-item cap, entries trimmed by the cap may not revoke their generated preview Blob URLs.
-- **Canceled A1111 Output Blob URL Leak**: If an in-flight A1111 job is canceled or removed after outputs have already been materialized, discarded generated preview Blob URLs may not be revoked.
+- **Generation Queue Cancellation**: Fixed canceled A1111 and ComfyUI jobs blocking the queue, leaving stale artifacts, or clearing progress for the next job.
+- **Folder Rename State**: Fixed directory rename edge cases including nested root remapping, folder filter preservation, and stale rename state.
+- **Clipboard Paste Recovery**: Fixed failed folder paste operations so the clipboard contents are retained.
+- **Image Grid Layout**: Fixed column count and transition issues that could make thumbnail navigation feel inconsistent.
 
 ## [0.15.3] - 2026-04-25
 

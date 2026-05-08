@@ -52,6 +52,41 @@ type DirectoryFileRecord = {
     contentModifiedMs?: number;
 };
 
+const electronHandleGetFile = async function (this: { name: string; _filePath?: string }) {
+    const electronAPI = window.electronAPI;
+    if (!getIsElectron() || !electronAPI || !this._filePath) {
+        throw new Error(`Failed to read file: ${this.name}`);
+    }
+
+    const fileResult = await electronAPI.readFile(this._filePath);
+    if (fileResult.success && fileResult.data) {
+        const freshData = new Uint8Array(fileResult.data);
+        const type = this.name.toLowerCase().endsWith('.png')
+            ? 'image/png'
+            : this.name.toLowerCase().endsWith('.webp')
+                ? 'image/webp'
+                : 'image/jpeg';
+        return new File([freshData as any], this.name, { type });
+    }
+
+    if (fileResult.errorType && fileResult.errorType !== 'FILE_NOT_FOUND') {
+        console.error(`Failed to read file: ${this.name}`, {
+            error: fileResult.error,
+            errorType: fileResult.errorType,
+            errorCode: fileResult.errorCode,
+            path: this._filePath,
+        });
+    }
+    throw new Error(`Failed to read file: ${this.name}`);
+};
+
+const createElectronFileHandle = (name: string, filePath: string) => ({
+    name,
+    kind: 'file' as const,
+    _filePath: filePath,
+    getFile: electronHandleGetFile,
+});
+
 // Function to clear file data cache
 function clearFileDataCache() {
   fileDataCache.clear();
@@ -160,35 +195,7 @@ async function getFileHandles(
             const file = files[i];
             const filePath = filePaths[i];
 
-            const mockHandle = {
-                name: file.name,
-                kind: 'file' as const,
-                _filePath: filePath,
-                getFile: async () => {
-                    // Read file directly when needed (during processFiles)
-                    if (getIsElectron()) {
-                        const fileResult = await electronAPI.readFile(filePath);
-                        if (fileResult.success && fileResult.data) {
-                            const freshData = new Uint8Array(fileResult.data);
-                            const lowerName = file.name.toLowerCase();
-                            const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                            return new File([freshData as any], file.name, { type });
-                        } else {
-                            // Only log non-file-not-found errors to reduce console noise
-                            if (fileResult.errorType && fileResult.errorType !== 'FILE_NOT_FOUND') {
-                                console.error(`Failed to read file: ${file.name}`, {
-                                    error: fileResult.error,
-                                    errorType: fileResult.errorType,
-                                    errorCode: fileResult.errorCode,
-                                    path: filePath
-                                });
-                            }
-                            throw new Error(`Failed to read file: ${file.name}`);
-                        }
-                    }
-                    throw new Error(`Failed to read file: ${filePath}`);
-                }
-            };
+            const mockHandle = createElectronFileHandle(file.name, filePath);
             handles.push({ handle: mockHandle as any, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type, birthtimeMs: file.birthtimeMs, contentModifiedMs: file.contentModifiedMs });
         }
     } else {
@@ -534,12 +541,16 @@ export function useImageLoader() {
             }])
         );
 
+        const preferLightweightReconcile = allCurrentFiles.length >= 10000;
         const diff = await cacheManager.validateCacheAndGetDiff(
             activeDirectory.path,
             activeDirectory.name,
             allCurrentFiles,
             shouldScanSubfolders,
+            undefined,
+            { includeCachedImages: !preferLightweightReconcile },
         );
+        const useLightweightReconcile = preferLightweightReconcile && !diff.needsFullRefresh;
 
         traceCacheDebug('loader:reconcileCachedDirectory:diff', () => ({
             directoryId: activeDirectory.id,
@@ -547,12 +558,103 @@ export function useImageLoader() {
                 newAndModifiedFiles: diff.newAndModifiedFiles.length,
                 deletedFileIds: diff.deletedFileIds.length,
                 currentFiles: allCurrentFiles.length,
+                needsFullRefresh: diff.needsFullRefresh,
             },
             snapshot: createCacheDebugSnapshot(useImageStore.getState()),
         }));
 
         if (diff.newAndModifiedFiles.length === 0 && diff.deletedFileIds.length === 0) {
             return false;
+        }
+
+        if (useLightweightReconcile) {
+            console.warn(
+                `[startup-reconcile] Applying lightweight UI reconcile for ${activeDirectory.path}: ` +
+                `${diff.newAndModifiedFiles.length} changed/new, ${diff.deletedFileIds.length} deleted.`
+            );
+            setDirectoryRefreshing(activeDirectory.id, true);
+
+            try {
+                if (diff.deletedFileIds.length > 0) {
+                    removeImages(diff.deletedFileIds);
+                }
+
+                const changedIds = Array.from(new Set(
+                    diff.newAndModifiedFiles.map(file => `${activeDirectory.id}::${file.name}`)
+                ));
+                if (changedIds.length > 0) {
+                    removeImages(changedIds);
+                }
+
+                const sortedFilesWithStats = diff.newAndModifiedFiles.length > 0
+                    ? [...diff.newAndModifiedFiles]
+                        .sort((a, b) => b.lastModified - a.lastModified)
+                        .map(file => ({
+                            ...file,
+                            size: fileStatsMap.get(file.name)?.size ?? file.size,
+                            type: fileStatsMap.get(file.name)?.type ?? file.type,
+                            birthtimeMs: fileStatsMap.get(file.name)?.birthtimeMs ?? file.birthtimeMs ?? file.lastModified,
+                            contentModifiedMs: fileStatsMap.get(file.name)?.contentModifiedMs ?? file.contentModifiedMs ?? file.lastModified,
+                        }))
+                    : [];
+
+                const fileHandles = sortedFilesWithStats.length > 0
+                    ? await getFileHandles(activeDirectory.handle, activeDirectory.path, sortedFilesWithStats)
+                    : [];
+                const cacheUpserts: IndexedImage[] = [];
+
+                const { phaseB } = await processFiles(
+                    fileHandles,
+                    () => {},
+                    (batch) => {
+                        addImages(batch);
+                    },
+                    activeDirectory.id,
+                    activeDirectory.name,
+                    shouldScanSubfolders,
+                    (deletedFileIds) => {
+                        if (deletedFileIds.length > 0) {
+                            removeImages(deletedFileIds);
+                        }
+                    },
+                    undefined,
+                    waitWhilePaused,
+                    {
+                        cacheWriter: null,
+                        concurrency: useSettingsStore.getState().indexingConcurrency ?? 4,
+                        fileStats: fileStatsMap,
+                        onEnrichmentBatch: (batch) => {
+                            cacheUpserts.push(...batch);
+                            mergeImages(batch);
+                        },
+                        hydratePreloadedImages: false,
+                    }
+                );
+
+                await phaseB;
+                await cacheManager.applyChunkedCacheDelta(
+                    activeDirectory.path,
+                    activeDirectory.name,
+                    cacheUpserts,
+                    [...diff.deletedFileIds, ...changedIds],
+                    [],
+                    shouldScanSubfolders
+                );
+                await refreshLineageDirectorySignature(activeDirectory);
+                scheduleLineageRebuild(800);
+                traceCacheDebug('loader:reconcileCachedDirectory:lightweightComplete', () => ({
+                    directoryId: activeDirectory.id,
+                    snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+                }));
+                return true;
+            } catch (reconcileError) {
+                console.error(`[startup-reconcile] Lightweight reconcile failed for ${activeDirectory.path}:`, reconcileError);
+                return false;
+            } finally {
+                setDirectoryRefreshing(activeDirectory.id, false);
+                setEnrichmentProgress(null);
+                setProgress(null);
+            }
         }
 
         setDirectoryRefreshing(activeDirectory.id, true);
@@ -758,34 +860,7 @@ export function useImageLoader() {
                     const chunkImages: IndexedImage[] = metadataChunk.map((meta, i) => {
                         const filePath = filePaths[i];
 
-                        const mockHandle = {
-                            name: meta.name,
-                            kind: 'file' as const,
-                            _filePath: filePath,
-                            getFile: async () => {
-                                if (isElectron && filePath) {
-                                    const fileResult = await electronAPI.readFile(filePath);
-                                    if (fileResult.success && fileResult.data) {
-                                        const freshData = new Uint8Array(fileResult.data);
-                                        const lowerName = meta.name.toLowerCase();
-                                        const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                                        return new File([freshData as any], meta.name, { type });
-                                    } else {
-                                        // Only log non-file-not-found errors to reduce console noise
-                                        if (fileResult.errorType && fileResult.errorType !== 'FILE_NOT_FOUND') {
-                                            console.error(`Failed to read file: ${meta.name}`, {
-                                                error: fileResult.error,
-                                                errorType: fileResult.errorType,
-                                                errorCode: fileResult.errorCode,
-                                                path: filePath
-                                            });
-                                        }
-                                        throw new Error(`Failed to read file: ${meta.name}`);
-                                    }
-                                }
-                                throw new Error(`Failed to read file: ${meta.name}`);
-                            }
-                        };
+                        const mockHandle = createElectronFileHandle(meta.name, filePath);
 
                         return {
                             ...meta,
@@ -927,8 +1002,13 @@ export function useImageLoader() {
                 refreshPath ? relativePrefix : undefined
             );
 
+            const isScopedRefresh = Boolean(refreshPath);
+            const changedIds = Array.from(new Set(
+                diff.newAndModifiedFiles.map(file => `${directory.id}::${file.name}`)
+            ));
+            const scopedCacheUpsertsById = new Map<string, IndexedImage>();
             let cacheWriter: IncrementalCacheWriter | null = null;
-            const shouldUseWriter = getIsElectron() && (diff.needsFullRefresh || diff.newAndModifiedFiles.length > 0 || diff.deletedFileIds.length > 0);
+            const shouldUseWriter = getIsElectron() && !isScopedRefresh && (diff.needsFullRefresh || diff.newAndModifiedFiles.length > 0 || diff.deletedFileIds.length > 0);
 
             if (shouldUseWriter) {
                 try {
@@ -959,13 +1039,8 @@ export function useImageLoader() {
 
             if (shouldHydratePreloadedImages) {
                 clearImages(directory.id);
-            } else if (diff.newAndModifiedFiles.length > 0) {
-                const changedIds = Array.from(new Set(
-                    diff.newAndModifiedFiles.map(file => `${directory.id}::${file.name}`)
-                ));
-                if (changedIds.length > 0) {
-                    removeImages(changedIds);
-                }
+            } else if (changedIds.length > 0) {
+                removeImages(changedIds);
             }
 
             // Add cached images (both first load and refresh)
@@ -1018,6 +1093,11 @@ export function useImageLoader() {
             }
 
             const handleBatchProcessed = (batch: IndexedImage[]) => {
+                if (isScopedRefresh) {
+                    for (const image of batch) {
+                        scopedCacheUpsertsById.set(image.id, image);
+                    }
+                }
                 addImages(batch);
                 if (totalCatalogItems > 0) {
                     loadedCatalogItems += batch.length;
@@ -1030,6 +1110,11 @@ export function useImageLoader() {
 
             const handleEnrichmentBatch = (batch: IndexedImage[]) => {
                 const start = performance.now();
+                if (isScopedRefresh) {
+                    for (const image of batch) {
+                        scopedCacheUpsertsById.set(image.id, image);
+                    }
+                }
                 mergeImages(batch);
                 const durationMs = performance.now() - start;
                 traceCacheDebug('loader:handleEnrichmentBatch', () => ({
@@ -1052,7 +1137,8 @@ export function useImageLoader() {
                 removeImages(deletedFileIds);
             };
 
-            const shouldProcessPipeline = (fileHandles.length > 0) || !!cacheWriter || (shouldHydratePreloadedImages && preloadedImages.length > 0);
+            const shouldApplyScopedCacheDelta = isScopedRefresh && (diff.newAndModifiedFiles.length > 0 || diff.deletedFileIds.length > 0);
+            const shouldProcessPipeline = (fileHandles.length > 0) || !!cacheWriter || shouldApplyScopedCacheDelta || (shouldHydratePreloadedImages && preloadedImages.length > 0);
 
             if (shouldProcessPipeline) {
                 if (shouldCancelIndexing(suppressIndexingState)) {
@@ -1096,23 +1182,51 @@ export function useImageLoader() {
                     }
                 );
 
-                phaseB
-                    .then(() => {
-                        releaseThumbnailPause();
-                        const indexedImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
-                        scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:indexed`, indexedImages);
-                        // Keep the progress bar visible for 2 seconds after completion
-                        setTimeout(() => setEnrichmentProgress(null), 2000);
-                    })
-                    .catch(err => {
-                        releaseThumbnailPause();
-                        console.error('Phase B enrichment failed', err);
-                        // Keep error visible for 2 seconds
-                        setTimeout(() => setEnrichmentProgress(null), 2000);
-                    });
+                const handlePhaseBComplete = () => {
+                    releaseThumbnailPause();
+                    const indexedImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
+                    scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:indexed`, indexedImages);
+                    // Keep the progress bar visible for 2 seconds after completion
+                    setTimeout(() => setEnrichmentProgress(null), 2000);
+                };
 
-                if (!shouldCancelIndexing(suppressIndexingState)) {
-                    finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
+                if (isScopedRefresh) {
+                    try {
+                        await phaseB;
+                        if (shouldApplyScopedCacheDelta && getIsElectron()) {
+                            await cacheManager.applyChunkedCacheDelta(
+                                directory.path,
+                                directory.name,
+                                Array.from(scopedCacheUpsertsById.values()),
+                                [...diff.deletedFileIds, ...changedIds],
+                                [],
+                                shouldScanSubfolders
+                            );
+                        }
+                        handlePhaseBComplete();
+                    } catch (err) {
+                        releaseThumbnailPause();
+                        console.error('Scoped refresh enrichment failed', err);
+                        setTimeout(() => setEnrichmentProgress(null), 2000);
+                        throw err;
+                    }
+
+                    if (!shouldCancelIndexing(suppressIndexingState)) {
+                        finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
+                    }
+                } else {
+                    phaseB
+                        .then(handlePhaseBComplete)
+                        .catch(err => {
+                            releaseThumbnailPause();
+                            console.error('Phase B enrichment failed', err);
+                            // Keep error visible for 2 seconds
+                            setTimeout(() => setEnrichmentProgress(null), 2000);
+                        });
+
+                    if (!shouldCancelIndexing(suppressIndexingState)) {
+                        finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
+                    }
                 }
             } else {
                 releaseThumbnailPause();
@@ -1275,6 +1389,22 @@ export function useImageLoader() {
                         return;
                     }
 
+                    const currentState = useImageStore.getState();
+                    const storedPathsAlreadyLoaded = paths.every((path: string) =>
+                        currentState.directories.some(directory => directory.path === path)
+                    );
+                    const hasHydratedStoredImages = currentState.images.some(image =>
+                        currentState.directories.some(directory =>
+                            paths.includes(directory.path) && directory.id === image.directoryId
+                        )
+                    );
+
+                    if (storedPathsAlreadyLoaded && hasHydratedStoredImages) {
+                        const allPaths = currentState.directories.map(directory => directory.path);
+                        await window.electronAPI?.updateAllowedPaths(allPaths);
+                        return;
+                    }
+
                     // Use global auto-watch setting for all directories
                     const globalAutoWatch = useSettingsStore.getState().globalAutoWatch;
 
@@ -1398,30 +1528,7 @@ export function useImageLoader() {
             // Criar mock handles para os arquivos (necess├írio para processFiles)
             // Inclu├¡mos _filePath para que o Electron possa ler os arquivos via IPC batch
             const fileEntries = newFiles.map(file => ({
-                handle: {
-                    name: file.normalizedName,
-                    kind: 'file' as const,
-                    _filePath: file.path, // IMPORTANTE: Path para leitura via IPC no Electron
-                    getFile: async () => {
-                        // Read file directly when needed (during processFiles)
-                        const electronAPI = window.electronAPI;
-                        if (getIsElectron() && electronAPI) {
-                            const fileResult = await electronAPI.readFile(file.path);
-                            if (fileResult.success && fileResult.data) {
-                                const freshData = new Uint8Array(fileResult.data);
-                                const lowerName = file.normalizedName.toLowerCase();
-                                const type = lowerName.endsWith('.png')
-                                    ? 'image/png'
-                                    : lowerName.endsWith('.webp')
-                                        ? 'image/webp'
-                                        : 'image/jpeg';
-                                return new File([freshData as any], file.normalizedName, { type });
-                            }
-                            throw new Error(`Failed to read file: ${file.normalizedName}`);
-                        }
-                        throw new Error(`Failed to read file: ${file.path}`);
-                    }
-                } as any,
+                handle: createElectronFileHandle(file.normalizedName, file.path) as any,
                 path: file.relativePath || file.normalizedName,
                 lastModified: file.lastModified,
                 contentModifiedMs: file.contentModifiedMs ?? file.lastModified,
