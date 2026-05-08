@@ -259,40 +259,45 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         <SettingsSectionCard
           title="Clear library cache"
           description="Rebuild indexed metadata, thumbnails and smart library cache without changing your preferences."
-          tone="danger"
           className="space-y-3"
         >
-          <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>This removes only cache data that can be rebuilt. Saved folders, preferences, tags, ratings and license/trial state are kept.</p>
+          <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 text-sm text-gray-300">
+            <p>Removes only cache data that can be rebuilt. Saved folders, preferences, tags, ratings and license/trial state are kept.</p>
           </div>
           <button
             type="button"
             onClick={handleClearLibraryCache}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+            className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-600"
           >
             Clear library cache
           </button>
         </SettingsSectionCard>
 
-        <SettingsSectionCard
-          title="Reset app data"
-          description="Use this when local app state needs a fresh start. License and trial state are preserved."
-          tone="danger"
-          className="space-y-3"
-        >
-          <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>This removes saved folders, preferences, filters, annotations, smart collections and automation rules. Image files, license and trial state are kept.</p>
+        <div className="space-y-3 pt-2">
+          <div className="space-y-1">
+            <h3 className="text-base font-semibold text-red-100">Danger zone</h3>
+            <p className="text-sm text-gray-400">Destructive local recovery actions. Image files, license and trial state are preserved.</p>
           </div>
-          <button
-            type="button"
-            onClick={handleResetAppData}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+
+          <SettingsSectionCard
+            title="Reset app data"
+            description="Use this when local app state needs a fresh start."
+            tone="danger"
+            className="space-y-3"
           >
-            Reset app data
-          </button>
-        </SettingsSectionCard>
+            <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>This removes saved folders, preferences, filters, annotations, smart collections and automation rules.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleResetAppData}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+            >
+              Reset app data
+            </button>
+          </SettingsSectionCard>
+        </div>
       </AdvancedSection>
     </SettingsPanel>
   );
