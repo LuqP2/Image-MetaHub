@@ -88,4 +88,28 @@ describe('ImageAdjustmentPanel', () => {
     expect(screen.getByRole('spinbutton', { name: /hue/i })).toHaveProperty('disabled', true);
     expect(screen.getByRole('button', { name: /overwrite/i })).toHaveProperty('disabled', true);
   });
+
+  it('can disable overwrite independently from save as', () => {
+    const onSaveAs = vi.fn();
+    const onOverwrite = vi.fn();
+    render(
+      <ImageAdjustmentPanel
+        adjustments={{ ...DEFAULT_IMAGE_ADJUSTMENTS, brightness: 120 }}
+        onChange={vi.fn()}
+        onReset={vi.fn()}
+        onSaveAs={onSaveAs}
+        onOverwrite={onOverwrite}
+        canOverwrite={false}
+        overwriteUnavailableReason="Overwrite is only available for PNG images."
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /save as/i }));
+    fireEvent.click(screen.getByRole('button', { name: /overwrite/i }));
+
+    expect(screen.getByRole('button', { name: /save as/i })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: /overwrite/i })).toHaveProperty('disabled', true);
+    expect(onSaveAs).toHaveBeenCalled();
+    expect(onOverwrite).not.toHaveBeenCalled();
+  });
 });

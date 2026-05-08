@@ -298,6 +298,9 @@ export interface ElectronAPI {
   clearMetadataCache: () => Promise<{ success: boolean; error?: string }>;
   clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
   clearLibraryCache: () => Promise<{ success: boolean; error?: string }>;
+  readSmartLibraryCache: (args: { cacheId: string; kind: 'clusters' | 'autotags' }) => Promise<{ success: boolean; data?: string; error?: string; errorCode?: string }>;
+  writeSmartLibraryCache: (args: { cacheId: string; kind: 'clusters' | 'autotags'; data: any }) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
+  deleteSmartLibraryCache: (args: { cacheId: string; kind: 'clusters' | 'autotags' }) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   deleteCacheFolder: (options?: { preserveLicense?: boolean }) => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
   restartApp: () => Promise<{ success: boolean; error?: string }>;
 

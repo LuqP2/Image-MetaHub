@@ -75,6 +75,49 @@ function decodeCachePayload(data: unknown): string {
   return String(data ?? '');
 }
 
+type SmartLibraryCacheKind = 'clusters' | 'autotags';
+
+const canUseSmartLibraryCacheIpc = (): boolean =>
+  typeof window !== 'undefined' &&
+  !!window.electronAPI?.readSmartLibraryCache &&
+  !!window.electronAPI?.writeSmartLibraryCache &&
+  !!window.electronAPI?.deleteSmartLibraryCache;
+
+async function readSmartLibraryCache(cacheId: string, kind: SmartLibraryCacheKind): Promise<string | null> {
+  if (!canUseSmartLibraryCacheIpc()) {
+    return null;
+  }
+
+  const result = await window.electronAPI!.readSmartLibraryCache({ cacheId, kind });
+  if (!result.success || !result.data) {
+    return null;
+  }
+
+  return decodeCachePayload(result.data);
+}
+
+async function writeSmartLibraryCache(cacheId: string, kind: SmartLibraryCacheKind, data: unknown): Promise<void> {
+  if (!canUseSmartLibraryCacheIpc()) {
+    return;
+  }
+
+  const result = await window.electronAPI!.writeSmartLibraryCache({ cacheId, kind, data });
+  if (!result.success) {
+    throw new Error(result.error || `Failed to write smart library ${kind} cache.`);
+  }
+}
+
+async function deleteSmartLibraryCache(cacheId: string, kind: SmartLibraryCacheKind): Promise<void> {
+  if (!canUseSmartLibraryCacheIpc()) {
+    return;
+  }
+
+  const result = await window.electronAPI!.deleteSmartLibraryCache({ cacheId, kind });
+  if (!result.success) {
+    throw new Error(result.error || `Failed to delete smart library ${kind} cache.`);
+  }
+}
+
 /**
  * Get the cache directory path
  * Returns: {userData}/smart-library-cache/
@@ -133,16 +176,14 @@ export async function loadClusterCache(
   expectedSourceSignature?: string
 ): Promise<ClusterCacheEntry | null> {
   try {
-    const cacheDir = await getCacheDirectory();
     const idHash = generateDirectoryIdHash(directoryPath, scanSubfolders);
-    const cachePath = `${cacheDir}/${idHash}-clusters.json`;
 
     if (typeof window !== 'undefined' && window.electronAPI) {
-      const content = await window.electronAPI.readFile(cachePath);
-      if (!content.success || !content.data) {
+      const content = await readSmartLibraryCache(idHash, 'clusters');
+      if (!content) {
         return null;
       }
-      const cache: ClusterCacheEntry = JSON.parse(decodeCachePayload(content.data));
+      const cache: ClusterCacheEntry = JSON.parse(content);
 
       // Validate cache version
       if (cache.parserVersion !== PARSER_VERSION) {
@@ -182,10 +223,7 @@ export async function saveClusterCache(
   processedImageCount: number
 ): Promise<void> {
   try {
-    const cacheDir = await getCacheDirectory();
     const idHash = generateDirectoryIdHash(directoryPath, scanSubfolders);
-    const cachePath = `${cacheDir}/${idHash}-clusters.json`;
-    const tempPath = `${cachePath}.tmp`;
 
     const cacheEntry: ClusterCacheEntry = {
       id: idHash,
@@ -201,22 +239,7 @@ export async function saveClusterCache(
     };
 
     if (typeof window !== 'undefined' && window.electronAPI) {
-      // Atomic write: write to temp file, then rename
-      await window.electronAPI.writeFile(tempPath, JSON.stringify(cacheEntry, null, 2));
-
-      // Rename temp to final (atomic operation on most filesystems)
-      try {
-        await window.electronAPI.renameFile(tempPath, cachePath);
-      } catch (renameError) {
-        // Fallback: if rename fails, try delete + rename
-        try {
-          await window.electronAPI.deleteFile(cachePath);
-        } catch {
-          // Ignore if file doesn't exist
-        }
-        await window.electronAPI.renameFile(tempPath, cachePath);
-      }
-
+      await writeSmartLibraryCache(idHash, 'clusters', cacheEntry);
       console.log(`Cluster cache saved atomically: ${clusters.length} clusters`);
     }
   } catch (error) {
@@ -233,16 +256,14 @@ export async function loadAutoTagCache(
   scanSubfolders: boolean
 ): Promise<AutoTagCacheEntry | null> {
   try {
-    const cacheDir = await getCacheDirectory();
     const idHash = generateDirectoryIdHash(directoryPath, scanSubfolders);
-    const cachePath = `${cacheDir}/${idHash}-autotags.json`;
 
     if (typeof window !== 'undefined' && window.electronAPI) {
-      const content = await window.electronAPI.readFile(cachePath);
-      if (!content.success || !content.data) {
+      const content = await readSmartLibraryCache(idHash, 'autotags');
+      if (!content) {
         return null;
       }
-      const cache: AutoTagCacheEntry = JSON.parse(decodeCachePayload(content.data));
+      const cache: AutoTagCacheEntry = JSON.parse(content);
 
       // Validate cache version
       if (cache.parserVersion !== PARSER_VERSION) {
@@ -273,10 +294,7 @@ export async function saveAutoTagCache(
   tfidfModel: TFIDFModel
 ): Promise<void> {
   try {
-    const cacheDir = await getCacheDirectory();
     const idHash = generateDirectoryIdHash(directoryPath, scanSubfolders);
-    const cachePath = `${cacheDir}/${idHash}-autotags.json`;
-    const tempPath = `${cachePath}.tmp`;
 
     // Serialize TF-IDF model (convert Map to object)
     const serializedModel: TFIDFModelSerialized = {
@@ -296,22 +314,7 @@ export async function saveAutoTagCache(
     };
 
     if (typeof window !== 'undefined' && window.electronAPI) {
-      // Atomic write: write to temp file, then rename
-      await window.electronAPI.writeFile(tempPath, JSON.stringify(cacheEntry, null, 2));
-
-      // Rename temp to final (atomic operation)
-      try {
-        await window.electronAPI.renameFile(tempPath, cachePath);
-      } catch (renameError) {
-        // Fallback: if rename fails, try delete + rename
-        try {
-          await window.electronAPI.deleteFile(cachePath);
-        } catch {
-          // Ignore if file doesn't exist
-        }
-        await window.electronAPI.renameFile(tempPath, cachePath);
-      }
-
+      await writeSmartLibraryCache(idHash, 'autotags', cacheEntry);
       console.log(`Auto-tag cache saved atomically: ${Object.keys(autoTags).length} images tagged`);
     }
   } catch (error) {
@@ -329,19 +332,12 @@ export async function invalidateClusterCache(
   reason: string
 ): Promise<void> {
   try {
-    const cacheDir = await getCacheDirectory();
     const idHash = generateDirectoryIdHash(directoryPath, scanSubfolders);
-    const cachePath = `${cacheDir}/${idHash}-clusters.json`;
 
     console.log(`Invalidating cluster cache. Reason: ${reason}`);
 
     if (typeof window !== 'undefined' && window.electronAPI) {
-      // Delete cache file if exists
-      try {
-        await window.electronAPI.deleteFile(cachePath);
-      } catch (error) {
-        // File might not exist, ignore
-      }
+      await deleteSmartLibraryCache(idHash, 'clusters');
     }
   } catch (error) {
     console.error('Failed to invalidate cluster cache:', error);
@@ -357,19 +353,12 @@ export async function invalidateAutoTagCache(
   reason: string
 ): Promise<void> {
   try {
-    const cacheDir = await getCacheDirectory();
     const idHash = generateDirectoryIdHash(directoryPath, scanSubfolders);
-    const cachePath = `${cacheDir}/${idHash}-autotags.json`;
 
     console.log(`Invalidating auto-tag cache. Reason: ${reason}`);
 
     if (typeof window !== 'undefined' && window.electronAPI) {
-      // Delete cache file if exists
-      try {
-        await window.electronAPI.deleteFile(cachePath);
-      } catch (error) {
-        // File might not exist, ignore
-      }
+      await deleteSmartLibraryCache(idHash, 'autotags');
     }
   } catch (error) {
     console.error('Failed to invalidate auto-tag cache:', error);

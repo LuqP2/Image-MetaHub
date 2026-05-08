@@ -2102,6 +2102,18 @@ function setupFileOperationHandlers() {
     return path.dirname(normalizedOldPath) === path.dirname(normalizedNewPath);
   };
   const normalizeNameKey = (name) => name.toLowerCase();
+  const SMART_LIBRARY_CACHE_KINDS = new Set(['clusters', 'autotags']);
+  const getSmartLibraryCachePath = async (cacheId, kind) => {
+    const safeCacheId = String(cacheId || '').replace(/[^a-zA-Z0-9-_]/g, '_');
+    const safeKind = String(kind || '');
+    if (!safeCacheId || !SMART_LIBRARY_CACHE_KINDS.has(safeKind)) {
+      throw new Error('Invalid smart library cache key.');
+    }
+
+    const cacheDir = path.join(app.getPath('userData'), 'smart-library-cache');
+    await fs.mkdir(cacheDir, { recursive: true });
+    return path.join(cacheDir, `${safeCacheId}-${safeKind}.json`);
+  };
   const getUniqueName = (name, usedNames) => {
     const parsed = path.parse(name);
     let candidate = name;
@@ -3287,6 +3299,45 @@ function setupFileOperationHandlers() {
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('read-smart-library-cache', async (event, { cacheId, kind } = {}) => {
+    try {
+      const cachePath = await getSmartLibraryCachePath(cacheId, kind);
+      const data = await fs.readFile(cachePath, 'utf-8');
+      return { success: true, data };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: false, error: 'Cache file not found.', errorCode: error.code };
+      }
+      return { success: false, error: error.message, errorCode: error.code };
+    }
+  });
+
+  ipcMain.handle('write-smart-library-cache', async (event, { cacheId, kind, data } = {}) => {
+    try {
+      const cachePath = await getSmartLibraryCachePath(cacheId, kind);
+      const tempPath = `${cachePath}.tmp`;
+      const payload = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+
+      await fs.writeFile(tempPath, payload, 'utf-8');
+      await fs.rename(tempPath, cachePath);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message, errorCode: error.code };
+    }
+  });
+
+  ipcMain.handle('delete-smart-library-cache', async (event, { cacheId, kind } = {}) => {
+    try {
+      const cachePath = await getSmartLibraryCachePath(cacheId, kind);
+      await fs.unlink(cachePath).catch(error => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message, errorCode: error.code };
     }
   });
 

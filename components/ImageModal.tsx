@@ -894,6 +894,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const isAudio = isAudioFileName(image.name, image.fileType);
   const isPlayableMedia = isVideo || isAudio;
   const canEditImage = !isPlayableMedia && getFileExtension(liveImage.name) !== '.gif';
+  const canOverwriteEditedImage = canEditImage && getFileExtension(liveImage.name) === '.png';
   const showA1111Actions = !isPlayableMedia && a1111Enabled;
   const showComfyUIActions = !isPlayableMedia && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
@@ -1842,6 +1843,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
+    if (!canOverwriteEditedImage) {
+      setError('Overwrite is only available for PNG images. Use Save As to create an edited PNG copy.');
+      return;
+    }
+
     if (!window.electronAPI?.joinPaths) {
       setError('Overwrite is only available in the desktop app.');
       return;
@@ -1930,6 +1936,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   }, [
     canEditImage,
+    canOverwriteEditedImage,
     directories,
     hasAdjustmentChanges,
     isSavingEditedImage,
@@ -2933,6 +2940,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
               onReset={() => setImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS)}
               onSaveAs={() => void handleSaveEditedImageAs()}
               onOverwrite={() => void handleOverwriteEditedImage()}
+              canOverwrite={canOverwriteEditedImage}
+              overwriteUnavailableReason="Overwrite is only available for PNG images. Use Save As to create an edited PNG copy."
               isSaving={isSavingEditedImage}
               disabled={!isFullImageSourceReady}
             />

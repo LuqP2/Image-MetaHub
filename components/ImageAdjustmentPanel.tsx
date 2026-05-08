@@ -13,6 +13,8 @@ interface ImageAdjustmentPanelProps {
   onReset: () => void;
   onSaveAs: () => void;
   onOverwrite: () => void;
+  canOverwrite?: boolean;
+  overwriteUnavailableReason?: string;
   isSaving?: boolean;
   disabled?: boolean;
 }
@@ -36,11 +38,14 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
   onReset,
   onSaveAs,
   onOverwrite,
+  canOverwrite = true,
+  overwriteUnavailableReason = 'Overwrite original file',
   isSaving = false,
   disabled = false,
 }) => {
   const hasChanges = hasImageAdjustments(adjustments);
   const controlsDisabled = disabled || isSaving;
+  const overwriteDisabled = controlsDisabled || !hasChanges || !canOverwrite;
 
   const updateAdjustment = (key: keyof ImageAdjustments, rawValue: number) => {
     onChange({
@@ -115,9 +120,9 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
         <button
           type="button"
           onClick={onOverwrite}
-          disabled={controlsDisabled || !hasChanges}
+          disabled={overwriteDisabled}
           className="inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
-          title="Overwrite original file"
+          title={canOverwrite ? 'Overwrite original file' : overwriteUnavailableReason}
         >
           <SaveAll className="h-3.5 w-3.5" />
           Overwrite

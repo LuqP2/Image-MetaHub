@@ -212,6 +212,9 @@ const electronAPI = {
   clearMetadataCache: () => ipcRenderer.invoke('clear-metadata-cache'),
   clearThumbnailCache: () => ipcRenderer.invoke('clear-thumbnail-cache'),
   clearLibraryCache: () => ipcRenderer.invoke('clear-library-cache'),
+  readSmartLibraryCache: (args) => ipcRenderer.invoke('read-smart-library-cache', args),
+  writeSmartLibraryCache: (args) => ipcRenderer.invoke('write-smart-library-cache', args),
+  deleteSmartLibraryCache: (args) => ipcRenderer.invoke('delete-smart-library-cache', args),
   deleteCacheFolder: (options) => ipcRenderer.invoke('delete-cache-folder', options),
   restartApp: () => ipcRenderer.invoke('restart-app'),
 
