@@ -10,6 +10,7 @@ import {
   Clipboard,
   Download,
   ExternalLink,
+  FileText,
   Folder,
   GitCompare,
   Heart,
@@ -58,7 +59,10 @@ interface ComfyUIWorkspaceProps {
   directories?: Directory[];
   selectedDirectoryId?: string;
   onSelectDirectory?: (directoryId: string | null) => void;
+  applyLibraryFilters?: boolean;
+  onApplyLibraryFiltersChange?: (applyFilters: boolean) => void;
   onInspectImage?: (image: IndexedImage) => void;
+  onViewFullMetadata?: (image: IndexedImage) => void;
   onOpenCompare?: (images: IndexedImage[]) => void;
 }
 
@@ -164,7 +168,8 @@ const WorkspaceImagePreviewModal: React.FC<{
   initialIndex: number;
   onClose: () => void;
   onInspectImage?: (image: IndexedImage) => void;
-}> = ({ images, initialIndex, onClose, onInspectImage }) => {
+  onViewFullMetadata?: (image: IndexedImage) => void;
+}> = ({ images, initialIndex, onClose, onInspectImage, onViewFullMetadata }) => {
   const [index, setIndex] = useState(() => Math.min(Math.max(initialIndex, 0), Math.max(images.length - 1, 0)));
   const [modalSize, setModalSize] = useState(() => ({
     width: Math.min(Math.round(window.innerWidth * 0.82), 1400),
@@ -278,14 +283,27 @@ const WorkspaceImagePreviewModal: React.FC<{
             <h2 className="truncate text-base font-semibold text-gray-100">{current.name}</h2>
             {hasMultiple && <p className="text-xs text-gray-500">{index + 1}/{images.length}</p>}
           </div>
-          <button
-            onClick={onClose}
-            className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
-            aria-label="Close image preview"
-            title="Close"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {onViewFullMetadata && (
+              <button
+                onClick={() => onViewFullMetadata(current)}
+                className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-500"
+                aria-label="View full metadata"
+                title="View full metadata"
+              >
+                <FileText size={16} />
+                <span>View full metadata</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
+              aria-label="Close image preview"
+              title="Close"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
         <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black">
           {hasMultiple && (
@@ -379,7 +397,10 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   directories = [],
   selectedDirectoryId = '',
   onSelectDirectory,
+  applyLibraryFilters = false,
+  onApplyLibraryFiltersChange,
   onInspectImage,
+  onViewFullMetadata,
   onOpenCompare,
 }) => {
   const browserHostRef = useRef<HTMLDivElement>(null);
@@ -1047,6 +1068,19 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
               </div>
             )}
             {!isThumbRailCollapsed && (
+            <>
+            <label
+              className="mt-2 flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-800 bg-gray-950/70 px-2 py-1.5 text-[11px] text-gray-400"
+              title="Use the current Library filters for this thumbnail rail"
+            >
+              <span className="truncate">Apply Library Filters</span>
+              <input
+                type="checkbox"
+                checked={applyLibraryFilters}
+                onChange={(event) => onApplyLibraryFiltersChange?.(event.target.checked)}
+                className="h-3.5 w-3.5 accent-purple-500"
+              />
+            </label>
             <div className="mt-2 flex flex-wrap items-center gap-1">
               <span className="mr-auto rounded border border-gray-800 px-1.5 py-1 text-[10px] font-medium text-gray-400">
                 {selectedWorkspaceCount}
@@ -1130,6 +1164,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
+            </>
             )}
           </div>
 
@@ -1463,6 +1498,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           images={visibleNavigationImages}
           initialIndex={workspacePreviewIndex}
           onInspectImage={onInspectImage}
+          onViewFullMetadata={onViewFullMetadata}
           onClose={() => setWorkspacePreviewIndex(null)}
         />
       )}

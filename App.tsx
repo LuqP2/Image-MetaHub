@@ -100,6 +100,7 @@ interface BatchExportRequestState {
 const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
 const RIGHT_SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-right-sidebar-width';
 const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
+const COMFYUI_WORKSPACE_APPLY_FILTERS_STORAGE_KEY = 'image-metahub-comfyui-workspace-apply-library-filters';
 const SIDEBAR_DEFAULT_WIDTH = 320;
 const SIDEBAR_MIN_WIDTH = 280;
 const SIDEBAR_MAX_WIDTH = 640;
@@ -395,6 +396,12 @@ export default function App() {
   const [comfyUIWorkspaceImageId, setComfyUIWorkspaceImageId] = useState<string | null>(null);
   const [comfyUIWorkspaceNavigationImageIds, setComfyUIWorkspaceNavigationImageIds] = useState<string[] | null>(null);
   const [comfyUIWorkspaceDirectoryId, setComfyUIWorkspaceDirectoryId] = useState<string>('');
+  const [comfyUIWorkspaceApplyLibraryFilters, setComfyUIWorkspaceApplyLibraryFilters] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return window.localStorage.getItem(COMFYUI_WORKSPACE_APPLY_FILTERS_STORAGE_KEY) === 'true';
+  });
   const [isComfyUIWorkspaceGenerating, setIsComfyUIWorkspaceGenerating] = useState(false);
   const [newImagesToast, setNewImagesToast] = useState<{ message: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
@@ -1682,8 +1689,11 @@ export default function App() {
 
     setActiveImageModalId(activeModalId);
     setSelectedImage(image);
+    if (libraryView === 'comfyui') {
+      setLibraryView('library');
+    }
     setGeneratedOutputPreview(null);
-  }, [beginModalOpenFlow, getImageByIdFromStore, openImageModals, safeActiveImageScope, safeFilteredImages, setSelectedImage]);
+  }, [beginModalOpenFlow, getImageByIdFromStore, libraryView, openImageModals, safeActiveImageScope, safeFilteredImages, setSelectedImage]);
 
   const resolveGeneratedOutputImageId = useCallback((output: GeneratedQueueOutput): string | undefined => {
     if (output.imageId && getImageByIdFromStore(output.imageId)) {
@@ -1832,6 +1842,7 @@ export default function App() {
       : libraryView === 'node'
       ? nodeViewResultImages
       : safeFilteredImages;
+  const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
 
   useEffect(() => {
     if (libraryView !== 'comfyui') {
@@ -1851,8 +1862,8 @@ export default function App() {
 
     const effectiveDirectoryId = shouldIgnoreDirectoryScope ? '' : comfyUIWorkspaceDirectoryId;
     const scopedImages = effectiveDirectoryId
-      ? displayImages.filter((image) => image.directoryId === effectiveDirectoryId)
-      : displayImages;
+      ? comfyUIWorkspaceSourceImages.filter((image) => image.directoryId === effectiveDirectoryId)
+      : comfyUIWorkspaceSourceImages;
     const scopedImageIds = scopedImages.map((image) => image.id);
 
     setComfyUIWorkspaceNavigationImageIds(scopedImageIds);
@@ -1868,7 +1879,7 @@ export default function App() {
 
       return preferredImage?.id ?? null;
     });
-  }, [comfyUIWorkspaceDirectoryId, comfyUIWorkspaceImageId, displayImages, imageLookup, libraryView, previewImage, selectedImage]);
+  }, [comfyUIWorkspaceDirectoryId, comfyUIWorkspaceImageId, comfyUIWorkspaceSourceImages, imageLookup, libraryView, previewImage, selectedImage]);
 
   const openFindSimilar = useCallback((
     sourceImage: IndexedImage,
@@ -1951,12 +1962,21 @@ export default function App() {
     setComfyUIWorkspaceDirectoryId(nextDirectoryId);
 
     const nextImages = nextDirectoryId
-      ? displayImages.filter((candidate) => candidate.directoryId === nextDirectoryId)
-      : displayImages;
+      ? comfyUIWorkspaceSourceImages.filter((candidate) => candidate.directoryId === nextDirectoryId)
+      : comfyUIWorkspaceSourceImages;
 
     setComfyUIWorkspaceNavigationImageIds(nextImages.map((candidate) => candidate.id));
     setComfyUIWorkspaceImageId(nextImages[0]?.id ?? null);
-  }, [displayImages]);
+  }, [comfyUIWorkspaceSourceImages]);
+  const handleComfyUIWorkspaceApplyLibraryFiltersChange = useCallback((applyFilters: boolean) => {
+    setComfyUIWorkspaceApplyLibraryFilters(applyFilters);
+    window.localStorage.setItem(COMFYUI_WORKSPACE_APPLY_FILTERS_STORAGE_KEY, String(applyFilters));
+  }, []);
+  const handleComfyUIWorkspaceViewFullMetadata = useCallback((image: IndexedImage) => {
+    setComfyUIWorkspaceImageId(image.id);
+    setSelectedImage(image);
+    setLibraryView('library');
+  }, [setSelectedImage]);
   const handleComfyUIWorkspaceNavigate = useCallback((direction: 'next' | 'previous') => {
     if (comfyUIWorkspaceCurrentIndex === -1) {
       return;
@@ -2645,7 +2665,10 @@ export default function App() {
                     directories={safeDirectories}
                     selectedDirectoryId={comfyUIWorkspaceDirectoryId}
                     onSelectDirectory={handleComfyUIWorkspaceDirectoryChange}
+                    applyLibraryFilters={comfyUIWorkspaceApplyLibraryFilters}
+                    onApplyLibraryFiltersChange={handleComfyUIWorkspaceApplyLibraryFiltersChange}
                     onInspectImage={(image) => setComfyUIWorkspaceImageId(image.id)}
+                    onViewFullMetadata={handleComfyUIWorkspaceViewFullMetadata}
                     onOpenCompare={handleOpenFindSimilarCompare}
                   />
                 ) : (
