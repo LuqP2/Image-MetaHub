@@ -1744,6 +1744,7 @@ export default function App() {
   const handleOpenComfyUIWorkspace = useCallback((image?: IndexedImage | null, navigationImages?: IndexedImage[]) => {
     if (image) {
       setComfyUIWorkspaceImageId(image.id);
+      setComfyUIWorkspaceDirectoryId('');
     }
     if (navigationImages && navigationImages.length > 0) {
       setComfyUIWorkspaceNavigationImageIds(navigationImages.map((item) => item.id));
@@ -1837,8 +1838,20 @@ export default function App() {
       return;
     }
 
-    const scopedImages = comfyUIWorkspaceDirectoryId
-      ? displayImages.filter((image) => image.directoryId === comfyUIWorkspaceDirectoryId)
+    const currentWorkspaceImage = comfyUIWorkspaceImageId ? imageLookup.get(comfyUIWorkspaceImageId) ?? null : null;
+    const shouldIgnoreDirectoryScope = Boolean(
+      comfyUIWorkspaceDirectoryId &&
+      currentWorkspaceImage &&
+      currentWorkspaceImage.directoryId !== comfyUIWorkspaceDirectoryId
+    );
+
+    if (shouldIgnoreDirectoryScope) {
+      setComfyUIWorkspaceDirectoryId('');
+    }
+
+    const effectiveDirectoryId = shouldIgnoreDirectoryScope ? '' : comfyUIWorkspaceDirectoryId;
+    const scopedImages = effectiveDirectoryId
+      ? displayImages.filter((image) => image.directoryId === effectiveDirectoryId)
       : displayImages;
     const scopedImageIds = scopedImages.map((image) => image.id);
 
@@ -1855,7 +1868,7 @@ export default function App() {
 
       return preferredImage?.id ?? null;
     });
-  }, [comfyUIWorkspaceDirectoryId, displayImages, libraryView, previewImage, selectedImage]);
+  }, [comfyUIWorkspaceDirectoryId, comfyUIWorkspaceImageId, displayImages, imageLookup, libraryView, previewImage, selectedImage]);
 
   const openFindSimilar = useCallback((
     sourceImage: IndexedImage,
