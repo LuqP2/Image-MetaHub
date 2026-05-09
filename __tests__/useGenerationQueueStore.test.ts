@@ -123,4 +123,31 @@ describe('useGenerationQueueStore', () => {
     expect(state.items[0].origin).toBe('metahub');
     expect(state.items[0].providerJobId).toBe('prompt-shared');
   });
+
+  it('does not downgrade an internal processing ComfyUI job to waiting when the monitor sees it pending', () => {
+    const internalId = useGenerationQueueStore.getState().createJob({
+      provider: 'comfyui',
+      imageId: 'image-1',
+      imageName: 'source.png',
+      prompt: 'internal prompt',
+      payload: {
+        provider: 'comfyui',
+      },
+    });
+
+    useGenerationQueueStore.getState().updateJob(internalId, {
+      providerJobId: 'prompt-internal',
+    });
+
+    useGenerationQueueStore.getState().upsertExternalComfyUIJob({
+      providerJobId: 'prompt-internal',
+      status: 'waiting',
+    });
+
+    const state = useGenerationQueueStore.getState();
+    expect(state.items).toHaveLength(1);
+    expect(state.items[0].id).toBe(internalId);
+    expect(state.items[0].origin).toBe('metahub');
+    expect(state.items[0].status).toBe('processing');
+  });
 });

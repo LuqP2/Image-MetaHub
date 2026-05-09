@@ -173,13 +173,20 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
         return existing.id;
       }
 
+      const nextStatus =
+        existing.origin !== 'comfyui-external' &&
+        existing.status === 'processing' &&
+        input.status === 'waiting'
+          ? existing.status
+          : input.status;
+
       set((state) => ({
         items: state.items.map((item) =>
           item.id === existing.id
             ? {
                 ...item,
                 origin: item.origin || 'metahub',
-                status: input.status,
+                status: nextStatus,
                 imageName: input.imageName || item.imageName,
                 prompt: input.prompt ?? item.prompt,
                 progress: input.progress ?? item.progress,

@@ -620,7 +620,7 @@ export class ComfyUIApiClient {
       const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
 
       const response = await fetch(`${this.config.serverUrl}/queue`, {
-        method: 'DELETE',
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },

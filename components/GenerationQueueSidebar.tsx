@@ -160,6 +160,22 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
       return;
     }
 
+    if (item.provider === 'comfyui' && item.status === 'waiting' && item.providerJobId && comfyUIServerUrl) {
+      const client = new ComfyUIApiClient({ serverUrl: comfyUIServerUrl });
+      try {
+        const result = await client.deleteQueueItems([item.providerJobId]);
+        if (!result.success) {
+          setJobStatus(item.id, item.status, { error: result.error || 'Failed to cancel ComfyUI job.' });
+          return;
+        }
+      } catch (error) {
+        setJobStatus(item.id, item.status, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
+    }
+
     if (item.status === 'waiting') {
       setJobStatus(item.id, 'canceled', { error: undefined });
       return;
