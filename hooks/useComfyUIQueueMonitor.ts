@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ComfyUIApiClient, ComfyUIProgressUpdate, normalizeLoopbackServerUrl } from '../services/comfyUIApiClient';
+import { ComfyUIApiClient, normalizeLoopbackServerUrl } from '../services/comfyUIApiClient';
 import { GeneratedQueueOutput, useGenerationQueueStore } from '../store/useGenerationQueueStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -14,7 +14,13 @@ type ComfyUIHistoryImage = {
   type?: unknown;
 };
 
+type ComfyUIMonitorMessage = {
+  type?: string;
+  data?: Record<string, unknown>;
+};
+
 const POLL_INTERVAL_MS = 1500;
+const MONITOR_CLIENT_ID = 'image-metahub-monitor';
 
 const isHistoryImage = (value: unknown): value is ComfyUIHistoryImage =>
   Boolean(value && typeof value === 'object' && 'filename' in value);
@@ -136,6 +142,67 @@ const extractHistoryOutputs = (
   return images;
 };
 
+const getPromptHistory = (history: Record<string, unknown>, promptId: string): Record<string, unknown> | null => {
+  const promptHistory = history[promptId];
+  return promptHistory && typeof promptHistory === 'object'
+    ? promptHistory as Record<string, unknown>
+    : null;
+};
+
+const stringifyMessage = (value: unknown): string | null => {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const message = stringifyMessage(entry);
+      if (message) {
+        return message;
+      }
+    }
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return stringifyMessage(record.exception_message) ||
+      stringifyMessage(record.exception_type) ||
+      stringifyMessage(record.message) ||
+      stringifyMessage(record.error);
+  }
+  return null;
+};
+
+const getHistoryFailureMessage = (promptHistory: Record<string, unknown>): string | null => {
+  const status = promptHistory.status;
+  const statusRecord = status && typeof status === 'object' ? status as Record<string, unknown> : null;
+  const statusText = typeof statusRecord?.status_str === 'string' ? statusRecord.status_str.toLowerCase() : '';
+  const completed = statusRecord?.completed;
+
+  if (statusText && statusText !== 'success') {
+    return stringifyMessage(statusRecord?.messages) || `ComfyUI ${statusText}`;
+  }
+
+  if (completed === false && statusText) {
+    return stringifyMessage(statusRecord?.messages) || `ComfyUI ${statusText}`;
+  }
+
+  return stringifyMessage(promptHistory.execution_error) ||
+    stringifyMessage(promptHistory.error) ||
+    stringifyMessage(promptHistory.exception);
+};
+
+const getWebSocketUrl = (serverUrl: string): string | null => {
+  try {
+    const resolvedServerUrl = normalizeLoopbackServerUrl(serverUrl);
+    const url = new URL(resolvedServerUrl);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.pathname = '/ws';
+    url.search = `clientId=${encodeURIComponent(MONITOR_CLIENT_ID)}`;
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
 const getTrackedExternalPromptIds = () =>
   useGenerationQueueStore
     .getState()
@@ -160,7 +227,21 @@ export function useComfyUIQueueMonitor() {
     const markHistoryIfAvailable = async (promptId: string) => {
       try {
         const history = await client.getHistory(promptId) as Record<string, unknown>;
-        if (isDisposed || !history[promptId]) {
+        const promptHistory = getPromptHistory(history, promptId);
+        if (isDisposed || !promptHistory) {
+          return;
+        }
+
+        const failureMessage = getHistoryFailureMessage(promptHistory);
+        if (failureMessage) {
+          useGenerationQueueStore.getState().upsertExternalComfyUIJob({
+            providerJobId: promptId,
+            status: 'failed',
+            progress: 1,
+            error: failureMessage,
+            completedAt: Date.now(),
+            currentNode: null,
+          });
           return;
         }
 
@@ -219,20 +300,42 @@ export function useComfyUIQueueMonitor() {
     };
 
     const connectWebSocket = () => {
-      const resolvedServerUrl = normalizeLoopbackServerUrl(serverUrl);
-      const wsUrl = `${resolvedServerUrl.replace(/^http/, 'ws')}/ws?clientId=image-metahub-monitor`;
-      const socket = new WebSocket(wsUrl);
+      const wsUrl = getWebSocketUrl(serverUrl);
+      if (!wsUrl) {
+        return null;
+      }
+
+      let socket: WebSocket;
+      try {
+        socket = new WebSocket(wsUrl);
+      } catch {
+        return null;
+      }
 
       socket.onmessage = (event) => {
         try {
-          const message = JSON.parse(event.data) as ComfyUIProgressUpdate;
-          const promptId = message.data?.prompt_id || activePromptIdRef.current;
+          const message = JSON.parse(event.data) as ComfyUIMonitorMessage;
+          const promptId = typeof message.data?.prompt_id === 'string'
+            ? message.data.prompt_id
+            : activePromptIdRef.current;
           if (!promptId) {
             return;
           }
 
+          if (message.type === 'execution_error' || message.type === 'execution_interrupted') {
+            useGenerationQueueStore.getState().upsertExternalComfyUIJob({
+              providerJobId: promptId,
+              status: 'failed',
+              progress: 1,
+              error: stringifyMessage(message.data) || (message.type === 'execution_interrupted' ? 'ComfyUI generation interrupted.' : 'ComfyUI generation failed.'),
+              completedAt: Date.now(),
+              currentNode: null,
+            });
+            return;
+          }
+
           if (message.type === 'executing') {
-            if (message.data.node === null) {
+            if (message.data?.node === null) {
               void markHistoryIfAvailable(promptId);
               return;
             }
@@ -241,13 +344,13 @@ export function useComfyUIQueueMonitor() {
             useGenerationQueueStore.getState().upsertExternalComfyUIJob({
               providerJobId: promptId,
               status: 'processing',
-              currentNode: message.data.node || null,
+              currentNode: typeof message.data?.node === 'string' ? message.data.node : null,
             });
           }
 
           if (message.type === 'progress') {
-            const value = message.data.value || 0;
-            const max = message.data.max || 1;
+            const value = typeof message.data?.value === 'number' ? message.data.value : 0;
+            const max = typeof message.data?.max === 'number' ? message.data.max : 1;
             useGenerationQueueStore.getState().upsertExternalComfyUIJob({
               providerJobId: promptId,
               status: 'processing',
