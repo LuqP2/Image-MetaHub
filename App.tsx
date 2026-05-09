@@ -43,6 +43,7 @@ import CollectionFormModal, { CollectionFormValues } from './components/Collecti
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
 import { useGenerationQueueRunner } from './hooks/useGenerationQueueRunner';
+import { useComfyUIQueueMonitor } from './hooks/useComfyUIQueueMonitor';
 import {
   beginPerformanceFlow,
   createProfilerOnRender,
@@ -179,6 +180,7 @@ const resolveSidebarWidths = ({
 export default function App() {
   const { progressState: a1111Progress } = useA1111ProgressContext();
   useGenerationQueueSync();
+  useComfyUIQueueMonitor();
 
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles } = useImageLoader();

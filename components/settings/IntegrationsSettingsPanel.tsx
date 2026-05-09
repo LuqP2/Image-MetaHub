@@ -23,9 +23,11 @@ export const IntegrationsSettingsPanel: React.FC = () => {
   const comfyUIEnabled = useSettingsStore((state) => state.comfyUIEnabled);
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
+  const comfyUIQueueMonitoringEnabled = useSettingsStore((state) => state.comfyUIQueueMonitoringEnabled);
   const setComfyUIEnabled = useSettingsStore((state) => state.setComfyUIEnabled);
   const setComfyUIServerUrl = useSettingsStore((state) => state.setComfyUIServerUrl);
   const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
+  const setComfyUIQueueMonitoringEnabled = useSettingsStore((state) => state.setComfyUIQueueMonitoringEnabled);
 
   const [isTestingA1111Connection, setIsTestingA1111Connection] = useState(false);
   const [isTestingComfyUIConnection, setIsTestingComfyUIConnection] = useState(false);
@@ -182,6 +184,12 @@ export const IntegrationsSettingsPanel: React.FC = () => {
           <SettingRow
             label="Show in viewer"
             control={<SettingSwitch checked={comfyUIEnabled} onChange={setComfyUIEnabled} />}
+          />
+
+          <SettingRow
+            label="Detect ComfyUI generations"
+            description="Show generations started in ComfyUI, including the embedded workspace, in the Image MetaHub queue."
+            control={<SettingSwitch checked={comfyUIQueueMonitoringEnabled} onChange={setComfyUIQueueMonitoringEnabled} />}
           />
 
           <div className="space-y-2 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">

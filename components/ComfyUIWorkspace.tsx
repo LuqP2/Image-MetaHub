@@ -15,6 +15,7 @@ import {
   Rocket,
   SlidersHorizontal,
   Workflow,
+  X,
 } from 'lucide-react';
 import { BaseMetadata, ComfyUIViewLoadFailure, ComfyUIViewState, IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -80,22 +81,116 @@ const WorkspaceThumbnailButton: React.FC<{
   return (
     <button
       onClick={onClick}
-      className={`h-14 w-14 shrink-0 overflow-hidden rounded-md border bg-black transition-colors ${
+      className={`flex h-16 w-full shrink-0 items-center gap-3 overflow-hidden rounded-md border bg-gray-950 p-1.5 text-left transition-colors ${
         isActive ? 'border-purple-400 ring-1 ring-purple-400/60' : 'border-gray-700 hover:border-gray-500'
       }`}
-      title={image.name}
-      aria-label={`Show ${image.name}`}
+      title={`Preview ${image.name}`}
+      aria-label={`Preview ${image.name}`}
       draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
       onDragStart={(event) => onDragStart(event, image, directoryPath)}
     >
-      {thumbnail?.thumbnailUrl ? (
-        <img src={thumbnail.thumbnailUrl} alt="" className="h-full w-full object-cover image-alpha-grid" />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-[10px] text-gray-600">
-          <ImageIcon className="h-4 w-4" />
+      <div className="h-12 w-12 shrink-0 overflow-hidden rounded border border-gray-800 bg-black">
+        {thumbnail?.thumbnailUrl ? (
+          <img src={thumbnail.thumbnailUrl} alt="" className="h-full w-full object-cover image-alpha-grid" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-[10px] text-gray-600">
+            <ImageIcon className="h-4 w-4" />
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-xs font-medium text-gray-200">{image.name}</div>
+        <div className="mt-0.5 text-[10px] uppercase tracking-wide text-gray-500">
+          {isActive ? 'Active image' : 'Preview'}
         </div>
-      )}
+      </div>
     </button>
+  );
+};
+
+const WorkspaceImagePreviewModal: React.FC<{
+  images: IndexedImage[];
+  initialIndex: number;
+  onClose: () => void;
+}> = ({ images, initialIndex, onClose }) => {
+  const [index, setIndex] = useState(() => Math.min(Math.max(initialIndex, 0), Math.max(images.length - 1, 0)));
+  const current = images[index];
+  const thumbnail = useResolvedThumbnail(current ?? null);
+  const hasMultiple = images.length > 1;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        setIndex((currentIndex) => Math.max(0, currentIndex - 1));
+      }
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        setIndex((currentIndex) => Math.min(images.length - 1, currentIndex + 1));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [images.length, onClose]);
+
+  if (!current) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4">
+      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-gray-700 bg-gray-900 shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-700 px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-semibold text-gray-100">{current.name}</h2>
+            {hasMultiple && <p className="text-xs text-gray-500">{index + 1}/{images.length}</p>}
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
+            aria-label="Close image preview"
+            title="Close"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black">
+          {hasMultiple && (
+            <button
+              onClick={() => setIndex((currentIndex) => Math.max(0, currentIndex - 1))}
+              disabled={index === 0}
+              className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-gray-900/80 p-2 text-gray-100 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Previous image"
+              title="Previous"
+            >
+              <ChevronLeft size={24} />
+            </button>
+          )}
+          {thumbnail?.thumbnailUrl ? (
+            <img
+              src={thumbnail.thumbnailUrl}
+              alt={current.name}
+              className="max-h-[78vh] max-w-full object-contain image-alpha-grid"
+            />
+          ) : (
+            <div className="p-8 text-sm text-gray-400">Image preview is not available.</div>
+          )}
+          {hasMultiple && (
+            <button
+              onClick={() => setIndex((currentIndex) => Math.min(images.length - 1, currentIndex + 1))}
+              disabled={index === images.length - 1}
+              className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-gray-900/80 p-2 text-gray-100 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Next image"
+              title="Next"
+            >
+              <ChevronRight size={24} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -144,6 +239,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const [loadFailure, setLoadFailure] = useState<ComfyUIViewLoadFailure | null>(null);
   const [connectionMessage, setConnectionMessage] = useState<string>('');
   const [activeInspectorTab, setActiveInspectorTab] = useState<'image' | 'metadata' | 'workflow'>('image');
+  const [workspacePreviewIndex, setWorkspacePreviewIndex] = useState<number | null>(null);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
     if (typeof window === 'undefined') {
       return false;
@@ -547,14 +643,14 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
               </div>
 
               {normalizedNavigationImages.length > 1 && (
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {visibleNavigationImages.map((candidate) => (
+                <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                  {visibleNavigationImages.map((candidate, visibleIndex) => (
                     <WorkspaceThumbnailButton
                       key={candidate.id}
                       image={candidate}
                       isActive={candidate.id === image.id}
                       directoryPath={directoryPathByImageId[candidate.id]}
-                      onClick={() => onSelectImage?.(candidate)}
+                      onClick={() => setWorkspacePreviewIndex(visibleIndex)}
                       onDragStart={startImageFileDrag}
                     />
                   ))}
@@ -704,6 +800,13 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           )}
         </aside>
       </div>
+      {workspacePreviewIndex !== null && (
+        <WorkspaceImagePreviewModal
+          images={visibleNavigationImages}
+          initialIndex={workspacePreviewIndex}
+          onClose={() => setWorkspacePreviewIndex(null)}
+        />
+      )}
     </div>
   );
 };
