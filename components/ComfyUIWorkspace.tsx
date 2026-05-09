@@ -73,6 +73,7 @@ const DEFAULT_VIEW_STATE: ComfyUIViewState = {
 };
 
 const PANEL_COLLAPSED_STORAGE_KEY = 'image-metahub-comfyui-workspace-panel-collapsed';
+const THUMB_RAIL_COLLAPSED_STORAGE_KEY = 'image-metahub-comfyui-workspace-thumb-rail-collapsed';
 const THUMB_RAIL_WIDTH_STORAGE_KEY = 'image-metahub-comfyui-workspace-thumb-rail-width';
 const ASSET_CONTEXT_MENU_WIDTH = 224;
 const ASSET_CONTEXT_MENU_HEIGHT = 260;
@@ -399,6 +400,12 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       return 108;
     }
     return clampThumbRailWidth(Number(window.localStorage.getItem(THUMB_RAIL_WIDTH_STORAGE_KEY)) || 108);
+  });
+  const [isThumbRailCollapsed, setIsThumbRailCollapsed] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return window.localStorage.getItem(THUMB_RAIL_COLLAPSED_STORAGE_KEY) === 'true';
   });
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
     if (typeof window === 'undefined') {
@@ -762,6 +769,19 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     window.electronAPI.startFileDrag({ directoryPath: dragDirectoryPath, relativePath });
   }, []);
 
+  const toggleThumbRailCollapsed = useCallback(() => {
+    setIsThumbRailCollapsed((current) => {
+      const next = !current;
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(THUMB_RAIL_COLLAPSED_STORAGE_KEY, String(next));
+      }
+      window.requestAnimationFrame(() => {
+        void syncBounds();
+      });
+      return next;
+    });
+  }, [syncBounds]);
+
   const openWorkspacePreview = useCallback((visibleIndex: number) => {
     const selectedImage = visibleNavigationImages[visibleIndex];
     if (selectedImage) {
@@ -813,16 +833,15 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     if (selectedImages.has(contextImage.id)) {
       return selectedWorkspaceImages;
     }
-    return [...selectedWorkspaceImages, contextImage].slice(0, 4);
+    return [...selectedWorkspaceImages, contextImage];
   }, [selectedImages, selectedWorkspaceImages]);
 
   const openCompareMode = useCallback((targetImages: IndexedImage[]) => {
-    const comparableImages = targetImages.slice(0, 4);
-    if (comparableImages.length < 2 || comparableImages.length > 4) {
+    if (targetImages.length < 2 || targetImages.length > 4) {
       setAssetActionMessage('Select 2 to 4 images to compare.');
       return;
     }
-    onOpenCompare?.(comparableImages);
+    onOpenCompare?.(targetImages);
     setAssetContextMenu(null);
   }, [onOpenCompare]);
 
@@ -988,26 +1007,46 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       <div className="flex min-h-0 flex-1">
         <aside
           className="flex min-h-0 shrink-0 flex-col border-r border-gray-800 bg-gray-900/95"
-          style={{ width: thumbRailWidth }}
+          style={{ width: isThumbRailCollapsed ? 44 : thumbRailWidth }}
         >
           <div className="border-b border-gray-800 p-2">
-            <div className="flex items-center gap-1 rounded-md border border-gray-800 bg-gray-950 px-2 py-1.5">
-              <Folder className="h-3.5 w-3.5 shrink-0 text-gray-500" />
-              <select
-                value={selectedDirectoryId || ''}
-                onChange={(event) => onSelectDirectory?.(event.target.value || null)}
-                className="min-w-0 flex-1 bg-transparent text-xs text-gray-200 outline-none"
-                title="Change workspace folder"
-                aria-label="Change workspace folder"
+            {isThumbRailCollapsed ? (
+              <button
+                onClick={toggleThumbRailCollapsed}
+                className="flex h-8 w-full items-center justify-center rounded-md text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+                title="Show thumbnails"
+                aria-label="Show thumbnails"
               >
-                <option value="">All folders</option>
-                {directories.map((directory) => (
-                  <option key={directory.id} value={directory.id}>
-                    {directory.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <div className="flex items-center gap-1 rounded-md border border-gray-800 bg-gray-950 px-2 py-1.5">
+                <Folder className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+                <select
+                  value={selectedDirectoryId || ''}
+                  onChange={(event) => onSelectDirectory?.(event.target.value || null)}
+                  className="min-w-0 flex-1 bg-transparent text-xs text-gray-200 outline-none"
+                  title="Change workspace folder"
+                  aria-label="Change workspace folder"
+                >
+                  <option value="">All folders</option>
+                  {directories.map((directory) => (
+                    <option key={directory.id} value={directory.id}>
+                      {directory.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={toggleThumbRailCollapsed}
+                  className="rounded p-1 text-gray-500 hover:bg-gray-800 hover:text-gray-100"
+                  title="Hide thumbnails"
+                  aria-label="Hide thumbnails"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+            {!isThumbRailCollapsed && (
             <div className="mt-2 flex flex-wrap items-center gap-1">
               <span className="mr-auto rounded border border-gray-800 px-1.5 py-1 text-[10px] font-medium text-gray-400">
                 {selectedWorkspaceCount}
@@ -1091,8 +1130,10 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
+            )}
           </div>
 
+          {!isThumbRailCollapsed && (
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
             {visibleNavigationImages.map((candidate, visibleIndex) => (
               <WorkspaceThumbnailButton
@@ -1113,8 +1154,10 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
               />
             ))}
           </div>
+          )}
         </aside>
 
+        {!isThumbRailCollapsed && (
         <div
           className="w-1 cursor-ew-resize bg-gray-800 hover:bg-purple-500/50"
           onPointerDown={beginThumbRailResize}
@@ -1123,6 +1166,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           onPointerCancel={endThumbRailResize}
           title="Resize thumbnail rail"
         />
+        )}
 
         <div className="relative min-w-0 flex-1 bg-black">
           <div ref={browserHostRef} className="absolute inset-0" />
