@@ -54,6 +54,7 @@ export interface ComfyUIViewState {
   canGoBack: boolean;
   canGoForward: boolean;
   visible: boolean;
+  lastLoadFailed?: boolean;
 }
 
 export interface ComfyUIViewResult {

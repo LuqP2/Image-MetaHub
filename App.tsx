@@ -394,6 +394,7 @@ export default function App() {
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [comfyUIWorkspaceImageId, setComfyUIWorkspaceImageId] = useState<string | null>(null);
   const [comfyUIWorkspaceNavigationImageIds, setComfyUIWorkspaceNavigationImageIds] = useState<string[] | null>(null);
+  const [comfyUIWorkspaceDirectoryId, setComfyUIWorkspaceDirectoryId] = useState<string>('');
   const [isComfyUIWorkspaceGenerating, setIsComfyUIWorkspaceGenerating] = useState(false);
   const [newImagesToast, setNewImagesToast] = useState<{ message: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
@@ -460,11 +461,12 @@ export default function App() {
       setNodeViewResultImages([]);
     }
   }, [libraryView, nodeViewResultImages.length]);
+  const hasLeftSidebar = hasDirectories && libraryView !== 'comfyui';
   const hasRightSidebar = Boolean(isQueueOpen || (previewImage && libraryView !== 'comfyui'));
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
       resolveSidebarWidths({
-        hasDirectories,
+        hasDirectories: hasLeftSidebar,
         isSidebarCollapsed,
         hasRightSidebar,
         viewportWidth,
@@ -472,7 +474,7 @@ export default function App() {
         preferredRightWidth: preferredRightSidebarWidth,
       }),
     [
-      hasDirectories,
+      hasLeftSidebar,
       hasRightSidebar,
       isSidebarCollapsed,
       preferredRightSidebarWidth,
@@ -480,7 +482,7 @@ export default function App() {
       viewportWidth,
     ]
   );
-  const mainContentMarginLeft = hasDirectories
+  const mainContentMarginLeft = hasLeftSidebar
     ? (isSidebarCollapsed ? SIDEBAR_COLLAPSED_CONTENT_OFFSET : sidebarWidth)
     : 0;
   const mainContentMarginRight = hasRightSidebar ? rightSidebarWidth : 0;
@@ -1831,24 +1833,29 @@ export default function App() {
       : safeFilteredImages;
 
   useEffect(() => {
-    if (libraryView !== 'comfyui' || displayImages.length === 0) {
+    if (libraryView !== 'comfyui') {
       return;
     }
 
-    setComfyUIWorkspaceNavigationImageIds((current) => current ?? displayImages.map((image) => image.id));
+    const scopedImages = comfyUIWorkspaceDirectoryId
+      ? displayImages.filter((image) => image.directoryId === comfyUIWorkspaceDirectoryId)
+      : displayImages;
+    const scopedImageIds = scopedImages.map((image) => image.id);
+
+    setComfyUIWorkspaceNavigationImageIds(scopedImageIds);
     setComfyUIWorkspaceImageId((current) => {
-      if (current && displayImages.some((image) => image.id === current)) {
+      if (current && scopedImageIds.includes(current)) {
         return current;
       }
 
       const preferredImage =
-        (previewImage && displayImages.some((image) => image.id === previewImage.id) ? previewImage : null) ||
-        (selectedImage && displayImages.some((image) => image.id === selectedImage.id) ? selectedImage : null) ||
-        displayImages[0];
+        (previewImage && scopedImageIds.includes(previewImage.id) ? previewImage : null) ||
+        (selectedImage && scopedImageIds.includes(selectedImage.id) ? selectedImage : null) ||
+        scopedImages[0];
 
-      return preferredImage.id;
+      return preferredImage?.id ?? null;
     });
-  }, [displayImages, libraryView, previewImage, selectedImage]);
+  }, [comfyUIWorkspaceDirectoryId, displayImages, libraryView, previewImage, selectedImage]);
 
   const openFindSimilar = useCallback((
     sourceImage: IndexedImage,
@@ -1926,6 +1933,17 @@ export default function App() {
 
     return comfyUIWorkspaceNavigationImages.findIndex((candidate) => candidate.id === comfyUIWorkspaceImage.id);
   }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImages]);
+  const handleComfyUIWorkspaceDirectoryChange = useCallback((directoryId: string | null) => {
+    const nextDirectoryId = directoryId || '';
+    setComfyUIWorkspaceDirectoryId(nextDirectoryId);
+
+    const nextImages = nextDirectoryId
+      ? displayImages.filter((candidate) => candidate.directoryId === nextDirectoryId)
+      : displayImages;
+
+    setComfyUIWorkspaceNavigationImageIds(nextImages.map((candidate) => candidate.id));
+    setComfyUIWorkspaceImageId(nextImages[0]?.id ?? null);
+  }, [displayImages]);
   const handleComfyUIWorkspaceNavigate = useCallback((direction: 'next' | 'previous') => {
     if (comfyUIWorkspaceCurrentIndex === -1) {
       return;
@@ -2244,7 +2262,7 @@ export default function App() {
         restrictToRequestedSelection={!canUseBatchExport && (batchExportRequest?.imageIds?.length ?? 0) === 1}
       />
 
-      {hasDirectories && (
+      {hasLeftSidebar && (
         <Sidebar
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -2605,13 +2623,17 @@ export default function App() {
                     directoryPathByImageId={comfyUIWorkspaceDirectoryPathByImageId}
                     currentIndex={comfyUIWorkspaceCurrentIndex}
                     isActive={shouldShowEmbeddedComfyUIView}
-                    onSelectImage={(image) => setComfyUIWorkspaceImageId(image.id)}
                     onNavigatePrevious={() => handleComfyUIWorkspaceNavigate('previous')}
                     onNavigateNext={() => handleComfyUIWorkspaceNavigate('next')}
                     onGenerationStateChange={setIsComfyUIWorkspaceGenerating}
                     suspendBrowser={isGeneratingComfyUI || isComfyUIWorkspaceGenerating}
                     onOpenQueue={() => setIsQueueOpen(true)}
                     onOpenSettings={handleOpenGeneratorIntegrations}
+                    directories={safeDirectories}
+                    selectedDirectoryId={comfyUIWorkspaceDirectoryId}
+                    onSelectDirectory={handleComfyUIWorkspaceDirectoryChange}
+                    onInspectImage={(image) => setComfyUIWorkspaceImageId(image.id)}
+                    onOpenCompare={handleOpenFindSimilarCompare}
                   />
                 ) : (
                   <SmartLibrary
