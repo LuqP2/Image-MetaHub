@@ -77,4 +77,77 @@ describe('useGenerationQueueStore', () => {
     expect(useGenerationQueueStore.getState().items).toHaveLength(0);
     expect(useGenerationQueueStore.getState().activeJobs.a1111).toBeNull();
   });
+
+  it('upserts external ComfyUI jobs without assigning the provider active job', () => {
+    const id = useGenerationQueueStore.getState().upsertExternalComfyUIJob({
+      providerJobId: 'prompt-external-1',
+      status: 'waiting',
+      prompt: 'external prompt',
+    });
+
+    const state = useGenerationQueueStore.getState();
+    const item = state.items.find((candidate) => candidate.id === id);
+
+    expect(item?.origin).toBe('comfyui-external');
+    expect(item?.providerJobId).toBe('prompt-external-1');
+    expect(item?.prompt).toBe('external prompt');
+    expect(state.activeJobs.comfyui).toBeNull();
+    expect(state.getNextWaitingJobId('comfyui')).toBeNull();
+  });
+
+  it('deduplicates an observed external ComfyUI job when an internal job receives the same prompt id', () => {
+    const internalId = useGenerationQueueStore.getState().createJob({
+      provider: 'comfyui',
+      imageId: 'image-1',
+      imageName: 'source.png',
+      prompt: 'internal prompt',
+      payload: {
+        provider: 'comfyui',
+      },
+    });
+
+    useGenerationQueueStore.getState().upsertExternalComfyUIJob({
+      providerJobId: 'prompt-shared',
+      status: 'processing',
+    });
+
+    expect(useGenerationQueueStore.getState().items).toHaveLength(2);
+
+    useGenerationQueueStore.getState().updateJob(internalId, {
+      providerJobId: 'prompt-shared',
+    });
+
+    const state = useGenerationQueueStore.getState();
+    expect(state.items).toHaveLength(1);
+    expect(state.items[0].id).toBe(internalId);
+    expect(state.items[0].origin).toBe('metahub');
+    expect(state.items[0].providerJobId).toBe('prompt-shared');
+  });
+
+  it('does not downgrade an internal processing ComfyUI job to waiting when the monitor sees it pending', () => {
+    const internalId = useGenerationQueueStore.getState().createJob({
+      provider: 'comfyui',
+      imageId: 'image-1',
+      imageName: 'source.png',
+      prompt: 'internal prompt',
+      payload: {
+        provider: 'comfyui',
+      },
+    });
+
+    useGenerationQueueStore.getState().updateJob(internalId, {
+      providerJobId: 'prompt-internal',
+    });
+
+    useGenerationQueueStore.getState().upsertExternalComfyUIJob({
+      providerJobId: 'prompt-internal',
+      status: 'waiting',
+    });
+
+    const state = useGenerationQueueStore.getState();
+    expect(state.items).toHaveLength(1);
+    expect(state.items[0].id).toBe(internalId);
+    expect(state.items[0].origin).toBe('metahub');
+    expect(state.items[0].status).toBe('processing');
+  });
 });

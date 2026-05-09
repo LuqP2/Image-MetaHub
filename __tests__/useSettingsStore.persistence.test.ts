@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeSettingsWithExisting, stripLicenseFromSettings } from '../store/useSettingsStore';
+import { mergeSettingsWithExisting, stripLicenseFromSettings, useSettingsStore } from '../store/useSettingsStore';
 
 describe('useSettingsStore persistence helpers', () => {
   it('strips license data before hydrating the settings store', () => {
@@ -44,5 +44,15 @@ describe('useSettingsStore persistence helpers', () => {
         licenseKey: 'ABCD-EFGH-IJKL-MNOP',
       },
     });
+  });
+
+  it('enables ComfyUI queue monitoring by default and persists toggle changes', () => {
+    useSettingsStore.getState().resetState();
+
+    expect(useSettingsStore.getState().comfyUIQueueMonitoringEnabled).toBe(true);
+
+    useSettingsStore.getState().setComfyUIQueueMonitoringEnabled(false);
+
+    expect(useSettingsStore.getState().comfyUIQueueMonitoringEnabled).toBe(false);
   });
 });

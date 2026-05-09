@@ -4,6 +4,7 @@ import { BaseMetadata, IndexedImage } from '../types';
 import {
   GeneratedQueueOutput,
   GenerationQueueItem,
+  useGenerationQueueStore,
 } from '../store/useGenerationQueueStore';
 import {
   hasPromptMetadata,
@@ -232,6 +233,8 @@ export async function executeComfyUIQueueJob(
   if (!result.success || !result.prompt_id) {
     throw new Error(result.error || 'Failed to queue workflow');
   }
+
+  useGenerationQueueStore.getState().updateJob(job.id, { providerJobId: result.prompt_id });
 
   context.startTracking(context.serverUrl, result.prompt_id, prepared.workflow.client_id);
   try {

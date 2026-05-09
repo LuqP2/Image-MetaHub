@@ -610,6 +610,37 @@ export class ComfyUIApiClient {
     }
   }
 
+  async deleteQueueItems(promptIds: string[]): Promise<{ success: boolean; error?: string }> {
+    if (promptIds.length === 0) {
+      return { success: true };
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+      const response = await fetch(`${this.config.serverUrl}/queue`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ delete: promptIds }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, error: errorText || `Failed to delete queue items: ${response.status}` };
+      }
+
+      return { success: true };
+    } catch (error: unknown) {
+      return { success: false, error: getErrorMessage(error) };
+    }
+  }
+
   /**
    * Connect to ComfyUI WebSocket for real-time progress updates
    */

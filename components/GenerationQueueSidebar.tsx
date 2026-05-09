@@ -99,6 +99,11 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
   };
 
   const handleRetry = async (item: GenerationQueueItem) => {
+    if (!item.imageId) {
+      alert('This queue item cannot be retried because it was not started from an Image MetaHub image.');
+      return;
+    }
+
     const image = findImage(item.imageId);
     if (!image) {
       alert('Image no longer available for retry.');
@@ -127,6 +132,48 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
     event?.stopPropagation();
     if (item.status !== 'processing' && item.status !== 'waiting') {
       return;
+    }
+
+    if (item.provider === 'comfyui' && item.origin === 'comfyui-external') {
+      if (!comfyUIServerUrl || !item.providerJobId) {
+        setJobStatus(item.id, 'failed', { error: 'Cannot cancel ComfyUI job without a prompt id.' });
+        return;
+      }
+
+      const client = new ComfyUIApiClient({ serverUrl: comfyUIServerUrl });
+      try {
+        const result = item.status === 'waiting'
+          ? await client.deleteQueueItems([item.providerJobId])
+          : await client.interrupt();
+
+        if (!result.success) {
+          setJobStatus(item.id, item.status, { error: result.error || 'Failed to cancel ComfyUI job.' });
+          return;
+        }
+
+        setJobStatus(item.id, 'canceled', { error: undefined });
+      } catch (error) {
+        setJobStatus(item.id, item.status, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (item.provider === 'comfyui' && item.status === 'waiting' && item.providerJobId && comfyUIServerUrl) {
+      const client = new ComfyUIApiClient({ serverUrl: comfyUIServerUrl });
+      try {
+        const result = await client.deleteQueueItems([item.providerJobId]);
+        if (!result.success) {
+          setJobStatus(item.id, item.status, { error: result.error || 'Failed to cancel ComfyUI job.' });
+          return;
+        }
+      } catch (error) {
+        setJobStatus(item.id, item.status, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
     }
 
     if (item.status === 'waiting') {
@@ -278,7 +325,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                       {statusLabel[item.status]}
                     </span>
                     <span className="text-[10px] uppercase tracking-wide text-gray-500">
-                      {item.provider === 'a1111' ? 'A1111' : 'ComfyUI'}
+                      {item.provider === 'a1111' ? 'A1111' : item.origin === 'comfyui-external' ? 'ComfyUI External' : 'ComfyUI'}
                     </span>
                   </div>
                   <p className="text-sm font-semibold text-gray-200 break-all">{item.imageName}</p>
@@ -295,7 +342,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                       {item.status === 'waiting' ? <CircleX size={16} /> : <CircleStop size={16} />}
                     </button>
                   )}
-                  {(item.status === 'failed' || item.status === 'canceled') && (
+                  {(item.status === 'failed' || item.status === 'canceled') && item.origin !== 'comfyui-external' && (
                     <button
                       onClick={(event) => handleRetryClick(item, event)}
                       className="text-gray-400 hover:text-blue-300 transition-colors"

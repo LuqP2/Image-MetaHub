@@ -133,6 +133,7 @@ interface SettingsState {
   comfyUIEnabled: boolean;
   comfyUIServerUrl: string;
   comfyUILastConnectionStatus: 'unknown' | 'connected' | 'error';
+  comfyUIQueueMonitoringEnabled: boolean;
   comfyUIWorkspaceLastUrl: string;
   comfyUIWorkspacePanelWidth: number;
   comfyUIWorkspaceAutoOpenSelectedImage: boolean;
@@ -174,6 +175,7 @@ interface SettingsState {
   setComfyUIEnabled: (value: boolean) => void;
   setComfyUIServerUrl: (url: string) => void;
   setComfyUIConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
+  setComfyUIQueueMonitoringEnabled: (value: boolean) => void;
   setComfyUIWorkspaceLastUrl: (url: string) => void;
   setComfyUIWorkspacePanelWidth: (width: number) => void;
   setComfyUIWorkspaceAutoOpenSelectedImage: (value: boolean) => void;
@@ -228,6 +230,7 @@ export const useSettingsStore = create<SettingsState>()(
       comfyUIEnabled: true,
       comfyUIServerUrl: 'http://127.0.0.1:8188',
       comfyUILastConnectionStatus: 'unknown',
+      comfyUIQueueMonitoringEnabled: true,
       comfyUIWorkspaceLastUrl: '',
       comfyUIWorkspacePanelWidth: 360,
       comfyUIWorkspaceAutoOpenSelectedImage: true,
@@ -297,6 +300,7 @@ export const useSettingsStore = create<SettingsState>()(
       setComfyUIEnabled: (value) => set({ comfyUIEnabled: !!value }),
       setComfyUIServerUrl: (url) => set({ comfyUIServerUrl: url }),
       setComfyUIConnectionStatus: (status) => set({ comfyUILastConnectionStatus: status }),
+      setComfyUIQueueMonitoringEnabled: (value) => set({ comfyUIQueueMonitoringEnabled: !!value }),
       setComfyUIWorkspaceLastUrl: (url) => set({ comfyUIWorkspaceLastUrl: url }),
       setComfyUIWorkspacePanelWidth: (width) => set({ comfyUIWorkspacePanelWidth: Math.min(Math.max(Math.round(width) || 360, 280), 560) }),
       setComfyUIWorkspaceAutoOpenSelectedImage: (value) => set({ comfyUIWorkspaceAutoOpenSelectedImage: !!value }),
@@ -337,6 +341,7 @@ export const useSettingsStore = create<SettingsState>()(
         comfyUIEnabled: true,
         comfyUIServerUrl: 'http://127.0.0.1:8188',
         comfyUILastConnectionStatus: 'unknown',
+        comfyUIQueueMonitoringEnabled: true,
         comfyUIWorkspaceLastUrl: '',
         comfyUIWorkspacePanelWidth: 360,
         comfyUIWorkspaceAutoOpenSelectedImage: true,
@@ -425,6 +430,10 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.comfyUIEnabled !== 'boolean') {
           state.comfyUIEnabled = true;
+        }
+
+        if (state && typeof state.comfyUIQueueMonitoringEnabled !== 'boolean') {
+          state.comfyUIQueueMonitoringEnabled = true;
         }
 
         if (state && typeof state.comfyUIWorkspaceLastUrl !== 'string') {

@@ -5,6 +5,7 @@ import { ComfyUISourceImagePolicy, ComfyUIWorkflowMode } from '../services/comfy
 
 export type GenerationProvider = 'a1111' | 'comfyui';
 export type GenerationStatus = 'waiting' | 'processing' | 'done' | 'failed' | 'canceled';
+export type GenerationOrigin = 'metahub' | 'comfyui-external';
 
 export type A1111QueuePayload = {
   provider: 'a1111';
@@ -39,7 +40,8 @@ export interface GeneratedQueueOutput {
 export interface GenerationQueueItem {
   id: string;
   provider: GenerationProvider;
-  imageId: string;
+  origin?: GenerationOrigin;
+  imageId?: string;
   imageName: string;
   prompt?: string;
   status: GenerationStatus;
@@ -60,7 +62,8 @@ export interface GenerationQueueItem {
 
 type CreateJobInput = {
   provider: GenerationProvider;
-  imageId: string;
+  origin?: GenerationOrigin;
+  imageId?: string;
   imageName: string;
   prompt?: string;
   totalImages?: number;
@@ -71,6 +74,19 @@ interface GenerationQueueState {
   items: GenerationQueueItem[];
   activeJobs: Record<GenerationProvider, string | null>;
   createJob: (input: CreateJobInput) => string;
+  upsertExternalComfyUIJob: (input: {
+    providerJobId: string;
+    status: GenerationStatus;
+    imageName?: string;
+    prompt?: string;
+    progress?: number;
+    currentStep?: number;
+    totalSteps?: number;
+    currentNode?: string | null;
+    error?: string;
+    generatedOutputs?: GeneratedQueueOutput[];
+    completedAt?: number;
+  }) => string;
   updateJob: (id: string, updates: Partial<GenerationQueueItem>) => void;
   setJobStatus: (id: string, status: GenerationStatus, updates?: Partial<GenerationQueueItem>) => void;
   setActiveJob: (provider: GenerationProvider, id: string | null) => void;
@@ -113,6 +129,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
     const item: GenerationQueueItem = {
       id,
       provider: input.provider,
+      origin: input.origin || 'metahub',
       imageId: input.imageId,
       imageName: input.imageName,
       prompt: input.prompt,
@@ -139,11 +156,98 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
 
     return id;
   },
+  upsertExternalComfyUIJob: (input) => {
+    const now = Date.now();
+    const shortPromptId = input.providerJobId.slice(0, 8);
+    const imageName = input.imageName || `ComfyUI job ${shortPromptId}`;
+    const existing = get().items.find(
+      (item) => item.provider === 'comfyui' && item.providerJobId === input.providerJobId
+    );
+
+    if (existing) {
+      if (existing.status === 'canceled') {
+        return existing.id;
+      }
+
+      if (existing.status === 'done' && input.status !== 'done' && input.status !== 'failed') {
+        return existing.id;
+      }
+
+      const nextStatus =
+        existing.origin !== 'comfyui-external' &&
+        existing.status === 'processing' &&
+        input.status === 'waiting'
+          ? existing.status
+          : input.status;
+
+      set((state) => ({
+        items: state.items.map((item) =>
+          item.id === existing.id
+            ? {
+                ...item,
+                origin: item.origin || 'metahub',
+                status: nextStatus,
+                imageName: input.imageName || item.imageName,
+                prompt: input.prompt ?? item.prompt,
+                progress: input.progress ?? item.progress,
+                currentStep: input.currentStep ?? item.currentStep,
+                totalSteps: input.totalSteps ?? item.totalSteps,
+                currentNode: input.currentNode === undefined ? item.currentNode : input.currentNode,
+                error: input.error,
+                generatedOutputs: input.generatedOutputs ?? item.generatedOutputs,
+                completedAt: input.completedAt ?? item.completedAt,
+                updatedAt: now,
+              }
+            : item
+        ),
+      }));
+      return existing.id;
+    }
+
+    const id = createQueueId();
+    const item: GenerationQueueItem = {
+      id,
+      provider: 'comfyui',
+      origin: 'comfyui-external',
+      imageName,
+      prompt: input.prompt,
+      status: input.status,
+      progress: input.progress ?? 0,
+      currentStep: input.currentStep,
+      totalSteps: input.totalSteps,
+      currentNode: input.currentNode,
+      providerJobId: input.providerJobId,
+      error: input.error,
+      generatedOutputs: input.generatedOutputs,
+      completedAt: input.completedAt,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    set((state) => {
+      const nextItems = [item, ...state.items];
+      const removedItems = nextItems.slice(MAX_ITEMS);
+      revokeGeneratedOutputUrls(removedItems);
+
+      return {
+        items: nextItems.slice(0, MAX_ITEMS),
+      };
+    });
+
+    return id;
+  },
   updateJob: (id, updates) => {
     set((state) => ({
-      items: state.items.map((item) =>
-        item.id === id ? { ...item, ...updates, updatedAt: Date.now() } : item
-      ),
+      items: state.items
+        .filter((item) => {
+          if (!updates.providerJobId || item.id === id) {
+            return true;
+          }
+          return !(item.provider === 'comfyui' && item.origin === 'comfyui-external' && item.providerJobId === updates.providerJobId);
+        })
+        .map((item) =>
+          item.id === id ? { ...item, ...updates, updatedAt: Date.now() } : item
+        ),
     }));
   },
   setJobStatus: (id, status, updates) => {
@@ -162,7 +266,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
   getNextWaitingJobId: (provider) => {
     const { items } = get();
     const next = items
-      .filter((item) => item.provider === provider && item.status === 'waiting')
+      .filter((item) => item.provider === provider && item.status === 'waiting' && item.origin !== 'comfyui-external')
       .sort((a, b) => a.createdAt - b.createdAt)[0];
     return next?.id ?? null;
   },

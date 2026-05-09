@@ -1006,7 +1006,8 @@ function configureComfyUIViewHandlers(view) {
       errorDescription,
       url: validatedURL,
     });
-    updateComfyUIViewState({ isLoading: false, lastLoadFailed: true });
+    view.setVisible(false);
+    updateComfyUIViewState({ isLoading: false, lastLoadFailed: true, visible: false });
   });
 }
 
@@ -1079,7 +1080,14 @@ async function openComfyUIView({ url, bounds } = {}) {
 
   const currentUrl = view.webContents.getURL();
   if (!currentUrl || comfyUIViewState.lastLoadFailed || !isComfyNavigationAllowed(currentUrl)) {
-    await view.webContents.loadURL(parsed.toString());
+    try {
+      await view.webContents.loadURL(parsed.toString());
+    } catch (error) {
+      const message = error?.message || '';
+      if (!message.includes('ERR_ABORTED') && error?.code !== 'ERR_ABORTED') {
+        throw error;
+      }
+    }
   }
 
   return { success: true, state: updateComfyUIViewState({ visible: true }) };

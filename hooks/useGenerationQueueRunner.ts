@@ -16,10 +16,12 @@ type ImageLookup = {
 
 const terminalStatuses = new Set(['done', 'failed', 'canceled']);
 
-const findImage = ({ images, filteredImages }: ImageLookup, imageId: string) =>
-  images.find((img) => img.id === imageId) ||
-  filteredImages.find((img) => img.id === imageId) ||
-  null;
+const findImage = ({ images, filteredImages }: ImageLookup, imageId?: string) =>
+  imageId
+    ? images.find((img) => img.id === imageId) ||
+      filteredImages.find((img) => img.id === imageId) ||
+      null
+    : null;
 
 export function useGenerationQueueRunner({ images, filteredImages }: ImageLookup) {
   const items = useGenerationQueueStore((state) => state.items);
@@ -51,6 +53,11 @@ export function useGenerationQueueRunner({ images, filteredImages }: ImageLookup
 
       const activeItem = state.items.find((item) => item.id === activeJobId);
       if (!activeItem) {
+        state.setActiveJob(provider, null);
+        return;
+      }
+
+      if (activeItem.origin === 'comfyui-external') {
         state.setActiveJob(provider, null);
         return;
       }
