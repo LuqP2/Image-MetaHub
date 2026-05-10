@@ -99,7 +99,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-gray-700 bg-gray-800/70 text-gray-200`}>
             <span className="opacity-70">Search</span>
             <span className="max-w-[180px] truncate">"{searchQuery}"</span>
-            <button onClick={() => setSearchQuery('')} className="rounded p-0.5 hover:bg-gray-700 hover:text-white">
+            <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" className="rounded p-0.5 hover:bg-gray-700 hover:text-white">
               <X size={12} />
             </button>
           </div>
@@ -109,7 +109,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-yellow-700/50 bg-yellow-950/50 text-yellow-200`}>
             <Heart size={12} className="fill-current" />
             <span>Favorites only</span>
-            <button onClick={() => setFavoriteFilterMode('neutral')} className="rounded p-0.5 hover:bg-yellow-900/70">
+            <button onClick={() => setFavoriteFilterMode('neutral')} aria-label="Remove favorites only filter" className="rounded p-0.5 hover:bg-yellow-900/70">
               <X size={12} />
             </button>
           </div>
@@ -119,7 +119,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-rose-700/50 bg-rose-950/50 text-rose-200`}>
             <Heart size={12} />
             <span>Exclude favorites</span>
-            <button onClick={() => setFavoriteFilterMode('neutral')} className="rounded p-0.5 hover:bg-rose-900/70">
+            <button onClick={() => setFavoriteFilterMode('neutral')} aria-label="Remove exclude favorites filter" className="rounded p-0.5 hover:bg-rose-900/70">
               <X size={12} />
             </button>
           </div>
@@ -128,7 +128,7 @@ const ActiveFilters: React.FC = () => {
         {selectedRatings.map((rating) => (
           <div key={`rating-${rating}`} className={`${chipClass} border-gray-700 bg-gray-900/70 text-gray-200`}>
             <RatingValueIcons value={rating} size={11} starClassName="fill-current" />
-            <button onClick={() => setSelectedRatings(selectedRatings.filter((value) => value !== rating))} className="rounded p-0.5 hover:bg-gray-800">
+            <button onClick={() => setSelectedRatings(selectedRatings.filter((value) => value !== rating))} aria-label={`Remove rating ${rating} filter`} className="rounded p-0.5 hover:bg-gray-800">
               <X size={12} />
             </button>
           </div>
@@ -138,7 +138,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
             <CheckCircle size={12} />
             <span>Verified metrics</span>
-            <button onClick={() => removeAdvancedFilter('hasVerifiedTelemetry')} className="rounded p-0.5 hover:bg-emerald-900/70">
+            <button onClick={() => removeAdvancedFilter('hasVerifiedTelemetry')} aria-label="Remove verified metrics filter" className="rounded p-0.5 hover:bg-emerald-900/70">
               <X size={12} />
             </button>
           </div>
@@ -148,7 +148,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
             <CheckCircle size={12} />
             <span>Has telemetry</span>
-            <button onClick={() => removeAdvancedFilter('telemetryState')} className="rounded p-0.5 hover:bg-cyan-900/70">
+            <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label="Remove has telemetry filter" className="rounded p-0.5 hover:bg-cyan-900/70">
               <X size={12} />
             </button>
           </div>
@@ -158,7 +158,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-gray-700/50 bg-gray-900/70 text-gray-200`}>
             <CheckCircle size={12} />
             <span>Missing telemetry</span>
-            <button onClick={() => removeAdvancedFilter('telemetryState')} className="rounded p-0.5 hover:bg-gray-800/70">
+            <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label="Remove missing telemetry filter" className="rounded p-0.5 hover:bg-gray-800/70">
               <X size={12} />
             </button>
           </div>
@@ -168,7 +168,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />
             <span>{advancedFilters.dimension}</span>
-            <button onClick={() => removeAdvancedFilter('dimension')} className="rounded p-0.5 hover:bg-indigo-900/70">
+            <button onClick={() => removeAdvancedFilter('dimension')} aria-label="Remove dimension filter" className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
           </div>
@@ -178,7 +178,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('Steps', advancedFilters.steps)}</span>
-            <button onClick={() => removeAdvancedFilter('steps')} className="rounded p-0.5 hover:bg-indigo-900/70">
+            <button onClick={() => removeAdvancedFilter('steps')} aria-label="Remove steps filter" className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
           </div>
@@ -188,7 +188,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('CFG', advancedFilters.cfg)}</span>
-            <button onClick={() => removeAdvancedFilter('cfg')} className="rounded p-0.5 hover:bg-indigo-900/70">
+            <button onClick={() => removeAdvancedFilter('cfg')} aria-label="Remove CFG filter" className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
           </div>
@@ -198,7 +198,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Calendar size={12} />
             <span>{advancedFilters.date.from || '...'} - {advancedFilters.date.to || '...'}</span>
-            <button onClick={() => removeAdvancedFilter('date')} className="rounded p-0.5 hover:bg-indigo-900/70">
+            <button onClick={() => removeAdvancedFilter('date')} aria-label="Remove date filter" className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
           </div>
@@ -208,7 +208,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('Gen time', advancedFilters.generationTimeMs, 'ms')}</span>
-            <button onClick={() => removeAdvancedFilter('generationTimeMs')} className="rounded p-0.5 hover:bg-emerald-900/70">
+            <button onClick={() => removeAdvancedFilter('generationTimeMs')} aria-label="Remove generation time filter" className="rounded p-0.5 hover:bg-emerald-900/70">
               <X size={12} />
             </button>
           </div>
@@ -218,7 +218,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('Speed', advancedFilters.stepsPerSecond, ' it/s')}</span>
-            <button onClick={() => removeAdvancedFilter('stepsPerSecond')} className="rounded p-0.5 hover:bg-cyan-900/70">
+            <button onClick={() => removeAdvancedFilter('stepsPerSecond')} aria-label="Remove speed filter" className="rounded p-0.5 hover:bg-cyan-900/70">
               <X size={12} />
             </button>
           </div>
@@ -228,7 +228,7 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('VRAM', advancedFilters.vramPeakMb, ' MB')}</span>
-            <button onClick={() => removeAdvancedFilter('vramPeakMb')} className="rounded p-0.5 hover:bg-cyan-900/70">
+            <button onClick={() => removeAdvancedFilter('vramPeakMb')} aria-label="Remove VRAM filter" className="rounded p-0.5 hover:bg-cyan-900/70">
               <X size={12} />
             </button>
           </div>
@@ -315,7 +315,7 @@ const FacetChip: React.FC<FacetChipProps> = ({ label, value, tone, onRemove }) =
   <div className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium ${toneClasses[tone]}`}>
     <span className="opacity-70">{label}</span>
     <span className="max-w-[180px] truncate">{value}</span>
-    <button onClick={onRemove} className="rounded p-0.5 hover:bg-black/10">
+    <button onClick={onRemove} aria-label={`Remove ${label} filter`} className="rounded p-0.5 hover:bg-black/10">
       <X size={12} />
     </button>
   </div>
