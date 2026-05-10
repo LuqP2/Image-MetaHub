@@ -390,7 +390,7 @@ const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={() => setStackingEnabled(!isStackingEnabled)}
                 className={`${utilityButtonClassName} shrink-0 ${isStackingEnabled ? 'border-accent/40 bg-accent/15 text-accent hover:border-accent/50 hover:bg-accent/20 hover:text-accent' : ''}`}
-                title={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'}
+                title={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'} aria-label={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'}
               >
                 {isStackingEnabled ? <Layers2 size={16} /> : <Layers size={16} />}
               </button>
@@ -467,7 +467,7 @@ const Header: React.FC<HeaderProps> = ({
             <button
               onClick={() => setEnableSafeMode(!enableSafeMode)}
               className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent ${enableSafeMode ? 'border-accent/40 bg-accent/15 text-accent hover:border-accent/50 hover:bg-accent/20 hover:text-accent' : 'text-gray-500 hover:text-gray-200'}`}
-              title={enableSafeMode ? 'Safe Mode on' : 'Safe Mode off'}
+              title={enableSafeMode ? 'Safe Mode on' : 'Safe Mode off'} aria-label={enableSafeMode ? 'Safe Mode on' : 'Safe Mode off'}
             >
               {enableSafeMode ? <Eye size={16} /> : <EyeOff size={16} />}
             </button>
@@ -476,7 +476,7 @@ const Header: React.FC<HeaderProps> = ({
               target="_blank"
               rel="noopener noreferrer"
               className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent`}
-              title="Report a bug or provide feedback"
+              title="Report a bug or provide feedback" aria-label="Report a bug or provide feedback"
             >
               <Bug size={16} />
             </a>
@@ -489,7 +489,7 @@ const Header: React.FC<HeaderProps> = ({
                 }
               }}
               className={`${utilityButtonClassName} relative h-8 w-8 border-transparent bg-transparent`}
-              title={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'}
+              title={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'} aria-label={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'}
             >
               <BarChart3 size={16} />
               <div className="absolute -right-0.5 -top-0.5">
@@ -499,7 +499,7 @@ const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onOpenSettings}
               className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent`}
-              title="Open Settings"
+              title="Open Settings" aria-label="Open Settings"
             >
               <Settings size={16} />
             </button>
