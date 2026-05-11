@@ -12,6 +12,7 @@ const resetLicenseState = () => {
     initialized: false,
     migrationResetApplied: true,
     expiredTrialResetApplied: true,
+    nextReleaseTrialResetApplied: true,
     trialStartDate: null,
     trialActivated: false,
     licenseStatus: 'free',
@@ -54,6 +55,7 @@ describe('useLicenseStore trial policy', () => {
       initialized: false,
       migrationResetApplied: true,
       expiredTrialResetApplied: false,
+      nextReleaseTrialResetApplied: false,
       trialStartDate: Date.now() - 1 * 24 * 60 * 60 * 1000,
       trialActivated: true,
       licenseStatus: 'trial',
@@ -72,6 +74,7 @@ describe('useLicenseStore trial policy', () => {
       initialized: false,
       migrationResetApplied: false,
       expiredTrialResetApplied: false,
+      nextReleaseTrialResetApplied: false,
       licenseStatus: 'pro',
       licenseEmail: 'test@example.com',
       licenseKey: null,
@@ -91,6 +94,7 @@ describe('useLicenseStore trial policy', () => {
       initialized: false,
       migrationResetApplied: false,
       expiredTrialResetApplied: false,
+      nextReleaseTrialResetApplied: false,
       licenseStatus: 'pro',
       licenseEmail: 'test@example.com',
       licenseKey: 'ABCD-EFGH-IJKL-MNOP',
@@ -111,6 +115,7 @@ describe('useLicenseStore trial policy', () => {
       initialized: false,
       migrationResetApplied: false,
       expiredTrialResetApplied: false,
+      nextReleaseTrialResetApplied: false,
       licenseStatus: 'pro',
       licenseEmail: 'test@example.com',
       licenseKey: 'ABCD-EFGH-IJKL-MNOP',
@@ -123,5 +128,66 @@ describe('useLicenseStore trial policy', () => {
     expect(nextState.licenseStatus).toBe('free');
     expect(nextState.licenseEmail).toBeNull();
     expect(nextState.licenseKey).toBeNull();
+  });
+
+  it('resets expired trials for next release (non-Pro users)', async () => {
+    useLicenseStore.setState({
+      initialized: false,
+      migrationResetApplied: true,
+      expiredTrialResetApplied: true,
+      nextReleaseTrialResetApplied: false,
+      trialStartDate: Date.now() - 10 * 24 * 60 * 60 * 1000,
+      trialActivated: true,
+      licenseStatus: 'expired',
+    });
+
+    await useLicenseStore.getState().checkLicenseStatus();
+
+    const nextState = useLicenseStore.getState();
+    expect(nextState.licenseStatus).toBe('free');
+    expect(nextState.trialActivated).toBe(false);
+    expect(nextState.trialStartDate).toBeNull();
+    expect(nextState.nextReleaseTrialResetApplied).toBe(true);
+  });
+
+  it('resets active trials for next release (non-Pro users)', async () => {
+    useLicenseStore.setState({
+      initialized: false,
+      migrationResetApplied: true,
+      expiredTrialResetApplied: true,
+      nextReleaseTrialResetApplied: false,
+      trialStartDate: Date.now() - 1 * 24 * 60 * 60 * 1000,
+      trialActivated: true,
+      licenseStatus: 'trial',
+    });
+
+    await useLicenseStore.getState().checkLicenseStatus();
+
+    const nextState = useLicenseStore.getState();
+    expect(nextState.licenseStatus).toBe('free');
+    expect(nextState.trialActivated).toBe(false);
+    expect(nextState.trialStartDate).toBeNull();
+    expect(nextState.nextReleaseTrialResetApplied).toBe(true);
+  });
+
+  it('does not reset Pro license status during next release migration', async () => {
+    vi.mocked(validateLicenseKey).mockResolvedValue(true);
+    useLicenseStore.setState({
+      initialized: false,
+      migrationResetApplied: true,
+      expiredTrialResetApplied: true,
+      nextReleaseTrialResetApplied: false,
+      licenseStatus: 'pro',
+      licenseEmail: 'test@example.com',
+      licenseKey: 'ABCD-EFGH-IJKL-MNOP',
+    });
+
+    await useLicenseStore.getState().checkLicenseStatus();
+
+    const nextState = useLicenseStore.getState();
+    expect(nextState.licenseStatus).toBe('pro');
+    expect(nextState.licenseEmail).toBe('test@example.com');
+    expect(nextState.licenseKey).toBe('ABCD-EFGH-IJKL-MNOP');
+    expect(nextState.nextReleaseTrialResetApplied).toBe(true);
   });
 });

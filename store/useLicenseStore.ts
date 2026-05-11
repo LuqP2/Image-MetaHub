@@ -46,6 +46,7 @@ interface LicenseState {
   initialized: boolean;
   migrationResetApplied: boolean;
   expiredTrialResetApplied: boolean;
+  nextReleaseTrialResetApplied: boolean;
 
   // Trial tracking
   trialStartDate: number | null;
@@ -93,6 +94,7 @@ export const useLicenseStore = create<LicenseState>()(
       initialized: false,
       migrationResetApplied: false,
       expiredTrialResetApplied: false,
+      nextReleaseTrialResetApplied: false,
       trialStartDate: null,
       trialActivated: false,
       licenseStatus: 'free',
@@ -135,6 +137,7 @@ export const useLicenseStore = create<LicenseState>()(
               initialized: true,
               migrationResetApplied: true,
               expiredTrialResetApplied: true,
+              nextReleaseTrialResetApplied: true,
             });
             return;
           }
@@ -153,6 +156,7 @@ export const useLicenseStore = create<LicenseState>()(
               initialized: true,
               migrationResetApplied: true,
               expiredTrialResetApplied: true,
+              nextReleaseTrialResetApplied: true,
             });
             return;
           }
@@ -161,6 +165,7 @@ export const useLicenseStore = create<LicenseState>()(
             initialized: true,
             migrationResetApplied: true,
             expiredTrialResetApplied: true,
+            nextReleaseTrialResetApplied: true,
             licenseStatus: state.licenseStatus,
           });
           return;
@@ -196,6 +201,22 @@ export const useLicenseStore = create<LicenseState>()(
           return;
         } else if (!state.expiredTrialResetApplied) {
           set({ expiredTrialResetApplied: true });
+        }
+
+        // Next Release Migration: Reset all expired and active trials for non-Pro users
+        // Only applies after previous migrations have been processed
+        if (!state.nextReleaseTrialResetApplied && state.migrationResetApplied && state.expiredTrialResetApplied && state.trialActivated && (state.licenseStatus === 'expired' || state.licenseStatus === 'trial')) {
+          set({
+            trialStartDate: null,
+            trialActivated: false,
+            licenseStatus: 'free',
+            nextReleaseTrialResetApplied: true,
+            initialized: true,
+          });
+          console.log('[IMH] Trial reset for next release. Non-Pro users can start a fresh trial.');
+          return;
+        } else if (!state.nextReleaseTrialResetApplied) {
+          set({ nextReleaseTrialResetApplied: true });
         }
 
         // If trial never started, stay in free mode
@@ -256,6 +277,7 @@ export const useLicenseStore = create<LicenseState>()(
           initialized: false,
           migrationResetApplied: false,
           expiredTrialResetApplied: false,
+          nextReleaseTrialResetApplied: false,
           trialStartDate: null,
           trialActivated: false,
           licenseStatus: 'free',
