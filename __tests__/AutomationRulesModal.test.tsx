@@ -118,7 +118,7 @@ describe('AutomationRulesModal', () => {
       automationRules: [
         {
           id: 'rule-1',
-          name: 'Delete me',
+          name: 'Remove me',
           enabled: true,
           criteria: {
             matchMode: 'all',
@@ -139,7 +139,13 @@ describe('AutomationRulesModal', () => {
 
     render(<AutomationRulesModal isOpen onClose={() => {}} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: /delete/i }).at(-1) as HTMLElement);
+    fireEvent.click(screen.getByRole('button', { name: /remove me/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /edit rule/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
     await waitFor(() => {
       expect(useImageStore.getState().automationRules).toEqual([]);
