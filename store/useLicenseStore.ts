@@ -203,9 +203,13 @@ export const useLicenseStore = create<LicenseState>()(
           set({ expiredTrialResetApplied: true });
         }
 
+        // Re-read state after applying previous migrations
+        // This ensures we have the latest migration flags before proceeding
+        let currentState = get();
+
         // Next Release Migration: Reset all expired and active trials for non-Pro users
         // Only applies after previous migrations have been processed
-        if (!state.nextReleaseTrialResetApplied && state.migrationResetApplied && state.expiredTrialResetApplied && state.trialActivated && (state.licenseStatus === 'expired' || state.licenseStatus === 'trial')) {
+        if (!currentState.nextReleaseTrialResetApplied && currentState.migrationResetApplied && currentState.expiredTrialResetApplied && currentState.trialActivated && (currentState.licenseStatus === 'expired' || currentState.licenseStatus === 'trial')) {
           set({
             trialStartDate: null,
             trialActivated: false,
@@ -215,7 +219,7 @@ export const useLicenseStore = create<LicenseState>()(
           });
           console.log('[IMH] Trial reset for next release. Non-Pro users can start a fresh trial.');
           return;
-        } else if (!state.nextReleaseTrialResetApplied) {
+        } else if (!currentState.nextReleaseTrialResetApplied) {
           set({ nextReleaseTrialResetApplied: true });
         }
 

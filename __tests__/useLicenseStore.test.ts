@@ -50,7 +50,9 @@ describe('useLicenseStore trial policy', () => {
     expect(nextState.expiredTrialResetApplied).toBe(true);
   });
 
-  it('does not reset an active trial during the duration migration', async () => {
+  it('resets an active trial when all prior migrations are complete (next release migration)', async () => {
+    // This test ensures that after expiredTrialResetApplied has been marked,
+    // the next release migration applies and resets active trials
     useLicenseStore.setState({
       initialized: false,
       migrationResetApplied: true,
@@ -64,9 +66,12 @@ describe('useLicenseStore trial policy', () => {
     await useLicenseStore.getState().checkLicenseStatus();
 
     const nextState = useLicenseStore.getState();
-    expect(nextState.licenseStatus).toBe('trial');
-    expect(nextState.trialActivated).toBe(true);
+    // Active trial should be reset now that all prior migrations are complete
+    expect(nextState.licenseStatus).toBe('free');
+    expect(nextState.trialActivated).toBe(false);
+    expect(nextState.trialStartDate).toBeNull();
     expect(nextState.expiredTrialResetApplied).toBe(true);
+    expect(nextState.nextReleaseTrialResetApplied).toBe(true);
   });
 
   it('downgrades a persisted pro status when the stored key is missing', async () => {
