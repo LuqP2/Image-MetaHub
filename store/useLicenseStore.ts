@@ -179,6 +179,7 @@ export const useLicenseStore = create<LicenseState>()(
             licenseStatus: 'free',
             migrationResetApplied: true,
             expiredTrialResetApplied: true,
+            nextReleaseTrialResetApplied: true,
             initialized: true,
           });
           console.log('[IMH] Trial reset to Free due to opt-in change. User can start a fresh trial.');
@@ -195,6 +196,7 @@ export const useLicenseStore = create<LicenseState>()(
             licenseStatus: 'free',
             migrationResetApplied: true,
             expiredTrialResetApplied: true,
+            nextReleaseTrialResetApplied: true,
             initialized: true,
           });
           console.log('[IMH] Expired trial reset to Free due to trial duration change. User can start a fresh trial.');
@@ -223,14 +225,16 @@ export const useLicenseStore = create<LicenseState>()(
           set({ nextReleaseTrialResetApplied: true });
         }
 
+        currentState = get();
+
         // If trial never started, stay in free mode
-        if (!state.trialActivated) {
+        if (!currentState.trialActivated) {
           set({ initialized: true, ...clearStoredLicenseState(), trialStartDate: null, trialActivated: false });
           return;
         }
 
         // Derive trial status from stored dates
-        const trialExpired = checkIfTrialExpired(state.trialStartDate) || !state.trialStartDate;
+        const trialExpired = checkIfTrialExpired(currentState.trialStartDate) || !currentState.trialStartDate;
         const nextStatus: LicenseStatus = trialExpired ? 'expired' : 'trial';
 
         set({
@@ -238,6 +242,7 @@ export const useLicenseStore = create<LicenseState>()(
           initialized: true,
           migrationResetApplied: true,
           expiredTrialResetApplied: true,
+          nextReleaseTrialResetApplied: true,
         });
 
         if (trialExpired) {
