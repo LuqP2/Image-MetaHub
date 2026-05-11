@@ -91,6 +91,10 @@ const formatValue = (value: unknown): string => {
   return String(value);
 };
 
+const getImageTimestamp = (image: IndexedImage): number => {
+  return image.contentModifiedMs ?? image.lastModified ?? 0;
+};
+
 const MetadataLine: React.FC<{ label: string; value: unknown }> = ({ label, value }) => (
   <div className="rounded-md border border-gray-800 bg-gray-950/60 px-3 py-2">
     <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
@@ -115,50 +119,55 @@ const WorkspaceThumbnailButton: React.FC<{
   const thumbnail = useResolvedThumbnail(image);
 
   return (
-    <div className="group relative aspect-square w-full shrink-0">
-      <button
-        onClick={onClick}
-        onContextMenu={onContextMenu}
-        className={`h-full w-full overflow-hidden rounded-md border bg-black transition-colors ${
-          isSelected
-            ? 'border-blue-400 ring-2 ring-blue-400/70'
-            : isActive
-              ? 'border-purple-400 ring-1 ring-purple-400/60'
-              : 'border-gray-700 hover:border-gray-500'
-        }`}
-        title={`Preview ${image.name}`}
-        aria-label={`Preview ${image.name}`}
-        draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
-        onDragStart={(event) => onDragStart(event, image, directoryPath)}
-      >
-        {thumbnail?.thumbnailUrl ? (
-          <img src={thumbnail.thumbnailUrl} alt="" className="h-full w-full object-cover image-alpha-grid" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-gray-600">
-            <ImageIcon className="h-5 w-5" />
-          </div>
-        )}
-      </button>
-      <button
-        onClick={onToggleSelected}
-        className={`absolute left-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
-          isSelected ? 'text-blue-300 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100'
-        }`}
-        title={isSelected ? 'Deselect image' : 'Select image'}
-        aria-label={isSelected ? 'Deselect image' : 'Select image'}
-      >
-        {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-      </button>
-      <button
-        onClick={onToggleFavorite}
-        className={`absolute right-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
-          image.isFavorite ? 'text-pink-300 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-pink-300'
-        }`}
-        title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-        aria-label={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-      >
-        <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
-      </button>
+    <div className="group w-full shrink-0">
+      <div className="relative aspect-square w-full">
+        <button
+          onClick={onClick}
+          onContextMenu={onContextMenu}
+          className={`h-full w-full overflow-hidden rounded-md border bg-black transition-colors ${
+            isSelected
+              ? 'border-blue-400 ring-2 ring-blue-400/70'
+              : isActive
+                ? 'border-purple-400 ring-1 ring-purple-400/60'
+                : 'border-gray-700 hover:border-gray-500'
+          }`}
+          title={`Preview ${image.name}`}
+          aria-label={`Preview ${image.name}`}
+          draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
+          onDragStart={(event) => onDragStart(event, image, directoryPath)}
+        >
+          {thumbnail?.thumbnailUrl ? (
+            <img src={thumbnail.thumbnailUrl} alt="" className="h-full w-full object-cover image-alpha-grid" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-gray-600">
+              <ImageIcon className="h-5 w-5" />
+            </div>
+          )}
+        </button>
+        <button
+          onClick={onToggleSelected}
+          className={`absolute left-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
+            isSelected ? 'text-blue-300 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100'
+          }`}
+          title={isSelected ? 'Deselect image' : 'Select image'}
+          aria-label={isSelected ? 'Deselect image' : 'Select image'}
+        >
+          {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+        </button>
+        <button
+          onClick={onToggleFavorite}
+          className={`absolute right-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
+            image.isFavorite ? 'text-pink-300 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-pink-300'
+          }`}
+          title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          aria-label={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
+        </button>
+      </div>
+      <div className="mt-1 truncate text-[11px] leading-4 text-gray-400" title={image.name}>
+        {image.name}
+      </div>
     </div>
   );
 };
@@ -455,7 +464,8 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const thumbnail = useResolvedThumbnail(image);
   const metadata = getWorkflowMetadata(image);
   const normalizedNavigationImages = useMemo(
-    () => (navigationImages.length > 0 ? navigationImages : image ? [image] : []),
+    () => (navigationImages.length > 0 ? [...navigationImages] : image ? [image] : [])
+      .sort((a, b) => getImageTimestamp(b) - getImageTimestamp(a) || a.name.localeCompare(b.name)),
     [image, navigationImages],
   );
   const currentPosition = currentIndex >= 0 ? currentIndex + 1 : 0;
@@ -803,13 +813,18 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     });
   }, [syncBounds]);
 
+  const inspectWorkspaceImage = useCallback((nextImage: IndexedImage) => {
+    onInspectImage?.(nextImage);
+    setActiveInspectorTab('metadata');
+  }, [onInspectImage]);
+
   const openWorkspacePreview = useCallback((visibleIndex: number) => {
     const selectedImage = visibleNavigationImages[visibleIndex];
     if (selectedImage) {
-      onInspectImage?.(selectedImage);
+      inspectWorkspaceImage(selectedImage);
     }
     setWorkspacePreviewIndex(visibleIndex);
-  }, [onInspectImage, visibleNavigationImages]);
+  }, [inspectWorkspaceImage, visibleNavigationImages]);
 
   const updateThumbSelection = useCallback((event: React.MouseEvent, contextImage: IndexedImage, visibleIndex: number) => {
     event.preventDefault();
@@ -939,10 +954,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   }, []);
 
   const inspectAsset = useCallback((contextImage: IndexedImage) => {
-    onInspectImage?.(contextImage);
-    setActiveInspectorTab('image');
+    inspectWorkspaceImage(contextImage);
     setAssetContextMenu(null);
-  }, [onInspectImage]);
+  }, [inspectWorkspaceImage]);
 
   const exportAssetImage = useCallback((contextImage: IndexedImage) => {
     exportImages(getContextTargetImages(contextImage));
@@ -1497,7 +1511,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
         <WorkspaceImagePreviewModal
           images={visibleNavigationImages}
           initialIndex={workspacePreviewIndex}
-          onInspectImage={onInspectImage}
+          onInspectImage={inspectWorkspaceImage}
           onViewFullMetadata={onViewFullMetadata}
           onClose={() => setWorkspacePreviewIndex(null)}
         />
