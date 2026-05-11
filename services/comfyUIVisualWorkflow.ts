@@ -289,6 +289,8 @@ function buildHybridLayout(
   }
 
   let placedInPass = true;
+  const occupiedPositions = Array.from(hybridLayout.values());
+
   while (unresolved.size > 0 && placedInPass) {
     placedInPass = false;
 
@@ -320,8 +322,9 @@ function buildHybridLayout(
       const position = resolveHybridCollision({
         x: average(xCandidates),
         y: average(yCandidates),
-      }, Array.from(hybridLayout.values()));
+      }, occupiedPositions);
       hybridLayout.set(nodeId, position);
+      occupiedPositions.push(position);
       unresolved.delete(nodeId);
       placedInPass = true;
     }
@@ -377,7 +380,12 @@ function buildAutoLayout(prompt: ComfyUIPromptGraph, edges: VisualWorkflowEdge[]
   const columns = new Map<number, string[]>();
   for (const nodeId of nodeIds) {
     const depth = getDepth(nodeId);
-    columns.set(depth, [...(columns.get(depth) || []), nodeId]);
+    const existing = columns.get(depth);
+    if (existing) {
+      existing.push(nodeId);
+    } else {
+      columns.set(depth, [nodeId]);
+    }
   }
 
   const layout = new Map<string, { x: number; y: number }>();
