@@ -129,17 +129,18 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
           ) : (
             <>
               {/* Message from the Dev */}
-              {/* Message from the Dev */}
 <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
   <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
   <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
     <p>Hi there, this is Lucas -- the solo dev behind Image MetaHub.</p>
 
-    <p>v0.15 is here with some new and useful features for organizing your library, which include audio support, tag/collection automation rules, metadata editing, and more. Although they are functional, some of these features may feel a bit rough in this first implementation. I felt it was better to ship them as they are now tho, and proceed to polish them over time.</p>
+    <p>v0.16 is here, and this one is a little different. A lot of the work went into making Image MetaHub feel less like a separate catalog beside your tools and more like a real workspace around them.</p>
 
-    <p>I also put a lot of focus on making the app more responsive, faster, and more intuitive, I hope you'll notice the difference! One note: during development I did run into a few memory crashes that were mostly fixed. If you do happen to come across one, it would be really helpful if you open an Issue with the console logs!</p>
+    <p>The new ComfyUI Workspace is the heart of that idea: your library, metadata, thumbnails, workflows, and a live ComfyUI session can now sit in the same place. There are also image adjustments, external ComfyUI queue detection, better cache tools, and a lot of under-the-hood work for big libraries.</p>
 
-    <p>A genuine thank you to everyone who helped support development by purchasing a Pro license -- it truly makes a difference, your support is what will turn IMH into a reference point for everyone working with GenMedia. I also want to thank everyone who submitted bug reports and feature requests on GitHub, for actively helping shape the app into something genuinely useful.</p>
+    <p>This release took more out of me than I expected, but it also feels like an important step toward what I want IMH to become: a calm, local-first home for people making and organizing GenMedia seriously.</p>
+
+    <p>A genuine thank you to everyone who bought a Pro license, opened issues, tested rough builds, or simply kept using the app while it grew. Your support is what makes it possible to keep pushing this project forward.</p>
 
     <p>Make sure to join our Discord server! <a href="https://discord.gg/7XgrWCSxfJ" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">https://discord.gg/7XgrWCSxfJ</a></p>
 
