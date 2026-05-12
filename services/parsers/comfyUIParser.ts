@@ -450,9 +450,10 @@ function detectComfyLineageFromGraph(
   let hasMaskInput = false;
   let hasInpaintMarkers = false;
   let hasOutpaintMarkers = false;
+  let queueIndex = 0;
 
-  while (queue.length > 0) {
-    const nodeId = queue.shift()!;
+  while (queueIndex < queue.length) {
+    const nodeId = queue[queueIndex++]!;
     if (visited.has(nodeId)) {
       continue;
     }

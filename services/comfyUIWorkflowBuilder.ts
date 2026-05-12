@@ -324,9 +324,10 @@ function collectTextTargets(prompt: ComfyUIPromptGraph, startNodeIds: string[]):
   const targets: TextTarget[] = [];
   const visited = new Set<string>();
   const queue = [...startNodeIds];
+  let queueIndex = 0;
 
-  while (queue.length > 0) {
-    const nodeId = queue.shift()!;
+  while (queueIndex < queue.length) {
+    const nodeId = queue[queueIndex++]!;
     if (visited.has(nodeId)) {
       continue;
     }
@@ -358,9 +359,10 @@ function collectUpstreamModelTargets(prompt: ComfyUIPromptGraph, startNodeIds: s
   const targets: ModelTarget[] = [];
   const visited = new Set<string>();
   const queue = [...startNodeIds];
+  let queueIndex = 0;
 
-  while (queue.length > 0) {
-    const nodeId = queue.shift()!;
+  while (queueIndex < queue.length) {
+    const nodeId = queue[queueIndex++]!;
     if (visited.has(nodeId)) {
       continue;
     }
@@ -392,9 +394,10 @@ function collectUpstreamLoraTargets(prompt: ComfyUIPromptGraph, startNodeIds: st
   const targets: LoRATarget[] = [];
   const visited = new Set<string>();
   const queue = [...startNodeIds];
+  let queueIndex = 0;
 
-  while (queue.length > 0) {
-    const nodeId = queue.shift()!;
+  while (queueIndex < queue.length) {
+    const nodeId = queue[queueIndex++]!;
     if (visited.has(nodeId)) {
       continue;
     }
@@ -438,9 +441,10 @@ function collectUpstreamAssetTargets(
   const maskTargets: AssetTarget[] = [];
   const visited = new Set<string>();
   const queue = [...startNodeIds];
+  let queueIndex = 0;
 
-  while (queue.length > 0) {
-    const nodeId = queue.shift()!;
+  while (queueIndex < queue.length) {
+    const nodeId = queue[queueIndex++]!;
     if (visited.has(nodeId)) {
       continue;
     }
@@ -492,9 +496,10 @@ function hasDownstreamCandidate(
 ): boolean {
   const queue = [...(consumerMap[startNodeId] || [])];
   const visited = new Set<string>();
+  let queueIndex = 0;
 
-  while (queue.length > 0) {
-    const nodeId = queue.shift()!;
+  while (queueIndex < queue.length) {
+    const nodeId = queue[queueIndex++]!;
     if (visited.has(nodeId)) {
       continue;
     }
@@ -526,8 +531,9 @@ function findTerminalImageProducer(prompt: ComfyUIPromptGraph, samplerNodeIds: s
 
   const reachableFromSampler = new Set<string>();
   const queue = [...samplerNodeIds];
-  while (queue.length > 0) {
-    const nodeId = queue.shift()!;
+  let queueIndex = 0;
+  while (queueIndex < queue.length) {
+    const nodeId = queue[queueIndex++]!;
     if (reachableFromSampler.has(nodeId)) {
       continue;
     }

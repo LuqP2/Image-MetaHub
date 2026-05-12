@@ -393,8 +393,9 @@ class MediaSourceCache {
       .filter(([, entry]) => Boolean(entry.url) && entry.kind === kind)
       .sort((a, b) => a[1].lastAccess - b[1].lastAccess);
 
-    while (sortedEntries.length > maxEntries) {
-      const [cacheKey, entry] = sortedEntries.shift()!;
+    let evictIndex = 0;
+    while (sortedEntries.length - evictIndex > maxEntries) {
+      const [cacheKey, entry] = sortedEntries[evictIndex++]!;
       this.entries.delete(cacheKey);
       if (entry.revokeOnEvict && entry.url) {
         URL.revokeObjectURL(entry.url);
