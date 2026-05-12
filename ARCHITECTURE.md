@@ -23,6 +23,7 @@ The renderer is centered around `App.tsx`, which coordinates:
 * the **multi-window image viewer**
 * the **comparison modal**
 * the **analytics modal**
+* the **embedded ComfyUI Workspace**
 * generation modals and the shared generation queue sidebar
 
 The app is designed so the heavy work happens outside the tight render loop:
@@ -52,14 +53,16 @@ The app is designed so the heavy work happens outside the tight render loop:
 
 * `components/ImageGrid.tsx` and `components/ImageTable.tsx` render the main library in grid/list form.
 * `components/ImageModal.tsx` is now a windowed viewer surface with move, resize, minimize/maximize, and dock/collapse behavior.
+* `components/ImageAdjustmentPanel.tsx` provides metadata-preserving PNG adjustment/export controls for brightness, contrast, saturation, and hue.
 * `components/ImagePreviewSidebar.tsx` shows metadata, telemetry, and generation actions in the side preview flow.
 * `components/ImageLineageSection.tsx` resolves source and derived images for transformation workflows.
 
 **Pro surfaces**
 
-* `components/ComparisonModal.tsx` compares exactly two images with side-by-side, slider, and hover modes.
+* `components/ComparisonModal.tsx` compares 2-4 images with side-by-side/compare, side strip, grid, slider, and hover modes depending on selection size.
 * `components/Analytics.tsx` renders usage and telemetry dashboards.
 * `components/A1111GenerateModal.tsx` and `components/ComfyUIGenerateModal.tsx` expose generation controls.
+* `components/ComfyUIWorkspace.tsx` embeds a local ComfyUI browser in Electron and pairs it with library thumbnails, image context, workflow metadata, and quick generation actions.
 
 ### 2. State Stores
 
@@ -100,6 +103,7 @@ Persists user preferences such as:
 * theme
 * keyboard shortcuts
 * A1111 and ComfyUI endpoints
+* ComfyUI Workspace URL/panel preferences and queue monitoring
 
 In Electron, this store persists through the settings IPC bridge rather than plain browser storage.
 
@@ -118,6 +122,7 @@ Tracks generation jobs across providers:
 * queued, processing, done, failed, and canceled states
 * provider-specific payload needed for retry
 * currently active provider job
+* ComfyUI jobs detected from outside Image MetaHub
 
 The queue is synchronized by `hooks/useGenerationQueueSync.ts`.
 
@@ -194,6 +199,7 @@ Metadata and thumbnails are cached separately.
 * `services/cacheManager.ts` stores normalized image metadata in chunked cache files.
 * Parser/cache versioning is used to invalidate stale cache when metadata logic changes.
 * Writes are incremental to avoid large all-at-once cache flushes.
+* Oversized raw payloads can be compacted and hydrated on demand to reduce renderer memory pressure.
 
 **Thumbnail cache**
 
@@ -238,6 +244,7 @@ Non-destructive metadata editing and annotations are split across:
 * `hooks/useShadowMetadata.ts`
 * `components/MetadataEditorModal.tsx`
 * `services/imageAnnotationsStorage.ts`
+* `services/imageEditingService.ts`
 
 This layer allows:
 
@@ -245,6 +252,7 @@ This layer allows:
 * manual tags
 * notes imported from MetaHub Save payloads
 * shadow metadata overrides without overwriting the original file metadata
+* image adjustment export metadata for edited PNG copies
 
 ## Smart Library
 
@@ -272,10 +280,10 @@ Clustering and auto-tagging are deliberately offloaded to workers because they a
 
 ### Comparison
 
-`components/ComparisonModal.tsx` compares two images and coordinates:
+`components/ComparisonModal.tsx` compares up to four images and coordinates:
 
 * synchronized zoom state
-* side-by-side rendering
+* side-by-side, side strip, and grid rendering
 * overlay-based slider and hover modes
 * metadata diff vs standard view
 
@@ -317,9 +325,11 @@ The ComfyUI integration is broader and currently spans:
 * `services/comfyUIWorkflowBuilder.ts`
 * `services/comfyUIVisualWorkflow.ts`
 * `components/ComfyUIGenerateModal.tsx`
+* `components/ComfyUIWorkspace.tsx`
 * `components/ComfyUIWorkflowVisualEditor.tsx`
 * `hooks/useCopyToComfyUI.ts`
 * `hooks/useGenerateWithComfyUI.ts`
+* `hooks/useComfyUIQueueMonitor.ts`
 * `hooks/useComfyUIModels.ts`
 * `contexts/ComfyUIProgressContext.tsx`
 
@@ -332,6 +342,8 @@ The current behavior supports:
 * advanced JSON editing for edge cases
 * WebSocket progress updates
 * queue persistence and retry
+* optional monitoring of external ComfyUI prompt jobs
+* embedded Electron workspace browsing with external-browser fallback in non-desktop builds
 
 ## Desktop Integration
 
@@ -345,6 +357,7 @@ The current behavior supports:
 * filesystem IPC handlers
 * folder watching
 * export/ZIP/transfer operations
+* metadata-preserving edited image save/overwrite operations
 * video metadata reading via `ffprobe`
 * clipboard and drag-and-drop helpers
 

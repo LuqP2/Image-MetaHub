@@ -7,7 +7,7 @@ Image MetaHub is a desktop application (Electron + React + TypeScript) for brows
 **Key Technologies:**
 
 - Frontend: React 18 with TypeScript
-- Desktop: Electron with auto-updater
+- Desktop: Electron 38 with auto-updater
 - Storage: IndexedDB for caching
 - Build: Vite
 - Testing: Vitest
@@ -184,9 +184,10 @@ The application supports multiple AI image generators:
 
 Supported File Formats:
 
-- Images: PNG, JPEG, WEBP
+- Images: PNG, JPEG, WEBP, GIF
 - Animation: GIF
-- Video: MP4, WEBM
+- Video: MP4, WEBM, MKV, MOV, AVI
+- Audio: MP3, WAV, FLAC, OGG/OGA, M4A, AAC, OPUS, AIFF/AIF, WMA
 
 Metadata sources:
 
@@ -204,8 +205,12 @@ Metadata sources:
 5. **File Operations**: Rename, delete, export metadata (desktop only)
 6. **A1111 Integration**: Send images back to Automatic1111 for editing or regeneration
 7. **Video & GIF Support**: Indexing, playback, and thumbnail support for MP4, WEBM, and GIF files
-8. **Shadow Metadata**: View original metadata and revert changes (non-destructive editing)
-9. **Subfolder Management**: Ability to exclude specific subfolders from indexing
+8. **Audio Support**: Indexing, metadata extraction, filtering, and playback for common audio formats
+9. **Shadow Metadata**: View original metadata and revert changes (non-destructive editing)
+10. **Subfolder Management**: Ability to exclude specific subfolders from indexing
+11. **Image Adjustments**: Brightness, contrast, saturation, and hue adjustments with metadata-preserving PNG Save As / Overwrite desktop workflows
+12. **ComfyUI Workspace**: Embedded ComfyUI browser in Electron with image context, library thumbnails, workflow metadata tabs, and direct grid/table/viewer entry points
+13. **External ComfyUI Queue Monitoring**: Optional detection of ComfyUI jobs started outside Image MetaHub in the shared generation queue
 
 ## Smart Library & Auto-Tags
 
@@ -310,7 +315,12 @@ webui.bat --api --cors-allow-origins=http://localhost:5173
 
 The application includes bidirectional workflow with ComfyUI, allowing users to generate image variations by sending workflow data to ComfyUI via API. Unlike A1111's polling approach, ComfyUI integration uses real-time WebSocket communication for progress tracking.
 
-**Location:** `services/comfyUIApiClient.ts`, `hooks/useCopyToComfyUI.ts`, `hooks/useGenerateWithComfyUI.ts`, `contexts/ComfyUIProgressContext.tsx`, `utils/telemetryDetection.ts`
+As of v0.16.0, ComfyUI support has two major surfaces:
+
+- **Generation modal**: Builds queued jobs from either an executable original workflow or a simple metadata rebuild.
+- **ComfyUI Workspace**: Embeds a local ComfyUI browser in Electron and pairs it with Image MetaHub context, thumbnails, workflow/raw metadata, copy/generate actions, directory scoping, and external-browser fallback in non-desktop builds.
+
+**Location:** `services/comfyUIApiClient.ts`, `services/comfyUIWorkflowBuilder.ts`, `components/ComfyUIGenerateModal.tsx`, `components/ComfyUIWorkspace.tsx`, `hooks/useCopyToComfyUI.ts`, `hooks/useGenerateWithComfyUI.ts`, `hooks/useComfyUIQueueMonitor.ts`, `contexts/ComfyUIProgressContext.tsx`, `utils/telemetryDetection.ts`
 
 **Key Components:**
 
@@ -323,9 +333,10 @@ The application includes bidirectional workflow with ComfyUI, allowing users to 
    - 5-minute timeout for long generations
    - Graceful error handling with connection state tracking
 
-2. **Workflow Builder** (`services/comfyUIApiClient.ts` - `buildWorkflowFromMetadata()`)
+2. **Workflow Builder** (`services/comfyUIWorkflowBuilder.ts` / ComfyUI API helpers)
    - Converts `BaseMetadata` to simple txt2img ComfyUI workflow
-   - **Does NOT attempt to recreate original workflow** - generates minimal working workflow
+   - Generates a minimal working workflow when original workflow mode is unavailable or not desired
+   - Original workflow mode can reuse executable embedded prompt graphs and apply safe overrides
    - Linear pipeline structure:
      ```
      CheckpointLoader → MetaHub Timer → CLIPTextEncode (positive/negative)
@@ -384,6 +395,17 @@ The application includes bidirectional workflow with ComfyUI, allowing users to 
      - CFG scale (0-20 range)
      - Prompt editing (positive/negative)
    - Primary workflow for quick image variations
+
+6. **Embedded Workspace** (`components/ComfyUIWorkspace.tsx`)
+   - Electron-only embedded ComfyUI browser with URL persistence and external open actions
+   - Image context panel with selected image details, workflow metadata, raw metadata, and thumbnails
+   - Library filter scoping, directory selection, keyboard-friendly navigation, and direct image modal / compare entry points
+   - Suspends the embedded browser while Image MetaHub-owned ComfyUI generation is active to avoid view conflicts
+
+7. **Queue Monitor** (`hooks/useComfyUIQueueMonitor.ts`)
+   - Optional setting for detecting ComfyUI prompts started outside Image MetaHub
+   - Adds external ComfyUI jobs to the shared generation queue with waiting/processing/done/failed state
+   - Tracks output previews and supports cancel where ComfyUI exposes prompt cancellation
 
 **MetaHub Save Node (Official Companion Node):**
 
@@ -523,6 +545,8 @@ if (advancedFilters.hasVerifiedTelemetry === true) {
 
 - **ImagePreviewSidebar**: Split button (Copy to ComfyUI primary, Generate in dropdown)
 - **ImageModal**: Split button (same design) + Generate Variation modal
+- **Grid/Table/Toolbar context**: Open in ComfyUI Workspace when Pro ComfyUI features are enabled
+- **ComfyUIWorkspace**: Embedded browser, image context, metadata tabs, thumbnail navigation, compare/open actions, copy, and generate
 - **ComfyUIGenerateModal**: Full-screen modal with parameter customization
   - Seed input with randomize button
   - Steps slider (1-100)
@@ -549,12 +573,19 @@ if (advancedFilters.hasVerifiedTelemetry === true) {
    - Generated image automatically saved by MetaHub Save Node
    - Image includes verified telemetry badge
 
+3. **Workspace Flow**:
+   - Open an image in the ComfyUI Workspace from the grid, table, toolbar, or viewer
+   - Browse ComfyUI inside the app while keeping source images, metadata, and thumbnails visible
+   - Copy/generate from the current image or open the same image in the regular viewer/compare workflows
+
 **Configuration:**
 
 Settings in `store/useSettingsStore.ts`:
 
 - `comfyUIServerUrl`: Default `http://127.0.0.1:8188`
 - `comfyUIConnectionStatus`: Connection state tracking ('connected' | 'disconnected' | 'checking')
+- `comfyUIQueueMonitoringEnabled`: Enables external ComfyUI queue detection
+- `comfyUIWorkspaceLastUrl`, `comfyUIWorkspacePanelWidth`, `comfyUIWorkspaceAutoOpenSelectedImage`: Workspace persistence and behavior
 - Connection test button in Settings modal (tests `/system_stats` endpoint)
 
 **ComfyUI Setup Requirements:**
@@ -634,27 +665,26 @@ Generated workflows automatically include the MetaHub Timer node for accurate ti
 
 **Workflow Generation vs Original Workflow:**
 
-IMPORTANT: Image MetaHub does NOT attempt to recreate the original workflow used to generate an image. Instead, it:
+Image MetaHub supports two ComfyUI generation paths:
 
-1. Extracts normalized parameters from metadata (regardless of source: A1111, ComfyUI, Fooocus, etc.)
-2. Generates a **minimal txt2img workflow** with those parameters
-3. Focuses on core parameters: prompts, model, seed, steps, CFG, sampler, dimensions
-4. Omits advanced features like ControlNet, upscalers, refiner models, custom nodes
+1. **Original workflow mode**:
+   - Uses executable embedded ComfyUI prompt graphs when present
+   - Applies safe parameter/resource/source-image overrides through workflow patching
+   - Preserves more of the original graph structure, including advanced custom-node workflows when the user's ComfyUI installation supports them
 
-**Why This Approach:**
+2. **Simple rebuild mode**:
+   - Extracts normalized parameters from metadata (regardless of source: A1111, ComfyUI, Fooocus, etc.)
+   - Generates a minimal txt2img workflow focused on prompts, model, seed, steps, CFG, sampler, scheduler, and dimensions
+   - Intentionally omits advanced features like ControlNet, upscalers, refiner models, and multi-stage custom setups
 
-- Universal compatibility: works with images from any AI generator
-- Consistent behavior: same workflow structure every time
-- Reliability: no dependency on custom nodes or complex setups
-- Performance: fast execution with minimal overhead
-- Starting point: users can load and enhance workflow in ComfyUI if needed
+Use simple rebuild as the universal fallback and original workflow mode when the embedded workflow is executable and the user's local ComfyUI has the needed nodes/assets.
 
-For advanced workflows (ControlNet, upscaling, multi-stage), users should:
+For advanced manual workflows, users can:
 
-1. Use "Copy to ComfyUI" to get basic workflow
-2. Load in ComfyUI web interface
-3. Manually add advanced nodes (ControlNet, upscaler, etc.)
-4. Save custom workflow template for reuse
+1. Open the image in ComfyUI Workspace or use "Copy to ComfyUI"
+2. Load or continue editing inside ComfyUI
+3. Add advanced nodes (ControlNet, upscaler, custom pipelines, etc.)
+4. Save custom workflow templates for reuse
 
 ## Common Tasks
 
@@ -681,6 +711,14 @@ For advanced workflows (ControlNet, upscaling, multi-stage), users should:
 3. Update App.tsx to integrate
 4. Consider Electron/browser compatibility
 5. Test with large collections
+
+### Working on Image Adjustments
+
+1. Keep adjustment logic in `services/imageEditingService.ts`
+2. Use `components/ImageAdjustmentPanel.tsx` for viewer controls
+3. Preserve metadata when exporting adjusted PNGs
+4. Treat Overwrite as desktop-only and PNG-only unless the save pipeline explicitly changes
+5. Reindex or refresh the saved image path after desktop save/overwrite operations
 
 ### Fixing Performance Issues
 

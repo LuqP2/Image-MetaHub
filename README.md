@@ -21,8 +21,10 @@ It started as a local browser for InvokeAI outputs and has since grown into a br
 * Support for PNG, JPG, JPEG, WEBP, GIF, MP4, WEBM, MKV, MOV, and AVI
 * Faceted sidebar filters with explicit include/exclude actions for checkpoints, LoRAs, samplers, schedulers, ratings, generation modes, media types, and verified telemetry
 * Dedicated Node View for browsing embedded ComfyUI workflow node types
+* Embedded ComfyUI Workspace with a live ComfyUI browser, library thumbnails, workflow metadata, and quick generation actions
 * Image lineage detection for `img2img`, `inpaint`, and `outpaint`, including source-image recovery when possible
 * Multi-window image viewer with move, resize, docking/collapsible details, and fast cross-reference workflows
+* Non-destructive image adjustment tools for brightness, contrast, saturation, and hue, with metadata-preserving PNG export
 * Smart Library with prompt clustering, TF-IDF auto-tags, manual tag management, and deduplication helpers
 * Startup verification modes for reopening saved libraries from cache or validating them against disk
 * Automatic1111 and ComfyUI integrations with queueing, progress tracking, and optional launcher shortcuts
@@ -44,7 +46,7 @@ The repository is MPL 2.0 and the core app remains open-source. Some workflow-he
 **Pro currently unlocks:**
 
 * Automatic1111 generation and parameter copy workflows
-* ComfyUI generation, workflow-native editing, and progress tracking
+* ComfyUI generation, embedded workspace, workflow-native editing, and progress tracking
 * Compare View with 2-4 image layouts and metadata diff tools
 * Analytics Explorer
 * Batch export
@@ -80,6 +82,7 @@ Image MetaHub is built around fast local curation:
 * **Stacking**: group identical prompts in the main library view for faster browsing
 * **Manual tags + ratings**: keep a persistent manual tag catalog, switch included tags between `Any` and `All`, and curate with 1-5 ratings
 * **Metadata recovery**: reparse selected images without running a full folder refresh or clearing cache
+* **Image adjustments**: tune brightness, contrast, saturation, and hue from the viewer, then save a metadata-preserving PNG copy or overwrite eligible PNG originals on desktop
 * **Startup verification**: choose whether saved folders reopen from cache, reconcile in the background, or verify strictly before startup completes
 * **Shadow metadata**: edit metadata non-destructively and keep the original payload available for inspection or revert
 * **Viewer workflows**: open multiple image windows, minimize them into the footer, and navigate derived/source images through lineage
@@ -178,6 +181,8 @@ Basic setup:
 
 With Pro enabled, Image MetaHub can generate through ComfyUI using either the original embedded workflow or a safe metadata rebuild.
 
+The ComfyUI Workspace adds a full working area around a running local ComfyUI instance: an embedded browser, selected-image context, library thumbnails, directory scoping, workflow/raw metadata tabs, copy/generate actions, and direct routes from the grid, table, toolbar, and image viewer. In the browser build, the same entry points open ComfyUI externally instead of embedding it.
+
 **Current flow:**
 
 1. Open an image with compatible metadata.
@@ -192,9 +197,10 @@ With Pro enabled, Image MetaHub can generate through ComfyUI using either the or
 * **Workflow-native mode** for executable embedded prompt graphs
 * **Simple rebuild mode** for metadata-only images
 * **Visual workflow inspector/editor** with pan/zoom and per-node field editing
+* **Embedded ComfyUI Workspace** for staying inside Image MetaHub while browsing source images and working in ComfyUI
 * **Model-family aware overrides** for checkpoints, UNETs, VAEs, CLIP loaders, and LoRAs when supported
 * **Transform-aware source image policies** for img2img/inpaint-style workflows
-* **Shared queue** with retry, cancel, and cleanup actions
+* **Shared queue** with retry, cancel, cleanup actions, and optional detection of ComfyUI jobs started outside Image MetaHub
 * **Metadata-rich outputs** when used with the MetaHub Save Node and Timer node
 
 **Setup:**

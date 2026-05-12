@@ -5,19 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.16.0] [Unreleased]
+## [0.16.0] - 2026-05-13
 
 ### Added
 
 - **Image Adjustment Editing**: Added an adjustment panel in the Image Modal for brightness, contrast, saturation, and hue, with desktop Save As and Overwrite workflows that export PNG output while preserving generation metadata.
 - **Embedded ComfyUI Workspace**: Added a dedicated ComfyUI Workspace view with an embedded ComfyUI browser, image context panel, workflow metadata tabs, thumbnail navigation, copy/generate actions, and direct open actions from grid/table image contexts.
 - **ComfyUI Queue Detection**: Added optional monitoring for ComfyUI jobs started outside Image MetaHub, showing waiting/processing/done/failed status, progress, output previews, and cancel support in the generation queue.
-
+- **Release CI**: Added GitHub Actions coverage for test/lint/build validation plus RC artifact builds for macOS and Linux.
 
 ### Improved
 
 - **Large Library Memory Usage**: Reduced OOM risk in large ComfyUI libraries by compacting oversized raw metadata, streaming cache diffing across chunks, using lighter Electron file handles, increasing renderer heap headroom, and avoiding automatic table thumbnails in very large result sets.
 - **Large Library Cache Reconciliation**: Improved startup and manual cache checks for large folders by applying lightweight UI deltas and persisting chunked cache updates without rehydrating the entire library.
+- **ComfyUI Workspace UX**: Improved workspace navigation with library filter scoping, directory selection, selected-image auto-open behavior, metadata view options, timestamp-aware thumbnails, and safer embedded-browser visibility during generation.
+- **Cache Controls**: Clarified cache reset actions and added library cache clearing support from settings.
+- **Trial Migration**: Reset eligible non-Pro trial state for this release so users affected by earlier trial behavior can start fresh.
 - **Accessibility**: Added accessible labels to search, compare zoom controls, reset zoom, and generate variation icon-only controls.
 
 ### Fixed
