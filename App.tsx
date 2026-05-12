@@ -110,6 +110,11 @@ const RIGHT_SIDEBAR_MAX_WIDTH = 640;
 const SIDEBAR_COLLAPSED_CONTENT_OFFSET = 48;
 const MAIN_CONTENT_MIN_WIDTH = 560;
 
+const getImageTimestamp = (image: IndexedImage): number => image.contentModifiedMs ?? image.lastModified ?? 0;
+
+const sortImagesNewestFirst = (images: IndexedImage[]): IndexedImage[] =>
+  [...images].sort((a, b) => getImageTimestamp(b) - getImageTimestamp(a) || a.name.localeCompare(b.name));
+
 const sanitizePreferredWidth = (
   width: number,
   fallbackWidth: number,
@@ -1948,11 +1953,11 @@ export default function App() {
       .map((imageId) => imageLookup.get(imageId) ?? null)
       .filter((candidate): candidate is IndexedImage => Boolean(candidate));
 
-    if (comfyUIWorkspaceImage && !resolvedImages.some((candidate) => candidate.id === comfyUIWorkspaceImage.id)) {
-      return [comfyUIWorkspaceImage, ...resolvedImages];
-    }
+    const nextImages = comfyUIWorkspaceImage && !resolvedImages.some((candidate) => candidate.id === comfyUIWorkspaceImage.id)
+      ? [comfyUIWorkspaceImage, ...resolvedImages]
+      : resolvedImages;
 
-    return resolvedImages;
+    return sortImagesNewestFirst(nextImages);
   }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImageIds, imageLookup]);
   const comfyUIWorkspaceCurrentIndex = useMemo(() => {
     if (!comfyUIWorkspaceImage) {

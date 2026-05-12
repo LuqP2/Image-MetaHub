@@ -92,10 +92,6 @@ const formatValue = (value: unknown): string => {
   return String(value);
 };
 
-const getImageTimestamp = (image: IndexedImage): number => {
-  return image.contentModifiedMs ?? image.lastModified ?? 0;
-};
-
 const MetadataLine: React.FC<{ label: string; value: unknown }> = ({ label, value }) => (
   <div className="rounded-md border border-gray-800 bg-gray-950/60 px-3 py-2">
     <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
@@ -466,8 +462,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const thumbnail = useResolvedThumbnail(image);
   const metadata = getWorkflowMetadata(image);
   const normalizedNavigationImages = useMemo(
-    () => (navigationImages.length > 0 ? [...navigationImages] : image ? [image] : [])
-      .sort((a, b) => getImageTimestamp(b) - getImageTimestamp(a) || a.name.localeCompare(b.name)),
+    () => (navigationImages.length > 0 ? navigationImages : image ? [image] : []),
     [image, navigationImages],
   );
   const currentPosition = currentIndex >= 0 ? currentIndex + 1 : 0;
