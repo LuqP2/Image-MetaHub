@@ -6,6 +6,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 type ComfyUIQueueEntry = {
   promptId: string;
   prompt?: string;
+  nodeLabels: Record<string, string>;
 };
 
 type ComfyUIHistoryImage = {
@@ -74,6 +75,25 @@ const extractPromptPreview = (entry: unknown): string | undefined => {
   return undefined;
 };
 
+const extractNodeLabels = (entry: unknown): Record<string, string> => {
+  const graph = getPromptGraphFromQueueEntry(entry);
+  if (!graph || typeof graph !== 'object') {
+    return {};
+  }
+
+  return Object.entries(graph as Record<string, unknown>).reduce<Record<string, string>>((labels, [nodeId, node]) => {
+    if (!node || typeof node !== 'object') {
+      return labels;
+    }
+
+    const record = node as { class_type?: unknown; _meta?: { title?: unknown } };
+    const title = typeof record._meta?.title === 'string' ? record._meta.title.trim() : '';
+    const classType = typeof record.class_type === 'string' ? record.class_type.trim() : '';
+    labels[String(nodeId)] = title || classType || `Node ${nodeId}`;
+    return labels;
+  }, {});
+};
+
 const parseQueueEntries = (queue: Record<string, unknown>, key: 'queue_running' | 'queue_pending'): ComfyUIQueueEntry[] => {
   const entries = queue[key];
   if (!Array.isArray(entries)) {
@@ -90,6 +110,7 @@ const parseQueueEntries = (queue: Record<string, unknown>, key: 'queue_running' 
       return {
         promptId,
         prompt: extractPromptPreview(entry),
+        nodeLabels: extractNodeLabels(entry),
       };
     })
     .filter((entry): entry is ComfyUIQueueEntry => Boolean(entry));
@@ -214,6 +235,7 @@ export function useComfyUIQueueMonitor() {
   const monitoringEnabled = useSettingsStore((state) => state.comfyUIQueueMonitoringEnabled);
   const serverUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const activePromptIdRef = useRef<string | null>(null);
+  const nodeLabelsRef = useRef<Map<string, Record<string, string>>>(new Map());
 
   useEffect(() => {
     if (!comfyUIEnabled || !monitoringEnabled || !serverUrl) {
@@ -271,6 +293,7 @@ export function useComfyUIQueueMonitor() {
         const activePromptIds = new Set([...running, ...pending].map((entry) => entry.promptId));
 
         pending.forEach((entry) => {
+          nodeLabelsRef.current.set(entry.promptId, entry.nodeLabels);
           useGenerationQueueStore.getState().upsertExternalComfyUIJob({
             providerJobId: entry.promptId,
             status: 'waiting',
@@ -281,6 +304,7 @@ export function useComfyUIQueueMonitor() {
 
         running.forEach((entry) => {
           activePromptIdRef.current = entry.promptId;
+          nodeLabelsRef.current.set(entry.promptId, entry.nodeLabels);
           useGenerationQueueStore.getState().upsertExternalComfyUIJob({
             providerJobId: entry.promptId,
             status: 'processing',
@@ -341,10 +365,16 @@ export function useComfyUIQueueMonitor() {
             }
 
             activePromptIdRef.current = promptId;
+            const nodeId = typeof message.data?.node === 'string' || typeof message.data?.node === 'number'
+              ? String(message.data.node)
+              : null;
+            const currentNode = nodeId
+              ? nodeLabelsRef.current.get(promptId)?.[nodeId] || `Node ${nodeId}`
+              : null;
             useGenerationQueueStore.getState().upsertExternalComfyUIJob({
               providerJobId: promptId,
               status: 'processing',
-              currentNode: typeof message.data?.node === 'string' ? message.data.node : null,
+              currentNode,
             });
           }
 
@@ -393,6 +423,7 @@ export function useComfyUIQueueMonitor() {
       ws?.close();
       ws = null;
       activePromptIdRef.current = null;
+      nodeLabelsRef.current.clear();
     };
   }, [comfyUIEnabled, monitoringEnabled, serverUrl]);
 }

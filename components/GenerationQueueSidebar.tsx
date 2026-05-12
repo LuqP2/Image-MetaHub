@@ -406,7 +406,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                   </div>
                   {item.currentNode && (
                     <div className="text-[11px] text-gray-500 truncate">
-                      {item.currentNode}
+                      Current node: {item.currentNode}
                     </div>
                   )}
                 </div>

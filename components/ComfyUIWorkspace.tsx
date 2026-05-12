@@ -10,6 +10,7 @@ import {
   Clipboard,
   Download,
   ExternalLink,
+  FileText,
   Folder,
   GitCompare,
   Heart,
@@ -58,7 +59,11 @@ interface ComfyUIWorkspaceProps {
   directories?: Directory[];
   selectedDirectoryId?: string;
   onSelectDirectory?: (directoryId: string | null) => void;
+  applyLibraryFilters?: boolean;
+  onApplyLibraryFiltersChange?: (applyFilters: boolean) => void;
   onInspectImage?: (image: IndexedImage) => void;
+  onOpenImageModal?: (image: IndexedImage, navigationImages: IndexedImage[]) => void;
+  onViewFullMetadata?: (image: IndexedImage) => void;
   onOpenCompare?: (images: IndexedImage[]) => void;
 }
 
@@ -111,50 +116,55 @@ const WorkspaceThumbnailButton: React.FC<{
   const thumbnail = useResolvedThumbnail(image);
 
   return (
-    <div className="group relative aspect-square w-full shrink-0">
-      <button
-        onClick={onClick}
-        onContextMenu={onContextMenu}
-        className={`h-full w-full overflow-hidden rounded-md border bg-black transition-colors ${
-          isSelected
-            ? 'border-blue-400 ring-2 ring-blue-400/70'
-            : isActive
-              ? 'border-purple-400 ring-1 ring-purple-400/60'
-              : 'border-gray-700 hover:border-gray-500'
-        }`}
-        title={`Preview ${image.name}`}
-        aria-label={`Preview ${image.name}`}
-        draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
-        onDragStart={(event) => onDragStart(event, image, directoryPath)}
-      >
-        {thumbnail?.thumbnailUrl ? (
-          <img src={thumbnail.thumbnailUrl} alt="" className="h-full w-full object-cover image-alpha-grid" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-gray-600">
-            <ImageIcon className="h-5 w-5" />
-          </div>
-        )}
-      </button>
-      <button
-        onClick={onToggleSelected}
-        className={`absolute left-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
-          isSelected ? 'text-blue-300 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100'
-        }`}
-        title={isSelected ? 'Deselect image' : 'Select image'}
-        aria-label={isSelected ? 'Deselect image' : 'Select image'}
-      >
-        {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-      </button>
-      <button
-        onClick={onToggleFavorite}
-        className={`absolute right-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
-          image.isFavorite ? 'text-pink-300 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-pink-300'
-        }`}
-        title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-        aria-label={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-      >
-        <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
-      </button>
+    <div className="group w-full shrink-0">
+      <div className="relative aspect-square w-full">
+        <button
+          onClick={onClick}
+          onContextMenu={onContextMenu}
+          className={`h-full w-full overflow-hidden rounded-md border bg-black transition-colors ${
+            isSelected
+              ? 'border-blue-400 ring-2 ring-blue-400/70'
+              : isActive
+                ? 'border-purple-400 ring-1 ring-purple-400/60'
+                : 'border-gray-700 hover:border-gray-500'
+          }`}
+          title={`Preview ${image.name}`}
+          aria-label={`Preview ${image.name}`}
+          draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
+          onDragStart={(event) => onDragStart(event, image, directoryPath)}
+        >
+          {thumbnail?.thumbnailUrl ? (
+            <img src={thumbnail.thumbnailUrl} alt="" className="h-full w-full object-cover image-alpha-grid" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-gray-600">
+              <ImageIcon className="h-5 w-5" />
+            </div>
+          )}
+        </button>
+        <button
+          onClick={onToggleSelected}
+          className={`absolute left-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
+            isSelected ? 'text-blue-300 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100'
+          }`}
+          title={isSelected ? 'Deselect image' : 'Select image'}
+          aria-label={isSelected ? 'Deselect image' : 'Select image'}
+        >
+          {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+        </button>
+        <button
+          onClick={onToggleFavorite}
+          className={`absolute right-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
+            image.isFavorite ? 'text-pink-300 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-pink-300'
+          }`}
+          title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          aria-label={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
+        </button>
+      </div>
+      <div className="mt-1 truncate text-[11px] leading-4 text-gray-400" title={image.name}>
+        {image.name}
+      </div>
     </div>
   );
 };
@@ -164,7 +174,8 @@ const WorkspaceImagePreviewModal: React.FC<{
   initialIndex: number;
   onClose: () => void;
   onInspectImage?: (image: IndexedImage) => void;
-}> = ({ images, initialIndex, onClose, onInspectImage }) => {
+  onViewFullMetadata?: (image: IndexedImage) => void;
+}> = ({ images, initialIndex, onClose, onInspectImage, onViewFullMetadata }) => {
   const [index, setIndex] = useState(() => Math.min(Math.max(initialIndex, 0), Math.max(images.length - 1, 0)));
   const [modalSize, setModalSize] = useState(() => ({
     width: Math.min(Math.round(window.innerWidth * 0.82), 1400),
@@ -278,14 +289,27 @@ const WorkspaceImagePreviewModal: React.FC<{
             <h2 className="truncate text-base font-semibold text-gray-100">{current.name}</h2>
             {hasMultiple && <p className="text-xs text-gray-500">{index + 1}/{images.length}</p>}
           </div>
-          <button
-            onClick={onClose}
-            className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
-            aria-label="Close image preview"
-            title="Close"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {onViewFullMetadata && (
+              <button
+                onClick={() => onViewFullMetadata(current)}
+                className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-500"
+                aria-label="View full metadata"
+                title="View full metadata"
+              >
+                <FileText size={16} />
+                <span>View full metadata</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
+              aria-label="Close image preview"
+              title="Close"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
         <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black">
           {hasMultiple && (
@@ -379,7 +403,11 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   directories = [],
   selectedDirectoryId = '',
   onSelectDirectory,
+  applyLibraryFilters = false,
+  onApplyLibraryFiltersChange,
   onInspectImage,
+  onOpenImageModal,
+  onViewFullMetadata,
   onOpenCompare,
 }) => {
   const browserHostRef = useRef<HTMLDivElement>(null);
@@ -782,13 +810,18 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     });
   }, [syncBounds]);
 
+  const inspectWorkspaceImage = useCallback((nextImage: IndexedImage) => {
+    onInspectImage?.(nextImage);
+    setActiveInspectorTab('metadata');
+  }, [onInspectImage]);
+
   const openWorkspacePreview = useCallback((visibleIndex: number) => {
     const selectedImage = visibleNavigationImages[visibleIndex];
     if (selectedImage) {
-      onInspectImage?.(selectedImage);
+      inspectWorkspaceImage(selectedImage);
+      onOpenImageModal?.(selectedImage, visibleNavigationImages);
     }
-    setWorkspacePreviewIndex(visibleIndex);
-  }, [onInspectImage, visibleNavigationImages]);
+  }, [inspectWorkspaceImage, onOpenImageModal, visibleNavigationImages]);
 
   const updateThumbSelection = useCallback((event: React.MouseEvent, contextImage: IndexedImage, visibleIndex: number) => {
     event.preventDefault();
@@ -918,10 +951,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   }, []);
 
   const inspectAsset = useCallback((contextImage: IndexedImage) => {
-    onInspectImage?.(contextImage);
-    setActiveInspectorTab('image');
+    inspectWorkspaceImage(contextImage);
     setAssetContextMenu(null);
-  }, [onInspectImage]);
+  }, [inspectWorkspaceImage]);
 
   const exportAssetImage = useCallback((contextImage: IndexedImage) => {
     exportImages(getContextTargetImages(contextImage));
@@ -1047,6 +1079,19 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
               </div>
             )}
             {!isThumbRailCollapsed && (
+            <>
+            <label
+              className="mt-2 flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-800 bg-gray-950/70 px-2 py-1.5 text-[11px] text-gray-400"
+              title="Use the current Library filters for this thumbnail rail"
+            >
+              <span className="truncate">Apply Library Filters</span>
+              <input
+                type="checkbox"
+                checked={applyLibraryFilters}
+                onChange={(event) => onApplyLibraryFiltersChange?.(event.target.checked)}
+                className="h-3.5 w-3.5 accent-purple-500"
+              />
+            </label>
             <div className="mt-2 flex flex-wrap items-center gap-1">
               <span className="mr-auto rounded border border-gray-800 px-1.5 py-1 text-[10px] font-medium text-gray-400">
                 {selectedWorkspaceCount}
@@ -1130,6 +1175,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
+            </>
             )}
           </div>
 
@@ -1462,7 +1508,8 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
         <WorkspaceImagePreviewModal
           images={visibleNavigationImages}
           initialIndex={workspacePreviewIndex}
-          onInspectImage={onInspectImage}
+          onInspectImage={inspectWorkspaceImage}
+          onViewFullMetadata={onViewFullMetadata}
           onClose={() => setWorkspacePreviewIndex(null)}
         />
       )}

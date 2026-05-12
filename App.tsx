@@ -67,7 +67,7 @@ interface OpenImageModalState {
   modalId: string;
   imageId: string;
   navigationImageIds: string[];
-  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow';
+  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow' | 'comfyui';
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
@@ -100,6 +100,7 @@ interface BatchExportRequestState {
 const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
 const RIGHT_SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-right-sidebar-width';
 const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
+const COMFYUI_WORKSPACE_APPLY_FILTERS_STORAGE_KEY = 'image-metahub-comfyui-workspace-apply-library-filters';
 const SIDEBAR_DEFAULT_WIDTH = 320;
 const SIDEBAR_MIN_WIDTH = 280;
 const SIDEBAR_MAX_WIDTH = 640;
@@ -108,6 +109,11 @@ const RIGHT_SIDEBAR_MIN_WIDTH = 320;
 const RIGHT_SIDEBAR_MAX_WIDTH = 640;
 const SIDEBAR_COLLAPSED_CONTENT_OFFSET = 48;
 const MAIN_CONTENT_MIN_WIDTH = 560;
+
+const getImageTimestamp = (image: IndexedImage): number => image.contentModifiedMs ?? image.lastModified ?? 0;
+
+const sortImagesNewestFirst = (images: IndexedImage[]): IndexedImage[] =>
+  [...images].sort((a, b) => getImageTimestamp(b) - getImageTimestamp(a) || a.name.localeCompare(b.name));
 
 const sanitizePreferredWidth = (
   width: number,
@@ -395,6 +401,12 @@ export default function App() {
   const [comfyUIWorkspaceImageId, setComfyUIWorkspaceImageId] = useState<string | null>(null);
   const [comfyUIWorkspaceNavigationImageIds, setComfyUIWorkspaceNavigationImageIds] = useState<string[] | null>(null);
   const [comfyUIWorkspaceDirectoryId, setComfyUIWorkspaceDirectoryId] = useState<string>('');
+  const [comfyUIWorkspaceApplyLibraryFilters, setComfyUIWorkspaceApplyLibraryFilters] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return window.localStorage.getItem(COMFYUI_WORKSPACE_APPLY_FILTERS_STORAGE_KEY) === 'true';
+  });
   const [isComfyUIWorkspaceGenerating, setIsComfyUIWorkspaceGenerating] = useState(false);
   const [newImagesToast, setNewImagesToast] = useState<{ message: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
@@ -1345,6 +1357,10 @@ export default function App() {
       return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
     }
 
+    if (modal.navigationSource === 'comfyui') {
+      return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
+    }
+
     return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
   }, [activeScopeNavigationImageIds, filteredNavigationImageIds, getImageByIdFromStore, imageLookup]);
 
@@ -1682,8 +1698,11 @@ export default function App() {
 
     setActiveImageModalId(activeModalId);
     setSelectedImage(image);
+    if (libraryView === 'comfyui') {
+      setLibraryView('library');
+    }
     setGeneratedOutputPreview(null);
-  }, [beginModalOpenFlow, getImageByIdFromStore, openImageModals, safeActiveImageScope, safeFilteredImages, setSelectedImage]);
+  }, [beginModalOpenFlow, getImageByIdFromStore, libraryView, openImageModals, safeActiveImageScope, safeFilteredImages, setSelectedImage]);
 
   const resolveGeneratedOutputImageId = useCallback((output: GeneratedQueueOutput): string | undefined => {
     if (output.imageId && getImageByIdFromStore(output.imageId)) {
@@ -1832,6 +1851,7 @@ export default function App() {
       : libraryView === 'node'
       ? nodeViewResultImages
       : safeFilteredImages;
+  const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
 
   useEffect(() => {
     if (libraryView !== 'comfyui') {
@@ -1851,8 +1871,8 @@ export default function App() {
 
     const effectiveDirectoryId = shouldIgnoreDirectoryScope ? '' : comfyUIWorkspaceDirectoryId;
     const scopedImages = effectiveDirectoryId
-      ? displayImages.filter((image) => image.directoryId === effectiveDirectoryId)
-      : displayImages;
+      ? comfyUIWorkspaceSourceImages.filter((image) => image.directoryId === effectiveDirectoryId)
+      : comfyUIWorkspaceSourceImages;
     const scopedImageIds = scopedImages.map((image) => image.id);
 
     setComfyUIWorkspaceNavigationImageIds(scopedImageIds);
@@ -1868,7 +1888,7 @@ export default function App() {
 
       return preferredImage?.id ?? null;
     });
-  }, [comfyUIWorkspaceDirectoryId, comfyUIWorkspaceImageId, displayImages, imageLookup, libraryView, previewImage, selectedImage]);
+  }, [comfyUIWorkspaceDirectoryId, comfyUIWorkspaceImageId, comfyUIWorkspaceSourceImages, imageLookup, libraryView, previewImage, selectedImage]);
 
   const openFindSimilar = useCallback((
     sourceImage: IndexedImage,
@@ -1933,11 +1953,11 @@ export default function App() {
       .map((imageId) => imageLookup.get(imageId) ?? null)
       .filter((candidate): candidate is IndexedImage => Boolean(candidate));
 
-    if (comfyUIWorkspaceImage && !resolvedImages.some((candidate) => candidate.id === comfyUIWorkspaceImage.id)) {
-      return [comfyUIWorkspaceImage, ...resolvedImages];
-    }
+    const nextImages = comfyUIWorkspaceImage && !resolvedImages.some((candidate) => candidate.id === comfyUIWorkspaceImage.id)
+      ? [comfyUIWorkspaceImage, ...resolvedImages]
+      : resolvedImages;
 
-    return resolvedImages;
+    return sortImagesNewestFirst(nextImages);
   }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImageIds, imageLookup]);
   const comfyUIWorkspaceCurrentIndex = useMemo(() => {
     if (!comfyUIWorkspaceImage) {
@@ -1946,17 +1966,73 @@ export default function App() {
 
     return comfyUIWorkspaceNavigationImages.findIndex((candidate) => candidate.id === comfyUIWorkspaceImage.id);
   }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImages]);
+  const handleOpenComfyUIWorkspaceImageModal = useCallback((image: IndexedImage, navigationImages: IndexedImage[]) => {
+    const navigationImageIds = navigationImages.length > 0
+      ? navigationImages.map((entry) => entry.id)
+      : [image.id];
+    const modalId = `image-modal-${Date.now()}-${image.id}`;
+    const existingModalForImage = openImageModals.find((modal) => modal.imageId === image.id);
+    const activeModalId = existingModalForImage?.modalId ?? modalId;
+
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const nextZIndex = highestZIndex + 1;
+      const existingModal = current.find((modal) => modal.imageId === image.id);
+
+      if (existingModal) {
+        return current.map((modal) =>
+          modal.modalId === existingModal.modalId
+            ? {
+                ...modal,
+                navigationImageIds,
+                navigationSource: 'comfyui',
+                zIndex: nextZIndex,
+                isMinimized: false,
+              }
+            : modal
+        );
+      }
+
+      return [
+        ...current,
+        {
+          modalId,
+          imageId: image.id,
+          navigationImageIds,
+          navigationSource: 'comfyui',
+          zIndex: nextZIndex,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(image.id, 'comfyui-workspace'),
+        },
+      ];
+    });
+
+    setComfyUIWorkspaceImageId(image.id);
+    setActiveImageModalId(activeModalId);
+    suppressSelectedImageModalOpenRef.current = image.id;
+    setSelectedImage(image);
+  }, [beginModalOpenFlow, openImageModals, setSelectedImage]);
   const handleComfyUIWorkspaceDirectoryChange = useCallback((directoryId: string | null) => {
     const nextDirectoryId = directoryId || '';
     setComfyUIWorkspaceDirectoryId(nextDirectoryId);
 
     const nextImages = nextDirectoryId
-      ? displayImages.filter((candidate) => candidate.directoryId === nextDirectoryId)
-      : displayImages;
+      ? comfyUIWorkspaceSourceImages.filter((candidate) => candidate.directoryId === nextDirectoryId)
+      : comfyUIWorkspaceSourceImages;
 
     setComfyUIWorkspaceNavigationImageIds(nextImages.map((candidate) => candidate.id));
     setComfyUIWorkspaceImageId(nextImages[0]?.id ?? null);
-  }, [displayImages]);
+  }, [comfyUIWorkspaceSourceImages]);
+  const handleComfyUIWorkspaceApplyLibraryFiltersChange = useCallback((applyFilters: boolean) => {
+    setComfyUIWorkspaceApplyLibraryFilters(applyFilters);
+    window.localStorage.setItem(COMFYUI_WORKSPACE_APPLY_FILTERS_STORAGE_KEY, String(applyFilters));
+  }, []);
+  const handleComfyUIWorkspaceViewFullMetadata = useCallback((image: IndexedImage) => {
+    setComfyUIWorkspaceImageId(image.id);
+    setSelectedImage(image);
+    setLibraryView('library');
+  }, [setSelectedImage]);
   const handleComfyUIWorkspaceNavigate = useCallback((direction: 'next' | 'previous') => {
     if (comfyUIWorkspaceCurrentIndex === -1) {
       return;
@@ -2141,6 +2217,9 @@ export default function App() {
   const hasActiveVisibleImageModal = openImageModalEntries.some(
     (modal) => !modal.isMinimized && modal.modalId === activeImageModalId
   );
+  const hasVisibleImageModal = openImageModalEntries.some(
+    (modal) => !modal.isMinimized
+  );
   const shouldShowEmbeddedComfyUIView =
     libraryView === 'comfyui' &&
     !isSettingsModalOpen &&
@@ -2153,6 +2232,7 @@ export default function App() {
     !isSaveFilteredCollectionModalOpen &&
     !isA1111GenerateModalOpen &&
     !isComfyUIGenerateModalOpen &&
+    !hasVisibleImageModal &&
     !generatedOutputPreview &&
     !proModalOpen;
   const libraryContentFocusClass = hasActiveVisibleImageModal
@@ -2645,7 +2725,11 @@ export default function App() {
                     directories={safeDirectories}
                     selectedDirectoryId={comfyUIWorkspaceDirectoryId}
                     onSelectDirectory={handleComfyUIWorkspaceDirectoryChange}
+                    applyLibraryFilters={comfyUIWorkspaceApplyLibraryFilters}
+                    onApplyLibraryFiltersChange={handleComfyUIWorkspaceApplyLibraryFiltersChange}
                     onInspectImage={(image) => setComfyUIWorkspaceImageId(image.id)}
+                    onOpenImageModal={handleOpenComfyUIWorkspaceImageModal}
+                    onViewFullMetadata={handleComfyUIWorkspaceViewFullMetadata}
                     onOpenCompare={handleOpenFindSimilarCompare}
                   />
                 ) : (

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Image Adjustment Editing**: Added an adjustment panel in the Image Modal for brightness, contrast, saturation, and hue, with desktop Save As and Overwrite workflows that export PNG output while preserving generation metadata.
 - **Embedded ComfyUI Workspace**: Added a dedicated ComfyUI Workspace view with an embedded ComfyUI browser, image context panel, workflow metadata tabs, thumbnail navigation, copy/generate actions, and direct open actions from grid/table image contexts.
+- **ComfyUI Queue Detection**: Added optional monitoring for ComfyUI jobs started outside Image MetaHub, showing waiting/processing/done/failed status, progress, output previews, and cancel support in the generation queue.
+
 
 ### Improved
 
