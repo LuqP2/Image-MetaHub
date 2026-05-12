@@ -2217,6 +2217,9 @@ export default function App() {
   const hasActiveVisibleImageModal = openImageModalEntries.some(
     (modal) => !modal.isMinimized && modal.modalId === activeImageModalId
   );
+  const hasVisibleImageModal = openImageModalEntries.some(
+    (modal) => !modal.isMinimized
+  );
   const shouldShowEmbeddedComfyUIView =
     libraryView === 'comfyui' &&
     !isSettingsModalOpen &&
@@ -2229,7 +2232,7 @@ export default function App() {
     !isSaveFilteredCollectionModalOpen &&
     !isA1111GenerateModalOpen &&
     !isComfyUIGenerateModalOpen &&
-    !hasActiveVisibleImageModal &&
+    !hasVisibleImageModal &&
     !generatedOutputPreview &&
     !proModalOpen;
   const libraryContentFocusClass = hasActiveVisibleImageModal
