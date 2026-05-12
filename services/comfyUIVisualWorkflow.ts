@@ -269,17 +269,36 @@ function buildHybridLayout(
     promptNodeIds.filter((nodeId) => !hybridLayout.has(nodeId))
   );
 
+  const incomingEdgesByNode = new Map<string, VisualWorkflowEdge[]>();
+  const outgoingEdgesByNode = new Map<string, VisualWorkflowEdge[]>();
+
+  for (const edge of edges) {
+    const incoming = incomingEdgesByNode.get(edge.to);
+    if (incoming) {
+      incoming.push(edge);
+    } else {
+      incomingEdgesByNode.set(edge.to, [edge]);
+    }
+
+    const outgoing = outgoingEdgesByNode.get(edge.from);
+    if (outgoing) {
+      outgoing.push(edge);
+    } else {
+      outgoingEdgesByNode.set(edge.from, [edge]);
+    }
+  }
+
   let placedInPass = true;
+  const occupiedPositions = Array.from(hybridLayout.values());
+
   while (unresolved.size > 0 && placedInPass) {
     placedInPass = false;
 
     for (const nodeId of Array.from(unresolved)) {
-      const incoming = edges
-        .filter((edge) => edge.to === nodeId)
+      const incoming = (incomingEdgesByNode.get(nodeId) || [])
         .map((edge) => hybridLayout.get(edge.from))
         .filter((entry): entry is { x: number; y: number } => Boolean(entry));
-      const outgoing = edges
-        .filter((edge) => edge.from === nodeId)
+      const outgoing = (outgoingEdgesByNode.get(nodeId) || [])
         .map((edge) => hybridLayout.get(edge.to))
         .filter((entry): entry is { x: number; y: number } => Boolean(entry));
 
@@ -303,8 +322,9 @@ function buildHybridLayout(
       const position = resolveHybridCollision({
         x: average(xCandidates),
         y: average(yCandidates),
-      }, Array.from(hybridLayout.values()));
+      }, occupiedPositions);
       hybridLayout.set(nodeId, position);
+      occupiedPositions.push(position);
       unresolved.delete(nodeId);
       placedInPass = true;
     }
@@ -329,7 +349,12 @@ function buildAutoLayout(prompt: ComfyUIPromptGraph, edges: VisualWorkflowEdge[]
   }
 
   for (const edge of edges) {
-    upstreamMap.set(edge.to, [...(upstreamMap.get(edge.to) || []), edge.from]);
+    const upstream = upstreamMap.get(edge.to);
+    if (upstream) {
+      upstream.push(edge.from);
+    } else {
+      upstreamMap.set(edge.to, [edge.from]);
+    }
   }
 
   const depthMemo = new Map<string, number>();
@@ -355,7 +380,12 @@ function buildAutoLayout(prompt: ComfyUIPromptGraph, edges: VisualWorkflowEdge[]
   const columns = new Map<number, string[]>();
   for (const nodeId of nodeIds) {
     const depth = getDepth(nodeId);
-    columns.set(depth, [...(columns.get(depth) || []), nodeId]);
+    const existing = columns.get(depth);
+    if (existing) {
+      existing.push(nodeId);
+    } else {
+      columns.set(depth, [nodeId]);
+    }
   }
 
   const layout = new Map<string, { x: number; y: number }>();
