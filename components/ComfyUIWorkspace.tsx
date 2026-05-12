@@ -62,6 +62,7 @@ interface ComfyUIWorkspaceProps {
   applyLibraryFilters?: boolean;
   onApplyLibraryFiltersChange?: (applyFilters: boolean) => void;
   onInspectImage?: (image: IndexedImage) => void;
+  onOpenImageModal?: (image: IndexedImage, navigationImages: IndexedImage[]) => void;
   onViewFullMetadata?: (image: IndexedImage) => void;
   onOpenCompare?: (images: IndexedImage[]) => void;
 }
@@ -409,6 +410,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   applyLibraryFilters = false,
   onApplyLibraryFiltersChange,
   onInspectImage,
+  onOpenImageModal,
   onViewFullMetadata,
   onOpenCompare,
 }) => {
@@ -822,9 +824,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     const selectedImage = visibleNavigationImages[visibleIndex];
     if (selectedImage) {
       inspectWorkspaceImage(selectedImage);
+      onOpenImageModal?.(selectedImage, visibleNavigationImages);
     }
-    setWorkspacePreviewIndex(visibleIndex);
-  }, [inspectWorkspaceImage, visibleNavigationImages]);
+  }, [inspectWorkspaceImage, onOpenImageModal, visibleNavigationImages]);
 
   const updateThumbSelection = useCallback((event: React.MouseEvent, contextImage: IndexedImage, visibleIndex: number) => {
     event.preventDefault();

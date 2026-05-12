@@ -67,7 +67,7 @@ interface OpenImageModalState {
   modalId: string;
   imageId: string;
   navigationImageIds: string[];
-  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow';
+  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow' | 'comfyui';
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
@@ -1352,6 +1352,10 @@ export default function App() {
       return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
     }
 
+    if (modal.navigationSource === 'comfyui') {
+      return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
+    }
+
     return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
   }, [activeScopeNavigationImageIds, filteredNavigationImageIds, getImageByIdFromStore, imageLookup]);
 
@@ -1957,6 +1961,53 @@ export default function App() {
 
     return comfyUIWorkspaceNavigationImages.findIndex((candidate) => candidate.id === comfyUIWorkspaceImage.id);
   }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImages]);
+  const handleOpenComfyUIWorkspaceImageModal = useCallback((image: IndexedImage, navigationImages: IndexedImage[]) => {
+    const navigationImageIds = navigationImages.length > 0
+      ? navigationImages.map((entry) => entry.id)
+      : [image.id];
+    const modalId = `image-modal-${Date.now()}-${image.id}`;
+    const existingModalForImage = openImageModals.find((modal) => modal.imageId === image.id);
+    const activeModalId = existingModalForImage?.modalId ?? modalId;
+
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const nextZIndex = highestZIndex + 1;
+      const existingModal = current.find((modal) => modal.imageId === image.id);
+
+      if (existingModal) {
+        return current.map((modal) =>
+          modal.modalId === existingModal.modalId
+            ? {
+                ...modal,
+                navigationImageIds,
+                navigationSource: 'comfyui',
+                zIndex: nextZIndex,
+                isMinimized: false,
+              }
+            : modal
+        );
+      }
+
+      return [
+        ...current,
+        {
+          modalId,
+          imageId: image.id,
+          navigationImageIds,
+          navigationSource: 'comfyui',
+          zIndex: nextZIndex,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(image.id, 'comfyui-workspace'),
+        },
+      ];
+    });
+
+    setComfyUIWorkspaceImageId(image.id);
+    setActiveImageModalId(activeModalId);
+    suppressSelectedImageModalOpenRef.current = image.id;
+    setSelectedImage(image);
+  }, [beginModalOpenFlow, openImageModals, setSelectedImage]);
   const handleComfyUIWorkspaceDirectoryChange = useCallback((directoryId: string | null) => {
     const nextDirectoryId = directoryId || '';
     setComfyUIWorkspaceDirectoryId(nextDirectoryId);
@@ -2173,6 +2224,7 @@ export default function App() {
     !isSaveFilteredCollectionModalOpen &&
     !isA1111GenerateModalOpen &&
     !isComfyUIGenerateModalOpen &&
+    !hasActiveVisibleImageModal &&
     !generatedOutputPreview &&
     !proModalOpen;
   const libraryContentFocusClass = hasActiveVisibleImageModal
@@ -2668,6 +2720,7 @@ export default function App() {
                     applyLibraryFilters={comfyUIWorkspaceApplyLibraryFilters}
                     onApplyLibraryFiltersChange={handleComfyUIWorkspaceApplyLibraryFiltersChange}
                     onInspectImage={(image) => setComfyUIWorkspaceImageId(image.id)}
+                    onOpenImageModal={handleOpenComfyUIWorkspaceImageModal}
                     onViewFullMetadata={handleComfyUIWorkspaceViewFullMetadata}
                     onOpenCompare={handleOpenFindSimilarCompare}
                   />
