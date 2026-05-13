@@ -2533,6 +2533,7 @@ export default function App() {
                 onClick={() => setError(null)}
                 className="ml-4 p-1 hover:bg-red-800/50 rounded transition-colors"
                 title="Dismiss message"
+                aria-label="Dismiss message"
               >
                 <X size={16} />
               </button>
