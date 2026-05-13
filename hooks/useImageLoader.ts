@@ -761,7 +761,7 @@ export function useImageLoader() {
                     return;
                 }
 
-                const directory = idleReconcileQueueRef.current.shift();
+                const directory = idleReconcileQueueRef.current.pop();
                 if (!directory) {
                     continue;
                 }
@@ -781,7 +781,7 @@ export function useImageLoader() {
             return;
         }
 
-        idleReconcileQueueRef.current = directories.slice();
+        idleReconcileQueueRef.current = directories.slice().reverse();
         idleReconcileTimerRef.current = setTimeout(() => {
             idleReconcileTimerRef.current = null;
             void runIdleReconcileQueue();
