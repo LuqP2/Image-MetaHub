@@ -735,40 +735,55 @@ class ThumbnailManager {
   }
 
   private processQueues(): void {
+    let takenHigh1 = 0;
     while (
       this.activeWorkers < MAX_CONCURRENT_THUMBNAILS &&
       this.activeHighPriorityWorkers < MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS &&
-      this.highPriorityQueue.length > 0
+      takenHigh1 < this.highPriorityQueue.length
     ) {
-      const job = this.highPriorityQueue.shift();
+      const job = this.highPriorityQueue[takenHigh1];
       if (!job) {
         break;
       }
+      takenHigh1++;
       this.startJob(job, 'high');
     }
+    if (takenHigh1 > 0) {
+      this.highPriorityQueue.splice(0, takenHigh1);
+    }
 
+    let takenLow = 0;
     while (
       this.backgroundPauseCount === 0 &&
       this.activeWorkers < MAX_CONCURRENT_THUMBNAILS &&
       this.activeBackgroundWorkers < MAX_CONCURRENT_BACKGROUND_THUMBNAILS &&
-      this.backgroundQueue.length > 0
+      takenLow < this.backgroundQueue.length
     ) {
-      const job = this.backgroundQueue.shift();
+      const job = this.backgroundQueue[takenLow];
       if (!job) {
         break;
       }
+      takenLow++;
       this.startJob(job, 'low');
     }
+    if (takenLow > 0) {
+      this.backgroundQueue.splice(0, takenLow);
+    }
 
+    let takenHigh2 = 0;
     while (
       this.activeWorkers < MAX_CONCURRENT_THUMBNAILS &&
-      this.highPriorityQueue.length > 0
+      takenHigh2 < this.highPriorityQueue.length
     ) {
-      const job = this.highPriorityQueue.shift();
+      const job = this.highPriorityQueue[takenHigh2];
       if (!job) {
         break;
       }
+      takenHigh2++;
       this.startJob(job, 'high');
+    }
+    if (takenHigh2 > 0) {
+      this.highPriorityQueue.splice(0, takenHigh2);
     }
   }
 
