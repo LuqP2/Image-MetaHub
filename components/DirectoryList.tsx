@@ -535,6 +535,7 @@ export default function DirectoryList({
                 }}
                 className="text-gray-500 hover:text-gray-300 transition-colors mr-1 flex-shrink-0"
                 title={isExpandedNode ? 'Hide subfolders' : 'Show subfolders'}
+                aria-label={isExpandedNode ? 'Hide subfolders' : 'Show subfolders'}
               >
                 <ChevronDown
                   className={`w-3 h-3 transition-transform ${isExpandedNode ? 'rotate-0' : '-rotate-90'}`}
@@ -561,6 +562,7 @@ export default function DirectoryList({
                             isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-100'
                         }`}
                         title="Include folder"
+                        aria-label="Include folder"
                     >
                         <Eye className="w-3 h-3" />
                     </button>
@@ -588,6 +590,7 @@ export default function DirectoryList({
                             isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'
                         }`}
                         title="Refresh folder"
+                        aria-label="Refresh folder"
                     >
                         <RotateCcw className="w-3 h-3" />
                     </button>
@@ -602,6 +605,7 @@ export default function DirectoryList({
                                 isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'
                             }`}
                             title="Exclude folder"
+                            aria-label="Exclude folder"
                         >
                             <EyeOff className="w-3 h-3" />
                         </button>
@@ -871,6 +875,7 @@ export default function DirectoryList({
                   : 'bg-transparent border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
               }`}
               title={includeSubfolders ? 'Including subfolders (Recursive)' : 'Direct folder only (Flat)'}
+              aria-label={includeSubfolders ? 'Including subfolders (Recursive)' : 'Direct folder only (Flat)'}
             >
               {includeSubfolders ? <FolderTree className="w-3.5 h-3.5" /> : <Folder className="w-3.5 h-3.5" />}
             </button>
@@ -883,6 +888,7 @@ export default function DirectoryList({
               }}
               className="p-1 rounded-full text-gray-500 hover:text-red-400 hover:bg-gray-700/50 transition-colors"
               title="Clear folder selection"
+              aria-label="Clear folder selection"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -944,6 +950,7 @@ export default function DirectoryList({
                           onClick={() => handleToggleNode(rootKey, dir.path, dir)}
                           className="text-gray-400 hover:text-gray-300 transition-colors flex-shrink-0"
                           title={isRootExpanded ? 'Hide subfolders' : 'Show subfolders'}
+                          aria-label={isRootExpanded ? 'Hide subfolders' : 'Show subfolders'}
                         >
                           <ChevronDown
                             className={`w-4 h-4 transition-transform ${isRootExpanded ? 'rotate-0' : '-rotate-90'}`}
@@ -1000,6 +1007,13 @@ export default function DirectoryList({
                               ? 'Cannot refresh during indexing'
                               : 'Refresh folder'
                         }
+                        aria-label={
+                          isRefreshing
+                            ? 'Refreshing folder'
+                            : isIndexing
+                              ? 'Cannot refresh during indexing'
+                              : 'Refresh folder'
+                        }
                       >
                         <RotateCcw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                       </button>
@@ -1017,6 +1031,11 @@ export default function DirectoryList({
                             : isIndexing
                               ? 'Cannot remove during indexing'
                               : 'Remove folder'
+                        }
+                        aria-label={
+                          isRefreshing || isIndexing
+                            ? 'Cannot remove folder while indexing or refreshing'
+                            : 'Remove folder'
                         }
                       >
                         <Trash2 className="w-4 h-4" />
