@@ -8,6 +8,7 @@ import {
   ChevronRight,
   CheckCircle,
   Clipboard,
+  Copy,
   Download,
   ExternalLink,
   FileText,
@@ -92,14 +93,88 @@ const formatValue = (value: unknown): string => {
   return String(value);
 };
 
-const MetadataLine: React.FC<{ label: string; value: unknown }> = ({ label, value }) => (
-  <div className="rounded-md border border-gray-800 bg-gray-950/60 px-3 py-2">
-    <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
-    <div className="mt-1 truncate font-mono text-xs text-gray-200" title={formatValue(value)}>
-      {formatValue(value)}
-    </div>
-  </div>
+const hasMetadataValue = (value: unknown): boolean => (
+  value !== null && value !== undefined && value !== ''
 );
+
+const MetadataLine: React.FC<{
+  label: string;
+  value: unknown;
+  onCopy?: (label: string, value: string) => void;
+  onContextMenu?: (event: React.MouseEvent<HTMLElement>, label: string, value: string) => void;
+}> = ({ label, value, onCopy, onContextMenu }) => {
+  const displayValue = formatValue(value);
+  const canCopy = hasMetadataValue(value);
+
+  return (
+    <div
+      className="group rounded-md border border-gray-800 bg-gray-950/60 px-3 py-2"
+      onContextMenu={(event) => {
+        if (canCopy) {
+          onContextMenu?.(event, label, displayValue);
+        }
+      }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+        {canCopy && onCopy && (
+          <button
+            type="button"
+            onClick={() => onCopy(label, displayValue)}
+            className="text-gray-500 opacity-0 transition-opacity hover:text-gray-100 group-hover:opacity-100 focus:opacity-100"
+            title={`Copy ${label}`}
+            aria-label={`Copy ${label}`}
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      <div className="mt-1 truncate font-mono text-xs text-gray-200" title={formatValue(value)}>
+        {displayValue}
+      </div>
+    </div>
+  );
+};
+
+const MetadataTextBlock: React.FC<{
+  label: string;
+  value: unknown;
+  maxHeightClass: string;
+  onCopy: (label: string, value: string) => void;
+  onContextMenu: (event: React.MouseEvent<HTMLElement>, label: string, value: string) => void;
+}> = ({ label, value, maxHeightClass, onCopy, onContextMenu }) => {
+  const displayValue = formatValue(value);
+  const canCopy = hasMetadataValue(value);
+
+  return (
+    <div
+      className="group rounded-lg border border-gray-800 bg-gray-950/80 p-3"
+      onContextMenu={(event) => {
+        if (canCopy) {
+          onContextMenu(event, label, displayValue);
+        }
+      }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+        {canCopy && (
+          <button
+            type="button"
+            onClick={() => onCopy(label, displayValue)}
+            className="text-gray-500 opacity-0 transition-opacity hover:text-gray-100 group-hover:opacity-100 focus:opacity-100"
+            title={`Copy ${label}`}
+            aria-label={`Copy ${label}`}
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      <p className={`mt-2 overflow-y-auto whitespace-pre-wrap break-words text-xs text-gray-200 ${maxHeightClass}`}>
+        {displayValue}
+      </p>
+    </div>
+  );
+};
 
 const WorkspaceThumbnailButton: React.FC<{
   image: IndexedImage;
@@ -376,6 +451,13 @@ type WorkspaceAssetContextMenu = {
   y: number;
 } | null;
 
+type InspectorContextMenu = {
+  x: number;
+  y: number;
+  label: string;
+  value: string;
+} | null;
+
 const getSameOriginUrl = (candidateUrl: string, configuredUrl: string): string => {
   try {
     const candidate = new URL(candidateUrl);
@@ -420,6 +502,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const [activeInspectorTab, setActiveInspectorTab] = useState<'image' | 'metadata' | 'workflow'>('image');
   const [workspacePreviewIndex, setWorkspacePreviewIndex] = useState<number | null>(null);
   const [assetContextMenu, setAssetContextMenu] = useState<WorkspaceAssetContextMenu>(null);
+  const [inspectorContextMenu, setInspectorContextMenu] = useState<InspectorContextMenu>(null);
   const [assetActionMessage, setAssetActionMessage] = useState<string>('');
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isRatingMenuOpen, setIsRatingMenuOpen] = useState(false);
@@ -533,6 +616,20 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       window.removeEventListener('blur', close);
     };
   }, [assetContextMenu]);
+
+  useEffect(() => {
+    if (!inspectorContextMenu) {
+      return;
+    }
+
+    const close = () => setInspectorContextMenu(null);
+    window.addEventListener('click', close);
+    window.addEventListener('blur', close);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('blur', close);
+    };
+  }, [inspectorContextMenu]);
 
   const togglePanelCollapsed = useCallback(() => {
     setIsPanelCollapsed((current) => {
@@ -796,6 +893,70 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     event.dataTransfer.effectAllowed = 'copy';
     window.electronAPI.startFileDrag({ directoryPath: dragDirectoryPath, relativePath });
   }, []);
+
+  const copyInspectorValue = useCallback((label: string, value: string) => {
+    const text = value.trim();
+    if (!text || text === 'Not found') {
+      return;
+    }
+
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        setAssetActionMessage(`${label} copied.`);
+      })
+      .catch((error) => {
+        console.error(`Failed to copy ${label}:`, error);
+        setAssetActionMessage(`Failed to copy ${label}.`);
+      });
+  }, []);
+
+  const showInspectorFieldContextMenu = useCallback((
+    event: React.MouseEvent<HTMLElement>,
+    label: string,
+    value: string,
+  ) => {
+    const selection = window.getSelection()?.toString().trim();
+    event.preventDefault();
+    event.stopPropagation();
+    setAssetContextMenu(null);
+    setInspectorContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      label: selection ? 'Selection' : label,
+      value: selection || value,
+    });
+  }, []);
+
+  const showInspectorSelectionContextMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('button, input, textarea, select, [contenteditable="true"]')) {
+      return;
+    }
+
+    const selection = window.getSelection()?.toString().trim();
+    if (!selection) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setAssetContextMenu(null);
+    setInspectorContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      label: 'Selection',
+      value: selection,
+    });
+  }, []);
+
+  const copyInspectorContextValue = useCallback(() => {
+    if (!inspectorContextMenu) {
+      return;
+    }
+
+    copyInspectorValue(inspectorContextMenu.label, inspectorContextMenu.value);
+    setInspectorContextMenu(null);
+  }, [copyInspectorValue, inspectorContextMenu]);
 
   const toggleThumbRailCollapsed = useCallback(() => {
     setIsThumbRailCollapsed((current) => {
@@ -1448,25 +1609,45 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
               {activeInspectorTab === 'metadata' && (
                 metadata ? (
-                  <div className="space-y-3">
+                  <div className="space-y-3" onContextMenu={showInspectorSelectionContextMenu}>
                   <div className="grid grid-cols-2 gap-2">
-                    <MetadataLine label="Model" value={metadata.model} />
-                    <MetadataLine label="Seed" value={metadata.seed} />
-                    <MetadataLine label="Steps" value={metadata.steps} />
-                    <MetadataLine label="CFG" value={(metadata as any).cfgScale ?? metadata.cfg_scale} />
-                    <MetadataLine label="Sampler" value={metadata.sampler} />
-                    <MetadataLine label="Scheduler" value={metadata.scheduler} />
+                    <MetadataLine label="Model" value={metadata.model} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
+                    <MetadataLine label="Seed" value={metadata.seed} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
+                    <MetadataLine label="Steps" value={metadata.steps} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
+                    <MetadataLine label="CFG" value={(metadata as any).cfgScale ?? metadata.cfg_scale} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
+                    <MetadataLine label="Sampler" value={metadata.sampler} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
+                    <MetadataLine label="Scheduler" value={metadata.scheduler} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
+                    <MetadataLine
+                      label="Dimensions"
+                      value={metadata.width && metadata.height ? `${metadata.width}x${metadata.height}` : undefined}
+                      onCopy={copyInspectorValue}
+                      onContextMenu={showInspectorFieldContextMenu}
+                    />
+                    <MetadataLine
+                      label="LoRAs"
+                      value={Array.isArray(metadata.loras) && metadata.loras.length > 0
+                        ? metadata.loras.map((lora) => typeof lora === 'string' ? lora : lora.name || lora.model_name || '').filter(Boolean).join(', ')
+                        : undefined}
+                      onCopy={copyInspectorValue}
+                      onContextMenu={showInspectorFieldContextMenu}
+                    />
                   </div>
 
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3">
-                    <div className="text-[10px] uppercase tracking-wide text-gray-500">Prompt</div>
-                    <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs text-gray-200">{metadata.prompt || 'Not found'}</p>
-                  </div>
+                  <MetadataTextBlock
+                    label="Prompt"
+                    value={metadata.prompt}
+                    maxHeightClass="max-h-40"
+                    onCopy={copyInspectorValue}
+                    onContextMenu={showInspectorFieldContextMenu}
+                  />
 
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3">
-                    <div className="text-[10px] uppercase tracking-wide text-gray-500">Negative prompt</div>
-                    <p className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-gray-200">{metadata.negativePrompt || 'Not found'}</p>
-                  </div>
+                  <MetadataTextBlock
+                    label="Negative prompt"
+                    value={metadata.negativePrompt}
+                    maxHeightClass="max-h-32"
+                    onCopy={copyInspectorValue}
+                    onContextMenu={showInspectorFieldContextMenu}
+                  />
                 </div>
                 ) : (
                   <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-4 text-sm text-gray-400">
@@ -1512,6 +1693,21 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           onViewFullMetadata={onViewFullMetadata}
           onClose={() => setWorkspacePreviewIndex(null)}
         />
+      )}
+      {inspectorContextMenu && (
+        <div
+          className="fixed z-[96] min-w-[160px] overflow-hidden rounded-lg border border-gray-700 bg-gray-900 py-1 text-sm text-gray-100 shadow-2xl"
+          style={{ left: inspectorContextMenu.x, top: inspectorContextMenu.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-800"
+            onClick={copyInspectorContextValue}
+          >
+            <Copy className="h-4 w-4" />
+            Copy {inspectorContextMenu.label}
+          </button>
+        </div>
       )}
       {assetContextMenu && (
         <div
