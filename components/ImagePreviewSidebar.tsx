@@ -100,7 +100,7 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
       <div className="flex justify-between items-start">
         <p className="font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">{label}</p>
         {onCopy && (
-            <button onClick={() => onCopy(displayValue)} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-50" title={`Copy ${label}`}>
+            <button onClick={() => onCopy(displayValue)} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-50" title={`Copy ${label}`} aria-label={`Copy ${label}`}>
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"></path></svg>
             </button>
         )}
