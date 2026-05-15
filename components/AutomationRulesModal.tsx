@@ -642,7 +642,7 @@ const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSourc
         {operatorOptions.map((operator) => <option key={operator} value={operator}>{OPERATOR_LABELS[operator]}</option>)}
       </select>
 
-      <button type="button" onClick={onRemove} className="h-9 rounded-lg border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-rose-300" title="Remove condition">
+      <button type="button" onClick={onRemove} className="h-9 rounded-lg border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-rose-300" title="Remove condition" aria-label="Remove condition">
         <X className="mx-auto h-4 w-4" />
       </button>
 
