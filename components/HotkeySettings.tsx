@@ -119,7 +119,12 @@ export const HotkeySettings = () => {
   }, [recording, handleKeyDown]);
 
   const handleResetAll = () => {
-    // Add confirmation dialog here
+    const confirmed = window.confirm(
+      'Are you sure you want to reset all hotkeys to their default values?\n\nThis action cannot be undone.'
+    );
+    if (!confirmed) {
+      return;
+    }
     resetKeymap();
   };
 
