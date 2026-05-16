@@ -93,6 +93,27 @@ const formatValue = (value: unknown): string => {
   return String(value);
 };
 
+const getImageDimensionsLabel = (image: IndexedImage): string => {
+  const metadata = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+  const width = Number(metadata?.width);
+  const height = Number(metadata?.height);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    return `${Math.round(width)}x${Math.round(height)}`;
+  }
+
+  const dimensions = typeof image.dimensions === 'string' ? image.dimensions.trim() : '';
+  if (dimensions) {
+    return dimensions.replace(/\s+/g, '');
+  }
+
+  return '';
+};
+
+const getImagePrompt = (image: IndexedImage): string => {
+  const metadata = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+  return (metadata?.prompt || image.prompt || '').trim();
+};
+
 const hasMetadataValue = (value: unknown): boolean => (
   value !== null && value !== undefined && value !== ''
 );
@@ -189,6 +210,7 @@ const WorkspaceThumbnailButton: React.FC<{
 }> = ({ image, isActive, isSelected, directoryPath, onClick, onToggleSelected, onToggleFavorite, onContextMenu, onDragStart }) => {
   useThumbnail(image);
   const thumbnail = useResolvedThumbnail(image);
+  const dimensionsLabel = getImageDimensionsLabel(image);
 
   return (
     <div className="group w-full shrink-0">
@@ -236,6 +258,14 @@ const WorkspaceThumbnailButton: React.FC<{
         >
           <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
         </button>
+        {dimensionsLabel && (
+          <div
+            className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[10px] leading-none text-gray-100 shadow"
+            title={`Dimensions: ${dimensionsLabel}`}
+          >
+            {dimensionsLabel}
+          </div>
+        )}
       </div>
       <div className="mt-1 truncate text-[11px] leading-4 text-gray-400" title={image.name}>
         {image.name}
@@ -909,6 +939,12 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
         setAssetActionMessage(`Failed to copy ${label}.`);
       });
   }, []);
+
+  const copyAssetPrompt = useCallback((contextImage: IndexedImage) => {
+    const prompt = getImagePrompt(contextImage);
+    setAssetContextMenu(null);
+    copyInspectorValue('Prompt', prompt);
+  }, [copyInspectorValue]);
 
   const showInspectorFieldContextMenu = useCallback((
     event: React.MouseEvent<HTMLElement>,
@@ -1733,6 +1769,16 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           >
             <GitCompare className="h-4 w-4" />
             Compare Mode
+          </button>
+          <button
+            className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
+              getImagePrompt(assetContextMenu.image) ? 'hover:bg-gray-800' : 'cursor-not-allowed text-gray-500'
+            }`}
+            disabled={!getImagePrompt(assetContextMenu.image)}
+            onClick={() => copyAssetPrompt(assetContextMenu.image)}
+          >
+            <Copy className="h-4 w-4" />
+            Copy Prompt
           </button>
           <div className="my-1 border-t border-gray-700" />
           <button
