@@ -150,8 +150,11 @@ function isEditableLiteralInput(
 function getNodeFields(node: ComfyUIPromptNode, category: VisualWorkflowNodeCategory): VisualWorkflowField[] {
   const fields: VisualWorkflowField[] = [];
 
-  for (const [inputKey, inputValue] of Object.entries(node.inputs || {})) {
-    if (!isEditableLiteralInput(category, inputKey, inputValue)) {
+  const inputs = node.inputs;
+  if (inputs) {
+    for (const inputKey in inputs) {
+      const inputValue = inputs[inputKey];
+      if (!isEditableLiteralInput(category, inputKey, inputValue)) {
       continue;
     }
 
@@ -160,8 +163,9 @@ function getNodeFields(node: ComfyUIPromptNode, category: VisualWorkflowNodeCate
       label: formatFieldLabel(inputKey),
       type: typeof inputValue === 'number' ? 'number' : typeof inputValue === 'boolean' ? 'boolean' : 'string',
       value: inputValue,
-      editable: true,
-    });
+        editable: true,
+      });
+    }
   }
 
   return fields;
@@ -358,28 +362,61 @@ function buildAutoLayout(prompt: ComfyUIPromptGraph, edges: VisualWorkflowEdge[]
   }
 
   const depthMemo = new Map<string, number>();
-  const depthStack = new Set<string>();
+  const outDegree = new Map<string, number>();
+  const downstreamMap = new Map<string, string[]>();
 
-  const getDepth = (nodeId: string): number => {
-    if (depthMemo.has(nodeId)) {
-      return depthMemo.get(nodeId)!;
+  for (const nodeId of nodeIds) {
+    outDegree.set(nodeId, 0);
+    downstreamMap.set(nodeId, []);
+  }
+
+  for (const [toNode, upstreams] of upstreamMap.entries()) {
+    for (const fromNode of upstreams) {
+      const downstreams = downstreamMap.get(fromNode);
+      if (downstreams) {
+         downstreams.push(toNode);
+      }
+      outDegree.set(toNode, (outDegree.get(toNode) || 0) + 1);
     }
+  }
 
-    if (depthStack.has(nodeId)) {
-      return 0;
+  const queue: string[] = [];
+  for (const nodeId of nodeIds) {
+    if (outDegree.get(nodeId) === 0) {
+      queue.push(nodeId);
+      depthMemo.set(nodeId, 0);
     }
+  }
 
-    depthStack.add(nodeId);
-    const upstream = upstreamMap.get(nodeId) || [];
-    const depth = upstream.length === 0 ? 0 : Math.max(...upstream.map((entry) => getDepth(entry) + 1));
-    depthStack.delete(nodeId);
-    depthMemo.set(nodeId, depth);
-    return depth;
-  };
+  let queueIndex = 0;
+  while (queueIndex < queue.length) {
+    const current = queue[queueIndex++];
+    const currentDepth = depthMemo.get(current)!;
+
+    const downstreams = downstreamMap.get(current) || [];
+    for (const downstreamNode of downstreams) {
+      const prevDepth = depthMemo.get(downstreamNode) || 0;
+      if (currentDepth + 1 > prevDepth) {
+        depthMemo.set(downstreamNode, currentDepth + 1);
+      }
+
+      outDegree.set(downstreamNode, outDegree.get(downstreamNode)! - 1);
+      if (outDegree.get(downstreamNode) === 0) {
+        queue.push(downstreamNode);
+      }
+    }
+  }
+
+  // Set depth to 0 for any unvisited nodes (e.g., cycles)
+  for (const nodeId of nodeIds) {
+    if (!depthMemo.has(nodeId)) {
+      depthMemo.set(nodeId, 0);
+    }
+  }
 
   const columns = new Map<number, string[]>();
   for (const nodeId of nodeIds) {
-    const depth = getDepth(nodeId);
+    const depth = depthMemo.get(nodeId) || 0;
     const existing = columns.get(depth);
     if (existing) {
       existing.push(nodeId);
@@ -411,19 +448,25 @@ export function buildVisualWorkflowGraph(
   }
 
   const edges: VisualWorkflowEdge[] = [];
-  for (const [nodeId, node] of Object.entries(prompt)) {
-    for (const [inputKey, inputValue] of Object.entries(node.inputs || {})) {
-      const upstreamNodeId = getConnectionNodeId(inputValue);
-      if (!upstreamNodeId) {
-        continue;
-      }
+  for (const nodeId in prompt) {
+    const node = prompt[nodeId];
+    if (!node) continue;
+    const inputs = node.inputs;
+    if (inputs) {
+      for (const inputKey in inputs) {
+        const inputValue = inputs[inputKey];
+        const upstreamNodeId = getConnectionNodeId(inputValue);
+        if (!upstreamNodeId) {
+          continue;
+        }
 
-      edges.push({
-        from: upstreamNodeId,
-        to: nodeId,
-        label: inputKey,
-        kind: 'connection',
-      });
+        edges.push({
+          from: upstreamNodeId,
+          to: nodeId,
+          label: inputKey,
+          kind: 'connection',
+        });
+      }
     }
   }
 
