@@ -113,6 +113,7 @@ interface SettingsState {
   globalAutoWatch: boolean;
   startupVerificationMode: StartupVerificationMode;
   doubleClickToOpen: boolean;
+  skipDeleteConfirmation: boolean;
   tagSuggestionLimit: number;
   recentTagChipLimit: number;
   sensitiveTags: string[];
@@ -159,6 +160,7 @@ interface SettingsState {
   toggleGlobalAutoWatch: () => void;
   setStartupVerificationMode: (value: StartupVerificationMode) => void;
   setDoubleClickToOpen: (value: boolean) => void;
+  setSkipDeleteConfirmation: (value: boolean) => void;
   setTagSuggestionLimit: (value: number) => void;
   setRecentTagChipLimit: (value: number) => void;
   setSensitiveTags: (tags: string[]) => void;
@@ -210,6 +212,7 @@ export const useSettingsStore = create<SettingsState>()(
       globalAutoWatch: true,
       startupVerificationMode: 'off',
       doubleClickToOpen: false,
+      skipDeleteConfirmation: false,
       tagSuggestionLimit: DEFAULT_TAG_SUGGESTION_LIMIT,
       recentTagChipLimit: DEFAULT_RECENT_TAG_CHIP_LIMIT,
       sensitiveTags: ['nsfw', 'private', 'hidden'],
@@ -263,6 +266,7 @@ export const useSettingsStore = create<SettingsState>()(
       toggleGlobalAutoWatch: () => set((state) => ({ globalAutoWatch: !state.globalAutoWatch })),
       setStartupVerificationMode: (value) => set({ startupVerificationMode: value }),
       setDoubleClickToOpen: (value) => set({ doubleClickToOpen: !!value }),
+      setSkipDeleteConfirmation: (value) => set({ skipDeleteConfirmation: !!value }),
       setTagSuggestionLimit: (value) => set({ tagSuggestionLimit: sanitizeTagUiLimit(value, DEFAULT_TAG_SUGGESTION_LIMIT) }),
       setRecentTagChipLimit: (value) => set({ recentTagChipLimit: sanitizeTagUiLimit(value, DEFAULT_RECENT_TAG_CHIP_LIMIT) }),
       setSensitiveTags: (tags) => {
@@ -325,6 +329,7 @@ export const useSettingsStore = create<SettingsState>()(
         globalAutoWatch: true,
         startupVerificationMode: 'off',
         doubleClickToOpen: false,
+        skipDeleteConfirmation: false,
         tagSuggestionLimit: DEFAULT_TAG_SUGGESTION_LIMIT,
         recentTagChipLimit: DEFAULT_RECENT_TAG_CHIP_LIMIT,
         sensitiveTags: ['nsfw', 'private', 'hidden'],

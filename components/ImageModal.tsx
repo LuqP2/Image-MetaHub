@@ -790,6 +790,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const enableAnimations = useSettingsStore((state) => state.enableAnimations);
   const slideshowIntervalSeconds = useSettingsStore((state) => state.slideshowIntervalSeconds);
   const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
+  const skipDeleteConfirmation = useSettingsStore((state) => state.skipDeleteConfirmation);
   const modalProfilerOnRender = useMemo(() => createProfilerOnRender('ImageModal'), []);
   const hasMarkedModalShellRef = useRef(false);
   const hasMarkedPreviewVisibleRef = useRef(false);
@@ -2194,7 +2195,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
+    if (skipDeleteConfirmation || window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
       const idToDelete = image.id;
       const imageToDelete = image;
 
@@ -2219,7 +2220,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         alert(`Failed to delete file: ${result.error}`);
       }
     }
-  }, [currentIndex, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, totalImages]);
+  }, [currentIndex, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, skipDeleteConfirmation, totalImages]);
 
   useEffect(() => {
     if (!isActive) {

@@ -449,6 +449,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const setComfyUIWorkspaceLastUrl = useSettingsStore((state) => state.setComfyUIWorkspaceLastUrl);
   const panelWidth = useSettingsStore((state) => state.comfyUIWorkspacePanelWidth);
   const setPanelWidth = useSettingsStore((state) => state.setComfyUIWorkspacePanelWidth);
+  const skipDeleteConfirmation = useSettingsStore((state) => state.skipDeleteConfirmation);
   const removeImages = useImageStore((state) => state.removeImages);
   const selectedImages = useImageStore((state) => state.selectedImages);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
@@ -897,13 +898,15 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       return;
     }
 
-    const confirmed = window.confirm(
-      targetImages.length === 1
-        ? `Delete "${targetImages[0].name}"? This sends the file to the recycle bin.`
-        : `Delete ${targetImages.length} selected images? This sends the files to the recycle bin.`,
-    );
-    if (!confirmed) {
-      return;
+    if (!skipDeleteConfirmation) {
+      const confirmed = window.confirm(
+        targetImages.length === 1
+          ? `Delete "${targetImages[0].name}"? This sends the file to the recycle bin.`
+          : `Delete ${targetImages.length} selected images? This sends the files to the recycle bin.`,
+      );
+      if (!confirmed) {
+        return;
+      }
     }
 
     const results = await Promise.all(targetImages.map((candidate) => FileOperations.deleteFile(candidate)));
@@ -921,7 +924,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     const failedCount = results.length - deletedIds.length;
     setAssetActionMessage(failedCount > 0 ? `Deleted ${deletedIds.length}; ${failedCount} failed.` : `Deleted ${deletedIds.length} image${deletedIds.length === 1 ? '' : 's'}.`);
     setAssetContextMenu(null);
-  }, [removeImages]);
+  }, [removeImages, skipDeleteConfirmation]);
 
   const setSelectedRating = useCallback((rating: ImageRating | null) => {
     if (selectedWorkspaceIds.length === 0) {

@@ -61,6 +61,9 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   const maxConcurrency = hardwareConcurrency
     ? Math.max(1, Math.min(16, Math.floor(hardwareConcurrency)))
     : 16;
+  const skipDeleteConfirmation = useSettingsStore((state) => state.skipDeleteConfirmation);
+  const setSkipDeleteConfirmation = useSettingsStore((state) => state.setSkipDeleteConfirmation);
+
   const selectedStartupVerificationMode = startupVerificationModeDetails[startupVerificationMode];
 
   useEffect(() => {
@@ -162,6 +165,17 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           label="File monitoring"
           description="Watch indexed folders for new or modified images."
           control={<SettingSwitch checked={globalAutoWatch} onChange={() => toggleGlobalAutoWatch()} />}
+        />
+
+        <SettingRow
+          label="Skip delete confirmation"
+          description="Bypass the confirmation dialog when deleting images to the recycle bin."
+          control={
+            <SettingSwitch
+              checked={skipDeleteConfirmation}
+              onChange={(value) => setSkipDeleteConfirmation(value)}
+            />
+          }
         />
 
         <div className="space-y-3 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">

@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useImageStore } from '../store/useImageStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { IndexedImage } from '../types';
 import { FileOperations } from '../services/fileOperations';
 
@@ -46,10 +47,11 @@ export function useImageSelection() {
 
     const handleDeleteSelectedImages = useCallback(async () => {
         const { selectedImages, images, directories } = useImageStore.getState();
+        const { skipDeleteConfirmation } = useSettingsStore.getState();
         if (selectedImages.size === 0) return;
 
         const confirmMessage = `Are you sure you want to delete ${selectedImages.size} image(s)?`;
-        if (!window.confirm(confirmMessage)) return;
+        if (!skipDeleteConfirmation && !window.confirm(confirmMessage)) return;
 
         const imagesToDelete = Array.from(selectedImages);
         const deletedIdsHandledLocally: string[] = [];
