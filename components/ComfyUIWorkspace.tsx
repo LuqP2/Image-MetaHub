@@ -1055,7 +1055,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 onClick={handleBulkExport}
                 disabled={selectedWorkspaceCount === 0}
                 className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:text-gray-700"
-                title="Export selected"
+                title={selectedWorkspaceCount === 0 ? 'Select images to export' : 'Export selected'}
                 aria-label="Export selected"
               >
                 <Package className="h-3.5 w-3.5" />
@@ -1064,7 +1064,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 onClick={handleBulkFavorite}
                 disabled={selectedWorkspaceCount === 0}
                 className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-pink-300 disabled:cursor-not-allowed disabled:text-gray-700"
-                title={allSelectedWorkspaceFavorites ? 'Remove selected from favorites' : 'Favorite selected'}
+                title={selectedWorkspaceCount === 0 ? 'Select images to favorite' : allSelectedWorkspaceFavorites ? 'Remove selected from favorites' : 'Favorite selected'}
                 aria-label={allSelectedWorkspaceFavorites ? 'Remove selected from favorites' : 'Favorite selected'}
               >
                 <Heart className={`h-3.5 w-3.5 ${allSelectedWorkspaceFavorites ? 'fill-current text-pink-300' : ''}`} />
@@ -1073,7 +1073,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 onClick={handleBulkTag}
                 disabled={selectedWorkspaceCount === 0}
                 className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-blue-300 disabled:cursor-not-allowed disabled:text-gray-700"
-                title="Tag selected"
+                title={selectedWorkspaceCount === 0 ? 'Select images to tag' : 'Tag selected'}
                 aria-label="Tag selected"
               >
                 <Tag className="h-3.5 w-3.5" />
@@ -1083,7 +1083,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                   onClick={() => setIsRatingMenuOpen((open) => !open)}
                   disabled={selectedWorkspaceCount === 0}
                   className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-yellow-300 disabled:cursor-not-allowed disabled:text-gray-700"
-                  title="Rate selected"
+                  title={selectedWorkspaceCount === 0 ? 'Select images to rate' : 'Rate selected'}
                   aria-label="Rate selected"
                 >
                   <Star className="h-3.5 w-3.5" />
@@ -1106,7 +1106,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 onClick={handleBulkCompare}
                 disabled={selectedWorkspaceCount < 2 || selectedWorkspaceCount > 4}
                 className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-purple-300 disabled:cursor-not-allowed disabled:text-gray-700"
-                title="Compare selected"
+                title={selectedWorkspaceCount < 2 ? 'Select at least 2 images to compare' : selectedWorkspaceCount > 4 ? 'Select at most 4 images to compare' : 'Compare selected'}
                 aria-label="Compare selected"
               >
                 <GitCompare className="h-3.5 w-3.5" />
@@ -1115,7 +1115,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 onClick={handleBulkDelete}
                 disabled={selectedWorkspaceCount === 0}
                 className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-red-300 disabled:cursor-not-allowed disabled:text-gray-700"
-                title="Delete selected"
+                title={selectedWorkspaceCount === 0 ? 'Select images to delete' : 'Delete selected'}
                 aria-label="Delete selected"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -1124,7 +1124,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 onClick={clearImageSelection}
                 disabled={selectedWorkspaceCount === 0}
                 className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:text-gray-700"
-                title="Clear selection"
+                title={selectedWorkspaceCount === 0 ? 'No selection to clear' : 'Clear selection'}
                 aria-label="Clear selection"
               >
                 <X className="h-3.5 w-3.5" />
