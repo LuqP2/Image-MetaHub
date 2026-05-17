@@ -155,14 +155,14 @@ function getNodeFields(node: ComfyUIPromptNode, category: VisualWorkflowNodeCate
     for (const inputKey in inputs) {
       const inputValue = inputs[inputKey];
       if (!isEditableLiteralInput(category, inputKey, inputValue)) {
-      continue;
-    }
+        continue;
+      }
 
-    fields.push({
-      key: inputKey,
-      label: formatFieldLabel(inputKey),
-      type: typeof inputValue === 'number' ? 'number' : typeof inputValue === 'boolean' ? 'boolean' : 'string',
-      value: inputValue,
+      fields.push({
+        key: inputKey,
+        label: formatFieldLabel(inputKey),
+        type: typeof inputValue === 'number' ? 'number' : typeof inputValue === 'boolean' ? 'boolean' : 'string',
+        value: inputValue,
         editable: true,
       });
     }
@@ -373,9 +373,11 @@ function buildAutoLayout(prompt: ComfyUIPromptGraph, edges: VisualWorkflowEdge[]
   for (const [toNode, upstreams] of upstreamMap.entries()) {
     for (const fromNode of upstreams) {
       const downstreams = downstreamMap.get(fromNode);
-      if (downstreams) {
-         downstreams.push(toNode);
+      if (!downstreams) {
+        continue;
       }
+
+      downstreams.push(toNode);
       outDegree.set(toNode, (outDegree.get(toNode) || 0) + 1);
     }
   }
