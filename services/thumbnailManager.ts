@@ -282,8 +282,19 @@ class ThumbnailManager {
     cancelQueue = 'all',
   }: ViewportSchedule): void {
     const nextVisible = this.dedupeImages(visibleImages);
-    const nextAhead = this.dedupeImages(aheadImages, new Set(nextVisible.map((image) => image.id)));
-    const retainedIds = keepImageIds ?? new Set([...nextVisible, ...nextAhead].map((image) => image.id));
+    // Performance optimization: Avoid intermediate array allocation
+    const nextVisibleIds = new Set<string>();
+    for (let i = 0; i < nextVisible.length; i++) {
+      nextVisibleIds.add(nextVisible[i].id);
+    }
+    const nextAhead = this.dedupeImages(aheadImages, nextVisibleIds);
+    let retainedIds = keepImageIds;
+    if (!retainedIds) {
+      // Performance optimization: Avoid intermediate array allocation
+      retainedIds = new Set<string>();
+      for (let i = 0; i < nextVisible.length; i++) retainedIds.add(nextVisible[i].id);
+      for (let i = 0; i < nextAhead.length; i++) retainedIds.add(nextAhead[i].id);
+    }
     const scheduleToken = ++this.viewportScheduleToken;
 
     this.cancelQueuedJobs({ queue: cancelQueue, keepImageIds: retainedIds });
