@@ -14,7 +14,14 @@ export function useImageSelection() {
     } = useImageStore();
 
     const handleImageSelection = useCallback((image: IndexedImage, event: React.MouseEvent) => {
-        const { activeImageScope, filteredImages, selectedImage, selectedImages } = useImageStore.getState();
+        const {
+            activeImageScope,
+            filteredImages,
+            focusedImageIndex,
+            previewImage,
+            selectedImage,
+            selectedImages,
+        } = useImageStore.getState();
         const selectionScope = activeImageScope ?? filteredImages;
 
         // Update focused index
@@ -23,12 +30,29 @@ export function useImageSelection() {
             setFocusedImageIndex(clickedIndex);
         }
 
-        if (event.shiftKey && selectedImage) {
-            const lastSelectedIndex = selectionScope.findIndex(img => img.id === selectedImage.id);
-            const clickedIndex = selectionScope.findIndex(img => img.id === image.id);
-            if (lastSelectedIndex !== -1 && clickedIndex !== -1) {
-                const start = Math.min(lastSelectedIndex, clickedIndex);
-                const end = Math.max(lastSelectedIndex, clickedIndex);
+        const focusedAnchor =
+            typeof focusedImageIndex === 'number' && focusedImageIndex >= 0
+                ? selectionScope[focusedImageIndex]
+                : null;
+        const anchorCandidates = [selectedImage, previewImage, focusedAnchor].filter(
+            (candidate): candidate is IndexedImage => Boolean(candidate)
+        );
+        let selectionAnchor: IndexedImage | null = null;
+        let selectionAnchorIndex = -1;
+
+        for (const candidate of anchorCandidates) {
+            const candidateIndex = selectionScope.findIndex(img => img.id === candidate.id);
+            if (candidateIndex !== -1) {
+                selectionAnchor = candidate;
+                selectionAnchorIndex = candidateIndex;
+                break;
+            }
+        }
+
+        if (event.shiftKey && selectionAnchor) {
+            if (selectionAnchorIndex !== -1 && clickedIndex !== -1) {
+                const start = Math.min(selectionAnchorIndex, clickedIndex);
+                const end = Math.max(selectionAnchorIndex, clickedIndex);
                 const rangeIds = selectionScope.slice(start, end + 1).map(img => img.id);
                 const newSelection = new Set(selectedImages);
                 rangeIds.forEach(id => newSelection.add(id));
@@ -38,6 +62,11 @@ export function useImageSelection() {
         }
 
         if (event.ctrlKey || event.metaKey) {
+            if (selectedImages.size === 0 && selectionAnchor && selectionAnchor.id !== image.id) {
+                useImageStore.setState({ selectedImages: new Set([selectionAnchor.id, image.id]) });
+                return;
+            }
+
             toggleImageSelection(image.id);
         } else {
             setSelectedImage(image);

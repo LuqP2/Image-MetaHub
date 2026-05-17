@@ -130,4 +130,33 @@ describe('GridToolbar', () => {
 
     expect(onStartSlideshow).toHaveBeenCalledTimes(1);
   });
+
+  it('clears selected images from the toolbar', () => {
+    const images = [
+      { id: 'img-1', name: 'alpha.png' },
+      { id: 'img-2', name: 'beta.png' },
+    ] as any;
+
+    useImageStore.setState({ selectedImages: new Set(['img-1', 'img-2']) } as any);
+
+    render(
+      <GridToolbar
+        selectedImages={useImageStore.getState().selectedImages}
+        images={images}
+        directories={[]}
+        filteredImageActionCount={0}
+        onDeleteSelected={vi.fn()}
+        onGenerateA1111={vi.fn()}
+        onGenerateComfyUI={vi.fn()}
+        onCompare={vi.fn()}
+        onBatchExport={vi.fn()}
+        onStartSlideshow={vi.fn()}
+        slideshowImageCount={0}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set());
+  });
 });

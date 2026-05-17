@@ -777,6 +777,84 @@ describe('ImageGrid selection opening behavior', () => {
     expect(useImageStore.getState().selectedImages).toEqual(new Set());
   });
 
+  it('includes the previewed image when command-click starts a selection', () => {
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+    ];
+
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(),
+      isStackingEnabled: false,
+      focusedImageIndex: 0,
+      previewImage: images[0],
+      selectedImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<SelectionHarness images={images} />);
+
+    fireEvent.click(screen.getByAltText('beta.png'), { metaKey: true });
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
+  });
+
+  it('does not include a hidden preview anchor when command-click starts a selection', () => {
+    const hiddenImage = createImage({ id: 'img-hidden', name: 'hidden.png' });
+    const visibleImage = createImage({ id: 'img-visible', name: 'visible.png' });
+    const visibleImages = [visibleImage];
+
+    useImageStore.setState({
+      images: [hiddenImage, visibleImage],
+      filteredImages: visibleImages,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: hiddenImage,
+      selectedImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<SelectionHarness images={visibleImages} />);
+
+    fireEvent.click(screen.getByAltText('visible.png'), { metaKey: true });
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-visible']));
+  });
+
+  it('selects an image range with shift-click from the preview anchor', () => {
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+      createImage({ id: 'img-3', name: 'gamma.png' }),
+    ];
+
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(),
+      isStackingEnabled: false,
+      focusedImageIndex: 0,
+      previewImage: images[0],
+      selectedImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<SelectionHarness images={images} />);
+
+    fireEvent.click(screen.getByAltText('gamma.png'), { shiftKey: true });
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2', 'img-3']));
+  });
+
   it('clears checked images when clicking empty grid space without modifiers', () => {
     const images = [
       createImage({ id: 'img-1', name: 'alpha.png' }),

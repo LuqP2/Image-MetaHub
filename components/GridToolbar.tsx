@@ -12,7 +12,8 @@ import {
   RefreshCw,
   Plus,
   Play,
-  Workflow
+  Workflow,
+  X
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -81,6 +82,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const collectionActionsRef = useRef<HTMLDivElement>(null);
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
+  const clearImageSelection = useImageStore((state) => state.clearImageSelection);
   const collections = useImageStore((state) => state.collections);
   const { canUseComparison, canUseA1111, canUseComfyUI, showProModal, canUseBulkTagging } = useFeatureAccess();
   const { isReparsing, reparseImages } = useReparseMetadata();
@@ -313,6 +315,17 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
             {selectedCount > 0 && (
               <>
                 <span className="text-[11px] text-gray-400 mr-2 whitespace-nowrap">{selectedCount} selected</span>
+
+                <Tooltip label="Clear selection">
+                  <button
+                    onClick={clearImageSelection}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                    title="Clear selection"
+                    aria-label="Clear selection"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </Tooltip>
 
                 {/* Copy to Clipboard */}
                 <Tooltip label="Copy to Clipboard">
