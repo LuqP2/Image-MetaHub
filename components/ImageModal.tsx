@@ -492,7 +492,7 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
       <div className="flex justify-between items-start">
         <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider">{label}</p>
         {onCopy && (
-            <button onClick={() => onCopy(displayValue)} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-white" title={`Copy ${label}`}>
+            <button onClick={() => onCopy(displayValue)} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-white" title={`Copy ${label}`} aria-label={`Copy ${label}`}>
                 <Copy className="w-4 h-4" />
             </button>
         )}
@@ -762,6 +762,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isAdjustmentPanelOpen, setIsAdjustmentPanelOpen] = useState(false);
   const [imageAdjustments, setImageAdjustments] = useState<ImageAdjustments>(DEFAULT_IMAGE_ADJUSTMENTS);
+  const [isShowingOriginalForAdjustmentCompare, setIsShowingOriginalForAdjustmentCompare] = useState(false);
   const [isSavingEditedImage, setIsSavingEditedImage] = useState(false);
   const [isFullImageSourceReady, setIsFullImageSourceReady] = useState(false);
   const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => {
@@ -958,6 +959,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     [imageAdjustments]
   );
   const hasAdjustmentChanges = hasImageAdjustments(imageAdjustments);
+  const shouldApplyAdjustmentFilter = canEditImage && hasAdjustmentChanges && !isShowingOriginalForAdjustmentCompare;
   const rawMetadataImage = hydratedRawMetadataImage?.id === liveImage.id ? hydratedRawMetadataImage : liveImage;
 
   const ensureFullRawMetadata = useCallback(async (): Promise<IndexedImage> => {
@@ -980,6 +982,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     setImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS);
+    setIsShowingOriginalForAdjustmentCompare(false);
     setIsAdjustmentPanelOpen(false);
     setHydratedRawMetadataImage(null);
     setIsHydratingRawMetadata(false);
@@ -1694,6 +1697,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setIsDragging(false);
   }, []);
 
+  const showOriginalForAdjustmentCompare = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    if (!hasAdjustmentChanges || event.button !== 0) {
+      return;
+    }
+
+    setIsShowingOriginalForAdjustmentCompare(true);
+  }, [hasAdjustmentChanges]);
+
+  const hideOriginalForAdjustmentCompare = useCallback(() => {
+    setIsShowingOriginalForAdjustmentCompare(false);
+  }, []);
+
   const handleDragStart = useCallback((e: React.DragEvent<HTMLImageElement>) => {
     if (!canDragExternally) {
       return;
@@ -1712,6 +1727,22 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
     window.electronAPI?.startFileDrag({ directoryPath, relativePath });
   }, [canDragExternally, directoryPath, image.id, image.name]);
+
+  useEffect(() => {
+    if (!isShowingOriginalForAdjustmentCompare || typeof window === 'undefined') {
+      return;
+    }
+
+    window.addEventListener('pointerup', hideOriginalForAdjustmentCompare);
+    window.addEventListener('pointercancel', hideOriginalForAdjustmentCompare);
+    window.addEventListener('blur', hideOriginalForAdjustmentCompare);
+
+    return () => {
+      window.removeEventListener('pointerup', hideOriginalForAdjustmentCompare);
+      window.removeEventListener('pointercancel', hideOriginalForAdjustmentCompare);
+      window.removeEventListener('blur', hideOriginalForAdjustmentCompare);
+    };
+  }, [hideOriginalForAdjustmentCompare, isShowingOriginalForAdjustmentCompare]);
 
   const handleZoomIn = () => {
     setZoom(prev => Math.min(prev + 0.5, 5));
@@ -1754,7 +1785,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }) ?? null;
   }, [directories]);
 
-  const writeEditedImage = useCallback(async (targetPath: string, sourceMetadata?: BaseMetadata) => {
+  const writeEditedImage = useCallback(async (
+    targetPath: string,
+    sourceMetadata?: BaseMetadata,
+    sourceRawMetadata?: Record<string, unknown>,
+  ) => {
     if (!imageUrl || !isFullImageSourceReady) {
       throw new Error('The full image is still loading.');
     }
@@ -1771,7 +1806,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       editableSource.revoke();
     }
 
-    const outputBytes = embedMetaHubMetadataInPngBytes(pngBytes, sourceMetadata, imageAdjustments);
+    const outputBytes = embedMetaHubMetadataInPngBytes(pngBytes, sourceMetadata, imageAdjustments, sourceRawMetadata);
     const result = await window.electronAPI.writeFile(targetPath, outputBytes);
     if (!result.success) {
       throw new Error(result.error || 'Failed to write edited image.');
@@ -1803,8 +1838,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
         return;
       }
 
-      const sourceMetadata = getUsableNormalizedMetadata(liveImage);
-      await writeEditedImage(saveResult.path, sourceMetadata);
+      const sourceImageWithMetadata = await ensureFullRawMetadata();
+      const sourceMetadata = getUsableNormalizedMetadata(sourceImageWithMetadata);
+      const sourceRawMetadata = sourceImageWithMetadata.metadata as Record<string, unknown>;
+      await writeEditedImage(saveResult.path, sourceMetadata, sourceRawMetadata);
 
       const targetDirectory = findDirectoryForAbsolutePath(saveResult.path);
       if (targetDirectory) {
@@ -1812,10 +1849,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
         if (indexedImage) {
           const savedMetadata = sourceMetadata
             ? {
-                ...liveImage.metadata,
+                ...indexedImage.metadata,
                 normalizedMetadata: sourceMetadata,
               }
-            : liveImage.metadata;
+            : indexedImage.metadata;
           const savedImage: IndexedImage = {
             ...indexedImage,
             metadata: savedMetadata,
@@ -1858,6 +1895,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     allImages,
     buildEditedDefaultPath,
     canEditImage,
+    ensureFullRawMetadata,
     findDirectoryForAbsolutePath,
     hasAdjustmentChanges,
     isSavingEditedImage,
@@ -1903,8 +1941,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
         throw new Error(joined.error || 'Failed to resolve the original image path.');
       }
 
-      const sourceMetadata = getUsableNormalizedMetadata(liveImage);
-      await writeEditedImage(joined.path, sourceMetadata);
+      const sourceImageWithMetadata = await ensureFullRawMetadata();
+      const sourceMetadata = getUsableNormalizedMetadata(sourceImageWithMetadata);
+      const sourceRawMetadata = sourceImageWithMetadata.metadata as Record<string, unknown>;
+      await writeEditedImage(joined.path, sourceMetadata, sourceRawMetadata);
 
       const reparsed = await reparseIndexedImage(liveImage, sourceDirectory.path);
       if (!reparsed) {
@@ -1913,10 +1953,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       const preservedMetadata = sourceMetadata
         ? {
-            ...liveImage.metadata,
+            ...reparsed.metadata,
             normalizedMetadata: sourceMetadata,
           }
-        : liveImage.metadata;
+        : reparsed.metadata;
       const preservedMetadataImage: IndexedImage = {
         ...liveImage,
         ...reparsed,
@@ -1969,6 +2009,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     canEditImage,
     canOverwriteEditedImage,
     directories,
+    ensureFullRawMetadata,
     hasAdjustmentChanges,
     isSavingEditedImage,
     liveImage,
@@ -2748,12 +2789,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   }
                 }}
                 onContextMenu={handleContextMenu}
+                onPointerDown={showOriginalForAdjustmentCompare}
+                onPointerUp={hideOriginalForAdjustmentCompare}
+                onPointerCancel={hideOriginalForAdjustmentCompare}
+                onPointerLeave={hideOriginalForAdjustmentCompare}
                 onDragStart={handleDragStart}
                 style={{
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                  filter: canEditImage ? adjustmentFilter : undefined,
+                  filter: shouldApplyAdjustmentFilter ? adjustmentFilter : undefined,
                   transition: isDragging ? 'none' : 'transform 0.1s ease-out',
                 }}
+                title={hasAdjustmentChanges ? 'Hold to compare with the original image' : undefined}
                 draggable={canDragExternally && zoom === 1}
               />
             )

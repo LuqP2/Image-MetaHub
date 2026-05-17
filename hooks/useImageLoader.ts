@@ -1505,7 +1505,11 @@ export function useImageLoader() {
             });
             // Filtrar arquivos que j├í existem
             const images = useImageStore.getState().images;
-            const existingIds = new Set(images.map(img => img.id));
+            // Performance optimization: Avoid intermediate array allocation
+            const existingIds = new Set<string>();
+            for (let i = 0; i < images.length; i++) {
+                existingIds.add(images[i].id);
+            }
             const getWatchedImageId = (file: { relativePath?: string; normalizedName: string }) =>
                 `${directory.id}::${file.relativePath || file.normalizedName}`;
             const newFiles = normalizedFiles.filter(file => {

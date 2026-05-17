@@ -305,43 +305,115 @@ const formatMetadataForA1111Compat = (metadata: BaseMetadata): string => {
 const buildMetaHubEditPayload = (
   metadata: BaseMetadata,
   adjustments: ImageAdjustments,
-) => ({
-  generator: 'Image MetaHub',
-  source_generator: typeof metadata.generator === 'string' ? metadata.generator : null,
-  edited_at: new Date().toISOString(),
-  edit: {
-    tool: 'image-adjustments',
-    adjustments,
-  },
-  prompt: metadata.prompt || '',
-  negativePrompt: metadata.negativePrompt || '',
-  seed: Number.isFinite(metadata.seed) ? metadata.seed : undefined,
-  steps: Number.isFinite(metadata.steps) ? metadata.steps : undefined,
-  cfg: Number.isFinite(metadata.cfg_scale ?? metadata.cfgScale) ? (metadata.cfg_scale ?? metadata.cfgScale) : undefined,
-  sampler_name: metadata.sampler || '',
-  scheduler: metadata.scheduler || '',
-  model: metadata.model || metadata.models?.[0] || '',
-  width: Number.isFinite(metadata.width) ? metadata.width : 0,
-  height: Number.isFinite(metadata.height) ? metadata.height : 0,
-  loras: toLoraPayload(metadata.loras),
-  imh_pro: {
-    notes: typeof metadata.notes === 'string' ? metadata.notes : '',
-    user_tags: Array.isArray(metadata.tags) ? metadata.tags.join(', ') : '',
-  },
-});
+  preservedWorkflow?: PreservedComfyWorkflow,
+) => {
+  const payload: Record<string, unknown> = {
+    generator: 'Image MetaHub',
+    source_generator: typeof metadata.generator === 'string' ? metadata.generator : null,
+    edited_at: new Date().toISOString(),
+    edit: {
+      tool: 'image-adjustments',
+      adjustments,
+    },
+    prompt: metadata.prompt || '',
+    negativePrompt: metadata.negativePrompt || '',
+    seed: Number.isFinite(metadata.seed) ? metadata.seed : undefined,
+    steps: Number.isFinite(metadata.steps) ? metadata.steps : undefined,
+    cfg: Number.isFinite(metadata.cfg_scale ?? metadata.cfgScale) ? (metadata.cfg_scale ?? metadata.cfgScale) : undefined,
+    sampler_name: metadata.sampler || '',
+    scheduler: metadata.scheduler || '',
+    model: metadata.model || metadata.models?.[0] || '',
+    width: Number.isFinite(metadata.width) ? metadata.width : 0,
+    height: Number.isFinite(metadata.height) ? metadata.height : 0,
+    loras: toLoraPayload(metadata.loras),
+    imh_pro: {
+      notes: typeof metadata.notes === 'string' ? metadata.notes : '',
+      user_tags: Array.isArray(metadata.tags) ? metadata.tags.join(', ') : '',
+    },
+  };
+
+  if (preservedWorkflow?.workflow !== undefined) {
+    payload.workflow = preservedWorkflow.workflow;
+  }
+  if (preservedWorkflow?.prompt !== undefined) {
+    payload.prompt_api = preservedWorkflow.prompt;
+  }
+
+  return payload;
+};
+
+type PreservedComfyWorkflow = {
+  workflow?: unknown;
+  prompt?: unknown;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+);
+
+const parseMaybeRecord = (value: unknown): Record<string, unknown> | null => {
+  if (isRecord(value)) {
+    return value;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const stringifyPngTextValue = (value: unknown): string => (
+  typeof value === 'string' ? value : JSON.stringify(value)
+);
+
+const extractPreservedComfyWorkflow = (
+  rawMetadata?: Record<string, unknown>,
+): PreservedComfyWorkflow | undefined => {
+  if (!rawMetadata) {
+    return undefined;
+  }
+
+  const metaHubPayload = parseMaybeRecord(rawMetadata.imagemetahub_data);
+  const workflow = metaHubPayload?.workflow ?? rawMetadata.workflow;
+  const prompt = metaHubPayload?.prompt_api ?? metaHubPayload?.prompt ?? rawMetadata.prompt;
+
+  if (workflow === undefined && prompt === undefined) {
+    return undefined;
+  }
+
+  return { workflow, prompt };
+};
 
 export const embedMetaHubMetadataInPngBytes = (
   pngBytes: Uint8Array,
   metadata: BaseMetadata | undefined,
   adjustments: Partial<ImageAdjustments>,
+  rawMetadata?: Record<string, unknown>,
 ): Uint8Array => {
   if (!metadata) {
     return pngBytes;
   }
 
   const normalizedAdjustments = normalizeImageAdjustments(adjustments);
-  return appendChunksToPngBytes(pngBytes, [
+  const preservedWorkflow = extractPreservedComfyWorkflow(rawMetadata);
+  const chunks = [
     createPngTextChunk('parameters', formatMetadataForA1111Compat(metadata)),
-    createPngInternationalTextChunk('imagemetahub_data', JSON.stringify(buildMetaHubEditPayload(metadata, normalizedAdjustments))),
-  ]);
+    createPngInternationalTextChunk(
+      'imagemetahub_data',
+      JSON.stringify(buildMetaHubEditPayload(metadata, normalizedAdjustments, preservedWorkflow)),
+    ),
+  ];
+
+  if (preservedWorkflow?.workflow !== undefined) {
+    chunks.push(createPngInternationalTextChunk('workflow', stringifyPngTextValue(preservedWorkflow.workflow)));
+  }
+  if (preservedWorkflow?.prompt !== undefined) {
+    chunks.push(createPngInternationalTextChunk('prompt', stringifyPngTextValue(preservedWorkflow.prompt)));
+  }
+
+  return appendChunksToPngBytes(pngBytes, chunks);
 };
