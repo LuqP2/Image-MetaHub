@@ -1135,7 +1135,6 @@ export const useImageStore = create<ImageState>((set, get) => {
                 }
             }
             const queuedUnique = Array.from(deduped.values());
-            // Performance optimization: Avoid intermediate array allocation
             const existingIds = new Set<string>();
             for (let i = 0; i < state.images.length; i++) {
                 existingIds.add(state.images[i].id);
@@ -2993,11 +2992,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 }
 
                 const queuedUnique = Array.from(deduped.values());
-                // Performance optimization: Avoid intermediate array allocation
-            const existingIds = new Set<string>();
-            for (let i = 0; i < state.images.length; i++) {
-                existingIds.add(state.images[i].id);
-            }
+                const existingIds = new Set<string>();
+                for (let i = 0; i < state.images.length; i++) {
+                    existingIds.add(state.images[i].id);
+                }
                 const uniqueNewImages = queuedUnique.filter(img => !existingIds.has(img.id));
                 if (uniqueNewImages.length === 0) {
                     return state;
@@ -3024,11 +3022,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 }
 
                 const queuedUnique = Array.from(deduped.values());
-                // Performance optimization: Avoid intermediate array allocation
-            const existingIds = new Set<string>();
-            for (let i = 0; i < state.images.length; i++) {
-                existingIds.add(state.images[i].id);
-            }
+                const existingIds = new Set<string>();
+                for (let i = 0; i < state.images.length; i++) {
+                    existingIds.add(state.images[i].id);
+                }
                 const uniqueNewImages = queuedUnique.filter(img => !existingIds.has(img.id));
                 if (uniqueNewImages.length === 0) {
                     return state;
