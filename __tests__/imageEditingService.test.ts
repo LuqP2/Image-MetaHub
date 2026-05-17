@@ -109,4 +109,30 @@ describe('imageEditingService', () => {
     expect(text).toContain('Image MetaHub');
     expect(text).toContain('model.safetensors');
   });
+
+  it('preserves embedded ComfyUI workflow chunks when saving edited PNG bytes', () => {
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x00,
+      0x49, 0x45, 0x4e, 0x44,
+      0xae, 0x42, 0x60, 0x82,
+    ]);
+    const workflow = { nodes: [{ id: 1, type: 'KSampler' }] };
+    const prompt = { '1': { class_type: 'KSampler', inputs: { seed: 123 } } };
+
+    const output = embedMetaHubMetadataInPngBytes(pngBytes, {
+      prompt: 'a test prompt',
+      model: 'model.safetensors',
+      models: ['model.safetensors'],
+    }, DEFAULT_IMAGE_ADJUSTMENTS, {
+      workflow,
+      prompt,
+    });
+    const text = new TextDecoder().decode(output);
+
+    expect(text).toContain('workflow');
+    expect(text).toContain('prompt_api');
+    expect(text).toContain('KSampler');
+    expect(text).toContain('"seed":123');
+  });
 });

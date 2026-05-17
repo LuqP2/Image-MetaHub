@@ -360,7 +360,11 @@ const renameAnnotationTag = (tags: string[], sourceTag: string, targetTag: strin
         return tags;
     }
 
-    return Array.from(new Set(tags.map(tag => tag === normalizedSource ? normalizedTarget : tag)));
+    const mappedTags = new Set<string>();
+    for (let i = 0; i < tags.length; i++) {
+        mappedTags.add(tags[i] === normalizedSource ? normalizedTarget : tags[i]);
+    }
+    return Array.from(mappedTags);
 };
 
 const sortCollections = (collections: SmartCollection[]): SmartCollection[] =>
@@ -1113,7 +1117,11 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         let addedImages: IndexedImage[] = [];
         set(state => {
-            const activeDirectoryIds = new Set(state.directories.map(directory => directory.id));
+            // Performance optimization: Avoid intermediate array allocation
+            const activeDirectoryIds = new Set<string>();
+            for (let i = 0; i < state.directories.length; i++) {
+                activeDirectoryIds.add(state.directories[i].id);
+            }
             const deduped = new Map<string, IndexedImage>();
             for (const img of imagesToAdd) {
                 if (!img?.id) {
@@ -1186,7 +1194,11 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
 
         set(state => {
-            const activeDirectoryIds = new Set(state.directories.map(directory => directory.id));
+            // Performance optimization: Avoid intermediate array allocation
+            const activeDirectoryIds = new Set<string>();
+            for (let i = 0; i < state.directories.length; i++) {
+                activeDirectoryIds.add(state.directories[i].id);
+            }
             const updates = new Map<string, IndexedImage>();
             for (const img of updatesToMerge) {
                 if (!img?.id) {
@@ -1501,9 +1513,14 @@ export const useImageStore = create<ImageState>((set, get) => {
         sourceImages?: IndexedImage[],
         options?: { ignoreEnabled?: boolean },
     ): Promise<AutomationRulePreview> => {
-        const sourceIds = sourceImages && sourceImages.length > 0
-            ? new Set(sourceImages.map((image) => image.id))
-            : null;
+        let sourceIds: Set<string> | null = null;
+        if (sourceImages && sourceImages.length > 0) {
+            // Performance optimization: Avoid intermediate array allocation
+            sourceIds = new Set<string>();
+            for (let i = 0; i < sourceImages.length; i++) {
+                sourceIds.add(sourceImages[i].id);
+            }
+        }
         const currentState = get();
         const currentTargetImages = sourceIds
             ? currentState.images.filter((image) => sourceIds.has(image.id))
@@ -3152,7 +3169,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                     : null;
 
                 const updatedImages = state.images.map(img => img.id === imageId ? nextImage : img);
-                const selectedImages = new Set(Array.from(state.selectedImages).map(id => id === imageId ? nextImageId : id));
+                // Performance optimization: Avoid intermediate array allocation
+                const selectedImages = new Set<string>();
+                for (const id of state.selectedImages) {
+                    selectedImages.add(id === imageId ? nextImageId : id);
+                }
                 const annotations = new Map(state.annotations);
                 const annotation = annotations.get(imageId);
                 if (annotation) {
@@ -4802,7 +4823,11 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         selectAllImages: () => set(state => {
             const selectionScope = state.activeImageScope ?? state.filteredImages;
-            const allImageIds = new Set(selectionScope.map(img => img.id));
+            // Performance optimization: Avoid intermediate array allocation
+            const allImageIds = new Set<string>();
+            for (let i = 0; i < selectionScope.length; i++) {
+                allImageIds.add(selectionScope[i].id);
+            }
             return { selectedImages: allImageIds };
         }),
 
