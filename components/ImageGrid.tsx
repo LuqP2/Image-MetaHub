@@ -465,8 +465,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           }
 
           if (doubleClickToOpen) {
-            if (e.ctrlKey || e.metaKey) {
-              toggleImageSelection(image.id);
+            if (e.ctrlKey || e.metaKey || e.shiftKey) {
+              onImageClick(image, e);
             } else {
               setPreviewImage(image);
             }

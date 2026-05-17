@@ -777,6 +777,59 @@ describe('ImageGrid selection opening behavior', () => {
     expect(useImageStore.getState().selectedImages).toEqual(new Set());
   });
 
+  it('includes the previewed image when command-click starts a selection', () => {
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+    ];
+
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(),
+      isStackingEnabled: false,
+      focusedImageIndex: 0,
+      previewImage: images[0],
+      selectedImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<SelectionHarness images={images} />);
+
+    fireEvent.click(screen.getByAltText('beta.png'), { metaKey: true });
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
+  });
+
+  it('selects an image range with shift-click from the preview anchor', () => {
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+      createImage({ id: 'img-3', name: 'gamma.png' }),
+    ];
+
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(),
+      isStackingEnabled: false,
+      focusedImageIndex: 0,
+      previewImage: images[0],
+      selectedImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<SelectionHarness images={images} />);
+
+    fireEvent.click(screen.getByAltText('gamma.png'), { shiftKey: true });
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2', 'img-3']));
+  });
+
   it('clears checked images when clicking empty grid space without modifiers', () => {
     const images = [
       createImage({ id: 'img-1', name: 'alpha.png' }),

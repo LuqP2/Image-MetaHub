@@ -3010,18 +3010,33 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           )}
           <div className="p-6 space-y-4 overflow-y-auto flex-1">
-          {canEditImage && isAdjustmentPanelOpen && (
-            <ImageAdjustmentPanel
-              adjustments={imageAdjustments}
-              onChange={setImageAdjustments}
-              onReset={() => setImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS)}
-              onSaveAs={() => void handleSaveEditedImageAs()}
-              onOverwrite={() => void handleOverwriteEditedImage()}
-              canOverwrite={canOverwriteEditedImage}
-              overwriteUnavailableReason="Overwrite is only available for PNG images. Use Save As to create an edited PNG copy."
-              isSaving={isSavingEditedImage}
-              disabled={!isFullImageSourceReady}
-            />
+          {canEditImage && (
+            <>
+              {!isAdjustmentPanelOpen && (
+                <button
+                  type="button"
+                  onClick={() => setIsAdjustmentPanelOpen(true)}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-100 transition-colors hover:border-cyan-400/50 hover:bg-cyan-500/20"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Adjust Image
+                </button>
+              )}
+
+              {isAdjustmentPanelOpen && (
+                <ImageAdjustmentPanel
+                  adjustments={imageAdjustments}
+                  onChange={setImageAdjustments}
+                  onReset={() => setImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS)}
+                  onSaveAs={() => void handleSaveEditedImageAs()}
+                  onOverwrite={() => void handleOverwriteEditedImage()}
+                  canOverwrite={canOverwriteEditedImage}
+                  overwriteUnavailableReason="Overwrite is only available for PNG images. Use Save As to create an edited PNG copy."
+                  isSaving={isSavingEditedImage}
+                  disabled={!isFullImageSourceReady}
+                />
+              )}
+            </>
           )}
 
           {/* Annotations Section */}
