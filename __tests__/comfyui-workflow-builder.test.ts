@@ -445,6 +445,40 @@ describe('ComfyUI workflow builder', () => {
     expect(graph?.edges.some((edge) => edge.from === '1' && edge.to === '5' && edge.label === 'model')).toBe(true);
   });
 
+  it('keeps auto-layout progressing when prompt inputs reference missing upstream nodes', () => {
+    const incompletePrompt = {
+      '2': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'positive',
+          clip: ['1', 1],
+        },
+      },
+      '3': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          model: ['1', 0],
+          positive: ['2', 0],
+          negative: ['2', 0],
+        },
+      },
+    };
+
+    const graph = buildVisualWorkflowGraph(incompletePrompt, null);
+    const promptNode = graph?.nodes.find((node) => node.id === '2');
+    const samplerNode = graph?.nodes.find((node) => node.id === '3');
+
+    expect(promptNode).toBeDefined();
+    expect(samplerNode).toBeDefined();
+    expect(promptNode?.x).toBe(0);
+    expect(samplerNode?.x).toBeGreaterThan(promptNode?.x || 0);
+  });
+
   it('anchors nodes without stored positions near the existing workflow layout', () => {
     const promptWithMissingLayout = {
       '1': {
