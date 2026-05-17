@@ -73,8 +73,14 @@ const uniqueImageIds = (imageIds: unknown): string[] => {
   );
 };
 
-const getExistingImageIdSet = (images: IndexedImage[]): Set<string> =>
-  new Set(images.map((image) => image.id));
+const getExistingImageIdSet = (images: IndexedImage[]): Set<string> => {
+  // Performance optimization: Avoid intermediate array allocation from .map()
+  const existingIds = new Set<string>();
+  for (let i = 0; i < images.length; i++) {
+    existingIds.add(images[i].id);
+  }
+  return existingIds;
+};
 
 const filterExistingImageIds = (imageIds: string[], existingImageIdSet: Set<string>): string[] =>
   imageIds.filter((imageId) => existingImageIdSet.has(imageId));

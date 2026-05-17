@@ -2293,7 +2293,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     }
 
     const visiblePageImages = collectWarmupImages(itemsToRender, 0, itemsToRender.length - 1);
-    const keepImageIds = new Set(visiblePageImages.map((image) => image.id));
+    // Performance optimization: Avoid intermediate array allocation
+    const keepImageIds = new Set<string>();
+    for (let i = 0; i < visiblePageImages.length; i++) {
+      keepImageIds.add(visiblePageImages[i].id);
+    }
 
     thumbnailManager.cancelQueuedJobs({ queue: 'all', keepImageIds });
     releasePaginatedBackgroundPauseRef.current?.();
@@ -2444,7 +2448,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                       }
                       lastWarmupWindowRef.current = windowKey;
 
-                      const visibleImageIds = new Set(primaryImages.map((image) => image.id));
+                      // Performance optimization: Avoid intermediate array allocation
+                      const visibleImageIds = new Set<string>();
+                      for (let i = 0; i < primaryImages.length; i++) {
+                        visibleImageIds.add(primaryImages[i].id);
+                      }
 
                       for (const [imageId, flowId] of visibleGridThumbnailFlows.entries()) {
                         if (!visibleImageIds.has(imageId)) {
