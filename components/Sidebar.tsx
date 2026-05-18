@@ -210,6 +210,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           onClick={onToggleCollapse}
           className="mt-4 mb-6 rounded-xl p-0 text-gray-400 transition-colors duration-200 hover:bg-gray-800/50 hover:text-gray-100"
           title="Expand sidebar"
+          aria-label="Expand sidebar"
         >
            <img src="logo1.png" alt="Expand" className="h-10 w-10 rounded-xl object-contain" />
         </button>
@@ -272,6 +273,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             onClick={onToggleCollapse}
             className="app-top-icon-button ml-auto h-8 w-8"
             title="Collapse sidebar"
+            aria-label="Collapse sidebar"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -311,6 +313,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={onReshuffle}
                 className="ml-2 p-2 text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-md border border-gray-600 transition-colors"
                 title="Reshuffle Random Order"
+                aria-label="Reshuffle Random Order"
             >
                 <RefreshCw className="h-5 w-5" />
             </button>

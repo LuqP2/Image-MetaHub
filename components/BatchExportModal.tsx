@@ -346,6 +346,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             onClick={() => { void handleRequestClose(); }}
             className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
             title={isExporting ? 'Cancel export' : 'Close'}
+            aria-label={isExporting ? 'Cancel export' : 'Close'}
             disabled={isCancelling}
           >
             <X className="w-4 h-4 text-gray-400" />
