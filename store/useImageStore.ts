@@ -1405,7 +1405,15 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            const imagesById = new Map(currentState.images.map(image => [image.id, image]));
+            // Optimization: Replaced `new Map(currentState.images.map(...))` with a `for` loop
+            // to eliminate the O(N) allocation of an intermediate tuple array `[[id, image], ...]`.
+            // Impact: Reduces garbage collection pauses on the main thread during search/filter worker completions,
+            // scaling O(1) in intermediate memory instead of O(N) where N is the total image count.
+            const imagesById = new Map<string, IndexedImage>();
+            for (let i = 0; i < currentState.images.length; i++) {
+                const img = currentState.images[i];
+                imagesById.set(img.id, img);
+            }
             const filteredImages = payload.filteredIds
                 .map(id => imagesById.get(id))
                 .filter((image): image is IndexedImage => Boolean(image));
