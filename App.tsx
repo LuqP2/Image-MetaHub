@@ -1781,10 +1781,10 @@ export default function App() {
     setLibraryView('comfyui');
   }, []);
 
-  const handleOpenComfyUIWorkflowFromImageModal = useCallback((
-    modalId: string,
+  const openComfyUIWorkflowInWorkspace = useCallback((
     image: IndexedImage,
     navigationImages?: IndexedImage[],
+    preferNewTab = true,
   ) => {
     const navigationImageIds = navigationImages && navigationImages.length > 0
       ? navigationImages.map((item) => item.id)
@@ -1797,14 +1797,22 @@ export default function App() {
       id: Date.now(),
       imageId: image.id,
       title: image.name,
-      preferNewTab: true,
+      preferNewTab,
     });
+    setLibraryView('comfyui');
+  }, []);
+
+  const handleOpenComfyUIWorkflowFromImageModal = useCallback((
+    modalId: string,
+    image: IndexedImage,
+    navigationImages?: IndexedImage[],
+  ) => {
+    openComfyUIWorkflowInWorkspace(image, navigationImages, true);
     suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
     setOpenImageModals((current) => current.filter((modal) => modal.modalId !== modalId));
     setActiveImageModalId((current) => (current === modalId ? null : current));
-    setLibraryView('comfyui');
-  }, [setSelectedImage]);
+  }, [openComfyUIWorkflowInWorkspace, setSelectedImage]);
 
   useEffect(() => {
     if (libraryView !== 'comfyui') {
@@ -2627,7 +2635,7 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
-                          onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
+                          onOpenComfyUIWorkspace={(image) => openComfyUIWorkflowInWorkspace(image, displayImages)}
                         />
                       ) : (
                         <ImageTable

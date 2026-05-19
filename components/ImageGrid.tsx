@@ -2136,10 +2136,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <button
               onClick={openComfyUIWorkspace}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title={!canUseComfyUI && initialized ? 'Pro feature - start trial' : 'Open this image in the ComfyUI workspace context panel'}
+              title={!canUseComfyUI && initialized ? 'Pro feature - start trial' : 'Open this image workflow in the ComfyUI workspace'}
             >
               <Workflow className="w-4 h-4" />
-              <span className="flex-1">Open ComfyUI Workspace</span>
+              <span className="flex-1">Open in ComfyUI Workspace</span>
               {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
             </button>
           )}

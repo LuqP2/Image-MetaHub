@@ -87,7 +87,7 @@ const PANEL_COLLAPSED_STORAGE_KEY = 'image-metahub-comfyui-workspace-panel-colla
 const THUMB_RAIL_COLLAPSED_STORAGE_KEY = 'image-metahub-comfyui-workspace-thumb-rail-collapsed';
 const THUMB_RAIL_WIDTH_STORAGE_KEY = 'image-metahub-comfyui-workspace-thumb-rail-width';
 const ASSET_CONTEXT_MENU_WIDTH = 224;
-const ASSET_CONTEXT_MENU_HEIGHT = 260;
+const ASSET_CONTEXT_MENU_HEIGHT = 304;
 const clampThumbRailWidth = (width: number) => Math.min(Math.max(Math.round(width) || 108, 76), 360);
 const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
 
@@ -284,8 +284,9 @@ const WorkspaceImagePreviewModal: React.FC<{
   initialIndex: number;
   onClose: () => void;
   onInspectImage?: (image: IndexedImage) => void;
+  onOpenWorkflow?: (image: IndexedImage) => void;
   onViewFullMetadata?: (image: IndexedImage) => void;
-}> = ({ images, initialIndex, onClose, onInspectImage, onViewFullMetadata }) => {
+}> = ({ images, initialIndex, onClose, onInspectImage, onOpenWorkflow, onViewFullMetadata }) => {
   const [index, setIndex] = useState(() => Math.min(Math.max(initialIndex, 0), Math.max(images.length - 1, 0)));
   const [isMetadataExpanded, setIsMetadataExpanded] = useState(false);
   const [parameterCopyStatus, setParameterCopyStatus] = useState('');
@@ -535,15 +536,33 @@ const WorkspaceImagePreviewModal: React.FC<{
         )}
       </div>
 
-      <button
+      <div
         onMouseDown={(event) => event.stopPropagation()}
-        onClick={onClose}
-        className="absolute right-4 top-4 z-10 rounded-full bg-black/55 p-2 text-gray-200 ring-1 ring-white/10 transition-colors hover:bg-black/80 hover:text-white"
-        aria-label="Close image preview"
-        title="Close"
+        className="absolute right-4 top-4 z-10 flex items-center gap-2"
       >
-        <X size={22} />
-      </button>
+        {onOpenWorkflow && (
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenWorkflow(current);
+            }}
+            className="inline-flex items-center gap-2 rounded-full bg-purple-600/80 px-3 py-2 text-sm font-semibold text-white ring-1 ring-purple-300/30 transition-colors hover:bg-purple-500"
+            aria-label="Open workflow in ComfyUI"
+            title="Open workflow in ComfyUI"
+          >
+            <Workflow size={18} />
+            <span className="hidden sm:inline">Open workflow</span>
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          className="rounded-full bg-black/55 p-2 text-gray-200 ring-1 ring-white/10 transition-colors hover:bg-black/80 hover:text-white"
+          aria-label="Close image preview"
+          title="Close"
+        >
+          <X size={22} />
+        </button>
+      </div>
     </div>
   );
 };
@@ -1307,6 +1326,57 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     setAssetContextMenu(null);
   }, [inspectWorkspaceImage]);
 
+  const openWorkflowInComfyUI = useCallback(async (contextImage: IndexedImage) => {
+    setAssetContextMenu(null);
+    inspectWorkspaceImage(contextImage);
+    setActiveInspectorTab('workflow');
+    setConnectionMessage('Loading workflow in ComfyUI...');
+    setLoadFailure(null);
+
+    if (!isElectron || !window.electronAPI?.comfyUIViewLoadWorkflow) {
+      setConnectionMessage('Embedded ComfyUI workflow loading is only available in the desktop app.');
+      return;
+    }
+
+    try {
+      const bounds = browserHostRef.current ? getBounds(browserHostRef.current) : undefined;
+      const workflowJson = formatImageForComfyUI(contextImage);
+      const result = await window.electronAPI.comfyUIViewLoadWorkflow({
+        url: targetUrl,
+        bounds,
+        workflow: workflowJson,
+        title: contextImage.name,
+        preferNewTab: true,
+      });
+
+      if (result?.state) {
+        setViewState(result.state);
+      }
+
+      if (result?.success) {
+        setComfyUIConnectionStatus('connected');
+        setConnectionMessage(
+          result.message ||
+          (result.loadedInNewTab
+            ? 'Workflow opened in a new ComfyUI tab.'
+            : 'Workflow loaded into the current ComfyUI canvas.')
+        );
+        return;
+      }
+
+      setConnectionMessage(result?.error || 'Failed to load workflow in ComfyUI.');
+    } catch (error) {
+      setConnectionMessage(error instanceof Error ? error.message : 'Failed to load workflow in ComfyUI.');
+    }
+  }, [inspectWorkspaceImage, isElectron, setComfyUIConnectionStatus, targetUrl]);
+
+  const handleOpenPreviewWorkflow = useCallback((contextImage: IndexedImage) => {
+    setWorkspacePreviewIndex(null);
+    window.setTimeout(() => {
+      void openWorkflowInComfyUI(contextImage);
+    }, 0);
+  }, [openWorkflowInComfyUI]);
+
   const exportAssetImage = useCallback((contextImage: IndexedImage) => {
     exportImages(getContextTargetImages(contextImage));
   }, [exportImages, getContextTargetImages]);
@@ -1881,6 +1951,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           images={visibleNavigationImages}
           initialIndex={workspacePreviewIndex}
           onInspectImage={inspectWorkspaceImage}
+          onOpenWorkflow={handleOpenPreviewWorkflow}
           onViewFullMetadata={onViewFullMetadata}
           onClose={() => setWorkspacePreviewIndex(null)}
         />
@@ -1912,6 +1983,15 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           >
             <Info className="h-4 w-4" />
             Inspect Asset
+          </button>
+          <button
+            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-800"
+            onClick={() => {
+              void openWorkflowInComfyUI(assetContextMenu.image);
+            }}
+          >
+            <Workflow className="h-4 w-4" />
+            Open Workflow in ComfyUI
           </button>
           <button
             className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
