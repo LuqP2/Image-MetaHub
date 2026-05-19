@@ -582,7 +582,10 @@ class ThumbnailManager {
     }
 
     const misses: IndexedImage[] = [];
-    const imagesById = new Map(images.map((image) => [image.id, image]));
+    const imagesById = new Map<string, IndexedImage>();
+    for (const image of images) {
+      imagesById.set(image.id, image);
+    }
 
     for (const candidate of candidates) {
       const image = imagesById.get(candidate.requestId);
