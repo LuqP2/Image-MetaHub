@@ -84,6 +84,13 @@ interface ImageModalWindowState {
   height: number;
 }
 
+interface ComfyUIWorkflowLoadRequest {
+  id: number;
+  imageId: string;
+  title: string;
+  preferNewTab: boolean;
+}
+
 interface FindSimilarState {
   sourceImage: IndexedImage;
   currentViewImages: IndexedImage[];
@@ -401,6 +408,7 @@ export default function App() {
   const [comfyUIWorkspaceImageId, setComfyUIWorkspaceImageId] = useState<string | null>(null);
   const [comfyUIWorkspaceNavigationImageIds, setComfyUIWorkspaceNavigationImageIds] = useState<string[] | null>(null);
   const [comfyUIWorkspaceDirectoryId, setComfyUIWorkspaceDirectoryId] = useState<string>('');
+  const [comfyUIWorkspaceWorkflowLoadRequest, setComfyUIWorkspaceWorkflowLoadRequest] = useState<ComfyUIWorkflowLoadRequest | null>(null);
   const [comfyUIWorkspaceApplyLibraryFilters, setComfyUIWorkspaceApplyLibraryFilters] = useState(() => {
     if (typeof window === 'undefined') {
       return false;
@@ -1773,6 +1781,39 @@ export default function App() {
     setLibraryView('comfyui');
   }, []);
 
+  const openComfyUIWorkflowInWorkspace = useCallback((
+    image: IndexedImage,
+    navigationImages?: IndexedImage[],
+    preferNewTab = true,
+  ) => {
+    const navigationImageIds = navigationImages && navigationImages.length > 0
+      ? navigationImages.map((item) => item.id)
+      : [image.id];
+
+    setComfyUIWorkspaceImageId(image.id);
+    setComfyUIWorkspaceDirectoryId('');
+    setComfyUIWorkspaceNavigationImageIds(navigationImageIds);
+    setComfyUIWorkspaceWorkflowLoadRequest({
+      id: Date.now(),
+      imageId: image.id,
+      title: image.name,
+      preferNewTab,
+    });
+    setLibraryView('comfyui');
+  }, []);
+
+  const handleOpenComfyUIWorkflowFromImageModal = useCallback((
+    modalId: string,
+    image: IndexedImage,
+    navigationImages?: IndexedImage[],
+  ) => {
+    openComfyUIWorkflowInWorkspace(image, navigationImages, true);
+    suppressSelectedImageModalOpenRef.current = image.id;
+    setSelectedImage(image);
+    setOpenImageModals((current) => current.filter((modal) => modal.modalId !== modalId));
+    setActiveImageModalId((current) => (current === modalId ? null : current));
+  }, [openComfyUIWorkflowInWorkspace, setSelectedImage]);
+
   useEffect(() => {
     if (libraryView !== 'comfyui') {
       setComfyUIWorkspaceNavigationImageIds(null);
@@ -1966,53 +2007,6 @@ export default function App() {
 
     return comfyUIWorkspaceNavigationImages.findIndex((candidate) => candidate.id === comfyUIWorkspaceImage.id);
   }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImages]);
-  const handleOpenComfyUIWorkspaceImageModal = useCallback((image: IndexedImage, navigationImages: IndexedImage[]) => {
-    const navigationImageIds = navigationImages.length > 0
-      ? navigationImages.map((entry) => entry.id)
-      : [image.id];
-    const modalId = `image-modal-${Date.now()}-${image.id}`;
-    const existingModalForImage = openImageModals.find((modal) => modal.imageId === image.id);
-    const activeModalId = existingModalForImage?.modalId ?? modalId;
-
-    setOpenImageModals((current) => {
-      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
-      const nextZIndex = highestZIndex + 1;
-      const existingModal = current.find((modal) => modal.imageId === image.id);
-
-      if (existingModal) {
-        return current.map((modal) =>
-          modal.modalId === existingModal.modalId
-            ? {
-                ...modal,
-                navigationImageIds,
-                navigationSource: 'comfyui',
-                zIndex: nextZIndex,
-                isMinimized: false,
-              }
-            : modal
-        );
-      }
-
-      return [
-        ...current,
-        {
-          modalId,
-          imageId: image.id,
-          navigationImageIds,
-          navigationSource: 'comfyui',
-          zIndex: nextZIndex,
-          initialWindowOffset: current.length * 28,
-          isMinimized: false,
-          diagnosticsFlowId: beginModalOpenFlow(image.id, 'comfyui-workspace'),
-        },
-      ];
-    });
-
-    setComfyUIWorkspaceImageId(image.id);
-    setActiveImageModalId(activeModalId);
-    suppressSelectedImageModalOpenRef.current = image.id;
-    setSelectedImage(image);
-  }, [beginModalOpenFlow, openImageModals, setSelectedImage]);
   const handleComfyUIWorkspaceDirectoryChange = useCallback((directoryId: string | null) => {
     const nextDirectoryId = directoryId || '';
     setComfyUIWorkspaceDirectoryId(nextDirectoryId);
@@ -2641,7 +2635,7 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
-                          onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
+                          onOpenComfyUIWorkspace={(image) => openComfyUIWorkflowInWorkspace(image, displayImages)}
                         />
                       ) : (
                         <ImageTable
@@ -2729,9 +2723,9 @@ export default function App() {
                     applyLibraryFilters={comfyUIWorkspaceApplyLibraryFilters}
                     onApplyLibraryFiltersChange={handleComfyUIWorkspaceApplyLibraryFiltersChange}
                     onInspectImage={(image) => setComfyUIWorkspaceImageId(image.id)}
-                    onOpenImageModal={handleOpenComfyUIWorkspaceImageModal}
                     onViewFullMetadata={handleComfyUIWorkspaceViewFullMetadata}
                     onOpenCompare={handleOpenFindSimilarCompare}
+                    workflowLoadRequest={comfyUIWorkspaceWorkflowLoadRequest}
                   />
                 ) : (
                   <SmartLibrary
@@ -2809,6 +2803,7 @@ export default function App() {
             diagnosticsFlowId={modal.diagnosticsFlowId}
             onSlideshowStartAcknowledged={() => handleSlideshowStartAcknowledged(modal.modalId)}
             onFindSimilar={(image) => openFindSimilar(image, modal.navigationImages)}
+            onOpenComfyUIWorkflow={(image) => handleOpenComfyUIWorkflowFromImageModal(modal.modalId, image, modal.navigationImages)}
           />
         ))}
 

@@ -168,6 +168,7 @@ const electronAPI = {
   comfyUIViewGoBack: () => ipcRenderer.invoke('comfy-view-go-back'),
   comfyUIViewGoForward: () => ipcRenderer.invoke('comfy-view-go-forward'),
   comfyUIViewGetState: () => ipcRenderer.invoke('comfy-view-get-state'),
+  comfyUIViewLoadWorkflow: (payload) => ipcRenderer.invoke('comfy-view-load-workflow', payload),
   onComfyUIViewStateChanged: (callback) => {
     const handler = (event, ...args) => callback(...args);
     ipcRenderer.on('comfy-view-state-changed', handler);

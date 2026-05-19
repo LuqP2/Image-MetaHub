@@ -3,7 +3,7 @@ import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollecti
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -144,6 +144,7 @@ interface ImageModalProps {
   image: IndexedImage;
   onClose: () => void;
   onFindSimilar?: (image: IndexedImage) => void;
+  onOpenComfyUIWorkflow?: (image: IndexedImage) => void;
   onImageDeleted?: (imageId: string) => void;
   onImageRenamed?: (oldImageId: string, newImageId: string, newRelativePath: string) => void;
   currentIndex?: number;
@@ -708,6 +709,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   image,
   onClose,
   onFindSimilar,
+  onOpenComfyUIWorkflow,
   onImageDeleted,
   onImageRenamed,
   currentIndex = 0,
@@ -3173,7 +3175,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   }`}
                 >
                   <span className="inline-flex items-center gap-2">
-                    <span>View Workflow</span>
+                    <span>Workflow Tools</span>
                     {!canUseComfyUI && initialized && <ProBadge size="sm" />}
                   </span>
                 </button>
@@ -3538,19 +3540,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <h4 className="text-xs text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
               )}
 
-              {/* Generate Button */}
+              {/* One-click ComfyUI handoff */}
               <button
                 onClick={() => {
                   if (!canUseComfyUI) {
                     showProModal('comfyui');
                     return;
                   }
-                  setSidebarTab('workflow');
+                  onOpenComfyUIWorkflow?.(generationImage);
                 }}
                 className="w-full bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-purple-200 dark:border-purple-500/50 hover:border-purple-300 dark:hover:border-purple-400 text-purple-700 dark:text-purple-100 px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 mb-2"
               >
-                <Sparkles className="w-4 h-4" />
-                <span>View Workflow / Generate</span>
+                <Workflow className="w-4 h-4" />
+                <span>Open Workflow in ComfyUI</span>
                 {!canUseComfyUI && initialized && <ProBadge size="sm" />}
               </button>
 
@@ -4057,7 +4059,8 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.isMinimized === nextProps.isMinimized &&
     prevProps.startSlideshow === nextProps.startSlideshow &&
     prevProps.closeOnSlideshowExit === nextProps.closeOnSlideshowExit &&
-    prevProps.diagnosticsFlowId === nextProps.diagnosticsFlowId;
+    prevProps.diagnosticsFlowId === nextProps.diagnosticsFlowId &&
+    prevProps.onOpenComfyUIWorkflow === nextProps.onOpenComfyUIWorkflow;
 
   return propsEqual;
 });

@@ -63,6 +63,12 @@ export interface ComfyUIViewResult {
   error?: string;
 }
 
+export interface ComfyUIViewWorkflowLoadResult extends ComfyUIViewResult {
+  loadedInNewTab?: boolean;
+  fallbackUsed?: boolean;
+  message?: string;
+}
+
 export interface ComfyUIViewLoadFailure {
   errorCode: number;
   errorDescription: string;
@@ -262,6 +268,13 @@ export interface ElectronAPI {
   comfyUIViewGoBack: () => Promise<ComfyUIViewResult>;
   comfyUIViewGoForward: () => Promise<ComfyUIViewResult>;
   comfyUIViewGetState: () => Promise<ComfyUIViewResult>;
+  comfyUIViewLoadWorkflow: (payload: {
+    url: string;
+    bounds?: ComfyUIViewBounds;
+    workflow: string;
+    title?: string;
+    preferNewTab?: boolean;
+  }) => Promise<ComfyUIViewWorkflowLoadResult>;
   onComfyUIViewStateChanged: (callback: (state: ComfyUIViewState) => void) => () => void;
   onComfyUIViewLoadFailed: (callback: (failure: ComfyUIViewLoadFailure) => void) => () => void;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
