@@ -81,7 +81,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const collectionActionsRef = useRef<HTMLDivElement>(null);
-  const toggleFavorite = useImageStore((state) => state.toggleFavorite);
+  const bulkToggleFavorite = useImageStore((state) => state.bulkToggleFavorite);
   const clearImageSelection = useImageStore((state) => state.clearImageSelection);
   const collections = useImageStore((state) => state.collections);
   const { canUseComparison, canUseA1111, canUseComfyUI, showProModal, canUseBulkTagging } = useFeatureAccess();
@@ -157,7 +157,13 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   };
 
   const handleToggleFavorites = () => {
-    selectedImagesList.forEach(img => toggleFavorite(img.id));
+    if (selectedImagesList.length === 0) return;
+
+    const nextFavoriteState = !allFavorites;
+    void bulkToggleFavorite(
+      selectedImagesList.map((img) => img.id),
+      nextFavoriteState,
+    );
   };
 
   const handleCompare = () => {
