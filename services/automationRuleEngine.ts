@@ -615,7 +615,10 @@ export function applyAutomationRuleToImages(
   const collectionImageAdds = new Map<string, string[]>();
   const normalizedActionTags = normalizeList(rule.actions.addTags).map((tag) => tag.toLowerCase());
   const collectionIds = normalizeList(rule.actions.addToCollectionIds);
-  const collectionById = new Map(collections.map((collection) => [collection.id, collection]));
+  const collectionById = new Map<string, SmartCollection>();
+  for (const collection of collections) {
+    collectionById.set(collection.id, collection);
+  }
   const resolvedCollectionIds = new Map<string, Set<string>>();
   for (const collectionId of collectionIds) {
     const collection = collectionById.get(collectionId);

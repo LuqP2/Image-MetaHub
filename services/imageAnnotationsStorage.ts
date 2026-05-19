@@ -1150,7 +1150,10 @@ export function resolveSmartCollectionImageIds(collection: SmartCollection, imag
 }
 
 export function resolveSmartCollectionImages(collection: SmartCollection, images: IndexedImage[]): IndexedImage[] {
-  const imageLookup = new Map(images.map((image) => [image.id, image]));
+  const imageLookup = new Map<string, IndexedImage>();
+  for (const image of images) {
+    imageLookup.set(image.id, image);
+  }
   return resolveSmartCollectionImageIds(collection, images)
     .map((imageId) => imageLookup.get(imageId))
     .filter((image): image is IndexedImage => Boolean(image));

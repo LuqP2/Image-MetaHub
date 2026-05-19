@@ -307,7 +307,10 @@ export const buildLineageRegistrySnapshot = (
   librarySignature: string,
   onProgress?: (processed: number, total: number, message: string) => void
 ): LineageRegistrySnapshot => {
-  const imagesById = new Map(images.map((image) => [image.id, image]));
+  const imagesById = new Map<string, LightweightLineageImage>();
+  for (const image of images) {
+    imagesById.set(image.id, image);
+  }
   const index = buildLineageIndex(images);
   const resolvedByImageId: Record<string, ResolvedLineageEntry> = {};
   const derivedIdsBySourceId = new Map<string, string[]>();
