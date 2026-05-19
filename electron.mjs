@@ -1093,6 +1093,303 @@ async function openComfyUIView({ url, bounds } = {}) {
   return { success: true, state: updateComfyUIViewState({ visible: true }) };
 }
 
+function waitForComfyUIViewLoad(contents, timeoutMs = 20000) {
+  if (!contents || contents.isDestroyed()) {
+    return Promise.reject(new Error('ComfyUI view is not open.'));
+  }
+
+  if (!contents.isLoading()) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error('Timed out waiting for ComfyUI to load.'));
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      contents.removeListener('did-stop-loading', handleLoaded);
+      contents.removeListener('did-fail-load', handleFailed);
+    };
+
+    const handleLoaded = () => {
+      cleanup();
+      resolve();
+    };
+
+    const handleFailed = (_event, errorCode, errorDescription, _validatedURL, isMainFrame) => {
+      if (!isMainFrame || errorCode === -3) {
+        return;
+      }
+      cleanup();
+      reject(new Error(errorDescription || 'Failed to load ComfyUI.'));
+    };
+
+    contents.once('did-stop-loading', handleLoaded);
+    contents.once('did-fail-load', handleFailed);
+  });
+}
+
+async function waitForComfyUIRuntime(contents, timeoutMs = 15000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!contents || contents.isDestroyed()) {
+      throw new Error('ComfyUI view is not open.');
+    }
+
+    const isReady = await contents.executeJavaScript(`
+      Boolean(
+        document.readyState !== 'loading' &&
+        (
+          window.app ||
+          window.comfyAPI ||
+          document.querySelector('canvas')
+        )
+      )
+    `, true).catch(() => false);
+
+    if (isReady) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  throw new Error('ComfyUI did not become ready in time.');
+}
+
+async function loadWorkflowIntoComfyUIView({ url, bounds, workflow, title, preferNewTab = true } = {}) {
+  if (!workflow || typeof workflow !== 'string') {
+    return { success: false, error: 'Workflow JSON is required.' };
+  }
+
+  const openResult = await openComfyUIView({ url, bounds });
+  if (!openResult.success) {
+    return openResult;
+  }
+
+  const contents = comfyUIView?.webContents;
+  if (!contents || contents.isDestroyed()) {
+    return { success: false, error: 'ComfyUI view is not open.' };
+  }
+
+  const currentUrl = contents.getURL();
+  if (!currentUrl || !isComfyNavigationAllowed(currentUrl)) {
+    return { success: false, error: 'ComfyUI view is not on the configured server.' };
+  }
+
+  await waitForComfyUIViewLoad(contents);
+  await waitForComfyUIRuntime(contents);
+
+  const result = await contents.executeJavaScript(`
+    (async () => {
+      const workflowText = ${JSON.stringify(workflow)};
+      const workflowTitle = ${JSON.stringify(title || 'Image MetaHub workflow')};
+      const preferNewTab = ${preferNewTab ? 'true' : 'false'};
+
+      const parseWorkflow = () => {
+        const parsed = JSON.parse(workflowText);
+        if (!parsed || typeof parsed !== 'object') {
+          throw new Error('Workflow JSON did not contain an object.');
+        }
+
+        const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
+        const isUiWorkflow = (value) => isRecord(value) && Array.isArray(value.nodes);
+        const isPromptGraph = (value) => {
+          if (!isRecord(value) || Array.isArray(value.nodes)) {
+            return false;
+          }
+          return Object.values(value).some((node) => isRecord(node) && typeof node.class_type === 'string');
+        };
+
+        const promptGraphToWorkflow = (promptGraph) => {
+          const entries = Object.entries(promptGraph).filter(([, node]) => isRecord(node) && typeof node.class_type === 'string');
+          const idMap = new Map();
+          entries.forEach(([nodeId], index) => {
+            const numericId = Number(nodeId);
+            idMap.set(nodeId, Number.isFinite(numericId) && numericId > 0 ? numericId : index + 1);
+          });
+
+          let nextLinkId = 1;
+          const links = [];
+          const outputSlotsByNode = new Map();
+
+          const ensureOutputSlot = (sourceNodeId, sourceSlot) => {
+            const numericSourceId = idMap.get(String(sourceNodeId));
+            if (!numericSourceId) {
+              return null;
+            }
+
+            const outputs = outputSlotsByNode.get(numericSourceId) || [];
+            while (outputs.length <= sourceSlot) {
+              outputs.push({
+                name: outputs.length === 0 ? 'output' : \`output_\${outputs.length}\`,
+                type: '*',
+                links: [],
+                slot_index: outputs.length,
+              });
+            }
+            outputSlotsByNode.set(numericSourceId, outputs);
+            return outputs[sourceSlot];
+          };
+
+          const nodes = entries.map(([nodeId, node], index) => {
+            const inputs = [];
+            const widgetsValues = [];
+            const nodeInputs = isRecord(node.inputs) ? node.inputs : {};
+            const column = index % 4;
+            const row = Math.floor(index / 4);
+
+            Object.entries(nodeInputs).forEach(([inputName, inputValue]) => {
+              if (Array.isArray(inputValue) && inputValue.length >= 2) {
+                const sourceNodeId = String(inputValue[0]);
+                const sourceSlot = Number(inputValue[1]) || 0;
+                const sourceOutput = ensureOutputSlot(sourceNodeId, sourceSlot);
+                const sourceNumericId = idMap.get(sourceNodeId);
+                const targetNumericId = idMap.get(nodeId);
+
+                if (sourceOutput && sourceNumericId && targetNumericId) {
+                  const linkId = nextLinkId++;
+                  sourceOutput.links.push(linkId);
+                  inputs.push({
+                    name: inputName,
+                    type: '*',
+                    link: linkId,
+                  });
+                  links.push([linkId, sourceNumericId, sourceSlot, targetNumericId, inputs.length - 1, '*']);
+                }
+              } else {
+                widgetsValues.push(inputValue);
+              }
+            });
+
+            return {
+              id: idMap.get(nodeId),
+              type: node.class_type,
+              pos: [80 + column * 320, 80 + row * 210],
+              size: [260, Math.max(90, 64 + inputs.length * 24 + widgetsValues.length * 24)],
+              flags: {},
+              order: index,
+              mode: 0,
+              inputs,
+              outputs: outputSlotsByNode.get(idMap.get(nodeId)) || [],
+              properties: {
+                'Node name for S&R': node.class_type,
+              },
+              widgets_values: widgetsValues,
+            };
+          });
+
+          return {
+            last_node_id: Math.max(0, ...Array.from(idMap.values())),
+            last_link_id: Math.max(0, nextLinkId - 1),
+            nodes,
+            links,
+            groups: [],
+            config: {},
+            extra: {},
+            version: 0.4,
+          };
+        };
+
+        const candidates = [
+          parsed,
+          parsed.workflow,
+          parsed.extra_pnginfo?.workflow,
+          parsed.extra_data?.extra_pnginfo?.workflow,
+        ];
+
+        const uiWorkflow = candidates.find(isUiWorkflow);
+        if (uiWorkflow) {
+          return uiWorkflow;
+        }
+
+        const promptCandidates = [
+          parsed.prompt,
+          parsed.extra_pnginfo?.prompt,
+          parsed.extra_data?.extra_pnginfo?.prompt,
+        ];
+        const promptGraph = promptCandidates.find(isPromptGraph);
+        if (promptGraph) {
+          return promptGraphToWorkflow(promptGraph);
+        }
+
+        throw new Error('Workflow JSON did not contain a loadable ComfyUI workflow or prompt graph.');
+      };
+
+      const app = window.app || window.comfyApp || window.ComfyApp?.instance || null;
+      const workflow = parseWorkflow();
+      let loadedInNewTab = false;
+
+      const runMaybeAsync = async (candidate) => {
+        if (typeof candidate !== 'function') {
+          return false;
+        }
+        const output = candidate();
+        if (output && typeof output.then === 'function') {
+          await output;
+        }
+        return true;
+      };
+
+      if (preferNewTab) {
+        const newTabCandidates = [
+          () => app?.workflowManager?.newWorkflow?.(workflowTitle),
+          () => app?.workflowManager?.createNewWorkflow?.(workflowTitle),
+          () => app?.workflowManager?.openNewWorkflow?.(workflowTitle),
+          () => app?.extensionManager?.command?.execute?.('Comfy.NewWorkflow'),
+          () => app?.extensionManager?.command?.execute?.('Comfy.NewBlankWorkflow'),
+          () => app?.extensionManager?.command?.execute?.('Workspace.NewWorkflow'),
+        ];
+
+        for (const candidate of newTabCandidates) {
+          try {
+            if (await runMaybeAsync(candidate)) {
+              loadedInNewTab = true;
+              break;
+            }
+          } catch {
+            loadedInNewTab = false;
+          }
+        }
+      }
+
+      if (app?.loadGraphData && typeof app.loadGraphData === 'function') {
+        await app.loadGraphData(workflow, true, true);
+      } else if (app?.graph?.configure && typeof app.graph.configure === 'function') {
+        app.graph.configure(workflow);
+        app.graph.change?.();
+        app.canvas?.setDirty?.(true, true);
+        app.graph?.setDirtyCanvas?.(true, true);
+      } else if (window.graph?.configure && typeof window.graph.configure === 'function') {
+        window.graph.configure(workflow);
+      } else {
+        throw new Error('The ComfyUI frontend did not expose a supported workflow loader.');
+      }
+
+      if (workflowTitle && !loadedInNewTab) {
+        document.title = workflowTitle;
+      }
+
+      return {
+        success: true,
+        loadedInNewTab,
+        fallbackUsed: preferNewTab && !loadedInNewTab,
+        message: loadedInNewTab
+          ? 'Workflow opened in a new ComfyUI tab.'
+          : 'Workflow loaded into the current ComfyUI canvas.',
+      };
+    })()
+  `, true);
+
+  return {
+    ...result,
+    state: updateComfyUIViewState({ visible: true }),
+  };
+}
+
 function showComfyUIView(bounds) {
   const view = ensureComfyUIView();
   if (bounds) {
@@ -2767,6 +3064,14 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('comfy-view-get-state', async () => {
     return { success: true, state: updateComfyUIViewState() };
+  });
+
+  ipcMain.handle('comfy-view-load-workflow', async (event, payload) => {
+    try {
+      return await loadWorkflowIntoComfyUIView(payload);
+    } catch (error) {
+      return { success: false, state: updateComfyUIViewState(), error: error?.message || 'Failed to load workflow in ComfyUI.' };
+    }
   });
 
   ipcMain.handle('get-default-cache-path', () => {
