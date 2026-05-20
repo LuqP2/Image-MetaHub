@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] - [Unreleased]
+
+### Added
+
+- **ComfyUI Workflow Actions**: Added richer ComfyUI workflow entry points across the main app, image viewer, grid, and embedded workspace, including workflow action coverage and desktop IPC support for workspace preview behavior.
+- **ComfyUI Workspace Metadata Copying**: Added copy actions for workspace metadata fields and clearer image dimension display in the ComfyUI Workspace context panel.
+
+### Improved
+
+- **Large Library Performance**: Reduced temporary allocations and queue overhead in large libraries by avoiding `Array.shift()` hot paths, removing intermediate arrays during `Set`/`Map` construction, and optimizing lookup map initialization across store, thumbnail, lineage, and automation flows.
+- **ComfyUI Visual Workflow Performance**: Reworked visual workflow graph depth calculation to avoid recursive stack overflows on long workflows and reduced object iteration overhead for large ComfyUI graphs.
+- **Edited PNG Metadata Preservation**: Improved edited PNG saves so ComfyUI workflow metadata is preserved when image adjustment exports write PNG bytes.
+- **Workspace Bulk Action UX**: Added clearer disabled-state tooltips for ComfyUI Workspace bulk actions so users can tell what selection is required.
+- **Accessibility**: Added missing accessible labels to icon-only controls across the ComfyUI Workspace, directory list, preview/sidebar, image viewer, automation rules, sidebar, and batch export surfaces.
+- **Hotkey Reset Safety**: Added a confirmation dialog before resetting all custom hotkeys.
+
+### Fixed
+
+- **Grid Selection Behavior**: Improved multi-selection anchoring for Cmd/Ctrl-click and Shift-click, ignored stale selection anchors, and added toolbar support for clearing grid selections.
+- **Adjustment Discovery**: Made image adjustments easier to find from the image details panel.
+- **Bulk Favorite Behavior**: Fixed mixed favorite selections so the toolbar applies a deterministic all-favorite or all-unfavorite state instead of toggling each item independently.
+- **ComfyUI Queue Monitor Loop**: Fixed repeated ComfyUI status updates causing queue monitor update loops.
+- **ComfyUI Visual Workflow Upstreams**: Fixed visual workflow handling for missing upstream nodes.
+- **Bulk Delete Shortcut Handling**: Fixed duplicate confirmation dialogs and repeated delete attempts when deleting selected images with the Delete key.
+
 ## [0.16.0] - 2026-05-12
 
 ### Added
