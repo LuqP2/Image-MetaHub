@@ -294,12 +294,22 @@ export const useSettingsStore = create<SettingsState>()(
       setA1111Enabled: (value) => set({ a1111Enabled: !!value }),
       setA1111ServerUrl: (url) => set({ a1111ServerUrl: url }),
       toggleA1111AutoStart: () => set((state) => ({ a1111AutoStart: !state.a1111AutoStart })),
-      setA1111ConnectionStatus: (status) => set({ a1111LastConnectionStatus: status }),
+      setA1111ConnectionStatus: (status) =>
+        set((state) =>
+          state.a1111LastConnectionStatus === status
+            ? state
+            : { a1111LastConnectionStatus: status }
+        ),
 
       // ComfyUI Integration actions
       setComfyUIEnabled: (value) => set({ comfyUIEnabled: !!value }),
       setComfyUIServerUrl: (url) => set({ comfyUIServerUrl: url }),
-      setComfyUIConnectionStatus: (status) => set({ comfyUILastConnectionStatus: status }),
+      setComfyUIConnectionStatus: (status) =>
+        set((state) =>
+          state.comfyUILastConnectionStatus === status
+            ? state
+            : { comfyUILastConnectionStatus: status }
+        ),
       setComfyUIQueueMonitoringEnabled: (value) => set({ comfyUIQueueMonitoringEnabled: !!value }),
       setComfyUIWorkspaceLastUrl: (url) => set({ comfyUIWorkspaceLastUrl: url }),
       setComfyUIWorkspacePanelWidth: (width) => set({ comfyUIWorkspacePanelWidth: Math.min(Math.max(Math.round(width) || 360, 280), 560) }),

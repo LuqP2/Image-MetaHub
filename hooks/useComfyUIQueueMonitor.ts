@@ -227,7 +227,14 @@ const getWebSocketUrl = (serverUrl: string): string | null => {
 const getTrackedExternalPromptIds = () =>
   useGenerationQueueStore
     .getState()
-    .items.filter((item) => item.provider === 'comfyui' && item.origin === 'comfyui-external' && item.providerJobId)
+    .items.filter((item) =>
+      item.provider === 'comfyui' &&
+      item.origin === 'comfyui-external' &&
+      item.providerJobId &&
+      item.status !== 'done' &&
+      item.status !== 'failed' &&
+      item.status !== 'canceled'
+    )
     .map((item) => item.providerJobId!);
 
 export function useComfyUIQueueMonitor() {

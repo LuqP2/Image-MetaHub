@@ -114,6 +114,33 @@ const revokeGeneratedOutputUrls = (items: GenerationQueueItem[]) => {
   });
 };
 
+const isTerminalStatus = (status: GenerationStatus) =>
+  status === 'done' || status === 'failed' || status === 'canceled';
+
+const generatedOutputsEqual = (
+  a?: GeneratedQueueOutput[],
+  b?: GeneratedQueueOutput[]
+) => {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b || a.length !== b.length) {
+    return false;
+  }
+
+  return a.every((output, index) => {
+    const candidate = b[index];
+    return output.id === candidate.id &&
+      output.kind === candidate.kind &&
+      output.url === candidate.url &&
+      output.imageId === candidate.imageId &&
+      output.relativePath === candidate.relativePath &&
+      output.name === candidate.name &&
+      output.width === candidate.width &&
+      output.height === candidate.height;
+  });
+};
+
 export const useGenerationQueueStore = create<GenerationQueueState>((set, get) => ({
   items: [],
   activeJobs: {
@@ -179,6 +206,25 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
         input.status === 'waiting'
           ? existing.status
           : input.status;
+      const nextCompletedAt = isTerminalStatus(nextStatus)
+        ? existing.completedAt ?? input.completedAt
+        : input.completedAt ?? existing.completedAt;
+      const nextGeneratedOutputs = input.generatedOutputs ?? existing.generatedOutputs;
+      const hasChanges =
+        existing.status !== nextStatus ||
+        (input.imageName !== undefined && existing.imageName !== input.imageName) ||
+        (input.prompt !== undefined && existing.prompt !== input.prompt) ||
+        (input.progress !== undefined && existing.progress !== input.progress) ||
+        (input.currentStep !== undefined && existing.currentStep !== input.currentStep) ||
+        (input.totalSteps !== undefined && existing.totalSteps !== input.totalSteps) ||
+        (input.currentNode !== undefined && existing.currentNode !== input.currentNode) ||
+        existing.error !== input.error ||
+        existing.completedAt !== nextCompletedAt ||
+        !generatedOutputsEqual(existing.generatedOutputs, nextGeneratedOutputs);
+
+      if (!hasChanges) {
+        return existing.id;
+      }
 
       set((state) => ({
         items: state.items.map((item) =>
@@ -194,8 +240,8 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
                 totalSteps: input.totalSteps ?? item.totalSteps,
                 currentNode: input.currentNode === undefined ? item.currentNode : input.currentNode,
                 error: input.error,
-                generatedOutputs: input.generatedOutputs ?? item.generatedOutputs,
-                completedAt: input.completedAt ?? item.completedAt,
+                generatedOutputs: nextGeneratedOutputs,
+                completedAt: nextCompletedAt,
                 updatedAt: now,
               }
             : item

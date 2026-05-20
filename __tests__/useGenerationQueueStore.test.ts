@@ -150,4 +150,73 @@ describe('useGenerationQueueStore', () => {
     expect(state.items[0].origin).toBe('metahub');
     expect(state.items[0].status).toBe('processing');
   });
+
+  it('does not update external ComfyUI jobs when repeated monitor payloads do not change visible state', () => {
+    const id = useGenerationQueueStore.getState().upsertExternalComfyUIJob({
+      providerJobId: 'prompt-external-done',
+      status: 'done',
+      progress: 1,
+      completedAt: 1000,
+      generatedOutputs: [
+        {
+          id: 'output-1',
+          kind: 'remote-url',
+          url: 'http://127.0.0.1:8188/view?filename=image.png',
+          relativePath: 'image.png',
+          name: 'image.png',
+        },
+      ],
+    });
+    const itemsBefore = useGenerationQueueStore.getState().items;
+
+    const repeatedId = useGenerationQueueStore.getState().upsertExternalComfyUIJob({
+      providerJobId: 'prompt-external-done',
+      status: 'done',
+      progress: 1,
+      completedAt: 2000,
+      generatedOutputs: [
+        {
+          id: 'output-1',
+          kind: 'remote-url',
+          url: 'http://127.0.0.1:8188/view?filename=image.png',
+          relativePath: 'image.png',
+          name: 'image.png',
+        },
+      ],
+    });
+
+    const state = useGenerationQueueStore.getState();
+    expect(repeatedId).toBe(id);
+    expect(state.items).toBe(itemsBefore);
+    expect(state.items[0].completedAt).toBe(1000);
+  });
+
+  it('updates an external ComfyUI job when history adds generated outputs', () => {
+    useGenerationQueueStore.getState().upsertExternalComfyUIJob({
+      providerJobId: 'prompt-external-output',
+      status: 'processing',
+      progress: 0.5,
+    });
+
+    useGenerationQueueStore.getState().upsertExternalComfyUIJob({
+      providerJobId: 'prompt-external-output',
+      status: 'done',
+      progress: 1,
+      completedAt: 1000,
+      generatedOutputs: [
+        {
+          id: 'output-1',
+          kind: 'remote-url',
+          url: 'http://127.0.0.1:8188/view?filename=image.png',
+          relativePath: 'image.png',
+          name: 'image.png',
+        },
+      ],
+    });
+
+    const item = useGenerationQueueStore.getState().items[0];
+    expect(item.status).toBe('done');
+    expect(item.generatedOutputs).toHaveLength(1);
+    expect(item.completedAt).toBe(1000);
+  });
 });
