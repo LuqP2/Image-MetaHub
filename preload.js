@@ -223,6 +223,7 @@ const electronAPI = {
   startWatchingDirectory: (args) => ipcRenderer.invoke('start-watching-directory', args),
   stopWatchingDirectory: (args) => ipcRenderer.invoke('stop-watching-directory', args),
   getWatcherStatus: (args) => ipcRenderer.invoke('get-watcher-status', args),
+  logMediaPlaybackEvent: (payload) => ipcRenderer.send('log-media-playback-event', payload),
   onNewImagesDetected: (callback) => {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('new-images-detected', subscription);

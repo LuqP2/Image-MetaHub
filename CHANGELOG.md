@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **ComfyUI Workflow Actions**: Added richer ComfyUI workflow entry points across the main app, image viewer, grid, and embedded workspace, including workflow action coverage and desktop IPC support for workspace preview behavior.
 - **ComfyUI Workspace Metadata Copying**: Added copy actions for workspace metadata fields and clearer image dimension display in the ComfyUI Workspace context panel.
+- **Media Playback Diagnostics**: Added audio/video playback event diagnostics and imh-media protocol logging to help investigate early Electron Helper crashes on macOS.
 
 ### Improved
 
@@ -20,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Workspace Bulk Action UX**: Added clearer disabled-state tooltips for ComfyUI Workspace bulk actions so users can tell what selection is required.
 - **Accessibility**: Added missing accessible labels to icon-only controls across the ComfyUI Workspace, directory list, preview/sidebar, image viewer, automation rules, sidebar, and batch export surfaces.
 - **Hotkey Reset Safety**: Added a confirmation dialog before resetting all custom hotkeys.
+- **macOS Media Safe Mode**: Documented the opt-in `IMH_MEDIA_SAFE_MODE=1` launch mode for testing GPU-related media playback crashes without affecting normal launches.
 
 ### Fixed
 

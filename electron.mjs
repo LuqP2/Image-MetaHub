@@ -36,10 +36,17 @@ const __dirname = path.dirname(__filename);
 // Simple development check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const gpuMitigationEnabled = process.env.IMH_DISABLE_GPU === '1' || process.env.IMH_DISABLE_GPU === 'true';
+const mediaSafeModeEnabled = process.platform === 'darwin' && (process.env.IMH_MEDIA_SAFE_MODE === '1' || process.env.IMH_MEDIA_SAFE_MODE === 'true');
 
-if (gpuMitigationEnabled) {
+if (gpuMitigationEnabled || mediaSafeModeEnabled) {
   app.disableHardwareAcceleration();
-  console.warn('[GPU] Hardware acceleration disabled via IMH_DISABLE_GPU.');
+  console.warn(`[GPU] Hardware acceleration disabled via ${mediaSafeModeEnabled ? 'IMH_MEDIA_SAFE_MODE' : 'IMH_DISABLE_GPU'}.`);
+}
+
+if (mediaSafeModeEnabled) {
+  app.commandLine.appendSwitch('disable-accelerated-video-decode');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
+  console.warn('[Media] macOS media safe mode enabled via IMH_MEDIA_SAFE_MODE.');
 }
 
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
@@ -96,6 +103,38 @@ protocol.registerSchemesAsPrivileged([
 
 const getMimeTypeFromName = (name) => inferMimeTypeFromName(name);
 
+const getSafeFileDetails = async (filePath) => {
+  const fileName = path.basename(String(filePath || ''));
+  const extension = path.extname(fileName).toLowerCase();
+  const mimeType = getMimeTypeFromName(fileName) || null;
+  let fileSize = null;
+
+  try {
+    const stats = await fs.stat(filePath);
+    fileSize = stats.isFile() ? stats.size : null;
+  } catch {
+    fileSize = null;
+  }
+
+  return { fileName, extension, mimeType, fileSize };
+};
+
+const redactDiagnosticText = (value, maxLength = 500) => {
+  if (typeof value !== 'string') return null;
+
+  return value
+    .replace(/[a-zA-Z][a-zA-Z\d+.-]*:\/\/\S+/g, '[redacted-url]')
+    .replace(/(?:[A-Za-z]:[\\/]|\/)(?:[^\s"'<>|?*]+[\\/])*[^\s"'<>|?*]*/g, '[redacted-path]')
+    .slice(0, maxLength);
+};
+
+const getMediaProtocolErrorType = (error) => {
+  if (!error) return 'UNKNOWN_ERROR';
+  if (error.code === 'ENOENT' || error.message?.includes('no such file')) return 'FILE_NOT_FOUND';
+  if (error.code === 'EACCES' || error.code === 'EPERM') return 'PERMISSION_ERROR';
+  return 'UNKNOWN_ERROR';
+};
+
 const buildMediaProtocolUrl = (filePath) => {
   const normalizedFilePath = path.resolve(filePath);
   return `${MEDIA_PROTOCOL_SCHEME}://local/?path=${encodeURIComponent(normalizedFilePath)}`;
@@ -131,28 +170,54 @@ const buildThumbnailProtocolUrl = (thumbnailId, extension = 'webp') => {
 
 const registerMediaProtocol = () => {
   protocol.registerFileProtocol(MEDIA_PROTOCOL_SCHEME, async (request, callback) => {
+    let safeDetails = { fileName: null, extension: null, mimeType: null, fileSize: null };
     try {
       const requestUrl = new URL(request.url);
       const requestedPath = requestUrl.searchParams.get('path');
       if (!requestedPath) {
+        logProcessEvent({
+          kind: 'imh-media-protocol',
+          status: 'failed',
+          errorType: 'MISSING_PATH',
+        });
         callback({ error: -6 });
         return;
       }
 
       const normalizedFilePath = path.resolve(requestedPath);
+      safeDetails = await getSafeFileDetails(normalizedFilePath);
       if (!isPathAllowed(normalizedFilePath)) {
         console.error('SECURITY VIOLATION: Attempted to load media outside of allowed directories.');
         console.error('  [imh-media] Requested path:', requestedPath);
         console.error('  [imh-media] Normalized path:', normalizedFilePath);
         console.error('  [imh-media] Allowed directories:', Array.from(allowedDirectoryPaths));
+        logProcessEvent({
+          kind: 'imh-media-protocol',
+          status: 'failed',
+          errorType: 'PERMISSION_DENIED',
+          ...safeDetails,
+        });
         callback({ error: -10 });
         return;
       }
 
       await fs.access(normalizedFilePath);
+      logProcessEvent({
+        kind: 'imh-media-protocol',
+        status: 'served',
+        ...safeDetails,
+      });
       callback({ path: normalizedFilePath });
     } catch (error) {
-      console.error('Error serving media protocol request:', request.url, error);
+      console.error('Error serving media protocol request:', error);
+      logProcessEvent({
+        kind: 'imh-media-protocol',
+        status: 'failed',
+        errorType: getMediaProtocolErrorType(error),
+        errorCode: error?.code ?? null,
+        errorMessage: redactDiagnosticText(error?.message),
+        ...safeDetails,
+      });
       callback({ error: -2 });
     }
   });
@@ -816,6 +881,7 @@ function registerProcessDiagnostics() {
     kind: 'app-startup',
     logs: getDiagnosticsLogPaths(),
     gpuMitigationEnabled,
+    mediaSafeModeEnabled,
     gpuFeatureStatus: app.getGPUFeatureStatus?.() ?? null,
   });
 
@@ -848,6 +914,27 @@ function registerProcessDiagnostics() {
       url: webContents?.getURL?.() ?? null,
     });
   });
+}
+
+function sanitizeMediaPlaybackDiagnostics(payload = {}) {
+  const safeFileName = payload.fileName ? path.basename(String(payload.fileName)) : null;
+  const srcScheme = typeof payload.srcScheme === 'string' ? payload.srcScheme.slice(0, 32) : null;
+  const eventName = typeof payload.eventName === 'string' ? payload.eventName.slice(0, 48) : null;
+  const safeErrorMessage = redactDiagnosticText(payload.errorMessage);
+
+  return {
+    kind: 'media-playback-event',
+    mediaKind: payload.mediaKind === 'audio' || payload.mediaKind === 'video' ? payload.mediaKind : 'unknown',
+    surface: typeof payload.surface === 'string' ? payload.surface.slice(0, 80) : null,
+    eventName,
+    fileName: safeFileName,
+    srcScheme,
+    currentTime: Number.isFinite(payload.currentTime) ? payload.currentTime : null,
+    readyState: Number.isFinite(payload.readyState) ? payload.readyState : null,
+    networkState: Number.isFinite(payload.networkState) ? payload.networkState : null,
+    errorCode: Number.isFinite(payload.errorCode) ? payload.errorCode : null,
+    errorMessage: safeErrorMessage,
+  };
 }
 
 function attachWindowProcessDiagnostics(window) {
@@ -4124,23 +4211,45 @@ function setupFileOperationHandlers() {
     return { success: true, ...status };
   });
 
+  ipcMain.on('log-media-playback-event', (_event, payload) => {
+    logProcessEvent(sanitizeMediaPlaybackDiagnostics(payload));
+  });
+
   // Handle reading file content
   ipcMain.handle('resolve-media-url', async (event, filePath) => {
+    let safeDetails = { fileName: null, extension: null, mimeType: null, fileSize: null };
     try {
       if (!filePath) {
+        logProcessEvent({
+          kind: 'resolve-media-url',
+          status: 'failed',
+          errorType: 'MISSING_PATH',
+        });
         return { success: false, error: 'No file path provided' };
       }
 
       const normalizedFilePath = path.resolve(filePath);
+      safeDetails = await getSafeFileDetails(normalizedFilePath);
       if (!isPathAllowed(normalizedFilePath)) {
         console.error('SECURITY VIOLATION: Attempted to resolve media URL outside of allowed directories.');
         console.error('  [resolve-media-url] Requested path:', filePath);
         console.error('  [resolve-media-url] Normalized path:', normalizedFilePath);
         console.error('  [resolve-media-url] Allowed directories:', Array.from(allowedDirectoryPaths));
+        logProcessEvent({
+          kind: 'resolve-media-url',
+          status: 'failed',
+          errorType: 'PERMISSION_DENIED',
+          ...safeDetails,
+        });
         return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
       }
 
       await fs.access(normalizedFilePath);
+      logProcessEvent({
+        kind: 'resolve-media-url',
+        status: 'success',
+        ...safeDetails,
+      });
       return { success: true, url: buildMediaProtocolUrl(normalizedFilePath) };
     } catch (error) {
       const isFileNotFound = error.code === 'ENOENT' || error.message?.includes('no such file');
@@ -4149,6 +4258,15 @@ function setupFileOperationHandlers() {
       if (!isFileNotFound) {
         console.error('Error resolving media URL:', filePath, error);
       }
+
+      logProcessEvent({
+        kind: 'resolve-media-url',
+        status: 'failed',
+        errorType: isFileNotFound ? 'FILE_NOT_FOUND' : (isPermissionError ? 'PERMISSION_ERROR' : 'UNKNOWN_ERROR'),
+        errorCode: error.code,
+        errorMessage: redactDiagnosticText(error.message),
+        ...safeDetails,
+      });
 
       return {
         success: false,

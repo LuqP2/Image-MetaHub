@@ -1,5 +1,6 @@
 import React from 'react';
 import { Music } from 'lucide-react';
+import { type MediaDiagnosticsContext, useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
 
 interface AudioPlayerProps {
   src: string;
@@ -10,6 +11,7 @@ interface AudioPlayerProps {
   onLoadedMetadata?: React.ReactEventHandler<HTMLAudioElement>;
   onCanPlay?: React.ReactEventHandler<HTMLAudioElement>;
   onPlaying?: React.ReactEventHandler<HTMLAudioElement>;
+  diagnostics?: Omit<MediaDiagnosticsContext, 'mediaKind' | 'src'>;
 }
 
 const AudioPlayer: React.FC<AudioPlayerProps> = ({
@@ -21,7 +23,15 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   onLoadedMetadata,
   onCanPlay,
   onPlaying,
+  diagnostics,
 }) => {
+  const mediaDiagnostics = useMediaDiagnostics({
+    mediaKind: 'audio',
+    fileName: diagnostics?.fileName ?? title,
+    surface: diagnostics?.surface ?? 'audio-player',
+    src,
+  });
+
   return (
     <div
       data-media-element="true"
@@ -43,9 +53,25 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
         autoPlay={autoPlay}
         preload="metadata"
         className="w-full max-w-2xl"
-        onLoadedMetadata={onLoadedMetadata}
-        onCanPlay={onCanPlay}
-        onPlaying={onPlaying}
+        onLoadStart={mediaDiagnostics.onLoadStart}
+        onLoadedMetadata={(event) => {
+          mediaDiagnostics.onLoadedMetadata(event);
+          onLoadedMetadata?.(event);
+        }}
+        onCanPlay={(event) => {
+          mediaDiagnostics.onCanPlay(event);
+          onCanPlay?.(event);
+        }}
+        onPlay={mediaDiagnostics.onPlay}
+        onPlaying={(event) => {
+          mediaDiagnostics.onPlaying(event);
+          onPlaying?.(event);
+        }}
+        onError={mediaDiagnostics.onError}
+        onStalled={mediaDiagnostics.onStalled}
+        onSuspend={mediaDiagnostics.onSuspend}
+        onAbort={mediaDiagnostics.onAbort}
+        onEmptied={mediaDiagnostics.onEmptied}
       />
     </div>
   );
