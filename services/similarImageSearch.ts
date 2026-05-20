@@ -481,7 +481,10 @@ export const getModelPromptOverlapGroups = (
   return Array.from(imagesByPrompt.entries())
     .map(([normalizedPrompt, sourceImages]) => {
       const promptImages = globalImagesByPrompt.get(normalizedPrompt) || [];
-      const sourceImageIds = new Set(sourceImages.map((image) => image.id));
+      const sourceImageIds = new Set<string>();
+      for (let i = 0; i < sourceImages.length; i++) {
+        sourceImageIds.add(sourceImages[i].id);
+      }
       const alternateCheckpoints = new Set<string>();
 
       for (const image of promptImages) {

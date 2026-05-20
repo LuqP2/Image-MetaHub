@@ -48,8 +48,16 @@ const getLoraName = (lora: string | LoRAInfo): string => {
   return lora?.name || lora?.model_name || '';
 };
 
-const makeValueSet = (values: Array<string | undefined | null>): Set<string> =>
-  new Set(values.map(normalize).filter(Boolean));
+const makeValueSet = (values: Array<string | undefined | null>): Set<string> => {
+  const set = new Set<string>();
+  for (const value of values) {
+    const normalized = normalize(value);
+    if (normalized) {
+      set.add(normalized);
+    }
+  }
+  return set;
+};
 
 const getImageModelSet = (image: IndexedImage): Set<string> =>
   makeValueSet([
@@ -636,7 +644,11 @@ export function applyAutomationRuleToImages(
 
     matchedImageIds.push(image.id);
     const currentAnnotation = annotations.get(image.id);
-    const existingTags = new Set((currentAnnotation?.tags ?? image.tags ?? []).map((tag) => tag.toLowerCase()));
+    const existingTags = new Set<string>();
+    const sourceTags = currentAnnotation?.tags ?? image.tags ?? [];
+    for (let i = 0; i < sourceTags.length; i++) {
+      existingTags.add(sourceTags[i].toLowerCase());
+    }
     const nextTags = [...existingTags];
 
     for (const tag of normalizedActionTags) {
