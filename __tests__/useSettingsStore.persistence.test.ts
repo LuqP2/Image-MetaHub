@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mergeSettingsWithExisting, stripLicenseFromSettings, useSettingsStore } from '../store/useSettingsStore';
 
 describe('useSettingsStore persistence helpers', () => {
@@ -54,5 +54,19 @@ describe('useSettingsStore persistence helpers', () => {
     useSettingsStore.getState().setComfyUIQueueMonitoringEnabled(false);
 
     expect(useSettingsStore.getState().comfyUIQueueMonitoringEnabled).toBe(false);
+  });
+
+  it('does not notify subscribers when generator connection status is unchanged', () => {
+    useSettingsStore.getState().resetState();
+    useSettingsStore.getState().setComfyUIConnectionStatus('connected');
+    useSettingsStore.getState().setA1111ConnectionStatus('connected');
+    const listener = vi.fn();
+    const unsubscribe = useSettingsStore.subscribe(listener);
+
+    useSettingsStore.getState().setComfyUIConnectionStatus('connected');
+    useSettingsStore.getState().setA1111ConnectionStatus('connected');
+
+    unsubscribe();
+    expect(listener).not.toHaveBeenCalled();
   });
 });
