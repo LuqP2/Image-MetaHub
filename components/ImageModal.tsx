@@ -50,6 +50,7 @@ import AudioPlayer from './AudioPlayer';
 import ImageAdjustmentPanel from './ImageAdjustmentPanel';
 import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
 import { getFileExtension, isAudioFileName, isVideoFileName, SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
+import { type MediaDiagnosticsContext, useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
 import {
   createProfilerOnRender,
   finishPerformanceFlow,
@@ -522,9 +523,16 @@ const VideoPlayer: React.FC<{
   onCanPlay?: React.ReactEventHandler<HTMLVideoElement>;
   onPlaying?: React.ReactEventHandler<HTMLVideoElement>;
   onEnded?: React.ReactEventHandler<HTMLVideoElement>;
-}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying, onEnded }) => {
+  diagnostics?: Omit<MediaDiagnosticsContext, 'mediaKind' | 'src'>;
+}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying, onEnded, diagnostics }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const mediaDiagnostics = useMediaDiagnostics({
+    mediaKind: 'video',
+    fileName: diagnostics?.fileName ?? '',
+    surface: diagnostics?.surface ?? 'image-modal',
+    src,
+  });
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -621,15 +629,31 @@ const VideoPlayer: React.FC<{
         poster={poster}
         autoPlay
         playsInline
+        onLoadStart={mediaDiagnostics.onLoadStart}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={(event) => {
+          mediaDiagnostics.onLoadedMetadata(event);
           handleLoadedMetadata();
           onLoadedMetadata?.(event);
         }}
-        onCanPlay={onCanPlay}
-        onPlaying={onPlaying}
-        onPlay={() => setIsPlaying(true)}
+        onCanPlay={(event) => {
+          mediaDiagnostics.onCanPlay(event);
+          onCanPlay?.(event);
+        }}
+        onPlaying={(event) => {
+          mediaDiagnostics.onPlaying(event);
+          onPlaying?.(event);
+        }}
+        onPlay={(event) => {
+          mediaDiagnostics.onPlay(event);
+          setIsPlaying(true);
+        }}
         onPause={() => setIsPlaying(false)}
+        onError={mediaDiagnostics.onError}
+        onStalled={mediaDiagnostics.onStalled}
+        onSuspend={mediaDiagnostics.onSuspend}
+        onAbort={mediaDiagnostics.onAbort}
+        onEmptied={mediaDiagnostics.onEmptied}
         onEnded={(event) => {
           setIsPlaying(false);
           onEnded?.(event);
@@ -2731,6 +2755,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   src={imageUrl}
                   title={image.name}
                   autoPlay
+                  diagnostics={{ fileName: image.name, surface: isSlideshowMode ? 'slideshow' : 'image-modal' }}
                   onContextMenu={handleContextMenu}
                   onLoadedMetadata={() => markPerformanceFlow(diagnosticsFlowId, 'audio-loadedmetadata', { imageId: image.id })}
                   onCanPlay={() => markPerformanceFlow(diagnosticsFlowId, 'audio-canplay', { imageId: image.id })}
@@ -2753,6 +2778,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   key={image.id}
                   src={imageUrl}
                   poster={preferredThumbnailUrl ?? undefined}
+                  diagnostics={{ fileName: image.name, surface: isSlideshowMode ? 'slideshow' : 'image-modal' }}
                   onContextMenu={handleContextMenu}
                   onLoadedMetadata={(event) => {
                     const duration = event.currentTarget.duration;

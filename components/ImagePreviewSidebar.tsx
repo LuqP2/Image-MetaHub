@@ -29,6 +29,7 @@ import { buildEffectiveMetadata, getEditableMetadataFields } from '../utils/edit
 import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorModal';
 import BatchExportModal from './BatchExportModal';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
+import { useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
 
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
@@ -196,6 +197,12 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
+  const videoDiagnostics = useMediaDiagnostics({
+    mediaKind: 'video',
+    fileName: activeImage?.name ?? '',
+    surface: 'preview-sidebar',
+    src: imageUrl,
+  });
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
   const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
   const recentTagSuggestions = useMemo(() => getRecentTagChips({
@@ -474,6 +481,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 src={imageUrl}
                 title={activeImage.name}
                 compact
+                diagnostics={{ fileName: activeImage.name, surface: 'preview-sidebar' }}
               />
             ) : isVideo ? (
               <video
@@ -482,6 +490,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 controls
                 playsInline
                 poster={preferredThumbnailUrl ?? undefined}
+                {...videoDiagnostics}
               />
             ) : (
               <img src={imageUrl} alt={activeImage.name} className="max-w-full max-h-96 object-contain image-alpha-grid" />

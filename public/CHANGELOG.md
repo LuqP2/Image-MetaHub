@@ -7,16 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.16.1] - [Unreleased]
 
-### Improved
+### Added
 
 - **ComfyUI Workflow Actions**: Added richer ComfyUI workflow entry points across the main app, image viewer, grid, and embedded workspace, including workflow action coverage and desktop IPC support for workspace preview behavior.
 - **ComfyUI Workspace Metadata Copying**: Added copy actions for workspace metadata fields and clearer image dimension display in the ComfyUI Workspace context panel.
+- **Media Playback Diagnostics**: Added audio/video playback event diagnostics and imh-media protocol logging to help investigate early Electron Helper crashes on macOS.
+
+### Improved
+
 - **Large Library Performance**: Reduced temporary allocations and queue overhead in large libraries by avoiding `Array.shift()` hot paths, removing intermediate arrays during `Set`/`Map` construction, and optimizing lookup map initialization across store, thumbnail, lineage, and automation flows.
 - **ComfyUI Visual Workflow Performance**: Reworked visual workflow graph depth calculation to avoid recursive stack overflows on long workflows and reduced object iteration overhead for large ComfyUI graphs.
 - **Edited PNG Metadata Preservation**: Improved edited PNG saves so ComfyUI workflow metadata is preserved when image adjustment exports write PNG bytes.
 - **Workspace Bulk Action UX**: Added clearer disabled-state tooltips for ComfyUI Workspace bulk actions so users can tell what selection is required.
 - **Accessibility**: Added missing accessible labels to icon-only controls across the ComfyUI Workspace, directory list, preview/sidebar, image viewer, automation rules, sidebar, and batch export surfaces.
 - **Hotkey Reset Safety**: Added a confirmation dialog before resetting all custom hotkeys.
+- **macOS Media Safe Mode**: Documented the opt-in `IMH_MEDIA_SAFE_MODE=1` launch mode for testing GPU-related media playback crashes without affecting normal launches.
 
 ### Fixed
 
@@ -27,20 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ComfyUI Visual Workflow Upstreams**: Fixed visual workflow handling for missing upstream nodes.
 - **Bulk Delete Shortcut Handling**: Fixed duplicate confirmation dialogs and repeated delete attempts when deleting selected images with the Delete key.
 
-## [0.16.0] - 2026-05-13
+## [0.16.0] - 2026-05-12
 
 ### Added
 
 - **Image Adjustment Editing**: Added an adjustment panel in the Image Modal for brightness, contrast, saturation, and hue, with desktop Save As and Overwrite workflows that export PNG output while preserving generation metadata.
 - **Embedded ComfyUI Workspace**: Added a dedicated ComfyUI Workspace view with an embedded ComfyUI browser, image context panel, workflow metadata tabs, thumbnail navigation, copy/generate actions, and direct open actions from grid/table image contexts.
 - **ComfyUI Queue Detection**: Added optional monitoring for ComfyUI jobs started outside Image MetaHub, showing waiting/processing/done/failed status, progress, output previews, and cancel support in the generation queue.
-- **Release CI**: Added GitHub Actions coverage for test/lint/build validation plus RC artifact builds for macOS and Linux.
 
 ### Improved
 
 - **Large Library Memory Usage**: Reduced OOM risk in large ComfyUI libraries by compacting oversized raw metadata, streaming cache diffing across chunks, using lighter Electron file handles, increasing renderer heap headroom, and avoiding automatic table thumbnails in very large result sets.
 - **Large Library Cache Reconciliation**: Improved startup and manual cache checks for large folders by applying lightweight UI deltas and persisting chunked cache updates without rehydrating the entire library.
-- **ComfyUI Workspace UX**: Improved workspace navigation with library filter scoping, directory selection, selected-image auto-open behavior, metadata view options, timestamp-aware thumbnails, and safer embedded-browser visibility during generation.
 - **Cache Controls**: Clarified cache reset actions and added library cache clearing support from settings.
 - **Trial Migration**: Reset eligible non-Pro trial state for this release so users affected by earlier trial behavior can start fresh.
 - **Accessibility**: Added accessible labels to search, compare zoom controls, reset zoom, and generate variation icon-only controls.

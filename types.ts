@@ -339,6 +339,18 @@ export interface ElectronAPI {
   startWatchingDirectory: (args: { directoryId: string; dirPath: string }) => Promise<{ success: boolean; error?: string }>;
   stopWatchingDirectory: (args: { directoryId: string }) => Promise<{ success: boolean }>;
   getWatcherStatus: (args: { directoryId: string }) => Promise<{ success: boolean; active: boolean }>;
+  logMediaPlaybackEvent: (payload: {
+    mediaKind: 'audio' | 'video';
+    surface: string;
+    eventName: string;
+    fileName: string;
+    srcScheme: string | null;
+    currentTime: number | null;
+    readyState: number | null;
+    networkState: number | null;
+    errorCode: number | null;
+    errorMessage: string | null;
+  }) => void;
   onNewImagesDetected: (callback: (data: { directoryId: string; files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean }> }) => void) => () => void;
   onWatchedFilesRemoved: (callback: (data: WatchedFileRemovalPayload) => void) => () => void;
   onWatcherDebug: (callback: (data: { message: string }) => void) => () => void;

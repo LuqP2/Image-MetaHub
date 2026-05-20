@@ -272,6 +272,16 @@ npm run cli:index -- path/to/folder --out index.jsonl --recursive
 
 For release work, see [RELEASE-GUIDE.md](RELEASE-GUIDE.md) and [RELEASE-AUTOMATION.md](RELEASE-AUTOMATION.md).
 
+## Troubleshooting
+
+On macOS, if audio or video playback crashes the Electron Helper, launch Image MetaHub from Terminal with the opt-in media safe mode:
+
+```bash
+IMH_MEDIA_SAFE_MODE=1 open -a "Image MetaHub"
+```
+
+This disables hardware acceleration plus accelerated video decode/compositing switches for that launch only. The lower-level `IMH_DISABLE_GPU=1` flag is also available when you want to test GPU acceleration separately.
+
 ## Privacy
 
 Image MetaHub is designed to stay local:
