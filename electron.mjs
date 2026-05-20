@@ -119,6 +119,15 @@ const getSafeFileDetails = async (filePath) => {
   return { fileName, extension, mimeType, fileSize };
 };
 
+const redactDiagnosticText = (value, maxLength = 500) => {
+  if (typeof value !== 'string') return null;
+
+  return value
+    .replace(/[a-zA-Z][a-zA-Z\d+.-]*:\/\/\S+/g, '[redacted-url]')
+    .replace(/(?:[A-Za-z]:[\\/]|\/)(?:[^\s"'<>|?*]+[\\/])*[^\s"'<>|?*]*/g, '[redacted-path]')
+    .slice(0, maxLength);
+};
+
 const getMediaProtocolErrorType = (error) => {
   if (!error) return 'UNKNOWN_ERROR';
   if (error.code === 'ENOENT' || error.message?.includes('no such file')) return 'FILE_NOT_FOUND';
@@ -206,7 +215,7 @@ const registerMediaProtocol = () => {
         status: 'failed',
         errorType: getMediaProtocolErrorType(error),
         errorCode: error?.code ?? null,
-        errorMessage: error?.message ?? null,
+        errorMessage: redactDiagnosticText(error?.message),
         ...safeDetails,
       });
       callback({ error: -2 });
@@ -911,12 +920,7 @@ function sanitizeMediaPlaybackDiagnostics(payload = {}) {
   const safeFileName = payload.fileName ? path.basename(String(payload.fileName)) : null;
   const srcScheme = typeof payload.srcScheme === 'string' ? payload.srcScheme.slice(0, 32) : null;
   const eventName = typeof payload.eventName === 'string' ? payload.eventName.slice(0, 48) : null;
-  const safeErrorMessage = typeof payload.errorMessage === 'string'
-    ? payload.errorMessage
-      .replace(/[a-zA-Z][a-zA-Z\d+.-]*:\/\/\S+/g, '[redacted-url]')
-      .replace(/(?:[A-Za-z]:[\\/]|\/)(?:[^\s"'<>|?*]+[\\/])*[^\s"'<>|?*]*/g, '[redacted-path]')
-      .slice(0, 500)
-    : null;
+  const safeErrorMessage = redactDiagnosticText(payload.errorMessage);
 
   return {
     kind: 'media-playback-event',
@@ -4260,7 +4264,7 @@ function setupFileOperationHandlers() {
         status: 'failed',
         errorType: isFileNotFound ? 'FILE_NOT_FOUND' : (isPermissionError ? 'PERMISSION_ERROR' : 'UNKNOWN_ERROR'),
         errorCode: error.code,
-        errorMessage: error.message,
+        errorMessage: redactDiagnosticText(error.message),
         ...safeDetails,
       });
 
