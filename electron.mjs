@@ -911,6 +911,12 @@ function sanitizeMediaPlaybackDiagnostics(payload = {}) {
   const safeFileName = payload.fileName ? path.basename(String(payload.fileName)) : null;
   const srcScheme = typeof payload.srcScheme === 'string' ? payload.srcScheme.slice(0, 32) : null;
   const eventName = typeof payload.eventName === 'string' ? payload.eventName.slice(0, 48) : null;
+  const safeErrorMessage = typeof payload.errorMessage === 'string'
+    ? payload.errorMessage
+      .replace(/[a-zA-Z][a-zA-Z\d+.-]*:\/\/\S+/g, '[redacted-url]')
+      .replace(/(?:[A-Za-z]:[\\/]|\/)(?:[^\s"'<>|?*]+[\\/])*[^\s"'<>|?*]*/g, '[redacted-path]')
+      .slice(0, 500)
+    : null;
 
   return {
     kind: 'media-playback-event',
@@ -923,7 +929,7 @@ function sanitizeMediaPlaybackDiagnostics(payload = {}) {
     readyState: Number.isFinite(payload.readyState) ? payload.readyState : null,
     networkState: Number.isFinite(payload.networkState) ? payload.networkState : null,
     errorCode: Number.isFinite(payload.errorCode) ? payload.errorCode : null,
-    errorMessage: typeof payload.errorMessage === 'string' ? payload.errorMessage.slice(0, 500) : null,
+    errorMessage: safeErrorMessage,
   };
 }
 

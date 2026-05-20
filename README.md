@@ -274,13 +274,13 @@ For release work, see [RELEASE-GUIDE.md](RELEASE-GUIDE.md) and [RELEASE-AUTOMATI
 
 ## Troubleshooting
 
-On macOS, if audio or video playback crashes the Electron Helper, launch Image MetaHub from Terminal with the opt-in media safe mode:
+On macOS, if audio or video playback crashes the Electron Helper, quit Image MetaHub first, then launch it from Terminal with the opt-in media safe mode:
 
 ```bash
-IMH_MEDIA_SAFE_MODE=1 open -a "Image MetaHub"
+IMH_MEDIA_SAFE_MODE=1 /Applications/Image\ MetaHub.app/Contents/MacOS/Image\ MetaHub
 ```
 
-This disables hardware acceleration plus accelerated video decode/compositing switches for that launch only. The lower-level `IMH_DISABLE_GPU=1` flag is also available when you want to test GPU acceleration separately.
+To confirm the flag was applied, `process-events.log` should include `mediaSafeModeEnabled: true` in the `app-startup` entry. This disables hardware acceleration plus accelerated video decode/compositing switches for that launch only. The lower-level `IMH_DISABLE_GPU=1` flag is also available when you want to test GPU acceleration separately.
 
 ## Privacy
 
