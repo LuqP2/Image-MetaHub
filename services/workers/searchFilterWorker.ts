@@ -180,10 +180,14 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
 };
 
 function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, 'criteriaKey'> {
-  const visibleDirectoryIds = new Set(criteria.visibleDirectories.map(directory => directory.id));
-  const directoryPathMap = new Map(
-    criteria.visibleDirectories.map(directory => [directory.id, normalizePath(directory.path)])
-  );
+  const visibleDirectoryIds = new Set<string>();
+  const directoryPathMap = new Map<string, string>();
+  for (let i = 0; i < criteria.visibleDirectories.length; i++) {
+    const dir = criteria.visibleDirectories[i];
+    visibleDirectoryIds.add(dir.id);
+    directoryPathMap.set(dir.id, normalizePath(dir.path));
+  }
+
   const excludedFolders = criteria.excludedFolders.map(normalizePath);
   const selectedFolders = criteria.selectedFolders.map(normalizePath);
   const selectedRatings = new Set(criteria.selectedRatings);

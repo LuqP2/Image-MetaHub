@@ -716,7 +716,14 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
     // Merge with existing lora array from resolveAll
     const existingLoras = results.lora || [];
     results.loras = modifiers.loras; // Detailed lora info
-    results.lora = Array.from(new Set([...existingLoras, ...modifiers.loras.map(l => l.name)])); // Backward compatibility
+    const loraNameSet = new Set<string>();
+    for (let i = 0; i < existingLoras.length; i++) {
+      loraNameSet.add(existingLoras[i]);
+    }
+    for (let i = 0; i < modifiers.loras.length; i++) {
+      loraNameSet.add(modifiers.loras[i].name);
+    }
+    results.lora = Array.from(loraNameSet); // Backward compatibility
   }
   if (modifiers.vaes.length > 0) {
     results.vaes = modifiers.vaes;
