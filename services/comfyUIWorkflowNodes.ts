@@ -132,7 +132,10 @@ export const filterImagesByWorkflowNodes = (
     return images.filter((image) => (image.workflowNodes?.length || 0) > 0);
   }
 
-  const selected = new Set(selectedNodeTypes.map((value) => value.toLowerCase()));
+  const selected = new Set<string>();
+  for (let i = 0; i < selectedNodeTypes.length; i++) {
+    selected.add(selectedNodeTypes[i].toLowerCase());
+  }
   return images.filter((image) =>
     (image.workflowNodes || []).some((nodeType) => selected.has(nodeType.toLowerCase()))
   );
