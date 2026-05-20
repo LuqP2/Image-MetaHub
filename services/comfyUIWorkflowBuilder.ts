@@ -737,7 +737,7 @@ export function analyzeComfyWorkflow(source: IndexedImage | UnknownRecord, norma
     warnings.push('Workflow does not contain MetaHubSaveNode or SaveImage. A save node will be injected.');
   }
 
-  const modelFamilySet = new Set<string>();
+  const modelFamilySet = new Set<ComfyUIModelFamily>();
   for (let i = 0; i < modelTargets.length; i++) {
     if (modelTargets[i].family) {
       modelFamilySet.add(modelTargets[i].family);
