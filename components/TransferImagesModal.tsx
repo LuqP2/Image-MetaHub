@@ -218,6 +218,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
             onClick={onClose}
             className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
             title="Close"
+            aria-label="Close transfer modal"
             disabled={isSubmitting}
           >
             <X className="w-4 h-4 text-gray-400" />
