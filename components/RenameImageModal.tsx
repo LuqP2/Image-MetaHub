@@ -66,6 +66,7 @@ const RenameImageModal: React.FC<RenameImageModalProps> = ({ image, isOpen, onCl
             onClick={onClose}
             className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
             title="Close"
+            aria-label="Close rename modal"
           >
             <X className="h-4 w-4" />
           </button>
