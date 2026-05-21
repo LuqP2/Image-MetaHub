@@ -62,6 +62,7 @@ import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, res
 import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
 import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload } from './utils/watcherRemovalUtils';
+import { groupImages, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
 
 interface OpenImageModalState {
   modalId: string;
@@ -336,6 +337,8 @@ export default function App() {
     setItemsPerPage,
     viewMode,
     toggleViewMode,
+    groupBy,
+    setGroupBy,
     theme,
     setLastViewedVersion,
     globalAutoWatch,
@@ -345,6 +348,7 @@ export default function App() {
 
   // --- Local UI State ---
   const [currentPage, setCurrentPage] = useState(1);
+  const [pendingJumpGroupRequest, setPendingJumpGroupRequest] = useState<{ groupId: string; requestId: number } | null>(null);
   const [searchInputValue, setSearchInputValue] = useState(searchQuery);
   const previousSearchQueryRef = useRef(searchQuery);
   const pendingSearchFlowIdRef = useRef<string | null>(null);
@@ -871,6 +875,12 @@ export default function App() {
 
     return () => unsubscribe();
   }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, selectedFolders, sortOrder]);
+
+  useEffect(() => {
+    if (sortOrder === 'random' && groupBy !== 'none') {
+      setGroupBy('none');
+    }
+  }, [groupBy, setGroupBy, sortOrder]);
 
   useEffect(() => {
     if (!window.electronAPI?.onWatchedFilesRemoved) return;
@@ -2145,6 +2155,19 @@ export default function App() {
     },
     [displayImages, currentPage, itemsPerPage]
   );
+  const effectiveLibraryGroupBy = libraryView === 'library' && sortOrder !== 'random' ? groupBy : 'none';
+  const imageGroupingSortOrder = sortOrder as ImageGroupingSortOrder;
+  const currentLibraryGroups = useMemo<ImageGroup[]>(
+    () => effectiveLibraryGroupBy === 'none'
+      ? []
+      : groupImages(paginatedImages, effectiveLibraryGroupBy, { sortOrder: imageGroupingSortOrder }).groups,
+    [effectiveLibraryGroupBy, imageGroupingSortOrder, paginatedImages]
+  );
+
+  useEffect(() => {
+    setPendingJumpGroupRequest(null);
+  }, [currentPage, effectiveLibraryGroupBy, viewMode]);
+
   const totalPages = itemsPerPage === -1
     ? 1
     : Math.ceil(displayImages.length / itemsPerPage);
@@ -2413,6 +2436,8 @@ export default function App() {
           sortOrder={sortOrder}
           onSortOrderChange={imageStoreSetSortOrder}
           onReshuffle={reshuffle}
+          groupBy={sortOrder === 'random' ? 'none' : groupBy}
+          onGroupByChange={setGroupBy}
         >
           <DirectoryList
             directories={safeDirectories}
@@ -2615,6 +2640,9 @@ export default function App() {
                     onStartSlideshow={handleStartSlideshow}
                     slideshowImageCount={slideshowImageCount}
                     slideshowSourceLabel={slideshowSourceLabel}
+                    groups={libraryView === 'library' ? currentLibraryGroups : []}
+                    groupBy={effectiveLibraryGroupBy}
+                    onJumpToGroup={(groupId) => setPendingJumpGroupRequest({ groupId, requestId: Date.now() })}
                   />
                 )}
 
@@ -2636,6 +2664,9 @@ export default function App() {
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                           onOpenComfyUIWorkspace={(image) => openComfyUIWorkflowInWorkspace(image, displayImages)}
+                          groupBy={effectiveLibraryGroupBy}
+                          groupSortOrder={imageGroupingSortOrder}
+                          jumpToGroupRequest={pendingJumpGroupRequest}
                         />
                       ) : (
                         <ImageTable
@@ -2646,6 +2677,9 @@ export default function App() {
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                           onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
+                          groupBy={effectiveLibraryGroupBy}
+                          groupSortOrder={imageGroupingSortOrder}
+                          jumpToGroupRequest={pendingJumpGroupRequest}
                         />
                   )
                 ) : libraryView === 'model' ? (

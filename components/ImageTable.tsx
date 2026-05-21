@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -19,6 +19,7 @@ import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import RenameImageModal from './RenameImageModal';
 import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { groupImages, type ImageGroupByMode, type ImageGroupingSortOrder, type ImageGroupRenderItem } from '../utils/imageGrouping';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -30,6 +31,9 @@ interface ImageTableProps {
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
   onFindSimilar?: (image: IndexedImage) => void;
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
+  groupBy?: ImageGroupByMode;
+  groupSortOrder?: ImageGroupingSortOrder;
+  jumpToGroupRequest?: { groupId: string; requestId: number } | null;
 }
 
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
@@ -75,6 +79,9 @@ const ImageTable: React.FC<ImageTableProps> = ({
   onImageRenamed,
   onFindSimilar,
   onOpenComfyUIWorkspace,
+  groupBy = 'none',
+  groupSortOrder = 'date-desc',
+  jumpToGroupRequest = null,
 }) => {
   const directories = useImageStore((state) => state.directories);
   const transferProgress = useImageStore((state) => state.transferProgress);
@@ -89,6 +96,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [renameImage, setRenameImage] = useState<IndexedImage | null>(null);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
+  const listRef = useRef<React.ElementRef<typeof List>>(null);
   const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
   const collections = useImageStore((state) => state.collections);
   const createCollection = useImageStore((state) => state.createCollection);
@@ -421,6 +429,10 @@ const ImageTable: React.FC<ImageTableProps> = ({
     () => applySorting(images, sortField, sortDirection),
     [images, sortField, sortDirection, applySorting]
   );
+  const groupedRows = useMemo<ImageGroupRenderItem[]>(
+    () => groupImages(sortedImages, groupBy, { sortOrder: groupSortOrder }).items,
+    [groupBy, groupSortOrder, sortedImages]
+  );
   const enableRowThumbnails = sortedImages.length <= 5000;
 
   const columnWidths = [
@@ -437,7 +449,28 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
   // Row renderer for virtualized list
   const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const image = sortedImages[index];
+    const item = groupedRows[index];
+    if (!item) {
+      return <div style={style} />;
+    }
+
+    if (item.type === 'group-header') {
+      return (
+        <div style={style} data-group-id={item.group.id}>
+          <div className="flex h-full items-center justify-between gap-3 border-y border-gray-700/70 bg-gray-900/95 px-4 text-gray-200">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">{item.group.label}</div>
+              {item.group.subtitle && <div className="truncate text-xs text-gray-500">{item.group.subtitle}</div>}
+            </div>
+            <div className="shrink-0 rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-400">
+              {item.group.count} item{item.group.count === 1 ? '' : 's'}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const image = item.image;
     return (
       <div style={style}>
         <ImageTableRow
@@ -454,6 +487,19 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
   const ROW_HEIGHT = 64; // Height of each table row in pixels
   const HEADER_HEIGHT = 48; // Height of table header
+
+  useEffect(() => {
+    if (!jumpToGroupRequest || groupBy === 'none') {
+      return;
+    }
+
+    const targetIndex = groupedRows.findIndex((item) => item.type === 'group-header' && item.group.id === jumpToGroupRequest.groupId);
+    if (targetIndex < 0) {
+      return;
+    }
+
+    listRef.current?.scrollToItem(targetIndex, 'start');
+  }, [groupBy, groupedRows, jumpToGroupRequest]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -512,11 +558,15 @@ const ImageTable: React.FC<ImageTableProps> = ({
               {({ height, width }: { height: number; width: number }) => (
                 <List
                   height={height}
-                  itemCount={sortedImages.length}
+                  itemCount={groupedRows.length}
                   itemSize={ROW_HEIGHT}
+                  ref={listRef}
                   width={width}
                   overscanCount={5}
-                  itemKey={(index) => sortedImages[index]?.id ?? index}
+                  itemKey={(index) => {
+                    const item = groupedRows[index];
+                    return item?.type === 'group-header' ? item.group.id : item?.image.id ?? index;
+                  }}
                 >
                   {Row}
                 </List>

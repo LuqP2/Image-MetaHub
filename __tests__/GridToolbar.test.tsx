@@ -159,4 +159,84 @@ describe('GridToolbar', () => {
 
     expect(useImageStore.getState().selectedImages).toEqual(new Set());
   });
+
+  it('opens jump menu and jumps to the selected group', async () => {
+    const onJumpToGroup = vi.fn();
+
+    render(
+      <GridToolbar
+        selectedImages={new Set()}
+        images={[]}
+        directories={[]}
+        filteredImageActionCount={0}
+        onDeleteSelected={vi.fn()}
+        onGenerateA1111={vi.fn()}
+        onGenerateComfyUI={vi.fn()}
+        onCompare={vi.fn()}
+        onBatchExport={vi.fn()}
+        onStartSlideshow={vi.fn()}
+        slideshowImageCount={0}
+        groups={[
+          { id: 'session-1', label: 'May 21, 09:00-09:30', count: 4, startImageId: 'img-1' },
+          { id: 'session-2', label: 'May 21, 14:00-14:15', count: 2, startImageId: 'img-5' },
+        ]}
+        onJumpToGroup={onJumpToGroup}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to group' }));
+    fireEvent.change(screen.getByPlaceholderText('Find group...'), { target: { value: '14:00' } });
+    fireEvent.click(await screen.findByText('May 21, 14:00-14:15'));
+
+    expect(onJumpToGroup).toHaveBeenCalledWith('session-2');
+  });
+
+  it('uses a calendar jump menu for session groups and marks session counts by day', async () => {
+    const onJumpToGroup = vi.fn();
+
+    render(
+      <GridToolbar
+        selectedImages={new Set()}
+        images={[]}
+        directories={[]}
+        filteredImageActionCount={0}
+        onDeleteSelected={vi.fn()}
+        onGenerateA1111={vi.fn()}
+        onGenerateComfyUI={vi.fn()}
+        onCompare={vi.fn()}
+        onBatchExport={vi.fn()}
+        onStartSlideshow={vi.fn()}
+        slideshowImageCount={0}
+        groupBy="session"
+        groups={[
+          {
+            id: 'session-1',
+            label: 'May 21, 09:00-09:30',
+            count: 4,
+            startImageId: 'img-1',
+            dateKey: '2026-05-21',
+            startTime: new Date(2026, 4, 21, 9, 0).getTime(),
+          },
+          {
+            id: 'session-2',
+            label: 'May 21, 14:00-14:15',
+            count: 2,
+            startImageId: 'img-5',
+            dateKey: '2026-05-21',
+            startTime: new Date(2026, 4, 21, 14, 0).getTime(),
+          },
+        ]}
+        onJumpToGroup={onJumpToGroup}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to group' }));
+
+    expect(screen.getByText(/2026/)).toBeTruthy();
+    expect(screen.getByTitle('2 sessions')).toBeTruthy();
+
+    fireEvent.click(await screen.findByText('May 21, 14:00-14:15'));
+
+    expect(onJumpToGroup).toHaveBeenCalledWith('session-2');
+  });
 });
