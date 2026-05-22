@@ -8,12 +8,15 @@ import {
   Sparkles,
   Trash2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Tag,
   RefreshCw,
   Plus,
   Play,
   Workflow,
-  X
+  X,
+  Search
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -24,6 +27,7 @@ import ActiveFilters from './ActiveFilters';
 import TagManagerModal from './TagManagerModal';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import Tooltip from './Tooltip';
+import type { ImageGroup, ImageGroupByMode } from '../utils/imageGrouping';
 
 const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
 
@@ -44,7 +48,30 @@ interface GridToolbarProps {
   onStartSlideshow: () => void;
   slideshowImageCount: number;
   slideshowSourceLabel?: string;
+  groups?: ImageGroup[];
+  groupBy?: ImageGroupByMode;
+  onJumpToGroup?: (groupId: string) => void;
 }
+
+const formatCalendarDateKey = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getGroupDateKey = (group: ImageGroup): string | null => {
+  if (group.dateKey) {
+    return group.dateKey;
+  }
+  if (typeof group.startTime === 'number') {
+    return formatCalendarDateKey(new Date(group.startTime));
+  }
+  return null;
+};
+
+const sameCalendarMonth = (left: Date, right: Date): boolean =>
+  left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth();
 
 const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
   const notification = document.createElement('div');
@@ -74,13 +101,21 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onStartSlideshow,
   slideshowImageCount,
   slideshowSourceLabel = 'current view',
+  groups = [],
+  groupBy = 'none',
+  onJumpToGroup,
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
   const [isCollectionActionsOpen, setIsCollectionActionsOpen] = useState(false);
   const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
+  const [isJumpMenuOpen, setIsJumpMenuOpen] = useState(false);
+  const [jumpQuery, setJumpQuery] = useState('');
+  const [selectedJumpDateKey, setSelectedJumpDateKey] = useState<string | null>(null);
+  const [jumpCalendarMonth, setJumpCalendarMonth] = useState(() => new Date());
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const collectionActionsRef = useRef<HTMLDivElement>(null);
+  const jumpMenuRef = useRef<HTMLDivElement>(null);
   const bulkToggleFavorite = useImageStore((state) => state.bulkToggleFavorite);
   const clearImageSelection = useImageStore((state) => state.clearImageSelection);
   const collections = useImageStore((state) => state.collections);
@@ -116,6 +151,9 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       if (collectionActionsRef.current && !collectionActionsRef.current.contains(event.target as Node)) {
         setIsCollectionActionsOpen(false);
         setIsAddToCollectionSubmenuOpen(false);
+      }
+      if (jumpMenuRef.current && !jumpMenuRef.current.contains(event.target as Node)) {
+        setIsJumpMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -252,6 +290,67 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const canUseFilteredCollectionActions =
     filteredImageActionCount > 0 &&
     (Boolean(onCreateCollectionFromFiltered) || Boolean(onAddCurrentFilteredToCollection));
+  const canJumpToGroups = groups.length > 0 && Boolean(onJumpToGroup);
+  const useCalendarJump = groupBy === 'date' || groupBy === 'session';
+  const groupsByDate = useMemo(() => {
+    const next = new Map<string, ImageGroup[]>();
+    for (const group of groups) {
+      const key = getGroupDateKey(group);
+      if (!key) {
+        continue;
+      }
+      const dateGroups = next.get(key) ?? [];
+      dateGroups.push(group);
+      next.set(key, dateGroups);
+    }
+    return next;
+  }, [groups]);
+  const calendarDateKeys = useMemo(() => Array.from(groupsByDate.keys()).sort(), [groupsByDate]);
+  const activeJumpDateKey = selectedJumpDateKey && groupsByDate.has(selectedJumpDateKey)
+    ? selectedJumpDateKey
+    : calendarDateKeys[0] ?? null;
+  const calendarGroups = activeJumpDateKey ? groupsByDate.get(activeJumpDateKey) ?? [] : [];
+  const calendarMonthDays = useMemo(() => {
+    const monthStart = new Date(jumpCalendarMonth.getFullYear(), jumpCalendarMonth.getMonth(), 1);
+    const gridStart = new Date(monthStart);
+    gridStart.setDate(monthStart.getDate() - monthStart.getDay());
+
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(gridStart);
+      date.setDate(gridStart.getDate() + index);
+      return date;
+    });
+  }, [jumpCalendarMonth]);
+  const visibleJumpGroups = useMemo(() => {
+    const normalizedQuery = jumpQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return groups;
+    }
+
+    return groups.filter((group) =>
+      `${group.label} ${group.subtitle ?? ''}`.toLowerCase().includes(normalizedQuery)
+    );
+  }, [groups, jumpQuery]);
+
+  useEffect(() => {
+    if (!isJumpMenuOpen || !useCalendarJump || calendarDateKeys.length === 0) {
+      return;
+    }
+
+    const targetKey = activeJumpDateKey ?? calendarDateKeys[0];
+    if (!targetKey) {
+      return;
+    }
+
+    const [year, monthIndex, day] = targetKey.split('-').map(Number);
+    const targetDate = new Date(year, monthIndex - 1, day || 1);
+    if (!sameCalendarMonth(jumpCalendarMonth, targetDate)) {
+      setJumpCalendarMonth(targetDate);
+    }
+    if (selectedJumpDateKey !== targetKey) {
+      setSelectedJumpDateKey(targetKey);
+    }
+  }, [activeJumpDateKey, calendarDateKeys, isJumpMenuOpen, jumpCalendarMonth, selectedJumpDateKey, useCalendarJump]);
 
   const hasActiveFilters = 
       selectedModels.length > 0 ||
@@ -275,7 +374,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       selectedRatings.length > 0 ||
       (advancedFilters && Object.keys(advancedFilters).length > 0);
 
-  if (selectedCount === 0 && !hasActiveFilters && !canUseFilteredCollectionActions && slideshowImageCount === 0) {
+  if (selectedCount === 0 && !hasActiveFilters && !canUseFilteredCollectionActions && slideshowImageCount === 0 && !canJumpToGroups) {
     return null;
   }
 
@@ -562,6 +661,158 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                   )}
                 </div>
                 {hasActiveFilters && <div className="w-px h-6 bg-gray-600 mx-2 flex-shrink-0" />}
+              </>
+            )}
+
+            {canJumpToGroups && (
+              <>
+                {(selectedCount > 0 || canUseFilteredCollectionActions || slideshowImageCount > 0) && (
+                  <div className="w-px h-4 bg-gray-700 mx-1" />
+                )}
+                <div className="relative" ref={jumpMenuRef}>
+                  <Tooltip label="Jump to group">
+                    <button
+                      onClick={() => setIsJumpMenuOpen((open) => !open)}
+                      className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5"
+                      title="Jump to group"
+                      aria-label="Jump to group"
+                    >
+                      <Search className="w-4 h-4" />
+                      <ChevronDown className="w-3 h-3" />
+                    </button>
+                  </Tooltip>
+
+                  {isJumpMenuOpen && (
+                    <div className="absolute left-0 top-full mt-1 w-72 rounded-lg border border-gray-700 bg-gray-800 p-2 shadow-xl z-50">
+                      {useCalendarJump ? (
+                        <>
+                          <div className="mb-2 flex items-center justify-between">
+                            <button
+                              onClick={() => setJumpCalendarMonth((date) => new Date(date.getFullYear(), date.getMonth() - 1, 1))}
+                              className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
+                              aria-label="Previous month"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </button>
+                            <div className="text-sm font-medium text-gray-200">
+                              {jumpCalendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                            </div>
+                            <button
+                              onClick={() => setJumpCalendarMonth((date) => new Date(date.getFullYear(), date.getMonth() + 1, 1))}
+                              className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
+                              aria-label="Next month"
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </button>
+                          </div>
+
+                          <div className="mb-2 grid grid-cols-7 gap-1 text-center text-[10px] uppercase text-gray-500">
+                            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                              <div key={`${day}-${index}`}>{day}</div>
+                            ))}
+                          </div>
+
+                          <div className="grid grid-cols-7 gap-1">
+                            {calendarMonthDays.map((date) => {
+                              const dateKey = formatCalendarDateKey(date);
+                              const dateGroups = groupsByDate.get(dateKey) ?? [];
+                              const markerCount = groupBy === 'session'
+                                ? dateGroups.length
+                                : dateGroups.reduce((total, group) => total + group.count, 0);
+                              const isSelected = dateKey === activeJumpDateKey;
+                              const inMonth = sameCalendarMonth(date, jumpCalendarMonth);
+
+                              return (
+                                <button
+                                  key={dateKey}
+                                  onClick={() => markerCount > 0 && setSelectedJumpDateKey(dateKey)}
+                                  disabled={markerCount === 0}
+                                  className={`relative h-8 rounded-md text-xs transition-colors ${
+                                    isSelected
+                                      ? 'bg-blue-600 text-white'
+                                      : markerCount > 0
+                                      ? 'bg-gray-700 text-gray-100 hover:bg-gray-600'
+                                      : 'text-gray-600'
+                                  } ${inMonth ? '' : 'opacity-40'}`}
+                                  title={markerCount > 0 ? `${markerCount} ${groupBy === 'session' ? 'session' : 'image'}${markerCount === 1 ? '' : 's'}` : undefined}
+                                >
+                                  {date.getDate()}
+                                  {markerCount > 0 && (
+                                    <span className={`absolute -right-1 -top-1 min-w-[16px] rounded-full px-1 text-[10px] leading-4 ${
+                                      isSelected ? 'bg-white text-blue-700' : 'bg-blue-500 text-white'
+                                    }`}>
+                                      {markerCount}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="mt-3 max-h-52 overflow-y-auto border-t border-gray-700 pt-2">
+                            {calendarGroups.length === 0 ? (
+                              <div className="px-2 py-3 text-sm text-gray-500">No groups on this day</div>
+                            ) : (
+                              calendarGroups.map((group) => (
+                                <button
+                                  key={group.id}
+                                  onClick={() => {
+                                    onJumpToGroup?.(group.id);
+                                    setIsJumpMenuOpen(false);
+                                  }}
+                                  className="flex w-full items-start justify-between gap-3 rounded-md px-2 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                                >
+                                  <span className="min-w-0">
+                                    <span className="block truncate font-medium">{group.label}</span>
+                                    {group.subtitle && (
+                                      <span className="block truncate text-xs text-gray-400">{group.subtitle}</span>
+                                    )}
+                                  </span>
+                                  <span className="shrink-0 rounded bg-gray-700 px-1.5 py-0.5 text-xs text-gray-300">{group.count}</span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <input
+                            value={jumpQuery}
+                            onChange={(event) => setJumpQuery(event.target.value)}
+                            placeholder="Find group..."
+                            className="mb-2 w-full rounded-md border border-gray-600 bg-gray-900 px-2 py-1.5 text-sm text-gray-200 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none"
+                            autoFocus
+                          />
+                          <div className="max-h-72 overflow-y-auto">
+                            {visibleJumpGroups.length === 0 ? (
+                              <div className="px-2 py-3 text-sm text-gray-500">No matching groups</div>
+                            ) : (
+                              visibleJumpGroups.map((group) => (
+                                <button
+                                  key={group.id}
+                                  onClick={() => {
+                                    onJumpToGroup?.(group.id);
+                                    setIsJumpMenuOpen(false);
+                                    setJumpQuery('');
+                                  }}
+                                  className="flex w-full items-start justify-between gap-3 rounded-md px-2 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                                >
+                                  <span className="min-w-0">
+                                    <span className="block truncate font-medium">{group.label}</span>
+                                    {group.subtitle && (
+                                      <span className="block truncate text-xs text-gray-400">{group.subtitle}</span>
+                                    )}
+                                  </span>
+                                  <span className="shrink-0 rounded bg-gray-700 px-1.5 py-0.5 text-xs text-gray-300">{group.count}</span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </>
             )}
 

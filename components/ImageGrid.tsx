@@ -1,4 +1,4 @@
-import { FixedSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-window';
+import { VariableSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -41,6 +41,7 @@ import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { groupImages, type ImageGroup, type ImageGroupByMode, type ImageGroupingSortOrder } from '../utils/imageGrouping';
 import {
   beginPerformanceFlow,
   createProfilerOnRender,
@@ -136,8 +137,11 @@ const abbreviatePathForDisplay = (relativePath: string): string => {
 const getWarmupImage = (item: IndexedImage | ImageStack): IndexedImage =>
   isImageStack(item) ? item.coverImage : item;
 
+const isImageRenderItem = (item: GridRenderItem): item is IndexedImage | ImageStack =>
+  !('type' in item);
+
 const collectWarmupImages = (
-  items: (IndexedImage | ImageStack)[],
+  items: GridRenderItem[],
   startIndex: number,
   endIndex: number
 ): IndexedImage[] => {
@@ -150,7 +154,10 @@ const collectWarmupImages = (
   const images: IndexedImage[] = [];
 
   for (let index = safeStart; index <= safeEnd; index++) {
-    images.push(getWarmupImage(items[index]));
+    const item = items[index];
+    if (isImageRenderItem(item)) {
+      images.push(getWarmupImage(item));
+    }
   }
 
   return images;
@@ -709,6 +716,7 @@ function isImageStack(item: IndexedImage | ImageStack): item is ImageStack {
 }
 
 const GAP_SIZE = 16;
+const GROUP_HEADER_HEIGHT = 52;
 const ITEM_HEIGHT_RATIO = 1.0;
 const CARD_HEIGHT_RATIO = 1.2;
 const FILENAME_HEIGHT = 40;
@@ -722,7 +730,7 @@ const clampIndex = (index: number, itemCount: number): number =>
 const KEYBOARD_NAVIGATION_KEYS = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'];
 
 interface CellData {
-  items: (IndexedImage | ImageStack)[];
+  items: GridRenderItem[];
   columnCount: number;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   onStackClick: (stack: ImageStack) => void;
@@ -743,6 +751,123 @@ interface CellData {
   blurSensitiveImages?: boolean;
   toggleImageSelection: (imageId: string, multiSelect: boolean) => void;
 }
+
+type GridRenderItem =
+  | IndexedImage
+  | ImageStack
+  | { type: 'group-header'; group: ImageGroup }
+  | { type: 'group-spacer'; groupId: string; index: number };
+
+const GroupHeader: React.FC<{ group: ImageGroup }> = ({ group }) => (
+  <div
+    className="flex h-full w-full items-center justify-between gap-3 border-y border-gray-700/70 bg-gray-900/95 px-5 text-gray-200"
+    data-group-id={group.id}
+  >
+    <div className="min-w-0">
+      <div className="truncate text-sm font-semibold">{group.label}</div>
+      {group.subtitle && <div className="truncate text-xs text-gray-500">{group.subtitle}</div>}
+    </div>
+    <div className="shrink-0 rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-400">
+      {group.count} item{group.count === 1 ? '' : 's'}
+    </div>
+  </div>
+);
+
+const expandGroupedItemsForColumns = (items: GridRenderItem[], columnCount: number): GridRenderItem[] => {
+  if (columnCount <= 1) {
+    return items;
+  }
+
+  const expanded: GridRenderItem[] = [];
+  for (const item of items) {
+    if (!isImageRenderItem(item) && item.type === 'group-header') {
+      const remainder = expanded.length % columnCount;
+      if (remainder !== 0) {
+        for (let index = remainder; index < columnCount; index += 1) {
+          expanded.push({ type: 'group-spacer', groupId: `${item.group.id}-pre`, index });
+        }
+      }
+    }
+
+    expanded.push(item);
+    if (!isImageRenderItem(item) && item.type === 'group-header') {
+      for (let index = 1; index < columnCount; index += 1) {
+        expanded.push({ type: 'group-spacer', groupId: item.group.id, index });
+      }
+    }
+  }
+  return expanded;
+};
+
+const getVirtualRowHeight = (
+  items: GridRenderItem[],
+  rowIndex: number,
+  columnCount: number,
+  imageSize: number,
+  showFilenames: boolean,
+): number => {
+  const rowStartIndex = rowIndex * columnCount;
+  const rowFirstItem = items[rowStartIndex];
+  return rowFirstItem && !isImageRenderItem(rowFirstItem) && rowFirstItem.type === 'group-header'
+    ? GROUP_HEADER_HEIGHT
+    : getItemHeight(imageSize, showFilenames) + GAP_SIZE;
+};
+
+const getVirtualRowTop = (
+  items: GridRenderItem[],
+  targetRowIndex: number,
+  columnCount: number,
+  imageSize: number,
+  showFilenames: boolean,
+): number => {
+  let top = 0;
+  for (let rowIndex = 0; rowIndex < targetRowIndex; rowIndex += 1) {
+    top += getVirtualRowHeight(items, rowIndex, columnCount, imageSize, showFilenames);
+  }
+  return top;
+};
+
+const getVirtualRowAtOffset = (
+  items: GridRenderItem[],
+  offset: number,
+  columnCount: number,
+  imageSize: number,
+  showFilenames: boolean,
+): number => {
+  const rowCount = Math.max(1, Math.ceil(items.length / columnCount));
+  let top = 0;
+
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+    const rowHeight = getVirtualRowHeight(items, rowIndex, columnCount, imageSize, showFilenames);
+    const bottom = top + rowHeight;
+    if (offset < bottom) {
+      return rowIndex;
+    }
+    top = bottom;
+  }
+
+  return rowCount - 1;
+};
+
+const getVirtualPageTargetIndex = (
+  items: GridRenderItem[],
+  currentIndex: number,
+  direction: 1 | -1,
+  viewportHeight: number,
+  columnCount: number,
+  imageSize: number,
+  showFilenames: boolean,
+): number => {
+  const currentRow = currentIndex >= 0 ? Math.floor(currentIndex / columnCount) : direction > 0 ? 0 : Math.max(0, Math.ceil(items.length / columnCount) - 1);
+  const currentColumn = currentIndex >= 0 ? currentIndex % columnCount : 0;
+  const currentTop = getVirtualRowTop(items, currentRow, columnCount, imageSize, showFilenames);
+  const targetOffset = direction > 0
+    ? currentTop + viewportHeight
+    : Math.max(0, currentTop - viewportHeight);
+  const targetRow = getVirtualRowAtOffset(items, targetOffset, columnCount, imageSize, showFilenames);
+
+  return clampIndex((targetRow * columnCount) + currentColumn, items.length);
+};
 
 const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildComponentProps<CellData>) => {
   const {
@@ -775,6 +900,29 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
   }
 
   const item = items[index];
+
+  if (!isImageRenderItem(item)) {
+    if (item.type === 'group-spacer') {
+      return <div style={style} />;
+    }
+
+    if (columnIndex !== 0) {
+      return <div style={style} />;
+    }
+
+    return (
+      <div
+        style={{
+          ...style,
+          left: 0,
+          width: '100%',
+          height: GROUP_HEADER_HEIGHT,
+        }}
+      >
+        <GroupHeader group={item.group} />
+      </div>
+    );
+  }
 
   if (isImageStack(item)) {
     const isSensitive = enableSafeMode &&
@@ -886,6 +1034,9 @@ interface ImageGridProps {
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   markedBestIds?: Set<string>;      // IDs of images marked as best
   markedArchivedIds?: Set<string>;  // IDs of images marked for archive
+  groupBy?: ImageGroupByMode;
+  groupSortOrder?: ImageGroupingSortOrder;
+  jumpToGroupRequest?: { groupId: string; requestId: number } | null;
 }
 
 const InnerGridElement = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
@@ -907,6 +1058,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   onOpenComfyUIWorkspace,
   markedBestIds,
   markedArchivedIds,
+  groupBy = 'none',
+  groupSortOrder = 'date-desc',
+  jumpToGroupRequest = null,
 }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
@@ -917,7 +1071,22 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const setViewingStackPrompt = useImageStore((state) => state.setViewingStackPrompt);
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const { stackedItems } = useImageStacking(images, isStackingEnabled);
-  const itemsToRender = isStackingEnabled ? stackedItems : images;
+  const effectiveGroupBy = !isStackingEnabled ? groupBy : 'none';
+  const groupedImages = useMemo(
+    () => groupImages(images, effectiveGroupBy, { sortOrder: groupSortOrder }),
+    [effectiveGroupBy, groupSortOrder, images]
+  );
+  const itemsToRender: GridRenderItem[] = useMemo(() => {
+    if (isStackingEnabled) {
+      return stackedItems;
+    }
+
+    if (effectiveGroupBy === 'none') {
+      return images;
+    }
+
+    return groupedImages.items.map((item) => item.type === 'group-header' ? item : item.image);
+  }, [effectiveGroupBy, groupedImages.items, images, isStackingEnabled, stackedItems]);
   const isInfinite = itemsPerPage === -1;
   const gridScopeRef = useRef<HTMLDivElement>(null);
   const gridScrollRef = useRef<HTMLDivElement>(null);
@@ -1025,7 +1194,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     return Math.max(1, measuredColumnCount || columnCountRef.current || 1);
   }, [imageSize, isInfinite]);
 
-  const getRenderedIndexForImageIndex = useCallback((imageIndex: number | null): number => {
+  const getRenderedIndexInItems = useCallback((imageIndex: number | null, renderItems: GridRenderItem[]): number => {
     if (imageIndex == null || imageIndex < 0) {
       return -1;
     }
@@ -1035,17 +1204,38 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       return -1;
     }
 
-    return itemsToRender.findIndex((item) =>
-      isImageStack(item)
+    return renderItems.findIndex((item) =>
+      isImageRenderItem(item) && (isImageStack(item)
         ? item.images.some((stackImage) => stackImage.id === focusedImage.id)
-        : item.id === focusedImage.id
+        : item.id === focusedImage.id)
     );
-  }, [images, itemsToRender]);
+  }, [images]);
 
   const getImageIndexForRenderedItem = useCallback((item: IndexedImage | ImageStack): number => {
     const itemImage = getWarmupImage(item);
     return images.findIndex((image) => image.id === itemImage.id);
   }, [images]);
+
+  const resolveImageRenderItem = useCallback((
+    renderItems: GridRenderItem[],
+    startIndex: number,
+    direction: 1 | -1,
+  ): { item: IndexedImage | ImageStack; index: number } | null => {
+    if (renderItems.length === 0) {
+      return null;
+    }
+
+    let index = clampIndex(startIndex, renderItems.length);
+    while (index >= 0 && index < renderItems.length) {
+      const item = renderItems[index];
+      if (item && isImageRenderItem(item)) {
+        return { item, index };
+      }
+      index += direction;
+    }
+
+    return null;
+  }, []);
 
   useEffect(() => {
     focusedImageIndexRef.current = focusedImageIndex;
@@ -1446,23 +1636,35 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
       if (isInfinite) {
         const columnCount = columnCountRef.current;
+        const virtualItems = expandGroupedItemsForColumns(itemsToRender, columnCount);
         const colWidth = imageSize + GAP_SIZE;
         const itemHeight = getItemHeight(imageSize, showFilenameArea);
-        const rowHeight = itemHeight + GAP_SIZE;
-
-        const minRow = Math.max(0, Math.floor((box.top - GAP_SIZE) / rowHeight));
-        const maxRow = Math.floor((box.bottom - GAP_SIZE) / rowHeight);
+        const rowCount = Math.ceil(virtualItems.length / columnCount);
+        let currentRowTop = 0;
         
         const minCol = Math.max(0, Math.floor((box.left - GAP_SIZE) / colWidth));
         const maxCol = Math.min(columnCount - 1, Math.floor((box.right - GAP_SIZE) / colWidth));
 
-        for (let r = minRow; r <= maxRow; r++) {
+        for (let r = 0; r < rowCount; r++) {
+            const rowHeight = getVirtualRowHeight(virtualItems, r, columnCount, imageSize, showFilenameArea);
+            const rowBottom = currentRowTop + rowHeight;
+            if (rowBottom < box.top) {
+              currentRowTop = rowBottom;
+              continue;
+            }
+            if (currentRowTop > box.bottom) {
+              break;
+            }
+
             for (let c = minCol; c <= maxCol; c++) {
                 const index = r * columnCount + c;
-                if (index >= 0 && index < itemsToRender.length) {
-                    const item = itemsToRender[index];
+                if (index >= 0 && index < virtualItems.length) {
+                    const item = virtualItems[index];
+                    if (!isImageRenderItem(item)) {
+                      continue;
+                    }
                     const itemLeft = c * colWidth + GAP_SIZE;
-                    const itemTop = r * rowHeight + GAP_SIZE;
+                    const itemTop = currentRowTop + GAP_SIZE;
                     const itemRight = itemLeft + imageSize;
                     const itemBottom = itemTop + itemHeight;
 
@@ -1478,6 +1680,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     }
                 }
             }
+            currentRowTop = rowBottom;
         }
       } else {
         imageCardsRef.current.forEach((element, imageId) => {
@@ -1568,17 +1771,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       if (KEYBOARD_NAVIGATION_KEYS.includes(e.key)) {
         e.preventDefault();
 
-        const itemCount = itemsToRender.length;
+        const columnCount = getActiveColumnCount();
+        const keyboardItems = expandGroupedItemsForColumns(itemsToRender, columnCount);
+        const itemCount = keyboardItems.length;
         if (itemCount === 0) {
           return;
         }
 
-        const currentRenderedIndex = getRenderedIndexForImageIndex(focusedImageIndexRef.current);
+        const currentRenderedIndex = getRenderedIndexInItems(focusedImageIndexRef.current, keyboardItems);
         let nextRenderedIndex = 0;
 
         if (currentRenderedIndex >= 0) {
-          const columnCount = getActiveColumnCount();
-
           if (!isInfinite && e.key === 'ArrowRight' && currentRenderedIndex >= itemCount - 1) {
             if (currentPage < totalPages) {
               pendingKeyboardPreviewRef.current = null;
@@ -1616,14 +1819,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           }
         }
 
-        const resolvedRenderedIndex = clampIndex(nextRenderedIndex, itemCount);
-        const nextItem = itemsToRender[resolvedRenderedIndex];
-        const previewTarget: IndexedImage | undefined = nextItem
-          ? isImageStack(nextItem)
-            ? nextItem.coverImage
-            : nextItem
+        const movementDirection: 1 | -1 =
+          e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'End' ? -1 : 1;
+        const resolvedRenderItem = resolveImageRenderItem(keyboardItems, nextRenderedIndex, movementDirection);
+        const previewTarget: IndexedImage | undefined = resolvedRenderItem
+          ? isImageStack(resolvedRenderItem.item)
+            ? resolvedRenderItem.item.coverImage
+            : resolvedRenderItem.item
           : undefined;
-        const resolvedImageIndex = nextItem ? getImageIndexForRenderedItem(nextItem) : -1;
+        const resolvedImageIndex = resolvedRenderItem ? getImageIndexForRenderedItem(resolvedRenderItem.item) : -1;
 
         if (previewTarget && resolvedImageIndex >= 0) {
           focusedImageIndexRef.current = resolvedImageIndex;
@@ -1637,24 +1841,20 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         }
       } else if (e.key === 'PageDown') {
         e.preventDefault();
-        const itemCount = itemsToRender.length;
+        const columnCount = getActiveColumnCount();
+        const keyboardItems = expandGroupedItemsForColumns(itemsToRender, columnCount);
+        const itemCount = keyboardItems.length;
         if (isInfinite && itemCount > 0) {
-          const columnCount = getActiveColumnCount();
-          const rowHeight = getItemHeight(imageSize, showFilenameArea) + GAP_SIZE;
-          const viewportHeight = getGridScrollElement()?.clientHeight ?? rowHeight;
-          const visibleRows = Math.max(1, Math.floor(viewportHeight / rowHeight));
-          const currentRenderedIndex = getRenderedIndexForImageIndex(focusedImageIndexRef.current);
-          const nextRenderedIndex = clampIndex(
-            (currentRenderedIndex >= 0 ? currentRenderedIndex : 0) + (columnCount * visibleRows),
-            itemCount,
-          );
-          const nextItem = itemsToRender[nextRenderedIndex];
-          const previewTarget = nextItem
-            ? isImageStack(nextItem)
-              ? nextItem.coverImage
-              : nextItem
+          const viewportHeight = getGridScrollElement()?.clientHeight ?? getVirtualRowHeight(keyboardItems, 0, columnCount, imageSize, showFilenameArea);
+          const currentRenderedIndex = getRenderedIndexInItems(focusedImageIndexRef.current, keyboardItems);
+          const nextRenderedIndex = getVirtualPageTargetIndex(keyboardItems, currentRenderedIndex, 1, viewportHeight, columnCount, imageSize, showFilenameArea);
+          const resolvedRenderItem = resolveImageRenderItem(keyboardItems, nextRenderedIndex, 1);
+          const previewTarget = resolvedRenderItem
+            ? isImageStack(resolvedRenderItem.item)
+              ? resolvedRenderItem.item.coverImage
+              : resolvedRenderItem.item
             : undefined;
-          const resolvedImageIndex = nextItem ? getImageIndexForRenderedItem(nextItem) : -1;
+          const resolvedImageIndex = resolvedRenderItem ? getImageIndexForRenderedItem(resolvedRenderItem.item) : -1;
 
           if (previewTarget && resolvedImageIndex >= 0) {
             focusedImageIndexRef.current = resolvedImageIndex;
@@ -1670,24 +1870,20 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         }
       } else if (e.key === 'PageUp') {
         e.preventDefault();
-        const itemCount = itemsToRender.length;
+        const columnCount = getActiveColumnCount();
+        const keyboardItems = expandGroupedItemsForColumns(itemsToRender, columnCount);
+        const itemCount = keyboardItems.length;
         if (isInfinite && itemCount > 0) {
-          const columnCount = getActiveColumnCount();
-          const rowHeight = getItemHeight(imageSize, showFilenameArea) + GAP_SIZE;
-          const viewportHeight = getGridScrollElement()?.clientHeight ?? rowHeight;
-          const visibleRows = Math.max(1, Math.floor(viewportHeight / rowHeight));
-          const currentRenderedIndex = getRenderedIndexForImageIndex(focusedImageIndexRef.current);
-          const nextRenderedIndex = clampIndex(
-            (currentRenderedIndex >= 0 ? currentRenderedIndex : 0) - (columnCount * visibleRows),
-            itemCount,
-          );
-          const nextItem = itemsToRender[nextRenderedIndex];
-          const previewTarget = nextItem
-            ? isImageStack(nextItem)
-              ? nextItem.coverImage
-              : nextItem
+          const viewportHeight = getGridScrollElement()?.clientHeight ?? getVirtualRowHeight(keyboardItems, 0, columnCount, imageSize, showFilenameArea);
+          const currentRenderedIndex = getRenderedIndexInItems(focusedImageIndexRef.current, keyboardItems);
+          const nextRenderedIndex = getVirtualPageTargetIndex(keyboardItems, currentRenderedIndex, -1, viewportHeight, columnCount, imageSize, showFilenameArea);
+          const resolvedRenderItem = resolveImageRenderItem(keyboardItems, nextRenderedIndex, -1);
+          const previewTarget = resolvedRenderItem
+            ? isImageStack(resolvedRenderItem.item)
+              ? resolvedRenderItem.item.coverImage
+              : resolvedRenderItem.item
             : undefined;
-          const resolvedImageIndex = nextItem ? getImageIndexForRenderedItem(nextItem) : -1;
+          const resolvedImageIndex = resolvedRenderItem ? getImageIndexForRenderedItem(resolvedRenderItem.item) : -1;
 
           if (previewTarget && resolvedImageIndex >= 0) {
             focusedImageIndexRef.current = resolvedImageIndex;
@@ -1717,7 +1913,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [flushKeyboardPreview, getActiveColumnCount, getGridScrollElement, getImageIndexForRenderedItem, getRenderedIndexForImageIndex, imageSize, isInfinite, itemsToRender, setFocusedImageIndex, setPreviewImage, onImageClick, focusedImageIndex, images, currentPage, totalPages, onPageChange, showFilenameArea]);
+  }, [flushKeyboardPreview, getActiveColumnCount, getGridScrollElement, getImageIndexForRenderedItem, getRenderedIndexInItems, imageSize, isInfinite, itemsToRender, resolveImageRenderItem, setFocusedImageIndex, setPreviewImage, onImageClick, focusedImageIndex, images, currentPage, totalPages, onPageChange, showFilenameArea]);
 
   useEffect(() => {
     return () => {
@@ -1731,13 +1927,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       return;
     }
 
-    const renderedIndex = getRenderedIndexForImageIndex(focusedImageIndex);
+    const columnCount = Math.max(1, columnCountRef.current);
+    const activeItems = isInfinite
+      ? expandGroupedItemsForColumns(itemsToRender, columnCount)
+      : itemsToRender;
+    const renderedIndex = getRenderedIndexInItems(focusedImageIndex, activeItems);
     if (renderedIndex < 0) {
       return;
     }
 
     if (isInfinite) {
-      const columnCount = Math.max(1, columnCountRef.current);
       virtualGridRef.current?.scrollToItem({
         rowIndex: Math.floor(renderedIndex / columnCount),
         columnIndex: renderedIndex % columnCount,
@@ -1747,7 +1946,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     }
 
     const focusedItem = itemsToRender[renderedIndex];
-    if (!focusedItem) {
+    if (!focusedItem || !isImageRenderItem(focusedItem)) {
       return;
     }
 
@@ -1758,7 +1957,44 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         inline: 'nearest',
       });
     }
-  }, [focusedImageIndex, getRenderedIndexForImageIndex, isInfinite, itemsToRender]);
+  }, [focusedImageIndex, getRenderedIndexInItems, isInfinite, itemsToRender]);
+
+  useEffect(() => {
+    if (!jumpToGroupRequest || effectiveGroupBy === 'none') {
+      return;
+    }
+
+    const targetGroup = groupedImages.groups.find((group) => group.id === jumpToGroupRequest.groupId);
+    if (!targetGroup) {
+      return;
+    }
+
+    const targetImageIndex = images.findIndex((image) => image.id === targetGroup.startImageId);
+    if (targetImageIndex >= 0) {
+      focusedImageIndexRef.current = targetImageIndex;
+      setFocusedImageIndex(targetImageIndex);
+      setPreviewImage(images[targetImageIndex]);
+    }
+
+    const virtualItems = expandGroupedItemsForColumns(itemsToRender, Math.max(1, columnCountRef.current));
+    const renderedIndex = virtualItems.findIndex((item) => !isImageRenderItem(item) && item.type === 'group-header' && item.group.id === jumpToGroupRequest.groupId);
+    if (renderedIndex < 0) {
+      return;
+    }
+
+    if (isInfinite) {
+      const columnCount = Math.max(1, columnCountRef.current);
+      virtualGridRef.current?.scrollToItem({
+        rowIndex: Math.floor(renderedIndex / columnCount),
+        columnIndex: 0,
+        align: 'start',
+      });
+      return;
+    }
+
+    const header = gridScopeRef.current?.querySelector<HTMLElement>(`[data-group-id="${CSS.escape(jumpToGroupRequest.groupId)}"]`);
+    header?.scrollIntoView({ block: 'start', inline: 'nearest' });
+  }, [effectiveGroupBy, groupedImages.groups, images, isInfinite, itemsToRender, jumpToGroupRequest, setFocusedImageIndex, setPreviewImage]);
 
   // Add global mouseup listener to handle selection end even outside the grid
   useEffect(() => {
@@ -2366,12 +2602,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               {({ height, width }) => {
                 const columnCount = Math.floor(width / (imageSize + GAP_SIZE));
                 const safeColumnCount = columnCount > 0 ? columnCount : 1;
-                const rowCount = Math.ceil(itemsToRender.length / safeColumnCount);
+                const virtualItems = expandGroupedItemsForColumns(itemsToRender, safeColumnCount);
+                const rowCount = Math.ceil(virtualItems.length / safeColumnCount);
                 
                 columnCountRef.current = safeColumnCount;
 
                 const cellData: CellData = {
-                    items: itemsToRender,
+                    items: virtualItems,
                     columnCount: safeColumnCount,
                     onImageClick,
                     onStackClick: handleStackClick,
@@ -2395,14 +2632,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
                 return (
                   <Grid
+                    key={`${safeColumnCount}:${imageSize}:${showFilenameArea}:${virtualItems.length}:${groupedImages.groups.map((group) => `${group.id}:${group.count}`).join('|')}`}
                     ref={virtualGridRef}
                     columnCount={safeColumnCount}
-                    columnWidth={imageSize + GAP_SIZE}
+                    columnWidth={() => imageSize + GAP_SIZE}
                     height={height}
                     overscanColumnCount={1}
                     overscanRowCount={4}
                     rowCount={rowCount}
-                    rowHeight={getItemHeight(imageSize, showFilenameArea) + GAP_SIZE}
+                    rowHeight={(rowIndex) => getVirtualRowHeight(virtualItems, rowIndex, safeColumnCount, imageSize, showFilenameArea)}
                     width={width}
                     outerRef={gridScrollRef}
                     className="no-scrollbar-if-needed"
@@ -2410,7 +2648,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     itemKey={({ columnIndex, rowIndex, data }) => {
                       const itemIndex = rowIndex * safeColumnCount + columnIndex;
                       const item = (data as CellData).items[itemIndex];
-                      return item ? item.id : `empty-${rowIndex}-${columnIndex}`;
+                      if (!item) {
+                        return `empty-${rowIndex}-${columnIndex}`;
+                      }
+                      if (!isImageRenderItem(item)) {
+                        if (item.type === 'group-spacer') {
+                          return `${item.groupId}-spacer-${item.index}`;
+                        }
+                        return columnIndex === 0 ? item.group.id : `${item.group.id}-empty-${columnIndex}`;
+                      }
+                      return item.id;
                     }}
                     style={{ overflowX: 'hidden' }}
                     innerElementType={InnerGridElement}
@@ -2430,18 +2677,18 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                       const itemsRenderedStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
                       const visibleStartIndex = (visibleRowStartIndex * safeColumnCount) + visibleColumnStartIndex;
                       const visibleStopIndex = Math.min(
-                        itemsToRender.length - 1,
+                        virtualItems.length - 1,
                         (visibleRowStopIndex * safeColumnCount) + visibleColumnStopIndex
                       );
                       const aheadStopIndex = Math.min(
-                        itemsToRender.length - 1,
+                        virtualItems.length - 1,
                         (((overscanRowStopIndex + 1) * safeColumnCount) - 1)
                       );
-                      const primaryImages = collectWarmupImages(itemsToRender, visibleStartIndex, visibleStopIndex);
-                      const secondaryImages = collectWarmupImages(itemsToRender, visibleStopIndex + 1, aheadStopIndex);
+                      const primaryImages = collectWarmupImages(virtualItems, visibleStartIndex, visibleStopIndex);
+                      const secondaryImages = collectWarmupImages(virtualItems, visibleStopIndex + 1, aheadStopIndex);
                       const visibleImageKey = getWarmupWindowImageKey(primaryImages);
                       const aheadImageKey = getWarmupWindowImageKey(secondaryImages);
-                      const windowKey = `${visibleStartIndex}:${visibleStopIndex}:${aheadStopIndex}:${itemsToRender.length}:${safeColumnCount}:${visibleImageKey}:${aheadImageKey}`;
+                      const windowKey = `${visibleStartIndex}:${visibleStopIndex}:${aheadStopIndex}:${virtualItems.length}:${safeColumnCount}:${visibleImageKey}:${aheadImageKey}`;
 
                       if (lastWarmupWindowRef.current === windowKey) {
                         return;
@@ -2499,7 +2746,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                         columnCount: safeColumnCount,
                         primaryCount: primaryImages.length,
                         secondaryCount: secondaryImages.length,
-                        itemCount: itemsToRender.length,
+                        itemCount: virtualItems.length,
                       });
                     }}
                   >
@@ -2568,6 +2815,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           data-grid-background
         >
           {itemsToRender.map((item, index) => {
+            if (!isImageRenderItem(item)) {
+              if (item.type === 'group-spacer') {
+                return null;
+              }
+              return (
+                <div key={item.group.id} className="basis-full" data-group-id={item.group.id}>
+                  <GroupHeader group={item.group} />
+                </div>
+              );
+            }
+
             if (isImageStack(item)) {
                const isSensitive = enableSafeMode &&
                 sensitiveTagSet && sensitiveTagSet.size > 0 &&

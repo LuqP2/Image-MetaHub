@@ -63,6 +63,7 @@ const electronStorage: StateStorage = {
 };
 
 import { Keymap } from '../types';
+import type { ImageGroupByMode } from '../utils/imageGrouping';
 
 const detectDefaultIndexingConcurrency = (): number => {
   if (typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number') {
@@ -103,6 +104,7 @@ interface SettingsState {
   cachePath: string | null;
   autoUpdate: boolean;
   viewMode: 'grid' | 'list';
+  groupBy: ImageGroupByMode;
   theme: 'light' | 'dark' | 'system' | 'dracula' | 'nord' | 'ocean';
   keymap: Keymap;
   lastViewedVersion: string | null;
@@ -148,6 +150,7 @@ interface SettingsState {
   setCachePath: (path: string) => void;
   toggleAutoUpdate: () => void;
   toggleViewMode: () => void;
+  setGroupBy: (value: ImageGroupByMode) => void;
   setTheme: (theme: 'light' | 'dark' | 'system' | 'dracula' | 'nord' | 'ocean') => void;
   updateKeybinding: (scope: string, action: string, keybinding: string) => void;
   resetKeymap: () => void;
@@ -200,6 +203,7 @@ export const useSettingsStore = create<SettingsState>()(
       cachePath: null, // Default cache path, null means use app data dir
       autoUpdate: true, // Check for updates by default
       viewMode: 'grid',
+      groupBy: 'none',
       theme: 'system', // Default to system theme
       keymap: getDefaultKeymap(),
       lastViewedVersion: null,
@@ -249,6 +253,7 @@ export const useSettingsStore = create<SettingsState>()(
       setCachePath: (path) => set({ cachePath: path }),
       toggleAutoUpdate: () => set((state) => ({ autoUpdate: !state.autoUpdate })),
       toggleViewMode: () => set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
+      setGroupBy: (value) => set({ groupBy: value }),
       setTheme: (theme) => set({ theme }),
       setLastViewedVersion: (version) => set({ lastViewedVersion: version }),
       setIndexingConcurrency: (value) =>
@@ -325,6 +330,7 @@ export const useSettingsStore = create<SettingsState>()(
         cachePath: null,
         autoUpdate: true,
         viewMode: 'grid',
+        groupBy: 'none',
         theme: 'system',
         keymap: getDefaultKeymap(),
         lastViewedVersion: null,
@@ -386,6 +392,16 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.showFilenames !== 'boolean') {
           state.showFilenames = false;
+        }
+
+        if (
+          state &&
+          state.groupBy !== 'none' &&
+          state.groupBy !== 'date' &&
+          state.groupBy !== 'name' &&
+          state.groupBy !== 'session'
+        ) {
+          state.groupBy = 'none';
         }
 
         if (state && typeof state.showFullFilePath !== 'boolean') {
