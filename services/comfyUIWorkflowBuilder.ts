@@ -216,9 +216,15 @@ function isPromptGraph(value: unknown): value is ComfyUIPromptGraph {
     return false;
   }
 
-  return Object.values(value as Record<string, unknown>).some(
-    (node) => isRecord(node) && typeof (node as UnknownRecord).class_type === 'string'
-  );
+  // OPTIMIZATION: Avoid Object.values().some() memory allocation and enable early return.
+  const record = value as Record<string, unknown>;
+  for (const key in record) {
+    const node = record[key];
+    if (isRecord(node) && typeof (node as UnknownRecord).class_type === 'string') {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -244,8 +250,11 @@ function nextNodeId(prompt: ComfyUIPromptGraph): string {
 
 function detectModelTarget(nodeId: string, node: ComfyUIPromptNode): ModelTarget[] {
   const targets: ModelTarget[] = [];
+  const inputs = node.inputs || {};
 
-  for (const [inputKey, inputValue] of Object.entries(node.inputs || {})) {
+  // OPTIMIZATION: Use for...in loop over Object.entries() to prevent O(N) array allocation.
+  for (const inputKey in inputs) {
+    const inputValue = inputs[inputKey];
     if (typeof inputValue !== 'string') {
       continue;
     }
@@ -299,12 +308,17 @@ function addUniqueAssetTarget(targets: AssetTarget[], next: AssetTarget): void {
 function buildConsumerMap(prompt: ComfyUIPromptGraph): Record<string, string[]> {
   const consumerMap: Record<string, string[]> = {};
 
-  for (const nodeId of Object.keys(prompt)) {
+  // OPTIMIZATION: Use for...in loop over Object.keys() to prevent O(N) array allocation.
+  for (const nodeId in prompt) {
     consumerMap[nodeId] = [];
   }
 
-  for (const [nodeId, node] of Object.entries(prompt)) {
-    for (const inputValue of Object.values(node.inputs || {})) {
+  for (const nodeId in prompt) {
+    const node = prompt[nodeId];
+    if (!node) continue;
+    const inputs = node.inputs || {};
+    for (const inputKey in inputs) {
+      const inputValue = inputs[inputKey];
       const upstreamNodeId = getNodeIdFromConnection(inputValue);
       if (!upstreamNodeId) {
         continue;
@@ -344,7 +358,10 @@ function collectTextTargets(prompt: ComfyUIPromptGraph, startNodeIds: string[]):
       }
     }
 
-    for (const inputValue of Object.values(node.inputs || {})) {
+    const inputs = node.inputs || {};
+    // OPTIMIZATION: Use for...in loop over Object.values() to prevent O(N) array allocation during graph traversal.
+    for (const inputKey in inputs) {
+      const inputValue = inputs[inputKey];
       const upstreamNodeId = getNodeIdFromConnection(inputValue);
       if (upstreamNodeId && !visited.has(upstreamNodeId)) {
         queue.push(upstreamNodeId);
@@ -379,7 +396,9 @@ function collectUpstreamModelTargets(prompt: ComfyUIPromptGraph, startNodeIds: s
       }
     }
 
-    for (const inputValue of Object.values(node.inputs || {})) {
+    const inputs = node.inputs || {};
+    for (const inputKey in inputs) {
+      const inputValue = inputs[inputKey];
       const upstreamNodeId = getNodeIdFromConnection(inputValue);
       if (upstreamNodeId && !visited.has(upstreamNodeId)) {
         queue.push(upstreamNodeId);
@@ -422,7 +441,9 @@ function collectUpstreamLoraTargets(prompt: ComfyUIPromptGraph, startNodeIds: st
       }
     }
 
-    for (const inputValue of Object.values(node.inputs || {})) {
+    const inputs = node.inputs || {};
+    for (const inputKey in inputs) {
+      const inputValue = inputs[inputKey];
       const upstreamNodeId = getNodeIdFromConnection(inputValue);
       if (upstreamNodeId && !visited.has(upstreamNodeId)) {
         queue.push(upstreamNodeId);
@@ -464,7 +485,9 @@ function collectUpstreamAssetTargets(
       addUniqueAssetTarget(maskTargets, { nodeId, inputKey: 'image' });
     }
 
-    for (const inputValue of Object.values(node.inputs || {})) {
+    const inputs = node.inputs || {};
+    for (const inputKey in inputs) {
+      const inputValue = inputs[inputKey];
       const upstreamNodeId = getNodeIdFromConnection(inputValue);
       if (upstreamNodeId && !visited.has(upstreamNodeId)) {
         queue.push(upstreamNodeId);
@@ -521,9 +544,14 @@ function hasDownstreamCandidate(
 
 function findTerminalImageProducer(prompt: ComfyUIPromptGraph, samplerNodeIds: string[]): string | null {
   const consumerMap = buildConsumerMap(prompt);
-  const candidateNodeIds = Object.entries(prompt)
-    .filter(([, node]) => typeof node.class_type === 'string' && node.class_type.toLowerCase().includes('vaedecode'))
-    .map(([nodeId]) => nodeId);
+  const candidateNodeIds: string[] = [];
+  // OPTIMIZATION: Use for...in loop over Object.entries().filter() to prevent intermediate allocations.
+  for (const nodeId in prompt) {
+    const node = prompt[nodeId];
+    if (node && typeof node.class_type === 'string' && node.class_type.toLowerCase().includes('vaedecode')) {
+      candidateNodeIds.push(nodeId);
+    }
+  }
 
   if (candidateNodeIds.length === 0) {
     return null;
@@ -682,7 +710,10 @@ export function analyzeComfyWorkflow(source: IndexedImage | UnknownRecord, norma
     };
   }
 
-  for (const [nodeId, node] of Object.entries(embedded.prompt)) {
+  // OPTIMIZATION: Use for...in loop over Object.entries() to prevent O(N) array allocation.
+  for (const nodeId in embedded.prompt) {
+    const node = embedded.prompt[nodeId];
+    if (!node) continue;
     const classType = (node.class_type || '').toLowerCase();
 
     if (classType.includes('sampler') && node.inputs?.model) {
@@ -881,10 +912,16 @@ function ensureSaveNode(
     }
   }
 
-  const imageProducer = Object.entries(prompt).find(([, node]) =>
-    typeof node.class_type === 'string' && node.class_type.toLowerCase().includes('vaedecode')
-  );
-  const imageProducerNodeId = findTerminalImageProducer(prompt, analysis.samplerTargets) || imageProducer?.[0] || null;
+  let imageProducerNodeIdFallback: string | null = null;
+  // OPTIMIZATION: Use for...in loop with early break over Object.entries().find() to prevent O(N) allocation and enable early return.
+  for (const nodeId in prompt) {
+    const node = prompt[nodeId];
+    if (node && typeof node.class_type === 'string' && node.class_type.toLowerCase().includes('vaedecode')) {
+      imageProducerNodeIdFallback = nodeId;
+      break;
+    }
+  }
+  const imageProducerNodeId = findTerminalImageProducer(prompt, analysis.samplerTargets) || imageProducerNodeIdFallback;
 
   if (!imageProducerNodeId) {
     return false;
