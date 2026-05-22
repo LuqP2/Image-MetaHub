@@ -26,6 +26,7 @@ import { SmartCollection, type IndexedImage } from '../types';
 import ActiveFilters from './ActiveFilters';
 import TagManagerModal from './TagManagerModal';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import Tooltip from './Tooltip';
 import type { ImageGroup, ImageGroupByMode } from '../utils/imageGrouping';
 
@@ -73,6 +74,23 @@ const getGroupDateKey = (group: ImageGroup): string | null => {
 const sameCalendarMonth = (left: Date, right: Date): boolean =>
   left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth();
 
+const GroupJumpThumbnail: React.FC<{ image?: IndexedImage }> = ({ image }) => {
+  const thumbnail = useResolvedThumbnail(image ?? null);
+  const thumbnailUrl = thumbnail?.thumbnailUrl ?? image?.thumbnailUrl ?? null;
+
+  return (
+    <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-gray-700 bg-gray-900">
+      {thumbnailUrl ? (
+        <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[10px] font-medium text-gray-500">
+          {image?.name?.charAt(0).toUpperCase() || '-'}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
   const notification = document.createElement('div');
   notification.className = `fixed top-4 right-4 ${type === 'success' ? 'bg-green-600' : 'bg-red-600'} text-white px-4 py-2 rounded-lg shadow-lg z-50`;
@@ -119,6 +137,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const bulkToggleFavorite = useImageStore((state) => state.bulkToggleFavorite);
   const clearImageSelection = useImageStore((state) => state.clearImageSelection);
   const collections = useImageStore((state) => state.collections);
+  const allImages = useImageStore((state) => state.images);
   const { canUseComparison, canUseA1111, canUseComfyUI, showProModal, canUseBulkTagging } = useFeatureAccess();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
@@ -291,6 +310,16 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     filteredImageActionCount > 0 &&
     (Boolean(onCreateCollectionFromFiltered) || Boolean(onAddCurrentFilteredToCollection));
   const canJumpToGroups = groups.length > 0 && Boolean(onJumpToGroup);
+  const jumpImageLookup = useMemo(() => {
+    const lookup = new Map<string, IndexedImage>();
+    for (const image of allImages) {
+      lookup.set(image.id, image);
+    }
+    for (const image of images) {
+      lookup.set(image.id, image);
+    }
+    return lookup;
+  }, [allImages, images]);
   const useCalendarJump = groupBy === 'date' || groupBy === 'session';
   const groupsByDate = useMemo(() => {
     const next = new Map<string, ImageGroup[]>();
@@ -760,13 +789,16 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                                     onJumpToGroup?.(group.id);
                                     setIsJumpMenuOpen(false);
                                   }}
-                                  className="flex w-full items-start justify-between gap-3 rounded-md px-2 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                                  className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                                 >
-                                  <span className="min-w-0">
-                                    <span className="block truncate font-medium">{group.label}</span>
-                                    {group.subtitle && (
-                                      <span className="block truncate text-xs text-gray-400">{group.subtitle}</span>
-                                    )}
+                                  <span className="flex min-w-0 items-center gap-3">
+                                    <GroupJumpThumbnail image={jumpImageLookup.get(group.thumbnailImageId ?? group.startImageId)} />
+                                    <span className="min-w-0">
+                                      <span className="block truncate font-medium">{group.label}</span>
+                                      {group.subtitle && (
+                                        <span className="block truncate text-xs text-gray-400">{group.subtitle}</span>
+                                      )}
+                                    </span>
                                   </span>
                                   <span className="shrink-0 rounded bg-gray-700 px-1.5 py-0.5 text-xs text-gray-300">{group.count}</span>
                                 </button>
@@ -795,13 +827,16 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                                     setIsJumpMenuOpen(false);
                                     setJumpQuery('');
                                   }}
-                                  className="flex w-full items-start justify-between gap-3 rounded-md px-2 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                                  className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                                 >
-                                  <span className="min-w-0">
-                                    <span className="block truncate font-medium">{group.label}</span>
-                                    {group.subtitle && (
-                                      <span className="block truncate text-xs text-gray-400">{group.subtitle}</span>
-                                    )}
+                                  <span className="flex min-w-0 items-center gap-3">
+                                    <GroupJumpThumbnail image={jumpImageLookup.get(group.thumbnailImageId ?? group.startImageId)} />
+                                    <span className="min-w-0">
+                                      <span className="block truncate font-medium">{group.label}</span>
+                                      {group.subtitle && (
+                                        <span className="block truncate text-xs text-gray-400">{group.subtitle}</span>
+                                      )}
+                                    </span>
                                   </span>
                                   <span className="shrink-0 rounded bg-gray-700 px-1.5 py-0.5 text-xs text-gray-300">{group.count}</span>
                                 </button>

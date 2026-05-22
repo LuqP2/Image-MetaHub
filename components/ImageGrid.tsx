@@ -716,7 +716,9 @@ function isImageStack(item: IndexedImage | ImageStack): item is ImageStack {
 }
 
 const GAP_SIZE = 16;
-const GROUP_HEADER_HEIGHT = 52;
+const GROUP_HEADER_TOP_GAP = 14;
+const GROUP_HEADER_BAR_HEIGHT = 52;
+const GROUP_HEADER_HEIGHT = GROUP_HEADER_TOP_GAP + GROUP_HEADER_BAR_HEIGHT;
 const ITEM_HEIGHT_RATIO = 1.0;
 const CARD_HEIGHT_RATIO = 1.2;
 const FILENAME_HEIGHT = 40;
@@ -760,15 +762,17 @@ type GridRenderItem =
 
 const GroupHeader: React.FC<{ group: ImageGroup }> = ({ group }) => (
   <div
-    className="flex h-full w-full items-center justify-between gap-3 border-y border-gray-700/70 bg-gray-900/95 px-5 text-gray-200"
+    className="h-full w-full pt-[14px]"
     data-group-id={group.id}
   >
-    <div className="min-w-0">
-      <div className="truncate text-sm font-semibold">{group.label}</div>
-      {group.subtitle && <div className="truncate text-xs text-gray-500">{group.subtitle}</div>}
-    </div>
-    <div className="shrink-0 rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-400">
-      {group.count} item{group.count === 1 ? '' : 's'}
+    <div className="flex h-[52px] w-full items-center justify-between gap-3 border-y border-gray-700/70 bg-gray-900/95 px-5 text-gray-200">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold">{group.label}</div>
+        {group.subtitle && <div className="truncate text-xs text-gray-500">{group.subtitle}</div>}
+      </div>
+      <div className="shrink-0 rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-400">
+        {group.count} item{group.count === 1 ? '' : 's'}
+      </div>
     </div>
   </div>
 );

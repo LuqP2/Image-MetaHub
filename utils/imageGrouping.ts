@@ -14,6 +14,7 @@ export interface ImageGroup {
   subtitle?: string;
   count: number;
   startImageId: string;
+  thumbnailImageId?: string;
   dateKey?: string;
   startTime?: number;
   endTime?: number;
@@ -74,6 +75,10 @@ const makeGroup = (
   subtitle,
   count: images.length,
   startImageId: images[0]?.id ?? '',
+  thumbnailImageId: images.reduce<IndexedImage | null>(
+    (latest, image) => latest === null || image.lastModified > latest.lastModified ? image : latest,
+    null,
+  )?.id,
   ...extra,
 });
 
@@ -178,11 +183,14 @@ const groupBySession = (images: IndexedImage[], options: ImageGroupingOptions = 
         : session;
 
       return {
-        group: makeGroup(`session-${start}-${chronologicalStart.id}`, label, orderedSessionImages, subtitle, {
-          dateKey: formatLocalDateKey(start),
-          startTime: start,
-          endTime: end,
-        }),
+        group: {
+          ...makeGroup(`session-${start}-${chronologicalStart.id}`, label, orderedSessionImages, subtitle, {
+            dateKey: formatLocalDateKey(start),
+            startTime: start,
+            endTime: end,
+          }),
+          thumbnailImageId: chronologicalEnd.id,
+        },
         images: orderedSessionImages,
       };
     }),
