@@ -279,6 +279,36 @@ const WorkspaceThumbnailButton: React.FC<{
   );
 };
 
+const hasSelectedTextWithin = (container: HTMLElement | null): boolean => {
+  if (!container || typeof window === 'undefined') {
+    return false;
+  }
+
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.toString().trim().length === 0) {
+    return false;
+  }
+
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    const range = selection.getRangeAt(index);
+    try {
+      if (range.intersectsNode(container)) {
+        return true;
+      }
+    } catch {
+      const ancestor = range.commonAncestorContainer;
+      const ancestorElement = ancestor.nodeType === Node.ELEMENT_NODE
+        ? ancestor
+        : ancestor.parentElement;
+      if (ancestorElement instanceof Node && container.contains(ancestorElement)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
+
 const WorkspaceImagePreviewModal: React.FC<{
   images: IndexedImage[];
   initialIndex: number;
@@ -291,6 +321,7 @@ const WorkspaceImagePreviewModal: React.FC<{
   const [isMetadataExpanded, setIsMetadataExpanded] = useState(false);
   const [parameterCopyStatus, setParameterCopyStatus] = useState('');
   const onInspectImageRef = useRef(onInspectImage);
+  const metadataPanelRef = useRef<HTMLDivElement>(null);
   const current = images[index];
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const hasMultiple = images.length > 1;
@@ -405,6 +436,14 @@ const WorkspaceImagePreviewModal: React.FC<{
     }
   };
 
+  const handleMetadataPanelClick = () => {
+    if (hasSelectedTextWithin(metadataPanelRef.current)) {
+      return;
+    }
+
+    setIsMetadataExpanded((expanded) => !expanded);
+  };
+
   return (
     <div
       className="fixed inset-0 z-[90] bg-black/95"
@@ -465,11 +504,12 @@ const WorkspaceImagePreviewModal: React.FC<{
       </div>
 
       <div
+        ref={metadataPanelRef}
         className={`group absolute bottom-4 left-4 z-10 max-w-[min(44rem,calc(100vw-2rem))] rounded-lg border border-white/10 bg-black/55 p-3 text-gray-100 shadow-2xl backdrop-blur transition-colors hover:bg-black/75 ${
           isMetadataExpanded ? 'bg-black/80' : ''
         }`}
         onMouseDown={(event) => event.stopPropagation()}
-        onClick={() => setIsMetadataExpanded((expanded) => !expanded)}
+        onClick={handleMetadataPanelClick}
         tabIndex={0}
         role="button"
         aria-label="Toggle metadata"
