@@ -463,6 +463,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
           onClick={() => setPreviewImage(null)}
           className="text-gray-400 hover:text-gray-50 transition-colors"
           title="Close preview"
+          aria-label="Close preview"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
@@ -530,6 +531,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                     : 'text-gray-500 hover:text-rose-400'
                 }`}
                 title={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                aria-label={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
               >
                 <Heart className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
               </button>
@@ -569,7 +571,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                       key={tag}
                       onClick={() => handleRemoveTag(tag)}
                       className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full text-xs hover:bg-red-600/20 hover:border-red-500/50 hover:text-red-300 transition-all"
-                      title="Click to remove"
+                      title={`Remove tag ${tag}`}
+                      aria-label={`Remove tag ${tag}`}
                     >
                       {tag}
                       <X size={12} />
@@ -602,7 +605,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                         <button
                           onClick={() => handlePromoteAutoTag(tag)}
                           className="px-2 py-0.5 text-purple-300 hover:bg-blue-600/30 hover:text-blue-200 transition-all"
-                          title="Promote to manual tag"
+                          title={`Promote ${tag} to manual tag`}
+                          aria-label={`Promote ${tag} to manual tag`}
                         >
                           <ArrowUp size={12} />
                         </button>
@@ -610,7 +614,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                         <button
                           onClick={() => handleRemoveAutoTag(tag)}
                           className="px-2 py-0.5 text-purple-300 hover:bg-red-600/30 hover:text-red-200 transition-all"
-                          title="Remove auto-tag"
+                          title={`Remove auto-tag ${tag}`}
+                          aria-label={`Remove auto-tag ${tag}`}
                         >
                           <X size={12} />
                         </button>
@@ -640,6 +645,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                     onClick={() => setShowOriginal((current) => !current)}
                     className={`p-1.5 rounded-md transition-colors ${showOriginal ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'}`}
                     title={showOriginal ? 'Show edited metadata' : 'Show original metadata'}
+                    aria-label={showOriginal ? 'Show edited metadata' : 'Show original metadata'}
                   >
                     {showOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
@@ -648,6 +654,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   onClick={() => setIsMetadataEditorOpen(true)}
                   className="p-1.5 rounded-md transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
                   title="Edit metadata overrides"
+                  aria-label="Edit metadata overrides"
                 >
                   <Pencil size={14} />
                 </button>
@@ -655,6 +662,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   onClick={openBatchExport}
                   className="p-1.5 rounded-md transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
                   title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
+                  aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
                 >
                   <Download size={14} />
                 </button>
