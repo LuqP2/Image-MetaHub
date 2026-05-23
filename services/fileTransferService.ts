@@ -165,9 +165,10 @@ export async function transferIndexedImages({
     destinationRelativePath: joinRelativePath(destinationRelativePrefix, item.destinationRelativePath),
   }));
 
-  const sourceByPath = new Map(
-    sourceDescriptors.map(({ sourceKey, image }) => [sourceKey, image]),
-  );
+  const sourceByPath = new Map<string, IndexedImage>();
+  for (const { sourceKey, image } of sourceDescriptors) {
+    sourceByPath.set(sourceKey, image);
+  }
   const annotationsMap = new Map(useImageStore.getState().annotations);
 
   const persistenceTransfers: Array<{ sourceImageId: string; targetImageId: string }> = [];
@@ -197,16 +198,14 @@ export async function transferIndexedImages({
   }
 
   const transferredEntries = transferredItems.map(buildTransferredEntry);
-  const fileStatsMap = new Map(
-    transferredItems.map((item) => [
-      item.destinationRelativePath,
-      {
-        size: item.size,
-        type: item.type,
-        birthtimeMs: item.lastModified,
-      },
-    ]),
-  );
+  const fileStatsMap = new Map<string, { size?: number; type?: string; birthtimeMs?: number }>();
+  for (const item of transferredItems) {
+    fileStatsMap.set(item.destinationRelativePath, {
+      size: item.size,
+      type: item.type,
+      birthtimeMs: item.lastModified,
+    });
+  }
 
   const addImages = useImageStore.getState().addImages;
   const flushPendingImages = useImageStore.getState().flushPendingImages;
