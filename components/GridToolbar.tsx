@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   Copy,
   Folder,
@@ -74,6 +74,47 @@ const getGroupDateKey = (group: ImageGroup): string | null => {
 const sameCalendarMonth = (left: Date, right: Date): boolean =>
   left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth();
 
+interface PreviewPosition {
+  x: number;
+  y: number;
+}
+
+const GROUP_JUMP_PREVIEW_SIZE = 176;
+const GROUP_JUMP_PREVIEW_OFFSET = 16;
+
+const getGroupJumpPreviewPosition = (event: React.MouseEvent): PreviewPosition => ({
+  x: Math.max(
+    GROUP_JUMP_PREVIEW_OFFSET,
+    Math.min(event.clientX + GROUP_JUMP_PREVIEW_OFFSET, window.innerWidth - GROUP_JUMP_PREVIEW_SIZE - GROUP_JUMP_PREVIEW_OFFSET),
+  ),
+  y: Math.max(
+    GROUP_JUMP_PREVIEW_OFFSET,
+    Math.min(event.clientY + GROUP_JUMP_PREVIEW_OFFSET, window.innerHeight - GROUP_JUMP_PREVIEW_SIZE - GROUP_JUMP_PREVIEW_OFFSET),
+  ),
+});
+
+const GroupJumpThumbnailPreview: React.FC<{ image?: IndexedImage; position?: PreviewPosition | null }> = ({ image, position }) => {
+  const thumbnail = useResolvedThumbnail(image ?? null);
+  const thumbnailUrl = thumbnail?.thumbnailUrl ?? image?.thumbnailUrl ?? null;
+
+  return (
+    <div
+      className={`pointer-events-none z-[60] h-44 w-44 overflow-hidden rounded-lg border border-gray-600 bg-gray-900 shadow-2xl shadow-black/50 ${
+        position ? 'fixed' : 'absolute left-full top-3 ml-2'
+      }`}
+      style={position ? { left: position.x, top: position.y } : undefined}
+    >
+      {thumbnailUrl ? (
+        <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-2xl font-medium text-gray-500">
+          {image?.name?.charAt(0).toUpperCase() || '-'}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const GroupJumpThumbnail: React.FC<{ image?: IndexedImage }> = ({ image }) => {
   const thumbnail = useResolvedThumbnail(image ?? null);
   const thumbnailUrl = thumbnail?.thumbnailUrl ?? image?.thumbnailUrl ?? null;
@@ -90,6 +131,44 @@ const GroupJumpThumbnail: React.FC<{ image?: IndexedImage }> = ({ image }) => {
     </div>
   );
 };
+
+interface GroupJumpMenuItemProps {
+  group: ImageGroup;
+  image?: IndexedImage;
+  onHover: (groupId: string) => void;
+  onPreviewMove: (groupId: string, event: React.MouseEvent) => void;
+  onPreviewLeave: () => void;
+  onSelect: (groupId: string) => void;
+}
+
+const GroupJumpMenuItem: React.FC<GroupJumpMenuItemProps> = ({
+  group,
+  image,
+  onHover,
+  onPreviewMove,
+  onPreviewLeave,
+  onSelect,
+}) => (
+  <button
+    onMouseEnter={(event) => onPreviewMove(group.id, event)}
+    onMouseMove={(event) => onPreviewMove(group.id, event)}
+    onMouseLeave={onPreviewLeave}
+    onFocus={() => onHover(group.id)}
+    onClick={() => onSelect(group.id)}
+    className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+  >
+    <span className="flex min-w-0 items-center gap-3">
+      <GroupJumpThumbnail image={image} />
+      <span className="min-w-0">
+        <span className="block truncate font-medium">{group.label}</span>
+        {group.subtitle && (
+          <span className="block truncate text-xs text-gray-400">{group.subtitle}</span>
+        )}
+      </span>
+    </span>
+    <span className="shrink-0 rounded bg-gray-700 px-1.5 py-0.5 text-xs text-gray-300">{group.count}</span>
+  </button>
+);
 
 const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
   const notification = document.createElement('div');
@@ -130,6 +209,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const [jumpQuery, setJumpQuery] = useState('');
   const [selectedJumpDateKey, setSelectedJumpDateKey] = useState<string | null>(null);
   const [jumpCalendarMonth, setJumpCalendarMonth] = useState(() => new Date());
+  const [previewJumpGroupId, setPreviewJumpGroupId] = useState<string | null>(null);
+  const [previewJumpPosition, setPreviewJumpPosition] = useState<PreviewPosition | null>(null);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const collectionActionsRef = useRef<HTMLDivElement>(null);
@@ -161,6 +242,12 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   // Check if all selected images are favorites
   const allFavorites = selectedImagesList.length > 0 && selectedImagesList.every(img => img.isFavorite);
 
+  const closeJumpMenu = useCallback(() => {
+    setIsJumpMenuOpen(false);
+    setPreviewJumpGroupId(null);
+    setPreviewJumpPosition(null);
+  }, []);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -172,12 +259,12 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
         setIsAddToCollectionSubmenuOpen(false);
       }
       if (jumpMenuRef.current && !jumpMenuRef.current.contains(event.target as Node)) {
-        setIsJumpMenuOpen(false);
+        closeJumpMenu();
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [closeJumpMenu]);
 
   const handleCopyToClipboard = async () => {
     if (!firstSelectedImage) return;
@@ -360,6 +447,26 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       `${group.label} ${group.subtitle ?? ''}`.toLowerCase().includes(normalizedQuery)
     );
   }, [groups, jumpQuery]);
+  const previewJumpGroup = previewJumpGroupId
+    ? groups.find((group) => group.id === previewJumpGroupId)
+    : undefined;
+  const previewJumpImage = previewJumpGroup
+    ? jumpImageLookup.get(previewJumpGroup.thumbnailImageId ?? previewJumpGroup.startImageId)
+    : undefined;
+  const handleJumpGroupHover = (groupId: string) => {
+    setPreviewJumpGroupId(groupId);
+    setPreviewJumpPosition(null);
+  };
+  const handleJumpGroupPreviewMove = (groupId: string, event: React.MouseEvent) => {
+    setPreviewJumpGroupId(groupId);
+    setPreviewJumpPosition(getGroupJumpPreviewPosition(event));
+  };
+  const handleJumpGroupPreviewLeave = () => {
+    setPreviewJumpGroupId(null);
+    setPreviewJumpPosition(null);
+  };
+  const getJumpGroupImage = (group: ImageGroup) =>
+    jumpImageLookup.get(group.thumbnailImageId ?? group.startImageId);
 
   useEffect(() => {
     if (!isJumpMenuOpen || !useCalendarJump || calendarDateKeys.length === 0) {
@@ -701,7 +808,13 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <div className="relative" ref={jumpMenuRef}>
                   <Tooltip label="Jump to group">
                     <button
-                      onClick={() => setIsJumpMenuOpen((open) => !open)}
+                      onClick={() => {
+                        if (isJumpMenuOpen) {
+                          closeJumpMenu();
+                          return;
+                        }
+                        setIsJumpMenuOpen(true);
+                      }}
                       className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5"
                       title="Jump to group"
                       aria-label="Jump to group"
@@ -712,7 +825,13 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                   </Tooltip>
 
                   {isJumpMenuOpen && (
-                    <div className="absolute left-0 top-full mt-1 w-72 rounded-lg border border-gray-700 bg-gray-800 p-2 shadow-xl z-50">
+                    <div
+                      className="absolute left-0 top-full mt-1 w-72 rounded-lg border border-gray-700 bg-gray-800 p-2 shadow-xl z-50"
+                      onMouseLeave={handleJumpGroupPreviewLeave}
+                    >
+                      {previewJumpGroup && (
+                        <GroupJumpThumbnailPreview image={previewJumpImage} position={previewJumpPosition} />
+                      )}
                       {useCalendarJump ? (
                         <>
                           <div className="mb-2 flex items-center justify-between">
@@ -783,25 +902,18 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                               <div className="px-2 py-3 text-sm text-gray-500">No groups on this day</div>
                             ) : (
                               calendarGroups.map((group) => (
-                                <button
+                                <GroupJumpMenuItem
                                   key={group.id}
-                                  onClick={() => {
-                                    onJumpToGroup?.(group.id);
-                                    setIsJumpMenuOpen(false);
+                                  group={group}
+                                  image={getJumpGroupImage(group)}
+                                  onHover={handleJumpGroupHover}
+                                  onPreviewMove={handleJumpGroupPreviewMove}
+                                  onPreviewLeave={handleJumpGroupPreviewLeave}
+                                  onSelect={(groupId) => {
+                                    onJumpToGroup?.(groupId);
+                                    closeJumpMenu();
                                   }}
-                                  className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
-                                >
-                                  <span className="flex min-w-0 items-center gap-3">
-                                    <GroupJumpThumbnail image={jumpImageLookup.get(group.thumbnailImageId ?? group.startImageId)} />
-                                    <span className="min-w-0">
-                                      <span className="block truncate font-medium">{group.label}</span>
-                                      {group.subtitle && (
-                                        <span className="block truncate text-xs text-gray-400">{group.subtitle}</span>
-                                      )}
-                                    </span>
-                                  </span>
-                                  <span className="shrink-0 rounded bg-gray-700 px-1.5 py-0.5 text-xs text-gray-300">{group.count}</span>
-                                </button>
+                                />
                               ))
                             )}
                           </div>
@@ -820,26 +932,19 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                               <div className="px-2 py-3 text-sm text-gray-500">No matching groups</div>
                             ) : (
                               visibleJumpGroups.map((group) => (
-                                <button
+                                <GroupJumpMenuItem
                                   key={group.id}
-                                  onClick={() => {
-                                    onJumpToGroup?.(group.id);
-                                    setIsJumpMenuOpen(false);
+                                  group={group}
+                                  image={getJumpGroupImage(group)}
+                                  onHover={handleJumpGroupHover}
+                                  onPreviewMove={handleJumpGroupPreviewMove}
+                                  onPreviewLeave={handleJumpGroupPreviewLeave}
+                                  onSelect={(groupId) => {
+                                    onJumpToGroup?.(groupId);
+                                    closeJumpMenu();
                                     setJumpQuery('');
                                   }}
-                                  className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
-                                >
-                                  <span className="flex min-w-0 items-center gap-3">
-                                    <GroupJumpThumbnail image={jumpImageLookup.get(group.thumbnailImageId ?? group.startImageId)} />
-                                    <span className="min-w-0">
-                                      <span className="block truncate font-medium">{group.label}</span>
-                                      {group.subtitle && (
-                                        <span className="block truncate text-xs text-gray-400">{group.subtitle}</span>
-                                      )}
-                                    </span>
-                                  </span>
-                                  <span className="shrink-0 rounded bg-gray-700 px-1.5 py-0.5 text-xs text-gray-300">{group.count}</span>
-                                </button>
+                                />
                               ))
                             )}
                           </div>
