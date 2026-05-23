@@ -634,9 +634,11 @@ class CacheManager {
   ): Promise<void> {
     if (!this.isElectron || !images || images.length === 0) return;
 
-    const updates = new Map(
-      sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true }).map((image) => [image.id, image])
-    );
+    const sanitizedUpdates = sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true });
+    const updates = new Map<string, CacheImageMetadata>();
+    for (const image of sanitizedUpdates) {
+      updates.set(image.id, image);
+    }
 
     const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
     for (const mode of candidateModes) {
