@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Image Library Grouping**: Added Library Group By separators for date, name, and inferred generation sessions, plus Jump To navigation with calendar badges for date/session groups and representative thumbnails.
 - **ComfyUI Workflow Actions**: Added richer ComfyUI workflow entry points across the main app, image viewer, grid, and embedded workspace, including workflow action coverage and desktop IPC support for workspace preview behavior.
 - **ComfyUI Workspace Metadata Copying**: Added copy actions for workspace metadata fields and clearer image dimension display in the ComfyUI Workspace context panel.
-- **Image Library Grouping**: Added Library Group By separators for date, name, and inferred generation sessions, plus Jump To navigation with calendar badges for date/session groups.
 - **Media Playback Diagnostics**: Added audio/video playback event diagnostics and imh-media protocol logging to help investigate early Electron Helper crashes on macOS.
 
 ### Improved
@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ComfyUI Queue Monitor Loop**: Fixed repeated ComfyUI status updates causing queue monitor update loops.
 - **ComfyUI Visual Workflow Upstreams**: Fixed visual workflow handling for missing upstream nodes.
 - **Bulk Delete Shortcut Handling**: Fixed duplicate confirmation dialogs and repeated delete attempts when deleting selected images with the Delete key.
+- **ComfyUI Workspace Prompt Selection**: Fixed the workspace image preview metadata panel so selecting prompt text no longer collapses the expanded parameters box.
+- **Jump To Group Preview State**: Fixed stale hover previews from reappearing when reopening the Jump To Group menu after selecting a group or closing the menu.
 
 ## [0.16.0] - 2026-05-12
 

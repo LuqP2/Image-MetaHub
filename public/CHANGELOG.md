@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **ComfyUI Workflow Actions**: Added richer ComfyUI workflow entry points across the main app, image viewer, grid, and embedded workspace, including workflow action coverage and desktop IPC support for workspace preview behavior.
 - **ComfyUI Workspace Metadata Copying**: Added copy actions for workspace metadata fields and clearer image dimension display in the ComfyUI Workspace context panel.
-- **Image Library Grouping**: Added Library Group By separators for date, name, and inferred generation sessions, plus Jump To navigation with calendar badges for date/session groups.
+- **Image Library Grouping**: Added Library Group By separators for date, name, and inferred generation sessions, plus Jump To navigation with calendar badges for date/session groups and representative thumbnails.
 - **Media Playback Diagnostics**: Added audio/video playback event diagnostics and imh-media protocol logging to help investigate early Electron Helper crashes on macOS.
 
 ### Improved
@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Large Library Performance**: Reduced temporary allocations and queue overhead in large libraries by avoiding `Array.shift()` hot paths, removing intermediate arrays during `Set`/`Map` construction, and optimizing lookup map initialization across store, thumbnail, lineage, and automation flows.
 - **ComfyUI Visual Workflow Performance**: Reworked visual workflow graph depth calculation to avoid recursive stack overflows on long workflows and reduced object iteration overhead for large ComfyUI graphs.
 - **Edited PNG Metadata Preservation**: Improved edited PNG saves so ComfyUI workflow metadata is preserved when image adjustment exports write PNG bytes.
+- **Jump To Group Preview UX**: Improved Jump To Group browsing with larger hover previews that follow the cursor while keeping compact thumbnails visible in the group list.
 - **Workspace Bulk Action UX**: Added clearer disabled-state tooltips for ComfyUI Workspace bulk actions so users can tell what selection is required.
 - **Accessibility**: Added missing accessible labels to icon-only controls across the ComfyUI Workspace, directory list, preview/sidebar, image viewer, automation rules, sidebar, and batch export surfaces.
 - **Hotkey Reset Safety**: Added a confirmation dialog before resetting all custom hotkeys.
@@ -32,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ComfyUI Queue Monitor Loop**: Fixed repeated ComfyUI status updates causing queue monitor update loops.
 - **ComfyUI Visual Workflow Upstreams**: Fixed visual workflow handling for missing upstream nodes.
 - **Bulk Delete Shortcut Handling**: Fixed duplicate confirmation dialogs and repeated delete attempts when deleting selected images with the Delete key.
+- **ComfyUI Workspace Prompt Selection**: Fixed the workspace image preview metadata panel so selecting prompt text no longer collapses the expanded parameters box.
+- **Jump To Group Preview State**: Fixed stale hover previews from reappearing when reopening the Jump To Group menu after selecting a group or closing the menu.
 
 ## [0.16.0] - 2026-05-12
 
