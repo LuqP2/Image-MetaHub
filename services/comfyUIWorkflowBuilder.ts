@@ -8,7 +8,7 @@ import {
 } from '../types';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 
-export type ComfyUIWorkflowMode = 'original' | 'simple';
+export type ComfyUIWorkflowMode = 'original' | 'simple' | 'upscale';
 export type ComfyUISourceImagePolicy =
   | 'reuse_original'
   | 'selected_image'

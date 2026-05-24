@@ -11,6 +11,7 @@ import {
   type ComfyUIWorkflowMode,
   type ComfyUISourceImagePolicy,
   type ComfyUIWorkflowOverrides,
+  buildImageSourceReference,
   prepareOriginalWorkflowForExecution,
 } from './comfyUIWorkflowBuilder';
 
@@ -423,11 +424,112 @@ export class ComfyUIApiClient {
     };
   }
 
+  private async buildUpscaleWorkflowFromImage(image: IndexedImage, metadata: BaseMetadata): Promise<{
+    workflow: ComfyUIExecutionPayload;
+    warnings: string[];
+  }> {
+    if (!image.handle) {
+      throw new Error('ComfyUI Upscale needs access to the source image file.');
+    }
+
+    const uploadedImageName = await this.uploadAsset(await image.handle.getFile(), 'image');
+    const warnings: string[] = [];
+    let upscaleModelName: string | null = null;
+
+    try {
+      const objectInfo = await this.getObjectInfo();
+      const upscaleModels = objectInfo?.UpscaleModelLoader?.input?.required?.model_name?.[0]
+        || objectInfo?.UpscaleModelLoader?.input?.required?.upscale_model?.[0];
+      if (Array.isArray(upscaleModels)) {
+        upscaleModelName = upscaleModels.find((value: unknown): value is string => typeof value === 'string') || null;
+      }
+    } catch {
+      warnings.push('Could not inspect ComfyUI upscale models. Falling back to built-in scaling.');
+    }
+
+    const workflow: ComfyWorkflowGraph = {
+      "1": {
+        "class_type": "LoadImage",
+        "inputs": {
+          "image": uploadedImageName
+        }
+      }
+    };
+
+    let outputNodeId = "2";
+    if (upscaleModelName) {
+      workflow["2"] = {
+        "class_type": "UpscaleModelLoader",
+        "inputs": {
+          "model_name": upscaleModelName
+        }
+      };
+      workflow["3"] = {
+        "class_type": "ImageUpscaleWithModel",
+        "inputs": {
+          "upscale_model": ["2", 0],
+          "image": ["1", 0]
+        }
+      };
+      outputNodeId = "3";
+    } else {
+      warnings.push('No ComfyUI upscale model was found. Used ComfyUI ImageScaleBy at 2x instead.');
+      workflow["2"] = {
+        "class_type": "ImageScaleBy",
+        "inputs": {
+          "image": ["1", 0],
+          "upscale_method": "lanczos",
+          "scale_by": 2
+        }
+      };
+    }
+
+    workflow["4"] = {
+      "class_type": "MetaHubSaveNode",
+      "inputs": {
+        "images": [outputNodeId, 0],
+        "filename_pattern": "MetaHub_upscale_%date%_%time%_%counter%",
+        "file_format": "PNG",
+        "notes": "ComfyUI Upscale from Image MetaHub",
+        "tags": "upscale, imagemetahub"
+      }
+    };
+
+    return {
+      workflow: {
+        prompt: workflow,
+        client_id: this.clientId,
+        extra_data: {
+          extra_pnginfo: {
+            workflow: {},
+            prompt: workflow,
+            parent_image: buildImageSourceReference(image),
+            metahub_transform: {
+              type: upscaleModelName ? 'ai-upscale' : 'comfyui-scale',
+              upscale_model: upscaleModelName,
+              source_generator: metadata.generator || null,
+            },
+          },
+        },
+      },
+      warnings,
+    };
+  }
+
   async prepareWorkflow(params: PrepareWorkflowParams): Promise<{
     workflow: ComfyUIExecutionPayload;
     modeUsed: ComfyUIWorkflowMode;
     warnings: string[];
   }> {
+    if (params.workflowMode === 'upscale') {
+      const prepared = await this.buildUpscaleWorkflowFromImage(params.image, params.metadata);
+      return {
+        workflow: prepared.workflow,
+        modeUsed: 'upscale',
+        warnings: prepared.warnings,
+      };
+    }
+
     const preferredMode = params.workflowMode || 'original';
     if (preferredMode === 'original') {
       const prepared = await prepareOriginalWorkflowForExecution({

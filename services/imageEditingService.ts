@@ -1,4 +1,16 @@
-import type { BaseMetadata, ImageAdjustments, LoRAInfo } from '../types';
+import type {
+  BaseMetadata,
+  ImageAdjustments,
+  ImageEditCrop,
+  ImageEditCropAspect,
+  ImageEditCropRect,
+  ImageEditEffects,
+  ImageEditRecipe,
+  ImageEditResize,
+  ImageEditRotation,
+  ImageEditTransform,
+  LoRAInfo,
+} from '../types';
 
 export const DEFAULT_IMAGE_ADJUSTMENTS: ImageAdjustments = {
   brightness: 100,
@@ -7,12 +19,45 @@ export const DEFAULT_IMAGE_ADJUSTMENTS: ImageAdjustments = {
   hue: 0,
 };
 
+export const DEFAULT_IMAGE_EDIT_RECIPE: ImageEditRecipe = {
+  adjustments: DEFAULT_IMAGE_ADJUSTMENTS,
+  transform: {
+    rotation: 0,
+    flipHorizontal: false,
+    flipVertical: false,
+  },
+  crop: {
+    enabled: false,
+    aspect: 'free',
+    rect: null,
+  },
+  resize: {
+    enabled: false,
+    width: 0,
+    height: 0,
+    lockAspectRatio: true,
+  },
+  effects: {
+    sharpen: 0,
+    blur: 0,
+  },
+};
+
 const ADJUSTMENT_RANGES: Record<keyof ImageAdjustments, { min: number; max: number }> = {
   brightness: { min: 0, max: 200 },
   contrast: { min: 0, max: 200 },
   saturation: { min: 0, max: 200 },
   hue: { min: -180, max: 180 },
 };
+
+const EFFECT_RANGES: Record<keyof ImageEditEffects, { min: number; max: number }> = {
+  sharpen: { min: 0, max: 100 },
+  blur: { min: 0, max: 20 },
+};
+
+const MAX_OUTPUT_DIMENSION = 20000;
+const ROTATIONS: ImageEditRotation[] = [0, 90, 180, 270];
+export const CROP_ASPECTS: ImageEditCropAspect[] = ['free', 'original', '1:1', '4:3', '3:2', '16:9', '9:16'];
 
 export const clampImageAdjustment = (
   key: keyof ImageAdjustments,
@@ -55,6 +100,267 @@ export const buildImageAdjustmentFilter = (adjustments: Partial<ImageAdjustments
   ].join(' ');
 };
 
+const clampNumber = (value: number, min: number, max: number, fallback: number): number => {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, value));
+};
+
+const clampInteger = (value: number, min: number, max: number, fallback: number): number => (
+  Math.round(clampNumber(value, min, max, fallback))
+);
+
+export const normalizeImageEditRotation = (value: number): ImageEditRotation => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  const normalized = ((Math.round(value / 90) * 90) % 360 + 360) % 360;
+  return (ROTATIONS.includes(normalized as ImageEditRotation) ? normalized : 0) as ImageEditRotation;
+};
+
+export const normalizeImageEditTransform = (
+  transform?: Partial<ImageEditTransform>,
+): ImageEditTransform => ({
+  rotation: normalizeImageEditRotation(transform?.rotation ?? DEFAULT_IMAGE_EDIT_RECIPE.transform.rotation),
+  flipHorizontal: Boolean(transform?.flipHorizontal),
+  flipVertical: Boolean(transform?.flipVertical),
+});
+
+export const clampImageEditEffect = (
+  key: keyof ImageEditEffects,
+  value: number,
+): number => {
+  const range = EFFECT_RANGES[key];
+  return clampInteger(value, range.min, range.max, DEFAULT_IMAGE_EDIT_RECIPE.effects[key]);
+};
+
+export const normalizeImageEditEffects = (
+  effects?: Partial<ImageEditEffects>,
+): ImageEditEffects => ({
+  sharpen: clampImageEditEffect('sharpen', effects?.sharpen ?? DEFAULT_IMAGE_EDIT_RECIPE.effects.sharpen),
+  blur: clampImageEditEffect('blur', effects?.blur ?? DEFAULT_IMAGE_EDIT_RECIPE.effects.blur),
+});
+
+export const getCropAspectRatio = (
+  aspect: ImageEditCropAspect,
+  sourceDimensions?: { width: number; height: number },
+): number | null => {
+  if (aspect === 'free') {
+    return null;
+  }
+  if (aspect === 'original') {
+    const width = sourceDimensions?.width || 0;
+    const height = sourceDimensions?.height || 0;
+    return width > 0 && height > 0 ? width / height : null;
+  }
+
+  const [width, height] = aspect.split(':').map(Number);
+  return width > 0 && height > 0 ? width / height : null;
+};
+
+export const clampImageEditCropRect = (
+  rect: Partial<ImageEditCropRect> | null | undefined,
+  sourceDimensions?: { width: number; height: number },
+): ImageEditCropRect | null => {
+  const sourceWidth = sourceDimensions?.width || 0;
+  const sourceHeight = sourceDimensions?.height || 0;
+  if (!rect || sourceWidth <= 0 || sourceHeight <= 0) {
+    return null;
+  }
+
+  const width = clampInteger(rect.width ?? sourceWidth, 1, sourceWidth, sourceWidth);
+  const height = clampInteger(rect.height ?? sourceHeight, 1, sourceHeight, sourceHeight);
+  const x = clampInteger(rect.x ?? 0, 0, Math.max(0, sourceWidth - width), 0);
+  const y = clampInteger(rect.y ?? 0, 0, Math.max(0, sourceHeight - height), 0);
+  return { x, y, width, height };
+};
+
+export const createDefaultCropRect = (
+  sourceDimensions?: { width: number; height: number },
+  aspect: ImageEditCropAspect = 'free',
+): ImageEditCropRect | null => {
+  const sourceWidth = sourceDimensions?.width || 0;
+  const sourceHeight = sourceDimensions?.height || 0;
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return null;
+  }
+
+  const ratio = getCropAspectRatio(aspect, sourceDimensions);
+  let width = Math.round(sourceWidth * 0.85);
+  let height = Math.round(sourceHeight * 0.85);
+
+  if (ratio) {
+    if (width / height > ratio) {
+      width = Math.round(height * ratio);
+    } else {
+      height = Math.round(width / ratio);
+    }
+  }
+
+  width = Math.max(1, Math.min(sourceWidth, width));
+  height = Math.max(1, Math.min(sourceHeight, height));
+  return {
+    x: Math.round((sourceWidth - width) / 2),
+    y: Math.round((sourceHeight - height) / 2),
+    width,
+    height,
+  };
+};
+
+export const normalizeImageEditCrop = (
+  crop?: Partial<ImageEditCrop>,
+  sourceDimensions?: { width: number; height: number },
+): ImageEditCrop => {
+  const aspect = CROP_ASPECTS.includes(crop?.aspect as ImageEditCropAspect)
+    ? crop?.aspect as ImageEditCropAspect
+    : DEFAULT_IMAGE_EDIT_RECIPE.crop.aspect;
+  if ((!sourceDimensions || sourceDimensions.width <= 0 || sourceDimensions.height <= 0) && crop?.rect) {
+    const rect = {
+      x: Math.max(0, Math.round(crop.rect.x || 0)),
+      y: Math.max(0, Math.round(crop.rect.y || 0)),
+      width: Math.max(1, Math.round(crop.rect.width || 1)),
+      height: Math.max(1, Math.round(crop.rect.height || 1)),
+    };
+    return {
+      enabled: Boolean(crop.enabled),
+      aspect,
+      rect,
+    };
+  }
+
+  const rect = clampImageEditCropRect(crop?.rect, sourceDimensions);
+  return {
+    enabled: Boolean(crop?.enabled && rect),
+    aspect,
+    rect,
+  };
+};
+
+export const getRecipeSourceRect = (
+  recipe: ImageEditRecipe,
+  sourceDimensions: { width: number; height: number },
+): ImageEditCropRect => (
+  recipe.crop.enabled && recipe.crop.rect
+    ? recipe.crop.rect
+    : { x: 0, y: 0, width: sourceDimensions.width, height: sourceDimensions.height }
+);
+
+export const getRecipeBaseOutputDimensions = (
+  recipe: ImageEditRecipe,
+  sourceDimensions: { width: number; height: number },
+): { width: number; height: number } => {
+  const sourceRect = getRecipeSourceRect(recipe, sourceDimensions);
+  const rotated = recipe.transform.rotation === 90 || recipe.transform.rotation === 270;
+  return {
+    width: rotated ? sourceRect.height : sourceRect.width,
+    height: rotated ? sourceRect.width : sourceRect.height,
+  };
+};
+
+export const normalizeImageEditResize = (
+  resize?: Partial<ImageEditResize>,
+  baseDimensions?: { width: number; height: number },
+): ImageEditResize => {
+  const hasBaseDimensions = Boolean(baseDimensions && baseDimensions.width > 0 && baseDimensions.height > 0);
+  if (!hasBaseDimensions && !resize?.enabled) {
+    return {
+      enabled: false,
+      width: clampInteger(resize?.width ?? DEFAULT_IMAGE_EDIT_RECIPE.resize.width, 0, MAX_OUTPUT_DIMENSION, DEFAULT_IMAGE_EDIT_RECIPE.resize.width),
+      height: clampInteger(resize?.height ?? DEFAULT_IMAGE_EDIT_RECIPE.resize.height, 0, MAX_OUTPUT_DIMENSION, DEFAULT_IMAGE_EDIT_RECIPE.resize.height),
+      lockAspectRatio: resize?.lockAspectRatio !== false,
+    };
+  }
+
+  const baseWidth = Math.max(1, Math.round(baseDimensions?.width || resize?.width || 1));
+  const baseHeight = Math.max(1, Math.round(baseDimensions?.height || resize?.height || 1));
+  const width = clampInteger(resize?.width ?? baseWidth, 1, MAX_OUTPUT_DIMENSION, baseWidth);
+  const height = clampInteger(resize?.height ?? baseHeight, 1, MAX_OUTPUT_DIMENSION, baseHeight);
+  return {
+    enabled: Boolean(resize?.enabled && width > 0 && height > 0 && (width !== baseWidth || height !== baseHeight)),
+    width,
+    height,
+    lockAspectRatio: resize?.lockAspectRatio !== false,
+  };
+};
+
+const isRecipeLike = (
+  value: Partial<ImageEditRecipe> | Partial<ImageAdjustments> | undefined,
+): value is Partial<ImageEditRecipe> => (
+  Boolean(value) && (
+    'adjustments' in value ||
+    'transform' in value ||
+    'crop' in value ||
+    'resize' in value ||
+    'effects' in value
+  )
+);
+
+export const normalizeImageEditRecipe = (
+  recipeOrAdjustments?: Partial<ImageEditRecipe> | Partial<ImageAdjustments>,
+  sourceDimensions?: { width: number; height: number },
+): ImageEditRecipe => {
+  const recipeInput = isRecipeLike(recipeOrAdjustments) ? recipeOrAdjustments : {};
+  const adjustmentsInput = isRecipeLike(recipeOrAdjustments)
+    ? recipeInput.adjustments
+    : recipeOrAdjustments;
+  const adjustments = normalizeImageAdjustments(adjustmentsInput || DEFAULT_IMAGE_ADJUSTMENTS);
+  const transform = normalizeImageEditTransform(recipeInput.transform);
+  const crop = normalizeImageEditCrop(recipeInput.crop, sourceDimensions);
+  const baseDimensions = sourceDimensions
+    ? getRecipeBaseOutputDimensions({ ...DEFAULT_IMAGE_EDIT_RECIPE, adjustments, transform, crop }, sourceDimensions)
+    : undefined;
+  const resize = normalizeImageEditResize(recipeInput.resize, baseDimensions);
+  const effects = normalizeImageEditEffects(recipeInput.effects);
+
+  return {
+    adjustments,
+    transform,
+    crop,
+    resize,
+    effects,
+  };
+};
+
+export const getImageEditOutputDimensions = (
+  recipeOrAdjustments: Partial<ImageEditRecipe> | Partial<ImageAdjustments>,
+  sourceDimensions: { width: number; height: number },
+): { width: number; height: number } => {
+  const recipe = normalizeImageEditRecipe(recipeOrAdjustments, sourceDimensions);
+  const base = getRecipeBaseOutputDimensions(recipe, sourceDimensions);
+  return recipe.resize.enabled
+    ? { width: recipe.resize.width, height: recipe.resize.height }
+    : base;
+};
+
+export const hasImageEditRecipeChanges = (
+  recipeOrAdjustments: Partial<ImageEditRecipe> | Partial<ImageAdjustments>,
+): boolean => {
+  const recipe = normalizeImageEditRecipe(recipeOrAdjustments);
+  return (
+    hasImageAdjustments(recipe.adjustments) ||
+    recipe.transform.rotation !== DEFAULT_IMAGE_EDIT_RECIPE.transform.rotation ||
+    recipe.transform.flipHorizontal !== DEFAULT_IMAGE_EDIT_RECIPE.transform.flipHorizontal ||
+    recipe.transform.flipVertical !== DEFAULT_IMAGE_EDIT_RECIPE.transform.flipVertical ||
+    recipe.crop.enabled ||
+    recipe.resize.enabled ||
+    recipe.effects.sharpen !== DEFAULT_IMAGE_EDIT_RECIPE.effects.sharpen ||
+    recipe.effects.blur !== DEFAULT_IMAGE_EDIT_RECIPE.effects.blur
+  );
+};
+
+export const buildImageEditFilter = (
+  recipeOrAdjustments: Partial<ImageEditRecipe> | Partial<ImageAdjustments>,
+): string => {
+  const recipe = normalizeImageEditRecipe(recipeOrAdjustments);
+  const filters = [buildImageAdjustmentFilter(recipe.adjustments)];
+  if (recipe.effects.blur > 0) {
+    filters.push(`blur(${recipe.effects.blur}px)`);
+  }
+  return filters.join(' ');
+};
+
 const loadImageElement = (sourceUrl: string): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
   const image = new Image();
   image.onload = () => resolve(image);
@@ -77,6 +383,44 @@ export async function renderAdjustedImageToPngBlob(
   sourceUrl: string,
   adjustments: Partial<ImageAdjustments>,
 ): Promise<Blob> {
+  return renderEditedImageToPngBlob(sourceUrl, { adjustments: normalizeImageAdjustments(adjustments) });
+}
+
+const applySharpen = (context: CanvasRenderingContext2D, width: number, height: number, amount: number): void => {
+  if (amount <= 0 || width <= 1 || height <= 1 || typeof context.getImageData !== 'function') {
+    return;
+  }
+
+  const strength = amount / 100;
+  const imageData = context.getImageData(0, 0, width, height);
+  const source = imageData.data;
+  const output = new Uint8ClampedArray(source);
+  const centerWeight = 1 + (4 * strength);
+  const sideWeight = -strength;
+
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const index = (y * width + x) * 4;
+      for (let channel = 0; channel < 3; channel += 1) {
+        const value =
+          source[index + channel] * centerWeight +
+          source[index - 4 + channel] * sideWeight +
+          source[index + 4 + channel] * sideWeight +
+          source[index - (width * 4) + channel] * sideWeight +
+          source[index + (width * 4) + channel] * sideWeight;
+        output[index + channel] = Math.min(255, Math.max(0, Math.round(value)));
+      }
+    }
+  }
+
+  imageData.data.set(output);
+  context.putImageData(imageData, 0, 0);
+};
+
+export async function renderEditedImageToPngBlob(
+  sourceUrl: string,
+  recipeOrAdjustments: Partial<ImageEditRecipe> | Partial<ImageAdjustments>,
+): Promise<Blob> {
   const image = await loadImageElement(sourceUrl);
   const width = image.naturalWidth || image.width;
   const height = image.naturalHeight || image.height;
@@ -85,17 +429,51 @@ export async function renderAdjustedImageToPngBlob(
     throw new Error('Edited image has invalid dimensions.');
   }
 
+  const recipe = normalizeImageEditRecipe(recipeOrAdjustments, { width, height });
+  const sourceRect = getRecipeSourceRect(recipe, { width, height });
+  const baseDimensions = getRecipeBaseOutputDimensions(recipe, { width, height });
+  const outputDimensions = recipe.resize.enabled
+    ? { width: recipe.resize.width, height: recipe.resize.height }
+    : baseDimensions;
+
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = outputDimensions.width;
+  canvas.height = outputDimensions.height;
 
   const context = canvas.getContext('2d');
   if (!context) {
     throw new Error('Canvas rendering is not available in this browser.');
   }
 
-  context.filter = buildImageAdjustmentFilter(adjustments);
-  context.drawImage(image, 0, 0, width, height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.filter = buildImageEditFilter(recipe);
+  context.translate(outputDimensions.width / 2, outputDimensions.height / 2);
+  context.rotate((recipe.transform.rotation * Math.PI) / 180);
+  context.scale(recipe.transform.flipHorizontal ? -1 : 1, recipe.transform.flipVertical ? -1 : 1);
+
+  const drawWidth = recipe.transform.rotation === 90 || recipe.transform.rotation === 270
+    ? outputDimensions.height
+    : outputDimensions.width;
+  const drawHeight = recipe.transform.rotation === 90 || recipe.transform.rotation === 270
+    ? outputDimensions.width
+    : outputDimensions.height;
+
+  context.drawImage(
+    image,
+    sourceRect.x,
+    sourceRect.y,
+    sourceRect.width,
+    sourceRect.height,
+    -drawWidth / 2,
+    -drawHeight / 2,
+    drawWidth,
+    drawHeight,
+  );
+
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.filter = 'none';
+  applySharpen(context, outputDimensions.width, outputDimensions.height, recipe.effects.sharpen);
   return canvasToBlob(canvas);
 }
 
@@ -103,7 +481,31 @@ export async function renderAdjustedImageToPngBytes(
   sourceUrl: string,
   adjustments: Partial<ImageAdjustments>,
 ): Promise<Uint8Array> {
-  const blob = await renderAdjustedImageToPngBlob(sourceUrl, adjustments);
+  const blob = await renderEditedImageToPngBlob(sourceUrl, { adjustments: normalizeImageAdjustments(adjustments) });
+  if (typeof blob.arrayBuffer === 'function') {
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+
+  const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Failed to read edited PNG bytes.'));
+      }
+    };
+    reader.onerror = () => reject(reader.error || new Error('Failed to read edited PNG bytes.'));
+    reader.readAsArrayBuffer(blob);
+  });
+  return new Uint8Array(buffer);
+}
+
+export async function renderEditedImageToPngBytes(
+  sourceUrl: string,
+  recipeOrAdjustments: Partial<ImageEditRecipe> | Partial<ImageAdjustments>,
+): Promise<Uint8Array> {
+  const blob = await renderEditedImageToPngBlob(sourceUrl, recipeOrAdjustments);
   if (typeof blob.arrayBuffer === 'function') {
     return new Uint8Array(await blob.arrayBuffer());
   }
@@ -304,16 +706,18 @@ const formatMetadataForA1111Compat = (metadata: BaseMetadata): string => {
 
 const buildMetaHubEditPayload = (
   metadata: BaseMetadata,
-  adjustments: ImageAdjustments,
+  recipe: ImageEditRecipe,
   preservedWorkflow?: PreservedComfyWorkflow,
+  outputDimensions?: { width: number; height: number },
 ) => {
   const payload: Record<string, unknown> = {
     generator: 'Image MetaHub',
     source_generator: typeof metadata.generator === 'string' ? metadata.generator : null,
     edited_at: new Date().toISOString(),
     edit: {
-      tool: 'image-adjustments',
-      adjustments,
+      tool: 'image-editor-v2',
+      recipe,
+      output_dimensions: outputDimensions,
     },
     prompt: metadata.prompt || '',
     negativePrompt: metadata.negativePrompt || '',
@@ -391,20 +795,21 @@ const extractPreservedComfyWorkflow = (
 export const embedMetaHubMetadataInPngBytes = (
   pngBytes: Uint8Array,
   metadata: BaseMetadata | undefined,
-  adjustments: Partial<ImageAdjustments>,
+  recipeOrAdjustments: Partial<ImageEditRecipe> | Partial<ImageAdjustments>,
   rawMetadata?: Record<string, unknown>,
+  outputDimensions?: { width: number; height: number },
 ): Uint8Array => {
   if (!metadata) {
     return pngBytes;
   }
 
-  const normalizedAdjustments = normalizeImageAdjustments(adjustments);
+  const normalizedRecipe = normalizeImageEditRecipe(recipeOrAdjustments);
   const preservedWorkflow = extractPreservedComfyWorkflow(rawMetadata);
   const chunks = [
     createPngTextChunk('parameters', formatMetadataForA1111Compat(metadata)),
     createPngInternationalTextChunk(
       'imagemetahub_data',
-      JSON.stringify(buildMetaHubEditPayload(metadata, normalizedAdjustments, preservedWorkflow)),
+      JSON.stringify(buildMetaHubEditPayload(metadata, normalizedRecipe, preservedWorkflow, outputDimensions)),
     ),
   ];
 

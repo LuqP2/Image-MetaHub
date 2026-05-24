@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_IMAGE_ADJUSTMENTS,
+  DEFAULT_IMAGE_EDIT_RECIPE,
   buildImageAdjustmentFilter,
   clampImageAdjustment,
+  clampImageEditCropRect,
   embedMetaHubMetadataInPngBytes,
+  getImageEditOutputDimensions,
+  hasImageEditRecipeChanges,
   hasImageAdjustments,
   normalizeImageAdjustments,
+  normalizeImageEditRecipe,
+  normalizeImageEditRotation,
   renderAdjustedImageToPngBytes,
 } from '../services/imageEditingService';
 
@@ -34,6 +40,46 @@ describe('imageEditingService', () => {
       .toBe('brightness(120%) contrast(80%) saturate(150%) hue-rotate(-30deg)');
   });
 
+  it('normalizes edit recipes and detects neutral edits', () => {
+    expect(hasImageEditRecipeChanges(DEFAULT_IMAGE_EDIT_RECIPE)).toBe(false);
+    expect(normalizeImageEditRotation(275)).toBe(270);
+    expect(normalizeImageEditRotation(-90)).toBe(270);
+    expect(clampImageEditCropRect({ x: -5, y: 20, width: 999, height: 40 }, { width: 100, height: 80 })).toEqual({
+      x: 0,
+      y: 20,
+      width: 100,
+      height: 40,
+    });
+
+    const recipe = normalizeImageEditRecipe({
+      transform: { rotation: 91, flipHorizontal: true },
+      crop: { enabled: true, aspect: '1:1', rect: { x: 10, y: 15, width: 40, height: 40 } },
+      resize: { enabled: true, width: 64, height: 32, lockAspectRatio: false },
+      effects: { sharpen: 150, blur: -5 },
+    }, { width: 100, height: 80 });
+
+    expect(recipe.transform.rotation).toBe(90);
+    expect(recipe.transform.flipHorizontal).toBe(true);
+    expect(recipe.resize).toMatchObject({ enabled: true, width: 64, height: 32 });
+    expect(recipe.effects).toEqual({ sharpen: 100, blur: 0 });
+    expect(hasImageEditRecipeChanges(recipe)).toBe(true);
+  });
+
+  it('computes output dimensions for crop, rotate, and resize', () => {
+    expect(getImageEditOutputDimensions({
+      crop: { enabled: true, aspect: 'free', rect: { x: 0, y: 0, width: 40, height: 20 } },
+    }, { width: 100, height: 80 })).toEqual({ width: 40, height: 20 });
+
+    expect(getImageEditOutputDimensions({
+      crop: { enabled: true, aspect: 'free', rect: { x: 0, y: 0, width: 40, height: 20 } },
+      transform: { rotation: 90, flipHorizontal: false, flipVertical: false },
+    }, { width: 100, height: 80 })).toEqual({ width: 20, height: 40 });
+
+    expect(getImageEditOutputDimensions({
+      resize: { enabled: true, width: 12, height: 10, lockAspectRatio: false },
+    }, { width: 100, height: 80 })).toEqual({ width: 12, height: 10 });
+  });
+
   it('renders adjusted image bytes as PNG', async () => {
     const drawImage = vi.fn();
     const toBlob = vi.fn((callback: BlobCallback) => {
@@ -45,7 +91,14 @@ describe('imageEditingService', () => {
         return {
           width: 0,
           height: 0,
-          getContext: () => ({ filter: '', drawImage }),
+          getContext: () => ({
+            filter: '',
+            drawImage,
+            translate: vi.fn(),
+            rotate: vi.fn(),
+            scale: vi.fn(),
+            setTransform: vi.fn(),
+          }),
           toBlob,
         } as unknown as HTMLCanvasElement;
       }

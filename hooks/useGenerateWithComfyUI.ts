@@ -44,7 +44,7 @@ export function useGenerateWithComfyUI() {
       setIsGenerating(true);
       const metadata = mergeNormalizedMetadata(image, params?.customMetadata);
 
-      if (!hasPromptMetadata(metadata)) {
+      if (params?.workflowMode !== 'upscale' && !hasPromptMetadata(metadata)) {
         setIsGenerating(false);
         setGenerateStatus({
           success: false,

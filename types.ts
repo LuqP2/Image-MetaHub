@@ -98,6 +98,48 @@ export interface ImageAdjustments {
   hue: number;
 }
 
+export type ImageEditRotation = 0 | 90 | 180 | 270;
+export type ImageEditCropAspect = 'free' | 'original' | '1:1' | '4:3' | '3:2' | '16:9' | '9:16';
+
+export interface ImageEditTransform {
+  rotation: ImageEditRotation;
+  flipHorizontal: boolean;
+  flipVertical: boolean;
+}
+
+export interface ImageEditCropRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ImageEditCrop {
+  enabled: boolean;
+  aspect: ImageEditCropAspect;
+  rect: ImageEditCropRect | null;
+}
+
+export interface ImageEditResize {
+  enabled: boolean;
+  width: number;
+  height: number;
+  lockAspectRatio: boolean;
+}
+
+export interface ImageEditEffects {
+  sharpen: number;
+  blur: number;
+}
+
+export interface ImageEditRecipe {
+  adjustments: ImageAdjustments;
+  transform: ImageEditTransform;
+  crop: ImageEditCrop;
+  resize: ImageEditResize;
+  effects: ImageEditEffects;
+}
+
 export type ImageEditSaveMode = 'save_as' | 'overwrite';
 
 export interface ImageEditSaveResult {
