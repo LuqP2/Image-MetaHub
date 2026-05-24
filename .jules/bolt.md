@@ -20,3 +20,6 @@
 ## 2026-05-20 - Eliminate Array.map() O(N) allocation overhead for Map/Set initialization
 **Learning:** Initializing a `Map` or `Set` using `.map()` on a large array (e.g., `new Map(arr.map(item => [item.id, item]))`) causes an O(N) temporary array of tuples to be allocated and immediately discarded, triggering garbage collection pauses.
 **Action:** Replace `.map()` with a pre-instantiated `Map` or `Set` and populate it directly using a `for` loop to scale at O(1) intermediate memory.
+## 2024-05-24 - Avoid temporary array allocations during Set/Map initialization
+**Learning:** Using `.map()` inside `new Set()` or `new Map()` (e.g., `new Set(arr.map(x => x.id))`) causes JavaScript to allocate a temporary array of mapped values or tuples in memory, which is immediately discarded. This increases garbage collection pressure, especially for large datasets.
+**Action:** Replace `new Set(arr.map(...))` or `new Map(arr.map(...))` with direct loops (e.g., `const s = new Set(); for (const x of arr) s.add(x.id);`). This executes slightly faster and skips intermediate array allocation entirely.
