@@ -142,6 +142,7 @@ export interface ImageEditRecipe {
 
 export type ImageEditorTool =
   | 'select'
+  | 'color-picker'
   | 'crop'
   | 'rectangle'
   | 'ellipse'

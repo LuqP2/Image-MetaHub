@@ -13,12 +13,12 @@ import {
   Layers,
   Minus,
   MousePointer2,
+  Pipette,
   Pencil,
   Redo2,
   RotateCcw,
   RotateCw,
   Save,
-  Scissors,
   Search,
   Shield,
   Sparkles,
@@ -26,7 +26,6 @@ import {
   Type,
   Undo2,
   Workflow,
-  ZoomIn,
 } from 'lucide-react';
 import type {
   BaseMetadata,
@@ -37,8 +36,6 @@ import type {
   IndexedImage,
 } from '../types';
 import {
-  DEFAULT_IMAGE_EDIT_RECIPE,
-  DEFAULT_IMAGE_EDITOR_BACKGROUND,
   DEFAULT_IMAGE_EDITOR_OBJECT_STYLE,
   clampImageAdjustment,
   clampImageEditEffect,
@@ -75,15 +72,39 @@ type HistoryState = {
   future: ImageEditorDocument[];
 };
 
+type EditorSessionState = {
+  document: ImageEditorDocument;
+  activeTool: ImageEditorTool;
+  activeStyle: ImageEditorObjectStyle;
+  history: HistoryState;
+  zoom: number;
+};
+
 type DragState = {
   tool: ImageEditorTool;
   start: { x: number; y: number };
   current: { x: number; y: number };
   points?: { x: number; y: number }[];
+  movingObjectId?: string;
+  resizeHandle?: ResizeHandle;
+  keepAspectRatio?: boolean;
 };
+
+type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+type PanState = {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  scrollLeft: number;
+  scrollTop: number;
+};
+
+const editorSessionCache = new Map<string, EditorSessionState>();
 
 const TOOL_DEFS: Array<{ id: ImageEditorTool; label: string; icon: React.ReactNode }> = [
   { id: 'select', label: 'Select', icon: <MousePointer2 className="h-4 w-4" /> },
+  { id: 'color-picker', label: 'Pick Color', icon: <Pipette className="h-4 w-4" /> },
   { id: 'crop', label: 'Crop', icon: <Crop className="h-4 w-4" /> },
   { id: 'rectangle', label: 'Rectangle', icon: <Square className="h-4 w-4" /> },
   { id: 'ellipse', label: 'Ellipse', icon: <Circle className="h-4 w-4" /> },
@@ -91,16 +112,17 @@ const TOOL_DEFS: Array<{ id: ImageEditorTool; label: string; icon: React.ReactNo
   { id: 'arrow', label: 'Arrow', icon: <ArrowLeft className="h-4 w-4 rotate-180" /> },
   { id: 'freehand', label: 'Freehand', icon: <Pencil className="h-4 w-4" /> },
   { id: 'text', label: 'Text', icon: <Type className="h-4 w-4" /> },
-  { id: 'step', label: 'Step', icon: <span className="text-xs font-bold">1</span> },
   { id: 'highlight', label: 'Highlight', icon: <Highlighter className="h-4 w-4" /> },
   { id: 'blur', label: 'Blur', icon: <Eye className="h-4 w-4" /> },
   { id: 'pixelate', label: 'Pixelate', icon: <Shield className="h-4 w-4" /> },
   { id: 'spotlight', label: 'Spotlight', icon: <Search className="h-4 w-4" /> },
-  { id: 'magnify', label: 'Magnify', icon: <ZoomIn className="h-4 w-4" /> },
 ];
+
+const isEnabledEditorTool = (tool: ImageEditorTool) => TOOL_DEFS.some((definition) => definition.id === tool);
 
 const TOOL_HINTS: Record<ImageEditorTool, string> = {
   select: 'Click an object to select it.',
+  'color-picker': 'Click the image to pick a color for the active style.',
   crop: 'Drag a crop area. The crop is editable in the inspector.',
   rectangle: 'Drag to create a rectangle annotation.',
   ellipse: 'Drag to create an ellipse annotation.',
@@ -120,8 +142,6 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 const clampZoom = (value: number) => clamp(Math.round(value * 100) / 100, 0.1, 6);
 
-const cloneDocument = (document: ImageEditorDocument): ImageEditorDocument => JSON.parse(JSON.stringify(document));
-
 const createObjectId = () => `editor_obj_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
 
 const isEditableShortcutTarget = (target: EventTarget | null): boolean => {
@@ -133,11 +153,14 @@ const isEditableShortcutTarget = (target: EventTarget | null): boolean => {
 };
 
 const isAnnotationTool = (tool: ImageEditorTool): tool is ImageEditorObject['type'] => (
-  tool !== 'select' && tool !== 'crop'
+  tool !== 'select' && tool !== 'color-picker' && tool !== 'crop'
 );
+
+const isResizableObjectType = (type: ImageEditorObject['type']) => type === 'rectangle' || type === 'ellipse';
 
 const TOOL_SHORTCUTS: Partial<Record<string, ImageEditorTool>> = {
   v: 'select',
+  i: 'color-picker',
   c: 'crop',
   r: 'rectangle',
   e: 'ellipse',
@@ -145,12 +168,10 @@ const TOOL_SHORTCUTS: Partial<Record<string, ImageEditorTool>> = {
   a: 'arrow',
   f: 'freehand',
   t: 'text',
-  n: 'step',
   h: 'highlight',
   b: 'blur',
   p: 'pixelate',
   s: 'spotlight',
-  m: 'magnify',
 };
 
 const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefined => (
@@ -210,6 +231,125 @@ const getCanvasPoint = (
   };
 };
 
+const colorComponentToHex = (value: number) => Math.round(value).toString(16).padStart(2, '0');
+const rgbToHex = (red: number, green: number, blue: number) => `#${colorComponentToHex(red)}${colorComponentToHex(green)}${colorComponentToHex(blue)}`;
+const toColorInputValue = (value: string | undefined) => /^#[0-9a-f]{6}$/i.test(value || '') ? value as string : '#000000';
+
+const RESIZE_HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+
+const getHandlePoint = (bounds: ImageEditorObject['bounds'], handle: ResizeHandle) => {
+  const centerX = bounds.x + bounds.width / 2;
+  const centerY = bounds.y + bounds.height / 2;
+  const right = bounds.x + bounds.width;
+  const bottom = bounds.y + bounds.height;
+
+  switch (handle) {
+    case 'nw': return { x: bounds.x, y: bounds.y };
+    case 'n': return { x: centerX, y: bounds.y };
+    case 'ne': return { x: right, y: bounds.y };
+    case 'e': return { x: right, y: centerY };
+    case 'se': return { x: right, y: bottom };
+    case 's': return { x: centerX, y: bottom };
+    case 'sw': return { x: bounds.x, y: bottom };
+    case 'w': return { x: bounds.x, y: centerY };
+  }
+};
+
+const getResizeHandleAtPoint = (
+  point: { x: number; y: number },
+  bounds: ImageEditorObject['bounds'],
+  tolerance: number,
+): ResizeHandle | null => {
+  for (const handle of RESIZE_HANDLES) {
+    const handlePoint = getHandlePoint(bounds, handle);
+    if (Math.abs(point.x - handlePoint.x) <= tolerance && Math.abs(point.y - handlePoint.y) <= tolerance) {
+      return handle;
+    }
+  }
+  return null;
+};
+
+const resizeBoundsFromHandle = (
+  bounds: ImageEditorObject['bounds'],
+  handle: ResizeHandle,
+  deltaX: number,
+  deltaY: number,
+  canvasDimensions: { width: number; height: number },
+  keepAspectRatio = false,
+) => {
+  const minSize = 8;
+  const originalAspectRatio = bounds.width / Math.max(1, bounds.height);
+  let x = bounds.x;
+  let y = bounds.y;
+  let width = bounds.width;
+  let height = bounds.height;
+
+  if (handle.includes('w')) {
+    x += deltaX;
+    width -= deltaX;
+  }
+  if (handle.includes('e')) {
+    width += deltaX;
+  }
+  if (handle.includes('n')) {
+    y += deltaY;
+    height -= deltaY;
+  }
+  if (handle.includes('s')) {
+    height += deltaY;
+  }
+
+  if (keepAspectRatio) {
+    const widthFromHeight = Math.max(minSize, Math.abs(height)) * originalAspectRatio;
+    const heightFromWidth = Math.max(minSize, Math.abs(width)) / originalAspectRatio;
+    if (handle.length === 2) {
+      if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+        height = heightFromWidth;
+      } else {
+        width = widthFromHeight;
+      }
+      if (handle.includes('w')) {
+        x = bounds.x + bounds.width - width;
+      }
+      if (handle.includes('n')) {
+        y = bounds.y + bounds.height - height;
+      }
+    } else if (handle === 'e' || handle === 'w') {
+      height = heightFromWidth;
+      y = bounds.y + (bounds.height - height) / 2;
+      if (handle === 'w') {
+        x = bounds.x + bounds.width - width;
+      }
+    } else {
+      width = widthFromHeight;
+      x = bounds.x + (bounds.width - width) / 2;
+      if (handle === 'n') {
+        y = bounds.y + bounds.height - height;
+      }
+    }
+  }
+
+  if (width < minSize) {
+    if (handle.includes('w')) {
+      x = bounds.x + bounds.width - minSize;
+    }
+    width = minSize;
+  }
+  if (height < minSize) {
+    if (handle.includes('n')) {
+      y = bounds.y + bounds.height - minSize;
+    }
+    height = minSize;
+  }
+
+  x = clamp(x, 0, Math.max(0, canvasDimensions.width - minSize));
+  y = clamp(y, 0, Math.max(0, canvasDimensions.height - minSize));
+  width = clamp(width, minSize, canvasDimensions.width - x);
+  height = clamp(height, minSize, canvasDimensions.height - y);
+
+  return { x, y, width, height };
+};
+
 const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   image,
   navigationImages = [],
@@ -230,6 +370,10 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const [zoom, setZoom] = useState(1);
   const [hydratedImage, setHydratedImage] = useState<IndexedImage | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const previewImageRef = useRef<HTMLImageElement>(null);
+  const sessionRef = useRef<EditorSessionState | null>(null);
+  const panStateRef = useRef<PanState | null>(null);
 
   const directories = useImageStore((state) => state.directories);
   const addImages = useImageStore((state) => state.addImages);
@@ -248,18 +392,62 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     () => documentState ? normalizeImageEditorDocument(documentState) : null,
     [documentState],
   );
+  const basePreviewDocument = useMemo(
+    () => normalizedDocument
+      ? {
+        ...normalizedDocument,
+        objects: [],
+        selectedObjectIds: [],
+      }
+      : null,
+    [
+      normalizedDocument?.background,
+      normalizedDocument?.canvasDimensions.height,
+      normalizedDocument?.canvasDimensions.width,
+      normalizedDocument?.recipe,
+      normalizedDocument?.sourceDimensions.height,
+      normalizedDocument?.sourceDimensions.width,
+      normalizedDocument?.sourceImageId,
+      normalizedDocument?.sourceName,
+    ],
+  );
+  const basePreviewKey = useMemo(
+    () => basePreviewDocument
+      ? JSON.stringify({
+        background: basePreviewDocument.background,
+        canvasDimensions: basePreviewDocument.canvasDimensions,
+        recipe: basePreviewDocument.recipe,
+        sourceDimensions: basePreviewDocument.sourceDimensions,
+        sourceImageId: basePreviewDocument.sourceImageId,
+      })
+      : '',
+    [basePreviewDocument],
+  );
   const hasChanges = normalizedDocument ? hasImageEditorDocumentChanges(normalizedDocument) : false;
   const selectedObject = normalizedDocument?.objects.find((object) => normalizedDocument.selectedObjectIds.includes(object.id)) || null;
   const canOverwrite = getFileExtension(image.name) === '.png';
   const displayWidth = Math.max(160, Math.round(1080 * zoom));
+
+  useEffect(() => {
+    if (!documentState) {
+      sessionRef.current = null;
+      return;
+    }
+    sessionRef.current = {
+      document: documentState,
+      activeTool,
+      activeStyle,
+      history,
+      zoom,
+    };
+  }, [activeStyle, activeTool, documentState, history, zoom]);
 
   const commitDocument = useCallback((updater: (current: ImageEditorDocument) => ImageEditorDocument, label: string) => {
     setDocumentState((current) => {
       if (!current) {
         return current;
       }
-      const before = cloneDocument(current);
-      const after = normalizeImageEditorDocument(updater(before));
+      const after = normalizeImageEditorDocument(updater(current));
       setHistory((historyState) => ({
         past: [...historyState.past, current].slice(-80),
         future: [],
@@ -292,12 +480,21 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           element.src = source;
         });
         if (!mounted) return;
-        setDocumentState(createImageEditorDocument({
-          imageId: image.id,
-          name: image.name,
-          width: dimensions.width,
-          height: dimensions.height,
-        }));
+        const cachedSession = editorSessionCache.get(image.id);
+        if (cachedSession) {
+          setDocumentState(cachedSession.document);
+          setActiveTool(isEnabledEditorTool(cachedSession.activeTool) ? cachedSession.activeTool : 'select');
+          setActiveStyle(cachedSession.activeStyle);
+          setHistory(cachedSession.history);
+          setZoom(cachedSession.zoom);
+        } else {
+          setDocumentState(createImageEditorDocument({
+            imageId: image.id,
+            name: image.name,
+            width: dimensions.width,
+            height: dimensions.height,
+          }));
+        }
         setSourceReady(true);
       } catch (error) {
         if (mounted) {
@@ -309,6 +506,9 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     void load();
     return () => {
       mounted = false;
+      if (sessionRef.current) {
+        editorSessionCache.set(image.id, sessionRef.current);
+      }
     };
   }, [directoryPath, image, setError]);
 
@@ -319,14 +519,14 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   }, [previewUrl]);
 
   useEffect(() => {
-    if (!sourceUrl || !normalizedDocument || !sourceReady) {
+    if (!sourceUrl || !basePreviewDocument || !sourceReady) {
       return;
     }
     let canceled = false;
     setIsRendering(true);
     const timeoutId = window.setTimeout(async () => {
       try {
-        const blob = await renderImageEditorDocumentToPngBlob(sourceUrl, normalizedDocument);
+        const blob = await renderImageEditorDocumentToPngBlob(sourceUrl, basePreviewDocument);
         if (canceled) return;
         const nextUrl = URL.createObjectURL(blob);
         setPreviewUrl((current) => {
@@ -348,7 +548,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       canceled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [normalizedDocument, sourceReady, sourceUrl]);
+  }, [basePreviewKey, sourceReady, sourceUrl]);
 
   const ensureHydratedImage = useCallback(async () => {
     if (hydratedImage?.id === image.id) {
@@ -579,16 +779,6 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     });
   }, [documentState]);
 
-  const resetDocument = useCallback(() => {
-    if (!normalizedDocument) return;
-    commitDocument(() => createImageEditorDocument({
-      imageId: image.id,
-      name: image.name,
-      width: normalizedDocument.sourceDimensions.width,
-      height: normalizedDocument.sourceDimensions.height,
-    }), 'Reset');
-  }, [commitDocument, image, normalizedDocument]);
-
   const updateRecipe = useCallback((recipe: ImageEditorDocument['recipe']) => {
     commitDocument((current) => ({ ...current, recipe: normalizeImageEditRecipe(recipe, current.sourceDimensions) }), 'Edit recipe');
   }, [commitDocument]);
@@ -621,16 +811,106 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     setSuccess('Flatten will be applied in the saved PNG output.');
   }, [commitDocument, normalizedDocument, setSuccess]);
 
+  const restoreOriginal = useCallback(() => {
+    if (!normalizedDocument) return;
+    if (!window.confirm('Restore the original image and discard all editor changes?')) {
+      return;
+    }
+    setDocumentState(createImageEditorDocument({
+      imageId: image.id,
+      name: image.name,
+      width: normalizedDocument.sourceDimensions.width,
+      height: normalizedDocument.sourceDimensions.height,
+    }));
+    setHistory({ past: [], future: [] });
+    setDragState(null);
+  }, [image.id, image.name, normalizedDocument]);
+
+  const pickColorAtPoint = useCallback((point: { x: number; y: number }) => {
+    const imageElement = previewImageRef.current;
+    if (!imageElement || !normalizedDocument) {
+      return;
+    }
+    const sampleCanvas = document.createElement('canvas');
+    const sampleContext = sampleCanvas.getContext('2d', { willReadFrequently: true });
+    if (!sampleContext) {
+      return;
+    }
+    const width = imageElement.naturalWidth || imageElement.width;
+    const height = imageElement.naturalHeight || imageElement.height;
+    sampleCanvas.width = 1;
+    sampleCanvas.height = 1;
+    const sampleX = clamp(Math.round((point.x / normalizedDocument.canvasDimensions.width) * width), 0, Math.max(0, width - 1));
+    const sampleY = clamp(Math.round((point.y / normalizedDocument.canvasDimensions.height) * height), 0, Math.max(0, height - 1));
+    sampleContext.drawImage(imageElement, sampleX, sampleY, 1, 1, 0, 0, 1, 1);
+    const [red, green, blue] = sampleContext.getImageData(0, 0, 1, 1).data;
+    const color = rgbToHex(red, green, blue);
+    setActiveStyle((current) => ({ ...current, strokeColor: color, textColor: color }));
+    if (selectedObject) {
+      updateSelectedObjectStyle(selectedObject.type === 'text' || selectedObject.type === 'step'
+        ? { textColor: color }
+        : { strokeColor: color });
+    }
+  }, [normalizedDocument, selectedObject, updateSelectedObjectStyle]);
+
   const pointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!normalizedDocument || event.button !== 0) return;
+    if (!normalizedDocument) return;
+    if (event.button === 1) {
+      event.preventDefault();
+      const scrollContainer = scrollContainerRef.current;
+      if (!scrollContainer) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      panStateRef.current = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        scrollLeft: scrollContainer.scrollLeft,
+        scrollTop: scrollContainer.scrollTop,
+      };
+      return;
+    }
+    if (event.button !== 0) return;
     const point = getCanvasPoint(event, canvasRef.current, normalizedDocument);
     event.currentTarget.setPointerCapture(event.pointerId);
 
-    if (activeTool === 'select') {
-      const selected = [...normalizedDocument.objects]
-        .reverse()
-        .find((object) => point.x >= object.bounds.x && point.x <= object.bounds.x + object.bounds.width && point.y >= object.bounds.y && point.y <= object.bounds.y + object.bounds.height);
+    if (selectedObject && isResizableObjectType(selectedObject.type)) {
+      const tolerance = Math.max(8, normalizedDocument.canvasDimensions.width / Math.max(1, displayWidth) * 10);
+      const resizeHandle = getResizeHandleAtPoint(point, selectedObject.bounds, tolerance);
+      if (resizeHandle) {
+        setDragState({
+          tool: 'select',
+          start: point,
+          current: point,
+          movingObjectId: selectedObject.id,
+          resizeHandle,
+          keepAspectRatio: event.shiftKey,
+        });
+        return;
+      }
+    }
+
+    if (activeTool === 'color-picker') {
+      pickColorAtPoint(point);
+      return;
+    }
+
+    const selected = [...normalizedDocument.objects]
+      .reverse()
+      .find((object) => point.x >= object.bounds.x && point.x <= object.bounds.x + object.bounds.width && point.y >= object.bounds.y && point.y <= object.bounds.y + object.bounds.height);
+
+    if (selected && (activeTool === 'select' || activeTool === selected.type || normalizedDocument.selectedObjectIds.includes(selected.id))) {
+      setDragState({
+        tool: 'select',
+        start: point,
+        current: point,
+        movingObjectId: selected.id,
+      });
       commitDocument((current) => ({ ...current, selectedObjectIds: selected ? [selected.id] : [] }), 'Select');
+      return;
+    }
+
+    if (activeTool === 'select') {
+      commitDocument((current) => ({ ...current, selectedObjectIds: [] }), 'Select');
       return;
     }
 
@@ -640,22 +920,79 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       current: point,
       points: activeTool === 'freehand' ? [point] : undefined,
     });
-  }, [activeTool, commitDocument, normalizedDocument]);
+  }, [activeTool, commitDocument, displayWidth, normalizedDocument, pickColorAtPoint, selectedObject]);
 
   const pointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const panState = panStateRef.current;
+    if (panState) {
+      const scrollContainer = scrollContainerRef.current;
+      if (scrollContainer) {
+        scrollContainer.scrollLeft = panState.scrollLeft - (event.clientX - panState.startClientX);
+        scrollContainer.scrollTop = panState.scrollTop - (event.clientY - panState.startClientY);
+      }
+      return;
+    }
     if (!dragState || !normalizedDocument) return;
     const point = getCanvasPoint(event, canvasRef.current, normalizedDocument);
     setDragState((current) => current ? {
       ...current,
       current: point,
+      keepAspectRatio: current.resizeHandle ? event.shiftKey : current.keepAspectRatio,
       points: current.points ? [...current.points, point] : undefined,
     } : current);
   }, [dragState, normalizedDocument]);
 
-  const pointerUp = useCallback(() => {
+  const pointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (panStateRef.current?.pointerId === event.pointerId) {
+      panStateRef.current = null;
+      return;
+    }
     if (!dragState || !normalizedDocument) return;
     const completedDrag = dragState;
     setDragState(null);
+
+    if (completedDrag.tool === 'select' && completedDrag.movingObjectId) {
+      const deltaX = completedDrag.current.x - completedDrag.start.x;
+      const deltaY = completedDrag.current.y - completedDrag.start.y;
+      if (Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5) {
+        commitDocument((current) => ({
+          ...current,
+          objects: current.objects.map((object) => {
+            if (object.id !== completedDrag.movingObjectId) {
+              return object;
+            }
+            if (completedDrag.resizeHandle) {
+              const resizedBounds = resizeBoundsFromHandle(
+                object.bounds,
+                completedDrag.resizeHandle,
+                deltaX,
+                deltaY,
+                current.canvasDimensions,
+                completedDrag.keepAspectRatio,
+              );
+              return {
+                ...object,
+                bounds: resizedBounds,
+              };
+            }
+            const x = clamp(object.bounds.x + deltaX, 0, Math.max(0, current.canvasDimensions.width - object.bounds.width));
+            const y = clamp(object.bounds.y + deltaY, 0, Math.max(0, current.canvasDimensions.height - object.bounds.height));
+            const appliedDeltaX = x - object.bounds.x;
+            const appliedDeltaY = y - object.bounds.y;
+            return {
+              ...object,
+              bounds: { ...object.bounds, x, y },
+              points: object.points?.map((point) => ({
+                x: clamp(point.x + appliedDeltaX, 0, current.canvasDimensions.width),
+                y: clamp(point.y + appliedDeltaY, 0, current.canvasDimensions.height),
+              })),
+            };
+          }),
+          selectedObjectIds: [completedDrag.movingObjectId],
+        }), 'Move object');
+      }
+      return;
+    }
 
     if (completedDrag.tool === 'crop') {
       const x = Math.min(completedDrag.start.x, completedDrag.current.x);
@@ -940,13 +1277,70 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
-    setZoom((current) => clampZoom(current * factor));
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    const scrollContainer = scrollContainerRef.current;
+    const anchorX = canvasRect ? event.clientX - canvasRect.left : 0;
+    const anchorY = canvasRect ? event.clientY - canvasRect.top : 0;
+    setZoom((current) => {
+      const next = clampZoom(current * factor);
+      const scale = next / current;
+      if (scrollContainer && canvasRect && scale !== 1) {
+        requestAnimationFrame(() => {
+          scrollContainer.scrollLeft += anchorX * (scale - 1);
+          scrollContainer.scrollTop += anchorY * (scale - 1);
+        });
+      }
+      return next;
+    });
   }, []);
 
   const activeOutputDimensions = normalizedDocument
     ? getImageEditOutputDimensions(normalizedDocument.recipe, normalizedDocument.sourceDimensions)
     : null;
   const selectedCount = normalizedDocument?.selectedObjectIds.length || 0;
+  const canvasDimensionsForOverlay = normalizedDocument?.canvasDimensions ?? { width: 1, height: 1 };
+  const selectedDragOffset = dragState?.tool === 'select' && !dragState.resizeHandle && selectedObject && dragState.movingObjectId === selectedObject.id
+    ? {
+      x: dragState.current.x - dragState.start.x,
+      y: dragState.current.y - dragState.start.y,
+    }
+    : { x: 0, y: 0 };
+  const selectedDisplayBounds = selectedObject && dragState?.tool === 'select' && dragState.resizeHandle && dragState.movingObjectId === selectedObject.id
+    ? resizeBoundsFromHandle(
+      selectedObject.bounds,
+      dragState.resizeHandle,
+      dragState.current.x - dragState.start.x,
+      dragState.current.y - dragState.start.y,
+      canvasDimensionsForOverlay,
+      dragState.keepAspectRatio,
+    )
+    : selectedObject
+      ? {
+      ...selectedObject.bounds,
+      x: selectedObject.bounds.x + selectedDragOffset.x,
+      y: selectedObject.bounds.y + selectedDragOffset.y,
+      }
+      : null;
+  const selectedDisplayPoints = selectedObject?.points?.map((point) => ({
+    x: point.x + selectedDragOffset.x,
+    y: point.y + selectedDragOffset.y,
+  }));
+  const styleTargetType = selectedObject?.type ?? (isAnnotationTool(activeTool) ? activeTool : null);
+  const displayedStyle = selectedObject?.style ?? activeStyle;
+  const canUseStrokeColor = Boolean(styleTargetType && ['rectangle', 'ellipse', 'line', 'arrow', 'freehand', 'highlight', 'magnify'].includes(styleTargetType));
+  const canUseFillColor = Boolean(styleTargetType && ['rectangle', 'ellipse', 'highlight', 'step'].includes(styleTargetType));
+  const canUseTextColor = Boolean(styleTargetType && ['text', 'step'].includes(styleTargetType));
+  const canUseStrokeWidth = Boolean(styleTargetType && styleTargetType !== 'text' && styleTargetType !== 'step');
+  const canUseFontSize = Boolean(styleTargetType && ['text', 'step'].includes(styleTargetType));
+  const displayedObjects = [...(normalizedDocument?.objects ?? [])]
+    .sort((first, second) => first.zIndex - second.zIndex)
+    .map((object) => object.id === selectedObject?.id
+      ? {
+        ...object,
+        bounds: selectedDisplayBounds ?? object.bounds,
+        points: selectedDisplayPoints ?? object.points,
+      }
+      : object);
 
   if (!normalizedDocument || !sourceUrl) {
     return (
@@ -981,6 +1375,10 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           <button type="button" onClick={flattenSelection} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Flatten">
             <Layers className="h-4 w-4" />
           </button>
+          <button type="button" onClick={restoreOriginal} disabled={!hasChanges} className="inline-flex items-center gap-1 rounded-md px-2 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800 disabled:opacity-40" title="Restore Original">
+            <RotateCcw className="h-4 w-4" />
+            Restore
+          </button>
           <button type="button" onClick={handleCopy} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Copy image">
             <Copy className="h-4 w-4" />
           </button>
@@ -1014,33 +1412,165 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         </div>
 
         <div className="relative flex min-w-0 flex-1 flex-col bg-gray-950">
-          <div className="flex flex-1 items-center justify-center overflow-auto p-8">
+          <div ref={scrollContainerRef} className="flex flex-1 items-start justify-start overflow-auto p-8">
             <div
               ref={canvasRef}
               data-testid="image-editor-canvas"
-              className="relative max-h-full max-w-full touch-none select-none overflow-hidden rounded-sm border border-gray-800 bg-[linear-gradient(45deg,#1f2937_25%,transparent_25%),linear-gradient(-45deg,#1f2937_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#1f2937_75%),linear-gradient(-45deg,transparent_75%,#1f2937_75%)] bg-[length:20px_20px] bg-[position:0_0,0_10px,10px_-10px,-10px_0px]"
+              className="relative mx-auto my-auto flex-none touch-none select-none overflow-hidden rounded-sm border border-gray-800 bg-[linear-gradient(45deg,#1f2937_25%,transparent_25%),linear-gradient(-45deg,#1f2937_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#1f2937_75%),linear-gradient(-45deg,transparent_75%,#1f2937_75%)] bg-[length:20px_20px] bg-[position:0_0,0_10px,10px_-10px,-10px_0px]"
               style={{
                 aspectRatio: `${Math.max(1, normalizedDocument.canvasDimensions.width)} / ${Math.max(1, normalizedDocument.canvasDimensions.height)}`,
                 width: `${displayWidth}px`,
+                maxWidth: 'none',
               }}
               onPointerDown={pointerDown}
               onPointerMove={pointerMove}
               onPointerUp={pointerUp}
-              onPointerCancel={() => setDragState(null)}
+              onPointerCancel={() => {
+                setDragState(null);
+                panStateRef.current = null;
+              }}
+              onAuxClick={(event) => event.preventDefault()}
               onWheel={handleWheel}
             >
               {previewUrl ? (
-                <img src={previewUrl} alt={image.name} className="block h-full w-full object-contain" draggable={false} />
+                <img ref={previewImageRef} src={previewUrl} alt={image.name} className="block h-full w-full object-contain" draggable={false} />
               ) : (
-                <img src={sourceUrl} alt={image.name} className="block h-full w-full object-contain opacity-80" draggable={false} />
+                <img ref={previewImageRef} src={sourceUrl} alt={image.name} className="block h-full w-full object-contain opacity-80" draggable={false} />
               )}
+              <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
+                {displayedObjects.map((object) => {
+                  const { bounds, style } = object;
+                  if (object.type === 'rectangle' || object.type === 'highlight') {
+                    return (
+                      <rect
+                        key={object.id}
+                        x={bounds.x}
+                        y={bounds.y}
+                        width={bounds.width}
+                        height={bounds.height}
+                        fill={object.type === 'highlight' ? 'rgba(250, 204, 21, 0.28)' : style.fillColor}
+                        stroke={object.type === 'rectangle' ? style.strokeColor : 'transparent'}
+                        strokeWidth={object.type === 'rectangle' ? style.strokeWidth : 0}
+                        opacity={style.opacity}
+                      />
+                    );
+                  }
+                  if (object.type === 'ellipse' || object.type === 'spotlight' || object.type === 'magnify') {
+                    return (
+                      <ellipse
+                        key={object.id}
+                        cx={bounds.x + bounds.width / 2}
+                        cy={bounds.y + bounds.height / 2}
+                        rx={bounds.width / 2}
+                        ry={bounds.height / 2}
+                        fill={object.type === 'ellipse' ? style.fillColor : 'rgba(0, 0, 0, 0.18)'}
+                        stroke={style.strokeColor}
+                        strokeWidth={style.strokeWidth}
+                        opacity={style.opacity}
+                        strokeDasharray={object.type === 'spotlight' || object.type === 'magnify' ? '10 8' : undefined}
+                      />
+                    );
+                  }
+                  if (object.type === 'line' || object.type === 'arrow') {
+                    const start = object.points?.[0] ?? { x: bounds.x, y: bounds.y };
+                    const end = object.points?.[1] ?? { x: bounds.x + bounds.width, y: bounds.y + bounds.height };
+                    return (
+                      <g key={object.id} opacity={style.opacity}>
+                        <line
+                          x1={start.x}
+                          y1={start.y}
+                          x2={end.x}
+                          y2={end.y}
+                          stroke={style.strokeColor}
+                          strokeWidth={style.strokeWidth}
+                          strokeLinecap="round"
+                          markerEnd={object.type === 'arrow' ? `url(#image-editor-arrow-${object.id})` : undefined}
+                        />
+                        {object.type === 'arrow' && (
+                          <defs>
+                            <marker id={`image-editor-arrow-${object.id}`} markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+                              <path d="M 0 0 L 10 5 L 0 10 z" fill={style.strokeColor} />
+                            </marker>
+                          </defs>
+                        )}
+                      </g>
+                    );
+                  }
+                  if (object.type === 'freehand' && object.points && object.points.length > 1) {
+                    return (
+                      <polyline
+                        key={object.id}
+                        points={object.points.map((point) => `${point.x},${point.y}`).join(' ')}
+                        fill="none"
+                        stroke={style.strokeColor}
+                        strokeWidth={style.strokeWidth}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity={style.opacity}
+                      />
+                    );
+                  }
+                  if (object.type === 'text') {
+                    return (
+                      <text
+                        key={object.id}
+                        x={bounds.x}
+                        y={bounds.y + style.fontSize}
+                        fill={style.textColor}
+                        fontSize={style.fontSize}
+                        fontFamily="system-ui, sans-serif"
+                        opacity={style.opacity}
+                      >
+                        {object.text || 'Text'}
+                      </text>
+                    );
+                  }
+                  if (object.type === 'step') {
+                    const radius = Math.max(16, Math.min(bounds.width, bounds.height) / 2);
+                    return (
+                      <g key={object.id} opacity={style.opacity}>
+                        <circle cx={bounds.x + radius} cy={bounds.y + radius} r={radius} fill={style.strokeColor} />
+                        <text
+                          x={bounds.x + radius}
+                          y={bounds.y + radius + 1}
+                          fill={style.textColor}
+                          fontSize={Math.round(radius)}
+                          fontWeight={700}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fontFamily="system-ui, sans-serif"
+                        >
+                          {object.stepNumber || 1}
+                        </text>
+                      </g>
+                    );
+                  }
+                  if (object.type === 'blur' || object.type === 'pixelate') {
+                    return (
+                      <rect
+                        key={object.id}
+                        x={bounds.x}
+                        y={bounds.y}
+                        width={bounds.width}
+                        height={bounds.height}
+                        fill="rgba(103, 232, 249, 0.08)"
+                        stroke={style.strokeColor}
+                        strokeWidth={Math.max(2, style.strokeWidth / 2)}
+                        strokeDasharray="10 8"
+                        opacity={style.opacity}
+                      />
+                    );
+                  }
+                  return null;
+                })}
+              </svg>
               {dragState && (dragState.tool === 'line' || dragState.tool === 'arrow') ? (
-                <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+                <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
                   <line
-                    x1={`${(dragState.start.x / normalizedDocument.canvasDimensions.width) * 100}%`}
-                    y1={`${(dragState.start.y / normalizedDocument.canvasDimensions.height) * 100}%`}
-                    x2={`${(dragState.current.x / normalizedDocument.canvasDimensions.width) * 100}%`}
-                    y2={`${(dragState.current.y / normalizedDocument.canvasDimensions.height) * 100}%`}
+                    x1={dragState.start.x}
+                    y1={dragState.start.y}
+                    x2={dragState.current.x}
+                    y2={dragState.current.y}
                     stroke="rgb(103 232 249)"
                     strokeWidth="2"
                     strokeLinecap="round"
@@ -1051,6 +1581,17 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                       <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(103 232 249)" />
                     </marker>
                   </defs>
+                </svg>
+              ) : dragState?.tool === 'freehand' && dragState.points?.length ? (
+                <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
+                  <polyline
+                    points={dragState.points.map((point) => `${point.x},${point.y}`).join(' ')}
+                    fill="none"
+                    stroke="rgb(103 232 249)"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               ) : dragState && (
                 <div
@@ -1063,29 +1604,46 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                   }}
                 />
               )}
-              {selectedObject && (selectedObject.type === 'line' || selectedObject.type === 'arrow') && selectedObject.points?.[0] && selectedObject.points?.[1] ? (
-                <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+              {selectedObject && (selectedObject.type === 'line' || selectedObject.type === 'arrow') && selectedDisplayPoints?.[0] && selectedDisplayPoints?.[1] ? (
+                <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
                   <line
-                    x1={`${(selectedObject.points[0].x / normalizedDocument.canvasDimensions.width) * 100}%`}
-                    y1={`${(selectedObject.points[0].y / normalizedDocument.canvasDimensions.height) * 100}%`}
-                    x2={`${(selectedObject.points[1].x / normalizedDocument.canvasDimensions.width) * 100}%`}
-                    y2={`${(selectedObject.points[1].y / normalizedDocument.canvasDimensions.height) * 100}%`}
+                    x1={selectedDisplayPoints[0].x}
+                    y1={selectedDisplayPoints[0].y}
+                    x2={selectedDisplayPoints[1].x}
+                    y2={selectedDisplayPoints[1].y}
                     stroke="rgb(103 232 249)"
                     strokeWidth="2"
                     strokeDasharray="6 5"
                     strokeLinecap="round"
                   />
                 </svg>
-              ) : selectedObject && (
+              ) : selectedDisplayBounds && (
                 <div
                   className="pointer-events-none absolute border-2 border-cyan-300"
                   style={{
-                    left: `${(selectedObject.bounds.x / normalizedDocument.canvasDimensions.width) * 100}%`,
-                    top: `${(selectedObject.bounds.y / normalizedDocument.canvasDimensions.height) * 100}%`,
-                    width: `${(selectedObject.bounds.width / normalizedDocument.canvasDimensions.width) * 100}%`,
-                    height: `${(selectedObject.bounds.height / normalizedDocument.canvasDimensions.height) * 100}%`,
+                    left: `${(selectedDisplayBounds.x / normalizedDocument.canvasDimensions.width) * 100}%`,
+                    top: `${(selectedDisplayBounds.y / normalizedDocument.canvasDimensions.height) * 100}%`,
+                    width: `${(selectedDisplayBounds.width / normalizedDocument.canvasDimensions.width) * 100}%`,
+                    height: `${(selectedDisplayBounds.height / normalizedDocument.canvasDimensions.height) * 100}%`,
                   }}
                 />
+              )}
+              {selectedDisplayBounds && selectedObject && isResizableObjectType(selectedObject.type) && (
+                <>
+                  {RESIZE_HANDLES.map((handle) => {
+                    const point = getHandlePoint(selectedDisplayBounds, handle);
+                    return (
+                      <div
+                        key={handle}
+                        className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-950 bg-cyan-300 shadow-sm shadow-black/50"
+                        style={{
+                          left: `${(point.x / normalizedDocument.canvasDimensions.width) * 100}%`,
+                          top: `${(point.y / normalizedDocument.canvasDimensions.height) * 100}%`,
+                        }}
+                      />
+                    );
+                  })}
+                </>
               )}
             </div>
           </div>
@@ -1164,34 +1722,106 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
             </section>
 
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-100">Object Style</h3>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1 text-xs text-gray-400">
-                  <span>Stroke</span>
-                  <input type="color" value={activeStyle.strokeColor} onChange={(event) => { setActiveStyle({ ...activeStyle, strokeColor: event.target.value }); updateSelectedObjectStyle({ strokeColor: event.target.value }); }} className="h-8 w-full rounded border border-gray-700 bg-gray-950" />
-                </label>
-                <label className="space-y-1 text-xs text-gray-400">
-                  <span>Text</span>
-                  <input type="color" value={activeStyle.textColor} onChange={(event) => { setActiveStyle({ ...activeStyle, textColor: event.target.value }); updateSelectedObjectStyle({ textColor: event.target.value }); }} className="h-8 w-full rounded border border-gray-700 bg-gray-950" />
-                </label>
-                <label className="space-y-1 text-xs text-gray-400">
-                  <span>Width</span>
-                  <input type="number" value={activeStyle.strokeWidth} min={1} max={80} onChange={(event) => { const value = clamp(Math.round(Number(event.target.value) || 1), 1, 80); setActiveStyle({ ...activeStyle, strokeWidth: value }); updateSelectedObjectStyle({ strokeWidth: value }); }} className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100" />
-                </label>
-                <label className="space-y-1 text-xs text-gray-400">
-                  <span>Font</span>
-                  <input type="number" value={activeStyle.fontSize} min={8} max={240} onChange={(event) => { const value = clamp(Math.round(Number(event.target.value) || 32), 8, 240); setActiveStyle({ ...activeStyle, fontSize: value }); updateSelectedObjectStyle({ fontSize: value }); }} className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100" />
-                </label>
-              </div>
-              <div className="grid grid-cols-4 gap-1">
-                <button type="button" onClick={() => moveSelected('front')} disabled={!selectedObject} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800 disabled:opacity-40">Front</button>
-                <button type="button" onClick={() => moveSelected('forward')} disabled={!selectedObject} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800 disabled:opacity-40">Up</button>
-                <button type="button" onClick={() => moveSelected('backward')} disabled={!selectedObject} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800 disabled:opacity-40">Down</button>
-                <button type="button" onClick={() => moveSelected('back')} disabled={!selectedObject} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800 disabled:opacity-40">Back</button>
-              </div>
-              <button type="button" onClick={deleteSelected} disabled={!selectedObject} className="w-full rounded-md border border-red-500/30 bg-red-500/10 px-2 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/20 disabled:opacity-40">
-                Delete Selected
-              </button>
+              <h3 className="text-sm font-semibold text-gray-100">{selectedObject ? 'Selected Object' : 'Tool Style'}</h3>
+              {styleTargetType ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    {canUseStrokeColor && (
+                      <label className="space-y-1 text-xs text-gray-400">
+                        <span>Stroke</span>
+                        <input
+                          type="color"
+                          value={displayedStyle.strokeColor}
+                          onChange={(event) => {
+                            setActiveStyle({ ...activeStyle, strokeColor: event.target.value });
+                            updateSelectedObjectStyle({ strokeColor: event.target.value });
+                          }}
+                          className="h-8 w-full rounded border border-gray-700 bg-gray-950"
+                        />
+                      </label>
+                    )}
+                    {canUseFillColor && (
+                      <label className="space-y-1 text-xs text-gray-400">
+                        <span>Fill</span>
+                        <input
+                          type="color"
+                          value={toColorInputValue(displayedStyle.fillColor)}
+                          onChange={(event) => {
+                            setActiveStyle({ ...activeStyle, fillColor: event.target.value });
+                            updateSelectedObjectStyle({ fillColor: event.target.value });
+                          }}
+                          className="h-8 w-full rounded border border-gray-700 bg-gray-950"
+                        />
+                      </label>
+                    )}
+                    {canUseTextColor && (
+                      <label className="space-y-1 text-xs text-gray-400">
+                        <span>Text</span>
+                        <input
+                          type="color"
+                          value={displayedStyle.textColor}
+                          onChange={(event) => {
+                            setActiveStyle({ ...activeStyle, textColor: event.target.value });
+                            updateSelectedObjectStyle({ textColor: event.target.value });
+                          }}
+                          className="h-8 w-full rounded border border-gray-700 bg-gray-950"
+                        />
+                      </label>
+                    )}
+                    {canUseStrokeWidth && (
+                      <label className="space-y-1 text-xs text-gray-400">
+                        <span>{styleTargetType === 'blur' || styleTargetType === 'pixelate' ? 'Strength' : 'Width'}</span>
+                        <input
+                          type="number"
+                          value={displayedStyle.strokeWidth}
+                          min={1}
+                          max={80}
+                          onChange={(event) => {
+                            const value = clamp(Math.round(Number(event.target.value) || 1), 1, 80);
+                            setActiveStyle({ ...activeStyle, strokeWidth: value });
+                            updateSelectedObjectStyle({ strokeWidth: value });
+                          }}
+                          className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100"
+                        />
+                      </label>
+                    )}
+                    {canUseFontSize && (
+                      <label className="space-y-1 text-xs text-gray-400">
+                        <span>Font</span>
+                        <input
+                          type="number"
+                          value={displayedStyle.fontSize}
+                          min={8}
+                          max={240}
+                          onChange={(event) => {
+                            const value = clamp(Math.round(Number(event.target.value) || 32), 8, 240);
+                            setActiveStyle({ ...activeStyle, fontSize: value });
+                            updateSelectedObjectStyle({ fontSize: value });
+                          }}
+                          className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100"
+                        />
+                      </label>
+                    )}
+                  </div>
+                  {selectedObject && (
+                    <>
+                      <div className="grid grid-cols-4 gap-1">
+                        <button type="button" onClick={() => moveSelected('front')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Front</button>
+                        <button type="button" onClick={() => moveSelected('forward')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Up</button>
+                        <button type="button" onClick={() => moveSelected('backward')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Down</button>
+                        <button type="button" onClick={() => moveSelected('back')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Back</button>
+                      </div>
+                      <button type="button" onClick={deleteSelected} className="w-full rounded-md border border-red-500/30 bg-red-500/10 px-2 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/20">
+                        Delete Selected
+                      </button>
+                    </>
+                  )}
+                </>
+              ) : (
+                <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-500">
+                  Pick an annotation tool or select an object to edit its style.
+                </div>
+              )}
             </section>
 
             <section className="space-y-3">
@@ -1258,9 +1888,9 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               </div>
             </section>
 
-            <button type="button" onClick={resetDocument} disabled={!hasChanges} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40">
-              <Scissors className="h-4 w-4" />
-              Reset Editor
+            <button type="button" onClick={restoreOriginal} disabled={!hasChanges} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40">
+              <RotateCcw className="h-4 w-4" />
+              Restore Original
             </button>
           </div>
         </aside>

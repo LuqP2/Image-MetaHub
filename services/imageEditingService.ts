@@ -49,7 +49,7 @@ export const DEFAULT_IMAGE_EDIT_RECIPE: ImageEditRecipe = {
 
 export const DEFAULT_IMAGE_EDITOR_OBJECT_STYLE: ImageEditorObjectStyle = {
   strokeColor: '#22d3ee',
-  fillColor: 'rgba(34, 211, 238, 0.16)',
+  fillColor: 'rgba(0, 0, 0, 0)',
   textColor: '#f8fafc',
   strokeWidth: 4,
   fontSize: 32,

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow } from 'lucide-react';
+import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -16,6 +16,7 @@ interface HeaderProps {
     onGeneratorSetupNeeded?: () => void;
     libraryView?: LibraryView;
     onLibraryViewChange?: (view: LibraryView) => void;
+    editorAvailable?: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -24,7 +25,8 @@ const Header: React.FC<HeaderProps> = ({
     onOpenLicense, 
     onGeneratorSetupNeeded,
     libraryView,
-    onLibraryViewChange
+    onLibraryViewChange,
+    editorAvailable = false
 }) => {
   const {
     canUseAnalytics,
@@ -327,9 +329,10 @@ const Header: React.FC<HeaderProps> = ({
       { id: 'model' as const, label: 'Model View' },
       { id: 'node' as const, label: 'Node View' },
       { id: 'collections' as const, label: 'Collections' },
+      ...(editorAvailable ? [{ id: 'editor' as const, label: 'Image Editor', icon: ImageIcon }] : []),
       { id: 'comfyui' as const, label: 'ComfyUI', icon: Workflow },
     ],
-    [clustersCount]
+    [clustersCount, editorAvailable]
   );
   const utilityButtonClassName = 'app-top-icon-button';
   const handleViewTabClick = useCallback((view: LibraryView) => {

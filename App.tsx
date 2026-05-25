@@ -2557,6 +2557,7 @@ export default function App() {
           onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
           libraryView={libraryView}
           onLibraryViewChange={setLibraryView}
+          editorAvailable={Boolean(editorImageId)}
         />
 
         <CollectionFormModal
