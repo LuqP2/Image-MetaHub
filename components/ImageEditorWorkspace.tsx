@@ -118,13 +118,40 @@ const TOOL_HINTS: Record<ImageEditorTool, string> = {
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+const clampZoom = (value: number) => clamp(Math.round(value * 100) / 100, 0.1, 6);
+
 const cloneDocument = (document: ImageEditorDocument): ImageEditorDocument => JSON.parse(JSON.stringify(document));
 
 const createObjectId = () => `editor_obj_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
 
+const isEditableShortcutTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return target.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+};
+
 const isAnnotationTool = (tool: ImageEditorTool): tool is ImageEditorObject['type'] => (
   tool !== 'select' && tool !== 'crop'
 );
+
+const TOOL_SHORTCUTS: Partial<Record<string, ImageEditorTool>> = {
+  v: 'select',
+  c: 'crop',
+  r: 'rectangle',
+  e: 'ellipse',
+  l: 'line',
+  a: 'arrow',
+  f: 'freehand',
+  t: 'text',
+  n: 'step',
+  h: 'highlight',
+  b: 'blur',
+  p: 'pixelate',
+  s: 'spotlight',
+  m: 'magnify',
+};
 
 const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefined => (
   image.metadata?.normalizedMetadata as BaseMetadata | undefined
@@ -152,12 +179,15 @@ const objectFromDrag = (
   const text = tool === 'text'
     ? window.prompt('Text annotation', 'Text') || 'Text'
     : undefined;
+  const directionalPoints = tool === 'line' || tool === 'arrow'
+    ? [drag.start, drag.current]
+    : undefined;
 
   return {
     id: createObjectId(),
     type: tool,
     bounds: resolvedBounds,
-    points: tool === 'freehand' ? drag.points : undefined,
+    points: tool === 'freehand' ? drag.points : directionalPoints,
     text,
     stepNumber: tool === 'step' ? nextStepNumber : undefined,
     zIndex: Date.now(),
@@ -197,6 +227,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const [isRendering, setIsRendering] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [zoom, setZoom] = useState(1);
   const [hydratedImage, setHydratedImage] = useState<IndexedImage | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -220,6 +251,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const hasChanges = normalizedDocument ? hasImageEditorDocumentChanges(normalizedDocument) : false;
   const selectedObject = normalizedDocument?.objects.find((object) => normalizedDocument.selectedObjectIds.includes(object.id)) || null;
   const canOverwrite = getFileExtension(image.name) === '.png';
+  const displayWidth = Math.max(160, Math.round(1080 * zoom));
 
   const commitDocument = useCallback((updater: (current: ImageEditorDocument) => ImageEditorDocument, label: string) => {
     setDocumentState((current) => {
@@ -677,6 +709,240 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     }, 'Layer order');
   }, [commitDocument, selectedObject]);
 
+  const duplicateSelected = useCallback(() => {
+    if (!selectedObject) return;
+    commitDocument((current) => {
+      const source = current.objects.find((object) => object.id === selectedObject.id);
+      if (!source) return current;
+      const cloneId = createObjectId();
+      const maxZIndex = current.objects.reduce((max, object) => Math.max(max, object.zIndex), 0);
+      const clone: ImageEditorObject = {
+        ...JSON.parse(JSON.stringify(source)) as ImageEditorObject,
+        id: cloneId,
+        zIndex: maxZIndex + 1,
+        bounds: {
+          ...source.bounds,
+          x: clamp(source.bounds.x + 16, 0, Math.max(0, current.canvasDimensions.width - source.bounds.width)),
+          y: clamp(source.bounds.y + 16, 0, Math.max(0, current.canvasDimensions.height - source.bounds.height)),
+        },
+        points: source.points?.map((point) => ({
+          x: clamp(point.x + 16, 0, current.canvasDimensions.width),
+          y: clamp(point.y + 16, 0, current.canvasDimensions.height),
+        })),
+      };
+      return {
+        ...current,
+        objects: [...current.objects, clone],
+        selectedObjectIds: [cloneId],
+      };
+    }, 'Duplicate object');
+  }, [commitDocument, selectedObject]);
+
+  const deleteAllObjects = useCallback(() => {
+    if (!normalizedDocument?.objects.length) return;
+    commitDocument((current) => ({ ...current, objects: [], selectedObjectIds: [] }), 'Delete all objects');
+  }, [commitDocument, normalizedDocument?.objects.length]);
+
+  const moveSelectedBy = useCallback((deltaX: number, deltaY: number) => {
+    if (!selectedObject) return;
+    commitDocument((current) => ({
+      ...current,
+      objects: current.objects.map((object) => {
+        if (object.id !== selectedObject.id) {
+          return object;
+        }
+        const x = clamp(object.bounds.x + deltaX, 0, Math.max(0, current.canvasDimensions.width - object.bounds.width));
+        const y = clamp(object.bounds.y + deltaY, 0, Math.max(0, current.canvasDimensions.height - object.bounds.height));
+        return {
+          ...object,
+          bounds: { ...object.bounds, x, y },
+          points: object.points?.map((point) => ({
+            x: clamp(point.x + deltaX, 0, current.canvasDimensions.width),
+            y: clamp(point.y + deltaY, 0, current.canvasDimensions.height),
+          })),
+        };
+      }),
+    }), 'Move object');
+  }, [commitDocument, selectedObject]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isEditableShortcutTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const hasCommandModifier = event.ctrlKey || event.metaKey;
+
+      if (hasCommandModifier) {
+        if (key === 'z') {
+          event.preventDefault();
+          if (event.shiftKey) {
+            redo();
+          } else {
+            undo();
+          }
+          return;
+        }
+        if (key === 'y') {
+          event.preventDefault();
+          redo();
+          return;
+        }
+        if (key === 's') {
+          event.preventDefault();
+          if (event.shiftKey) {
+            void handleSaveAs();
+          } else {
+            void handleSave();
+          }
+          return;
+        }
+        if (key === 'c') {
+          event.preventDefault();
+          void handleCopy();
+          return;
+        }
+        if (key === 'd') {
+          event.preventDefault();
+          duplicateSelected();
+          return;
+        }
+        if (key === 'a') {
+          event.preventDefault();
+          commitDocument((current) => ({
+            ...current,
+            selectedObjectIds: current.objects.map((object) => object.id),
+          }), 'Select all');
+          return;
+        }
+        if (key === 'f' && event.shiftKey) {
+          event.preventDefault();
+          flattenSelection();
+          return;
+        }
+        if (key === '=' || key === '+') {
+          event.preventDefault();
+          setZoom((current) => clampZoom(current * 1.15));
+          return;
+        }
+        if (key === '-' || key === '_') {
+          event.preventDefault();
+          setZoom((current) => clampZoom(current / 1.15));
+          return;
+        }
+        if (key === '0' || key === '1') {
+          event.preventDefault();
+          setZoom(1);
+          return;
+        }
+        if (key === ']' && event.shiftKey) {
+          event.preventDefault();
+          moveSelected('front');
+          return;
+        }
+        if (key === '[' && event.shiftKey) {
+          event.preventDefault();
+          moveSelected('back');
+          return;
+        }
+        if (key === ']') {
+          event.preventDefault();
+          moveSelected('forward');
+          return;
+        }
+        if (key === '[') {
+          event.preventDefault();
+          moveSelected('backward');
+          return;
+        }
+      }
+
+      if (!event.altKey && !hasCommandModifier && !event.shiftKey && TOOL_SHORTCUTS[key]) {
+        event.preventDefault();
+        setActiveTool(TOOL_SHORTCUTS[key]);
+        return;
+      }
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          deleteAllObjects();
+        } else {
+          deleteSelected();
+        }
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (dragState) {
+          setDragState(null);
+          return;
+        }
+        commitDocument((current) => ({ ...current, selectedObjectIds: [] }), 'Deselect');
+        return;
+      }
+
+      if (event.key === 'Home') {
+        event.preventDefault();
+        moveSelected('front');
+        return;
+      }
+      if (event.key === 'End') {
+        event.preventDefault();
+        moveSelected('back');
+        return;
+      }
+      if (event.key === 'PageUp') {
+        event.preventDefault();
+        moveSelected('forward');
+        return;
+      }
+      if (event.key === 'PageDown') {
+        event.preventDefault();
+        moveSelected('backward');
+        return;
+      }
+      if (event.key.startsWith('Arrow')) {
+        const amount = event.shiftKey ? 10 : 1;
+        const delta = {
+          ArrowLeft: [-amount, 0],
+          ArrowRight: [amount, 0],
+          ArrowUp: [0, -amount],
+          ArrowDown: [0, amount],
+        }[event.key] as [number, number] | undefined;
+        if (delta) {
+          event.preventDefault();
+          moveSelectedBy(delta[0], delta[1]);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    commitDocument,
+    deleteAllObjects,
+    deleteSelected,
+    dragState,
+    duplicateSelected,
+    flattenSelection,
+    handleCopy,
+    handleSave,
+    handleSaveAs,
+    moveSelected,
+    moveSelectedBy,
+    redo,
+    undo,
+  ]);
+
+  const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+    setZoom((current) => clampZoom(current * factor));
+  }, []);
+
   const activeOutputDimensions = normalizedDocument
     ? getImageEditOutputDimensions(normalizedDocument.recipe, normalizedDocument.sourceDimensions)
     : null;
@@ -755,19 +1021,38 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               className="relative max-h-full max-w-full touch-none select-none overflow-hidden rounded-sm border border-gray-800 bg-[linear-gradient(45deg,#1f2937_25%,transparent_25%),linear-gradient(-45deg,#1f2937_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#1f2937_75%),linear-gradient(-45deg,transparent_75%,#1f2937_75%)] bg-[length:20px_20px] bg-[position:0_0,0_10px,10px_-10px,-10px_0px]"
               style={{
                 aspectRatio: `${Math.max(1, normalizedDocument.canvasDimensions.width)} / ${Math.max(1, normalizedDocument.canvasDimensions.height)}`,
-                width: 'min(100%, 1080px)',
+                width: `${displayWidth}px`,
               }}
               onPointerDown={pointerDown}
               onPointerMove={pointerMove}
               onPointerUp={pointerUp}
               onPointerCancel={() => setDragState(null)}
+              onWheel={handleWheel}
             >
               {previewUrl ? (
                 <img src={previewUrl} alt={image.name} className="block h-full w-full object-contain" draggable={false} />
               ) : (
                 <img src={sourceUrl} alt={image.name} className="block h-full w-full object-contain opacity-80" draggable={false} />
               )}
-              {dragState && (
+              {dragState && (dragState.tool === 'line' || dragState.tool === 'arrow') ? (
+                <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+                  <line
+                    x1={`${(dragState.start.x / normalizedDocument.canvasDimensions.width) * 100}%`}
+                    y1={`${(dragState.start.y / normalizedDocument.canvasDimensions.height) * 100}%`}
+                    x2={`${(dragState.current.x / normalizedDocument.canvasDimensions.width) * 100}%`}
+                    y2={`${(dragState.current.y / normalizedDocument.canvasDimensions.height) * 100}%`}
+                    stroke="rgb(103 232 249)"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    markerEnd={dragState.tool === 'arrow' ? 'url(#image-editor-arrow-preview)' : undefined}
+                  />
+                  <defs>
+                    <marker id="image-editor-arrow-preview" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(103 232 249)" />
+                    </marker>
+                  </defs>
+                </svg>
+              ) : dragState && (
                 <div
                   className="pointer-events-none absolute border-2 border-cyan-300 bg-cyan-300/10"
                   style={{
@@ -778,7 +1063,20 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                   }}
                 />
               )}
-              {selectedObject && (
+              {selectedObject && (selectedObject.type === 'line' || selectedObject.type === 'arrow') && selectedObject.points?.[0] && selectedObject.points?.[1] ? (
+                <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+                  <line
+                    x1={`${(selectedObject.points[0].x / normalizedDocument.canvasDimensions.width) * 100}%`}
+                    y1={`${(selectedObject.points[0].y / normalizedDocument.canvasDimensions.height) * 100}%`}
+                    x2={`${(selectedObject.points[1].x / normalizedDocument.canvasDimensions.width) * 100}%`}
+                    y2={`${(selectedObject.points[1].y / normalizedDocument.canvasDimensions.height) * 100}%`}
+                    stroke="rgb(103 232 249)"
+                    strokeWidth="2"
+                    strokeDasharray="6 5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              ) : selectedObject && (
                 <div
                   className="pointer-events-none absolute border-2 border-cyan-300"
                   style={{
@@ -793,7 +1091,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           </div>
           <div className="flex h-9 shrink-0 items-center justify-between border-t border-gray-800 bg-gray-900 px-4 text-xs text-gray-400">
             <span>{TOOL_HINTS[activeTool]}</span>
-            <span>{isRendering ? 'Rendering preview...' : `${normalizedDocument.objects.length} objects · ${selectedCount} selected`}</span>
+            <span>{isRendering ? 'Rendering preview...' : `${Math.round(zoom * 100)}% · ${normalizedDocument.objects.length} objects · ${selectedCount} selected`}</span>
           </div>
         </div>
 

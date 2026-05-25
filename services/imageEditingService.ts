@@ -860,13 +860,15 @@ const drawEditorObject = (
     context.fill();
     context.stroke();
   } else if (object.type === 'line' || object.type === 'arrow') {
+    const start = object.points?.[0] ?? { x: bounds.x, y: bounds.y };
+    const end = object.points?.[1] ?? { x: bounds.x + bounds.width, y: bounds.y + bounds.height };
     context.beginPath();
-    context.moveTo(bounds.x, bounds.y);
-    context.lineTo(bounds.x + bounds.width, bounds.y + bounds.height);
+    context.moveTo(start.x, start.y);
+    context.lineTo(end.x, end.y);
     context.stroke();
     if (object.type === 'arrow') {
       context.fillStyle = style.strokeColor;
-      drawArrowHead(context, bounds.x, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, Math.max(12, style.strokeWidth * 4));
+      drawArrowHead(context, start.x, start.y, end.x, end.y, Math.max(12, style.strokeWidth * 4));
     }
   } else if (object.type === 'freehand' && object.points && object.points.length > 1) {
     context.beginPath();

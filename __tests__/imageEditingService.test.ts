@@ -108,6 +108,33 @@ describe('imageEditingService', () => {
     expect(document.objects[0].style.fontSize).toBe(8);
   });
 
+  it('preserves directional points for line and arrow objects', () => {
+    const document = normalizeImageEditorDocument({
+      sourceImageId: 'dir::image.png',
+      sourceName: 'image.png',
+      sourceDimensions: { width: 400, height: 300 },
+      canvasDimensions: { width: 400, height: 300 },
+      objects: [
+        {
+          id: 'arrow-1',
+          type: 'arrow',
+          bounds: { x: 20, y: 20, width: 180, height: 120 },
+          points: [
+            { x: 200, y: 40 },
+            { x: 20, y: 140 },
+          ],
+          zIndex: 1,
+          style: { strokeColor: '#ffffff', fillColor: 'transparent', textColor: '#ffffff', strokeWidth: 4, fontSize: 24, opacity: 1 },
+        },
+      ],
+    });
+
+    expect(document.objects[0].points).toEqual([
+      { x: 200, y: 40 },
+      { x: 20, y: 140 },
+    ]);
+  });
+
   it('detects neutral and dirty image editor documents', () => {
     const document = createImageEditorDocument({
       imageId: 'dir::image.png',
