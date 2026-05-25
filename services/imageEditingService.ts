@@ -9,6 +9,10 @@ import type {
   ImageEditResize,
   ImageEditRotation,
   ImageEditTransform,
+  ImageEditorBackground,
+  ImageEditorDocument,
+  ImageEditorObject,
+  ImageEditorObjectStyle,
   LoRAInfo,
 } from '../types';
 
@@ -41,6 +45,27 @@ export const DEFAULT_IMAGE_EDIT_RECIPE: ImageEditRecipe = {
     sharpen: 0,
     blur: 0,
   },
+};
+
+export const DEFAULT_IMAGE_EDITOR_OBJECT_STYLE: ImageEditorObjectStyle = {
+  strokeColor: '#22d3ee',
+  fillColor: 'rgba(34, 211, 238, 0.16)',
+  textColor: '#f8fafc',
+  strokeWidth: 4,
+  fontSize: 32,
+  opacity: 1,
+};
+
+export const DEFAULT_IMAGE_EDITOR_BACKGROUND: ImageEditorBackground = {
+  kind: 'transparent',
+  color: '#111827',
+  gradientFrom: '#111827',
+  gradientTo: '#374151',
+  margin: 0,
+  padding: 0,
+  smartPadding: false,
+  roundedCorner: 0,
+  shadowRadius: 0,
 };
 
 const ADJUSTMENT_RANGES: Record<keyof ImageAdjustments, { min: number; max: number }> = {
@@ -361,6 +386,157 @@ export const buildImageEditFilter = (
   return filters.join(' ');
 };
 
+export const normalizeImageEditorBounds = (
+  bounds: Partial<ImageEditorObject['bounds']> | undefined,
+  canvasDimensions?: { width: number; height: number },
+): ImageEditorObject['bounds'] => {
+  const maxWidth = Math.max(1, canvasDimensions?.width || MAX_OUTPUT_DIMENSION);
+  const maxHeight = Math.max(1, canvasDimensions?.height || MAX_OUTPUT_DIMENSION);
+  const width = clampInteger(bounds?.width ?? 1, 1, maxWidth, 1);
+  const height = clampInteger(bounds?.height ?? 1, 1, maxHeight, 1);
+  return {
+    x: clampInteger(bounds?.x ?? 0, 0, Math.max(0, maxWidth - width), 0),
+    y: clampInteger(bounds?.y ?? 0, 0, Math.max(0, maxHeight - height), 0),
+    width,
+    height,
+  };
+};
+
+export const normalizeImageEditorBackground = (
+  background?: Partial<ImageEditorBackground>,
+): ImageEditorBackground => ({
+  kind: background?.kind === 'color' || background?.kind === 'gradient' || background?.kind === 'transparent'
+    ? background.kind
+    : DEFAULT_IMAGE_EDITOR_BACKGROUND.kind,
+  color: background?.color || DEFAULT_IMAGE_EDITOR_BACKGROUND.color,
+  gradientFrom: background?.gradientFrom || DEFAULT_IMAGE_EDITOR_BACKGROUND.gradientFrom,
+  gradientTo: background?.gradientTo || DEFAULT_IMAGE_EDITOR_BACKGROUND.gradientTo,
+  margin: clampInteger(background?.margin ?? DEFAULT_IMAGE_EDITOR_BACKGROUND.margin, 0, 2000, DEFAULT_IMAGE_EDITOR_BACKGROUND.margin),
+  padding: clampInteger(background?.padding ?? DEFAULT_IMAGE_EDITOR_BACKGROUND.padding, 0, 2000, DEFAULT_IMAGE_EDITOR_BACKGROUND.padding),
+  smartPadding: Boolean(background?.smartPadding),
+  roundedCorner: clampInteger(background?.roundedCorner ?? DEFAULT_IMAGE_EDITOR_BACKGROUND.roundedCorner, 0, 500, DEFAULT_IMAGE_EDITOR_BACKGROUND.roundedCorner),
+  shadowRadius: clampInteger(background?.shadowRadius ?? DEFAULT_IMAGE_EDITOR_BACKGROUND.shadowRadius, 0, 500, DEFAULT_IMAGE_EDITOR_BACKGROUND.shadowRadius),
+});
+
+export const normalizeImageEditorObject = (
+  object: Partial<ImageEditorObject>,
+  canvasDimensions?: { width: number; height: number },
+): ImageEditorObject | null => {
+  const allowedTypes: ImageEditorObject['type'][] = [
+    'rectangle',
+    'ellipse',
+    'line',
+    'arrow',
+    'freehand',
+    'text',
+    'step',
+    'highlight',
+    'blur',
+    'pixelate',
+    'spotlight',
+    'magnify',
+  ];
+  if (!object.id || !object.type || !allowedTypes.includes(object.type)) {
+    return null;
+  }
+
+  return {
+    id: object.id,
+    type: object.type,
+    bounds: normalizeImageEditorBounds(object.bounds, canvasDimensions),
+    points: Array.isArray(object.points)
+      ? object.points
+          .map((point) => ({
+            x: clampInteger(point.x, 0, canvasDimensions?.width || MAX_OUTPUT_DIMENSION, 0),
+            y: clampInteger(point.y, 0, canvasDimensions?.height || MAX_OUTPUT_DIMENSION, 0),
+          }))
+      : undefined,
+    text: object.text || '',
+    stepNumber: Number.isFinite(object.stepNumber) ? Math.max(1, Math.round(object.stepNumber || 1)) : undefined,
+    zIndex: Number.isFinite(object.zIndex) ? Math.round(object.zIndex || 0) : 0,
+    style: {
+      strokeColor: object.style?.strokeColor || DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.strokeColor,
+      fillColor: object.style?.fillColor || DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.fillColor,
+      textColor: object.style?.textColor || DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.textColor,
+      strokeWidth: clampInteger(object.style?.strokeWidth ?? DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.strokeWidth, 1, 80, DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.strokeWidth),
+      fontSize: clampInteger(object.style?.fontSize ?? DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.fontSize, 8, 240, DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.fontSize),
+      opacity: clampNumber(object.style?.opacity ?? DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.opacity, 0, 1, DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.opacity),
+    },
+  };
+};
+
+export const createImageEditorDocument = (
+  source: {
+    imageId: string;
+    name: string;
+    width: number;
+    height: number;
+  },
+): ImageEditorDocument => ({
+  sourceImageId: source.imageId,
+  sourceName: source.name,
+  sourceDimensions: {
+    width: Math.max(1, Math.round(source.width || 1)),
+    height: Math.max(1, Math.round(source.height || 1)),
+  },
+  canvasDimensions: {
+    width: Math.max(1, Math.round(source.width || 1)),
+    height: Math.max(1, Math.round(source.height || 1)),
+  },
+  recipe: normalizeImageEditRecipe(DEFAULT_IMAGE_EDIT_RECIPE, { width: source.width, height: source.height }),
+  background: DEFAULT_IMAGE_EDITOR_BACKGROUND,
+  objects: [],
+  selectedObjectIds: [],
+});
+
+export const normalizeImageEditorDocument = (
+  document: Partial<ImageEditorDocument>,
+): ImageEditorDocument => {
+  const sourceDimensions = {
+    width: Math.max(1, Math.round(document.sourceDimensions?.width || document.canvasDimensions?.width || 1)),
+    height: Math.max(1, Math.round(document.sourceDimensions?.height || document.canvasDimensions?.height || 1)),
+  };
+  const recipe = normalizeImageEditRecipe(document.recipe || DEFAULT_IMAGE_EDIT_RECIPE, sourceDimensions);
+  const outputDimensions = getImageEditOutputDimensions(recipe, sourceDimensions);
+  const canvasDimensions = {
+    width: Math.max(1, Math.round(document.canvasDimensions?.width || outputDimensions.width)),
+    height: Math.max(1, Math.round(document.canvasDimensions?.height || outputDimensions.height)),
+  };
+  const objects = (document.objects || [])
+    .map((object) => normalizeImageEditorObject(object, canvasDimensions))
+    .filter((object): object is ImageEditorObject => Boolean(object))
+    .sort((left, right) => left.zIndex - right.zIndex);
+  const objectIds = new Set(objects.map((object) => object.id));
+
+  return {
+    sourceImageId: document.sourceImageId || '',
+    sourceName: document.sourceName || 'image.png',
+    sourceDimensions,
+    canvasDimensions,
+    recipe,
+    background: normalizeImageEditorBackground(document.background),
+    objects,
+    selectedObjectIds: (document.selectedObjectIds || []).filter((id) => objectIds.has(id)),
+  };
+};
+
+export const hasImageEditorDocumentChanges = (
+  document: Partial<ImageEditorDocument>,
+): boolean => {
+  const normalized = normalizeImageEditorDocument(document);
+  const background = normalized.background;
+  return (
+    hasImageEditRecipeChanges(normalized.recipe) ||
+    normalized.objects.length > 0 ||
+    background.kind !== DEFAULT_IMAGE_EDITOR_BACKGROUND.kind ||
+    background.margin !== DEFAULT_IMAGE_EDITOR_BACKGROUND.margin ||
+    background.padding !== DEFAULT_IMAGE_EDITOR_BACKGROUND.padding ||
+    background.smartPadding !== DEFAULT_IMAGE_EDITOR_BACKGROUND.smartPadding ||
+    background.roundedCorner !== DEFAULT_IMAGE_EDITOR_BACKGROUND.roundedCorner ||
+    background.shadowRadius !== DEFAULT_IMAGE_EDITOR_BACKGROUND.shadowRadius
+  );
+};
+
 const loadImageElement = (sourceUrl: string): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
   const image = new Image();
   image.onload = () => resolve(image);
@@ -506,6 +682,289 @@ export async function renderEditedImageToPngBytes(
   recipeOrAdjustments: Partial<ImageEditRecipe> | Partial<ImageAdjustments>,
 ): Promise<Uint8Array> {
   const blob = await renderEditedImageToPngBlob(sourceUrl, recipeOrAdjustments);
+  if (typeof blob.arrayBuffer === 'function') {
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+
+  const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Failed to read edited PNG bytes.'));
+      }
+    };
+    reader.onerror = () => reject(reader.error || new Error('Failed to read edited PNG bytes.'));
+    reader.readAsArrayBuffer(blob);
+  });
+  return new Uint8Array(buffer);
+}
+
+const loadImageFromBlob = (blob: Blob): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
+  const url = URL.createObjectURL(blob);
+  const image = new Image();
+  image.onload = () => {
+    URL.revokeObjectURL(url);
+    resolve(image);
+  };
+  image.onerror = () => {
+    URL.revokeObjectURL(url);
+    reject(new Error('Failed to load rendered editor image.'));
+  };
+  image.decoding = 'async';
+  image.src = url;
+});
+
+const roundedRectPath = (
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) => {
+  const resolvedRadius = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + resolvedRadius, y);
+  context.lineTo(x + width - resolvedRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + resolvedRadius);
+  context.lineTo(x + width, y + height - resolvedRadius);
+  context.quadraticCurveTo(x + width, y + height, x + width - resolvedRadius, y + height);
+  context.lineTo(x + resolvedRadius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - resolvedRadius);
+  context.lineTo(x, y + resolvedRadius);
+  context.quadraticCurveTo(x, y, x + resolvedRadius, y);
+  context.closePath();
+};
+
+const drawArrowHead = (
+  context: CanvasRenderingContext2D,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  size: number,
+) => {
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+  context.beginPath();
+  context.moveTo(toX, toY);
+  context.lineTo(toX - size * Math.cos(angle - Math.PI / 6), toY - size * Math.sin(angle - Math.PI / 6));
+  context.lineTo(toX - size * Math.cos(angle + Math.PI / 6), toY - size * Math.sin(angle + Math.PI / 6));
+  context.closePath();
+  context.fill();
+};
+
+const drawPixelatedRegion = (
+  context: CanvasRenderingContext2D,
+  bounds: ImageEditorObject['bounds'],
+  pixelSize: number,
+) => {
+  const scratch = document.createElement('canvas');
+  const scratchContext = scratch.getContext('2d');
+  if (!scratchContext) {
+    return;
+  }
+  const smallWidth = Math.max(1, Math.round(bounds.width / pixelSize));
+  const smallHeight = Math.max(1, Math.round(bounds.height / pixelSize));
+  scratch.width = smallWidth;
+  scratch.height = smallHeight;
+  scratchContext.imageSmoothingEnabled = false;
+  scratchContext.drawImage(context.canvas, bounds.x, bounds.y, bounds.width, bounds.height, 0, 0, smallWidth, smallHeight);
+  context.save();
+  context.imageSmoothingEnabled = false;
+  context.drawImage(scratch, 0, 0, smallWidth, smallHeight, bounds.x, bounds.y, bounds.width, bounds.height);
+  context.restore();
+};
+
+const drawEditorObject = (
+  context: CanvasRenderingContext2D,
+  object: ImageEditorObject,
+) => {
+  const { bounds, style } = object;
+  context.save();
+  context.globalAlpha = style.opacity;
+  context.strokeStyle = style.strokeColor;
+  context.fillStyle = style.fillColor;
+  context.lineWidth = style.strokeWidth;
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+
+  if (object.type === 'blur') {
+    const scratch = document.createElement('canvas');
+    const scratchContext = scratch.getContext('2d');
+    if (scratchContext) {
+      scratch.width = bounds.width;
+      scratch.height = bounds.height;
+      scratchContext.filter = `blur(${Math.max(4, style.strokeWidth * 2)}px)`;
+      scratchContext.drawImage(context.canvas, bounds.x, bounds.y, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
+      context.drawImage(scratch, bounds.x, bounds.y);
+    }
+    context.restore();
+    return;
+  }
+
+  if (object.type === 'pixelate') {
+    drawPixelatedRegion(context, bounds, Math.max(6, style.strokeWidth * 3));
+    context.restore();
+    return;
+  }
+
+  if (object.type === 'spotlight') {
+    context.fillStyle = 'rgba(0, 0, 0, 0.48)';
+    context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+    context.globalCompositeOperation = 'destination-out';
+    context.beginPath();
+    context.ellipse(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, bounds.width / 2, bounds.height / 2, 0, 0, Math.PI * 2);
+    context.fill();
+    context.globalCompositeOperation = 'source-over';
+    context.strokeStyle = style.strokeColor;
+    context.stroke();
+    context.restore();
+    return;
+  }
+
+  if (object.type === 'magnify') {
+    context.save();
+    context.beginPath();
+    context.ellipse(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, bounds.width / 2, bounds.height / 2, 0, 0, Math.PI * 2);
+    context.clip();
+    context.drawImage(
+      context.canvas,
+      bounds.x + bounds.width * 0.2,
+      bounds.y + bounds.height * 0.2,
+      bounds.width * 0.6,
+      bounds.height * 0.6,
+      bounds.x,
+      bounds.y,
+      bounds.width,
+      bounds.height,
+    );
+    context.restore();
+    context.beginPath();
+    context.ellipse(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, bounds.width / 2, bounds.height / 2, 0, 0, Math.PI * 2);
+    context.stroke();
+    context.restore();
+    return;
+  }
+
+  if (object.type === 'rectangle' || object.type === 'highlight') {
+    context.fillStyle = object.type === 'highlight' ? 'rgba(250, 204, 21, 0.28)' : style.fillColor;
+    context.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    if (object.type === 'rectangle') {
+      context.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    }
+  } else if (object.type === 'ellipse') {
+    context.beginPath();
+    context.ellipse(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, bounds.width / 2, bounds.height / 2, 0, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+  } else if (object.type === 'line' || object.type === 'arrow') {
+    context.beginPath();
+    context.moveTo(bounds.x, bounds.y);
+    context.lineTo(bounds.x + bounds.width, bounds.y + bounds.height);
+    context.stroke();
+    if (object.type === 'arrow') {
+      context.fillStyle = style.strokeColor;
+      drawArrowHead(context, bounds.x, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, Math.max(12, style.strokeWidth * 4));
+    }
+  } else if (object.type === 'freehand' && object.points && object.points.length > 1) {
+    context.beginPath();
+    context.moveTo(object.points[0].x, object.points[0].y);
+    object.points.slice(1).forEach((point) => context.lineTo(point.x, point.y));
+    context.stroke();
+  } else if (object.type === 'text') {
+    context.fillStyle = style.textColor;
+    context.font = `${style.fontSize}px system-ui, sans-serif`;
+    context.fillText(object.text || 'Text', bounds.x, bounds.y + style.fontSize);
+  } else if (object.type === 'step') {
+    const radius = Math.max(16, Math.min(bounds.width, bounds.height) / 2);
+    context.fillStyle = style.strokeColor;
+    context.beginPath();
+    context.arc(bounds.x + radius, bounds.y + radius, radius, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = style.textColor;
+    context.font = `700 ${Math.round(radius)}px system-ui, sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(String(object.stepNumber || 1), bounds.x + radius, bounds.y + radius + 1);
+  }
+
+  context.restore();
+};
+
+const drawImageEditorBackground = (
+  context: CanvasRenderingContext2D,
+  background: ImageEditorBackground,
+  width: number,
+  height: number,
+) => {
+  if (background.kind === 'transparent') {
+    return;
+  }
+
+  if (background.kind === 'gradient') {
+    const gradient = context.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, background.gradientFrom);
+    gradient.addColorStop(1, background.gradientTo);
+    context.fillStyle = gradient;
+  } else {
+    context.fillStyle = background.color;
+  }
+  context.fillRect(0, 0, width, height);
+};
+
+export async function renderImageEditorDocumentToPngBlob(
+  sourceUrl: string,
+  editorDocument: Partial<ImageEditorDocument>,
+): Promise<Blob> {
+  const normalized = normalizeImageEditorDocument(editorDocument);
+  const baseBlob = await renderEditedImageToPngBlob(sourceUrl, normalized.recipe);
+  const baseImage = await loadImageFromBlob(baseBlob);
+  const background = normalized.background;
+  const spacing = background.padding + (background.smartPadding ? Math.round(Math.min(baseImage.width, baseImage.height) * 0.06) : 0);
+  const outerMargin = background.margin;
+  const contentX = outerMargin + spacing;
+  const contentY = outerMargin + spacing;
+  const canvas = document.createElement('canvas');
+  canvas.width = baseImage.width + (outerMargin + spacing) * 2;
+  canvas.height = baseImage.height + (outerMargin + spacing) * 2;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Canvas rendering is not available in this browser.');
+  }
+
+  drawImageEditorBackground(context, background, canvas.width, canvas.height);
+  context.save();
+  if (background.shadowRadius > 0) {
+    context.shadowColor = 'rgba(0, 0, 0, 0.42)';
+    context.shadowBlur = background.shadowRadius;
+    context.shadowOffsetY = Math.round(background.shadowRadius / 3);
+  }
+  if (background.roundedCorner > 0) {
+    roundedRectPath(context, contentX, contentY, baseImage.width, baseImage.height, background.roundedCorner);
+    context.clip();
+  }
+  context.drawImage(baseImage, contentX, contentY);
+  context.restore();
+
+  if (contentX || contentY) {
+    context.translate(contentX, contentY);
+  }
+  normalized.objects.forEach((object) => drawEditorObject(context, object));
+  if (contentX || contentY) {
+    context.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  return canvasToBlob(canvas);
+}
+
+export async function renderImageEditorDocumentToPngBytes(
+  sourceUrl: string,
+  document: Partial<ImageEditorDocument>,
+): Promise<Uint8Array> {
+  const blob = await renderImageEditorDocumentToPngBlob(sourceUrl, document);
   if (typeof blob.arrayBuffer === 'function') {
     return new Uint8Array(await blob.arrayBuffer());
   }
@@ -709,15 +1168,24 @@ const buildMetaHubEditPayload = (
   recipe: ImageEditRecipe,
   preservedWorkflow?: PreservedComfyWorkflow,
   outputDimensions?: { width: number; height: number },
+  editInfo?: {
+    tool?: string;
+    annotationCount?: number;
+    background?: ImageEditorBackground;
+    sourceImageId?: string;
+  },
 ) => {
   const payload: Record<string, unknown> = {
     generator: 'Image MetaHub',
     source_generator: typeof metadata.generator === 'string' ? metadata.generator : null,
     edited_at: new Date().toISOString(),
     edit: {
-      tool: 'image-editor-v2',
+      tool: editInfo?.tool || 'image-editor-v2',
       recipe,
       output_dimensions: outputDimensions,
+      annotation_count: editInfo?.annotationCount,
+      background: editInfo?.background,
+      source_image_id: editInfo?.sourceImageId,
     },
     prompt: metadata.prompt || '',
     negativePrompt: metadata.negativePrompt || '',
@@ -798,6 +1266,12 @@ export const embedMetaHubMetadataInPngBytes = (
   recipeOrAdjustments: Partial<ImageEditRecipe> | Partial<ImageAdjustments>,
   rawMetadata?: Record<string, unknown>,
   outputDimensions?: { width: number; height: number },
+  editInfo?: {
+    tool?: string;
+    annotationCount?: number;
+    background?: ImageEditorBackground;
+    sourceImageId?: string;
+  },
 ): Uint8Array => {
   if (!metadata) {
     return pngBytes;
@@ -809,7 +1283,7 @@ export const embedMetaHubMetadataInPngBytes = (
     createPngTextChunk('parameters', formatMetadataForA1111Compat(metadata)),
     createPngInternationalTextChunk(
       'imagemetahub_data',
-      JSON.stringify(buildMetaHubEditPayload(metadata, normalizedRecipe, preservedWorkflow, outputDimensions)),
+      JSON.stringify(buildMetaHubEditPayload(metadata, normalizedRecipe, preservedWorkflow, outputDimensions, editInfo)),
     ),
   ];
 

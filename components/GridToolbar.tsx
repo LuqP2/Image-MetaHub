@@ -15,6 +15,7 @@ import {
   Plus,
   Play,
   Workflow,
+  Image as ImageIcon,
   X,
   Search
 } from 'lucide-react';
@@ -44,6 +45,7 @@ interface GridToolbarProps {
   onGenerateA1111: (image: IndexedImage) => void;
   onGenerateComfyUI: (image: IndexedImage) => void;
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
+  onOpenImageEditor?: (image: IndexedImage) => void;
   onCompare: (images: IndexedImage[]) => void;
   onBatchExport: () => void;
   onStartSlideshow: () => void;
@@ -193,6 +195,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onGenerateA1111,
   onGenerateComfyUI,
   onOpenComfyUIWorkspace,
+  onOpenImageEditor,
   onCompare,
   onBatchExport,
   onStartSlideshow,
@@ -354,6 +357,12 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       onOpenComfyUIWorkspace(firstSelectedImage);
     }
     setGenerateDropdownOpen(false);
+  };
+
+  const handleOpenImageEditor = () => {
+    if (firstSelectedImage && onOpenImageEditor) {
+      onOpenImageEditor(firstSelectedImage);
+    }
   };
 
   const handleTagClick = () => {
@@ -655,6 +664,22 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <div className="w-px h-4 bg-gray-700 mx-1" />
 
                 {/* Compare */}
+                <Tooltip label={selectedCount === 1 ? 'Edit image' : 'Select one image to edit'}>
+                  <button
+                    onClick={handleOpenImageEditor}
+                    className={`p-1.5 rounded transition-colors ${
+                      selectedCount === 1 && onOpenImageEditor
+                        ? 'text-gray-400 hover:text-cyan-300 hover:bg-gray-700'
+                        : 'text-gray-600 cursor-not-allowed'
+                    }`}
+                    title={selectedCount === 1 ? 'Edit image' : 'Select one image to edit'}
+                    aria-label="Edit image"
+                    disabled={selectedCount !== 1 || !onOpenImageEditor}
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+
                 <Tooltip label={selectedCount >= 2 && selectedCount <= 4 ? `Compare ${selectedCount} Images` : 'Select between 2 and 4 images to compare'}>
                   <button
                     onClick={handleCompare}

@@ -2,14 +2,17 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_IMAGE_ADJUSTMENTS,
   DEFAULT_IMAGE_EDIT_RECIPE,
+  createImageEditorDocument,
   buildImageAdjustmentFilter,
   clampImageAdjustment,
   clampImageEditCropRect,
   embedMetaHubMetadataInPngBytes,
   getImageEditOutputDimensions,
   hasImageEditRecipeChanges,
+  hasImageEditorDocumentChanges,
   hasImageAdjustments,
   normalizeImageAdjustments,
+  normalizeImageEditorDocument,
   normalizeImageEditRecipe,
   normalizeImageEditRotation,
   renderAdjustedImageToPngBytes,
@@ -78,6 +81,59 @@ describe('imageEditingService', () => {
     expect(getImageEditOutputDimensions({
       resize: { enabled: true, width: 12, height: 10, lockAspectRatio: false },
     }, { width: 100, height: 80 })).toEqual({ width: 12, height: 10 });
+  });
+
+  it('normalizes image editor documents and clamps object bounds', () => {
+    const document = normalizeImageEditorDocument({
+      sourceImageId: 'dir::image.png',
+      sourceName: 'image.png',
+      sourceDimensions: { width: 400, height: 300 },
+      canvasDimensions: { width: 400, height: 300 },
+      objects: [
+        {
+          id: 'rect-1',
+          type: 'rectangle',
+          bounds: { x: -10, y: 20, width: 999, height: 60 },
+          zIndex: 3,
+          opacity: 2,
+          style: { stroke: '#ffffff', fill: 'transparent', strokeWidth: 200, fontSize: 0 },
+        },
+      ],
+    });
+
+    expect(document.objects).toHaveLength(1);
+    expect(document.objects[0].bounds).toEqual({ x: 0, y: 20, width: 400, height: 60 });
+    expect(document.objects[0].style.opacity).toBe(1);
+    expect(document.objects[0].style.strokeWidth).toBe(80);
+    expect(document.objects[0].style.fontSize).toBe(8);
+  });
+
+  it('detects neutral and dirty image editor documents', () => {
+    const document = createImageEditorDocument({
+      imageId: 'dir::image.png',
+      name: 'image.png',
+      width: 400,
+      height: 300,
+    });
+
+    expect(hasImageEditorDocumentChanges(document)).toBe(false);
+    expect(hasImageEditorDocumentChanges({
+      ...document,
+      objects: [
+        {
+          id: 'arrow-1',
+          type: 'arrow',
+          bounds: { x: 10, y: 10, width: 120, height: 40 },
+          zIndex: 1,
+          opacity: 1,
+          style: { stroke: '#ffffff', fill: 'transparent', strokeWidth: 4, fontSize: 24 },
+        },
+      ],
+    })).toBe(true);
+    expect(hasImageEditorDocumentChanges({
+      ...document,
+      background: { ...document.background, kind: 'color', color: '#101820' },
+    })).toBe(true);
   });
 
   it('renders adjusted image bytes as PNG', async () => {
@@ -180,6 +236,10 @@ describe('imageEditingService', () => {
     }, DEFAULT_IMAGE_ADJUSTMENTS, {
       workflow,
       prompt,
+    }, undefined, {
+      tool: 'image-editor-workspace-v1',
+      annotationCount: 2,
+      sourceImageId: 'dir::image.png',
     });
     const text = new TextDecoder().decode(output);
 
@@ -187,5 +247,7 @@ describe('imageEditingService', () => {
     expect(text).toContain('prompt_api');
     expect(text).toContain('KSampler');
     expect(text).toContain('"seed":123');
+    expect(text).toContain('image-editor-workspace-v1');
+    expect(text).toContain('"annotation_count":2');
   });
 });

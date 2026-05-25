@@ -19,6 +19,7 @@ import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, S
   Tag,
   RefreshCw,
   Pencil,
+  Image as ImageIcon,
   Workflow
 } from 'lucide-react';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
@@ -1035,6 +1036,7 @@ interface ImageGridProps {
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
   onFindSimilar?: (image: IndexedImage) => void;
+  onOpenImageEditor?: (image: IndexedImage) => void;
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   markedBestIds?: Set<string>;      // IDs of images marked as best
   markedArchivedIds?: Set<string>;  // IDs of images marked for archive
@@ -1059,6 +1061,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   isCollectionsView = false,
   onImageRenamed,
   onFindSimilar,
+  onOpenImageEditor,
   onOpenComfyUIWorkspace,
   markedBestIds,
   markedArchivedIds,
@@ -1339,6 +1342,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     onOpenComfyUIWorkspace(contextMenu.image);
     hideContextMenu();
   }, [contextMenu.image, hideContextMenu, onOpenComfyUIWorkspace, canUseComfyUI, showProModal]);
+
+  const openImageEditor = useCallback(() => {
+    if (!contextMenu.image || !onOpenImageEditor) return;
+    onOpenImageEditor(contextMenu.image);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, onOpenImageEditor]);
 
   const selectForComparison = useCallback(() => {
     if (!contextMenu.image) return;
@@ -2256,6 +2265,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <Search className="w-4 h-4" />
             <span className="flex-1">Find similar...</span>
           </button>
+
+          {onOpenImageEditor && (
+            <button
+              onClick={openImageEditor}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              title="Open this image in the editor workspace"
+            >
+              <ImageIcon className="w-4 h-4" />
+              <span className="flex-1">Edit Image</span>
+            </button>
+          )}
 
           <div className="border-t border-gray-600 my-1"></div>
 

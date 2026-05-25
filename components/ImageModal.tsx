@@ -3,7 +3,7 @@ import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollecti
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -149,6 +149,7 @@ interface ImageModalProps {
   onClose: () => void;
   onFindSimilar?: (image: IndexedImage) => void;
   onOpenComfyUIWorkflow?: (image: IndexedImage) => void;
+  onOpenImageEditor?: (image: IndexedImage) => void;
   onImageDeleted?: (imageId: string) => void;
   onImageRenamed?: (oldImageId: string, newImageId: string, newRelativePath: string) => void;
   currentIndex?: number;
@@ -737,6 +738,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onClose,
   onFindSimilar,
   onOpenComfyUIWorkflow,
+  onOpenImageEditor,
   onImageDeleted,
   onImageRenamed,
   currentIndex = 0,
@@ -3226,6 +3228,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </div>
             ) : (
               <div className="flex flex-row items-center gap-2">
+                {canEditImage && onOpenImageEditor && (
+                  <button
+                    onClick={() => onOpenImageEditor(liveImage)}
+                    className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                    title="Open Image Editor"
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                  </button>
+                )}
                 {canEditImage && (
                   <button
                     onClick={() => {
@@ -3307,6 +3318,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="p-6 space-y-4 overflow-y-auto flex-1">
           {canEditImage && (
             <>
+              {onOpenImageEditor && (
+                <button
+                  type="button"
+                  onClick={() => onOpenImageEditor(liveImage)}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm font-medium text-indigo-100 transition-colors hover:border-indigo-400/50 hover:bg-indigo-500/20"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  Open Image Editor
+                </button>
+              )}
+
               {!isAdjustmentPanelOpen && (
                 <button
                   type="button"
@@ -4360,7 +4382,8 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.startSlideshow === nextProps.startSlideshow &&
     prevProps.closeOnSlideshowExit === nextProps.closeOnSlideshowExit &&
     prevProps.diagnosticsFlowId === nextProps.diagnosticsFlowId &&
-    prevProps.onOpenComfyUIWorkflow === nextProps.onOpenComfyUIWorkflow;
+    prevProps.onOpenComfyUIWorkflow === nextProps.onOpenComfyUIWorkflow &&
+    prevProps.onOpenImageEditor === nextProps.onOpenImageEditor;
 
   return propsEqual;
 });

@@ -5,7 +5,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil, Workflow } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil, Workflow, Image as ImageIcon } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -30,6 +30,7 @@ interface ImageTableProps {
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
   onFindSimilar?: (image: IndexedImage) => void;
+  onOpenImageEditor?: (image: IndexedImage) => void;
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   groupBy?: ImageGroupByMode;
   groupSortOrder?: ImageGroupingSortOrder;
@@ -78,6 +79,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   isCollectionsView = false,
   onImageRenamed,
   onFindSimilar,
+  onOpenImageEditor,
   onOpenComfyUIWorkspace,
   groupBy = 'none',
   groupSortOrder = 'date-desc',
@@ -170,6 +172,15 @@ const ImageTable: React.FC<ImageTableProps> = ({
     onOpenComfyUIWorkspace(contextMenu.image);
     hideContextMenu();
   }, [canUseComfyUI, contextMenu.image, hideContextMenu, onOpenComfyUIWorkspace, showProModal]);
+
+  const openImageEditor = useCallback(() => {
+    if (!contextMenu.image || !onOpenImageEditor) {
+      return;
+    }
+
+    onOpenImageEditor(contextMenu.image);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, onOpenImageEditor]);
 
   const getContextTargetImages = useCallback(() => {
     if (!contextMenu.image) {
@@ -775,6 +786,17 @@ const ImageTable: React.FC<ImageTableProps> = ({
             <Search className="w-4 h-4" />
             Find similar...
           </button>
+
+          {onOpenImageEditor && (
+            <button
+              onClick={openImageEditor}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              title="Open this image in the Image Editor workspace"
+            >
+              <ImageIcon className="w-4 h-4" />
+              Edit Image
+            </button>
+          )}
 
           {onOpenComfyUIWorkspace && (
             <button

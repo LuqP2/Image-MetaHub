@@ -140,6 +140,104 @@ export interface ImageEditRecipe {
   effects: ImageEditEffects;
 }
 
+export type ImageEditorTool =
+  | 'select'
+  | 'crop'
+  | 'rectangle'
+  | 'ellipse'
+  | 'line'
+  | 'arrow'
+  | 'freehand'
+  | 'text'
+  | 'step'
+  | 'highlight'
+  | 'blur'
+  | 'pixelate'
+  | 'spotlight'
+  | 'magnify';
+
+export type ImageEditorObjectType =
+  | 'rectangle'
+  | 'ellipse'
+  | 'line'
+  | 'arrow'
+  | 'freehand'
+  | 'text'
+  | 'step'
+  | 'highlight'
+  | 'blur'
+  | 'pixelate'
+  | 'spotlight'
+  | 'magnify';
+
+export type ImageEditorBackgroundKind = 'transparent' | 'color' | 'gradient';
+
+export interface ImageEditorBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ImageEditorPoint {
+  x: number;
+  y: number;
+}
+
+export interface ImageEditorObjectStyle {
+  strokeColor: string;
+  fillColor: string;
+  textColor: string;
+  strokeWidth: number;
+  fontSize: number;
+  opacity: number;
+}
+
+export interface ImageEditorObject {
+  id: string;
+  type: ImageEditorObjectType;
+  bounds: ImageEditorBounds;
+  points?: ImageEditorPoint[];
+  text?: string;
+  stepNumber?: number;
+  zIndex: number;
+  style: ImageEditorObjectStyle;
+}
+
+export interface ImageEditorBackground {
+  kind: ImageEditorBackgroundKind;
+  color: string;
+  gradientFrom: string;
+  gradientTo: string;
+  margin: number;
+  padding: number;
+  smartPadding: boolean;
+  roundedCorner: number;
+  shadowRadius: number;
+}
+
+export interface ImageEditorDocument {
+  sourceImageId: string;
+  sourceName: string;
+  sourceDimensions: { width: number; height: number };
+  canvasDimensions: { width: number; height: number };
+  recipe: ImageEditRecipe;
+  background: ImageEditorBackground;
+  objects: ImageEditorObject[];
+  selectedObjectIds: string[];
+}
+
+export interface ImageEditorHistoryEntry {
+  id: string;
+  label: string;
+  document: ImageEditorDocument;
+}
+
+export interface ImageEditorExportOptions {
+  flatten: boolean;
+  includeMetadata: boolean;
+}
+
 export type ImageEditSaveMode = 'save_as' | 'overwrite';
 
 export interface ImageEditSaveResult {
