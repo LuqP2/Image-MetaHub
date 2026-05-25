@@ -86,6 +86,7 @@ type DragState = {
   current: { x: number; y: number };
   points?: { x: number; y: number }[];
   movingObjectId?: string;
+  movingObjectIds?: string[];
   resizeHandle?: ResizeHandle;
   keepAspectRatio?: boolean;
 };
@@ -178,6 +179,33 @@ const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefi
   image.metadata?.normalizedMetadata as BaseMetadata | undefined
 );
 
+const boundsFromPoints = (points: Array<{ x: number; y: number }>): ImageEditorObject['bounds'] => {
+  const minX = Math.min(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const maxY = Math.max(...points.map((point) => point.y));
+  return {
+    x: minX,
+    y: minY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+  };
+};
+
+const boundsFromDrag = (drag: DragState): ImageEditorObject['bounds'] => ({
+  x: Math.min(drag.start.x, drag.current.x),
+  y: Math.min(drag.start.y, drag.current.y),
+  width: Math.max(1, Math.abs(drag.current.x - drag.start.x)),
+  height: Math.max(1, Math.abs(drag.current.y - drag.start.y)),
+});
+
+const boundsIntersect = (first: ImageEditorObject['bounds'], second: ImageEditorObject['bounds']) => (
+  first.x < second.x + second.width &&
+  first.x + first.width > second.x &&
+  first.y < second.y + second.height &&
+  first.y + first.height > second.y
+);
+
 const objectFromDrag = (
   tool: ImageEditorTool,
   drag: DragState,
@@ -188,12 +216,15 @@ const objectFromDrag = (
     return null;
   }
 
-  const x = Math.min(drag.start.x, drag.current.x);
-  const y = Math.min(drag.start.y, drag.current.y);
-  const width = Math.max(1, Math.abs(drag.current.x - drag.start.x));
-  const height = Math.max(1, Math.abs(drag.current.y - drag.start.y));
+  const dragBounds = boundsFromDrag(drag);
+  const x = dragBounds.x;
+  const y = dragBounds.y;
+  const width = dragBounds.width;
+  const height = dragBounds.height;
   const isPointTool = tool === 'text' || tool === 'step';
-  const resolvedBounds = isPointTool
+  const resolvedBounds = tool === 'freehand' && drag.points?.length
+    ? boundsFromPoints(drag.points)
+    : isPointTool
     ? { x: drag.start.x, y: drag.start.y, width: tool === 'step' ? 44 : Math.max(160, width), height: tool === 'step' ? 44 : Math.max(48, height) }
     : { x, y, width, height };
 
@@ -899,18 +930,26 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       .find((object) => point.x >= object.bounds.x && point.x <= object.bounds.x + object.bounds.width && point.y >= object.bounds.y && point.y <= object.bounds.y + object.bounds.height);
 
     if (selected && (activeTool === 'select' || activeTool === selected.type || normalizedDocument.selectedObjectIds.includes(selected.id))) {
+      const selectedIds = normalizedDocument.selectedObjectIds.includes(selected.id)
+        ? normalizedDocument.selectedObjectIds
+        : [selected.id];
       setDragState({
         tool: 'select',
         start: point,
         current: point,
         movingObjectId: selected.id,
+        movingObjectIds: selectedIds,
       });
-      commitDocument((current) => ({ ...current, selectedObjectIds: selected ? [selected.id] : [] }), 'Select');
+      commitDocument((current) => ({ ...current, selectedObjectIds: selectedIds }), 'Select');
       return;
     }
 
     if (activeTool === 'select') {
-      commitDocument((current) => ({ ...current, selectedObjectIds: [] }), 'Select');
+      setDragState({
+        tool: 'select',
+        start: point,
+        current: point,
+      });
       return;
     }
 
@@ -951,17 +990,30 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     const completedDrag = dragState;
     setDragState(null);
 
+    if (completedDrag.tool === 'select' && !completedDrag.movingObjectId && !completedDrag.resizeHandle) {
+      const selectionBounds = boundsFromDrag(completedDrag);
+      const hasMarqueeSize = selectionBounds.width > 3 || selectionBounds.height > 3;
+      commitDocument((current) => ({
+        ...current,
+        selectedObjectIds: hasMarqueeSize
+          ? current.objects.filter((object) => boundsIntersect(selectionBounds, object.bounds)).map((object) => object.id)
+          : [],
+      }), 'Select objects');
+      return;
+    }
+
     if (completedDrag.tool === 'select' && completedDrag.movingObjectId) {
       const deltaX = completedDrag.current.x - completedDrag.start.x;
       const deltaY = completedDrag.current.y - completedDrag.start.y;
+      const movingIds = new Set(completedDrag.movingObjectIds?.length ? completedDrag.movingObjectIds : [completedDrag.movingObjectId]);
       if (Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5) {
         commitDocument((current) => ({
           ...current,
           objects: current.objects.map((object) => {
-            if (object.id !== completedDrag.movingObjectId) {
+            if (!movingIds.has(object.id)) {
               return object;
             }
-            if (completedDrag.resizeHandle) {
+            if (completedDrag.resizeHandle && object.id === completedDrag.movingObjectId) {
               const resizedBounds = resizeBoundsFromHandle(
                 object.bounds,
                 completedDrag.resizeHandle,
@@ -988,7 +1040,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               })),
             };
           }),
-          selectedObjectIds: [completedDrag.movingObjectId],
+          selectedObjectIds: [...movingIds],
         }), 'Move object');
       }
       return;
@@ -1299,7 +1351,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     : null;
   const selectedCount = normalizedDocument?.selectedObjectIds.length || 0;
   const canvasDimensionsForOverlay = normalizedDocument?.canvasDimensions ?? { width: 1, height: 1 };
-  const selectedDragOffset = dragState?.tool === 'select' && !dragState.resizeHandle && selectedObject && dragState.movingObjectId === selectedObject.id
+  const selectedDragOffset = dragState?.tool === 'select' && !dragState.resizeHandle && selectedObject && (dragState.movingObjectIds?.includes(selectedObject.id) || dragState.movingObjectId === selectedObject.id)
     ? {
       x: dragState.current.x - dragState.start.x,
       y: dragState.current.y - dragState.start.y,
@@ -1334,13 +1386,32 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const canUseFontSize = Boolean(styleTargetType && ['text', 'step'].includes(styleTargetType));
   const displayedObjects = [...(normalizedDocument?.objects ?? [])]
     .sort((first, second) => first.zIndex - second.zIndex)
-    .map((object) => object.id === selectedObject?.id
-      ? {
-        ...object,
-        bounds: selectedDisplayBounds ?? object.bounds,
-        points: selectedDisplayPoints ?? object.points,
+    .map((object) => {
+      const shouldMoveWithSelection = dragState?.tool === 'select' && !dragState.resizeHandle && (dragState.movingObjectIds?.includes(object.id) || dragState.movingObjectId === object.id);
+      if (object.id === selectedObject?.id) {
+        return {
+          ...object,
+          bounds: selectedDisplayBounds ?? object.bounds,
+          points: selectedDisplayPoints ?? object.points,
+        };
       }
-      : object);
+      if (shouldMoveWithSelection) {
+        return {
+          ...object,
+          bounds: {
+            ...object.bounds,
+            x: object.bounds.x + selectedDragOffset.x,
+            y: object.bounds.y + selectedDragOffset.y,
+          },
+          points: object.points?.map((point) => ({
+            x: point.x + selectedDragOffset.x,
+            y: point.y + selectedDragOffset.y,
+          })),
+        };
+      }
+      return object;
+    });
+  const selectedDisplayedObjects = displayedObjects.filter((object) => normalizedDocument?.selectedObjectIds.includes(object.id));
 
   if (!normalizedDocument || !sourceUrl) {
     return (
@@ -1571,14 +1642,14 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                     y1={dragState.start.y}
                     x2={dragState.current.x}
                     y2={dragState.current.y}
-                    stroke="rgb(103 232 249)"
-                    strokeWidth="2"
+                    stroke={activeStyle.strokeColor}
+                    strokeWidth={activeStyle.strokeWidth}
                     strokeLinecap="round"
                     markerEnd={dragState.tool === 'arrow' ? 'url(#image-editor-arrow-preview)' : undefined}
                   />
                   <defs>
                     <marker id="image-editor-arrow-preview" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
-                      <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(103 232 249)" />
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill={activeStyle.strokeColor} />
                     </marker>
                   </defs>
                 </svg>
@@ -1587,13 +1658,13 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                   <polyline
                     points={dragState.points.map((point) => `${point.x},${point.y}`).join(' ')}
                     fill="none"
-                    stroke="rgb(103 232 249)"
-                    strokeWidth="2"
+                    stroke={activeStyle.strokeColor}
+                    strokeWidth={activeStyle.strokeWidth}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
                 </svg>
-              ) : dragState && (
+              ) : dragState && !(dragState.tool === 'select' && (dragState.movingObjectId || dragState.resizeHandle)) && (
                 <div
                   className="pointer-events-none absolute border-2 border-cyan-300 bg-cyan-300/10"
                   style={{
@@ -1604,30 +1675,37 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                   }}
                 />
               )}
-              {selectedObject && (selectedObject.type === 'line' || selectedObject.type === 'arrow') && selectedDisplayPoints?.[0] && selectedDisplayPoints?.[1] ? (
-                <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
-                  <line
-                    x1={selectedDisplayPoints[0].x}
-                    y1={selectedDisplayPoints[0].y}
-                    x2={selectedDisplayPoints[1].x}
-                    y2={selectedDisplayPoints[1].y}
-                    stroke="rgb(103 232 249)"
-                    strokeWidth="2"
-                    strokeDasharray="6 5"
-                    strokeLinecap="round"
+              {selectedDisplayedObjects.map((object) => {
+                if ((object.type === 'line' || object.type === 'arrow') && object.points?.[0] && object.points?.[1]) {
+                  return (
+                    <svg key={`selection-${object.id}`} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
+                      <line
+                        x1={object.points[0].x}
+                        y1={object.points[0].y}
+                        x2={object.points[1].x}
+                        y2={object.points[1].y}
+                        stroke="rgb(103 232 249)"
+                        strokeWidth="2"
+                        strokeDasharray="6 5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  );
+                }
+
+                return (
+                  <div
+                    key={`selection-${object.id}`}
+                    className="pointer-events-none absolute border-2 border-cyan-300 bg-cyan-300/5"
+                    style={{
+                      left: `${(object.bounds.x / normalizedDocument.canvasDimensions.width) * 100}%`,
+                      top: `${(object.bounds.y / normalizedDocument.canvasDimensions.height) * 100}%`,
+                      width: `${(object.bounds.width / normalizedDocument.canvasDimensions.width) * 100}%`,
+                      height: `${(object.bounds.height / normalizedDocument.canvasDimensions.height) * 100}%`,
+                    }}
                   />
-                </svg>
-              ) : selectedDisplayBounds && (
-                <div
-                  className="pointer-events-none absolute border-2 border-cyan-300"
-                  style={{
-                    left: `${(selectedDisplayBounds.x / normalizedDocument.canvasDimensions.width) * 100}%`,
-                    top: `${(selectedDisplayBounds.y / normalizedDocument.canvasDimensions.height) * 100}%`,
-                    width: `${(selectedDisplayBounds.width / normalizedDocument.canvasDimensions.width) * 100}%`,
-                    height: `${(selectedDisplayBounds.height / normalizedDocument.canvasDimensions.height) * 100}%`,
-                  }}
-                />
-              )}
+                );
+              })}
               {selectedDisplayBounds && selectedObject && isResizableObjectType(selectedObject.type) && (
                 <>
                   {RESIZE_HANDLES.map((handle) => {
