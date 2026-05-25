@@ -2685,6 +2685,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 disabled={isIndexing}
                 className="rounded-lg border border-red-500/30 bg-red-500/10 p-1.5 text-red-400 transition-colors hover:border-red-500/50 hover:bg-red-500/15 hover:text-red-300 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
                 title={isIndexing ? 'Cannot delete during indexing' : 'Delete image'}
+                aria-label={isIndexing ? 'Cannot delete during indexing' : 'Delete image'}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -2694,6 +2695,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 disabled={isIndexing}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-orange-300 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
                 title={isIndexing ? 'Cannot rename during indexing' : 'Rename image'}
+                aria-label={isIndexing ? 'Cannot rename during indexing' : 'Rename image'}
               >
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -3656,6 +3658,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       }}
                       className="p-1.5 bg-gray-800 hover:bg-red-900/50 rounded-md transition-colors text-gray-400 hover:text-red-400"
                       title="Revert to Original (Delete Edits)"
+                      aria-label="Revert to Original (Delete Edits)"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -3665,6 +3668,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={() => setIsMetadataEditorOpen(true)}
                   className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white"
                   title="Edit Metadata (Shadow)"
+                  aria-label="Edit Metadata (Shadow)"
                 >
                   <Pencil size={14} />
                 </button>
@@ -3672,6 +3676,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={openBatchExport}
                   className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white"
                   title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
+                  aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
                 >
                   <Download size={14} />
                 </button>
