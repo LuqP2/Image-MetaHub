@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, ChevronRight, Heart, X, Zap, CheckCircle, ArrowUp, Copy, Search, Pencil, Download, Eye, EyeOff } from 'lucide-react';
+import { AlertTriangle, Clipboard, Sparkles, ChevronDown, ChevronRight, Heart, X, Zap, CheckCircle, ArrowUp, Copy, Search, Pencil, Download, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type BaseMetadata, type IndexedImage, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
@@ -12,7 +12,7 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
-import { mediaSourceCache } from '../services/mediaSourceCache';
+import { getElectronAbsoluteMediaPath, getRelativeImagePath, mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import ImageLineageSection from './ImageLineageSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
@@ -169,6 +169,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const [showOriginal, setShowOriginal] = useState(false);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
+  const [mediaRendererFailed, setMediaRendererFailed] = useState(false);
+  const [externalMediaPath, setExternalMediaPath] = useState<string | null>(null);
+  const [openExternalMediaError, setOpenExternalMediaError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
     y: 0,
@@ -191,6 +194,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const thumbnail = useResolvedThumbnail(activeImage);
   const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
   const isAudio = !!activeImage && isAudioFileName(activeImage.name, activeImage.fileType);
+  const activeImageDirectoryPath = activeImage
+    ? directories.find((directory) => directory.id === activeImage.directoryId)?.path
+    : undefined;
   const showA1111Actions = !isVideo && !isAudio && a1111Enabled;
   const showComfyUIActions = !isVideo && !isAudio && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
@@ -202,6 +208,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     fileName: activeImage?.name ?? '',
     surface: 'preview-sidebar',
     src: imageUrl,
+    onAudioRendererError: () => setMediaRendererFailed(true),
   });
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
   const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
@@ -276,9 +283,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   // Calculate these BEFORE the early return to maintain hook order
   const nMeta: BaseMetadata | undefined = activeImage?.metadata?.normalizedMetadata;
   const effectiveMetadata = activeImage ? buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal) : undefined;
-  const activeImageDirectoryPath = activeImage
-    ? directories.find((directory) => directory.id === activeImage.directoryId)?.path
-    : undefined;
   const rawMetadataImage = hydratedRawMetadataImage?.id === activeImage?.id ? hydratedRawMetadataImage : activeImage;
   const ensureFullRawMetadata = useCallback(async (): Promise<IndexedImage | null> => {
     if (!activeImage) {
@@ -305,6 +309,49 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     setHydratedRawMetadataImage(null);
     setIsHydratingRawMetadata(false);
   }, [activeImage?.id]);
+
+  useEffect(() => {
+    let isMounted = true;
+    setMediaRendererFailed(false);
+    setOpenExternalMediaError(null);
+    setExternalMediaPath(null);
+
+    const resolveExternalMediaPath = async () => {
+      if (!activeImage || (!isVideo && !isAudio)) {
+        return;
+      }
+
+      const handlePath = getElectronAbsoluteMediaPath(activeImage);
+      if (handlePath) {
+        if (isMounted) setExternalMediaPath(handlePath);
+        return;
+      }
+
+      if (!activeImageDirectoryPath || !window.electronAPI?.joinPaths) {
+        return;
+      }
+
+      const joined = await window.electronAPI.joinPaths(activeImageDirectoryPath, getRelativeImagePath(activeImage));
+      if (isMounted && joined.success && joined.path) {
+        setExternalMediaPath(joined.path);
+      }
+    };
+
+    void resolveExternalMediaPath();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeImage, activeImageDirectoryPath, isAudio, isVideo]);
+
+  const openExternalMedia = useCallback(async () => {
+    if (!externalMediaPath) return;
+    const result = await window.electronAPI?.openPath?.(externalMediaPath);
+    if (!result?.success) {
+      setOpenExternalMediaError(result?.error || 'Failed to open media externally.');
+    }
+  }, [externalMediaPath]);
+
   const generationImage: IndexedImage = activeImage && effectiveMetadata
     ? {
         ...activeImage,
@@ -482,8 +529,29 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 src={imageUrl}
                 title={activeImage.name}
                 compact
+                externalPath={externalMediaPath}
                 diagnostics={{ fileName: activeImage.name, surface: 'preview-sidebar' }}
               />
+            ) : isVideo && mediaRendererFailed ? (
+              <div data-media-element="true" className="flex w-full flex-col items-center justify-center gap-3 bg-black p-4 text-center text-gray-100">
+                <div className="rounded-full border border-amber-400/30 bg-amber-400/10 p-3 text-amber-200">
+                  <AlertTriangle className="h-8 w-8" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-100">Audio playback failed in Electron</p>
+                  <p className="mt-1 max-w-md text-xs text-gray-400">The macOS audio service reported an audio renderer error.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openExternalMedia}
+                  disabled={!externalMediaPath}
+                  className="inline-flex items-center gap-2 rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-100 transition-colors hover:border-gray-500 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open Externally
+                </button>
+                {openExternalMediaError && <p className="max-w-md text-xs text-red-300">{openExternalMediaError}</p>}
+              </div>
             ) : isVideo ? (
               <video
                 src={imageUrl}

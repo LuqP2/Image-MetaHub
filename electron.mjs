@@ -37,16 +37,34 @@ const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const gpuMitigationEnabled = process.env.IMH_DISABLE_GPU === '1' || process.env.IMH_DISABLE_GPU === 'true';
 const mediaSafeModeEnabled = process.platform === 'darwin' && (process.env.IMH_MEDIA_SAFE_MODE === '1' || process.env.IMH_MEDIA_SAFE_MODE === 'true');
+const audioDiagnosticModeEnabled = process.platform === 'darwin' && (process.env.IMH_AUDIO_DIAGNOSTIC_MODE === '1' || process.env.IMH_AUDIO_DIAGNOSTIC_MODE === 'true');
+const enabledMediaCommandLineSwitches = [];
+const disabledChromiumFeatures = new Set();
 
 if (gpuMitigationEnabled || mediaSafeModeEnabled) {
   app.disableHardwareAcceleration();
+  enabledMediaCommandLineSwitches.push('disable-hardware-acceleration');
   console.warn(`[GPU] Hardware acceleration disabled via ${mediaSafeModeEnabled ? 'IMH_MEDIA_SAFE_MODE' : 'IMH_DISABLE_GPU'}.`);
 }
 
 if (mediaSafeModeEnabled) {
   app.commandLine.appendSwitch('disable-accelerated-video-decode');
   app.commandLine.appendSwitch('disable-gpu-compositing');
+  enabledMediaCommandLineSwitches.push('disable-accelerated-video-decode', 'disable-gpu-compositing');
+  disabledChromiumFeatures.add('AudioServiceSandbox');
   console.warn('[Media] macOS media safe mode enabled via IMH_MEDIA_SAFE_MODE.');
+}
+
+if (audioDiagnosticModeEnabled) {
+  disabledChromiumFeatures.add('AudioServiceSandbox');
+  disabledChromiumFeatures.add('AudioServiceOutOfProcess');
+  console.warn('[Media] macOS audio diagnostic mode enabled via IMH_AUDIO_DIAGNOSTIC_MODE.');
+}
+
+if (disabledChromiumFeatures.size > 0) {
+  const disableFeaturesValue = Array.from(disabledChromiumFeatures).join(',');
+  app.commandLine.appendSwitch('disable-features', disableFeaturesValue);
+  enabledMediaCommandLineSwitches.push(`disable-features=${disableFeaturesValue}`);
 }
 
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
@@ -876,12 +894,35 @@ function logProcessEvent(details = {}) {
   }
 }
 
+const audioServiceCrashSummary = new Map();
+let audioServiceCrashTotal = 0;
+
+function logAudioServiceCrashSummary(details = {}) {
+  const reason = details?.reason ?? 'unknown';
+  const exitCode = details?.exitCode ?? 'unknown';
+  const key = `${reason}:${exitCode}`;
+  const count = (audioServiceCrashSummary.get(key) ?? 0) + 1;
+  audioServiceCrashSummary.set(key, count);
+  audioServiceCrashTotal += 1;
+
+  logProcessEvent({
+    kind: 'audio-service-crash-summary',
+    serviceName: 'audio.mojom.AudioService',
+    reason,
+    exitCode,
+    count,
+    totalCount: audioServiceCrashTotal,
+  });
+}
+
 function registerProcessDiagnostics() {
   logProcessEvent({
     kind: 'app-startup',
     logs: getDiagnosticsLogPaths(),
     gpuMitigationEnabled,
     mediaSafeModeEnabled,
+    audioDiagnosticModeEnabled,
+    mediaCommandLineSwitches: enabledMediaCommandLineSwitches,
     gpuFeatureStatus: app.getGPUFeatureStatus?.() ?? null,
   });
 
@@ -895,6 +936,10 @@ function registerProcessDiagnostics() {
       serviceName: details?.serviceName ?? null,
       name: details?.name ?? null,
     });
+
+    if (details?.serviceName === 'audio.mojom.AudioService') {
+      logAudioServiceCrashSummary(details);
+    }
   });
 
   app.on('gpu-process-crashed', (_event, killed) => {
@@ -3064,6 +3109,33 @@ function setupFileOperationHandlers() {
       return { success: true };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to open external URL.' };
+    }
+  });
+
+  ipcMain.handle('open-path', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No path provided.' };
+      }
+
+      const normalizedFilePath = path.resolve(filePath);
+      if (!isPathAllowed(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to open path outside of allowed directories.');
+        console.error('  [open-path] Requested path:', filePath);
+        console.error('  [open-path] Normalized path:', normalizedFilePath);
+        console.error('  [open-path] Allowed directories:', Array.from(allowedDirectoryPaths));
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
+      const openError = await shell.openPath(normalizedFilePath);
+      if (openError) {
+        return { success: false, error: openError };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to open path:', error);
+      return { success: false, error: error?.message || 'Failed to open path.' };
     }
   });
 

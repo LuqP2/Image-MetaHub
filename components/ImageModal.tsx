@@ -3,7 +3,7 @@ import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollecti
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon } from 'lucide-react';
+import { AlertTriangle, Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -527,21 +527,28 @@ const VideoPlayer: React.FC<{
   onCanPlay?: React.ReactEventHandler<HTMLVideoElement>;
   onPlaying?: React.ReactEventHandler<HTMLVideoElement>;
   onEnded?: React.ReactEventHandler<HTMLVideoElement>;
+  externalPath?: string | null;
   diagnostics?: Omit<MediaDiagnosticsContext, 'mediaKind' | 'src'>;
-}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying, onEnded, diagnostics }) => {
+}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying, onEnded, externalPath, diagnostics }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const [audioRendererFailed, setAudioRendererFailed] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isHovering, setIsHovering] = useState(false);
+  const handleAudioRendererError = useCallback(() => {
+    setAudioRendererFailed(true);
+    setIsPlaying(false);
+  }, []);
   const mediaDiagnostics = useMediaDiagnostics({
     mediaKind: 'video',
     fileName: diagnostics?.fileName ?? '',
     surface: diagnostics?.surface ?? 'image-modal',
     src,
+    onAudioRendererError: handleAudioRendererError,
   });
-  
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [isHovering, setIsHovering] = useState(false);
   
   const [volume, setVolume] = useState(() => {
     const saved = localStorage.getItem('video_player_volume');
@@ -553,6 +560,11 @@ const VideoPlayer: React.FC<{
   const [isLooping, setIsLooping] = useState(() => {
     return localStorage.getItem('video_player_loop') === 'true';
   });
+
+  useEffect(() => {
+    setAudioRendererFailed(false);
+    setOpenError(null);
+  }, [src]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -616,6 +628,45 @@ const VideoPlayer: React.FC<{
       setIsMuted(false);
     }
   };
+
+  const openExternally = useCallback(async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (!externalPath) return;
+    const result = await window.electronAPI?.openPath?.(externalPath);
+    if (!result?.success) {
+      setOpenError(result?.error || 'Failed to open media externally.');
+    }
+  }, [externalPath]);
+
+  if (audioRendererFailed) {
+    return (
+      <div
+        ref={containerRef}
+        className="relative flex h-full w-full flex-col items-center justify-center gap-5 bg-black p-8 text-center text-gray-100"
+        onContextMenu={onContextMenu}
+      >
+        <div className="rounded-full border border-amber-400/30 bg-amber-400/10 p-6 text-amber-200">
+          <AlertTriangle className="h-16 w-16" />
+        </div>
+        <div>
+          <p className="text-lg font-medium text-gray-100">Audio playback failed in Electron</p>
+          <p className="mt-1 max-w-md text-sm text-gray-400">
+            The macOS audio service reported an audio renderer error.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={openExternally}
+          disabled={!externalPath}
+          className="inline-flex items-center gap-2 rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-100 transition-colors hover:border-gray-500 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <ExternalLink className="h-4 w-4" />
+          Open Externally
+        </button>
+        {openError && <p className="max-w-md text-xs text-red-300">{openError}</p>}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -801,6 +852,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isShowingOriginalForAdjustmentCompare, setIsShowingOriginalForAdjustmentCompare] = useState(false);
   const [isSavingEditedImage, setIsSavingEditedImage] = useState(false);
   const [isFullImageSourceReady, setIsFullImageSourceReady] = useState(false);
+  const [externalMediaPath, setExternalMediaPath] = useState<string | null>(null);
   const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => {
     if (initialWindowState) {
       return clampModalWindowToViewport(initialWindowState);
@@ -1015,6 +1067,39 @@ const ImageModal: React.FC<ImageModalProps> = ({
     !isShowingOriginalForAdjustmentCompare &&
     !(imageEditorTab === 'crop' && normalizedImageEditRecipe.crop.enabled);
   const displayedImageUrl = shouldShowEditedPreview && editedPreviewUrl ? editedPreviewUrl : imageUrl;
+
+  useEffect(() => {
+    let isMounted = true;
+    setExternalMediaPath(null);
+
+    const resolveExternalMediaPath = async () => {
+      if (!isPlayableMedia) {
+        return;
+      }
+
+      const handlePath = window.electronAPI ? getElectronAbsoluteMediaPath(liveImage) : null;
+      if (handlePath) {
+        if (isMounted) setExternalMediaPath(handlePath);
+        return;
+      }
+
+      if (!directoryPath || !window.electronAPI?.joinPaths) {
+        return;
+      }
+
+      const joined = await window.electronAPI.joinPaths(directoryPath, getRelativeImagePath(liveImage));
+      if (isMounted && joined.success && joined.path) {
+        setExternalMediaPath(joined.path);
+      }
+    };
+
+    void resolveExternalMediaPath();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [directoryPath, isPlayableMedia, liveImage]);
+
   const cropOverlayStyle = useMemo(() => {
     const rect = normalizedImageEditRecipe.crop.rect;
     if (!cropImageBounds || !imageEditSourceDimensions || !rect) {
@@ -2993,6 +3078,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   src={imageUrl}
                   title={image.name}
                   autoPlay
+                  externalPath={externalMediaPath}
                   diagnostics={{ fileName: image.name, surface: isSlideshowMode ? 'slideshow' : 'image-modal' }}
                   onContextMenu={handleContextMenu}
                   onLoadedMetadata={() => markPerformanceFlow(diagnosticsFlowId, 'audio-loadedmetadata', { imageId: image.id })}
@@ -3016,6 +3102,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   key={image.id}
                   src={imageUrl}
                   poster={preferredThumbnailUrl ?? undefined}
+                  externalPath={externalMediaPath}
                   diagnostics={{ fileName: image.name, surface: isSlideshowMode ? 'slideshow' : 'image-modal' }}
                   onContextMenu={handleContextMenu}
                   onLoadedMetadata={(event) => {

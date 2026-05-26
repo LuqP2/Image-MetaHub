@@ -400,6 +400,7 @@ export interface ElectronAPI {
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
+  openPath: (filePath: string) => Promise<{ success: boolean; error?: string; errorType?: string }>;
   comfyUIViewOpen: (payload: { url: string; bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
   comfyUIViewShow: (payload?: { bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
   comfyUIViewHide: () => Promise<ComfyUIViewResult>;

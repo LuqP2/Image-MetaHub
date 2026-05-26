@@ -159,6 +159,7 @@ const electronAPI = {
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   launchGenerator: (payload) => ipcRenderer.invoke('launch-generator', payload),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+  openPath: (filePath) => ipcRenderer.invoke('open-path', filePath),
   comfyUIViewOpen: (payload) => ipcRenderer.invoke('comfy-view-open', payload),
   comfyUIViewShow: (payload) => ipcRenderer.invoke('comfy-view-show', payload),
   comfyUIViewHide: () => ipcRenderer.invoke('comfy-view-hide'),
