@@ -297,7 +297,17 @@ export function useComfyUIQueueMonitor() {
 
         const running = parseQueueEntries(queue, 'queue_running');
         const pending = parseQueueEntries(queue, 'queue_pending');
-        const activePromptIds = new Set([...running, ...pending].map((entry) => entry.promptId));
+
+        // Optimization: Replaced spread operator and `.map()` with `for` loops
+        // to eliminate the O(N) allocation of intermediate arrays.
+        // Impact: Reduces garbage collection pauses during polling.
+        const activePromptIds = new Set<string>();
+        for (const entry of running) {
+          activePromptIds.add(entry.promptId);
+        }
+        for (const entry of pending) {
+          activePromptIds.add(entry.promptId);
+        }
 
         pending.forEach((entry) => {
           nodeLabelsRef.current.set(entry.promptId, entry.nodeLabels);

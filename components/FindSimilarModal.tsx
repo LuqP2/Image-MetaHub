@@ -174,7 +174,16 @@ export default function FindSimilarModal({
       return;
     }
 
-    setSelectedIds(new Set(execution.results.filter((result) => result.preselected).map((result) => result.image.id)));
+    // Optimization: Replaced `.filter().map()` with a `for` loop
+    // to eliminate the O(N) allocation of intermediate arrays.
+    // Impact: Reduces garbage collection pauses during modal updates.
+    const nextSelectedIds = new Set<string>();
+    for (const result of execution.results) {
+      if (result.preselected) {
+        nextSelectedIds.add(result.image.id);
+      }
+    }
+    setSelectedIds(nextSelectedIds);
   }, [execution]);
 
   if (!isOpen || !sourceImage || !availability || !sourceDetails || !execution || typeof document === 'undefined') {
