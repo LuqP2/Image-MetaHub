@@ -161,12 +161,24 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
     remapImage(image) ?? image
   );
 
-  const nextSelectedImages = new Set(Array.from(store.selectedImages).map(replaceImageId));
+  const nextSelectedImages = new Set<string>();
+  for (const id of store.selectedImages) {
+    nextSelectedImages.add(replaceImageId(id));
+  }
+
   const nextClipboard = store.clipboard
     ? { ...store.clipboard, imageIds: store.clipboard.imageIds.map(replaceImageId) }
     : null;
-  const nextSelectedFolders = new Set(Array.from(store.selectedFolders).map(remapPathPrefix));
-  const nextExcludedFolders = new Set(Array.from(store.excludedFolders).map(remapPathPrefix));
+
+  const nextSelectedFolders = new Set<string>();
+  for (const folder of store.selectedFolders) {
+    nextSelectedFolders.add(remapPathPrefix(folder));
+  }
+
+  const nextExcludedFolders = new Set<string>();
+  for (const folder of store.excludedFolders) {
+    nextExcludedFolders.add(remapPathPrefix(folder));
+  }
 
   const nextAnnotations = new Map<string, any>();
   store.annotations.forEach((annotation, imageId) => {
