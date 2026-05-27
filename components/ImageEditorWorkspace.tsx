@@ -26,9 +26,11 @@ import {
   Type,
   Undo2,
   Workflow,
+  X,
 } from 'lucide-react';
 import type {
   BaseMetadata,
+  ImageEditCropAspect,
   ImageEditorDocument,
   ImageEditorObject,
   ImageEditorObjectStyle,
@@ -36,13 +38,18 @@ import type {
   IndexedImage,
 } from '../types';
 import {
+  CROP_ASPECTS,
   DEFAULT_IMAGE_EDITOR_OBJECT_STYLE,
   clampImageAdjustment,
+  clampImageEditCropRect,
   clampImageEditEffect,
+  createDefaultCropRect,
   createImageEditorDocument,
   embedMetaHubMetadataInPngBytes,
   getImageEditOutputDimensions,
+  getRecipeBaseOutputDimensions,
   hasImageEditorDocumentChanges,
+  normalizeImageEditRotation,
   normalizeImageEditRecipe,
   normalizeImageEditorDocument,
   renderImageEditorDocumentToPngBlob,
@@ -93,6 +100,8 @@ type DragState = {
 
 type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
+type InspectorTab = 'edit' | 'style' | 'canvas' | 'ai' | 'info';
+
 type PanState = {
   pointerId: number;
   startClientX: number;
@@ -118,6 +127,24 @@ const TOOL_DEFS: Array<{ id: ImageEditorTool; label: string; icon: React.ReactNo
   { id: 'pixelate', label: 'Pixelate', icon: <Shield className="h-4 w-4" /> },
   { id: 'spotlight', label: 'Spotlight', icon: <Search className="h-4 w-4" /> },
 ];
+
+const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
+  { id: 'edit', label: 'Edit' },
+  { id: 'style', label: 'Style' },
+  { id: 'canvas', label: 'Canvas' },
+  { id: 'ai', label: 'AI' },
+  { id: 'info', label: 'Info' },
+];
+
+const ASPECT_LABELS: Record<ImageEditCropAspect, string> = {
+  free: 'Free',
+  original: 'Original',
+  '1:1': '1:1',
+  '4:3': '4:3',
+  '3:2': '3:2',
+  '16:9': '16:9',
+  '9:16': '9:16',
+};
 
 const isEnabledEditorTool = (tool: ImageEditorTool) => TOOL_DEFS.some((definition) => definition.id === tool);
 
@@ -483,6 +510,8 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [hydratedImage, setHydratedImage] = useState<IndexedImage | null>(null);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('info');
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const previewImageRef = useRef<HTMLImageElement>(null);
@@ -541,6 +570,24 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const selectedObject = normalizedDocument?.objects.find((object) => normalizedDocument.selectedObjectIds.includes(object.id)) || null;
   const canOverwrite = getFileExtension(image.name) === '.png';
   const displayWidth = Math.max(160, Math.round(1080 * zoom));
+
+  useEffect(() => {
+    if (!normalizedDocument) {
+      setInspectorTab('info');
+      return;
+    }
+    if (activeTool === 'crop') {
+      setInspectorTab('edit');
+      return;
+    }
+    if (normalizedDocument.selectedObjectIds.length > 0 || isAnnotationTool(activeTool)) {
+      setInspectorTab('style');
+      return;
+    }
+    if (activeTool === 'select' || activeTool === 'color-picker') {
+      setInspectorTab('info');
+    }
+  }, [activeTool, normalizedDocument?.selectedObjectIds.length]);
 
   useEffect(() => {
     if (!documentState) {
@@ -1518,6 +1565,446 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const dragPreviewBounds = dragState ? boundsFromDrag(dragState) : null;
   const basePreviewSource = previewUrl || sourceUrl;
   const editorCursor = getEditorCursor(activeTool, isPanning);
+  const cropRect = normalizedDocument?.recipe.crop.rect ?? null;
+  const baseOutputDimensions = normalizedDocument
+    ? getRecipeBaseOutputDimensions(normalizedDocument.recipe, normalizedDocument.sourceDimensions)
+    : null;
+
+  const setActiveOrSelectedStyle = (style: Partial<ImageEditorObjectStyle>) => {
+    setActiveStyle((current) => ({ ...current, ...style }));
+    updateSelectedObjectStyle(style);
+  };
+
+  const renderSliderRow = (
+    label: string,
+    value: number,
+    min: number,
+    max: number,
+    onChange: (value: number) => void,
+    suffix?: string,
+  ) => (
+    <label className="block space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-gray-300">{label}</span>
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min={min}
+            max={max}
+            value={value}
+            onChange={(event) => onChange(Number(event.target.value))}
+            className="h-7 w-16 rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100 outline-none focus:border-cyan-500"
+            aria-label={label}
+          />
+          {suffix && <span className="w-7 text-xs text-gray-500">{suffix}</span>}
+        </div>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full accent-cyan-500"
+        aria-label={`${label} slider`}
+      />
+    </label>
+  );
+
+  const renderColorSwatch = (
+    label: string,
+    value: string,
+    onChange: (value: string) => void,
+  ) => (
+    <label className="flex items-center justify-between gap-3 rounded-md border border-gray-800 bg-gray-950 px-2 py-2 text-xs text-gray-300">
+      <span>{label}</span>
+      <input
+        type="color"
+        value={toColorInputValue(value)}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-6 w-8 cursor-pointer rounded border border-gray-700 bg-gray-950 p-0.5"
+        aria-label={label}
+      />
+    </label>
+  );
+
+  const renderInspectorContent = () => {
+    if (!normalizedDocument) return null;
+
+    if (inspectorTab === 'edit') {
+      return (
+        <div className="space-y-4">
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-gray-100">Local Edits</h3>
+              <button type="button" onClick={restoreOriginal} disabled={!hasChanges} className="rounded-md border border-gray-700 px-2 py-1 text-xs font-medium text-gray-300 hover:bg-gray-800 disabled:opacity-40">
+                Reset
+              </button>
+            </div>
+            {(['brightness', 'contrast', 'saturation'] as const).map((key) => (
+              <React.Fragment key={key}>
+                {renderSliderRow(
+                  key[0].toUpperCase() + key.slice(1),
+                  normalizedDocument.recipe.adjustments[key],
+                  0,
+                  200,
+                  (value) => updateRecipe({
+                    ...normalizedDocument.recipe,
+                    adjustments: {
+                      ...normalizedDocument.recipe.adjustments,
+                      [key]: clampImageAdjustment(key, value),
+                    },
+                  }),
+                  '%',
+                )}
+              </React.Fragment>
+            ))}
+            {renderSliderRow('Hue', normalizedDocument.recipe.adjustments.hue, -180, 180, (value) => updateRecipe({
+              ...normalizedDocument.recipe,
+              adjustments: {
+                ...normalizedDocument.recipe.adjustments,
+                hue: clampImageAdjustment('hue', value),
+              },
+            }), 'deg')}
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-100">Crop</h3>
+            <div className="flex items-center justify-between gap-2">
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={normalizedDocument.recipe.crop.enabled}
+                  onChange={(event) => updateRecipe({
+                    ...normalizedDocument.recipe,
+                    crop: {
+                      ...normalizedDocument.recipe.crop,
+                      enabled: event.target.checked,
+                      rect: event.target.checked
+                        ? normalizedDocument.recipe.crop.rect || createDefaultCropRect(normalizedDocument.sourceDimensions, normalizedDocument.recipe.crop.aspect)
+                        : normalizedDocument.recipe.crop.rect,
+                    },
+                  })}
+                  className="h-4 w-4 accent-cyan-500"
+                />
+                Enable
+              </label>
+              <select
+                value={normalizedDocument.recipe.crop.aspect}
+                onChange={(event) => updateRecipe({
+                  ...normalizedDocument.recipe,
+                  crop: {
+                    enabled: normalizedDocument.recipe.crop.enabled,
+                    aspect: event.target.value as ImageEditCropAspect,
+                    rect: normalizedDocument.recipe.crop.enabled
+                      ? createDefaultCropRect(normalizedDocument.sourceDimensions, event.target.value as ImageEditCropAspect)
+                      : normalizedDocument.recipe.crop.rect,
+                  },
+                })}
+                className="h-8 rounded-md border border-gray-700 bg-gray-950 px-2 text-xs text-gray-100 outline-none focus:border-cyan-500"
+                aria-label="Crop aspect ratio"
+              >
+                {CROP_ASPECTS.map((aspect) => <option key={aspect} value={aspect}>{ASPECT_LABELS[aspect]}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {(['x', 'y', 'width', 'height'] as const).map((key) => (
+                <label key={key} className="space-y-1 text-xs text-gray-400">
+                  <span className="capitalize">{key}</span>
+                  <input
+                    type="number"
+                    min={key === 'x' || key === 'y' ? 0 : 1}
+                    value={cropRect?.[key] ?? 0}
+                    disabled={!normalizedDocument.recipe.crop.enabled}
+                    onChange={(event) => updateRecipe({
+                      ...normalizedDocument.recipe,
+                      crop: {
+                        ...normalizedDocument.recipe.crop,
+                        enabled: true,
+                        rect: clampImageEditCropRect({
+                          ...(cropRect || createDefaultCropRect(normalizedDocument.sourceDimensions, normalizedDocument.recipe.crop.aspect) || { x: 0, y: 0, width: 1, height: 1 }),
+                          [key]: Number(event.target.value),
+                        }, normalizedDocument.sourceDimensions),
+                      },
+                    })}
+                    className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100 outline-none focus:border-cyan-500 disabled:opacity-50"
+                    aria-label={`Crop ${key}`}
+                  />
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-100">Transform</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, rotation: normalizeImageEditRotation(normalizedDocument.recipe.transform.rotation - 90) } })} className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs hover:bg-gray-800">
+                <RotateCcw className="h-3.5 w-3.5" /> Left
+              </button>
+              <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, rotation: normalizeImageEditRotation(normalizedDocument.recipe.transform.rotation + 90) } })} className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs hover:bg-gray-800">
+                <RotateCw className="h-3.5 w-3.5" /> Right
+              </button>
+              <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, flipHorizontal: !normalizedDocument.recipe.transform.flipHorizontal } })} className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs ${normalizedDocument.recipe.transform.flipHorizontal ? 'border-cyan-400/40 bg-cyan-500/20 text-cyan-100' : 'border-gray-700 hover:bg-gray-800'}`}>
+                <FlipHorizontal className="h-3.5 w-3.5" /> Flip H
+              </button>
+              <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, flipVertical: !normalizedDocument.recipe.transform.flipVertical } })} className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs ${normalizedDocument.recipe.transform.flipVertical ? 'border-cyan-400/40 bg-cyan-500/20 text-cyan-100' : 'border-gray-700 hover:bg-gray-800'}`}>
+                <FlipVertical className="h-3.5 w-3.5" /> Flip V
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {(['sharpen', 'blur'] as const).map((key) => (
+                <label key={key} className="space-y-1 text-xs text-gray-400">
+                  <span className="capitalize">{key}</span>
+                  <input
+                    type="number"
+                    value={normalizedDocument.recipe.effects[key]}
+                    min={0}
+                    max={key === 'blur' ? 20 : 100}
+                    onChange={(event) => updateRecipe({
+                      ...normalizedDocument.recipe,
+                      effects: {
+                        ...normalizedDocument.recipe.effects,
+                        [key]: clampImageEditEffect(key, Number(event.target.value)),
+                      },
+                    })}
+                    className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100"
+                  />
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-100">Resize</h3>
+            <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-300">
+              <input
+                type="checkbox"
+                checked={normalizedDocument.recipe.resize.enabled}
+                onChange={(event) => updateRecipe({ ...normalizedDocument.recipe, resize: { ...normalizedDocument.recipe.resize, enabled: event.target.checked } })}
+                className="h-4 w-4 accent-cyan-500"
+              />
+              Enable
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['width', 'height'] as const).map((key) => (
+                <label key={key} className="space-y-1 text-xs text-gray-400">
+                  <span className="capitalize">{key}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={normalizedDocument.recipe.resize[key]}
+                    onChange={(event) => {
+                      const nextValue = Math.max(1, Math.round(Number(event.target.value)) || 1);
+                      const base = baseOutputDimensions || normalizedDocument.sourceDimensions;
+                      const ratio = base.width / Math.max(1, base.height);
+                      const width = key === 'width'
+                        ? nextValue
+                        : normalizedDocument.recipe.resize.lockAspectRatio
+                          ? Math.max(1, Math.round(nextValue * ratio))
+                          : normalizedDocument.recipe.resize.width;
+                      const height = key === 'height'
+                        ? nextValue
+                        : normalizedDocument.recipe.resize.lockAspectRatio
+                          ? Math.max(1, Math.round(nextValue / ratio))
+                          : normalizedDocument.recipe.resize.height;
+                      updateRecipe({ ...normalizedDocument.recipe, resize: { ...normalizedDocument.recipe.resize, enabled: true, width, height } });
+                    }}
+                    className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100"
+                  />
+                </label>
+              ))}
+            </div>
+            <label className="inline-flex items-center gap-2 text-xs text-gray-400">
+              <input
+                type="checkbox"
+                checked={normalizedDocument.recipe.resize.lockAspectRatio}
+                onChange={(event) => updateRecipe({ ...normalizedDocument.recipe, resize: { ...normalizedDocument.recipe.resize, lockAspectRatio: event.target.checked } })}
+                className="h-4 w-4 accent-cyan-500"
+              />
+              Lock ratio
+            </label>
+          </section>
+        </div>
+      );
+    }
+
+    if (inspectorTab === 'style') {
+      if (selectedCount > 1) {
+        return (
+          <div className="space-y-4">
+            <section className="rounded-md border border-gray-800 bg-gray-950 p-3">
+              <h3 className="text-sm font-semibold text-gray-100">{selectedCount} objects selected</h3>
+              <p className="mt-1 text-xs text-gray-500">Shared style controls are hidden for mixed selections.</p>
+            </section>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={flattenSelection} className="rounded-md border border-gray-700 px-2 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800">Flatten</button>
+              <button type="button" onClick={deleteSelected} className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/20">Delete</button>
+            </div>
+          </div>
+        );
+      }
+
+      if (!styleTargetType) {
+        return (
+          <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-500">
+            Select an object or choose an annotation tool to show its style.
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-4">
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-100">{selectedObject ? `${selectedObject.type} style` : `${styleTargetType} defaults`}</h3>
+              <p className="mt-1 text-xs text-gray-500">{selectedObject ? 'Editing the selected object.' : 'Applies to the next object you draw.'}</p>
+            </div>
+            {selectedObject?.type === 'text' && (
+              <label className="block space-y-1 text-xs text-gray-400">
+                <span>Content</span>
+                <input
+                  type="text"
+                  value={selectedObject.text || ''}
+                  onChange={(event) => updateSelectedObjectText(event.target.value)}
+                  className="h-9 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-sm text-gray-100 outline-none focus:border-cyan-500"
+                />
+              </label>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              {canUseStrokeColor && renderColorSwatch('Stroke', displayedStyle.strokeColor, (value) => setActiveOrSelectedStyle({ strokeColor: value }))}
+              {canUseFillColor && renderColorSwatch('Fill', displayedStyle.fillColor, (value) => setActiveOrSelectedStyle({ fillColor: value }))}
+              {canUseTextColor && renderColorSwatch('Text', displayedStyle.textColor, (value) => setActiveOrSelectedStyle({ textColor: value }))}
+            </div>
+            {canUseStrokeWidth && renderSliderRow(
+              styleTargetType === 'blur' || styleTargetType === 'pixelate' ? 'Strength' : 'Width',
+              displayedStyle.strokeWidth,
+              1,
+              80,
+              (value) => setActiveOrSelectedStyle({ strokeWidth: clamp(Math.round(value) || 1, 1, 80) }),
+            )}
+            {canUseFontSize && renderSliderRow(
+              'Font',
+              displayedStyle.fontSize,
+              8,
+              240,
+              (value) => setActiveOrSelectedStyle({ fontSize: clamp(Math.round(value) || 32, 8, 240) }),
+              'px',
+            )}
+            {styleTargetType === 'spotlight' && renderSliderRow(
+              'Intensity',
+              Math.round(displayedStyle.opacity * 100),
+              10,
+              100,
+              (value) => setActiveOrSelectedStyle({ opacity: clamp(value, 10, 100) / 100 }),
+              '%',
+            )}
+          </section>
+
+          {selectedObject && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold text-gray-100">Object</h3>
+              <div className="grid grid-cols-4 gap-1">
+                <button type="button" onClick={() => moveSelected('front')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Front</button>
+                <button type="button" onClick={() => moveSelected('forward')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Up</button>
+                <button type="button" onClick={() => moveSelected('backward')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Down</button>
+                <button type="button" onClick={() => moveSelected('back')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Back</button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={duplicateSelected} className="rounded-md border border-gray-700 px-2 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800">Duplicate</button>
+                <button type="button" onClick={deleteSelected} className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/20">Delete</button>
+              </div>
+            </section>
+          )}
+        </div>
+      );
+    }
+
+    if (inspectorTab === 'canvas') {
+      return (
+        <div className="space-y-4">
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-100">Background</h3>
+            <select value={normalizedDocument.background.kind} onChange={(event) => updateBackground({ kind: event.target.value as ImageEditorDocument['background']['kind'] })} className="h-9 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-sm text-gray-100 outline-none focus:border-cyan-500">
+              <option value="transparent">Transparent</option>
+              <option value="color">Color</option>
+              <option value="gradient">Gradient</option>
+            </select>
+            <div className="grid grid-cols-2 gap-2">
+              {renderColorSwatch('Color', normalizedDocument.background.color, (value) => updateBackground({ color: value }))}
+              {renderColorSwatch('From', normalizedDocument.background.gradientFrom, (value) => updateBackground({ gradientFrom: value }))}
+              {renderColorSwatch('To', normalizedDocument.background.gradientTo, (value) => updateBackground({ gradientTo: value }))}
+            </div>
+          </section>
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-100">Spacing</h3>
+            {renderSliderRow('Margin', normalizedDocument.background.margin, 0, 2000, (value) => updateBackground({ margin: Math.round(value) }))}
+            {renderSliderRow('Padding', normalizedDocument.background.padding, 0, 2000, (value) => updateBackground({ padding: Math.round(value) }))}
+            {renderSliderRow('Corner', normalizedDocument.background.roundedCorner, 0, 400, (value) => updateBackground({ roundedCorner: Math.round(value) }))}
+            {renderSliderRow('Shadow', normalizedDocument.background.shadowRadius, 0, 500, (value) => updateBackground({ shadowRadius: Math.round(value) }))}
+            <label className="inline-flex items-center gap-2 text-xs text-gray-300">
+              <input type="checkbox" checked={normalizedDocument.background.smartPadding} onChange={(event) => updateBackground({ smartPadding: event.target.checked })} className="h-4 w-4 accent-cyan-500" />
+              Smart padding
+            </label>
+          </section>
+        </div>
+      );
+    }
+
+    if (inspectorTab === 'ai') {
+      return (
+        <div className="space-y-4">
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-100">AI Transform</h3>
+            <button type="button" onClick={handleAIUpscale} disabled={isUpscaling} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-purple-400/30 bg-purple-500/15 px-3 py-2 text-xs font-semibold text-purple-100 hover:bg-purple-500/25 disabled:opacity-50">
+              <Sparkles className="h-4 w-4" />
+              {isUpscaling ? 'Queueing...' : 'AI Upscale'}
+            </button>
+            <div className="grid grid-cols-2 gap-1 text-xs">
+              {['Detail Restore', 'Face Restore', 'Img2Img', 'Inpaint', 'Outpaint'].map((label) => (
+                <button key={label} type="button" disabled className="rounded-md border border-gray-800 px-2 py-1.5 text-gray-600">
+                  {label}
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-100">Source</h3>
+          <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-400">
+            <div className="flex items-center gap-2 text-gray-200">
+              <ImageIcon className="h-4 w-4 text-cyan-300" />
+              <span className="truncate">{image.name}</span>
+            </div>
+            <div className="mt-2">{normalizedDocument.sourceDimensions.width}x{normalizedDocument.sourceDimensions.height}</div>
+            <div>{normalizedDocument.objects.length} objects</div>
+            {navigationImages.length > 1 && <div>{navigationImages.length} images in navigation scope</div>}
+          </div>
+        </section>
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-100">Output</h3>
+          <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-400">
+            <div>{activeOutputDimensions?.width || normalizedDocument.canvasDimensions.width}x{activeOutputDimensions?.height || normalizedDocument.canvasDimensions.height}</div>
+            <div>{hasChanges ? 'Unsaved edits' : 'No editor changes'}</div>
+          </div>
+        </section>
+        {onOpenComfyUIWorkflow && (
+          <button type="button" onClick={() => onOpenComfyUIWorkflow(image)} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800">
+            <Workflow className="h-4 w-4" />
+            Open Workflow
+          </button>
+        )}
+        <button type="button" onClick={restoreOriginal} disabled={!hasChanges} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40">
+          <RotateCcw className="h-4 w-4" />
+          Restore Original
+        </button>
+      </div>
+    );
+  };
 
   if (!normalizedDocument || !sourceUrl) {
     return (
@@ -1552,12 +2039,12 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           <button type="button" onClick={flattenSelection} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Flatten">
             <Layers className="h-4 w-4" />
           </button>
-          <button type="button" onClick={restoreOriginal} disabled={!hasChanges} className="inline-flex items-center gap-1 rounded-md px-2 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800 disabled:opacity-40" title="Restore Original">
-            <RotateCcw className="h-4 w-4" />
-            Restore
-          </button>
           <button type="button" onClick={handleCopy} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Copy image">
             <Copy className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => setIsInspectorOpen(true)} className="inline-flex items-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 xl:hidden" title="Open inspector">
+            <Layers className="h-4 w-4" />
+            Inspector
           </button>
           <button type="button" onClick={handleSave} disabled={isSaving || !hasChanges} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-500 disabled:bg-gray-800 disabled:text-gray-500" title={canOverwrite ? 'Save' : 'Save As'}>
             <Save className="h-4 w-4" />
@@ -1705,7 +2192,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                         stroke={style.strokeColor}
                         strokeWidth={style.strokeWidth}
                         opacity={style.opacity}
-                        strokeDasharray={object.type === 'spotlight' || object.type === 'magnify' ? '10 8' : undefined}
+                        strokeDasharray={object.type === 'magnify' ? '10 8' : undefined}
                       />
                     );
                   }
@@ -1950,256 +2437,50 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           </div>
         </div>
 
-        <aside className="w-80 shrink-0 overflow-y-auto border-l border-gray-800 bg-gray-900 p-4">
-          <div className="space-y-5">
-            <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-100">Tool</h3>
-              <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-sm">
-                <div className="font-medium text-cyan-100">{TOOL_DEFS.find((tool) => tool.id === activeTool)?.label}</div>
-                <p className="mt-1 text-xs text-gray-500">{TOOL_HINTS[activeTool]}</p>
+        {isInspectorOpen && (
+          <button
+            type="button"
+            className="fixed inset-0 z-30 bg-black/60 xl:hidden"
+            onClick={() => setIsInspectorOpen(false)}
+            aria-label="Close inspector overlay"
+          />
+        )}
+        <aside className={`fixed inset-y-0 right-0 z-40 flex w-[min(22rem,calc(100vw-4rem))] shrink-0 flex-col border-l border-gray-800 bg-gray-900 transition-transform xl:static xl:z-auto xl:w-80 xl:translate-x-0 ${
+          isInspectorOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}>
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-800 px-3 py-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-gray-100">Inspector</div>
+              <div className="truncate text-xs text-gray-500">
+                {selectedCount > 1
+                  ? `${selectedCount} selected`
+                  : selectedObject
+                    ? selectedObject.type
+                    : TOOL_DEFS.find((tool) => tool.id === activeTool)?.label}
               </div>
-            </section>
-
-            <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-100">Local Edits</h3>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, rotation: ((normalizedDocument.recipe.transform.rotation + 270) % 360) as 0 | 90 | 180 | 270 } })} className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs hover:bg-gray-800">
-                  <RotateCcw className="h-3.5 w-3.5" /> Left
-                </button>
-                <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, rotation: ((normalizedDocument.recipe.transform.rotation + 90) % 360) as 0 | 90 | 180 | 270 } })} className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs hover:bg-gray-800">
-                  <RotateCw className="h-3.5 w-3.5" /> Right
-                </button>
-                <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, flipHorizontal: !normalizedDocument.recipe.transform.flipHorizontal } })} className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs hover:bg-gray-800">
-                  <FlipHorizontal className="h-3.5 w-3.5" /> Flip H
-                </button>
-                <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, flipVertical: !normalizedDocument.recipe.transform.flipVertical } })} className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs hover:bg-gray-800">
-                  <FlipVertical className="h-3.5 w-3.5" /> Flip V
-                </button>
-              </div>
-              {(['brightness', 'contrast', 'saturation'] as const).map((key) => (
-                <label key={key} className="block space-y-1 text-xs text-gray-400">
-                  <span className="capitalize">{key}</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={200}
-                    value={normalizedDocument.recipe.adjustments[key]}
-                    onChange={(event) => updateRecipe({
-                      ...normalizedDocument.recipe,
-                      adjustments: {
-                        ...normalizedDocument.recipe.adjustments,
-                        [key]: clampImageAdjustment(key, Number(event.target.value)),
-                      },
-                    })}
-                    className="w-full accent-cyan-500"
-                  />
-                </label>
-              ))}
-              <div className="grid grid-cols-2 gap-2">
-                {(['sharpen', 'blur'] as const).map((key) => (
-                  <label key={key} className="space-y-1 text-xs text-gray-400">
-                    <span className="capitalize">{key}</span>
-                    <input
-                      type="number"
-                      value={normalizedDocument.recipe.effects[key]}
-                      min={0}
-                      max={key === 'blur' ? 20 : 100}
-                      onChange={(event) => updateRecipe({
-                        ...normalizedDocument.recipe,
-                        effects: {
-                          ...normalizedDocument.recipe.effects,
-                          [key]: clampImageEditEffect(key, Number(event.target.value)),
-                        },
-                      })}
-                      className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100"
-                    />
-                  </label>
-                ))}
-              </div>
-            </section>
-
-            <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-100">{selectedObject ? 'Selected Object' : 'Tool Style'}</h3>
-              {styleTargetType ? (
-                <>
-                  <div className="grid grid-cols-2 gap-2">
-                    {selectedObject?.type === 'text' && (
-                      <label className="col-span-2 space-y-1 text-xs text-gray-400">
-                        <span>Text</span>
-                        <input
-                          type="text"
-                          value={selectedObject.text || ''}
-                          onChange={(event) => updateSelectedObjectText(event.target.value)}
-                          className="h-9 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-sm text-gray-100"
-                        />
-                      </label>
-                    )}
-                    {canUseStrokeColor && (
-                      <label className="space-y-1 text-xs text-gray-400">
-                        <span>Stroke</span>
-                        <input
-                          type="color"
-                          value={displayedStyle.strokeColor}
-                          onChange={(event) => {
-                            setActiveStyle({ ...activeStyle, strokeColor: event.target.value });
-                            updateSelectedObjectStyle({ strokeColor: event.target.value });
-                          }}
-                          className="h-8 w-full rounded border border-gray-700 bg-gray-950"
-                        />
-                      </label>
-                    )}
-                    {canUseFillColor && (
-                      <label className="space-y-1 text-xs text-gray-400">
-                        <span>Fill</span>
-                        <input
-                          type="color"
-                          value={toColorInputValue(displayedStyle.fillColor)}
-                          onChange={(event) => {
-                            setActiveStyle({ ...activeStyle, fillColor: event.target.value });
-                            updateSelectedObjectStyle({ fillColor: event.target.value });
-                          }}
-                          className="h-8 w-full rounded border border-gray-700 bg-gray-950"
-                        />
-                      </label>
-                    )}
-                    {canUseTextColor && (
-                      <label className="space-y-1 text-xs text-gray-400">
-                        <span>Text</span>
-                        <input
-                          type="color"
-                          value={displayedStyle.textColor}
-                          onChange={(event) => {
-                            setActiveStyle({ ...activeStyle, textColor: event.target.value });
-                            updateSelectedObjectStyle({ textColor: event.target.value });
-                          }}
-                          className="h-8 w-full rounded border border-gray-700 bg-gray-950"
-                        />
-                      </label>
-                    )}
-                    {canUseStrokeWidth && (
-                      <label className="space-y-1 text-xs text-gray-400">
-                        <span>{styleTargetType === 'blur' || styleTargetType === 'pixelate' ? 'Strength' : 'Width'}</span>
-                        <input
-                          type="number"
-                          value={displayedStyle.strokeWidth}
-                          min={1}
-                          max={80}
-                          onChange={(event) => {
-                            const value = clamp(Math.round(Number(event.target.value) || 1), 1, 80);
-                            setActiveStyle({ ...activeStyle, strokeWidth: value });
-                            updateSelectedObjectStyle({ strokeWidth: value });
-                          }}
-                          className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100"
-                        />
-                      </label>
-                    )}
-                    {canUseFontSize && (
-                      <label className="space-y-1 text-xs text-gray-400">
-                        <span>Font</span>
-                        <input
-                          type="number"
-                          value={displayedStyle.fontSize}
-                          min={8}
-                          max={240}
-                          onChange={(event) => {
-                            const value = clamp(Math.round(Number(event.target.value) || 32), 8, 240);
-                            setActiveStyle({ ...activeStyle, fontSize: value });
-                            updateSelectedObjectStyle({ fontSize: value });
-                          }}
-                          className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100"
-                        />
-                      </label>
-                    )}
-                  </div>
-                  {selectedObject && (
-                    <>
-                      <div className="grid grid-cols-4 gap-1">
-                        <button type="button" onClick={() => moveSelected('front')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Front</button>
-                        <button type="button" onClick={() => moveSelected('forward')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Up</button>
-                        <button type="button" onClick={() => moveSelected('backward')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Down</button>
-                        <button type="button" onClick={() => moveSelected('back')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Back</button>
-                      </div>
-                      <button type="button" onClick={deleteSelected} className="w-full rounded-md border border-red-500/30 bg-red-500/10 px-2 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/20">
-                        Delete Selected
-                      </button>
-                    </>
-                  )}
-                </>
-              ) : (
-                <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-500">
-                  Pick an annotation tool or select an object to edit its style.
-                </div>
-              )}
-            </section>
-
-            <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-100">Background</h3>
-              <select value={normalizedDocument.background.kind} onChange={(event) => updateBackground({ kind: event.target.value as ImageEditorDocument['background']['kind'] })} className="h-9 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-sm">
-                <option value="transparent">Transparent</option>
-                <option value="color">Color</option>
-                <option value="gradient">Gradient</option>
-              </select>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1 text-xs text-gray-400">
-                  <span>Color</span>
-                  <input type="color" value={normalizedDocument.background.color} onChange={(event) => updateBackground({ color: event.target.value })} className="h-8 w-full rounded border border-gray-700 bg-gray-950" />
-                </label>
-                <label className="space-y-1 text-xs text-gray-400">
-                  <span>Shadow</span>
-                  <input type="number" value={normalizedDocument.background.shadowRadius} min={0} max={500} onChange={(event) => updateBackground({ shadowRadius: Number(event.target.value) })} className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100" />
-                </label>
-                <label className="space-y-1 text-xs text-gray-400">
-                  <span>Margin</span>
-                  <input type="number" value={normalizedDocument.background.margin} min={0} max={2000} onChange={(event) => updateBackground({ margin: Number(event.target.value) })} className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100" />
-                </label>
-                <label className="space-y-1 text-xs text-gray-400">
-                  <span>Padding</span>
-                  <input type="number" value={normalizedDocument.background.padding} min={0} max={2000} onChange={(event) => updateBackground({ padding: Number(event.target.value) })} className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100" />
-                </label>
-              </div>
-              <label className="inline-flex items-center gap-2 text-xs text-gray-300">
-                <input type="checkbox" checked={normalizedDocument.background.smartPadding} onChange={(event) => updateBackground({ smartPadding: event.target.checked })} className="h-4 w-4 accent-cyan-500" />
-                Smart padding
-              </label>
-            </section>
-
-            <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-100">AI Transform</h3>
-              <button type="button" onClick={handleAIUpscale} disabled={isUpscaling} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-purple-400/30 bg-purple-500/15 px-3 py-2 text-xs font-semibold text-purple-100 hover:bg-purple-500/25 disabled:opacity-50">
-                <Sparkles className="h-4 w-4" />
-                {isUpscaling ? 'Queueing...' : 'AI Upscale'}
-              </button>
-              <div className="grid grid-cols-2 gap-1 text-xs">
-                {['Detail Restore', 'Face Restore', 'Img2Img', 'Inpaint', 'Outpaint'].map((label) => (
-                  <button key={label} type="button" disabled className="rounded-md border border-gray-800 px-2 py-1.5 text-gray-600">
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {onOpenComfyUIWorkflow && (
-                <button type="button" onClick={() => onOpenComfyUIWorkflow(image)} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800">
-                  <Workflow className="h-4 w-4" />
-                  Open Workflow
-                </button>
-              )}
-            </section>
-
-            <section className="space-y-2">
-              <h3 className="text-sm font-semibold text-gray-100">Source</h3>
-              <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-400">
-                <div className="flex items-center gap-2 text-gray-200">
-                  <ImageIcon className="h-4 w-4 text-cyan-300" />
-                  <span className="truncate">{image.name}</span>
-                </div>
-                <div className="mt-2">{normalizedDocument.sourceDimensions.width}x{normalizedDocument.sourceDimensions.height}</div>
-                {navigationImages.length > 1 && <div>{navigationImages.length} images in navigation scope</div>}
-              </div>
-            </section>
-
-            <button type="button" onClick={restoreOriginal} disabled={!hasChanges} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40">
-              <RotateCcw className="h-4 w-4" />
-              Restore Original
+            </div>
+            <button type="button" onClick={() => setIsInspectorOpen(false)} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 xl:hidden" title="Close inspector">
+              <X className="h-4 w-4" />
             </button>
+          </div>
+          <div className="grid shrink-0 grid-cols-5 gap-1 border-b border-gray-800 bg-gray-900 p-2">
+            {INSPECTOR_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setInspectorTab(tab.id)}
+                className={`rounded-md px-1.5 py-1.5 text-xs font-medium transition-colors ${
+                  inspectorTab === tab.id
+                    ? 'bg-cyan-500/20 text-cyan-100'
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {renderInspectorContent()}
           </div>
         </aside>
       </div>
