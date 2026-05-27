@@ -7,7 +7,7 @@ import { useImageSelection } from './hooks/useImageSelection';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useFeatureAccess } from './hooks/useFeatureAccess';
 import { Directory } from './types';
-import { X } from 'lucide-react';
+import { Image as ImageIcon, X } from 'lucide-react';
 
 import FolderSelector from './components/FolderSelector';
 import ImageGrid from './components/ImageGrid';
@@ -1995,6 +1995,16 @@ export default function App() {
   const editorDirectoryPath = editorImage
     ? directoryPathById.get(editorImage.directoryId || '') ?? undefined
     : undefined;
+  const editorOpenCandidate = useMemo(() => {
+    if (previewImage) {
+      return previewImage;
+    }
+    if (selectedImage) {
+      return selectedImage;
+    }
+    const firstSelectedId = Array.from(safeSelectedImages)[0];
+    return firstSelectedId ? imageLookup.get(firstSelectedId) ?? null : null;
+  }, [imageLookup, previewImage, safeSelectedImages, selectedImage]);
 
   const openFindSimilar = useCallback((
     sourceImage: IndexedImage,
@@ -2557,7 +2567,6 @@ export default function App() {
           onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
           libraryView={libraryView}
           onLibraryViewChange={setLibraryView}
-          editorAvailable={Boolean(editorImageId)}
         />
 
         <CollectionFormModal
@@ -2832,8 +2841,33 @@ export default function App() {
                       onOpenComfyUIWorkflow={(image) => openComfyUIWorkflowInWorkspace(image, editorNavigationImages)}
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center text-sm text-gray-500">
-                      Select an image to edit.
+                    <div className="flex h-full items-center justify-center bg-gray-950 p-8 text-gray-300">
+                      <div className="max-w-md rounded-lg border border-gray-800 bg-gray-900/70 p-6 text-center shadow-xl shadow-black/20">
+                        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
+                          <ImageIcon className="h-6 w-6" />
+                        </div>
+                        <h2 className="text-lg font-semibold text-gray-100">Image Editor</h2>
+                        <p className="mt-2 text-sm text-gray-400">
+                          Open an image from the library context menu, or start with the current selected image.
+                        </p>
+                        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                          <button
+                            type="button"
+                            onClick={() => editorOpenCandidate && handleOpenImageEditor(editorOpenCandidate, displayImages)}
+                            disabled={!editorOpenCandidate}
+                            className="inline-flex items-center justify-center rounded-md bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:bg-gray-800 disabled:text-gray-500"
+                          >
+                            Open Selected Image
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLibraryView('library')}
+                            className="inline-flex items-center justify-center rounded-md border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-200 hover:bg-gray-800"
+                          >
+                            Go to Library
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )
                 ) : (

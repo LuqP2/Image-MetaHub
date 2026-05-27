@@ -228,9 +228,7 @@ const objectFromDrag = (
     ? { x: drag.start.x, y: drag.start.y, width: tool === 'step' ? 44 : Math.max(160, width), height: tool === 'step' ? 44 : Math.max(48, height) }
     : { x, y, width, height };
 
-  const text = tool === 'text'
-    ? window.prompt('Text annotation', 'Text') || 'Text'
-    : undefined;
+  const text = tool === 'text' ? 'Text' : undefined;
   const directionalPoints = tool === 'line' || tool === 'arrow'
     ? [drag.start, drag.current]
     : undefined;
@@ -265,6 +263,12 @@ const getCanvasPoint = (
 const colorComponentToHex = (value: number) => Math.round(value).toString(16).padStart(2, '0');
 const rgbToHex = (red: number, green: number, blue: number) => `#${colorComponentToHex(red)}${colorComponentToHex(green)}${colorComponentToHex(blue)}`;
 const toColorInputValue = (value: string | undefined) => /^#[0-9a-f]{6}$/i.test(value || '') ? value as string : '#000000';
+const toCanvasPercentBounds = (bounds: ImageEditorObject['bounds'], dimensions: { width: number; height: number }) => ({
+  left: `${(bounds.x / dimensions.width) * 100}%`,
+  top: `${(bounds.y / dimensions.height) * 100}%`,
+  width: `${(bounds.width / dimensions.width) * 100}%`,
+  height: `${(bounds.height / dimensions.height) * 100}%`,
+});
 
 const RESIZE_HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
@@ -826,6 +830,14 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     }), 'Object style');
   }, [commitDocument, selectedObject]);
 
+  const updateSelectedObjectText = useCallback((text: string) => {
+    if (!selectedObject || selectedObject.type !== 'text') return;
+    commitDocument((current) => ({
+      ...current,
+      objects: current.objects.map((object) => object.id === selectedObject.id ? { ...object, text } : object),
+    }), 'Text');
+  }, [commitDocument, selectedObject]);
+
   const deleteSelected = useCallback(() => {
     if (!normalizedDocument?.selectedObjectIds.length) return;
     const ids = new Set(normalizedDocument.selectedObjectIds);
@@ -1326,24 +1338,33 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     undo,
   ]);
 
-  const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
-    const canvasRect = canvasRef.current?.getBoundingClientRect();
-    const scrollContainer = scrollContainerRef.current;
-    const anchorX = canvasRect ? event.clientX - canvasRect.left : 0;
-    const anchorY = canvasRect ? event.clientY - canvasRect.top : 0;
-    setZoom((current) => {
-      const next = clampZoom(current * factor);
-      const scale = next / current;
-      if (scrollContainer && canvasRect && scale !== 1) {
-        requestAnimationFrame(() => {
-          scrollContainer.scrollLeft += anchorX * (scale - 1);
-          scrollContainer.scrollTop += anchorY * (scale - 1);
-        });
-      }
-      return next;
-    });
+  useEffect(() => {
+    const canvasElement = canvasRef.current;
+    if (!canvasElement) {
+      return;
+    }
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+      const canvasRect = canvasRef.current?.getBoundingClientRect();
+      const scrollContainer = scrollContainerRef.current;
+      const anchorX = canvasRect ? event.clientX - canvasRect.left : 0;
+      const anchorY = canvasRect ? event.clientY - canvasRect.top : 0;
+      setZoom((current) => {
+        const next = clampZoom(current * factor);
+        const scale = next / current;
+        if (scrollContainer && canvasRect && scale !== 1) {
+          requestAnimationFrame(() => {
+            scrollContainer.scrollLeft += anchorX * (scale - 1);
+            scrollContainer.scrollTop += anchorY * (scale - 1);
+          });
+        }
+        return next;
+      });
+    };
+
+    canvasElement.addEventListener('wheel', handleWheel, { passive: false });
+    return () => canvasElement.removeEventListener('wheel', handleWheel);
   }, []);
 
   const activeOutputDimensions = normalizedDocument
@@ -1412,6 +1433,8 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       return object;
     });
   const selectedDisplayedObjects = displayedObjects.filter((object) => normalizedDocument?.selectedObjectIds.includes(object.id));
+  const effectOverlayObjects = displayedObjects.filter((object) => object.type === 'blur' || object.type === 'pixelate');
+  const dragPreviewBounds = dragState ? boundsFromDrag(dragState) : null;
 
   if (!normalizedDocument || !sourceUrl) {
     return (
@@ -1501,13 +1524,25 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                 panStateRef.current = null;
               }}
               onAuxClick={(event) => event.preventDefault()}
-              onWheel={handleWheel}
             >
               {previewUrl ? (
                 <img ref={previewImageRef} src={previewUrl} alt={image.name} className="block h-full w-full object-contain" draggable={false} />
               ) : (
                 <img ref={previewImageRef} src={sourceUrl} alt={image.name} className="block h-full w-full object-contain opacity-80" draggable={false} />
               )}
+              {effectOverlayObjects.map((object) => (
+                <div
+                  key={`effect-${object.id}`}
+                  className="pointer-events-none absolute border border-cyan-300/70 bg-cyan-300/10"
+                  style={{
+                    ...toCanvasPercentBounds(object.bounds, normalizedDocument.canvasDimensions),
+                    backdropFilter: object.type === 'blur'
+                      ? `blur(${Math.max(4, object.style.strokeWidth * 2)}px)`
+                      : 'blur(1px) contrast(1.35)',
+                    imageRendering: object.type === 'pixelate' ? 'pixelated' : undefined,
+                  }}
+                />
+              ))}
               <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
                 {displayedObjects.map((object) => {
                   const { bounds, style } = object;
@@ -1526,7 +1561,45 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                       />
                     );
                   }
-                  if (object.type === 'ellipse' || object.type === 'spotlight' || object.type === 'magnify') {
+                  if (object.type === 'spotlight') {
+                    const maskId = `image-editor-spotlight-${object.id}`;
+                    return (
+                      <g key={object.id}>
+                        <defs>
+                          <mask id={maskId}>
+                            <rect x={0} y={0} width={normalizedDocument.canvasDimensions.width} height={normalizedDocument.canvasDimensions.height} fill="white" />
+                            <ellipse
+                              cx={bounds.x + bounds.width / 2}
+                              cy={bounds.y + bounds.height / 2}
+                              rx={bounds.width / 2}
+                              ry={bounds.height / 2}
+                              fill="black"
+                            />
+                          </mask>
+                        </defs>
+                        <rect
+                          x={0}
+                          y={0}
+                          width={normalizedDocument.canvasDimensions.width}
+                          height={normalizedDocument.canvasDimensions.height}
+                          fill="rgba(0, 0, 0, 0.48)"
+                          mask={`url(#${maskId})`}
+                        />
+                        <ellipse
+                          cx={bounds.x + bounds.width / 2}
+                          cy={bounds.y + bounds.height / 2}
+                          rx={bounds.width / 2}
+                          ry={bounds.height / 2}
+                          fill="none"
+                          stroke={style.strokeColor}
+                          strokeWidth={style.strokeWidth}
+                          opacity={style.opacity}
+                          strokeDasharray="10 8"
+                        />
+                      </g>
+                    );
+                  }
+                  if (object.type === 'ellipse' || object.type === 'magnify') {
                     return (
                       <ellipse
                         key={object.id}
@@ -1616,26 +1689,72 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                       </g>
                     );
                   }
-                  if (object.type === 'blur' || object.type === 'pixelate') {
-                    return (
-                      <rect
-                        key={object.id}
-                        x={bounds.x}
-                        y={bounds.y}
-                        width={bounds.width}
-                        height={bounds.height}
-                        fill="rgba(103, 232, 249, 0.08)"
-                        stroke={style.strokeColor}
-                        strokeWidth={Math.max(2, style.strokeWidth / 2)}
-                        strokeDasharray="10 8"
-                        opacity={style.opacity}
-                      />
-                    );
-                  }
+                  if (object.type === 'blur' || object.type === 'pixelate') return null;
                   return null;
                 })}
               </svg>
-              {dragState && (dragState.tool === 'line' || dragState.tool === 'arrow') ? (
+              {dragPreviewBounds && dragState && (dragState.tool === 'rectangle' || dragState.tool === 'highlight' || dragState.tool === 'ellipse' || dragState.tool === 'blur' || dragState.tool === 'pixelate' || dragState.tool === 'spotlight') ? (
+                <>
+                  {(dragState.tool === 'blur' || dragState.tool === 'pixelate') && (
+                    <div
+                      className="pointer-events-none absolute border-2 border-cyan-300 bg-cyan-300/10"
+                      style={{
+                        ...toCanvasPercentBounds(dragPreviewBounds, normalizedDocument.canvasDimensions),
+                        backdropFilter: dragState.tool === 'blur'
+                          ? `blur(${Math.max(4, activeStyle.strokeWidth * 2)}px)`
+                          : 'blur(1px) contrast(1.35)',
+                        imageRendering: dragState.tool === 'pixelate' ? 'pixelated' : undefined,
+                      }}
+                    />
+                  )}
+                  <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
+                    {dragState.tool === 'ellipse' || dragState.tool === 'spotlight' ? (
+                      dragState.tool === 'spotlight' ? (
+                        <g>
+                          <defs>
+                            <mask id="image-editor-spotlight-preview">
+                              <rect x={0} y={0} width={normalizedDocument.canvasDimensions.width} height={normalizedDocument.canvasDimensions.height} fill="white" />
+                              <ellipse cx={dragPreviewBounds.x + dragPreviewBounds.width / 2} cy={dragPreviewBounds.y + dragPreviewBounds.height / 2} rx={dragPreviewBounds.width / 2} ry={dragPreviewBounds.height / 2} fill="black" />
+                            </mask>
+                          </defs>
+                          <rect x={0} y={0} width={normalizedDocument.canvasDimensions.width} height={normalizedDocument.canvasDimensions.height} fill="rgba(0, 0, 0, 0.48)" mask="url(#image-editor-spotlight-preview)" />
+                          <ellipse
+                            cx={dragPreviewBounds.x + dragPreviewBounds.width / 2}
+                            cy={dragPreviewBounds.y + dragPreviewBounds.height / 2}
+                            rx={dragPreviewBounds.width / 2}
+                            ry={dragPreviewBounds.height / 2}
+                            fill="none"
+                            stroke={activeStyle.strokeColor}
+                            strokeWidth={activeStyle.strokeWidth}
+                            strokeDasharray="10 8"
+                          />
+                        </g>
+                      ) : (
+                        <ellipse
+                          cx={dragPreviewBounds.x + dragPreviewBounds.width / 2}
+                          cy={dragPreviewBounds.y + dragPreviewBounds.height / 2}
+                          rx={dragPreviewBounds.width / 2}
+                          ry={dragPreviewBounds.height / 2}
+                          fill={activeStyle.fillColor}
+                          stroke={activeStyle.strokeColor}
+                          strokeWidth={activeStyle.strokeWidth}
+                        />
+                      )
+                    ) : (
+                      <rect
+                        x={dragPreviewBounds.x}
+                        y={dragPreviewBounds.y}
+                        width={dragPreviewBounds.width}
+                        height={dragPreviewBounds.height}
+                        fill={dragState.tool === 'highlight' ? 'rgba(250, 204, 21, 0.28)' : dragState.tool === 'rectangle' ? activeStyle.fillColor : 'rgba(103, 232, 249, 0.08)'}
+                        stroke={activeStyle.strokeColor}
+                        strokeWidth={dragState.tool === 'rectangle' ? activeStyle.strokeWidth : Math.max(2, activeStyle.strokeWidth / 2)}
+                        strokeDasharray={dragState.tool === 'blur' || dragState.tool === 'pixelate' ? '10 8' : undefined}
+                      />
+                    )}
+                  </svg>
+                </>
+              ) : dragState && (dragState.tool === 'line' || dragState.tool === 'arrow') ? (
                 <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
                   <line
                     x1={dragState.start.x}
@@ -1804,6 +1923,17 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               {styleTargetType ? (
                 <>
                   <div className="grid grid-cols-2 gap-2">
+                    {selectedObject?.type === 'text' && (
+                      <label className="col-span-2 space-y-1 text-xs text-gray-400">
+                        <span>Text</span>
+                        <input
+                          type="text"
+                          value={selectedObject.text || ''}
+                          onChange={(event) => updateSelectedObjectText(event.target.value)}
+                          className="h-9 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-sm text-gray-100"
+                        />
+                      </label>
+                    )}
                     {canUseStrokeColor && (
                       <label className="space-y-1 text-xs text-gray-400">
                         <span>Stroke</span>

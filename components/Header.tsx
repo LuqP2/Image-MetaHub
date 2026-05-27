@@ -16,7 +16,6 @@ interface HeaderProps {
     onGeneratorSetupNeeded?: () => void;
     libraryView?: LibraryView;
     onLibraryViewChange?: (view: LibraryView) => void;
-    editorAvailable?: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -25,8 +24,7 @@ const Header: React.FC<HeaderProps> = ({
     onOpenLicense, 
     onGeneratorSetupNeeded,
     libraryView,
-    onLibraryViewChange,
-    editorAvailable = false
+    onLibraryViewChange
 }) => {
   const {
     canUseAnalytics,
@@ -329,10 +327,10 @@ const Header: React.FC<HeaderProps> = ({
       { id: 'model' as const, label: 'Model View' },
       { id: 'node' as const, label: 'Node View' },
       { id: 'collections' as const, label: 'Collections' },
-      ...(editorAvailable ? [{ id: 'editor' as const, label: 'Image Editor', icon: ImageIcon }] : []),
+      { id: 'editor' as const, label: 'Image Editor', icon: ImageIcon },
       { id: 'comfyui' as const, label: 'ComfyUI', icon: Workflow },
     ],
-    [clustersCount, editorAvailable]
+    [clustersCount]
   );
   const utilityButtonClassName = 'app-top-icon-button';
   const handleViewTabClick = useCallback((view: LibraryView) => {
