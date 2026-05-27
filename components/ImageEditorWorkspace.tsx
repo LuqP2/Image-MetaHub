@@ -270,6 +270,28 @@ const toCanvasPercentBounds = (bounds: ImageEditorObject['bounds'], dimensions: 
   height: `${(bounds.height / dimensions.height) * 100}%`,
 });
 
+const getEditorCursor = (tool: ImageEditorTool, isPanning: boolean) => {
+  if (isPanning) return 'grabbing';
+  switch (tool) {
+    case 'select': return 'default';
+    case 'color-picker': return 'crosshair';
+    case 'crop': return 'crosshair';
+    case 'text': return 'text';
+    case 'freehand': return 'crosshair';
+    case 'line':
+    case 'arrow':
+    case 'rectangle':
+    case 'ellipse':
+    case 'highlight':
+    case 'blur':
+    case 'pixelate':
+    case 'spotlight':
+      return 'crosshair';
+    default:
+      return 'crosshair';
+  }
+};
+
 const RESIZE_HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
 const getHandlePoint = (bounds: ImageEditorObject['bounds'], handle: ResizeHandle) => {
@@ -385,6 +407,62 @@ const resizeBoundsFromHandle = (
   return { x, y, width, height };
 };
 
+const PixelatePreview: React.FC<{
+  sourceUrl: string;
+  bounds: ImageEditorObject['bounds'];
+  canvasDimensions: { width: number; height: number };
+  strength: number;
+}> = ({ sourceUrl, bounds, canvasDimensions, strength }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || bounds.width <= 0 || bounds.height <= 0) {
+      return;
+    }
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return;
+    }
+    const width = Math.max(1, Math.round(bounds.width));
+    const height = Math.max(1, Math.round(bounds.height));
+    canvas.width = width;
+    canvas.height = height;
+
+    const image = new Image();
+    image.onload = () => {
+      const pixelSize = Math.max(6, strength * 3);
+      const smallWidth = Math.max(1, Math.round(width / pixelSize));
+      const smallHeight = Math.max(1, Math.round(height / pixelSize));
+      const scratch = document.createElement('canvas');
+      const scratchContext = scratch.getContext('2d');
+      if (!scratchContext) {
+        return;
+      }
+      scratch.width = smallWidth;
+      scratch.height = smallHeight;
+      scratchContext.imageSmoothingEnabled = false;
+      scratchContext.drawImage(
+        image,
+        (bounds.x / canvasDimensions.width) * image.width,
+        (bounds.y / canvasDimensions.height) * image.height,
+        (bounds.width / canvasDimensions.width) * image.width,
+        (bounds.height / canvasDimensions.height) * image.height,
+        0,
+        0,
+        smallWidth,
+        smallHeight,
+      );
+      context.clearRect(0, 0, width, height);
+      context.imageSmoothingEnabled = false;
+      context.drawImage(scratch, 0, 0, smallWidth, smallHeight, 0, 0, width, height);
+    };
+    image.src = sourceUrl;
+  }, [bounds.height, bounds.width, bounds.x, bounds.y, canvasDimensions.height, canvasDimensions.width, sourceUrl, strength]);
+
+  return <canvas ref={canvasRef} className="h-full w-full" />;
+};
+
 const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   image,
   navigationImages = [],
@@ -402,6 +480,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const [isRendering, setIsRendering] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [hydratedImage, setHydratedImage] = useState<IndexedImage | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -888,11 +967,11 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     sampleContext.drawImage(imageElement, sampleX, sampleY, 1, 1, 0, 0, 1, 1);
     const [red, green, blue] = sampleContext.getImageData(0, 0, 1, 1).data;
     const color = rgbToHex(red, green, blue);
-    setActiveStyle((current) => ({ ...current, strokeColor: color, textColor: color }));
+    setActiveStyle((current) => ({ ...current, strokeColor: color, fillColor: color, textColor: color }));
     if (selectedObject) {
       updateSelectedObjectStyle(selectedObject.type === 'text' || selectedObject.type === 'step'
         ? { textColor: color }
-        : { strokeColor: color });
+        : { strokeColor: color, fillColor: color });
     }
   }, [normalizedDocument, selectedObject, updateSelectedObjectStyle]);
 
@@ -910,6 +989,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         scrollLeft: scrollContainer.scrollLeft,
         scrollTop: scrollContainer.scrollTop,
       };
+      setIsPanning(true);
       return;
     }
     if (event.button !== 0) return;
@@ -996,6 +1076,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const pointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (panStateRef.current?.pointerId === event.pointerId) {
       panStateRef.current = null;
+      setIsPanning(false);
       return;
     }
     if (!dragState || !normalizedDocument) return;
@@ -1435,6 +1516,8 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const selectedDisplayedObjects = displayedObjects.filter((object) => normalizedDocument?.selectedObjectIds.includes(object.id));
   const effectOverlayObjects = displayedObjects.filter((object) => object.type === 'blur' || object.type === 'pixelate');
   const dragPreviewBounds = dragState ? boundsFromDrag(dragState) : null;
+  const basePreviewSource = previewUrl || sourceUrl;
+  const editorCursor = getEditorCursor(activeTool, isPanning);
 
   if (!normalizedDocument || !sourceUrl) {
     return (
@@ -1515,6 +1598,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                 aspectRatio: `${Math.max(1, normalizedDocument.canvasDimensions.width)} / ${Math.max(1, normalizedDocument.canvasDimensions.height)}`,
                 width: `${displayWidth}px`,
                 maxWidth: 'none',
+                cursor: editorCursor,
               }}
               onPointerDown={pointerDown}
               onPointerMove={pointerMove}
@@ -1522,6 +1606,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               onPointerCancel={() => {
                 setDragState(null);
                 panStateRef.current = null;
+                setIsPanning(false);
               }}
               onAuxClick={(event) => event.preventDefault()}
             >
@@ -1530,19 +1615,28 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               ) : (
                 <img ref={previewImageRef} src={sourceUrl} alt={image.name} className="block h-full w-full object-contain opacity-80" draggable={false} />
               )}
-              {effectOverlayObjects.map((object) => (
-                <div
-                  key={`effect-${object.id}`}
-                  className="pointer-events-none absolute border border-cyan-300/70 bg-cyan-300/10"
-                  style={{
-                    ...toCanvasPercentBounds(object.bounds, normalizedDocument.canvasDimensions),
-                    backdropFilter: object.type === 'blur'
-                      ? `blur(${Math.max(4, object.style.strokeWidth * 2)}px)`
-                      : 'blur(1px) contrast(1.35)',
-                    imageRendering: object.type === 'pixelate' ? 'pixelated' : undefined,
-                  }}
-                />
-              ))}
+              {effectOverlayObjects.map((object) => {
+                const boundsStyle = toCanvasPercentBounds(object.bounds, normalizedDocument.canvasDimensions);
+                return (
+                  <div
+                    key={`effect-${object.id}`}
+                    className="pointer-events-none absolute overflow-hidden"
+                    style={{
+                      ...boundsStyle,
+                      backdropFilter: object.type === 'blur' ? `blur(${Math.max(4, object.style.strokeWidth * 2)}px)` : undefined,
+                    }}
+                  >
+                    {object.type === 'pixelate' && basePreviewSource && (
+                      <PixelatePreview
+                        sourceUrl={basePreviewSource}
+                        bounds={object.bounds}
+                        canvasDimensions={normalizedDocument.canvasDimensions}
+                        strength={object.style.strokeWidth}
+                      />
+                    )}
+                  </div>
+                );
+              })}
               <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
                 {displayedObjects.map((object) => {
                   const { bounds, style } = object;
@@ -1697,15 +1791,21 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                 <>
                   {(dragState.tool === 'blur' || dragState.tool === 'pixelate') && (
                     <div
-                      className="pointer-events-none absolute border-2 border-cyan-300 bg-cyan-300/10"
+                      className="pointer-events-none absolute overflow-hidden"
                       style={{
                         ...toCanvasPercentBounds(dragPreviewBounds, normalizedDocument.canvasDimensions),
-                        backdropFilter: dragState.tool === 'blur'
-                          ? `blur(${Math.max(4, activeStyle.strokeWidth * 2)}px)`
-                          : 'blur(1px) contrast(1.35)',
-                        imageRendering: dragState.tool === 'pixelate' ? 'pixelated' : undefined,
+                        backdropFilter: dragState.tool === 'blur' ? `blur(${Math.max(4, activeStyle.strokeWidth * 2)}px)` : undefined,
                       }}
-                    />
+                    >
+                      {dragState.tool === 'pixelate' && basePreviewSource && (
+                        <PixelatePreview
+                          sourceUrl={basePreviewSource}
+                          bounds={dragPreviewBounds}
+                          canvasDimensions={normalizedDocument.canvasDimensions}
+                          strength={activeStyle.strokeWidth}
+                        />
+                      )}
+                    </div>
                   )}
                   <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
                     {dragState.tool === 'ellipse' || dragState.tool === 'spotlight' ? (
@@ -1746,9 +1846,9 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                         y={dragPreviewBounds.y}
                         width={dragPreviewBounds.width}
                         height={dragPreviewBounds.height}
-                        fill={dragState.tool === 'highlight' ? 'rgba(250, 204, 21, 0.28)' : dragState.tool === 'rectangle' ? activeStyle.fillColor : 'rgba(103, 232, 249, 0.08)'}
+                        fill={dragState.tool === 'highlight' ? 'rgba(250, 204, 21, 0.28)' : dragState.tool === 'rectangle' ? activeStyle.fillColor : 'none'}
                         stroke={activeStyle.strokeColor}
-                        strokeWidth={dragState.tool === 'rectangle' ? activeStyle.strokeWidth : Math.max(2, activeStyle.strokeWidth / 2)}
+                        strokeWidth={dragState.tool === 'blur' || dragState.tool === 'pixelate' ? 0 : dragState.tool === 'rectangle' ? activeStyle.strokeWidth : Math.max(2, activeStyle.strokeWidth / 2)}
                         strokeDasharray={dragState.tool === 'blur' || dragState.tool === 'pixelate' ? '10 8' : undefined}
                       />
                     )}
