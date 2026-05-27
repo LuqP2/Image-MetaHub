@@ -123,10 +123,15 @@ export function suggestDuplicates(
   }
 
   // Filter out user-marked images from algorithm processing
-  const userMarkedIds = new Set([
-    ...userMarkedBest.map(img => img.id),
-    ...userArchived.map(img => img.id),
-  ]);
+  // Optimization: Populate Set directly in a loop to avoid O(N) allocation overhead of mapped arrays and spread operators
+  // Impact: Reduces garbage collection pressure and intermediate memory usage for large clusters
+  const userMarkedIds = new Set<string>();
+  for (const img of userMarkedBest) {
+    userMarkedIds.add(img.id);
+  }
+  for (const img of userArchived) {
+    userMarkedIds.add(img.id);
+  }
 
   const remainingImages = images.filter(img => !userMarkedIds.has(img.id));
 
@@ -178,9 +183,15 @@ export function batchSuggestDuplicates(
 
   for (const cluster of clusters) {
     // Get images for this cluster
-    const clusterImages = cluster.imageIds
-      .map(id => imagesMap.get(id))
-      .filter((img): img is IndexedImage => img !== undefined);
+    // Optimization: Avoid chained map/filter allocating intermediate arrays
+    // Impact: Improves processing speed and memory efficiency during batch deduplication
+    const clusterImages: IndexedImage[] = [];
+    for (const id of cluster.imageIds) {
+      const img = imagesMap.get(id);
+      if (img !== undefined) {
+        clusterImages.push(img);
+      }
+    }
 
     // Skip if no images found
     if (clusterImages.length === 0) {
