@@ -915,13 +915,18 @@ export default function App() {
         }));
       }
 
-      await cacheManager.removeCachedImages(
-        directory.path,
-        directory.name,
-        removedIds,
-        removedNames,
-        useImageStore.getState().scanSubfolders,
-      );
+      window.setTimeout(() => {
+        cacheManager.applyChunkedCacheDelta(
+          directory.path,
+          directory.name,
+          [],
+          removedIds,
+          removedNames,
+          useImageStore.getState().scanSubfolders,
+        ).catch((error) => {
+          console.error('Failed to update cache after watched file removal:', error);
+        });
+      }, 0);
 
       const removedCount = Math.max(removedIds.length, removedNames.length);
       setNewImagesToast({
