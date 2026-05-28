@@ -730,6 +730,7 @@ class CacheManager {
     if (imagesToUpsert.length === 0 && removedImageIds.length === 0 && removedImageNames.length === 0) return;
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    const outputCacheId = `${cacheId}-delta-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const summary = await this.getCacheSummary(directoryPath, scanSubfolders);
     if (!summary) {
       if (imagesToUpsert.length > 0) {
@@ -759,7 +760,7 @@ class CacheManager {
 
       const chunk = outputBuffer.splice(0, outputBuffer.length);
       const result = await window.electronAPI.writeCacheChunk({
-        cacheId,
+        cacheId: outputCacheId,
         chunkIndex: outputChunkIndex,
         data: chunk,
       });
@@ -806,6 +807,7 @@ class CacheManager {
 
     const finalizeResult = await window.electronAPI.finalizeCacheWrite({
       cacheId,
+      sourceCacheId: outputCacheId,
       record: {
         id: cacheId,
         directoryPath,

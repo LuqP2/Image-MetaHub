@@ -3318,8 +3318,37 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('finalize-cache-write', async (event, { cacheId, record }) => {
+  ipcMain.handle('finalize-cache-write', async (event, { cacheId, sourceCacheId, record }) => {
     try {
+      const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+      const safeSourceCacheId = sourceCacheId?.replace(/[^a-zA-Z0-9-_]/g, '_');
+      if (safeSourceCacheId && safeSourceCacheId !== safeCacheId) {
+        const rootPath = await getCacheRootPath();
+        const cacheDir = path.join(rootPath, 'json_cache');
+        await fs.mkdir(cacheDir, { recursive: true });
+
+        const files = await fs.readdir(cacheDir).catch(error => {
+          if (error.code === 'ENOENT') return [];
+          throw error;
+        });
+
+        await Promise.all(
+          files
+            .filter(file => file.startsWith(`${safeCacheId}_`))
+            .map(file => fs.unlink(path.join(cacheDir, file)).catch(err => {
+              if (err.code !== 'ENOENT') throw err;
+            }))
+        );
+
+        for (const file of files.filter(file => file.startsWith(`${safeSourceCacheId}_`))) {
+          const suffix = file.slice(safeSourceCacheId.length);
+          await fs.rename(
+            path.join(cacheDir, file),
+            path.join(cacheDir, `${safeCacheId}${suffix}`)
+          );
+        }
+      }
+
       const mainCachePath = await getCacheFilePath(cacheId);
       // Add parser version to cache record
       const recordWithVersion = { ...record, parserVersion: PARSER_VERSION };
