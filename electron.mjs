@@ -3323,6 +3323,8 @@ function setupFileOperationHandlers() {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
       const safeSourceCacheId = sourceCacheId?.replace(/[^a-zA-Z0-9-_]/g, '_');
       if (safeSourceCacheId && safeSourceCacheId !== safeCacheId) {
+        const targetChunkPattern = new RegExp(`^${safeCacheId}_(\\d+)\\.json$`);
+        const sourceChunkPattern = new RegExp(`^${safeSourceCacheId}_(\\d+)\\.json$`);
         const rootPath = await getCacheRootPath();
         const cacheDir = path.join(rootPath, 'json_cache');
         await fs.mkdir(cacheDir, { recursive: true });
@@ -3334,13 +3336,13 @@ function setupFileOperationHandlers() {
 
         await Promise.all(
           files
-            .filter(file => file.startsWith(`${safeCacheId}_`))
+            .filter(file => targetChunkPattern.test(file))
             .map(file => fs.unlink(path.join(cacheDir, file)).catch(err => {
               if (err.code !== 'ENOENT') throw err;
             }))
         );
 
-        for (const file of files.filter(file => file.startsWith(`${safeSourceCacheId}_`))) {
+        for (const file of files.filter(file => sourceChunkPattern.test(file))) {
           const suffix = file.slice(safeSourceCacheId.length);
           await fs.rename(
             path.join(cacheDir, file),
