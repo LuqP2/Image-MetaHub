@@ -916,13 +916,20 @@ export default function App() {
       }
 
       window.setTimeout(() => {
-        cacheManager.applyChunkedCacheDelta(
-          directory.path,
-          directory.name,
-          [],
-          removedIds,
-          removedNames,
-          useImageStore.getState().scanSubfolders,
+        const activeScanSubfolders = useImageStore.getState().scanSubfolders;
+        const cacheModes = Array.from(new Set([activeScanSubfolders, !activeScanSubfolders]));
+
+        Promise.all(
+          cacheModes.map((scanSubfoldersMode) =>
+            cacheManager.applyChunkedCacheDelta(
+              directory.path,
+              directory.name,
+              [],
+              removedIds,
+              removedNames,
+              scanSubfoldersMode,
+            )
+          )
         ).catch((error) => {
           console.error('Failed to update cache after watched file removal:', error);
         });
