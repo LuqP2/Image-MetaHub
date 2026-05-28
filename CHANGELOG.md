@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - [Unreleased]
+
+### Improved
+
+- **Image Modal Navigation Performance**: Improved rapid left/right arrow navigation in the image viewer by coalescing repeated key events, using cheaper navigation indexes, and temporarily keeping heavy sidebar rendering out of the hot path while keys are held.
+
+### Fixed
+
+- **Watched File Deletion Stability**: Fixed watched file deletions so cache pruning no longer blocks the renderer, updates both flat and recursive cache variants, and safely rewrites multi-chunk caches without overwriting chunks that are still being read.
+
 ## [0.16.1] - [2026-05-23]
 
 ### Added
