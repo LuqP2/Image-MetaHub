@@ -1348,11 +1348,29 @@ export default function App() {
     () => safeFilteredImages.map((image) => image.id),
     [safeFilteredImages]
   );
+  const filteredNavigationIndexById = useMemo(() => {
+    const indexById = new Map<string, number>();
+    filteredNavigationImageIds.forEach((imageId, index) => {
+      indexById.set(imageId, index);
+    });
+    return indexById;
+  }, [filteredNavigationImageIds]);
 
   const activeScopeNavigationImageIds = useMemo(
     () => safeActiveImageScope?.map((image) => image.id) ?? null,
     [safeActiveImageScope]
   );
+  const activeScopeNavigationIndexById = useMemo(() => {
+    if (!activeScopeNavigationImageIds) {
+      return null;
+    }
+
+    const indexById = new Map<string, number>();
+    activeScopeNavigationImageIds.forEach((imageId, index) => {
+      indexById.set(imageId, index);
+    });
+    return indexById;
+  }, [activeScopeNavigationImageIds]);
 
   const getImageByIdFromStore = useCallback((imageId: string) => {
     if (!imageId) {
@@ -1386,6 +1404,27 @@ export default function App() {
 
     return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
   }, [activeScopeNavigationImageIds, filteredNavigationImageIds, getImageByIdFromStore, imageLookup]);
+
+  const resolveModalNavigationIndex = useCallback((
+    modal: OpenImageModalState,
+    navigationImageIds: string[]
+  ) => {
+    if (modal.navigationSource === 'filtered') {
+      return filteredNavigationIndexById.get(modal.imageId) ?? -1;
+    }
+
+    if (modal.navigationSource === 'scope' && activeScopeNavigationIndexById) {
+      return activeScopeNavigationIndexById.get(modal.imageId) ?? -1;
+    }
+
+    return navigationImageIds.findIndex((imageId) => imageId === modal.imageId);
+  }, [activeScopeNavigationIndexById, filteredNavigationIndexById]);
+
+  const resolveModalNavigationImages = useCallback((modal: OpenImageModalState) => {
+    return resolveModalNavigationImageIds(modal)
+      .map((imageId) => getImageByIdFromStore(imageId))
+      .filter((candidate): candidate is IndexedImage => Boolean(candidate));
+  }, [getImageByIdFromStore, resolveModalNavigationImageIds]);
 
   useEffect(() => {
     if (openImageModals.length === 0) {
@@ -1587,7 +1626,7 @@ export default function App() {
     }
 
     const availableImageIds = resolveModalNavigationImageIds(targetModal);
-    const currentIndex = availableImageIds.findIndex((imageId) => imageId === targetModal.imageId);
+    const currentIndex = resolveModalNavigationIndex(targetModal, availableImageIds);
 
     if (currentIndex === -1) {
       return;
@@ -1613,7 +1652,7 @@ export default function App() {
       suppressSelectedImageModalOpenRef.current = nextImage.id;
       setSelectedImage(nextImage);
     }
-  }, [getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, setSelectedImage]);
+  }, [getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, resolveModalNavigationIndex, setSelectedImage]);
 
   const handleOpenImageModalInBackground = useCallback((
     image: IndexedImage,
@@ -2185,10 +2224,7 @@ export default function App() {
         }
 
         const navigationImageIds = resolveModalNavigationImageIds(modal);
-        const navigationImages = navigationImageIds
-          .map((imageId) => getImageByIdFromStore(imageId))
-          .filter((candidate): candidate is IndexedImage => Boolean(candidate));
-        const currentIndex = navigationImageIds.findIndex((imageId) => imageId === modal.imageId);
+        const currentIndex = resolveModalNavigationIndex(modal, navigationImageIds);
         const directoryPath = directoryPathById.get(image.directoryId);
         if (!directoryPath) {
           return null;
@@ -2197,7 +2233,6 @@ export default function App() {
         return {
           ...modal,
           image,
-          navigationImages,
           directoryPath,
           currentIndex: currentIndex === -1 ? 0 : currentIndex,
           totalImages: navigationImageIds.length,
@@ -2205,12 +2240,11 @@ export default function App() {
       })
       .filter(Boolean) as Array<OpenImageModalState & {
         image: IndexedImage;
-        navigationImages: IndexedImage[];
         directoryPath: string;
         currentIndex: number;
         totalImages: number;
       }>;
-  }, [directoryPathById, getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds]);
+  }, [directoryPathById, getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, resolveModalNavigationIndex]);
 
   const footerWindowItems = useMemo(() => {
     return openImageModals
@@ -2841,8 +2875,8 @@ export default function App() {
             closeOnSlideshowExit={modal.closeOnSlideshowExit}
             diagnosticsFlowId={modal.diagnosticsFlowId}
             onSlideshowStartAcknowledged={() => handleSlideshowStartAcknowledged(modal.modalId)}
-            onFindSimilar={(image) => openFindSimilar(image, modal.navigationImages)}
-            onOpenComfyUIWorkflow={(image) => handleOpenComfyUIWorkflowFromImageModal(modal.modalId, image, modal.navigationImages)}
+            onFindSimilar={(image) => openFindSimilar(image, resolveModalNavigationImages(modal))}
+            onOpenComfyUIWorkflow={(image) => handleOpenComfyUIWorkflowFromImageModal(modal.modalId, image, resolveModalNavigationImages(modal))}
           />
         ))}
 

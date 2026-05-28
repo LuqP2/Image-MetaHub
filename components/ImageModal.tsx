@@ -223,6 +223,7 @@ const DETAILS_SIDEBAR_DEFAULT_HEIGHT = 320;
 const DETAILS_SIDEBAR_MIN_WIDTH = 300;
 const DETAILS_SIDEBAR_MIN_HEIGHT = 240;
 const DETAILS_SIDEBAR_MAX_RATIO = 0.7;
+const RAPID_KEYBOARD_NAVIGATION_IDLE_MS = 140;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -778,6 +779,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showDetails, setShowDetails] = useState(true);
   const [showPerformance, setShowPerformance] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isRapidKeyboardNavigating, setIsRapidKeyboardNavigating] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'details' | 'workflow'>('details');
   const [sidebarWidth, setSidebarWidth] = useState(DETAILS_SIDEBAR_DEFAULT_WIDTH);
   const [sidebarHeight, setSidebarHeight] = useState(DETAILS_SIDEBAR_DEFAULT_HEIGHT);
@@ -808,6 +810,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const modalWindowRef = useRef<ModalWindowState>(modalWindow);
   const liveModalWindowRef = useRef<ModalWindowState>(modalWindow);
   const modalPaintFrameRef = useRef<number | null>(null);
+  const keyboardNavigationFrameRef = useRef<number | null>(null);
+  const pendingKeyboardNavigationRef = useRef<'next' | 'previous' | null>(null);
+  const keyboardNavigationIdleTimeoutRef = useRef<number | null>(null);
+  const isRapidKeyboardNavigatingRef = useRef(false);
+  const onWindowStateChangeRef = useRef(onWindowStateChange);
+  const lastReportedWindowStateRef = useRef<ModalWindowState | null>(null);
   const slideshowTimeoutRef = useRef<number | null>(null);
   const restoredModalWindowRef = useRef<ModalWindowState | null>(null);
   const isMinimizeAnimatingRef = useRef(false);
@@ -973,7 +981,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
   const toggleFullscreenKeybinding = previewKeymap?.toggleFullscreenInViewer || 'alt+enter';
   const isWindowInteractionActive = modalInteraction.mode !== 'idle';
-  const showSidebar = !isFullViewportModal && !isSidebarCollapsed;
+  const showSidebar = !isFullViewportModal && !isSidebarCollapsed && !isRapidKeyboardNavigating;
   const showSidebarOnBottom = showSidebar && detailsPlacement === 'bottom';
   const showSidebarOnRight = showSidebar && detailsPlacement === 'right';
   const imageFullPath = directoryPath
@@ -1205,11 +1213,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [isActive, onSlideshowStartAcknowledged, setFullscreenMode, startSlideshow, totalImages]);
 
   useEffect(() => {
+    onWindowStateChangeRef.current = onWindowStateChange;
+  }, [onWindowStateChange]);
+
+  useEffect(() => {
     modalWindowRef.current = modalWindow;
     liveModalWindowRef.current = modalWindow;
     applyModalWindowStyles(modalWindow);
-    onWindowStateChange?.(modalWindow);
-  }, [applyModalWindowStyles, modalWindow, onWindowStateChange]);
+
+    const lastReported = lastReportedWindowStateRef.current;
+    if (
+      lastReported &&
+      lastReported.x === modalWindow.x &&
+      lastReported.y === modalWindow.y &&
+      lastReported.width === modalWindow.width &&
+      lastReported.height === modalWindow.height
+    ) {
+      return;
+    }
+
+    lastReportedWindowStateRef.current = modalWindow;
+    onWindowStateChangeRef.current?.(modalWindow);
+  }, [applyModalWindowStyles, modalWindow]);
 
   useEffect(() => {
     return () => {
@@ -2288,6 +2313,46 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   }, [currentIndex, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, totalImages]);
 
+  const scheduleKeyboardNavigation = useCallback((direction: 'next' | 'previous', isRepeatedKey = false) => {
+    pendingKeyboardNavigationRef.current = direction;
+
+    if (isRepeatedKey) {
+      if (!isRapidKeyboardNavigatingRef.current) {
+        isRapidKeyboardNavigatingRef.current = true;
+        setIsRapidKeyboardNavigating(true);
+      }
+
+      if (keyboardNavigationIdleTimeoutRef.current !== null) {
+        window.clearTimeout(keyboardNavigationIdleTimeoutRef.current);
+      }
+
+      keyboardNavigationIdleTimeoutRef.current = window.setTimeout(() => {
+        keyboardNavigationIdleTimeoutRef.current = null;
+        isRapidKeyboardNavigatingRef.current = false;
+        setIsRapidKeyboardNavigating(false);
+      }, RAPID_KEYBOARD_NAVIGATION_IDLE_MS);
+    }
+
+    if (keyboardNavigationFrameRef.current !== null) {
+      return;
+    }
+
+    keyboardNavigationFrameRef.current = window.requestAnimationFrame(() => {
+      keyboardNavigationFrameRef.current = null;
+      const nextDirection = pendingKeyboardNavigationRef.current;
+      pendingKeyboardNavigationRef.current = null;
+
+      if (nextDirection === 'next') {
+        onNavigateNext?.();
+        return;
+      }
+
+      if (nextDirection === 'previous') {
+        onNavigatePrevious?.();
+      }
+    });
+  }, [onNavigateNext, onNavigatePrevious]);
+
   useEffect(() => {
     if (!isActive) {
       return;
@@ -2374,14 +2439,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
         event.stopPropagation();
-        onNavigatePrevious?.();
+        scheduleKeyboardNavigation('previous', event.repeat);
         return;
       }
 
       if (event.key === 'ArrowRight') {
         event.preventDefault();
         event.stopPropagation();
-        onNavigateNext?.();
+        scheduleKeyboardNavigation('next', event.repeat);
         return;
       }
     };
@@ -2408,9 +2473,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
     isRenaming,
     isSlideshowMode,
     onClose,
-    onNavigateNext,
-    onNavigatePrevious,
     previewKeymap,
+    scheduleKeyboardNavigation,
     toggleFullscreen,
     toggleFullscreenKeybinding,
   ]);
@@ -2419,6 +2483,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
     return () => {
       clearMediaOverlayHideTimer();
       clearSlideshowTimer();
+      if (keyboardNavigationFrameRef.current !== null) {
+        window.cancelAnimationFrame(keyboardNavigationFrameRef.current);
+        keyboardNavigationFrameRef.current = null;
+      }
+      if (keyboardNavigationIdleTimeoutRef.current !== null) {
+        window.clearTimeout(keyboardNavigationIdleTimeoutRef.current);
+        keyboardNavigationIdleTimeoutRef.current = null;
+      }
+      isRapidKeyboardNavigatingRef.current = false;
+      pendingKeyboardNavigationRef.current = null;
     };
   }, [clearMediaOverlayHideTimer, clearSlideshowTimer]);
 
@@ -2586,6 +2660,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
     >
       <div
         ref={modalShellRef}
+        role="dialog"
+        aria-modal={isFullViewportModal ? 'true' : 'false'}
+        aria-label={`Image viewer: ${image.name}`}
         className={`${
           isFullViewportModal
             ? 'fixed inset-0 z-[9999] h-screen w-screen rounded-none bg-black'

@@ -3715,7 +3715,9 @@ export const useImageStore = create<ImageState>((set, get) => {
 
             return resolveSmartCollectionImageIds(collection, state.images).length;
         },
-        setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
+        setFocusedImageIndex: (index) => set((state) => (
+            state.focusedImageIndex === index ? state : { focusedImageIndex: index }
+        )),
         setClipboard: (clipboard) => set({ clipboard }),
         setFullscreenMode: (isFullscreen) => set({ isFullscreenMode: isFullscreen }),
 
