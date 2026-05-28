@@ -332,6 +332,80 @@ describe('cacheManager workflowNodes hydration', () => {
     expect(finalizeCacheWrite.mock.calls[0][0].record.chunkCount).toBe(1);
   });
 
+  it('writes chunked cache deltas to a temporary cache before replacing the source chunks', async () => {
+    const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
+    const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
+    const originalCacheId = 'D:/library-flat';
+    const firstChunk = Array.from({ length: 1024 }, (_, index) => ({
+      id: `dir-1::chunk-0-${index}.png`,
+      name: `chunk-0-${index}.png`,
+      metadataString: '',
+      metadata: {},
+      lastModified: 1,
+      models: [],
+      loras: [],
+      scheduler: '',
+    }));
+    const secondChunk = [
+      {
+        id: 'dir-1::chunk-1.png',
+        name: 'chunk-1.png',
+        metadataString: '',
+        metadata: {},
+        lastModified: 1,
+        models: [],
+        loras: [],
+        scheduler: '',
+      },
+    ];
+
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          id: originalCacheId,
+          directoryPath: 'D:/library',
+          directoryName: 'Library',
+          lastScan: 1,
+          imageCount: 1025,
+          parserVersion: 7,
+          chunkCount: 2,
+        },
+      }),
+      getCacheChunk: vi.fn().mockImplementation(async ({ cacheId, chunkIndex }) => {
+        expect(cacheId).toBe(originalCacheId);
+        return {
+          success: true,
+          data: chunkIndex === 0 ? firstChunk : secondChunk,
+        };
+      }),
+      writeCacheChunk,
+      finalizeCacheWrite,
+    };
+    (cacheManager as any).isElectron = true;
+
+    await cacheManager.applyChunkedCacheDelta(
+      'D:/library',
+      'Library',
+      [],
+      ['dir-1::chunk-1.png'],
+      ['chunk-1.png'],
+      false
+    );
+
+    expect(window.electronAPI.getCacheChunk).toHaveBeenCalledTimes(2);
+    expect(writeCacheChunk).toHaveBeenCalled();
+    for (const call of writeCacheChunk.mock.calls) {
+      expect(call[0].cacheId).not.toBe(originalCacheId);
+      expect(call[0].cacheId).toMatch(/^D:\/library-flat-delta-/);
+    }
+    expect(finalizeCacheWrite).toHaveBeenCalledWith(expect.objectContaining({
+      cacheId: originalCacheId,
+      sourceCacheId: writeCacheChunk.mock.calls[0][0].cacheId,
+    }));
+    expect(finalizeCacheWrite.mock.calls[0][0].record.imageCount).toBe(1024);
+  });
+
   it('migrates inline metadata before appending new cache chunks', async () => {
     const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
     const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
