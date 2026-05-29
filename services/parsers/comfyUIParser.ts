@@ -534,7 +534,10 @@ function createNodeMap(workflow: any, prompt: any): Graph {
     const graph: Graph = {};
 
     // Add/overlay from prompt (execution data: class_type, inputs)
-    for (const [id, pNode] of Object.entries(prompt || {})) {
+    // Optimization: use for...in instead of Object.entries to avoid intermediate array allocation
+    // Impact: reduces O(N) memory allocation and GC overhead during workflow graph traversal
+    for (const id in prompt || {}) {
+        const pNode = (prompt as any)[id];
         graph[id] = {
             id,
             class_type: (pNode as any).class_type,
