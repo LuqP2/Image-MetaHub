@@ -113,6 +113,12 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
   }, [supportsOverlayModes, viewMode]);
 
   useEffect(() => {
+    if (isAdvancedMode) return;
+    setVisualMetrics(null);
+    setHighlightDeltaRegion(false);
+  }, [isAdvancedMode]);
+
+  useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -143,17 +149,6 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [imageCount, isOpen, viewMode]);
 
-  if (!isOpen || imageCount < 2) return null;
-
-  const viewModes: { id: ComparisonViewMode; label: string; hint: string; disabled?: boolean }[] = [
-    { id: 'side-by-side', label: imageCount > 2 ? 'Compare' : 'Side-by-Side', hint: imageCount > 2 ? 'Compare all selected images together' : 'Two panes with optional synced zoom' },
-    { id: 'slider', label: 'Slider', hint: 'Drag the divider to reveal each image', disabled: !supportsOverlayModes },
-    { id: 'hover', label: 'Hover', hint: 'Hover to toggle between the images', disabled: !supportsOverlayModes },
-    { id: 'difference-map', label: 'Diff Map', hint: 'Highlight changed pixels as a heatmap', disabled: !supportsOverlayModes },
-    { id: 'flicker', label: 'Flicker', hint: 'Alternate images in the same viewport', disabled: !supportsOverlayModes },
-    { id: 'loupe', label: 'Loupe', hint: 'Inspect Image A, diff, and Image B under the cursor', disabled: !supportsOverlayModes },
-    { id: 'edge-difference', label: 'Edges', hint: 'Compare structural outlines and silhouettes', disabled: !supportsOverlayModes },
-  ];
   const isSideBySide = viewMode === 'side-by-side';
   const metadataReference = comparisonImages[0]?.metadata?.normalizedMetadata ?? null;
   const leftMetadata = comparisonImages[0]?.metadata?.normalizedMetadata ?? null;
@@ -173,6 +168,18 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
   const updateAdvancedSettings = (patch: Partial<ComparisonAdvancedSettings>) => {
     setAdvancedSettings((current) => ({ ...current, ...patch }));
   };
+
+  if (!isOpen || imageCount < 2) return null;
+
+  const viewModes: { id: ComparisonViewMode; label: string; hint: string; disabled?: boolean }[] = [
+    { id: 'side-by-side', label: imageCount > 2 ? 'Compare' : 'Side-by-Side', hint: imageCount > 2 ? 'Compare all selected images together' : 'Two panes with optional synced zoom' },
+    { id: 'slider', label: 'Slider', hint: 'Drag the divider to reveal each image', disabled: !supportsOverlayModes },
+    { id: 'hover', label: 'Hover', hint: 'Hover to toggle between the images', disabled: !supportsOverlayModes },
+    { id: 'difference-map', label: 'Diff Map', hint: 'Highlight changed pixels as a heatmap', disabled: !supportsOverlayModes },
+    { id: 'flicker', label: 'Flicker', hint: 'Alternate images in the same viewport', disabled: !supportsOverlayModes },
+    { id: 'loupe', label: 'Loupe', hint: 'Inspect Image A, diff, and Image B under the cursor', disabled: !supportsOverlayModes },
+    { id: 'edge-difference', label: 'Edges', hint: 'Compare structural outlines and silhouettes', disabled: !supportsOverlayModes },
+  ];
 
   return (
     <div className="fixed inset-0 z-[140] bg-black/85 backdrop-blur-sm flex flex-col">
@@ -434,6 +441,7 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
                   onHoverChange={(isHovered) =>
                     setActiveMetadataIndex((current) => (isHovered ? index : current === index ? null : current))
                   }
+                  onRemove={imageCount > 2 ? () => handleRemoveImage(index) : undefined}
                   className={`h-full rounded-xl border border-gray-800 overflow-hidden ${isOddLastGridItem ? 'md:col-span-2' : ''}`}
                   imageLabel={`Image ${index + 1}`}
                 />

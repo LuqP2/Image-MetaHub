@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, FC } from 'react';
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
-import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Sparkles } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Sparkles, X } from 'lucide-react';
 import { ComparisonPaneProps, BaseMetadata } from '../types';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
@@ -13,6 +13,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   externalZoom,
   onZoomChange,
   onHoverChange,
+  onRemove,
   className,
   imageLabel,
 }) => {
@@ -126,6 +127,21 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
               </button>
             </div>
 
+            {onRemove && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRemove();
+                }}
+                className="absolute left-4 top-4 z-10 rounded-lg border border-white/10 bg-black/65 p-2 text-white shadow-lg backdrop-blur-sm transition-colors hover:bg-red-600/90"
+                title={`Remove ${image.name} from comparison`}
+                aria-label={`Remove ${image.name} from comparison`}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+
             {/* Image Name Label */}
             <div className="absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-sm rounded-lg p-2">
               <p className="text-white text-sm font-medium truncate" title={image.name}>
@@ -172,6 +188,7 @@ export default React.memo(ComparisonPane, (prev, next) => {
     prev.syncEnabled === next.syncEnabled &&
     prev.className === next.className &&
     prev.imageLabel === next.imageLabel &&
+    prev.onRemove === next.onRemove &&
     prev.externalZoom?.zoom === next.externalZoom?.zoom &&
     prev.externalZoom?.x === next.externalZoom?.x &&
     prev.externalZoom?.y === next.externalZoom?.y

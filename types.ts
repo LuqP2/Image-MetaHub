@@ -1028,6 +1028,7 @@ export interface ComparisonPaneProps {
   externalZoom?: ZoomState;
   onZoomChange?: (zoom: number, x: number, y: number) => void;
   onHoverChange?: (isHovered: boolean) => void;
+  onRemove?: () => void;
   className?: string;
   imageLabel?: string;
 }
