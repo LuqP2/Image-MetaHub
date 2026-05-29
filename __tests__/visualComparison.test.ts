@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   buildVisualComparisonFromImageData,
+  calculatePixelDelta,
   createEdgeDifferenceImageData,
   createHeatmapImageData,
 } from '../utils/visualComparison';
@@ -61,6 +62,14 @@ describe('visualComparison utilities', () => {
     expect(result.metrics.changedPixels).toBe(0);
     expect(result.metrics.changedPercent).toBe(0);
     expect(result.imageData.data[3]).toBe(0);
+  });
+
+  it('detects alpha-only pixel changes', () => {
+    const opaqueBlack = imageData(1, 1, [[0, 0, 0, 255]]);
+    const transparentBlack = imageData(1, 1, [[0, 0, 0, 0]]);
+
+    expect(calculatePixelDelta(opaqueBlack.data, transparentBlack.data, 0)).toBeGreaterThan(0);
+    expect(createHeatmapImageData(opaqueBlack, transparentBlack, 18).metrics.changedPixels).toBe(1);
   });
 
   it('detects the strongest changed region', () => {

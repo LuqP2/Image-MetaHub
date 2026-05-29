@@ -41,8 +41,10 @@ export const calculatePixelDelta = (
   const red = Math.abs(left[index] - right[index]);
   const green = Math.abs(left[index + 1] - right[index + 1]);
   const blue = Math.abs(left[index + 2] - right[index + 2]);
+  const alpha = Math.abs(left[index + 3] - right[index + 3]);
   const luma = Math.abs(luminance(left, index) - luminance(right, index));
-  return clamp((red + green + blue) / 3 * 0.65 + luma * 0.35, 0, 255);
+  const colorDelta = (red + green + blue) / 3 * 0.65 + luma * 0.35;
+  return clamp(colorDelta * 0.8 + alpha * 0.2, 0, 255);
 };
 
 export const createHeatmapImageData = (

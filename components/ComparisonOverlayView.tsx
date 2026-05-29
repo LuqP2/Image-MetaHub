@@ -62,6 +62,8 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   const [isFlickerShowingRight, setIsFlickerShowingRight] = useState(false);
   const [isFlickerPaused, setIsFlickerPaused] = useState(false);
   const [visualError, setVisualError] = useState<string | null>(null);
+  const [leftAnalysisUrl, setLeftAnalysisUrl] = useState<string | null>(null);
+  const [rightAnalysisUrl, setRightAnalysisUrl] = useState<string | null>(null);
   const [heatmapUrl, setHeatmapUrl] = useState<string | null>(null);
   const [edgeMapUrl, setEdgeMapUrl] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<VisualComparisonMetrics | null>(null);
@@ -83,6 +85,8 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
 
   useEffect(() => {
     if (!isAdvancedMode || !leftUrl || !rightUrl) {
+      setLeftAnalysisUrl(null);
+      setRightAnalysisUrl(null);
       setHeatmapUrl(null);
       setEdgeMapUrl(null);
       setMetrics(null);
@@ -96,8 +100,12 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
     buildVisualComparisonFromUrls(leftUrl, rightUrl, advancedSettings.threshold)
       .then((result) => {
         if (!isMounted) return;
+        const nextLeftAnalysisUrl = imageDataToDataUrl(result.left);
+        const nextRightAnalysisUrl = imageDataToDataUrl(result.right);
         const nextHeatmapUrl = imageDataToDataUrl(result.heatmap);
         const nextEdgeMapUrl = imageDataToDataUrl(result.edgeMap);
+        setLeftAnalysisUrl(nextLeftAnalysisUrl);
+        setRightAnalysisUrl(nextRightAnalysisUrl);
         setHeatmapUrl(nextHeatmapUrl);
         setEdgeMapUrl(nextEdgeMapUrl);
         setMetrics(result.metrics);
@@ -107,6 +115,8 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
         if (!isMounted) return;
         const message = error instanceof Error ? error.message : String(error);
         setVisualError(message);
+        setLeftAnalysisUrl(null);
+        setRightAnalysisUrl(null);
         setHeatmapUrl(null);
         setEdgeMapUrl(null);
         setMetrics(null);
@@ -188,7 +198,9 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
       : { opacity: 1 };
 
   const errorMessage = leftError || rightError;
-  const advancedBaseUrl = advancedSettings.baseMode === 'right' ? rightUrl : leftUrl;
+  const normalizedLeftUrl = leftAnalysisUrl || leftUrl;
+  const normalizedRightUrl = rightAnalysisUrl || rightUrl;
+  const advancedBaseUrl = advancedSettings.baseMode === 'right' ? normalizedRightUrl : normalizedLeftUrl;
   const diffOnly = advancedSettings.baseMode === 'diff';
 
   const updateLoupeFromMouse = (clientX: number, clientY: number) => {
@@ -303,7 +315,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
     if (mode === 'loupe') {
       return (
         <>
-          {leftUrl && <img src={leftUrl} alt={leftImage.name} className="absolute inset-0 h-full w-full select-none object-contain" />}
+          {normalizedLeftUrl && <img src={normalizedLeftUrl} alt={leftImage.name} className="absolute inset-0 h-full w-full select-none object-contain" />}
           <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full border border-white/10 bg-black/65 px-3 py-1 text-xs text-gray-100 shadow">
             Move over the image to inspect A / Diff / B
           </div>
@@ -318,9 +330,9 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
     if (mode !== 'loupe' || !loupePoint || !advancedReady) return null;
 
     const loupeLayers = [
-      { url: leftUrl, label: 'A' },
+      { url: normalizedLeftUrl, label: 'A' },
       { url: heatmapUrl, label: 'Diff', opacity: advancedSettings.opacity / 100 },
-      { url: rightUrl, label: 'B' },
+      { url: normalizedRightUrl, label: 'B' },
     ];
     const container = containerRef.current?.getBoundingClientRect();
     if (!container) return null;
