@@ -1000,8 +1000,26 @@ export interface ZoomState {
   y: number;
 }
 
-export type ComparisonViewMode = 'side-by-side' | 'slider' | 'hover';
+export type ComparisonViewMode =
+  | 'side-by-side'
+  | 'slider'
+  | 'hover'
+  | 'difference-map'
+  | 'flicker'
+  | 'loupe'
+  | 'edge-difference';
 export type ComparisonLayoutMode = 'strip' | 'grid';
+export type ComparisonAdvancedBaseMode = 'left' | 'right' | 'diff';
+
+export interface ComparisonAdvancedSettings {
+  threshold: number;
+  opacity: number;
+  baseMode: ComparisonAdvancedBaseMode;
+  flickerSpeedMs: number;
+  loupeSize: number;
+  loupeZoom: number;
+  showLabels: boolean;
+}
 
 export interface ComparisonPaneProps {
   image: IndexedImage;
@@ -1010,6 +1028,7 @@ export interface ComparisonPaneProps {
   externalZoom?: ZoomState;
   onZoomChange?: (zoom: number, x: number, y: number) => void;
   onHoverChange?: (isHovered: boolean) => void;
+  onRemove?: () => void;
   className?: string;
   imageLabel?: string;
 }

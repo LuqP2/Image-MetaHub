@@ -1,8 +1,13 @@
-import React, { FC, useEffect, useRef, useState } from 'react';
+import React, { CSSProperties, FC, useEffect, useMemo, useRef, useState } from 'react';
 import { TransformComponent, TransformWrapper, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
-import { ZoomIn, ZoomOut, RotateCcw, AlertCircle } from 'lucide-react';
-import { ComparisonViewMode, IndexedImage, ZoomState } from '../types';
+import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Pause, Play } from 'lucide-react';
+import { ComparisonAdvancedSettings, ComparisonViewMode, IndexedImage, ZoomState } from '../types';
 import useComparisonImageSource from '../hooks/useComparisonImageSource';
+import {
+  buildVisualComparisonFromUrls,
+  imageDataToDataUrl,
+  VisualComparisonMetrics,
+} from '../utils/visualComparison';
 
 interface ComparisonOverlayViewProps {
   leftImage: IndexedImage;
@@ -13,7 +18,29 @@ interface ComparisonOverlayViewProps {
   sharedZoom: ZoomState;
   onZoomChange: (zoom: number, x: number, y: number) => void;
   onActiveImageChange?: (index: number | null) => void;
+  advancedSettings: ComparisonAdvancedSettings;
+  onVisualAnalysisChange?: (metrics: VisualComparisonMetrics | null) => void;
+  highlightedRegion?: VisualComparisonMetrics['strongestRegion'] | null;
 }
+
+const ADVANCED_MODES = new Set<ComparisonViewMode>(['difference-map', 'flicker', 'loupe', 'edge-difference']);
+
+const getContainedRect = (
+  containerWidth: number,
+  containerHeight: number,
+  sourceWidth: number,
+  sourceHeight: number,
+) => {
+  const scale = Math.min(containerWidth / sourceWidth, containerHeight / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  return {
+    x: (containerWidth - width) / 2,
+    y: (containerHeight - height) / 2,
+    width,
+    height,
+  };
+};
 
 const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   leftImage,
@@ -24,14 +51,28 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   sharedZoom,
   onZoomChange,
   onActiveImageChange,
+  advancedSettings,
+  onVisualAnalysisChange,
+  highlightedRegion,
 }) => {
   const { imageUrl: leftUrl, loadError: leftError, isLoading: isLeftLoading } = useComparisonImageSource(leftImage, leftDirectory);
   const { imageUrl: rightUrl, loadError: rightError, isLoading: isRightLoading } = useComparisonImageSource(rightImage, rightDirectory);
   const [sliderValue, setSliderValue] = useState(50);
   const [isHovering, setIsHovering] = useState(false);
+  const [isFlickerShowingRight, setIsFlickerShowingRight] = useState(false);
+  const [isFlickerPaused, setIsFlickerPaused] = useState(false);
+  const [visualError, setVisualError] = useState<string | null>(null);
+  const [leftAnalysisUrl, setLeftAnalysisUrl] = useState<string | null>(null);
+  const [rightAnalysisUrl, setRightAnalysisUrl] = useState<string | null>(null);
+  const [heatmapUrl, setHeatmapUrl] = useState<string | null>(null);
+  const [edgeMapUrl, setEdgeMapUrl] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<VisualComparisonMetrics | null>(null);
+  const [loupePoint, setLoupePoint] = useState<{ x: number; y: number; localX: number; localY: number } | null>(null);
+  const [localTransform, setLocalTransform] = useState(sharedZoom);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDraggingHandle, setIsDraggingHandle] = useState(false);
+  const isAdvancedMode = ADVANCED_MODES.has(mode);
 
   useEffect(() => {
     if (!transformRef.current || !transformRef.current.state) return;
@@ -39,11 +80,66 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
     if (state.scale !== sharedZoom.zoom || state.positionX !== sharedZoom.x || state.positionY !== sharedZoom.y) {
       transformRef.current.setTransform(sharedZoom.x, sharedZoom.y, sharedZoom.zoom, 0);
     }
+    setLocalTransform(sharedZoom);
   }, [sharedZoom]);
+
+  useEffect(() => {
+    if (!isAdvancedMode || !leftUrl || !rightUrl) {
+      setLeftAnalysisUrl(null);
+      setRightAnalysisUrl(null);
+      setHeatmapUrl(null);
+      setEdgeMapUrl(null);
+      setMetrics(null);
+      setVisualError(null);
+      onVisualAnalysisChange?.(null);
+      return;
+    }
+
+    let isMounted = true;
+    setVisualError(null);
+    buildVisualComparisonFromUrls(leftUrl, rightUrl, advancedSettings.threshold)
+      .then((result) => {
+        if (!isMounted) return;
+        const nextLeftAnalysisUrl = imageDataToDataUrl(result.left);
+        const nextRightAnalysisUrl = imageDataToDataUrl(result.right);
+        const nextHeatmapUrl = imageDataToDataUrl(result.heatmap);
+        const nextEdgeMapUrl = imageDataToDataUrl(result.edgeMap);
+        setLeftAnalysisUrl(nextLeftAnalysisUrl);
+        setRightAnalysisUrl(nextRightAnalysisUrl);
+        setHeatmapUrl(nextHeatmapUrl);
+        setEdgeMapUrl(nextEdgeMapUrl);
+        setMetrics(result.metrics);
+        onVisualAnalysisChange?.(result.metrics);
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setVisualError(message);
+        setLeftAnalysisUrl(null);
+        setRightAnalysisUrl(null);
+        setHeatmapUrl(null);
+        setEdgeMapUrl(null);
+        setMetrics(null);
+        onVisualAnalysisChange?.(null);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [advancedSettings.threshold, isAdvancedMode, leftUrl, onVisualAnalysisChange, rightUrl]);
+
+  useEffect(() => {
+    if (mode !== 'flicker' || isFlickerPaused) return;
+    const interval = window.setInterval(() => {
+      setIsFlickerShowingRight((current) => !current);
+    }, advancedSettings.flickerSpeedMs);
+    return () => window.clearInterval(interval);
+  }, [advancedSettings.flickerSpeedMs, isFlickerPaused, mode]);
 
   const handleTransform = (ref: ReactZoomPanPinchRef) => {
     if (!ref || !ref.state) return;
     const { positionX, positionY, scale } = ref.state;
+    setLocalTransform({ zoom: scale, x: positionX, y: positionY });
     onZoomChange(scale, positionX, positionY);
   };
 
@@ -91,6 +187,8 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
 
   const ready = Boolean(leftUrl && rightUrl);
   const isLoading = isLeftLoading || isRightLoading;
+  const requiresVisualAnalysis = mode === 'difference-map' || mode === 'loupe' || mode === 'edge-difference';
+  const advancedReady = !requiresVisualAnalysis || Boolean(metrics);
   const overlayStyle =
     mode === 'slider'
       ? { clipPath: `inset(0 ${100 - sliderValue}% 0 0)`, transition: isDraggingHandle ? 'none' : 'clip-path 180ms ease' }
@@ -101,6 +199,216 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
       : { opacity: 1 };
 
   const errorMessage = leftError || rightError;
+  const normalizedLeftUrl = leftAnalysisUrl || leftUrl;
+  const normalizedRightUrl = rightAnalysisUrl || rightUrl;
+  const advancedBaseUrl = advancedSettings.baseMode === 'right' ? normalizedRightUrl : normalizedLeftUrl;
+  const diffOnly = advancedSettings.baseMode === 'diff';
+
+  const updateLoupeFromMouse = (clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const contentX = (localX - localTransform.x) / localTransform.zoom;
+    const contentY = (localY - localTransform.y) / localTransform.zoom;
+    const imageRect = metrics
+      ? getContainedRect(rect.width, rect.height, metrics.width, metrics.height)
+      : { x: 0, y: 0, width: rect.width, height: rect.height };
+    const isInsideImage =
+      contentX >= imageRect.x &&
+      contentX <= imageRect.x + imageRect.width &&
+      contentY >= imageRect.y &&
+      contentY <= imageRect.y + imageRect.height;
+
+    if (!isInsideImage) {
+      setLoupePoint(null);
+      return;
+    }
+
+    setLoupePoint({
+      x: clamp(((contentX - imageRect.x) / imageRect.width) * 100, 0, 100),
+      y: clamp(((contentY - imageRect.y) / imageRect.height) * 100, 0, 100),
+      localX,
+      localY,
+    });
+  };
+
+  const regionStyle = useMemo<CSSProperties | null>(() => {
+    if (!highlightedRegion || !metrics) return null;
+    const container = containerRef.current?.getBoundingClientRect();
+    if (!container) return null;
+    const imageRect = getContainedRect(container.width, container.height, metrics.width, metrics.height);
+    return {
+      left: imageRect.x + (highlightedRegion.x / metrics.width) * imageRect.width,
+      top: imageRect.y + (highlightedRegion.y / metrics.height) * imageRect.height,
+      width: (highlightedRegion.width / metrics.width) * imageRect.width,
+      height: (highlightedRegion.height / metrics.height) * imageRect.height,
+    };
+  }, [highlightedRegion, metrics]);
+
+  const renderAdvancedLayer = () => {
+    if (!ready) return null;
+    if (visualError) {
+      return (
+        <div className="absolute left-1/2 top-4 max-w-md -translate-x-1/2 rounded-lg border border-amber-500/30 bg-amber-950/80 px-3 py-2 text-sm text-amber-100 shadow-lg">
+          Visual analysis unavailable: {visualError}
+        </div>
+      );
+    }
+
+    if (!advancedReady) {
+      return (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="rounded-lg border border-white/10 bg-black/70 px-4 py-2 text-sm text-gray-200 shadow">
+            Building visual comparison...
+          </div>
+        </div>
+      );
+    }
+
+    if (mode === 'flicker') {
+      const currentUrl = isFlickerShowingRight ? rightUrl : leftUrl;
+      return (
+        <>
+          {currentUrl && <img src={currentUrl} alt={isFlickerShowingRight ? rightImage.name : leftImage.name} className="absolute inset-0 h-full w-full select-none object-contain" />}
+          <div className="absolute left-1/2 top-4 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-xs text-gray-100 shadow">
+            <button
+              type="button"
+              onClick={() => setIsFlickerPaused((current) => !current)}
+              className="rounded p-1 text-gray-200 hover:bg-white/10 hover:text-white"
+              title={isFlickerPaused ? 'Resume flicker' : 'Pause flicker'}
+            >
+              {isFlickerPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+            </button>
+            {advancedSettings.showLabels ? <span>{isFlickerShowingRight ? `Image B: ${rightImage.name}` : `Image A: ${leftImage.name}`}</span> : <span>{isFlickerShowingRight ? 'Image B' : 'Image A'}</span>}
+          </div>
+        </>
+      );
+    }
+
+    if (mode === 'difference-map') {
+      return (
+        <>
+          {!diffOnly && advancedBaseUrl && <img src={advancedBaseUrl} alt="Difference base" className="absolute inset-0 h-full w-full select-none object-contain" />}
+          {diffOnly && <div className="absolute inset-0 bg-black" />}
+          {heatmapUrl && <img src={heatmapUrl} alt="Difference heatmap" className="absolute inset-0 h-full w-full select-none object-contain" style={{ opacity: advancedSettings.opacity / 100 }} />}
+          {regionStyle && <div className="absolute border-2 border-white/80 bg-white/10 shadow-[0_0_18px_rgba(255,255,255,0.35)]" style={regionStyle} />}
+        </>
+      );
+    }
+
+    if (mode === 'edge-difference') {
+      return (
+        <>
+          {!diffOnly && advancedBaseUrl && <img src={advancedBaseUrl} alt="Edge base" className="absolute inset-0 h-full w-full select-none object-contain opacity-45" />}
+          {diffOnly && <div className="absolute inset-0 bg-black" />}
+          {edgeMapUrl && <img src={edgeMapUrl} alt="Edge difference map" className="absolute inset-0 h-full w-full select-none object-contain" style={{ opacity: advancedSettings.opacity / 100 }} />}
+          <div className="absolute left-4 top-4 rounded-lg border border-white/10 bg-black/65 px-3 py-1.5 text-xs text-gray-100">
+            <span className="text-cyan-200">Cyan: Image A</span>
+            <span className="mx-2 text-gray-500">/</span>
+            <span className="text-fuchsia-200">Magenta: Image B</span>
+          </div>
+        </>
+      );
+    }
+
+    if (mode === 'loupe') {
+      return (
+        <>
+          {normalizedLeftUrl && <img src={normalizedLeftUrl} alt={leftImage.name} className="absolute inset-0 h-full w-full select-none object-contain" />}
+          <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full border border-white/10 bg-black/65 px-3 py-1 text-xs text-gray-100 shadow">
+            Move over the image to inspect A / Diff / B
+          </div>
+        </>
+      );
+    }
+
+    return null;
+  };
+
+  const renderLoupeOverlay = () => {
+    if (mode !== 'loupe' || !loupePoint || !advancedReady) return null;
+
+    const loupeLayers = [
+      { url: normalizedLeftUrl, label: 'A' },
+      { url: heatmapUrl, label: 'Diff', opacity: advancedSettings.opacity / 100 },
+      { url: normalizedRightUrl, label: 'B' },
+    ];
+    const container = containerRef.current?.getBoundingClientRect();
+    if (!container) return null;
+    const loupeSize = advancedSettings.loupeSize;
+    const paneWidth = loupeSize / 3;
+    const renderViewportClone = (url: string, opacity = 1) => (
+      <div
+        className="absolute top-0 overflow-hidden"
+        style={{
+          left: 0,
+          width: paneWidth,
+          height: loupeSize,
+        }}
+      >
+        <div
+          className="absolute overflow-hidden"
+          style={{
+            left: paneWidth / 2 - loupePoint.localX,
+            top: loupeSize / 2 - loupePoint.localY,
+            width: container.width,
+            height: container.height,
+            transform: `scale(${advancedSettings.loupeZoom})`,
+            transformOrigin: `${loupePoint.localX}px ${loupePoint.localY}px`,
+            opacity,
+          }}
+        >
+          <div
+            className="relative h-full w-full"
+            style={{
+              transform: `translate(${localTransform.x}px, ${localTransform.y}px) scale(${localTransform.zoom})`,
+              transformOrigin: '0 0',
+            }}
+          >
+            <img src={url} alt="" className="absolute inset-0 h-full w-full object-contain" />
+          </div>
+        </div>
+      </div>
+    );
+
+    return (
+      <div
+        className="pointer-events-none absolute z-20 overflow-hidden rounded-full border-2 border-white/80 bg-black shadow-2xl"
+        style={{
+          left: loupePoint.localX,
+          top: loupePoint.localY,
+          width: advancedSettings.loupeSize,
+          height: advancedSettings.loupeSize,
+          transform: 'translate(-50%, -50%)',
+        }}
+      >
+        {loupeLayers.map((layer, index) => (
+          layer.url ? (
+            <div
+              key={layer.label}
+              className="absolute top-0 overflow-hidden"
+              style={{
+                left: index * paneWidth,
+                width: paneWidth,
+                height: loupeSize,
+              }}
+            >
+              {renderViewportClone(layer.url, layer.opacity ?? 1)}
+            </div>
+          ) : null
+        ))}
+        <div className="absolute inset-y-0 left-1/3 w-px bg-white/70" />
+        <div className="absolute inset-y-0 left-2/3 w-px bg-white/70" />
+        <div className="absolute inset-x-0 top-2 grid grid-cols-3 px-4 text-center text-[10px] font-semibold uppercase tracking-wide text-white/85">
+          <span>A</span>
+          <span>Diff</span>
+          <span>B</span>
+        </div>
+      </div>
+    );
+  };
 
   if (errorMessage) {
     return (
@@ -154,6 +462,16 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                       : undefined
                 }
                 onMouseMove={mode === 'slider' ? (event) => updateActiveImageFromClientX(event.clientX) : undefined}
+                onPointerMove={
+                  mode === 'loupe'
+                    ? (event) => updateLoupeFromMouse(event.clientX, event.clientY)
+                    : undefined
+                }
+                onPointerLeave={
+                  mode === 'loupe'
+                    ? () => setLoupePoint(null)
+                    : undefined
+                }
               >
                 {isLoading && !ready && (
                   <div className="absolute inset-0 flex items-center justify-center">
@@ -161,7 +479,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                   </div>
                 )}
 
-                {rightUrl && (
+                {!isAdvancedMode && rightUrl && (
                   <img
                     src={rightUrl}
                     alt={rightImage.name}
@@ -170,7 +488,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                   />
                 )}
 
-                {leftUrl && (
+                {!isAdvancedMode && leftUrl && (
                   <img
                     src={leftUrl}
                     alt={leftImage.name}
@@ -178,6 +496,8 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                     style={overlayStyle}
                   />
                 )}
+
+                {isAdvancedMode && renderAdvancedLayer()}
 
                 {ready && mode === 'slider' && (
                   <>
@@ -225,6 +545,8 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                 )}
               </div>
             </TransformComponent>
+
+            {renderLoupeOverlay()}
 
             <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
               <button
