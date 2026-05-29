@@ -52,6 +52,17 @@ describe('visualComparison utilities', () => {
     expect(createHeatmapImageData(left, right, 5).metrics.changedPixels).toBe(1);
   });
 
+  it('does not count identical pixels as changed at zero threshold', () => {
+    const left = imageData(1, 1, [[80, 90, 100, 255]]);
+    const right = imageData(1, 1, [[80, 90, 100, 255]]);
+
+    const result = createHeatmapImageData(left, right, 0);
+
+    expect(result.metrics.changedPixels).toBe(0);
+    expect(result.metrics.changedPercent).toBe(0);
+    expect(result.imageData.data[3]).toBe(0);
+  });
+
   it('detects the strongest changed region', () => {
     const left = imageData(2, 2, [
       [0, 0, 0, 255], [0, 0, 0, 255],

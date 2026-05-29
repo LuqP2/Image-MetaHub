@@ -68,7 +68,7 @@ export const createHeatmapImageData = (
     const delta = calculatePixelDelta(leftData, rightData, index);
     totalDelta += delta;
 
-    if (delta >= safeThreshold) {
+    if (delta > 0 && delta >= safeThreshold) {
       changedPixels += 1;
       const intensity = clamp((delta - safeThreshold) / Math.max(1, 255 - safeThreshold), 0, 1);
       heat[index] = 255;
