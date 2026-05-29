@@ -223,11 +223,14 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
 
   const regionStyle = useMemo<CSSProperties | null>(() => {
     if (!highlightedRegion || !metrics) return null;
+    const container = containerRef.current?.getBoundingClientRect();
+    if (!container) return null;
+    const imageRect = getContainedRect(container.width, container.height, metrics.width, metrics.height);
     return {
-      left: `${(highlightedRegion.x / metrics.width) * 100}%`,
-      top: `${(highlightedRegion.y / metrics.height) * 100}%`,
-      width: `${(highlightedRegion.width / metrics.width) * 100}%`,
-      height: `${(highlightedRegion.height / metrics.height) * 100}%`,
+      left: imageRect.x + (highlightedRegion.x / metrics.width) * imageRect.width,
+      top: imageRect.y + (highlightedRegion.y / metrics.height) * imageRect.height,
+      width: (highlightedRegion.width / metrics.width) * imageRect.width,
+      height: (highlightedRegion.height / metrics.height) * imageRect.height,
     };
   }, [highlightedRegion, metrics]);
 
