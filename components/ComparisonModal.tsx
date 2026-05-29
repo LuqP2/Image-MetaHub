@@ -60,7 +60,13 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
   );
 
   const updateSharedZoom = (zoom: number, x: number, y: number) => {
-    setSharedZoom({ zoom, x, y });
+    setSharedZoom((current) => {
+      const unchanged =
+        Math.abs(current.zoom - zoom) < 0.001 &&
+        Math.abs(current.x - x) < 0.5 &&
+        Math.abs(current.y - y) < 0.5;
+      return unchanged ? current : { zoom, x, y };
+    });
   };
 
   const handleZoomChange = (zoom: number, x: number, y: number) => {

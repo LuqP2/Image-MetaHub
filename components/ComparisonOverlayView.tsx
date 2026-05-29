@@ -25,6 +25,23 @@ interface ComparisonOverlayViewProps {
 
 const ADVANCED_MODES = new Set<ComparisonViewMode>(['difference-map', 'flicker', 'loupe', 'edge-difference']);
 
+const getContainedRect = (
+  containerWidth: number,
+  containerHeight: number,
+  sourceWidth: number,
+  sourceHeight: number,
+) => {
+  const scale = Math.min(containerWidth / sourceWidth, containerHeight / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  return {
+    x: (containerWidth - width) / 2,
+    y: (containerHeight - height) / 2,
+    width,
+    height,
+  };
+};
+
 const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   leftImage,
   rightImage,
@@ -48,7 +65,8 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   const [heatmapUrl, setHeatmapUrl] = useState<string | null>(null);
   const [edgeMapUrl, setEdgeMapUrl] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<VisualComparisonMetrics | null>(null);
-  const [loupePoint, setLoupePoint] = useState<{ x: number; y: number } | null>(null);
+  const [loupePoint, setLoupePoint] = useState<{ x: number; y: number; localX: number; localY: number } | null>(null);
+  const [localTransform, setLocalTransform] = useState(sharedZoom);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDraggingHandle, setIsDraggingHandle] = useState(false);
@@ -60,6 +78,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
     if (state.scale !== sharedZoom.zoom || state.positionX !== sharedZoom.x || state.positionY !== sharedZoom.y) {
       transformRef.current.setTransform(sharedZoom.x, sharedZoom.y, sharedZoom.zoom, 0);
     }
+    setLocalTransform(sharedZoom);
   }, [sharedZoom]);
 
   useEffect(() => {
@@ -110,6 +129,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   const handleTransform = (ref: ReactZoomPanPinchRef) => {
     if (!ref || !ref.state) return;
     const { positionX, positionY, scale } = ref.state;
+    setLocalTransform({ zoom: scale, x: positionX, y: positionY });
     onZoomChange(scale, positionX, positionY);
   };
 
@@ -174,9 +194,30 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   const updateLoupeFromMouse = (clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
+
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const contentX = (localX - localTransform.x) / localTransform.zoom;
+    const contentY = (localY - localTransform.y) / localTransform.zoom;
+    const imageRect = metrics
+      ? getContainedRect(rect.width, rect.height, metrics.width, metrics.height)
+      : { x: 0, y: 0, width: rect.width, height: rect.height };
+    const isInsideImage =
+      contentX >= imageRect.x &&
+      contentX <= imageRect.x + imageRect.width &&
+      contentY >= imageRect.y &&
+      contentY <= imageRect.y + imageRect.height;
+
+    if (!isInsideImage) {
+      setLoupePoint(null);
+      return;
+    }
+
     setLoupePoint({
-      x: clamp(((clientX - rect.left) / rect.width) * 100, 0, 100),
-      y: clamp(((clientY - rect.top) / rect.height) * 100, 0, 100),
+      x: clamp(((contentX - imageRect.x) / imageRect.width) * 100, 0, 100),
+      y: clamp(((contentY - imageRect.y) / imageRect.height) * 100, 0, 100),
+      localX,
+      localY,
     });
   };
 
@@ -260,40 +301,6 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
       return (
         <>
           {leftUrl && <img src={leftUrl} alt={leftImage.name} className="absolute inset-0 h-full w-full select-none object-contain" />}
-          {loupePoint && (
-            <div
-              className="pointer-events-none absolute overflow-hidden rounded-full border-2 border-white/80 bg-black shadow-2xl"
-              style={{
-                left: `${loupePoint.x}%`,
-                top: `${loupePoint.y}%`,
-                width: advancedSettings.loupeSize,
-                height: advancedSettings.loupeSize,
-                transform: 'translate(-50%, -50%)',
-              }}
-            >
-              {[leftUrl, heatmapUrl, rightUrl].map((url, index) => (
-                url ? (
-                  <img
-                    key={`${url}-${index}`}
-                    src={url}
-                    alt=""
-                    className="absolute h-full w-full object-contain"
-                    style={{
-                      left: `${(index - 1) * 33.33}%`,
-                      width: '166%',
-                      height: '166%',
-                      top: `${50 - loupePoint.y * (advancedSettings.loupeZoom / 1.8)}%`,
-                      transform: `translate(${50 - loupePoint.x * (advancedSettings.loupeZoom / 1.8)}%, -50%) scale(${advancedSettings.loupeZoom})`,
-                      opacity: index === 1 ? advancedSettings.opacity / 100 : 1,
-                      clipPath: index === 0 ? 'inset(0 66.66% 0 0)' : index === 1 ? 'inset(0 33.33% 0 33.33%)' : 'inset(0 0 0 66.66%)',
-                    }}
-                  />
-                ) : null
-              ))}
-              <div className="absolute inset-y-0 left-1/3 w-px bg-white/70" />
-              <div className="absolute inset-y-0 left-2/3 w-px bg-white/70" />
-            </div>
-          )}
           <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full border border-white/10 bg-black/65 px-3 py-1 text-xs text-gray-100 shadow">
             Move over the image to inspect A / Diff / B
           </div>
@@ -302,6 +309,89 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
     }
 
     return null;
+  };
+
+  const renderLoupeOverlay = () => {
+    if (mode !== 'loupe' || !loupePoint || !advancedReady) return null;
+
+    const loupeLayers = [
+      { url: leftUrl, label: 'A' },
+      { url: heatmapUrl, label: 'Diff', opacity: advancedSettings.opacity / 100 },
+      { url: rightUrl, label: 'B' },
+    ];
+    const container = containerRef.current?.getBoundingClientRect();
+    if (!container) return null;
+    const loupeSize = advancedSettings.loupeSize;
+    const paneWidth = loupeSize / 3;
+    const renderViewportClone = (url: string, opacity = 1) => (
+      <div
+        className="absolute top-0 overflow-hidden"
+        style={{
+          left: 0,
+          width: paneWidth,
+          height: loupeSize,
+        }}
+      >
+        <div
+          className="absolute overflow-hidden"
+          style={{
+            left: paneWidth / 2 - loupePoint.localX,
+            top: loupeSize / 2 - loupePoint.localY,
+            width: container.width,
+            height: container.height,
+            transform: `scale(${advancedSettings.loupeZoom})`,
+            transformOrigin: `${loupePoint.localX}px ${loupePoint.localY}px`,
+            opacity,
+          }}
+        >
+          <div
+            className="relative h-full w-full"
+            style={{
+              transform: `translate(${localTransform.x}px, ${localTransform.y}px) scale(${localTransform.zoom})`,
+              transformOrigin: '0 0',
+            }}
+          >
+            <img src={url} alt="" className="absolute inset-0 h-full w-full object-contain" />
+          </div>
+        </div>
+      </div>
+    );
+
+    return (
+      <div
+        className="pointer-events-none absolute z-20 overflow-hidden rounded-full border-2 border-white/80 bg-black shadow-2xl"
+        style={{
+          left: loupePoint.localX,
+          top: loupePoint.localY,
+          width: advancedSettings.loupeSize,
+          height: advancedSettings.loupeSize,
+          transform: 'translate(-50%, -50%)',
+        }}
+      >
+        {loupeLayers.map((layer, index) => (
+          layer.url ? (
+            <div
+              key={layer.label}
+              className="absolute top-0 overflow-hidden"
+              style={{
+                left: index * paneWidth,
+                width: paneWidth,
+                height: loupeSize,
+              }}
+            >
+              {renderViewportClone(layer.url, layer.opacity ?? 1)}
+            </div>
+          ) : null
+        ))}
+        <div className="absolute inset-y-0 left-1/3 w-px bg-white/70" />
+        <div className="absolute inset-y-0 left-2/3 w-px bg-white/70" />
+        <div className="absolute inset-x-0 top-2 grid grid-cols-3 px-4 text-center text-[10px] font-semibold uppercase tracking-wide text-white/85">
+          <span>A</span>
+          <span>Diff</span>
+          <span>B</span>
+        </div>
+      </div>
+    );
   };
 
   if (errorMessage) {
@@ -439,6 +529,8 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                 )}
               </div>
             </TransformComponent>
+
+            {renderLoupeOverlay()}
 
             <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
               <button
