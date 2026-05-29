@@ -1,8 +1,13 @@
-import React, { FC, useEffect, useRef, useState } from 'react';
+import React, { CSSProperties, FC, useEffect, useMemo, useRef, useState } from 'react';
 import { TransformComponent, TransformWrapper, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
-import { ZoomIn, ZoomOut, RotateCcw, AlertCircle } from 'lucide-react';
-import { ComparisonViewMode, IndexedImage, ZoomState } from '../types';
+import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Pause, Play } from 'lucide-react';
+import { ComparisonAdvancedSettings, ComparisonViewMode, IndexedImage, ZoomState } from '../types';
 import useComparisonImageSource from '../hooks/useComparisonImageSource';
+import {
+  buildVisualComparisonFromUrls,
+  imageDataToDataUrl,
+  VisualComparisonMetrics,
+} from '../utils/visualComparison';
 
 interface ComparisonOverlayViewProps {
   leftImage: IndexedImage;
@@ -13,7 +18,12 @@ interface ComparisonOverlayViewProps {
   sharedZoom: ZoomState;
   onZoomChange: (zoom: number, x: number, y: number) => void;
   onActiveImageChange?: (index: number | null) => void;
+  advancedSettings: ComparisonAdvancedSettings;
+  onVisualAnalysisChange?: (metrics: VisualComparisonMetrics | null) => void;
+  highlightedRegion?: VisualComparisonMetrics['strongestRegion'] | null;
 }
+
+const ADVANCED_MODES = new Set<ComparisonViewMode>(['difference-map', 'flicker', 'loupe', 'edge-difference']);
 
 const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   leftImage,
@@ -24,14 +34,25 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   sharedZoom,
   onZoomChange,
   onActiveImageChange,
+  advancedSettings,
+  onVisualAnalysisChange,
+  highlightedRegion,
 }) => {
   const { imageUrl: leftUrl, loadError: leftError, isLoading: isLeftLoading } = useComparisonImageSource(leftImage, leftDirectory);
   const { imageUrl: rightUrl, loadError: rightError, isLoading: isRightLoading } = useComparisonImageSource(rightImage, rightDirectory);
   const [sliderValue, setSliderValue] = useState(50);
   const [isHovering, setIsHovering] = useState(false);
+  const [isFlickerShowingRight, setIsFlickerShowingRight] = useState(false);
+  const [isFlickerPaused, setIsFlickerPaused] = useState(false);
+  const [visualError, setVisualError] = useState<string | null>(null);
+  const [heatmapUrl, setHeatmapUrl] = useState<string | null>(null);
+  const [edgeMapUrl, setEdgeMapUrl] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<VisualComparisonMetrics | null>(null);
+  const [loupePoint, setLoupePoint] = useState<{ x: number; y: number } | null>(null);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDraggingHandle, setIsDraggingHandle] = useState(false);
+  const isAdvancedMode = ADVANCED_MODES.has(mode);
 
   useEffect(() => {
     if (!transformRef.current || !transformRef.current.state) return;
@@ -40,6 +61,51 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
       transformRef.current.setTransform(sharedZoom.x, sharedZoom.y, sharedZoom.zoom, 0);
     }
   }, [sharedZoom]);
+
+  useEffect(() => {
+    if (!isAdvancedMode || !leftUrl || !rightUrl) {
+      setHeatmapUrl(null);
+      setEdgeMapUrl(null);
+      setMetrics(null);
+      setVisualError(null);
+      onVisualAnalysisChange?.(null);
+      return;
+    }
+
+    let isMounted = true;
+    setVisualError(null);
+    buildVisualComparisonFromUrls(leftUrl, rightUrl, advancedSettings.threshold)
+      .then((result) => {
+        if (!isMounted) return;
+        const nextHeatmapUrl = imageDataToDataUrl(result.heatmap);
+        const nextEdgeMapUrl = imageDataToDataUrl(result.edgeMap);
+        setHeatmapUrl(nextHeatmapUrl);
+        setEdgeMapUrl(nextEdgeMapUrl);
+        setMetrics(result.metrics);
+        onVisualAnalysisChange?.(result.metrics);
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setVisualError(message);
+        setHeatmapUrl(null);
+        setEdgeMapUrl(null);
+        setMetrics(null);
+        onVisualAnalysisChange?.(null);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [advancedSettings.threshold, isAdvancedMode, leftUrl, onVisualAnalysisChange, rightUrl]);
+
+  useEffect(() => {
+    if (mode !== 'flicker' || isFlickerPaused) return;
+    const interval = window.setInterval(() => {
+      setIsFlickerShowingRight((current) => !current);
+    }, advancedSettings.flickerSpeedMs);
+    return () => window.clearInterval(interval);
+  }, [advancedSettings.flickerSpeedMs, isFlickerPaused, mode]);
 
   const handleTransform = (ref: ReactZoomPanPinchRef) => {
     if (!ref || !ref.state) return;
@@ -91,6 +157,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
 
   const ready = Boolean(leftUrl && rightUrl);
   const isLoading = isLeftLoading || isRightLoading;
+  const advancedReady = !isAdvancedMode || Boolean(metrics);
   const overlayStyle =
     mode === 'slider'
       ? { clipPath: `inset(0 ${100 - sliderValue}% 0 0)`, transition: isDraggingHandle ? 'none' : 'clip-path 180ms ease' }
@@ -101,6 +168,141 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
       : { opacity: 1 };
 
   const errorMessage = leftError || rightError;
+  const advancedBaseUrl = advancedSettings.baseMode === 'right' ? rightUrl : leftUrl;
+  const diffOnly = advancedSettings.baseMode === 'diff';
+
+  const updateLoupeFromMouse = (clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setLoupePoint({
+      x: clamp(((clientX - rect.left) / rect.width) * 100, 0, 100),
+      y: clamp(((clientY - rect.top) / rect.height) * 100, 0, 100),
+    });
+  };
+
+  const regionStyle = useMemo<CSSProperties | null>(() => {
+    if (!highlightedRegion || !metrics) return null;
+    return {
+      left: `${(highlightedRegion.x / metrics.width) * 100}%`,
+      top: `${(highlightedRegion.y / metrics.height) * 100}%`,
+      width: `${(highlightedRegion.width / metrics.width) * 100}%`,
+      height: `${(highlightedRegion.height / metrics.height) * 100}%`,
+    };
+  }, [highlightedRegion, metrics]);
+
+  const renderAdvancedLayer = () => {
+    if (!ready) return null;
+    if (visualError) {
+      return (
+        <div className="absolute left-1/2 top-4 max-w-md -translate-x-1/2 rounded-lg border border-amber-500/30 bg-amber-950/80 px-3 py-2 text-sm text-amber-100 shadow-lg">
+          Visual analysis unavailable: {visualError}
+        </div>
+      );
+    }
+
+    if (!advancedReady) {
+      return (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="rounded-lg border border-white/10 bg-black/70 px-4 py-2 text-sm text-gray-200 shadow">
+            Building visual comparison...
+          </div>
+        </div>
+      );
+    }
+
+    if (mode === 'flicker') {
+      const currentUrl = isFlickerShowingRight ? rightUrl : leftUrl;
+      return (
+        <>
+          {currentUrl && <img src={currentUrl} alt={isFlickerShowingRight ? rightImage.name : leftImage.name} className="absolute inset-0 h-full w-full select-none object-contain" />}
+          <div className="absolute left-1/2 top-4 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-xs text-gray-100 shadow">
+            <button
+              type="button"
+              onClick={() => setIsFlickerPaused((current) => !current)}
+              className="rounded p-1 text-gray-200 hover:bg-white/10 hover:text-white"
+              title={isFlickerPaused ? 'Resume flicker' : 'Pause flicker'}
+            >
+              {isFlickerPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+            </button>
+            {advancedSettings.showLabels ? <span>{isFlickerShowingRight ? `Image B: ${rightImage.name}` : `Image A: ${leftImage.name}`}</span> : <span>{isFlickerShowingRight ? 'Image B' : 'Image A'}</span>}
+          </div>
+        </>
+      );
+    }
+
+    if (mode === 'difference-map') {
+      return (
+        <>
+          {!diffOnly && advancedBaseUrl && <img src={advancedBaseUrl} alt="Difference base" className="absolute inset-0 h-full w-full select-none object-contain" />}
+          {diffOnly && <div className="absolute inset-0 bg-black" />}
+          {heatmapUrl && <img src={heatmapUrl} alt="Difference heatmap" className="absolute inset-0 h-full w-full select-none object-contain" style={{ opacity: advancedSettings.opacity / 100 }} />}
+          {regionStyle && <div className="absolute border-2 border-white/80 bg-white/10 shadow-[0_0_18px_rgba(255,255,255,0.35)]" style={regionStyle} />}
+        </>
+      );
+    }
+
+    if (mode === 'edge-difference') {
+      return (
+        <>
+          {!diffOnly && advancedBaseUrl && <img src={advancedBaseUrl} alt="Edge base" className="absolute inset-0 h-full w-full select-none object-contain opacity-45" />}
+          {diffOnly && <div className="absolute inset-0 bg-black" />}
+          {edgeMapUrl && <img src={edgeMapUrl} alt="Edge difference map" className="absolute inset-0 h-full w-full select-none object-contain" style={{ opacity: advancedSettings.opacity / 100 }} />}
+          <div className="absolute left-4 top-4 rounded-lg border border-white/10 bg-black/65 px-3 py-1.5 text-xs text-gray-100">
+            <span className="text-cyan-200">Cyan: Image A</span>
+            <span className="mx-2 text-gray-500">/</span>
+            <span className="text-fuchsia-200">Magenta: Image B</span>
+          </div>
+        </>
+      );
+    }
+
+    if (mode === 'loupe') {
+      return (
+        <>
+          {leftUrl && <img src={leftUrl} alt={leftImage.name} className="absolute inset-0 h-full w-full select-none object-contain" />}
+          {loupePoint && (
+            <div
+              className="pointer-events-none absolute overflow-hidden rounded-full border-2 border-white/80 bg-black shadow-2xl"
+              style={{
+                left: `${loupePoint.x}%`,
+                top: `${loupePoint.y}%`,
+                width: advancedSettings.loupeSize,
+                height: advancedSettings.loupeSize,
+                transform: 'translate(-50%, -50%)',
+              }}
+            >
+              {[leftUrl, heatmapUrl, rightUrl].map((url, index) => (
+                url ? (
+                  <img
+                    key={`${url}-${index}`}
+                    src={url}
+                    alt=""
+                    className="absolute h-full w-full object-contain"
+                    style={{
+                      left: `${(index - 1) * 33.33}%`,
+                      width: '166%',
+                      height: '166%',
+                      top: `${50 - loupePoint.y * (advancedSettings.loupeZoom / 1.8)}%`,
+                      transform: `translate(${50 - loupePoint.x * (advancedSettings.loupeZoom / 1.8)}%, -50%) scale(${advancedSettings.loupeZoom})`,
+                      opacity: index === 1 ? advancedSettings.opacity / 100 : 1,
+                      clipPath: index === 0 ? 'inset(0 66.66% 0 0)' : index === 1 ? 'inset(0 33.33% 0 33.33%)' : 'inset(0 0 0 66.66%)',
+                    }}
+                  />
+                ) : null
+              ))}
+              <div className="absolute inset-y-0 left-1/3 w-px bg-white/70" />
+              <div className="absolute inset-y-0 left-2/3 w-px bg-white/70" />
+            </div>
+          )}
+          <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full border border-white/10 bg-black/65 px-3 py-1 text-xs text-gray-100 shadow">
+            Move over the image to inspect A / Diff / B
+          </div>
+        </>
+      );
+    }
+
+    return null;
+  };
 
   if (errorMessage) {
     return (
@@ -154,6 +356,16 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                       : undefined
                 }
                 onMouseMove={mode === 'slider' ? (event) => updateActiveImageFromClientX(event.clientX) : undefined}
+                onPointerMove={
+                  mode === 'loupe'
+                    ? (event) => updateLoupeFromMouse(event.clientX, event.clientY)
+                    : undefined
+                }
+                onPointerLeave={
+                  mode === 'loupe'
+                    ? () => setLoupePoint(null)
+                    : undefined
+                }
               >
                 {isLoading && !ready && (
                   <div className="absolute inset-0 flex items-center justify-center">
@@ -161,7 +373,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                   </div>
                 )}
 
-                {rightUrl && (
+                {!isAdvancedMode && rightUrl && (
                   <img
                     src={rightUrl}
                     alt={rightImage.name}
@@ -170,7 +382,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                   />
                 )}
 
-                {leftUrl && (
+                {!isAdvancedMode && leftUrl && (
                   <img
                     src={leftUrl}
                     alt={leftImage.name}
@@ -178,6 +390,8 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                     style={overlayStyle}
                   />
                 )}
+
+                {isAdvancedMode && renderAdvancedLayer()}
 
                 {ready && mode === 'slider' && (
                   <>

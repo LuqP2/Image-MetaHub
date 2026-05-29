@@ -18,7 +18,21 @@ vi.mock('../components/ComparisonPane', () => ({
 }));
 
 vi.mock('../components/ComparisonOverlayView', () => ({
-  default: () => <div data-testid="overlay-view">overlay</div>,
+  default: ({ onVisualAnalysisChange }: { onVisualAnalysisChange?: (metrics: any) => void }) => {
+    React.useEffect(() => {
+      onVisualAnalysisChange?.({
+        width: 100,
+        height: 80,
+        changedPixels: 25,
+        totalPixels: 8000,
+        changedPercent: 0.3125,
+        averageDelta: 12,
+        strongestRegion: { x: 10, y: 10, width: 20, height: 20, score: 90 },
+      });
+    }, [onVisualAnalysisChange]);
+
+    return <div data-testid="overlay-view">overlay</div>;
+  },
 }));
 
 vi.mock('../components/ComparisonMetadataPanel', () => ({
@@ -84,5 +98,25 @@ describe('ComparisonModal interactions', () => {
 
     fireEvent.mouseLeave(screen.getByTestId('pane-img-2'));
     expect(screen.getByTestId('metadata-img-2').getAttribute('data-highlighted')).toBe('false');
+  });
+
+  it('enables advanced two-image modes and shows visual delta controls', () => {
+    const first = createImage('img-1', 'first prompt');
+    const second = createImage('img-2', 'second prompt');
+
+    useImageStore.setState({
+      comparisonImages: [first, second],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+    } as any);
+
+    render(<ComparisonModal isOpen onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Diff Map' }));
+
+    expect(screen.getByTestId('overlay-view')).toBeTruthy();
+    expect(screen.getByText('Visual Delta')).toBeTruthy();
+    expect(screen.getByText('Metadata Delta')).toBeTruthy();
+    expect(screen.getByText('Sensitivity')).toBeTruthy();
+    expect(screen.getByText('Opacity')).toBeTruthy();
   });
 });
