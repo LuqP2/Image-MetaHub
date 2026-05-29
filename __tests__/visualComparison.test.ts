@@ -95,4 +95,20 @@ describe('visualComparison utilities', () => {
 
     expect(visibleAlphaValues.length).toBeGreaterThan(0);
   });
+
+  it('does not render flat zero-strength edges at zero threshold', () => {
+    const left = imageData(2, 2, [
+      [40, 40, 40, 255], [40, 40, 40, 255],
+      [40, 40, 40, 255], [40, 40, 40, 255],
+    ]);
+    const right = imageData(2, 2, [
+      [40, 40, 40, 255], [40, 40, 40, 255],
+      [40, 40, 40, 255], [40, 40, 40, 255],
+    ]);
+
+    const edgeMap = createEdgeDifferenceImageData(left, right, 0);
+    const visibleAlphaValues = Array.from(edgeMap.data).filter((_, index) => index % 4 === 3 && edgeMap.data[index] > 0);
+
+    expect(visibleAlphaValues).toHaveLength(0);
+  });
 });

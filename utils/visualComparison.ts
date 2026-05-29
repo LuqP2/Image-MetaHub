@@ -144,14 +144,15 @@ export const createEdgeDifferenceImageData = (left: ImageData, right: ImageData,
   const output = new ImageData(width, height);
   const outputData = output.data;
   const safeThreshold = clamp(threshold, 0, 255);
+  const minimumVisibleEdge = 0.5;
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const index = (y * width + x) * 4;
       const leftEdge = sobelAt(left.data, width, height, x, y);
       const rightEdge = sobelAt(right.data, width, height, x, y);
-      const leftVisible = leftEdge >= safeThreshold;
-      const rightVisible = rightEdge >= safeThreshold;
+      const leftVisible = leftEdge > minimumVisibleEdge && leftEdge >= safeThreshold;
+      const rightVisible = rightEdge > minimumVisibleEdge && rightEdge >= safeThreshold;
 
       outputData[index] = rightVisible ? 255 : 0;
       outputData[index + 1] = leftVisible ? 220 : 0;
