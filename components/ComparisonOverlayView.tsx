@@ -187,7 +187,8 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
 
   const ready = Boolean(leftUrl && rightUrl);
   const isLoading = isLeftLoading || isRightLoading;
-  const advancedReady = !isAdvancedMode || Boolean(metrics);
+  const requiresVisualAnalysis = mode === 'difference-map' || mode === 'loupe' || mode === 'edge-difference';
+  const advancedReady = !requiresVisualAnalysis || Boolean(metrics);
   const overlayStyle =
     mode === 'slider'
       ? { clipPath: `inset(0 ${100 - sliderValue}% 0 0)`, transition: isDraggingHandle ? 'none' : 'clip-path 180ms ease' }
