@@ -202,9 +202,80 @@ const TOOL_SHORTCUTS: Partial<Record<string, ImageEditorTool>> = {
   s: 'spotlight',
 };
 
-const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefined => (
-  image.metadata?.normalizedMetadata as BaseMetadata | undefined
-);
+const parseDimensions = (value?: string): { width: number; height: number } => {
+  const match = String(value || '').match(/(\d+)\s*x\s*(\d+)/i);
+  return {
+    width: match ? Number(match[1]) : 0,
+    height: match ? Number(match[2]) : 0,
+  };
+};
+
+const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefined => {
+  const normalized = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+  if (normalized) {
+    return normalized;
+  }
+
+  const hasFlattenedMetadata = Boolean(
+    image.prompt ||
+    image.negativePrompt ||
+    image.models?.length ||
+    image.loras?.length ||
+    image.sampler ||
+    image.scheduler ||
+    image.seed !== undefined ||
+    image.steps !== undefined ||
+    image.cfgScale !== undefined ||
+    image.dimensions
+  );
+
+  if (!hasFlattenedMetadata) {
+    return undefined;
+  }
+
+  const dimensions = parseDimensions(image.dimensions);
+  const model = image.models?.[0] || '';
+  return {
+    prompt: image.prompt || '',
+    negativePrompt: image.negativePrompt || '',
+    model,
+    models: image.models || [],
+    loras: image.loras || [],
+    sampler: image.sampler || '',
+    scheduler: image.scheduler || '',
+    seed: image.seed,
+    steps: image.steps || 0,
+    cfgScale: image.cfgScale,
+    cfg_scale: image.cfgScale,
+    width: dimensions.width,
+    height: dimensions.height,
+    dimensions: image.dimensions || `${dimensions.width}x${dimensions.height}`,
+  };
+};
+
+const scheduleEditedImageCacheUpsert = (
+  directory: { path: string; name: string },
+  image: IndexedImage,
+  scanSubfolders: boolean,
+) => {
+  window.setTimeout(() => {
+    const cacheModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
+    Promise.all(
+      cacheModes.map((scanSubfoldersMode) =>
+        cacheManager.applyChunkedCacheDelta(
+          directory.path,
+          directory.name,
+          [image],
+          [],
+          [],
+          scanSubfoldersMode,
+        )
+      )
+    ).catch((error) => {
+      console.error('Failed to update cache after editor image save:', error);
+    });
+  }, 0);
+};
 
 const boundsFromPoints = (points: Array<{ x: number; y: number }>): ImageEditorObject['bounds'] => {
   const minX = Math.min(...points.map((point) => point.x));
@@ -797,14 +868,12 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     if (mode === 'overwrite') {
       mergeImages([indexedImage]);
       setImageThumbnail(image.id, { thumbnailUrl: null, thumbnailHandle: null, status: 'pending', error: null });
-      await cacheManager.updateCachedImages(sourceDirectory.path, sourceDirectory.name, [indexedImage], scanSubfolders);
     } else if (allImages.some((candidate) => candidate.id === indexedImage.id)) {
       mergeImages([indexedImage]);
-      await cacheManager.updateCachedImages(sourceDirectory.path, sourceDirectory.name, [indexedImage], scanSubfolders);
     } else {
       addImages([indexedImage]);
-      await cacheManager.appendToCache(sourceDirectory.path, sourceDirectory.name, [indexedImage], scanSubfolders);
     }
+    scheduleEditedImageCacheUpsert(sourceDirectory, indexedImage, scanSubfolders);
     return indexedImage;
   }, [
     addImages,
