@@ -421,8 +421,15 @@ export default function AutomationRulesModal({
 
           <div className="flex-1 space-y-2 overflow-y-auto p-3">
             {automationRules.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-gray-700 px-3 py-8 text-center text-sm text-gray-500">
-                No rules yet.
+              <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-gray-700 px-3 py-8 text-center">
+                <span className="text-sm text-gray-500">No rules yet.</span>
+                <button
+                  type="button"
+                  onClick={() => loadRuleForEditing(null)}
+                  className="text-xs text-blue-400 hover:text-blue-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
+                >
+                  Create your first rule
+                </button>
               </div>
             ) : (
               automationRules.map((rule) => {
@@ -462,7 +469,7 @@ export default function AutomationRulesModal({
             <div>
               <h2 className="text-lg font-semibold text-white">{isExistingRule ? 'Edit Rule' : 'New Rule'}</h2>
             </div>
-            <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white">
+            <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white" aria-label="Close modal">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -876,6 +883,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         type="button"
         onClick={() => void onSave()}
         disabled={!canSave}
+        title={!canSave ? "Add a name, at least one condition, and an action to save" : "Save Rule"}
         className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Save Rule
@@ -884,6 +892,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         type="button"
         onClick={() => void onApply()}
         disabled={isApplying || !canSave}
+        title={isApplying ? "Applying rule..." : !canSave ? "Add a name, at least one condition, and an action to apply" : "Apply Now"}
         className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-emerald-950/40 px-4 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Play className="h-4 w-4" />
