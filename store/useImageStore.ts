@@ -1508,7 +1508,12 @@ export const useImageStore = create<ImageState>((set, get) => {
             return images;
         }
 
-        const directoryPathById = new Map(directories.map((directory) => [directory.id, directory.path]));
+        // Optimization: Replace new Map(arr.map()) with a for loop
+        // Impact: Avoids O(N) allocation of intermediate array of tuples and reduces GC pressure
+        const directoryPathById = new Map<string, string>();
+        for (const directory of directories) {
+            directoryPathById.set(directory.id, directory.path);
+        }
         return Promise.all(images.map((image) => (
             hasCompactedRuntimeMetadata(image)
                 ? hydrateImageRawMetadata(image, image.directoryId ? directoryPathById.get(image.directoryId) : undefined)
@@ -3083,7 +3088,12 @@ export const useImageStore = create<ImageState>((set, get) => {
             flushPendingImages(true);
         flushPendingMerges();
             set(state => {
-                const updates = new Map(updatedImages.map(img => [img.id, img]));
+                // Optimization: Replace new Map(arr.map()) with a for loop
+                // Impact: Avoids O(N) allocation of intermediate array of tuples and reduces GC pressure
+                const updates = new Map<string, IndexedImage>();
+                for (const img of updatedImages) {
+                    updates.set(img.id, img);
+                }
                 const merged = state.images.map(img => updates.get(img.id) ?? img);
                 return _updateState(state, merged);
             });
@@ -3638,7 +3648,12 @@ export const useImageStore = create<ImageState>((set, get) => {
         })),
         reorderCollections: async (orderedCollectionIds) => {
             const state = get();
-            const orderMap = new Map(orderedCollectionIds.map((collectionId, index) => [collectionId, index]));
+            // Optimization: Replace new Map(arr.map()) with a for loop
+            // Impact: Avoids O(N) allocation of intermediate array of tuples and reduces GC pressure
+            const orderMap = new Map<string, number>();
+            for (let i = 0; i < orderedCollectionIds.length; i++) {
+                orderMap.set(orderedCollectionIds[i], i);
+            }
             const reordered = sortCollections(
                 state.collections.map((collection, index) =>
                     normalizeSmartCollection(
@@ -4499,7 +4514,12 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 const filteredState = transferManualTagFilters(state, normalizedSource, normalizedTarget);
                 const updatedImages = applyAnnotationsToImages(state.images, newAnnotations);
-                const collectionMap = new Map(updatedCollections.map((collection) => [collection.id, collection]));
+                // Optimization: Replace new Map(arr.map()) with a for loop
+                // Impact: Avoids O(N) allocation of intermediate array of tuples and reduces GC pressure
+                const collectionMap = new Map<string, SmartCollection>();
+                for (const collection of updatedCollections) {
+                    collectionMap.set(collection.id, collection);
+                }
                 const newState = {
                     ...state,
                     ...filteredState,
