@@ -3390,8 +3390,44 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('finalize-cache-write', async (event, { cacheId, record }) => {
+  const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  ipcMain.handle('finalize-cache-write', async (event, { cacheId, sourceCacheId, record }) => {
     try {
+      const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+      const safeSourceCacheId = sourceCacheId?.replace(/[^a-zA-Z0-9-_]/g, '_');
+      if (safeSourceCacheId && safeSourceCacheId !== safeCacheId) {
+        const rootPath = await getCacheRootPath();
+        const cacheDir = path.join(rootPath, 'json_cache');
+        await fs.mkdir(cacheDir, { recursive: true });
+
+        const files = await fs.readdir(cacheDir).catch(error => {
+          if (error.code === 'ENOENT') return [];
+          throw error;
+        });
+        const targetChunkPattern = new RegExp(`^${escapeRegExp(safeCacheId)}_(\\d+)\\.json$`);
+        const sourceChunkPattern = new RegExp(`^${escapeRegExp(safeSourceCacheId)}_(\\d+)\\.json$`);
+
+        await Promise.all(
+          files
+            .filter(file => targetChunkPattern.test(file))
+            .map(file => fs.unlink(path.join(cacheDir, file)).catch(err => {
+              if (err.code !== 'ENOENT') throw err;
+            }))
+        );
+
+        for (const file of files) {
+          const match = file.match(sourceChunkPattern);
+          if (!match) {
+            continue;
+          }
+          await fs.rename(
+            path.join(cacheDir, file),
+            path.join(cacheDir, `${safeCacheId}_${match[1]}.json`)
+          );
+        }
+      }
+
       const mainCachePath = await getCacheFilePath(cacheId);
       // Add parser version to cache record
       const recordWithVersion = { ...record, parserVersion: PARSER_VERSION };

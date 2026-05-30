@@ -18,6 +18,22 @@ import {
   renderAdjustedImageToPngBytes,
 } from '../services/imageEditingService';
 
+const collectPngChunkTypes = (bytes: Uint8Array): string[] => {
+  const types: string[] = [];
+  let offset = 8;
+  while (offset + 12 <= bytes.byteLength) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset + offset, 8);
+    const length = view.getUint32(0, false);
+    const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+    types.push(type);
+    offset += length + 12;
+    if (type === 'IEND') {
+      break;
+    }
+  }
+  return types;
+};
+
 describe('imageEditingService', () => {
   it('treats default adjustments as neutral', () => {
     expect(hasImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS)).toBe(false);
@@ -276,5 +292,37 @@ describe('imageEditingService', () => {
     expect(text).toContain('"seed":123');
     expect(text).toContain('image-editor-workspace-v1');
     expect(text).toContain('"annotation_count":2');
+
+    const types = collectPngChunkTypes(output);
+    expect(types.filter((type) => type === 'tEXt')).toHaveLength(3);
+  });
+
+  it('preserves raw ComfyUI workflow chunks even without normalized metadata', () => {
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x00,
+      0x49, 0x45, 0x4e, 0x44,
+      0xae, 0x42, 0x60, 0x82,
+    ]);
+    const workflow = { nodes: [{ id: 2, type: 'CLIPTextEncode' }] };
+    const promptApi = { '2': { class_type: 'CLIPTextEncode', inputs: { text: 'original prompt' } } };
+
+    const output = embedMetaHubMetadataInPngBytes(
+      pngBytes,
+      undefined,
+      DEFAULT_IMAGE_ADJUSTMENTS,
+      {
+        workflow,
+        prompt_api: promptApi,
+      },
+    );
+    const text = new TextDecoder().decode(output);
+
+    expect(text).toContain('workflow');
+    expect(text).toContain('prompt');
+    expect(text).toContain('CLIPTextEncode');
+    expect(text).toContain('original prompt');
+    expect(text).not.toContain('imagemetahub_data');
+    expect(collectPngChunkTypes(output).filter((type) => type === 'tEXt')).toHaveLength(2);
   });
 });

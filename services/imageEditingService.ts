@@ -1253,7 +1253,7 @@ const extractPreservedComfyWorkflow = (
 
   const metaHubPayload = parseMaybeRecord(rawMetadata.imagemetahub_data);
   const workflow = metaHubPayload?.workflow ?? rawMetadata.workflow;
-  const prompt = metaHubPayload?.prompt_api ?? metaHubPayload?.prompt ?? rawMetadata.prompt;
+  const prompt = metaHubPayload?.prompt_api ?? metaHubPayload?.prompt ?? rawMetadata.prompt_api ?? rawMetadata.prompt;
 
   if (workflow === undefined && prompt === undefined) {
     return undefined;
@@ -1275,25 +1275,29 @@ export const embedMetaHubMetadataInPngBytes = (
     sourceImageId?: string;
   },
 ): Uint8Array => {
-  if (!metadata) {
+  const preservedWorkflow = extractPreservedComfyWorkflow(rawMetadata);
+  if (!metadata && !preservedWorkflow) {
     return pngBytes;
   }
 
   const normalizedRecipe = normalizeImageEditRecipe(recipeOrAdjustments);
-  const preservedWorkflow = extractPreservedComfyWorkflow(rawMetadata);
-  const chunks = [
-    createPngTextChunk('parameters', formatMetadataForA1111Compat(metadata)),
-    createPngInternationalTextChunk(
-      'imagemetahub_data',
-      JSON.stringify(buildMetaHubEditPayload(metadata, normalizedRecipe, preservedWorkflow, outputDimensions, editInfo)),
-    ),
-  ];
+  const chunks: Uint8Array[] = [];
+
+  if (metadata) {
+    chunks.push(
+      createPngTextChunk('parameters', formatMetadataForA1111Compat(metadata)),
+      createPngInternationalTextChunk(
+        'imagemetahub_data',
+        JSON.stringify(buildMetaHubEditPayload(metadata, normalizedRecipe, preservedWorkflow, outputDimensions, editInfo)),
+      ),
+    );
+  }
 
   if (preservedWorkflow?.workflow !== undefined) {
-    chunks.push(createPngInternationalTextChunk('workflow', stringifyPngTextValue(preservedWorkflow.workflow)));
+    chunks.push(createPngTextChunk('workflow', stringifyPngTextValue(preservedWorkflow.workflow)));
   }
   if (preservedWorkflow?.prompt !== undefined) {
-    chunks.push(createPngInternationalTextChunk('prompt', stringifyPngTextValue(preservedWorkflow.prompt)));
+    chunks.push(createPngTextChunk('prompt', stringifyPngTextValue(preservedWorkflow.prompt)));
   }
 
   return appendChunksToPngBytes(pngBytes, chunks);

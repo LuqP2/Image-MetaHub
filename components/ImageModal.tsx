@@ -143,6 +143,30 @@ const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefi
   };
 };
 
+const scheduleEditedImageCacheUpsert = (
+  directory: { path: string; name: string },
+  image: IndexedImage,
+  scanSubfolders: boolean,
+) => {
+  window.setTimeout(() => {
+    const cacheModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
+    Promise.all(
+      cacheModes.map((scanSubfoldersMode) =>
+        cacheManager.applyChunkedCacheDelta(
+          directory.path,
+          directory.name,
+          [image],
+          [],
+          [],
+          scanSubfoldersMode,
+        )
+      )
+    ).catch((error) => {
+      console.error('Failed to update cache after edited image save:', error);
+    });
+  }, 0);
+};
+
 interface ImageModalProps {
   modalId?: string;
   image: IndexedImage;
@@ -2222,11 +2246,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
           const targetAlreadyIndexed = allImages.some((candidate) => candidate.id === savedImage.id);
           if (targetAlreadyIndexed) {
             mergeImages([savedImage]);
-            await cacheManager.updateCachedImages(targetDirectory.path, targetDirectory.name, [savedImage], scanSubfolders);
           } else {
             addImages([savedImage]);
-            await cacheManager.appendToCache(targetDirectory.path, targetDirectory.name, [savedImage], scanSubfolders);
           }
+          scheduleEditedImageCacheUpsert(targetDirectory, savedImage, scanSubfolders);
           setSuccess(`Saved edited image as ${savedImage.name}.`);
         } else {
           setSuccess('Saved edited image.');
@@ -2346,7 +2369,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         status: 'pending',
         error: null,
       });
-      await cacheManager.updateCachedImages(sourceDirectory.path, sourceDirectory.name, [preservedMetadataImage], scanSubfolders);
+      scheduleEditedImageCacheUpsert(sourceDirectory, preservedMetadataImage, scanSubfolders);
       setImageEditRecipe(DEFAULT_IMAGE_EDIT_RECIPE);
       setSuccess('Overwrote original image with edits.');
     } catch (error) {
