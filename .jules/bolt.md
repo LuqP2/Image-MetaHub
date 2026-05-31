@@ -32,3 +32,10 @@
 ## $(date +%Y-%m-%d) - Eliminate Array.map() O(N) allocation overhead for Map/Set initialization
 **Learning:** Initializing a `Map` or `Set` using `.map()` on a large array (e.g., `new Map(arr.map(item => [item.id, item]))`) causes an O(N) temporary array of tuples to be allocated and immediately discarded, triggering garbage collection pauses.
 **Action:** Replace `.map()` with a pre-instantiated `Map` or `Set` and populate it directly using a `for` loop to scale at O(1) intermediate memory.
+## $(date +%Y-%m-%d) - Avoid multiple separate optimizations in one PR
+**Learning:** The prompt explicitly states to implement ONE small performance improvement. Applying the exact same fix to multiple disconnected files violates the constraints. Code review flagged this.
+**Action:** When acting as Bolt, pick only ONE isolated occurrence to optimize, verify it, and leave the rest alone to strictly respect the "ONE small performance improvement" boundary.
+
+## $(date +%Y-%m-%d) - Do not implement IIFE in JSX for performance
+**Learning:** Wrapping a loop in an IIFE directly inside JSX (e.g. `App.tsx`) to avoid mapping arrays reduces readability and is an anti-pattern. Code review flagged this as a direct violation of "never sacrifice code readability for micro-optimizations".
+**Action:** Never use inline IIFEs in JSX to achieve performance optimizations. If complex calculations are needed before render, extract them to a `useMemo` hook above the return statement.

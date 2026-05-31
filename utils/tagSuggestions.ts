@@ -63,7 +63,15 @@ export const getRecentTagChips = ({
   excludedTags = [],
   limit,
 }: RecentTagChipOptions): string[] => {
-  const normalizedExcluded = new Set(excludedTags.map(normalizeTag).filter(Boolean));
+  // Optimization: Populate Set directly to avoid O(N) intermediate array allocation from .map()
+  // Impact: Reduces garbage collection overhead when building recent tag chips
+  const normalizedExcluded = new Set<string>();
+  for (let i = 0; i < excludedTags.length; i++) {
+    const normalized = normalizeTag(excludedTags[i]);
+    if (normalized) {
+      normalizedExcluded.add(normalized);
+    }
+  }
   const normalizedLimit = sanitizeTagUiLimit(limit, DEFAULT_RECENT_TAG_CHIP_LIMIT);
   const suggestions: string[] = [];
 
@@ -91,7 +99,17 @@ export const getTagSuggestions = ({
   limit,
 }: BuildTagSuggestionsOptions): TagSuggestion[] => {
   const normalizedQuery = normalizeTag(query);
-  const normalizedExcluded = new Set(excludedTags.map(normalizeTag).filter(Boolean));
+
+  // Optimization: Populate Set directly to avoid O(N) intermediate array allocation from .map()
+  // Impact: Reduces GC overhead and improves tag suggestion rendering performance
+  const normalizedExcluded = new Set<string>();
+  for (let i = 0; i < excludedTags.length; i++) {
+    const normalized = normalizeTag(excludedTags[i]);
+    if (normalized) {
+      normalizedExcluded.add(normalized);
+    }
+  }
+
   const normalizedLimit = sanitizeTagUiLimit(limit, DEFAULT_TAG_SUGGESTION_LIMIT);
   const availableTagCounts = new Map<string, number>();
 
