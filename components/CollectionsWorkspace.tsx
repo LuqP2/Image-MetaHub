@@ -258,6 +258,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                       disabled={globalIndex <= 0}
                       className="rounded-md border border-gray-700 p-1.5 text-gray-300 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                       title="Move up"
+                      aria-label="Move up"
                     >
                       <ArrowUp className="h-3.5 w-3.5" />
                     </button>
@@ -270,6 +271,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                       disabled={globalIndex === -1 || globalIndex >= collections.length - 1}
                       className="rounded-md border border-gray-700 p-1.5 text-gray-300 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                       title="Move down"
+                      aria-label="Move down"
                     >
                       <ArrowDown className="h-3.5 w-3.5" />
                     </button>
@@ -281,6 +283,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                       }}
                       className="rounded-md border border-gray-700 p-1.5 text-gray-300 transition-colors hover:bg-gray-800"
                       title="Collection settings"
+                      aria-label="Collection settings"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -292,6 +295,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                       }}
                       className="rounded-md border border-red-900/40 p-1.5 text-red-300 transition-colors hover:bg-red-900/20"
                       title="Delete collection"
+                      aria-label="Delete collection"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>

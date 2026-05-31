@@ -36,8 +36,18 @@ export const buildSlideshowPlaylist = ({
   const selectedInScope = scopeImages.filter(
     (image) => selectedImageIds.has(image.id) && isSlideshowMedia(image)
   );
-  const usedIds = new Set(selectedInScope.map((image) => image.id));
-  const allImageLookup = new Map(allImages.map((image) => [image.id, image]));
+
+  // Optimization: Avoid creating temporary arrays using .map() before creating Set/Map
+  const usedIds = new Set<string>();
+  for (const image of selectedInScope) {
+    usedIds.add(image.id);
+  }
+
+  const allImageLookup = new Map<string, IndexedImage>();
+  for (const image of allImages) {
+    allImageLookup.set(image.id, image);
+  }
+
   const selectedOutOfScope: IndexedImage[] = [];
 
   for (const imageId of selectedImageIds) {
