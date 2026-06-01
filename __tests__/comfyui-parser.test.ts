@@ -376,6 +376,32 @@ describe('ComfyUI Parser - MetaHub lineage metadata', () => {
     expect(result?.loras).toEqual([{ name: 'skin-detail', weight: 0.65 }]);
   });
 
+  it('keeps MetaHub payload as canonical when parameters disagree', async () => {
+    const result = await parseImageMetadata({
+      parameters: 'wrong prompt\nSteps: 1, Sampler: wrong, CFG scale: 1, Seed: 1, Size: 64x64, Model: wrong.safetensors',
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'canonical prompt',
+        negativePrompt: 'canonical negative',
+        seed: 456,
+        steps: 32,
+        cfg: 7,
+        sampler_name: 'dpmpp_2m',
+        scheduler: 'karras',
+        model: 'canonical.safetensors',
+        width: 768,
+        height: 1024,
+        metadata_status: 'complete',
+        metadata_sources: { prompt: 'detected', model_name: 'detected' },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe('canonical prompt');
+    expect(result?.model).toBe('canonical.safetensors');
+    expect(result?._metadata_status).toBe('complete');
+    expect(result?._metadata_sources).toEqual({ prompt: 'detected', model_name: 'detected' });
+  });
+
   it('prefers parent_image for library lineage and keeps source_image as workflowSourceImage', async () => {
     const metadata: any = {
       imagemetahub_data: {

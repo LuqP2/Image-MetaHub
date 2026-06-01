@@ -876,6 +876,8 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
           _detection_method: 'metahub_chunk',
           _metahub_pro: metahubData.imh_pro || null,
           _analytics: metahubData.analytics || null,
+          _metadata_status: metahubData.metadata_status || null,
+          _metadata_sources: metahubData.metadata_sources || null,
         };
       }
     }
