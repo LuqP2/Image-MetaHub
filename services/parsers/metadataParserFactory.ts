@@ -43,7 +43,7 @@ function isComfyPromptOnlyGraph(metadata: UnknownRecord): boolean {
 }
 
 interface ParserModule {
-    parse: (metadata: ImageMetadata, fileBuffer?: ArrayBuffer) => BaseMetadata | Promise<BaseMetadata>;
+    parse: (metadata: ImageMetadata, fileBuffer?: ArrayBuffer) => BaseMetadata | null | Promise<BaseMetadata | null>;
     generator: string;
 }
 
@@ -115,6 +115,8 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
                     lineage: result.lineage,
                     _analytics: result._analytics || null,
                     _metahub_pro: result._metahub_pro || null,
+                    _metadata_status: result._metadata_status || null,
+                    _metadata_sources: result._metadata_sources || null,
                     _detection_method: result._detection_method,
                 } as BaseMetadata;
             },
@@ -127,16 +129,7 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     if ('videometahub_data' in metadata || rawMetadata.media_type === 'video') {
         return {
             parse: (data: VideoMetadata) => {
-                const result = parseVideoMetaHubMetadata(data);
-                return (result ?? {
-                    prompt: '',
-                    model: '',
-                    width: 0,
-                    height: 0,
-                    steps: 0,
-                    scheduler: '',
-                    media_type: 'video',
-                }) as BaseMetadata;
+                return parseVideoMetaHubMetadata(data);
             },
             generator: 'ComfyUI'
         };
@@ -292,6 +285,9 @@ export async function parseImageMetadata(metadata: ImageMetadata, fileBuffer?: A
     const parser = getMetadataParser(metadata);
     if (parser) {
         const result = await parser.parse(metadata, fileBuffer);
+        if (!result) {
+            return null;
+        }
         result.generator = parser.generator;
         return result;
     }

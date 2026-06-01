@@ -14,6 +14,25 @@ const parseJsonSafe = (value: unknown): MetaHubVideoPayload | null => {
   }
 };
 
+const isMetaHubVideoPayload = (value: unknown): value is MetaHubVideoPayload => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const payload = value as MetaHubVideoPayload;
+  if (payload.generator !== 'ComfyUI' && payload.generator !== 'Image MetaHub') {
+    return false;
+  }
+  if (payload.media_type !== 'video') {
+    return false;
+  }
+  const video = payload.video && typeof payload.video === 'object'
+    ? payload.video as MetaHubVideoPayload
+    : null;
+  const width = normalizeNumber(video?.width ?? payload.width, 0);
+  const height = normalizeNumber(video?.height ?? payload.height, 0);
+  return width > 0 && height > 0 && Boolean(video);
+};
+
 const extractVideoMetaHubPayload = (rawData: unknown): MetaHubVideoPayload | null => {
   if (!rawData) {
     return null;
@@ -21,22 +40,23 @@ const extractVideoMetaHubPayload = (rawData: unknown): MetaHubVideoPayload | nul
 
   if (typeof rawData === 'object') {
     const data = rawData as MetaHubVideoPayload;
-    if (data.videometahub_data && typeof data.videometahub_data === 'object') {
+    if (isMetaHubVideoPayload(data.videometahub_data)) {
       return data.videometahub_data as MetaHubVideoPayload;
     }
     if (data.comment && typeof data.comment === 'string') {
       const parsed = parseJsonSafe(data.comment);
-      if (parsed) {
+      if (isMetaHubVideoPayload(parsed)) {
         return parsed;
       }
     }
-    if (data.media_type === 'video' || data.video) {
+    if (isMetaHubVideoPayload(data)) {
       return data;
     }
   }
 
   if (typeof rawData === 'string') {
-    return parseJsonSafe(rawData);
+    const parsed = parseJsonSafe(rawData);
+    return isMetaHubVideoPayload(parsed) ? parsed : null;
   }
 
   return null;
@@ -100,5 +120,7 @@ export const parseVideoMetaHubMetadata = (rawData: unknown): BaseMetadata | null
     model_hash: payload.model_hash,
     _analytics: payload.analytics || null,
     _metahub_pro: payload.imh_pro || null,
+    _metadata_status: payload.metadata_status || null,
+    _metadata_sources: payload.metadata_sources || null,
   };
 };
