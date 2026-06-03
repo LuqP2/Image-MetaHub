@@ -191,6 +191,7 @@ export interface ImageEditorObjectStyle {
   textColor: string;
   strokeWidth: number;
   fontSize: number;
+  fontFamily: string;
   opacity: number;
 }
 
