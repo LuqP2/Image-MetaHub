@@ -2522,6 +2522,11 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                   onBlur={() => setEditingTextObjectId(null)}
                   onPointerDown={(event) => event.stopPropagation()}
                   onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      setEditingTextObjectId(null);
+                      return;
+                    }
                     if (event.key === 'Escape') {
                       event.preventDefault();
                       setEditingTextObjectId(null);
