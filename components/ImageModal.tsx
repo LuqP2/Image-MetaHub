@@ -664,9 +664,15 @@ const VideoPlayer: React.FC<{
       {/* Center Play Button Overlay (only when paused and not hovering controls) */}
       {!isPlaying && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="bg-black/50 backdrop-blur-sm rounded-full p-4 text-white hover:bg-black/70 transition-all pointer-events-auto cursor-pointer transform hover:scale-110" onClick={togglePlay}>
+          <button
+            type="button"
+            aria-label="Play video"
+            title="Play video"
+            className="bg-black/50 backdrop-blur-sm rounded-full p-4 text-white hover:bg-black/70 transition-all pointer-events-auto cursor-pointer transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            onClick={togglePlay}
+          >
             <Play size={48} fill="currentColor" />
-          </div>
+          </button>
         </div>
       )}
 
@@ -684,7 +690,8 @@ const VideoPlayer: React.FC<{
                 max={duration || 100}
                 value={currentTime}
                 onChange={handleSeek}
-                className="flex-1 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer hover:h-2 transition-all accent-blue-500"
+                aria-label="Seek video"
+                className="flex-1 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer hover:h-2 transition-all accent-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             />
             <span className="text-xs font-mono text-gray-300">{formatTime(duration)}</span>
         </div>
@@ -692,12 +699,22 @@ const VideoPlayer: React.FC<{
         {/* Buttons Row */}
         <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-                <button onClick={togglePlay} className="text-white hover:text-blue-400 transition-colors">
+                <button
+                  onClick={togglePlay}
+                  className="text-white hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                  aria-label={isPlaying ? "Pause video" : "Play video"}
+                  title={isPlaying ? "Pause video" : "Play video"}
+                >
                     {isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}
                 </button>
                 
                 <div className="flex items-center gap-2 group/volume">
-                    <button onClick={toggleMute} className="text-white hover:text-blue-400 transition-colors">
+                    <button
+                      onClick={toggleMute}
+                      className="text-white hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                      aria-label={isMuted || volume === 0 ? "Unmute video" : "Mute video"}
+                      title={isMuted || volume === 0 ? "Unmute video" : "Mute video"}
+                    >
                         {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
                     </button>
                     <input
@@ -707,7 +724,8 @@ const VideoPlayer: React.FC<{
                         step={0.05}
                         value={isMuted ? 0 : volume}
                         onChange={handleVolumeChange}
-                        className="w-0 overflow-hidden group-hover/volume:w-20 transition-all duration-300 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        aria-label="Volume control"
+                        className="w-0 overflow-hidden group-hover/volume:w-20 transition-all duration-300 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     />
                 </div>
             </div>
@@ -715,8 +733,9 @@ const VideoPlayer: React.FC<{
             <div className="flex items-center gap-4">
                 <button 
                   onClick={toggleLoop} 
-                  className={`transition-colors ${isLooping ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`}
+                  className={`transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded ${isLooping ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`}
                   title={isLooping ? "Loop On" : "Loop Off"}
+                  aria-label={isLooping ? "Loop On" : "Loop Off"}
                 >
                     <Repeat size={18} />
                 </button>
