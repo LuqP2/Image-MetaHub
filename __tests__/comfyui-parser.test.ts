@@ -112,6 +112,175 @@ describe('ComfyUI Parser - Detection from capitalized string keys', () => {
     expect(result?.prompt).toContain('Visualize a long, eel-like mutant lizard');
     expect(result?.prompt).toContain('fossilized ocean desert');
   });
+
+  it('should prefer ComfyUI graph chunks over non-empty parameters text', async () => {
+    const fixture = loadFixture('primitive-string-multiline.json');
+    const metadata: any = {
+      Prompt: JSON.stringify(fixture.prompt),
+      Workflow: JSON.stringify(fixture.workflow),
+      parameters: 'wrong prompt\nSteps: 1, Sampler: wrong, CFG scale: 1, Seed: 1, Size: 64x64, Model: wrong.safetensors'
+    };
+
+    const result = await parseImageMetadata(metadata);
+
+    expect(result?.generator).toBe('ComfyUI');
+    expect(result?.prompt).toContain('Visualize a long, eel-like mutant lizard');
+    expect(result?.model).not.toBe('wrong.safetensors');
+  });
+});
+
+describe('ComfyUI Parser - Output terminal traversal', () => {
+  it('should walk back from SaveImage through image links to prompt-bearing nodes', () => {
+    const prompt = {
+      '1': {
+        class_type: 'SaveImage',
+        inputs: {
+          images: ['2', 0],
+        },
+      },
+      '2': {
+        class_type: 'VAEDecode',
+        inputs: {
+          samples: ['3', 0],
+          vae: ['6', 2],
+        },
+      },
+      '3': {
+        class_type: 'WanImageToVideo',
+        inputs: {
+          positive: ['4', 0],
+          negative: ['5', 0],
+          vae: ['6', 2],
+          width: 832,
+          height: 480,
+          length: 49,
+          batch_size: 1,
+        },
+      },
+      '4': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'cinematic motion portrait',
+        },
+      },
+      '5': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'blur, artifacts',
+        },
+      },
+      '6': {
+        class_type: 'CheckpointLoaderSimple',
+        inputs: {
+          ckpt_name: 'wan-video-model.safetensors',
+        },
+      },
+    };
+
+    const result = resolvePromptFromGraph(undefined, prompt);
+
+    expect(result.prompt).toBe('cinematic motion portrait');
+    expect(result.negativePrompt).toBe('blur, artifacts');
+  });
+});
+
+describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
+  it('recovers prompt and seed from embedded prompt_api when old MetaHub chunks are empty', async () => {
+    const metadata: any = {
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: '',
+        negativePrompt: '',
+        seed: 0,
+        steps: 9,
+        cfg: 1,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        model: 'Z image Turbo\\z_image_turbo_bf16.safetensors',
+        vae: 'ae.safetensors',
+        denoise: 1,
+        width: 1056,
+        height: 1584,
+        loras: [],
+        workflow: { nodes: [] },
+        prompt_api: {
+          '1': {
+            class_type: 'UNETLoader',
+            inputs: { unet_name: 'Z image Turbo\\z_image_turbo_bf16.safetensors' },
+          },
+          '2': {
+            class_type: 'Lora Loader (LoraManager)',
+            inputs: {
+              text: 'luneva <lora:detail:0.80>',
+              model: ['1', 0],
+            },
+          },
+          '3': {
+            class_type: 'PathchSageAttentionKJ',
+            inputs: { model: ['2', 0] },
+          },
+          '4': {
+            class_type: 'easy positive',
+            inputs: { positive: 'gothic castle in teal fog' },
+          },
+          '5': {
+            class_type: 'JoinStrings',
+            inputs: { delimiter: ' ', string1: ['4', 0] },
+          },
+          '6': {
+            class_type: 'easy stylesSelector',
+            inputs: { positive: ['5', 0] },
+          },
+          '7': {
+            class_type: 'CLIPTextEncode',
+            inputs: { text: ['6', 0], clip: ['2', 1] },
+          },
+          '8': {
+            class_type: 'ConditioningZeroOut',
+            inputs: { conditioning: ['7', 0] },
+          },
+          '9': {
+            class_type: 'SeedGenerator',
+            inputs: { seed: 1100100895348371 },
+          },
+          '10': {
+            class_type: 'KSampler',
+            inputs: {
+              seed: ['9', 0],
+              steps: 9,
+              cfg: 1,
+              sampler_name: 'euler',
+              scheduler: 'simple',
+              denoise: 1,
+              model: ['3', 0],
+              positive: ['7', 0],
+              negative: ['8', 0],
+            },
+          },
+          '11': {
+            class_type: 'VAELoader',
+            inputs: { vae_name: 'ae.safetensors' },
+          },
+          '12': {
+            class_type: 'VAEDecode',
+            inputs: { samples: ['10', 0], vae: ['11', 0] },
+          },
+          '13': {
+            class_type: 'MetaHubSaveNode',
+            inputs: { images: ['12', 0] },
+          },
+        },
+      },
+    };
+
+    const result = await parseImageMetadata(metadata);
+
+    expect(result?.generator).toBe('ComfyUI');
+    expect(result?.prompt).toBe('gothic castle in teal fog');
+    expect(result?.negativePrompt).toBe('');
+    expect(result?.seed).toBe(1100100895348371);
+    expect(result?.model).toBe('Z image Turbo\\z_image_turbo_bf16.safetensors');
+  });
 });
 
 describe('ComfyUI Parser - Prompt-only graph payloads', () => {

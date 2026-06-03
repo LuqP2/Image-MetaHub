@@ -140,11 +140,8 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     const promptCI = getCaseInsensitive<unknown>(rawMetadata, 'prompt');
     const promptLooksLikeGraph = typeof promptCI === 'string' && /"class_type"|"inputs"/.test(promptCI);
     const promptOnlyGraph = isComfyPromptOnlyGraph(rawMetadata);
-    const hasParameters = 'parameters' in metadata &&
-        typeof metadata.parameters === 'string' &&
-        metadata.parameters.trim().length > 0;
 
-    if (!hasParameters && (workflowCI !== undefined || (promptCI && typeof promptCI === 'object') || promptLooksLikeGraph || promptOnlyGraph)) {
+    if (workflowCI !== undefined || (promptCI && typeof promptCI === 'object') || promptLooksLikeGraph || promptOnlyGraph) {
         return {
             parse: (data: ComfyUIMetadata) => {
                 // Parse workflow and prompt if they are strings

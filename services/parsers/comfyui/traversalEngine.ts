@@ -94,17 +94,35 @@ function traverse(
 
   // 4. Travessia Estática (PASS_THROUGH / TRANSFORM)
   if (nodeDef.roles.includes('PASS_THROUGH') || nodeDef.roles.includes('TRANSFORM')) {
+    let matchedTypedInput = false;
+
     // Procura por entradas que correspondam ao tipo de dado esperado para continuar a cadeia
     for (const inputName in nodeDef.inputs) {
       const inputDef = nodeDef.inputs[inputName];
       if (inputDef.type === state.expectedType || inputDef.type === 'ANY') {
         const inputLink = currentNode.inputs[inputName];
         if (inputLink && Array.isArray(inputLink)) {
+           matchedTypedInput = true;
            const result = traverseFromLink(inputLink as NodeLink, state, graph, accumulator);
            // Retorna o primeiro resultado encontrado, a menos que esteja acumulando LoRAs
            if (state.targetParam !== 'lora' && result !== null) {
                return result;
            }
+        }
+      }
+    }
+
+    // Some terminal/output chains expose IMAGE/LATENT links before the sampler
+    // that owns prompt/model/sampling facts. If no typed route exists, keep
+    // walking upstream through connected inputs until a known fact node is found.
+    if (!matchedTypedInput) {
+      for (const inputName in currentNode.inputs) {
+        const inputLink = currentNode.inputs[inputName];
+        if (inputLink && Array.isArray(inputLink)) {
+          const result = traverseFromLink(inputLink as NodeLink, state, graph, accumulator);
+          if (state.targetParam !== 'lora' && result !== null) {
+            return result;
+          }
         }
       }
     }
