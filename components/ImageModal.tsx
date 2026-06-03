@@ -872,6 +872,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [imageEditRecipe, setImageEditRecipe] = useState<ImageEditRecipe>(DEFAULT_IMAGE_EDIT_RECIPE);
   const [imageEditorTab, setImageEditorTab] = useState<'adjust' | 'crop' | 'transform' | 'enhance'>('adjust');
   const [imageEditSourceDimensions, setImageEditSourceDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [displayedImageNaturalSize, setDisplayedImageNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [cropImageBounds, setCropImageBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [editedPreviewUrl, setEditedPreviewUrl] = useState<string | null>(null);
   const [isRenderingEditedPreview, setIsRenderingEditedPreview] = useState(false);
@@ -1176,6 +1177,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setImageEditRecipe(DEFAULT_IMAGE_EDIT_RECIPE);
     setImageEditorTab('adjust');
     setImageEditSourceDimensions(null);
+    setDisplayedImageNaturalSize(null);
     setCropImageBounds(null);
     setEditedPreviewUrl(null);
     setIsRenderingEditedPreview(false);
@@ -1932,18 +1934,36 @@ const ImageModal: React.FC<ImageModalProps> = ({
     clearMediaOverlayHideTimer();
   }, [clearMediaOverlayHideTimer, isFullscreen]);
 
+  const getActualSizeZoom = useCallback(() => {
+    const container = imageContainerRef.current;
+    const naturalSize = displayedImageNaturalSize;
+    if (!container || !naturalSize || naturalSize.width <= 0 || naturalSize.height <= 0) {
+      return 1;
+    }
+
+    const containerWidth = Math.max(1, container.clientWidth - (isFullViewportModal ? 0 : 16));
+    const containerHeight = Math.max(1, container.clientHeight - (isFullViewportModal ? 0 : 16));
+    const fitScale = Math.min(1, containerWidth / naturalSize.width, containerHeight / naturalSize.height);
+    return Math.max(1 / Math.max(fitScale, 0.01), 1);
+  }, [displayedImageNaturalSize, isFullViewportModal]);
+
+  const actualSizeZoom = getActualSizeZoom();
+  const maxViewerZoom = Math.max(5, actualSizeZoom);
+  const isActualSizeZoom = actualSizeZoom > 1 && Math.abs(zoom - actualSizeZoom) < 0.05;
+  const zoomLabel = zoom <= 1.01 ? 'Fit' : isActualSizeZoom ? '1:1' : `${Math.round(zoom * 100)}%`;
+
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
 
     const delta = e.deltaY * -0.01;
-    const newZoom = Math.min(Math.max(1, zoom + delta), 5);
+    const newZoom = Math.min(Math.max(1, zoom + delta), maxViewerZoom);
 
     setZoom(newZoom);
 
     if (newZoom === 1) {
       setPan({ x: 0, y: 0 });
     }
-  }, [zoom]);
+  }, [maxViewerZoom, zoom]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!(e.target instanceof Element) || !e.target.closest('img, video, audio, canvas, [data-media-element="true"]')) {
@@ -2105,7 +2125,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [hideOriginalForAdjustmentCompare, isShowingOriginalForAdjustmentCompare]);
 
   const handleZoomIn = () => {
-    setZoom(prev => Math.min(prev + 0.5, 5));
+    setZoom(prev => Math.min(prev + 0.5, maxViewerZoom));
   };
 
   const handleZoomOut = () => {
@@ -2116,9 +2136,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   };
 
-  const handleResetZoom = () => {
+  const handleFitToScreen = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+  };
+
+  const handleActualSize = () => {
+    const nextZoom = getActualSizeZoom();
+    setZoom(nextZoom);
+    if (nextZoom === 1) {
+      setPan({ x: 0, y: 0 });
+    }
   };
 
   const buildEditedDefaultPath = useCallback(async () => {
@@ -3238,6 +3266,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     const target = event.currentTarget;
                     const naturalWidth = target.naturalWidth || target.width;
                     const naturalHeight = target.naturalHeight || target.height;
+                    if (naturalWidth > 0 && naturalHeight > 0) {
+                      setDisplayedImageNaturalSize({ width: naturalWidth, height: naturalHeight });
+                    }
                     if (isFullImageSourceReady && naturalWidth > 0 && naturalHeight > 0) {
                       setImageEditSourceDimensions({ width: naturalWidth, height: naturalHeight });
                     }
@@ -3337,7 +3368,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div data-no-window-drag="true" className={`absolute bottom-4 left-4 z-30 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
               <button
                 onClick={handleZoomIn}
-                disabled={zoom >= 5}
+                disabled={zoom >= maxViewerZoom}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
                 title="Zoom In"
               >
@@ -3345,7 +3376,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </button>
-              <div className="text-center font-mono text-xs text-white/80">{Math.round(zoom * 100)}%</div>
+              <div className="min-w-10 text-center font-mono text-xs text-white/80">{zoomLabel}</div>
               <button
                 onClick={handleZoomOut}
                 disabled={zoom <= 1}
@@ -3357,12 +3388,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </svg>
               </button>
               <button
-                onClick={handleResetZoom}
+                onClick={handleActualSize}
+                disabled={actualSizeZoom <= 1 || isActualSizeZoom}
+                className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 text-xs"
+                title="Actual Size"
+              >
+                1:1
+              </button>
+              <button
+                onClick={handleFitToScreen}
                 disabled={zoom <= 1}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 text-xs"
-                title="Reset Zoom"
+                title="Fit to Screen"
               >
-                Reset
+                Fit
               </button>
             </div>
           )}
