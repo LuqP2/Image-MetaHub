@@ -3290,7 +3290,28 @@ function setupFileOperationHandlers() {
     const filePath = await getCacheFilePath(cacheId);
     try {
       const data = await fs.readFile(filePath, 'utf-8');
-      return { success: true, data: JSON.parse(data) };
+      const parsed = JSON.parse(data);
+      const chunkCount = parsed?.chunkCount ?? 0;
+      if (chunkCount > 0) {
+        const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+        const rootPath = await getCacheRootPath();
+        const cacheDir = path.join(rootPath, 'json_cache');
+        const maxChunkBytes = 64 * 1024 * 1024;
+
+        for (let i = 0; i < chunkCount; i += 1) {
+          const chunkPath = path.join(cacheDir, `${safeCacheId}_${i}.json`);
+          const stats = await fs.stat(chunkPath).catch(error => {
+            if (error.code === 'ENOENT') return null;
+            throw error;
+          });
+
+          if (stats && stats.size > maxChunkBytes) {
+            console.warn(`⚠️ Cache chunk too large for ${cacheId}: chunk=${i}, bytes=${stats.size}. Invalidating cache to avoid renderer freeze.`);
+            return { success: true, data: null };
+          }
+        }
+      }
+      return { success: true, data: parsed };
     } catch (error) {
       if (error.code === 'ENOENT') {
         return { success: true, data: null };
@@ -3322,7 +3343,8 @@ function setupFileOperationHandlers() {
     }
   });
 
-  const CHUNK_SIZE = 5000; // Store 5000 images per chunk file
+  const CHUNK_SIZE = 1024; // Keep cache chunks small enough to parse without freezing the renderer
+  const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   ipcMain.handle('cache-data', async (event, { cacheId, data }) => {
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
@@ -3357,9 +3379,10 @@ function setupFileOperationHandlers() {
 
       try {
         const files = await fs.readdir(cacheDir);
+        const chunkPattern = new RegExp(`^${escapeRegExp(safeCacheId)}_(\\d+)\\.json$`);
         await Promise.all(
           files
-            .filter(file => file.startsWith(`${safeCacheId}_`))
+            .filter(file => chunkPattern.test(file))
             .map(file => fs.unlink(path.join(cacheDir, file)).catch(err => {
               if (err.code !== 'ENOENT') throw err;
             }))
@@ -3389,8 +3412,6 @@ function setupFileOperationHandlers() {
       return { success: false, error: error.message };
     }
   });
-
-  const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   ipcMain.handle('finalize-cache-write', async (event, { cacheId, sourceCacheId, record }) => {
     try {
