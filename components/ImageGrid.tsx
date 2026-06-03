@@ -2273,7 +2273,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               title="Open this image in the editor workspace"
             >
               <ImageIcon className="w-4 h-4" />
-              <span className="flex-1">Edit Image</span>
+              <span className="flex-1">Open in Editor</span>
             </button>
           )}
 

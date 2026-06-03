@@ -19,9 +19,7 @@ import {
   RotateCcw,
   RotateCw,
   Save,
-  Search,
   Shield,
-  Sparkles,
   Square,
   Type,
   Undo2,
@@ -62,9 +60,6 @@ import { getFileExtension } from '../utils/mediaTypes.js';
 import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndexer';
 import cacheManager from '../services/cacheManager';
 import { useImageStore } from '../store/useImageStore';
-import { useSettingsStore } from '../store/useSettingsStore';
-import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
-import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 interface ImageEditorWorkspaceProps {
   image: IndexedImage;
@@ -100,7 +95,7 @@ type DragState = {
 
 type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
-type InspectorTab = 'edit' | 'style' | 'canvas' | 'ai' | 'info';
+type InspectorTab = 'edit' | 'style' | 'ai';
 
 type PanState = {
   pointerId: number;
@@ -125,15 +120,12 @@ const TOOL_DEFS: Array<{ id: ImageEditorTool; label: string; icon: React.ReactNo
   { id: 'highlight', label: 'Highlight', icon: <Highlighter className="h-4 w-4" /> },
   { id: 'blur', label: 'Blur', icon: <Eye className="h-4 w-4" /> },
   { id: 'pixelate', label: 'Pixelate', icon: <Shield className="h-4 w-4" /> },
-  { id: 'spotlight', label: 'Spotlight', icon: <Search className="h-4 w-4" /> },
 ];
 
 const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
   { id: 'edit', label: 'Edit' },
   { id: 'style', label: 'Style' },
-  { id: 'canvas', label: 'Canvas' },
   { id: 'ai', label: 'AI' },
-  { id: 'info', label: 'Info' },
 ];
 
 const ASPECT_LABELS: Record<ImageEditCropAspect, string> = {
@@ -145,6 +137,16 @@ const ASPECT_LABELS: Record<ImageEditCropAspect, string> = {
   '16:9': '16:9',
   '9:16': '9:16',
 };
+
+const FONT_FAMILY_OPTIONS = [
+  { label: 'System', value: 'system-ui, sans-serif' },
+  { label: 'Arial', value: 'Arial, sans-serif' },
+  { label: 'Verdana', value: 'Verdana, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Times', value: '"Times New Roman", serif' },
+  { label: 'Courier', value: '"Courier New", monospace' },
+  { label: 'Impact', value: 'Impact, sans-serif' },
+];
 
 const isEnabledEditorTool = (tool: ImageEditorTool) => TOOL_DEFS.some((definition) => definition.id === tool);
 
@@ -162,7 +164,7 @@ const TOOL_HINTS: Record<ImageEditorTool, string> = {
   highlight: 'Drag to highlight an area.',
   blur: 'Drag over a region to blur it on export.',
   pixelate: 'Drag over a region to pixelate it on export.',
-  spotlight: 'Drag the spotlight focus area.',
+  spotlight: 'Spotlight annotations can be edited when opening older documents.',
   magnify: 'Drag the magnified lens area.',
 };
 
@@ -199,7 +201,6 @@ const TOOL_SHORTCUTS: Partial<Record<string, ImageEditorTool>> = {
   h: 'highlight',
   b: 'blur',
   p: 'pixelate',
-  s: 'spotlight',
 };
 
 const parseDimensions = (value?: string): { width: number; height: number } => {
@@ -344,7 +345,7 @@ const objectFromDrag = (
 };
 
 const getCanvasPoint = (
-  event: React.PointerEvent<HTMLDivElement>,
+  event: { clientX: number; clientY: number },
   canvasElement: HTMLDivElement | null,
   document: ImageEditorDocument,
 ) => {
@@ -361,6 +362,10 @@ const getCanvasPoint = (
 const colorComponentToHex = (value: number) => Math.round(value).toString(16).padStart(2, '0');
 const rgbToHex = (red: number, green: number, blue: number) => `#${colorComponentToHex(red)}${colorComponentToHex(green)}${colorComponentToHex(blue)}`;
 const toColorInputValue = (value: string | undefined) => /^#[0-9a-f]{6}$/i.test(value || '') ? value as string : '#000000';
+const isTransparentColor = (value: string | undefined) => {
+  const normalized = String(value || '').replace(/\s+/g, '').toLowerCase();
+  return normalized === 'transparent' || normalized === 'rgba(0,0,0,0)' || normalized === '#00000000';
+};
 const toCanvasPercentBounds = (bounds: ImageEditorObject['bounds'], dimensions: { width: number; height: number }) => ({
   left: `${(bounds.x / dimensions.width) * 100}%`,
   top: `${(bounds.y / dimensions.height) * 100}%`,
@@ -563,7 +568,6 @@ const PixelatePreview: React.FC<{
 
 const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   image,
-  navigationImages = [],
   directoryPath,
   onBack,
   onOpenComfyUIWorkflow,
@@ -581,11 +585,13 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [hydratedImage, setHydratedImage] = useState<IndexedImage | null>(null);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('info');
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('edit');
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [editingTextObjectId, setEditingTextObjectId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const previewImageRef = useRef<HTMLImageElement>(null);
+  const textEditorRef = useRef<HTMLTextAreaElement>(null);
   const sessionRef = useRef<EditorSessionState | null>(null);
   const panStateRef = useRef<PanState | null>(null);
 
@@ -597,10 +603,6 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const setSuccess = useImageStore((state) => state.setSuccess);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const allImages = useImageStore((state) => state.images);
-  const comfyUIEnabled = useSettingsStore((state) => state.comfyUIEnabled);
-  const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
-  const { canUseComfyUI, showProModal } = useFeatureAccess();
-  const { generateWithComfyUI, isGenerating: isUpscaling } = useGenerateWithComfyUI();
 
   const normalizedDocument = useMemo(
     () => documentState ? normalizeImageEditorDocument(documentState) : null,
@@ -644,7 +646,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
 
   useEffect(() => {
     if (!normalizedDocument) {
-      setInspectorTab('info');
+      setInspectorTab('edit');
       return;
     }
     if (activeTool === 'crop') {
@@ -656,9 +658,24 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       return;
     }
     if (activeTool === 'select' || activeTool === 'color-picker') {
-      setInspectorTab('info');
+      setInspectorTab('edit');
     }
   }, [activeTool, normalizedDocument?.selectedObjectIds.length]);
+
+  useEffect(() => {
+    if (!editingTextObjectId || !textEditorRef.current) {
+      return;
+    }
+    textEditorRef.current.focus();
+    textEditorRef.current.select();
+  }, [editingTextObjectId]);
+
+  useEffect(() => {
+    if (!editingTextObjectId || normalizedDocument?.objects.some((object) => object.id === editingTextObjectId)) {
+      return;
+    }
+    setEditingTextObjectId(null);
+  }, [editingTextObjectId, normalizedDocument?.objects]);
 
   useEffect(() => {
     if (!documentState) {
@@ -959,25 +976,6 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     }
   }, [normalizedDocument, setError, setSuccess, sourceUrl]);
 
-  const handleAIUpscale = useCallback(async () => {
-    if (!canUseComfyUI) {
-      showProModal('comfyui');
-      return;
-    }
-    if (!comfyUIEnabled || !comfyUIServerUrl) {
-      setError('AI Upscale needs ComfyUI enabled and a server URL in Settings.');
-      return;
-    }
-    if (!image.handle) {
-      setError('AI Upscale needs desktop file access to upload the source image.');
-      return;
-    }
-    await generateWithComfyUI(image, {
-      workflowMode: 'upscale',
-      customMetadata: { prompt: image.prompt || 'ComfyUI upscale' },
-    });
-  }, [canUseComfyUI, comfyUIEnabled, comfyUIServerUrl, generateWithComfyUI, image, setError, showProModal]);
-
   const handleBack = useCallback(() => {
     if (hasChanges && !window.confirm('Leave the image editor and discard the current editor state?')) {
       return;
@@ -1011,10 +1009,6 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
 
   const updateRecipe = useCallback((recipe: ImageEditorDocument['recipe']) => {
     commitDocument((current) => ({ ...current, recipe: normalizeImageEditRecipe(recipe, current.sourceDimensions) }), 'Edit recipe');
-  }, [commitDocument]);
-
-  const updateBackground = useCallback((background: Partial<ImageEditorDocument['background']>) => {
-    commitDocument((current) => ({ ...current, background: { ...current.background, ...background } }), 'Background');
   }, [commitDocument]);
 
   const updateSelectedObjectStyle = useCallback((style: Partial<ImageEditorObjectStyle>) => {
@@ -1112,6 +1106,13 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     const point = getCanvasPoint(event, canvasRef.current, normalizedDocument);
     event.currentTarget.setPointerCapture(event.pointerId);
 
+    if (editingTextObjectId && activeTool === 'text') {
+      setEditingTextObjectId(null);
+      setActiveTool('select');
+      commitDocument((current) => ({ ...current, selectedObjectIds: [] }), 'Deselect');
+      return;
+    }
+
     if (selectedObject && isResizableObjectType(selectedObject.type)) {
       const tolerance = Math.max(8, normalizedDocument.canvasDimensions.width / Math.max(1, displayWidth) * 10);
       const resizeHandle = getResizeHandleAtPoint(point, selectedObject.bounds, tolerance);
@@ -1138,9 +1139,19 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       .find((object) => point.x >= object.bounds.x && point.x <= object.bounds.x + object.bounds.width && point.y >= object.bounds.y && point.y <= object.bounds.y + object.bounds.height);
 
     if (selected && (activeTool === 'select' || activeTool === selected.type || normalizedDocument.selectedObjectIds.includes(selected.id))) {
-      const selectedIds = normalizedDocument.selectedObjectIds.includes(selected.id)
-        ? normalizedDocument.selectedObjectIds
-        : [selected.id];
+      const isMultiSelectClick = activeTool === 'select' && (event.ctrlKey || event.metaKey);
+      const isAlreadySelected = normalizedDocument.selectedObjectIds.includes(selected.id);
+      const selectedIds = isMultiSelectClick
+        ? isAlreadySelected
+          ? normalizedDocument.selectedObjectIds.filter((id) => id !== selected.id)
+          : [...normalizedDocument.selectedObjectIds, selected.id]
+        : isAlreadySelected
+          ? normalizedDocument.selectedObjectIds
+          : [selected.id];
+      if (isMultiSelectClick) {
+        commitDocument((current) => ({ ...current, selectedObjectIds: selectedIds }), 'Select');
+        return;
+      }
       setDragState({
         tool: 'select',
         start: point,
@@ -1167,7 +1178,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       current: point,
       points: activeTool === 'freehand' ? [point] : undefined,
     });
-  }, [activeTool, commitDocument, displayWidth, normalizedDocument, pickColorAtPoint, selectedObject]);
+  }, [activeTool, commitDocument, displayWidth, editingTextObjectId, normalizedDocument, pickColorAtPoint, selectedObject]);
 
   const pointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const panState = panStateRef.current;
@@ -1287,7 +1298,24 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       objects: [...current.objects, { ...nextObject, zIndex: current.objects.length + 1 }],
       selectedObjectIds: [nextObject.id],
     }), 'Add annotation');
+    if (nextObject.type === 'text') {
+      setEditingTextObjectId(nextObject.id);
+      setActiveTool('select');
+    }
   }, [activeStyle, commitDocument, dragState, normalizedDocument]);
+
+  const handleCanvasDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!normalizedDocument) return;
+    const point = getCanvasPoint(event, canvasRef.current, normalizedDocument);
+    const textObject = [...normalizedDocument.objects]
+      .reverse()
+      .find((object) => object.type === 'text' && point.x >= object.bounds.x && point.x <= object.bounds.x + object.bounds.width && point.y >= object.bounds.y && point.y <= object.bounds.y + object.bounds.height);
+    if (!textObject) return;
+    event.preventDefault();
+    commitDocument((current) => ({ ...current, selectedObjectIds: [textObject.id] }), 'Select');
+    setEditingTextObjectId(textObject.id);
+    setActiveTool('select');
+  }, [commitDocument, normalizedDocument]);
 
   const moveSelected = useCallback((direction: 'front' | 'forward' | 'backward' | 'back') => {
     if (!selectedObject) return;
@@ -1602,6 +1630,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const canUseTextColor = Boolean(styleTargetType && ['text', 'step'].includes(styleTargetType));
   const canUseStrokeWidth = Boolean(styleTargetType && styleTargetType !== 'text' && styleTargetType !== 'step');
   const canUseFontSize = Boolean(styleTargetType && ['text', 'step'].includes(styleTargetType));
+  const canUseFontFamily = styleTargetType === 'text';
   const displayedObjects = [...(normalizedDocument?.objects ?? [])]
     .sort((first, second) => first.zIndex - second.zIndex)
     .map((object) => {
@@ -1684,18 +1713,40 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     label: string,
     value: string,
     onChange: (value: string) => void,
-  ) => (
+    options?: { allowTransparent?: boolean },
+  ) => {
+    const isTransparent = isTransparentColor(value);
+    return (
     <label className="flex items-center justify-between gap-3 rounded-md border border-gray-800 bg-gray-950 px-2 py-2 text-xs text-gray-300">
       <span>{label}</span>
-      <input
-        type="color"
-        value={toColorInputValue(value)}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-6 w-8 cursor-pointer rounded border border-gray-700 bg-gray-950 p-0.5"
-        aria-label={label}
-      />
+      <span className="flex items-center gap-1.5">
+        {options?.allowTransparent && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              onChange('rgba(0, 0, 0, 0)');
+            }}
+            className={`h-6 rounded border px-2 text-[11px] font-medium ${
+              isTransparent
+                ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-100'
+                : 'border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+            }`}
+          >
+            Transparent
+          </button>
+        )}
+        <input
+          type="color"
+          value={toColorInputValue(value)}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-6 w-8 cursor-pointer rounded border border-gray-700 bg-gray-950 p-0.5"
+          aria-label={label}
+        />
+      </span>
     </label>
-  );
+    );
+  };
 
   const renderInspectorContent = () => {
     if (!normalizedDocument) return null;
@@ -1941,7 +1992,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
             )}
             <div className="grid grid-cols-2 gap-2">
               {canUseStrokeColor && renderColorSwatch('Stroke', displayedStyle.strokeColor, (value) => setActiveOrSelectedStyle({ strokeColor: value }))}
-              {canUseFillColor && renderColorSwatch('Fill', displayedStyle.fillColor, (value) => setActiveOrSelectedStyle({ fillColor: value }))}
+              {canUseFillColor && renderColorSwatch('Fill', displayedStyle.fillColor, (value) => setActiveOrSelectedStyle({ fillColor: value }), { allowTransparent: true })}
               {canUseTextColor && renderColorSwatch('Text', displayedStyle.textColor, (value) => setActiveOrSelectedStyle({ textColor: value }))}
             </div>
             {canUseStrokeWidth && renderSliderRow(
@@ -1958,6 +2009,22 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               240,
               (value) => setActiveOrSelectedStyle({ fontSize: clamp(Math.round(value) || 32, 8, 240) }),
               'px',
+            )}
+            {canUseFontFamily && (
+              <label className="block space-y-1.5 text-xs text-gray-400">
+                <span>Font family</span>
+                <select
+                  value={displayedStyle.fontFamily}
+                  onChange={(event) => setActiveOrSelectedStyle({ fontFamily: event.target.value })}
+                  className="h-9 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-sm text-gray-100 outline-none focus:border-cyan-500"
+                >
+                  {FONT_FAMILY_OPTIONS.map((font) => (
+                    <option key={font.value} value={font.value}>
+                      {font.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
             {styleTargetType === 'spotlight' && renderSliderRow(
               'Intensity',
@@ -1988,91 +2055,39 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       );
     }
 
-    if (inspectorTab === 'canvas') {
-      return (
-        <div className="space-y-4">
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-100">Background</h3>
-            <select value={normalizedDocument.background.kind} onChange={(event) => updateBackground({ kind: event.target.value as ImageEditorDocument['background']['kind'] })} className="h-9 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-sm text-gray-100 outline-none focus:border-cyan-500">
-              <option value="transparent">Transparent</option>
-              <option value="color">Color</option>
-              <option value="gradient">Gradient</option>
-            </select>
-            <div className="grid grid-cols-2 gap-2">
-              {renderColorSwatch('Color', normalizedDocument.background.color, (value) => updateBackground({ color: value }))}
-              {renderColorSwatch('From', normalizedDocument.background.gradientFrom, (value) => updateBackground({ gradientFrom: value }))}
-              {renderColorSwatch('To', normalizedDocument.background.gradientTo, (value) => updateBackground({ gradientTo: value }))}
-            </div>
-          </section>
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-100">Spacing</h3>
-            {renderSliderRow('Margin', normalizedDocument.background.margin, 0, 2000, (value) => updateBackground({ margin: Math.round(value) }))}
-            {renderSliderRow('Padding', normalizedDocument.background.padding, 0, 2000, (value) => updateBackground({ padding: Math.round(value) }))}
-            {renderSliderRow('Corner', normalizedDocument.background.roundedCorner, 0, 400, (value) => updateBackground({ roundedCorner: Math.round(value) }))}
-            {renderSliderRow('Shadow', normalizedDocument.background.shadowRadius, 0, 500, (value) => updateBackground({ shadowRadius: Math.round(value) }))}
-            <label className="inline-flex items-center gap-2 text-xs text-gray-300">
-              <input type="checkbox" checked={normalizedDocument.background.smartPadding} onChange={(event) => updateBackground({ smartPadding: event.target.checked })} className="h-4 w-4 accent-cyan-500" />
-              Smart padding
-            </label>
-          </section>
-        </div>
-      );
-    }
-
     if (inspectorTab === 'ai') {
       return (
         <div className="space-y-4">
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-100">AI Transform</h3>
-            <button type="button" onClick={handleAIUpscale} disabled={isUpscaling} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-purple-400/30 bg-purple-500/15 px-3 py-2 text-xs font-semibold text-purple-100 hover:bg-purple-500/25 disabled:opacity-50">
-              <Sparkles className="h-4 w-4" />
-              {isUpscaling ? 'Queueing...' : 'AI Upscale'}
-            </button>
-            <div className="grid grid-cols-2 gap-1 text-xs">
-              {['Detail Restore', 'Face Restore', 'Img2Img', 'Inpaint', 'Outpaint'].map((label) => (
-                <button key={label} type="button" disabled className="rounded-md border border-gray-800 px-2 py-1.5 text-gray-600">
+          <section className="rounded-md border border-gray-800 bg-gray-950 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-gray-100">AI Transform</h3>
+              <span className="rounded-full border border-purple-400/30 bg-purple-500/15 px-2 py-0.5 text-[11px] font-semibold uppercase text-purple-200">
+                Planned
+              </span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-gray-400">
+              AI-assisted editor tools are being prepared for a later update.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-1 text-xs">
+              {['Upscale', 'Detail Restore', 'Face Restore', 'Inpaint', 'Outpaint'].map((label) => (
+                <div key={label} className="rounded-md border border-gray-800 px-2 py-1.5 text-gray-500">
                   {label}
-                </button>
+                </div>
               ))}
             </div>
+          </section>
+          <section className="space-y-3">
+            {onOpenComfyUIWorkflow && (
+              <button type="button" onClick={() => onOpenComfyUIWorkflow(image)} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800">
+                <Workflow className="h-4 w-4" />
+                Open Workflow
+              </button>
+            )}
           </section>
         </div>
       );
     }
-
-    return (
-      <div className="space-y-4">
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold text-gray-100">Source</h3>
-          <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-400">
-            <div className="flex items-center gap-2 text-gray-200">
-              <ImageIcon className="h-4 w-4 text-cyan-300" />
-              <span className="truncate">{image.name}</span>
-            </div>
-            <div className="mt-2">{normalizedDocument.sourceDimensions.width}x{normalizedDocument.sourceDimensions.height}</div>
-            <div>{normalizedDocument.objects.length} objects</div>
-            {navigationImages.length > 1 && <div>{navigationImages.length} images in navigation scope</div>}
-          </div>
-        </section>
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold text-gray-100">Output</h3>
-          <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-400">
-            <div>{activeOutputDimensions?.width || normalizedDocument.canvasDimensions.width}x{activeOutputDimensions?.height || normalizedDocument.canvasDimensions.height}</div>
-            <div>{hasChanges ? 'Unsaved edits' : 'No editor changes'}</div>
-          </div>
-        </section>
-        {onOpenComfyUIWorkflow && (
-          <button type="button" onClick={() => onOpenComfyUIWorkflow(image)} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800">
-            <Workflow className="h-4 w-4" />
-            Open Workflow
-          </button>
-        )}
-        <button type="button" onClick={restoreOriginal} disabled={!hasChanges} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40">
-          <RotateCcw className="h-4 w-4" />
-          Restore Original
-        </button>
-      </div>
-    );
+    return null;
   };
 
   if (!normalizedDocument || !sourceUrl) {
@@ -2164,6 +2179,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                 panStateRef.current = null;
                 setIsPanning(false);
               }}
+              onDoubleClick={handleCanvasDoubleClick}
               onAuxClick={(event) => event.preventDefault()}
             >
               {previewUrl ? (
@@ -2312,10 +2328,10 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                         y={bounds.y + style.fontSize}
                         fill={style.textColor}
                         fontSize={style.fontSize}
-                        fontFamily="system-ui, sans-serif"
+                        fontFamily={style.fontFamily}
                         opacity={style.opacity}
                       >
-                        {object.text || 'Text'}
+                        {object.text || (editingTextObjectId === object.id ? '' : 'Text')}
                       </text>
                     );
                   }
@@ -2332,7 +2348,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                           fontWeight={700}
                           textAnchor="middle"
                           dominantBaseline="middle"
-                          fontFamily="system-ui, sans-serif"
+                          fontFamily={style.fontFamily}
                         >
                           {object.stepNumber || 1}
                         </text>
@@ -2498,6 +2514,39 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                   })}
                 </>
               )}
+              {editingTextObjectId && selectedObject?.type === 'text' && (
+                <textarea
+                  ref={textEditorRef}
+                  value={selectedObject.text || ''}
+                  onChange={(event) => updateSelectedObjectText(event.target.value)}
+                  onBlur={() => setEditingTextObjectId(null)}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      setEditingTextObjectId(null);
+                      return;
+                    }
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      setEditingTextObjectId(null);
+                    }
+                    event.stopPropagation();
+                  }}
+                  className="absolute resize-none overflow-hidden border border-cyan-300/70 bg-gray-950/80 px-1 py-0 text-gray-100 outline-none ring-2 ring-cyan-400/20"
+                  style={{
+                    left: `${(selectedObject.bounds.x / normalizedDocument.canvasDimensions.width) * 100}%`,
+                    top: `${(selectedObject.bounds.y / normalizedDocument.canvasDimensions.height) * 100}%`,
+                    width: `${(selectedObject.bounds.width / normalizedDocument.canvasDimensions.width) * 100}%`,
+                    height: `${(selectedObject.bounds.height / normalizedDocument.canvasDimensions.height) * 100}%`,
+                    color: selectedObject.style.textColor,
+                    fontSize: `${selectedObject.style.fontSize * (displayWidth / normalizedDocument.canvasDimensions.width)}px`,
+                    fontFamily: selectedObject.style.fontFamily,
+                    opacity: selectedObject.style.opacity,
+                  }}
+                  aria-label="Edit text annotation"
+                />
+              )}
             </div>
           </div>
           <div className="flex h-9 shrink-0 items-center justify-between border-t border-gray-800 bg-gray-900 px-4 text-xs text-gray-400">
@@ -2532,7 +2581,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="grid shrink-0 grid-cols-5 gap-1 border-b border-gray-800 bg-gray-900 p-2">
+          <div className="grid shrink-0 grid-cols-3 gap-1 border-b border-gray-800 bg-gray-900 p-2">
             {INSPECTOR_TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -2550,6 +2599,18 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             {renderInspectorContent()}
+          </div>
+          <div className="shrink-0 border-t border-gray-800 bg-gray-950/60 px-4 py-3 text-xs text-gray-400">
+            <div className="flex min-w-0 items-center gap-2 text-gray-200">
+              <ImageIcon className="h-4 w-4 shrink-0 text-cyan-300" />
+              <span className="truncate">{image.name}</span>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+              <span>Source {normalizedDocument.sourceDimensions.width}x{normalizedDocument.sourceDimensions.height}</span>
+              <span>Output {activeOutputDimensions?.width || normalizedDocument.canvasDimensions.width}x{activeOutputDimensions?.height || normalizedDocument.canvasDimensions.height}</span>
+              <span>{normalizedDocument.objects.length} objects</span>
+              <span>{hasChanges ? 'Unsaved edits' : 'No editor changes'}</span>
+            </div>
           </div>
         </aside>
       </div>

@@ -53,6 +53,7 @@ export const DEFAULT_IMAGE_EDITOR_OBJECT_STYLE: ImageEditorObjectStyle = {
   textColor: '#f8fafc',
   strokeWidth: 4,
   fontSize: 32,
+  fontFamily: 'system-ui, sans-serif',
   opacity: 1,
 };
 
@@ -78,6 +79,23 @@ const ADJUSTMENT_RANGES: Record<keyof ImageAdjustments, { min: number; max: numb
 const EFFECT_RANGES: Record<keyof ImageEditEffects, { min: number; max: number }> = {
   sharpen: { min: 0, max: 100 },
   blur: { min: 0, max: 20 },
+};
+
+const ALLOWED_IMAGE_EDITOR_FONT_FAMILIES = new Set([
+  'system-ui, sans-serif',
+  'Arial, sans-serif',
+  'Verdana, sans-serif',
+  'Georgia, serif',
+  '"Times New Roman", serif',
+  '"Courier New", monospace',
+  'Impact, sans-serif',
+]);
+
+const normalizeImageEditorFontFamily = (value: unknown): string => {
+  const fontFamily = typeof value === 'string' ? value : '';
+  return ALLOWED_IMAGE_EDITOR_FONT_FAMILIES.has(fontFamily)
+    ? fontFamily
+    : DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.fontFamily;
 };
 
 const MAX_OUTPUT_DIMENSION = 20000;
@@ -460,6 +478,7 @@ export const normalizeImageEditorObject = (
       textColor: object.style?.textColor || DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.textColor,
       strokeWidth: clampInteger(object.style?.strokeWidth ?? DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.strokeWidth, 1, 80, DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.strokeWidth),
       fontSize: clampInteger(object.style?.fontSize ?? DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.fontSize, 8, 240, DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.fontSize),
+      fontFamily: normalizeImageEditorFontFamily(object.style?.fontFamily),
       opacity: clampNumber(object.style?.opacity ?? DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.opacity, 0, 1, DEFAULT_IMAGE_EDITOR_OBJECT_STYLE.opacity),
     },
   };
@@ -877,7 +896,7 @@ const drawEditorObject = (
     context.stroke();
   } else if (object.type === 'text') {
     context.fillStyle = style.textColor;
-    context.font = `${style.fontSize}px system-ui, sans-serif`;
+    context.font = `${style.fontSize}px ${style.fontFamily}`;
     context.fillText(object.text || 'Text', bounds.x, bounds.y + style.fontSize);
   } else if (object.type === 'step') {
     const radius = Math.max(16, Math.min(bounds.width, bounds.height) / 2);
@@ -886,7 +905,7 @@ const drawEditorObject = (
     context.arc(bounds.x + radius, bounds.y + radius, radius, 0, Math.PI * 2);
     context.fill();
     context.fillStyle = style.textColor;
-    context.font = `700 ${Math.round(radius)}px system-ui, sans-serif`;
+    context.font = `700 ${Math.round(radius)}px ${style.fontFamily}`;
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.fillText(String(object.stepNumber || 1), bounds.x + radius, bounds.y + radius + 1);
