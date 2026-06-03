@@ -2979,9 +2979,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onClick={handleZoomIn}
                 disabled={zoom >= 5}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                title="Zoom In"
+                title={zoom >= 5 ? 'Zoom In (Maximum reached)' : 'Zoom In'}
+                aria-label={zoom >= 5 ? 'Zoom In (Maximum reached)' : 'Zoom In'}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </button>
@@ -2990,9 +2991,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onClick={handleZoomOut}
                 disabled={zoom <= 1}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                title="Zoom Out"
+                title={zoom <= 1 ? 'Zoom Out (Original size)' : 'Zoom Out'}
+                aria-label={zoom <= 1 ? 'Zoom Out (Original size)' : 'Zoom Out'}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                 </svg>
               </button>
@@ -3000,7 +3002,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onClick={handleResetZoom}
                 disabled={zoom <= 1}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 text-xs"
-                title="Reset Zoom"
+                title={zoom <= 1 ? 'Reset Zoom (Already at original size)' : 'Reset Zoom'}
+                aria-label={zoom <= 1 ? 'Reset Zoom (Already at original size)' : 'Reset Zoom'}
               >
                 Reset
               </button>
@@ -3070,6 +3073,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         : 'border-white/10 bg-black/35 hover:bg-black/55'
                     }`}
                     title={isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
+                    aria-label={isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
                   >
                     <SlidersHorizontal className="h-4 w-4" />
                   </button>
@@ -3078,6 +3082,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={() => setDetailsPlacement((current) => current === 'right' ? 'bottom' : 'right')}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
                   title={showSidebarOnRight ? 'Show details on bottom' : 'Show details on right'}
+                  aria-label={showSidebarOnRight ? 'Show details on bottom' : 'Show details on right'}
                 >
                   {showSidebarOnRight ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </button>
@@ -3085,6 +3090,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={() => setIsSidebarCollapsed((current) => !current)}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
                   title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
+                  aria-label={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
                 >
                   {showSidebar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -3092,6 +3098,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={toggleFullscreen}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
                   title={`Fullscreen (${toggleFullscreenKeybinding})`}
+                  aria-label={`Fullscreen (${toggleFullscreenKeybinding})`}
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
