@@ -129,6 +129,7 @@ const electronAPI = {
 
   // --- Invokable renderer-to-main functions ---
   getTheme: () => ipcRenderer.invoke('get-theme'),
+  getZoomFactor: () => ipcRenderer.invoke('get-zoom-factor'),
   trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
   renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),

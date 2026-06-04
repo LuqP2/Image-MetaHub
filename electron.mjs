@@ -3253,6 +3253,8 @@ function setupFileOperationHandlers() {
     };
   });
 
+  ipcMain.handle('get-zoom-factor', () => getMainWindowZoomFactor());
+
   ipcMain.handle('get-app-version', () => {
     return app.getVersion();
   });

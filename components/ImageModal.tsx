@@ -63,6 +63,7 @@ import {
 
 
 const TAG_SUGGESTION_LIMIT = 5;
+type ViewerZoomMode = 'fit' | 'actual' | 'manual';
 
 const buildTagSuggestions = (
   recentTags: string[],
@@ -967,6 +968,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [enableAnimations, isMinimized, modalId, zIndex]);
 
   const [zoom, setZoom] = useState(1);
+  const [viewerZoomMode, setViewerZoomMode] = useState<ViewerZoomMode>('fit');
+  const [windowZoomFactor, setWindowZoomFactor] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -1913,6 +1916,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     setZoom(1);
+    setViewerZoomMode('fit');
     setPan({ x: 0, y: 0 });
     setSlideshowVideoDuration(null);
     revealMediaOverlay();
@@ -1924,46 +1928,78 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     setZoom(1);
+    setViewerZoomMode('fit');
     setPan({ x: 0, y: 0 });
   }, [image.id, isSlideshowMode]);
 
   useEffect(() => {
     setZoom(1);
+    setViewerZoomMode('fit');
     setPan({ x: 0, y: 0 });
     setIsMediaOverlayVisible(false);
     clearMediaOverlayHideTimer();
   }, [clearMediaOverlayHideTimer, isFullscreen]);
 
+  useEffect(() => {
+    const applyWindowZoomFactor = (nextZoomFactor: number) => {
+      setWindowZoomFactor(Number.isFinite(nextZoomFactor) && nextZoomFactor > 0 ? nextZoomFactor : 1);
+    };
+
+    void window.electronAPI?.getZoomFactor?.().then(applyWindowZoomFactor);
+    return window.electronAPI?.onZoomFactorChanged?.(applyWindowZoomFactor);
+  }, []);
+
   const getActualSizeZoom = useCallback(() => {
-    const container = imageContainerRef.current;
+    const imageElement = fullImageElementRef.current;
     const naturalSize = displayedImageNaturalSize;
-    if (!container || !naturalSize || naturalSize.width <= 0 || naturalSize.height <= 0) {
+    if (!imageElement || !naturalSize || naturalSize.width <= 0 || naturalSize.height <= 0) {
       return 1;
     }
 
-    const containerWidth = Math.max(1, container.clientWidth - (isFullViewportModal ? 0 : 16));
-    const containerHeight = Math.max(1, container.clientHeight - (isFullViewportModal ? 0 : 16));
-    const fitScale = Math.min(1, containerWidth / naturalSize.width, containerHeight / naturalSize.height);
-    return Math.max(1 / Math.max(fitScale, 0.01), 1);
-  }, [displayedImageNaturalSize, isFullViewportModal]);
+    const renderedWidth = imageElement.clientWidth;
+    const renderedHeight = imageElement.clientHeight;
+    if (renderedWidth <= 0 || renderedHeight <= 0) {
+      return 1;
+    }
+
+    const safeWindowZoomFactor = Math.max(windowZoomFactor, 0.01);
+    const widthZoom = naturalSize.width / (renderedWidth * safeWindowZoomFactor);
+    const heightZoom = naturalSize.height / (renderedHeight * safeWindowZoomFactor);
+    return Math.max(widthZoom, heightZoom, 0.1);
+  }, [displayedImageNaturalSize, windowZoomFactor]);
 
   const actualSizeZoom = getActualSizeZoom();
+  const minViewerZoom = Math.min(1, actualSizeZoom);
   const maxViewerZoom = Math.max(5, actualSizeZoom);
-  const isActualSizeZoom = actualSizeZoom > 1 && Math.abs(zoom - actualSizeZoom) < 0.05;
-  const zoomLabel = zoom <= 1.01 ? 'Fit' : isActualSizeZoom ? '1:1' : `${Math.round(zoom * 100)}%`;
+  const isActualSizeZoom = viewerZoomMode === 'actual' && Math.abs(zoom - actualSizeZoom) < 0.05;
+  const isFitZoom = viewerZoomMode === 'fit' && Math.abs(zoom - 1) < 0.05;
+  const zoomLabel = isFitZoom ? 'Fit' : isActualSizeZoom ? '1:1' : `${Math.round(zoom * 100)}%`;
+
+  useLayoutEffect(() => {
+    if (viewerZoomMode !== 'actual' || typeof window === 'undefined') {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setZoom(getActualSizeZoom());
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [getActualSizeZoom, viewerZoomMode, windowZoomFactor]);
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
 
     const delta = e.deltaY * -0.01;
-    const newZoom = Math.min(Math.max(1, zoom + delta), maxViewerZoom);
+    const newZoom = Math.min(Math.max(minViewerZoom, zoom + delta), maxViewerZoom);
 
+    setViewerZoomMode('manual');
     setZoom(newZoom);
 
     if (newZoom === 1) {
       setPan({ x: 0, y: 0 });
     }
-  }, [maxViewerZoom, zoom]);
+  }, [maxViewerZoom, minViewerZoom, zoom]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!(e.target instanceof Element) || !e.target.closest('img, video, audio, canvas, [data-media-element="true"]')) {
@@ -2125,26 +2161,30 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [hideOriginalForAdjustmentCompare, isShowingOriginalForAdjustmentCompare]);
 
   const handleZoomIn = () => {
+    setViewerZoomMode('manual');
     setZoom(prev => Math.min(prev + 0.5, maxViewerZoom));
   };
 
   const handleZoomOut = () => {
-    const newZoom = Math.max(zoom - 0.5, 1);
+    const newZoom = Math.max(zoom - 0.5, minViewerZoom);
+    setViewerZoomMode('manual');
     setZoom(newZoom);
-    if (newZoom === 1) {
+    if (Math.abs(newZoom - 1) < 0.01) {
       setPan({ x: 0, y: 0 });
     }
   };
 
   const handleFitToScreen = () => {
+    setViewerZoomMode('fit');
     setZoom(1);
     setPan({ x: 0, y: 0 });
   };
 
   const handleActualSize = () => {
     const nextZoom = getActualSizeZoom();
+    setViewerZoomMode('actual');
     setZoom(nextZoom);
-    if (nextZoom === 1) {
+    if (Math.abs(nextZoom - 1) < 0.01) {
       setPan({ x: 0, y: 0 });
     }
   };
@@ -3379,7 +3419,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <div className="min-w-10 text-center font-mono text-xs text-white/80">{zoomLabel}</div>
               <button
                 onClick={handleZoomOut}
-                disabled={zoom <= 1}
+                disabled={zoom <= minViewerZoom}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
                 title="Zoom Out"
               >
@@ -3389,16 +3429,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </button>
               <button
                 onClick={handleActualSize}
-                disabled={actualSizeZoom <= 1 || isActualSizeZoom}
-                className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 text-xs"
+                className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isActualSizeZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
                 title="Actual Size"
               >
                 1:1
               </button>
               <button
                 onClick={handleFitToScreen}
-                disabled={zoom <= 1}
-                className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 text-xs"
+                className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isFitZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
                 title="Fit to Screen"
               >
                 Fit
