@@ -362,6 +362,29 @@ class IncrementalCacheWriter {
 
 class CacheManager {
   private isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+  private chunkedCacheDeltaLocks = new Map<string, Promise<void>>();
+
+  private async runChunkedCacheDeltaLocked<T>(cacheId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.chunkedCacheDeltaLocks.get(cacheId) ?? Promise.resolve();
+    let release: (() => void) | undefined;
+    const current = previous
+      .catch(() => undefined)
+      .then(() => new Promise<void>((resolve) => {
+        release = resolve;
+      }));
+
+    this.chunkedCacheDeltaLocks.set(cacheId, current);
+    await previous.catch(() => undefined);
+
+    try {
+      return await operation();
+    } finally {
+      release?.();
+      if (this.chunkedCacheDeltaLocks.get(cacheId) === current) {
+        this.chunkedCacheDeltaLocks.delete(cacheId);
+      }
+    }
+  }
 
   // No longer need init() for IndexedDB
   async init(): Promise<void> {
@@ -730,6 +753,7 @@ class CacheManager {
     if (imagesToUpsert.length === 0 && removedImageIds.length === 0 && removedImageNames.length === 0) return;
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    await this.runChunkedCacheDeltaLocked(cacheId, async () => {
     const outputCacheId = `${cacheId}-delta-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const summary = await this.getCacheSummary(directoryPath, scanSubfolders);
     if (!summary) {
@@ -822,6 +846,7 @@ class CacheManager {
     if (!finalizeResult.success) {
       throw new Error(finalizeResult.error || 'Failed to finalize cache delta');
     }
+    });
   }
 
   async replaceCachedImages(

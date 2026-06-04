@@ -2703,6 +2703,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
       const idToDelete = image.id;
       const imageToDelete = image;
+      const sourceDirectory = directories.find((directory) => directory.id === imageToDelete.directoryId);
+      const shouldAwaitWatcherRemoval = Boolean(window.electronAPI && sourceDirectory?.autoWatch);
 
       const hasMoreImages = totalImages > 1;
       
@@ -2716,7 +2718,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       const result = await FileOperations.deleteFile(imageToDelete);
       if (result.success) {
-        onImageDeleted?.(idToDelete);
+        if (!shouldAwaitWatcherRemoval) {
+          onImageDeleted?.(idToDelete);
+        }
         
         if (!hasMoreImages) {
           onClose();
@@ -2725,7 +2729,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         alert(`Failed to delete file: ${result.error}`);
       }
     }
-  }, [currentIndex, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, totalImages]);
+  }, [currentIndex, directories, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, totalImages]);
 
   const scheduleKeyboardNavigation = useCallback((direction: 'next' | 'previous', isRepeatedKey = false) => {
     pendingKeyboardNavigationRef.current = direction;

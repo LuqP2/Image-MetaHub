@@ -118,6 +118,14 @@ const RIGHT_SIDEBAR_MIN_WIDTH = 320;
 const RIGHT_SIDEBAR_MAX_WIDTH = 640;
 const SIDEBAR_COLLAPSED_CONTENT_OFFSET = 48;
 const MAIN_CONTENT_MIN_WIDTH = 560;
+const WATCHED_REMOVAL_CACHE_DELTA_DELAY_MS = 750;
+
+interface PendingWatchedRemovalCacheDelta {
+  directory: Pick<Directory, 'id' | 'path' | 'name'>;
+  removedIds: Set<string>;
+  removedNames: Set<string>;
+  timerId: number | null;
+}
 
 const getImageTimestamp = (image: IndexedImage): number => image.contentModifiedMs ?? image.lastModified ?? 0;
 
@@ -442,6 +450,7 @@ export default function App() {
   } | null>(null);
   const lastOpenedModalImageIdRef = useRef<string | null>(null);
   const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
+  const watchedRemovalCacheDeltaQueueRef = useRef<Map<string, PendingWatchedRemovalCacheDelta>>(new Map());
   const appProfilerOnRender = useMemo(() => createProfilerOnRender('App'), []);
 
   const queueCount = useGenerationQueueStore((state) =>
@@ -819,6 +828,97 @@ export default function App() {
     payload: WatchedFilesRemovedPayload
   ) => resolveWatchedRemovalIdsForDirectory(directory, payload, useImageStore.getState().images), []);
 
+  const flushWatchedRemovalCacheDelta = useCallback((directoryId: string) => {
+    const pending = watchedRemovalCacheDeltaQueueRef.current.get(directoryId);
+    if (!pending) {
+      return;
+    }
+
+    if (pending.timerId !== null) {
+      window.clearTimeout(pending.timerId);
+      pending.timerId = null;
+    }
+
+    watchedRemovalCacheDeltaQueueRef.current.delete(directoryId);
+
+    const removedIds = Array.from(pending.removedIds);
+    const removedNames = Array.from(pending.removedNames);
+    if (removedIds.length === 0 && removedNames.length === 0) {
+      return;
+    }
+
+    void (async () => {
+      const activeScanSubfolders = useImageStore.getState().scanSubfolders;
+      const cacheModes = Array.from(new Set([activeScanSubfolders, !activeScanSubfolders]));
+
+      for (const scanSubfoldersMode of cacheModes) {
+        await cacheManager.applyChunkedCacheDelta(
+          pending.directory.path,
+          pending.directory.name,
+          [],
+          removedIds,
+          removedNames,
+          scanSubfoldersMode,
+        );
+      }
+    })().catch((error) => {
+      console.error('Failed to update cache after watched file removal:', error);
+    });
+  }, []);
+
+  const scheduleWatchedRemovalCacheDelta = useCallback((
+    directory: Directory,
+    removedIds: string[],
+    removedNames: string[]
+  ) => {
+    if (removedIds.length === 0 && removedNames.length === 0) {
+      return;
+    }
+
+    let pending = watchedRemovalCacheDeltaQueueRef.current.get(directory.id);
+    if (!pending) {
+      pending = {
+        directory: {
+          id: directory.id,
+          path: directory.path,
+          name: directory.name,
+        },
+        removedIds: new Set(),
+        removedNames: new Set(),
+        timerId: null,
+      };
+      watchedRemovalCacheDeltaQueueRef.current.set(directory.id, pending);
+    } else {
+      pending.directory = {
+        id: directory.id,
+        path: directory.path,
+        name: directory.name,
+      };
+    }
+
+    removedIds.forEach((imageId) => pending!.removedIds.add(imageId));
+    removedNames.forEach((imageName) => pending!.removedNames.add(imageName));
+
+    if (pending.timerId !== null) {
+      window.clearTimeout(pending.timerId);
+    }
+
+    pending.timerId = window.setTimeout(() => {
+      flushWatchedRemovalCacheDelta(directory.id);
+    }, WATCHED_REMOVAL_CACHE_DELTA_DELAY_MS);
+  }, [flushWatchedRemovalCacheDelta]);
+
+  useEffect(() => {
+    return () => {
+      watchedRemovalCacheDeltaQueueRef.current.forEach((pending) => {
+        if (pending.timerId !== null) {
+          window.clearTimeout(pending.timerId);
+        }
+      });
+      watchedRemovalCacheDeltaQueueRef.current.clear();
+    };
+  }, []);
+
   // Listen for new images from file watcher
   useEffect(() => {
     if (!window.electronAPI) return;
@@ -918,25 +1018,7 @@ export default function App() {
         }));
       }
 
-      window.setTimeout(() => {
-        const activeScanSubfolders = useImageStore.getState().scanSubfolders;
-        const cacheModes = Array.from(new Set([activeScanSubfolders, !activeScanSubfolders]));
-
-        Promise.all(
-          cacheModes.map((scanSubfoldersMode) =>
-            cacheManager.applyChunkedCacheDelta(
-              directory.path,
-              directory.name,
-              [],
-              removedIds,
-              removedNames,
-              scanSubfoldersMode,
-            )
-          )
-        ).catch((error) => {
-          console.error('Failed to update cache after watched file removal:', error);
-        });
-      }, 0);
+      scheduleWatchedRemovalCacheDelta(directory, removedIds, removedNames);
 
       const removedCount = Math.max(removedIds.length, removedNames.length);
       setNewImagesToast({
@@ -945,7 +1027,7 @@ export default function App() {
     });
 
     return unsubscribe;
-  }, [directories, removeImages, resolveWatchedRemovalIds]);
+  }, [directories, removeImages, resolveWatchedRemovalIds, scheduleWatchedRemovalCacheDelta]);
 
   useEffect(() => {
     if (!window.electronAPI?.onTransferIndexedImagesProgress) return;
