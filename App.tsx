@@ -249,11 +249,25 @@ export default function App() {
   const availableSchedulers = useImageStore((state) => state.availableSchedulers);
   const availableDimensions = useImageStore((state) => state.availableDimensions);
   const selectedModels = useImageStore((state) => state.selectedModels);
+  const excludedModels = useImageStore((state) => state.excludedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
+  const excludedLoras = useImageStore((state) => state.excludedLoras);
   const selectedSamplers = useImageStore((state) => state.selectedSamplers);
+  const excludedSamplers = useImageStore((state) => state.excludedSamplers);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
+  const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
+  const selectedGenerators = useImageStore((state) => state.selectedGenerators);
+  const excludedGenerators = useImageStore((state) => state.excludedGenerators);
+  const selectedGpuDevices = useImageStore((state) => state.selectedGpuDevices);
+  const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
   const advancedFilters = useImageStore((state) => state.advancedFilters);
   const selectedRatings = useImageStore((state) => state.selectedRatings);
+  const selectedTags = useImageStore((state) => state.selectedTags);
+  const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedTagsMatchMode = useImageStore((state) => state.selectedTagsMatchMode);
+  const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+  const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
+  const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
   const setSelectedTags = useImageStore((state) => state.setSelectedTags);
   const setExcludedTags = useImageStore((state) => state.setExcludedTags);
   const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
@@ -299,6 +313,7 @@ export default function App() {
   const loadAutomationRules = useImageStore((state) => state.loadAutomationRules);
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
+  const randomSeed = useImageStore((state) => state.randomSeed);
   const reshuffle = useImageStore((state) => state.reshuffle);
   const getResolvedCollectionImages = useImageStore((state) => state.getResolvedCollectionImages);
   const getResolvedFilteredCollectionImages = useImageStore((state) => state.getResolvedFilteredCollectionImages);
@@ -2037,22 +2052,54 @@ export default function App() {
       lastImageId,
       searchQuery,
       selectedModels.join('\u001f'),
+      excludedModels.join('\u001f'),
       selectedLoras.join('\u001f'),
+      excludedLoras.join('\u001f'),
       selectedSamplers.join('\u001f'),
+      excludedSamplers.join('\u001f'),
       selectedSchedulers.join('\u001f'),
+      excludedSchedulers.join('\u001f'),
+      selectedGenerators.join('\u001f'),
+      excludedGenerators.join('\u001f'),
+      selectedGpuDevices.join('\u001f'),
+      excludedGpuDevices.join('\u001f'),
+      selectedTags.join('\u001f'),
+      excludedTags.join('\u001f'),
+      selectedTagsMatchMode,
+      selectedAutoTags.join('\u001f'),
+      excludedAutoTags.join('\u001f'),
+      favoriteFilterMode,
       selectedRatings.join('\u001f'),
+      JSON.stringify(advancedFilters),
       sortOrder,
+      randomSeed,
       groupBy,
     ].join('\u001e');
   }, [
+    advancedFilters,
+    excludedAutoTags,
+    excludedGenerators,
+    excludedGpuDevices,
+    excludedLoras,
+    excludedModels,
+    excludedSamplers,
+    excludedSchedulers,
+    excludedTags,
+    favoriteFilterMode,
     groupBy,
+    randomSeed,
     safeFilteredImages,
     searchQuery,
+    selectedAutoTags,
+    selectedGenerators,
+    selectedGpuDevices,
     selectedLoras,
     selectedModels,
     selectedRatings,
     selectedSamplers,
     selectedSchedulers,
+    selectedTags,
+    selectedTagsMatchMode,
     sortOrder,
   ]);
 
@@ -2066,9 +2113,56 @@ export default function App() {
       firstImageId,
       lastImageId,
       searchQuery,
+      selectedModels.join('\u001f'),
+      excludedModels.join('\u001f'),
+      selectedLoras.join('\u001f'),
+      excludedLoras.join('\u001f'),
+      selectedSamplers.join('\u001f'),
+      excludedSamplers.join('\u001f'),
+      selectedSchedulers.join('\u001f'),
+      excludedSchedulers.join('\u001f'),
+      selectedGenerators.join('\u001f'),
+      excludedGenerators.join('\u001f'),
+      selectedGpuDevices.join('\u001f'),
+      excludedGpuDevices.join('\u001f'),
+      selectedTags.join('\u001f'),
+      excludedTags.join('\u001f'),
+      selectedTagsMatchMode,
+      selectedAutoTags.join('\u001f'),
+      excludedAutoTags.join('\u001f'),
+      favoriteFilterMode,
+      selectedRatings.join('\u001f'),
+      JSON.stringify(advancedFilters),
       sortOrder,
+      randomSeed,
     ].join('\u001e');
-  }, [activeCollectionId, collectionFilteredImages, searchQuery, sortOrder]);
+  }, [
+    activeCollectionId,
+    advancedFilters,
+    collectionFilteredImages,
+    excludedAutoTags,
+    excludedGenerators,
+    excludedGpuDevices,
+    excludedLoras,
+    excludedModels,
+    excludedSamplers,
+    excludedSchedulers,
+    excludedTags,
+    favoriteFilterMode,
+    randomSeed,
+    searchQuery,
+    selectedAutoTags,
+    selectedGenerators,
+    selectedGpuDevices,
+    selectedLoras,
+    selectedModels,
+    selectedRatings,
+    selectedSamplers,
+    selectedSchedulers,
+    selectedTags,
+    selectedTagsMatchMode,
+    sortOrder,
+  ]);
 
   useEffect(() => {
     if (previousLibraryGridSignatureRef.current === null) {

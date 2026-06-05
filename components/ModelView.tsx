@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -48,6 +48,7 @@ export const ModelView: React.FC<ModelViewProps> = ({
 
   const [internalPage, setInternalPage] = useState(1);
   const [sortBy] = useState<'count' | 'name'>('count');
+  const previousActiveModelNameRef = useRef(activeModelName);
   const page = controlledPage ?? internalPage;
 
   const modelEntries = useMemo(() => {
@@ -86,6 +87,22 @@ export const ModelView: React.FC<ModelViewProps> = ({
   }, [activeModelName, images, sortBy]);
 
   const totalPages = itemsPerPage === -1 ? 1 : Math.ceil(modelEntries.length / itemsPerPage);
+
+  useEffect(() => {
+    if (previousActiveModelNameRef.current === activeModelName) {
+      return;
+    }
+
+    previousActiveModelNameRef.current = activeModelName;
+    if (!activeModelName) {
+      return;
+    }
+
+    onPageChange?.(1);
+    if (controlledPage == null) {
+      setInternalPage(1);
+    }
+  }, [activeModelName, controlledPage, onPageChange]);
 
   useEffect(() => {
     if (page > totalPages && totalPages > 0) {

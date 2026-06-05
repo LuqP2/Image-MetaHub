@@ -1210,6 +1210,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     }
   }, [getGridScrollElement]);
 
+  const getScrollRestoreKey = useCallback((scrollTop: number) => (
+    `${scrollResetKey ?? 'grid'}:${isInfinite ? 'virtual' : 'static'}:${Math.round(Math.max(0, scrollTop))}`
+  ), [isInfinite, scrollResetKey]);
+
   useEffect(() => {
     if (lastScrollResetKeyRef.current === scrollResetKey) {
       return;
@@ -1220,12 +1224,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       return;
     }
 
+    lastRestoredScrollKeyRef.current = getScrollRestoreKey(initialScrollTop);
     restoreGridScrollPosition(0);
     onScrollPositionChange?.(0);
-  }, [onScrollPositionChange, restoreGridScrollPosition, scrollResetKey]);
+  }, [getScrollRestoreKey, initialScrollTop, onScrollPositionChange, restoreGridScrollPosition, scrollResetKey]);
 
   useEffect(() => {
-    const restoreKey = `${scrollResetKey ?? 'grid'}:${isInfinite ? 'virtual' : 'static'}:${Math.round(Math.max(0, initialScrollTop))}`;
+    const restoreKey = getScrollRestoreKey(initialScrollTop);
     if (lastRestoredScrollKeyRef.current === restoreKey) {
       return;
     }
@@ -1247,7 +1252,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       window.cancelAnimationFrame(firstFrame);
       window.cancelAnimationFrame(secondFrame);
     };
-  }, [initialScrollTop, isInfinite, restoreGridScrollPosition, scrollResetKey]);
+  }, [getScrollRestoreKey, initialScrollTop, restoreGridScrollPosition]);
 
   const getActiveColumnCount = useCallback(() => {
     if (isInfinite) {
