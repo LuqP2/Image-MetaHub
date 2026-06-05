@@ -3328,7 +3328,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     if (naturalWidth > 0 && naturalHeight > 0) {
                       setDisplayedImageNaturalSize({ width: naturalWidth, height: naturalHeight });
                     }
-                    if (isFullImageSourceReady && naturalWidth > 0 && naturalHeight > 0) {
+                    const loadedUrl = target.currentSrc || target.src;
+                    const loadedSourceImage = Boolean(imageUrl && loadedUrl === imageUrl);
+                    if (isFullImageSourceReady && loadedSourceImage && naturalWidth > 0 && naturalHeight > 0) {
                       setImageEditSourceDimensions({ width: naturalWidth, height: naturalHeight });
                     }
                     updateCropImageBounds();

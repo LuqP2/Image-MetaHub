@@ -373,6 +373,37 @@ const toCanvasPercentBounds = (bounds: ImageEditorObject['bounds'], dimensions: 
   height: `${(bounds.height / dimensions.height) * 100}%`,
 });
 
+const areDimensionsEqual = (
+  first: { width: number; height: number },
+  second: { width: number; height: number },
+) => first.width === second.width && first.height === second.height;
+
+const remapObjectToCanvasDimensions = (
+  object: ImageEditorObject,
+  from: { width: number; height: number },
+  to: { width: number; height: number },
+): ImageEditorObject => {
+  const scaleX = to.width / Math.max(1, from.width);
+  const scaleY = to.height / Math.max(1, from.height);
+  const bounds = {
+    x: clamp(object.bounds.x * scaleX, 0, Math.max(0, to.width - 1)),
+    y: clamp(object.bounds.y * scaleY, 0, Math.max(0, to.height - 1)),
+    width: clamp(object.bounds.width * scaleX, 1, to.width),
+    height: clamp(object.bounds.height * scaleY, 1, to.height),
+  };
+  bounds.width = clamp(bounds.width, 1, Math.max(1, to.width - bounds.x));
+  bounds.height = clamp(bounds.height, 1, Math.max(1, to.height - bounds.y));
+
+  return {
+    ...object,
+    bounds,
+    points: object.points?.map((point) => ({
+      x: clamp(point.x * scaleX, 0, to.width),
+      y: clamp(point.y * scaleY, 0, to.height),
+    })),
+  };
+};
+
 const getEditorCursor = (tool: ImageEditorTool, isPanning: boolean) => {
   if (isPanning) return 'grabbing';
   switch (tool) {
@@ -1008,7 +1039,30 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   }, [documentState]);
 
   const updateRecipe = useCallback((recipe: ImageEditorDocument['recipe']) => {
-    commitDocument((current) => ({ ...current, recipe: normalizeImageEditRecipe(recipe, current.sourceDimensions) }), 'Edit recipe');
+    commitDocument((current) => {
+      const normalizedRecipe = normalizeImageEditRecipe(recipe, current.sourceDimensions);
+      const nextCanvasDimensions = getImageEditOutputDimensions(normalizedRecipe, current.sourceDimensions);
+      const currentCanvasDimensions = current.canvasDimensions;
+
+      if (areDimensionsEqual(currentCanvasDimensions, nextCanvasDimensions)) {
+        return {
+          ...current,
+          recipe: normalizedRecipe,
+          canvasDimensions: nextCanvasDimensions,
+        };
+      }
+
+      return {
+        ...current,
+        recipe: normalizedRecipe,
+        canvasDimensions: nextCanvasDimensions,
+        objects: current.objects.map((object) => remapObjectToCanvasDimensions(
+          object,
+          currentCanvasDimensions,
+          nextCanvasDimensions,
+        )),
+      };
+    }, 'Edit recipe');
   }, [commitDocument]);
 
   const updateSelectedObjectStyle = useCallback((style: Partial<ImageEditorObjectStyle>) => {

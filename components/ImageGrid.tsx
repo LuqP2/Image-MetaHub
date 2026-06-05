@@ -41,7 +41,7 @@ import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
-import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import { groupImages, type ImageGroup, type ImageGroupByMode, type ImageGroupingSortOrder } from '../utils/imageGrouping';
 import {
   beginPerformanceFlow,
@@ -1409,6 +1409,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   const openImageEditor = useCallback(() => {
     if (!contextMenu.image || !onOpenImageEditor) return;
+    if (
+      isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) ||
+      isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) ||
+      getFileExtension(contextMenu.image.name) === '.gif'
+    ) {
+      return;
+    }
     onOpenImageEditor(contextMenu.image);
     hideContextMenu();
   }, [contextMenu.image, hideContextMenu, onOpenImageEditor]);
@@ -1453,6 +1460,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   const contextImagePrompt = contextMenu.image?.prompt || contextMenu.image?.metadata?.normalizedMetadata?.prompt;
   const canFindSimilar = Boolean(contextImagePrompt) && Boolean(onFindSimilar);
+  const canOpenContextImageEditor = Boolean(
+    onOpenImageEditor &&
+    contextMenu.image &&
+    !isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) &&
+    !isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) &&
+    getFileExtension(contextMenu.image.name) !== '.gif',
+  );
 
   const getContextTargetImages = useCallback(() => {
     if (!contextMenu.image) {
@@ -2330,7 +2344,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <span className="flex-1">Find similar...</span>
           </button>
 
-          {onOpenImageEditor && (
+          {canOpenContextImageEditor && (
             <button
               onClick={openImageEditor}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
