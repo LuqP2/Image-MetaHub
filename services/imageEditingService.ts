@@ -1309,7 +1309,13 @@ export const embedMetaHubMetadataInPngBytes = (
     return pngBytes;
   }
 
-  const normalizedRecipe = normalizeImageEditRecipe(recipeOrAdjustments);
+  const sourceDimensions = metadata && Number.isFinite(metadata.width) && Number.isFinite(metadata.height)
+    ? {
+        width: Math.max(1, Math.round(metadata.width || 1)),
+        height: Math.max(1, Math.round(metadata.height || 1)),
+      }
+    : undefined;
+  const normalizedRecipe = normalizeImageEditRecipe(recipeOrAdjustments, sourceDimensions);
   const chunks: Uint8Array[] = [];
 
   if (metadata) {

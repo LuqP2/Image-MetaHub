@@ -1896,6 +1896,7 @@ export default function App() {
       : [image.id];
     setEditorImageId(image.id);
     setEditorNavigationImageIds(navigationImageIds);
+    suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
     setLibraryView('editor');
   }, [setSelectedImage]);
@@ -1906,7 +1907,6 @@ export default function App() {
     navigationImages?: IndexedImage[],
   ) => {
     handleOpenImageEditor(image, navigationImages);
-    suppressSelectedImageModalOpenRef.current = image.id;
     setOpenImageModals((current) => current.filter((modal) => modal.modalId !== modalId));
     setActiveImageModalId((current) => (current === modalId ? null : current));
   }, [handleOpenImageEditor]);

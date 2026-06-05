@@ -122,6 +122,26 @@ const TOOL_DEFS: Array<{ id: ImageEditorTool; label: string; icon: React.ReactNo
   { id: 'pixelate', label: 'Pixelate', icon: <Shield className="h-4 w-4" /> },
 ];
 
+const readPngDimensions = (bytes: Uint8Array): { width: number; height: number } | null => {
+  const isPng = bytes.byteLength >= 24
+    && bytes[0] === 0x89
+    && bytes[1] === 0x50
+    && bytes[2] === 0x4e
+    && bytes[3] === 0x47
+    && bytes[12] === 0x49
+    && bytes[13] === 0x48
+    && bytes[14] === 0x44
+    && bytes[15] === 0x52;
+  if (!isPng) {
+    return null;
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset + 16, 8);
+  const width = view.getUint32(0, false);
+  const height = view.getUint32(4, false);
+  return width > 0 && height > 0 ? { width, height } : null;
+};
+
 const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
   { id: 'edit', label: 'Edit' },
   { id: 'style', label: 'Style' },
@@ -870,7 +890,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     const sourceImage = await ensureHydratedImage();
     const sourceMetadata = getUsableNormalizedMetadata(sourceImage);
     const rawMetadata = sourceImage.metadata as Record<string, unknown> | undefined;
-    const outputDimensions = {
+    const outputDimensions = readPngDimensions(bytes) || {
       width: normalizedDocument.canvasDimensions.width,
       height: normalizedDocument.canvasDimensions.height,
     };

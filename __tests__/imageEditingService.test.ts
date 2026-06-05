@@ -318,6 +318,44 @@ describe('imageEditingService', () => {
     expect(payload.edit.output_dimensions).toEqual({ width: 512, height: 384 });
   });
 
+  it('preserves resize edits in embedded MetaHub recipe metadata', () => {
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x00,
+      0x49, 0x45, 0x4e, 0x44,
+      0xae, 0x42, 0x60, 0x82,
+    ]);
+
+    const output = embedMetaHubMetadataInPngBytes(
+      pngBytes,
+      {
+        prompt: 'resized edit',
+        width: 1024,
+        height: 768,
+      },
+      {
+        ...DEFAULT_IMAGE_EDIT_RECIPE,
+        resize: {
+          enabled: true,
+          width: 512,
+          height: 384,
+          lockAspectRatio: true,
+        },
+      },
+      undefined,
+      { width: 512, height: 384 },
+    );
+    const chunks = collectPngTextChunks(output);
+    const payload = JSON.parse(chunks.imagemetahub_data);
+
+    expect(payload.edit.recipe.resize).toEqual({
+      enabled: true,
+      width: 512,
+      height: 384,
+      lockAspectRatio: true,
+    });
+  });
+
   it('preserves embedded ComfyUI workflow chunks when saving edited PNG bytes', () => {
     const pngBytes = new Uint8Array([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,

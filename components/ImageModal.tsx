@@ -144,6 +144,64 @@ const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefi
   };
 };
 
+const firstNonBlankString = (...values: Array<string | undefined | null>): string | undefined => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const firstNonEmptyArray = <T,>(...values: Array<T[] | undefined | null>): T[] | undefined => {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const firstDefined = <T,>(...values: Array<T | undefined | null>): T | undefined => {
+  for (const value of values) {
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const mergeEditedNormalizedMetadata = (
+  parsedMetadata?: BaseMetadata,
+  sourceMetadata?: BaseMetadata,
+): BaseMetadata | undefined => {
+  if (!parsedMetadata) {
+    return sourceMetadata;
+  }
+  if (!sourceMetadata) {
+    return parsedMetadata;
+  }
+
+  const merged: BaseMetadata = {
+    ...sourceMetadata,
+    ...parsedMetadata,
+    prompt: firstNonBlankString(parsedMetadata.prompt, sourceMetadata.prompt) || '',
+    negativePrompt: firstNonBlankString(parsedMetadata.negativePrompt, sourceMetadata.negativePrompt) || '',
+    model: firstNonBlankString(parsedMetadata.model, sourceMetadata.model) || '',
+    models: firstNonEmptyArray(parsedMetadata.models, sourceMetadata.models) || [],
+    loras: firstNonEmptyArray(parsedMetadata.loras, sourceMetadata.loras) || [],
+    sampler: firstNonBlankString(parsedMetadata.sampler, sourceMetadata.sampler) || '',
+    scheduler: firstNonBlankString(parsedMetadata.scheduler, sourceMetadata.scheduler) || '',
+    board: firstNonBlankString(parsedMetadata.board, sourceMetadata.board),
+    cfgScale: firstDefined(parsedMetadata.cfgScale, parsedMetadata.cfg_scale, sourceMetadata.cfgScale, sourceMetadata.cfg_scale),
+    cfg_scale: firstDefined(parsedMetadata.cfg_scale, parsedMetadata.cfgScale, sourceMetadata.cfg_scale, sourceMetadata.cfgScale),
+    steps: firstDefined(parsedMetadata.steps, sourceMetadata.steps) || 0,
+    seed: firstDefined(parsedMetadata.seed, sourceMetadata.seed),
+  };
+
+  return merged;
+};
+
 const scheduleEditedImageCacheUpsert = (
   directory: { path: string; name: string },
   image: IndexedImage,
@@ -2234,13 +2292,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    if (!liveImage.handle) {
+    if (!liveImage.handle && !directoryPath) {
       setError('ComfyUI Upscale needs desktop file access to upload the source image.');
       return;
     }
 
     await generateWithComfyUI(liveImage, {
       workflowMode: 'upscale',
+      directoryPath,
       customMetadata: {
         prompt: liveImage.prompt || 'ComfyUI upscale',
       },
@@ -2250,6 +2309,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     comfyUIEnabled,
     comfyUIServerUrl,
     generateWithComfyUI,
+    directoryPath,
     liveImage,
     setError,
     showProModal,
@@ -2332,26 +2392,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (targetDirectory) {
         const indexedImage = await indexImageFileAtPath(saveResult.path, targetDirectory);
         if (indexedImage) {
-          const savedMetadata = sourceMetadata
-            ? {
-                ...indexedImage.metadata,
-                normalizedMetadata: sourceMetadata,
-              }
+          const savedNormalizedMetadata = mergeEditedNormalizedMetadata(
+            indexedImage.metadata?.normalizedMetadata as BaseMetadata | undefined,
+            sourceMetadata,
+          );
+          const savedMetadata = savedNormalizedMetadata
+            ? { ...indexedImage.metadata, normalizedMetadata: savedNormalizedMetadata }
             : indexedImage.metadata;
           const savedImage: IndexedImage = {
             ...indexedImage,
             metadata: savedMetadata,
-            metadataString: sourceMetadata ? JSON.stringify(savedMetadata) : liveImage.metadataString,
-            models: sourceMetadata?.models || liveImage.models,
-            loras: sourceMetadata?.loras || liveImage.loras,
-            sampler: sourceMetadata?.sampler || liveImage.sampler,
-            scheduler: sourceMetadata?.scheduler || liveImage.scheduler,
-            board: sourceMetadata?.board || liveImage.board,
-            prompt: sourceMetadata?.prompt || liveImage.prompt,
-            negativePrompt: sourceMetadata?.negativePrompt || liveImage.negativePrompt,
-            cfgScale: sourceMetadata?.cfgScale ?? sourceMetadata?.cfg_scale ?? liveImage.cfgScale,
-            steps: sourceMetadata?.steps || liveImage.steps,
-            seed: sourceMetadata?.seed ?? liveImage.seed,
+            metadataString: savedNormalizedMetadata ? JSON.stringify(savedMetadata) : liveImage.metadataString,
+            models: savedNormalizedMetadata?.models || liveImage.models,
+            loras: savedNormalizedMetadata?.loras || liveImage.loras,
+            sampler: savedNormalizedMetadata?.sampler || liveImage.sampler,
+            scheduler: savedNormalizedMetadata?.scheduler || liveImage.scheduler,
+            board: savedNormalizedMetadata?.board || liveImage.board,
+            prompt: savedNormalizedMetadata?.prompt || liveImage.prompt,
+            negativePrompt: savedNormalizedMetadata?.negativePrompt || liveImage.negativePrompt,
+            cfgScale: savedNormalizedMetadata?.cfgScale ?? savedNormalizedMetadata?.cfg_scale ?? liveImage.cfgScale,
+            steps: savedNormalizedMetadata?.steps || liveImage.steps,
+            seed: savedNormalizedMetadata?.seed ?? liveImage.seed,
             workflowNodes: liveImage.workflowNodes,
             enrichmentState: 'enriched',
           };
@@ -2435,27 +2496,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
         throw new Error('The edited image was saved, but metadata reparsing returned no image.');
       }
 
-      const preservedMetadata = sourceMetadata
-        ? {
-            ...reparsed.metadata,
-            normalizedMetadata: sourceMetadata,
-          }
+      const preservedNormalizedMetadata = mergeEditedNormalizedMetadata(
+        reparsed.metadata?.normalizedMetadata as BaseMetadata | undefined,
+        sourceMetadata,
+      );
+      const preservedMetadata = preservedNormalizedMetadata
+        ? { ...reparsed.metadata, normalizedMetadata: preservedNormalizedMetadata }
         : reparsed.metadata;
       const preservedMetadataImage: IndexedImage = {
         ...liveImage,
         ...reparsed,
         metadata: preservedMetadata,
-        metadataString: sourceMetadata ? JSON.stringify(preservedMetadata) : liveImage.metadataString,
-        models: sourceMetadata?.models || liveImage.models,
-        loras: sourceMetadata?.loras || liveImage.loras,
-        sampler: sourceMetadata?.sampler || liveImage.sampler,
-        scheduler: sourceMetadata?.scheduler || liveImage.scheduler,
-        board: sourceMetadata?.board || liveImage.board,
-        prompt: sourceMetadata?.prompt || liveImage.prompt,
-        negativePrompt: sourceMetadata?.negativePrompt || liveImage.negativePrompt,
-        cfgScale: sourceMetadata?.cfgScale ?? sourceMetadata?.cfg_scale ?? liveImage.cfgScale,
-        steps: sourceMetadata?.steps || liveImage.steps,
-        seed: sourceMetadata?.seed ?? liveImage.seed,
+        metadataString: preservedNormalizedMetadata ? JSON.stringify(preservedMetadata) : liveImage.metadataString,
+        models: preservedNormalizedMetadata?.models || liveImage.models,
+        loras: preservedNormalizedMetadata?.loras || liveImage.loras,
+        sampler: preservedNormalizedMetadata?.sampler || liveImage.sampler,
+        scheduler: preservedNormalizedMetadata?.scheduler || liveImage.scheduler,
+        board: preservedNormalizedMetadata?.board || liveImage.board,
+        prompt: preservedNormalizedMetadata?.prompt || liveImage.prompt,
+        negativePrompt: preservedNormalizedMetadata?.negativePrompt || liveImage.negativePrompt,
+        cfgScale: preservedNormalizedMetadata?.cfgScale ?? preservedNormalizedMetadata?.cfg_scale ?? liveImage.cfgScale,
+        steps: preservedNormalizedMetadata?.steps || liveImage.steps,
+        seed: preservedNormalizedMetadata?.seed ?? liveImage.seed,
         workflowNodes: liveImage.workflowNodes,
         handle: liveImage.handle,
         thumbnailHandle: liveImage.thumbnailHandle,
