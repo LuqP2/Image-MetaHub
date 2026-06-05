@@ -1288,10 +1288,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     let canceled = false;
     setIsRenderingEditedPreview(true);
     const timeoutId = window.setTimeout(async () => {
-      const editableSource = await mediaSourceCache.getRendererOwnedObjectUrl(liveImage, directoryPath);
       try {
+        const editableSource = await mediaSourceCache.getRendererOwnedObjectUrl(liveImage, directoryPath);
         const blob = await renderEditedImageToPngBlob(editableSource.url, normalizedImageEditRecipe);
         if (canceled) {
+          editableSource.revoke();
           return;
         }
         const nextUrl = URL.createObjectURL(blob);
@@ -1301,12 +1302,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
           }
           return nextUrl;
         });
+        editableSource.revoke();
       } catch (error) {
         if (!canceled) {
           console.warn('[ImageModal] Failed to render edited preview:', error);
         }
       } finally {
-        editableSource.revoke();
         if (!canceled) {
           setIsRenderingEditedPreview(false);
         }
