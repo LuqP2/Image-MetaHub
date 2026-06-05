@@ -871,15 +871,18 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
                 : undefined,
             }
           : undefined;
+        const seedSource = metahubData.metadata_sources?.seed;
+        const seedIsExplicit = seedSource === 'detected' || seedSource === 'manual_override' || metahubData.metadata_status === 'complete';
+        const seed = firstNonNullish(
+          metahubData.seed === 0 && !seedIsExplicit && graphMetadata.seed !== undefined ? graphMetadata.seed : metahubData.seed,
+          graphMetadata.seed
+        );
 
         // Map MetaHub chunk fields to expected format
         return {
           prompt: firstNonBlankString(metahubData.prompt, graphMetadata.prompt) || '',
           negativePrompt: firstNonBlankString(metahubData.negativePrompt, graphMetadata.negativePrompt) || '',
-          seed: firstNonNullish(
-            metahubData.seed === 0 && graphMetadata.seed !== undefined ? graphMetadata.seed : metahubData.seed,
-            graphMetadata.seed
-          ),
+          seed,
           steps: firstNonNullish(metahubData.steps, graphMetadata.steps),
           cfg: firstNonNullish(metahubData.cfg, graphMetadata.cfg),
           sampler_name: firstNonBlankString(metahubData.sampler_name, graphMetadata.sampler_name) || '',

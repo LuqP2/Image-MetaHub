@@ -18,7 +18,7 @@ import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import RenameImageModal from './RenameImageModal';
-import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import { groupImages, type ImageGroupByMode, type ImageGroupingSortOrder, type ImageGroupRenderItem } from '../utils/imageGrouping';
 
 interface ImageTableProps {
@@ -177,6 +177,13 @@ const ImageTable: React.FC<ImageTableProps> = ({
     if (!contextMenu.image || !onOpenImageEditor) {
       return;
     }
+    if (
+      isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) ||
+      isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) ||
+      getFileExtension(contextMenu.image.name) === '.gif'
+    ) {
+      return;
+    }
 
     onOpenImageEditor(contextMenu.image);
     hideContextMenu();
@@ -196,6 +203,13 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
   const contextImagePrompt = contextMenu.image?.prompt || contextMenu.image?.metadata?.normalizedMetadata?.prompt;
   const canFindSimilar = Boolean(contextImagePrompt) && Boolean(onFindSimilar);
+  const canOpenContextImageEditor = Boolean(
+    onOpenImageEditor &&
+    contextMenu.image &&
+    !isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) &&
+    !isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) &&
+    getFileExtension(contextMenu.image.name) !== '.gif',
+  );
 
   const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
     const targetImageIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
@@ -787,7 +801,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
             Find similar...
           </button>
 
-          {onOpenImageEditor && (
+          {canOpenContextImageEditor && (
             <button
               onClick={openImageEditor}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"

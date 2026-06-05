@@ -1196,6 +1196,16 @@ const buildMetaHubEditPayload = (
     sourceImageId?: string;
   },
 ) => {
+  const payloadWidth = Number.isFinite(outputDimensions?.width)
+    ? outputDimensions?.width
+    : Number.isFinite(metadata.width)
+      ? metadata.width
+      : 0;
+  const payloadHeight = Number.isFinite(outputDimensions?.height)
+    ? outputDimensions?.height
+    : Number.isFinite(metadata.height)
+      ? metadata.height
+      : 0;
   const payload: Record<string, unknown> = {
     generator: 'Image MetaHub',
     source_generator: typeof metadata.generator === 'string' ? metadata.generator : null,
@@ -1216,8 +1226,8 @@ const buildMetaHubEditPayload = (
     sampler_name: metadata.sampler || '',
     scheduler: metadata.scheduler || '',
     model: metadata.model || metadata.models?.[0] || '',
-    width: Number.isFinite(metadata.width) ? metadata.width : 0,
-    height: Number.isFinite(metadata.height) ? metadata.height : 0,
+    width: payloadWidth,
+    height: payloadHeight,
     loras: toLoraPayload(metadata.loras),
     imh_pro: {
       notes: typeof metadata.notes === 'string' ? metadata.notes : '',

@@ -571,6 +571,41 @@ describe('ComfyUI Parser - MetaHub lineage metadata', () => {
     expect(result?._metadata_sources).toEqual({ prompt: 'detected', model_name: 'detected' });
   });
 
+  it('preserves explicit MetaHub seed zero even when prompt graph has another seed', async () => {
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'zero seed prompt',
+        negativePrompt: '',
+        seed: 0,
+        steps: 20,
+        cfg: 7,
+        sampler_name: 'euler',
+        scheduler: 'normal',
+        model: 'zero-seed.safetensors',
+        width: 512,
+        height: 512,
+        metadata_status: 'partial',
+        metadata_sources: { seed: 'manual_override' },
+        prompt_api: {
+          '1': {
+            class_type: 'KSampler',
+            inputs: {
+              seed: 999,
+              steps: 20,
+              cfg: 7,
+              sampler_name: 'euler',
+              scheduler: 'normal',
+              denoise: 1,
+            },
+          },
+        },
+      },
+    } as any);
+
+    expect(result?.seed).toBe(0);
+  });
+
   it('prefers parent_image for library lineage and keeps source_image as workflowSourceImage', async () => {
     const metadata: any = {
       imagemetahub_data: {
