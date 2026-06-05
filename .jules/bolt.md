@@ -42,3 +42,7 @@
 ## $(date +%Y-%m-%d) - Eliminate chained Array methods when building Sets/Maps or resolving layouts
 **Learning:** Chaining array methods like `.map().filter()` inside heavily executed loops (e.g., collecting incoming/outgoing layout positions in `comfyUIVisualWorkflow.ts`) creates multiple intermediate array allocations that increase garbage collection overhead and execution time.
 **Action:** Replace `.map().filter()` chains with a single `for` or `for...of` loop and use conditional `.push()` to prevent unnecessary array allocation overhead per pass.
+
+## $(date +%Y-%m-%d) - Eliminate Array.map() O(N) allocation overhead for Map initialization
+**Learning:** Initializing a `Map` using `.map()` on a large array (e.g., `new Map(arr.map(item => [item.id, item]))`) causes an O(N) temporary array of tuples to be allocated and immediately discarded, triggering garbage collection pauses.
+**Action:** Replace `.map()` with a pre-instantiated `Map` and populate it directly using a `for...of` loop to scale at O(1) intermediate memory.
