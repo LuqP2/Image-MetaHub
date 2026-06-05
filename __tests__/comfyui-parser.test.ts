@@ -457,6 +457,18 @@ describe('ComfyUI Parser - LoRA Workflows', () => {
           widgets_values: [', '],
           mode: 0,
         },
+        {
+          id: 4,
+          type: 'CLIPTextEncode',
+          widgets_values: [''],
+          mode: 0,
+        },
+        {
+          id: 5,
+          type: 'KSampler',
+          widgets_values: [123, 'fixed', 20, 7, 'euler', 'normal', 1],
+          mode: 0,
+        },
       ],
     }, {
       '1': {
@@ -473,6 +485,25 @@ describe('ComfyUI Parser - LoRA Workflows', () => {
           delimiter: ', ',
           string1: ['1', 0],
           string2: ['2', 0],
+        },
+      },
+      '4': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: ['3', 0],
+        },
+      },
+      '5': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          denoise: 1,
+          positive: ['4', 0],
+          negative: ['4', 0],
         },
       },
     });

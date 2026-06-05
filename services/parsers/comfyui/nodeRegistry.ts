@@ -657,12 +657,18 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
             ? node.widgets_values[0]
             : (typeof node.inputs?.delimiter === 'string' ? node.inputs.delimiter : ' ');
           return extractors.concatTextExtractor(
-            node,
+            {
+              ...node,
+              inputs: {
+                ...node.inputs,
+                __joinstrings_delimiter: delimiter,
+              },
+            },
             state,
             graph,
             traverseFromLink,
             ['string1', 'string2', 'string3', 'string4'],
-            delimiter
+            '__joinstrings_delimiter'
           );
         }
       },
@@ -673,12 +679,18 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
             ? node.widgets_values[0]
             : (typeof node.inputs?.delimiter === 'string' ? node.inputs.delimiter : ' ');
           return extractors.concatTextExtractor(
-            node,
+            {
+              ...node,
+              inputs: {
+                ...node.inputs,
+                __joinstrings_delimiter: delimiter,
+              },
+            },
             state,
             graph,
             traverseFromLink,
             ['string1', 'string2', 'string3', 'string4'],
-            delimiter
+            '__joinstrings_delimiter'
           );
         }
       },
