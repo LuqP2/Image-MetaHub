@@ -385,6 +385,56 @@ describe('ComfyUI Parser - LoRA Workflows', () => {
     expect(result.sampler_name).toBe('dpmpp_2m');
     expect(result.scheduler).toBe('karras');
   });
+
+  it('should read LoraManager LoRAs from workflow widget values', () => {
+    const result = resolvePromptFromGraph({
+      nodes: [
+        {
+          id: 2,
+          type: 'Lora Loader (LoraManager)',
+          widgets_values: [
+            '',
+            'cinematic portrait',
+            [
+              { name: 'ui_lora.safetensors', active: true },
+              { name: 'disabled_lora.safetensors', active: false },
+            ],
+          ],
+          mode: 0,
+        },
+        {
+          id: 3,
+          type: 'KSampler',
+          widgets_values: [123, 'fixed', 20, 7, 'euler', 'normal', 1],
+          mode: 0,
+        },
+      ],
+    }, {
+      '2': {
+        class_type: 'Lora Loader (LoraManager)',
+        inputs: {
+          text: 'cinematic portrait',
+          model: ['1', 0],
+          clip: ['1', 1],
+        },
+      },
+      '3': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          denoise: 1,
+          model: ['2', 0],
+        },
+      },
+    });
+
+    expect(result.lora).toContain('ui_lora.safetensors');
+    expect(result.lora).not.toContain('disabled_lora.safetensors');
+  });
 });
 
 describe('ComfyUI Parser - ControlNet Workflows', () => {

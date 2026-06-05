@@ -213,11 +213,16 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       lora: {
         source: 'custom_extractor',
         extractor: (node: ParserNode) => {
-          const rawLoras = node.inputs?.loras?.__value__;
+          const rawLoras = node.inputs?.loras?.__value__ ?? node.widgets_values?.[2];
           if (Array.isArray(rawLoras)) {
             return rawLoras
-              .filter((lora: any) => lora && lora.active !== false && (lora.name || lora.lora_name))
-              .map((lora: any) => lora.name || lora.lora_name);
+              .filter((lora: any) => {
+                if (typeof lora === 'string') {
+                  return lora.trim().length > 0;
+                }
+                return lora && lora.active !== false && (lora.name || lora.lora_name);
+              })
+              .map((lora: any) => typeof lora === 'string' ? lora : lora.name || lora.lora_name);
           }
 
           const text = typeof node.inputs?.text === 'string' ? node.inputs.text : '';

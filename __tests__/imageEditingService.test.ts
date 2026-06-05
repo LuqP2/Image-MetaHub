@@ -111,6 +111,10 @@ describe('imageEditingService', () => {
     expect(recipe.resize).toMatchObject({ enabled: true, width: 64, height: 32 });
     expect(recipe.effects).toEqual({ sharpen: 100, blur: 0 });
     expect(hasImageEditRecipeChanges(recipe)).toBe(true);
+    expect(hasImageEditRecipeChanges({
+      ...DEFAULT_IMAGE_EDIT_RECIPE,
+      resize: { enabled: true, width: 64, height: 32, lockAspectRatio: false },
+    })).toBe(true);
   });
 
   it('computes output dimensions for crop, rotate, and resize', () => {

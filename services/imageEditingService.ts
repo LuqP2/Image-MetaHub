@@ -379,8 +379,11 @@ export const getImageEditOutputDimensions = (
 
 export const hasImageEditRecipeChanges = (
   recipeOrAdjustments: Partial<ImageEditRecipe> | Partial<ImageAdjustments>,
+  sourceDimensions?: { width: number; height: number },
 ): boolean => {
-  const recipe = normalizeImageEditRecipe(recipeOrAdjustments);
+  const recipe = normalizeImageEditRecipe(recipeOrAdjustments, sourceDimensions);
+  const inputRecipe = isRecipeLike(recipeOrAdjustments) ? recipeOrAdjustments : undefined;
+  const hasExplicitResizeEdit = Boolean(inputRecipe?.resize?.enabled);
   return (
     hasImageAdjustments(recipe.adjustments) ||
     recipe.transform.rotation !== DEFAULT_IMAGE_EDIT_RECIPE.transform.rotation ||
@@ -388,6 +391,7 @@ export const hasImageEditRecipeChanges = (
     recipe.transform.flipVertical !== DEFAULT_IMAGE_EDIT_RECIPE.transform.flipVertical ||
     recipe.crop.enabled ||
     recipe.resize.enabled ||
+    hasExplicitResizeEdit ||
     recipe.effects.sharpen !== DEFAULT_IMAGE_EDIT_RECIPE.effects.sharpen ||
     recipe.effects.blur !== DEFAULT_IMAGE_EDIT_RECIPE.effects.blur
   );
@@ -545,7 +549,7 @@ export const hasImageEditorDocumentChanges = (
   const normalized = normalizeImageEditorDocument(document);
   const background = normalized.background;
   return (
-    hasImageEditRecipeChanges(normalized.recipe) ||
+    hasImageEditRecipeChanges(normalized.recipe, normalized.sourceDimensions) ||
     normalized.objects.length > 0 ||
     background.kind !== DEFAULT_IMAGE_EDITOR_BACKGROUND.kind ||
     background.margin !== DEFAULT_IMAGE_EDITOR_BACKGROUND.margin ||

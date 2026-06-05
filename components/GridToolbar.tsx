@@ -22,6 +22,7 @@ import {
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
+import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import { SmartCollection, type IndexedImage } from '../types';
 
 import ActiveFilters from './ActiveFilters';
@@ -32,6 +33,13 @@ import Tooltip from './Tooltip';
 import type { ImageGroup, ImageGroupByMode } from '../utils/imageGrouping';
 
 const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
+
+const canOpenImageEditorForImage = (image?: IndexedImage): boolean => (
+  Boolean(image)
+  && !isVideoFileName(image!.name, image!.fileType)
+  && !isAudioFileName(image!.name, image!.fileType)
+  && getFileExtension(image!.name) !== '.gif'
+);
 
 interface GridToolbarProps {
 
@@ -242,6 +250,14 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       .filter((image): image is IndexedImage => Boolean(image));
   }, [images, selectedImages]);
   const firstSelectedImage = selectedImagesList[0];
+  const canOpenSelectedImageEditor = Boolean(
+    selectedCount === 1 &&
+    onOpenImageEditor &&
+    canOpenImageEditorForImage(firstSelectedImage),
+  );
+  const editImageTooltip = selectedCount === 1
+    ? (canOpenSelectedImageEditor ? 'Edit image' : 'Image editor is available for static images')
+    : 'Select one image to edit';
   // Check if all selected images are favorites
   const allFavorites = selectedImagesList.length > 0 && selectedImagesList.every(img => img.isFavorite);
 
@@ -360,7 +376,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   };
 
   const handleOpenImageEditor = () => {
-    if (firstSelectedImage && onOpenImageEditor) {
+    if (firstSelectedImage && canOpenSelectedImageEditor && onOpenImageEditor) {
       onOpenImageEditor(firstSelectedImage);
     }
   };
@@ -664,17 +680,17 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <div className="w-px h-4 bg-gray-700 mx-1" />
 
                 {/* Compare */}
-                <Tooltip label={selectedCount === 1 ? 'Edit image' : 'Select one image to edit'}>
+                <Tooltip label={editImageTooltip}>
                   <button
                     onClick={handleOpenImageEditor}
                     className={`p-1.5 rounded transition-colors ${
-                      selectedCount === 1 && onOpenImageEditor
+                      canOpenSelectedImageEditor
                         ? 'text-gray-400 hover:text-cyan-300 hover:bg-gray-700'
                         : 'text-gray-600 cursor-not-allowed'
                     }`}
-                    title={selectedCount === 1 ? 'Edit image' : 'Select one image to edit'}
+                    title={editImageTooltip}
                     aria-label="Edit image"
-                    disabled={selectedCount !== 1 || !onOpenImageEditor}
+                    disabled={!canOpenSelectedImageEditor}
                   >
                     <ImageIcon className="w-4 h-4" />
                   </button>
