@@ -644,6 +644,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const previewImageRef = useRef<HTMLImageElement>(null);
   const textEditorRef = useRef<HTMLTextAreaElement>(null);
   const sessionRef = useRef<EditorSessionState | null>(null);
+  const shouldSkipSessionCacheRef = useRef(false);
   const panStateRef = useRef<PanState | null>(null);
 
   const directories = useImageStore((state) => state.directories);
@@ -769,6 +770,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     setHydratedImage(null);
 
     const load = async () => {
+      shouldSkipSessionCacheRef.current = false;
       try {
         const source = await mediaSourceCache.getOrLoad(image, directoryPath, { prioritize: true });
         if (!mounted) return;
@@ -806,7 +808,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     void load();
     return () => {
       mounted = false;
-      if (sessionRef.current) {
+      if (!shouldSkipSessionCacheRef.current && sessionRef.current) {
         editorSessionCache.set(image.id, sessionRef.current);
       }
     };
@@ -1031,8 +1033,11 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     if (hasChanges && !window.confirm('Leave the image editor and discard the current editor state?')) {
       return;
     }
+    shouldSkipSessionCacheRef.current = true;
+    editorSessionCache.delete(image.id);
+    sessionRef.current = null;
     onBack();
-  }, [hasChanges, onBack]);
+  }, [hasChanges, image.id, onBack]);
 
   const undo = useCallback(() => {
     setHistory((current) => {
@@ -1122,6 +1127,9 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     if (!window.confirm('Restore the original image and discard all editor changes?')) {
       return;
     }
+    shouldSkipSessionCacheRef.current = true;
+    editorSessionCache.delete(image.id);
+    sessionRef.current = null;
     setDocumentState(createImageEditorDocument({
       imageId: image.id,
       name: image.name,

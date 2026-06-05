@@ -435,6 +435,50 @@ describe('ComfyUI Parser - LoRA Workflows', () => {
     expect(result.lora).toContain('ui_lora.safetensors');
     expect(result.lora).not.toContain('disabled_lora.safetensors');
   });
+
+  it('should preserve JoinStrings delimiter from widget values', () => {
+    const result = resolvePromptFromGraph({
+      nodes: [
+        {
+          id: 1,
+          type: 'String Literal',
+          widgets_values: ['alpha'],
+          mode: 0,
+        },
+        {
+          id: 2,
+          type: 'String Literal',
+          widgets_values: ['beta'],
+          mode: 0,
+        },
+        {
+          id: 3,
+          type: 'JoinStrings',
+          widgets_values: [', '],
+          mode: 0,
+        },
+      ],
+    }, {
+      '1': {
+        class_type: 'String Literal',
+        inputs: { string: 'alpha' },
+      },
+      '2': {
+        class_type: 'String Literal',
+        inputs: { string: 'beta' },
+      },
+      '3': {
+        class_type: 'JoinStrings',
+        inputs: {
+          delimiter: ', ',
+          string1: ['1', 0],
+          string2: ['2', 0],
+        },
+      },
+    });
+
+    expect(result.prompt).toBe('alpha, beta');
+  });
 });
 
 describe('ComfyUI Parser - ControlNet Workflows', () => {

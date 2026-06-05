@@ -652,13 +652,35 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     param_mapping: {
       prompt: {
         source: 'custom_extractor',
-        extractor: (node, state, graph, traverseFromLink) =>
-          extractors.concatTextExtractor(node, state, graph, traverseFromLink, ['string1', 'string2', 'string3', 'string4'])
+        extractor: (node, state, graph, traverseFromLink) => {
+          const delimiter = typeof node.widgets_values?.[0] === 'string'
+            ? node.widgets_values[0]
+            : (typeof node.inputs?.delimiter === 'string' ? node.inputs.delimiter : ' ');
+          return extractors.concatTextExtractor(
+            node,
+            state,
+            graph,
+            traverseFromLink,
+            ['string1', 'string2', 'string3', 'string4'],
+            delimiter
+          );
+        }
       },
       negativePrompt: {
         source: 'custom_extractor',
-        extractor: (node, state, graph, traverseFromLink) =>
-          extractors.concatTextExtractor(node, state, graph, traverseFromLink, ['string1', 'string2', 'string3', 'string4'])
+        extractor: (node, state, graph, traverseFromLink) => {
+          const delimiter = typeof node.widgets_values?.[0] === 'string'
+            ? node.widgets_values[0]
+            : (typeof node.inputs?.delimiter === 'string' ? node.inputs.delimiter : ' ');
+          return extractors.concatTextExtractor(
+            node,
+            state,
+            graph,
+            traverseFromLink,
+            ['string1', 'string2', 'string3', 'string4'],
+            delimiter
+          );
+        }
       },
     },
     widget_order: ['delimiter']
