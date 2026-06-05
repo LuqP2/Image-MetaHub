@@ -121,6 +121,11 @@ const MAIN_CONTENT_MIN_WIDTH = 560;
 
 const getImageTimestamp = (image: IndexedImage): number => image.contentModifiedMs ?? image.lastModified ?? 0;
 
+const areStringArraysEqual = (left: string[] | null, right: string[]): boolean =>
+  Array.isArray(left) &&
+  left.length === right.length &&
+  left.every((value, index) => value === right[index]);
+
 const sortImagesNewestFirst = (images: IndexedImage[]): IndexedImage[] =>
   [...images].sort((a, b) => getImageTimestamp(b) - getImageTimestamp(a) || a.name.localeCompare(b.name));
 
@@ -2019,7 +2024,9 @@ export default function App() {
       : comfyUIWorkspaceSourceImages;
     const scopedImageIds = scopedImages.map((image) => image.id);
 
-    setComfyUIWorkspaceNavigationImageIds(scopedImageIds);
+    setComfyUIWorkspaceNavigationImageIds((current) =>
+      areStringArraysEqual(current, scopedImageIds) ? current : scopedImageIds
+    );
     setComfyUIWorkspaceImageId((current) => {
       if (current && scopedImageIds.includes(current)) {
         return current;
@@ -2141,7 +2148,10 @@ export default function App() {
       ? comfyUIWorkspaceSourceImages.filter((candidate) => candidate.directoryId === nextDirectoryId)
       : comfyUIWorkspaceSourceImages;
 
-    setComfyUIWorkspaceNavigationImageIds(nextImages.map((candidate) => candidate.id));
+    const nextImageIds = nextImages.map((candidate) => candidate.id);
+    setComfyUIWorkspaceNavigationImageIds((current) =>
+      areStringArraysEqual(current, nextImageIds) ? current : nextImageIds
+    );
     setComfyUIWorkspaceImageId(nextImages[0]?.id ?? null);
   }, [comfyUIWorkspaceSourceImages]);
   const handleComfyUIWorkspaceApplyLibraryFiltersChange = useCallback((applyFilters: boolean) => {
