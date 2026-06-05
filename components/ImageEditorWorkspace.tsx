@@ -1974,7 +1974,19 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               <input
                 type="checkbox"
                 checked={normalizedDocument.recipe.resize.enabled}
-                onChange={(event) => updateRecipe({ ...normalizedDocument.recipe, resize: { ...normalizedDocument.recipe.resize, enabled: event.target.checked } })}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  const base = baseOutputDimensions || normalizedDocument.sourceDimensions;
+                  updateRecipe({
+                    ...normalizedDocument.recipe,
+                    resize: {
+                      ...normalizedDocument.recipe.resize,
+                      enabled,
+                      width: enabled ? Math.max(1, Math.round(base.width)) : normalizedDocument.recipe.resize.width,
+                      height: enabled ? Math.max(1, Math.round(base.height)) : normalizedDocument.recipe.resize.height,
+                    },
+                  });
+                }}
                 className="h-4 w-4 accent-cyan-500"
               />
               Enable
