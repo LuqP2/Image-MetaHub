@@ -10,9 +10,10 @@ interface ModelCardProps {
   imageCount: number;
   onClick: () => void;
   onFindMatchingPrompts?: () => void;
+  isActive?: boolean;
 }
 
-const ModelCard: React.FC<ModelCardProps> = ({ modelName, images, imageCount, onClick, onFindMatchingPrompts }) => {
+const ModelCard: React.FC<ModelCardProps> = ({ modelName, images, imageCount, onClick, onFindMatchingPrompts, isActive = false }) => {
   const cardRef = useRef<HTMLButtonElement | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const rafRef = useRef<number | null>(null);
@@ -63,7 +64,9 @@ const ModelCard: React.FC<ModelCardProps> = ({ modelName, images, imageCount, on
       onClick={onClick}
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
-      className="group text-left bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden shadow-lg transition-all hover:shadow-xl hover:shadow-blue-500/20 hover:border-blue-500/30 cursor-pointer"
+      className={`group text-left bg-gray-900/60 border rounded-2xl overflow-hidden shadow-lg transition-all hover:shadow-xl hover:shadow-blue-500/20 hover:border-blue-500/30 cursor-pointer ${
+        isActive ? 'border-blue-400/70 shadow-blue-500/20' : 'border-gray-800'
+      }`}
       type="button"
     >
       <div className="relative aspect-[4/5] overflow-hidden">
@@ -129,8 +132,9 @@ const ModelCard: React.FC<ModelCardProps> = ({ modelName, images, imageCount, on
         <p className="text-sm font-semibold text-gray-100 truncate" title={modelName}>
           {modelName}
         </p>
-        <p className="text-xs text-gray-400 mt-1">
-          {imageCount} image{imageCount !== 1 ? 's' : ''}
+        <p className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-400">
+          <span>{imageCount} image{imageCount !== 1 ? 's' : ''}</span>
+          {isActive && <span className="shrink-0 text-blue-300">Selected</span>}
         </p>
       </div>
     </button>

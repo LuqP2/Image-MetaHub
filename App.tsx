@@ -249,11 +249,25 @@ export default function App() {
   const availableSchedulers = useImageStore((state) => state.availableSchedulers);
   const availableDimensions = useImageStore((state) => state.availableDimensions);
   const selectedModels = useImageStore((state) => state.selectedModels);
+  const excludedModels = useImageStore((state) => state.excludedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
+  const excludedLoras = useImageStore((state) => state.excludedLoras);
   const selectedSamplers = useImageStore((state) => state.selectedSamplers);
+  const excludedSamplers = useImageStore((state) => state.excludedSamplers);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
+  const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
+  const selectedGenerators = useImageStore((state) => state.selectedGenerators);
+  const excludedGenerators = useImageStore((state) => state.excludedGenerators);
+  const selectedGpuDevices = useImageStore((state) => state.selectedGpuDevices);
+  const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
   const advancedFilters = useImageStore((state) => state.advancedFilters);
   const selectedRatings = useImageStore((state) => state.selectedRatings);
+  const selectedTags = useImageStore((state) => state.selectedTags);
+  const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedTagsMatchMode = useImageStore((state) => state.selectedTagsMatchMode);
+  const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+  const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
+  const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
   const setSelectedTags = useImageStore((state) => state.setSelectedTags);
   const setExcludedTags = useImageStore((state) => state.setExcludedTags);
   const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
@@ -299,6 +313,7 @@ export default function App() {
   const loadAutomationRules = useImageStore((state) => state.loadAutomationRules);
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
+  const randomSeed = useImageStore((state) => state.randomSeed);
   const reshuffle = useImageStore((state) => state.reshuffle);
   const getResolvedCollectionImages = useImageStore((state) => state.getResolvedCollectionImages);
   const getResolvedFilteredCollectionImages = useImageStore((state) => state.getResolvedFilteredCollectionImages);
@@ -354,9 +369,14 @@ export default function App() {
 
   // --- Local UI State ---
   const [currentPage, setCurrentPage] = useState(1);
+  const [modelViewPage, setModelViewPage] = useState(1);
   const [pendingJumpGroupRequest, setPendingJumpGroupRequest] = useState<{ groupId: string; requestId: number } | null>(null);
   const [searchInputValue, setSearchInputValue] = useState(searchQuery);
   const previousSearchQueryRef = useRef(searchQuery);
+  const previousLibraryGridSignatureRef = useRef<string | null>(null);
+  const previousCollectionsGridSignatureRef = useRef<string | null>(null);
+  const libraryGridScrollTopRef = useRef(0);
+  const collectionsGridScrollTopRef = useRef(0);
   const pendingSearchFlowIdRef = useRef<string | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('library');
@@ -452,6 +472,22 @@ export default function App() {
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+
+  const resetLibraryGridScrollPosition = useCallback(() => {
+    libraryGridScrollTopRef.current = 0;
+  }, []);
+
+  const resetCollectionsGridScrollPosition = useCallback(() => {
+    collectionsGridScrollTopRef.current = 0;
+  }, []);
+
+  const handleLibraryGridScrollPositionChange = useCallback((scrollTop: number) => {
+    libraryGridScrollTopRef.current = scrollTop;
+  }, []);
+
+  const handleCollectionsGridScrollPositionChange = useCallback((scrollTop: number) => {
+    collectionsGridScrollTopRef.current = scrollTop;
+  }, []);
 
   const handleSearchChange = useCallback((query: string) => {
     if (pendingSearchFlowIdRef.current) {
@@ -864,6 +900,7 @@ export default function App() {
       }
 
       if (selectedFolders.size === 0) {
+        resetLibraryGridScrollPosition();
         setCurrentPage(1);
         return;
       }
@@ -877,12 +914,13 @@ export default function App() {
       );
 
       if (affectsVisibleScope) {
+        resetLibraryGridScrollPosition();
         setCurrentPage(1);
       }
     });
 
     return () => unsubscribe();
-  }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, selectedFolders, sortOrder]);
+  }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, resetLibraryGridScrollPosition, selectedFolders, sortOrder]);
 
   useEffect(() => {
     if (sortOrder === 'random' && groupBy !== 'none') {
@@ -1154,6 +1192,7 @@ export default function App() {
 
   useEffect(() => {
     if (previousSearchQueryRef.current !== searchQuery) {
+      resetLibraryGridScrollPosition();
       setCurrentPage(1);
       if (pendingSearchFlowIdRef.current) {
         markPerformanceFlow(pendingSearchFlowIdRef.current, 'store-commit', {
@@ -1172,15 +1211,16 @@ export default function App() {
       }
       previousSearchQueryRef.current = searchQuery;
     }
-  }, [safeFilteredImages.length, searchQuery]);
+  }, [resetLibraryGridScrollPosition, safeFilteredImages.length, searchQuery]);
 
   // Reset page if current page exceeds available pages after filtering
   useEffect(() => {
     const totalPages = Math.ceil(safeFilteredImages.length / itemsPerPage);
     if (currentPage > totalPages && totalPages > 0) {
+      resetLibraryGridScrollPosition();
       setCurrentPage(1);
     }
-  }, [safeFilteredImages.length, itemsPerPage, currentPage]);
+  }, [safeFilteredImages.length, itemsPerPage, currentPage, resetLibraryGridScrollPosition]);
 
   // Clean up selectedImage if its directory no longer exists
   useEffect(() => {
@@ -2002,6 +2042,152 @@ export default function App() {
       : safeFilteredImages;
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
 
+  const libraryGridSignature = useMemo(() => {
+    const firstImageId = safeFilteredImages[0]?.id ?? '';
+    const lastImageId = safeFilteredImages[safeFilteredImages.length - 1]?.id ?? '';
+
+    return [
+      safeFilteredImages.length,
+      firstImageId,
+      lastImageId,
+      searchQuery,
+      selectedModels.join('\u001f'),
+      excludedModels.join('\u001f'),
+      selectedLoras.join('\u001f'),
+      excludedLoras.join('\u001f'),
+      selectedSamplers.join('\u001f'),
+      excludedSamplers.join('\u001f'),
+      selectedSchedulers.join('\u001f'),
+      excludedSchedulers.join('\u001f'),
+      selectedGenerators.join('\u001f'),
+      excludedGenerators.join('\u001f'),
+      selectedGpuDevices.join('\u001f'),
+      excludedGpuDevices.join('\u001f'),
+      selectedTags.join('\u001f'),
+      excludedTags.join('\u001f'),
+      selectedTagsMatchMode,
+      selectedAutoTags.join('\u001f'),
+      excludedAutoTags.join('\u001f'),
+      favoriteFilterMode,
+      selectedRatings.join('\u001f'),
+      JSON.stringify(advancedFilters),
+      sortOrder,
+      randomSeed,
+      groupBy,
+    ].join('\u001e');
+  }, [
+    advancedFilters,
+    excludedAutoTags,
+    excludedGenerators,
+    excludedGpuDevices,
+    excludedLoras,
+    excludedModels,
+    excludedSamplers,
+    excludedSchedulers,
+    excludedTags,
+    favoriteFilterMode,
+    groupBy,
+    randomSeed,
+    safeFilteredImages,
+    searchQuery,
+    selectedAutoTags,
+    selectedGenerators,
+    selectedGpuDevices,
+    selectedLoras,
+    selectedModels,
+    selectedRatings,
+    selectedSamplers,
+    selectedSchedulers,
+    selectedTags,
+    selectedTagsMatchMode,
+    sortOrder,
+  ]);
+
+  const collectionsGridSignature = useMemo(() => {
+    const firstImageId = collectionFilteredImages[0]?.id ?? '';
+    const lastImageId = collectionFilteredImages[collectionFilteredImages.length - 1]?.id ?? '';
+
+    return [
+      activeCollectionId ?? '',
+      collectionFilteredImages.length,
+      firstImageId,
+      lastImageId,
+      searchQuery,
+      selectedModels.join('\u001f'),
+      excludedModels.join('\u001f'),
+      selectedLoras.join('\u001f'),
+      excludedLoras.join('\u001f'),
+      selectedSamplers.join('\u001f'),
+      excludedSamplers.join('\u001f'),
+      selectedSchedulers.join('\u001f'),
+      excludedSchedulers.join('\u001f'),
+      selectedGenerators.join('\u001f'),
+      excludedGenerators.join('\u001f'),
+      selectedGpuDevices.join('\u001f'),
+      excludedGpuDevices.join('\u001f'),
+      selectedTags.join('\u001f'),
+      excludedTags.join('\u001f'),
+      selectedTagsMatchMode,
+      selectedAutoTags.join('\u001f'),
+      excludedAutoTags.join('\u001f'),
+      favoriteFilterMode,
+      selectedRatings.join('\u001f'),
+      JSON.stringify(advancedFilters),
+      sortOrder,
+      randomSeed,
+    ].join('\u001e');
+  }, [
+    activeCollectionId,
+    advancedFilters,
+    collectionFilteredImages,
+    excludedAutoTags,
+    excludedGenerators,
+    excludedGpuDevices,
+    excludedLoras,
+    excludedModels,
+    excludedSamplers,
+    excludedSchedulers,
+    excludedTags,
+    favoriteFilterMode,
+    randomSeed,
+    searchQuery,
+    selectedAutoTags,
+    selectedGenerators,
+    selectedGpuDevices,
+    selectedLoras,
+    selectedModels,
+    selectedRatings,
+    selectedSamplers,
+    selectedSchedulers,
+    selectedTags,
+    selectedTagsMatchMode,
+    sortOrder,
+  ]);
+
+  useEffect(() => {
+    if (previousLibraryGridSignatureRef.current === null) {
+      previousLibraryGridSignatureRef.current = libraryGridSignature;
+      return;
+    }
+
+    if (previousLibraryGridSignatureRef.current !== libraryGridSignature) {
+      resetLibraryGridScrollPosition();
+      previousLibraryGridSignatureRef.current = libraryGridSignature;
+    }
+  }, [libraryGridSignature, resetLibraryGridScrollPosition]);
+
+  useEffect(() => {
+    if (previousCollectionsGridSignatureRef.current === null) {
+      previousCollectionsGridSignatureRef.current = collectionsGridSignature;
+      return;
+    }
+
+    if (previousCollectionsGridSignatureRef.current !== collectionsGridSignature) {
+      resetCollectionsGridScrollPosition();
+      previousCollectionsGridSignatureRef.current = collectionsGridSignature;
+    }
+  }, [collectionsGridSignature, resetCollectionsGridScrollPosition]);
+
   useEffect(() => {
     if (libraryView !== 'comfyui') {
       return;
@@ -2259,9 +2445,11 @@ export default function App() {
   useEffect(() => {
     const scopedTotalPages = Math.ceil(displayImages.length / itemsPerPage);
     if (currentPage > scopedTotalPages && scopedTotalPages > 0) {
+      resetLibraryGridScrollPosition();
+      resetCollectionsGridScrollPosition();
       setCurrentPage(1);
     }
-  }, [currentPage, displayImages.length, itemsPerPage]);
+  }, [currentPage, displayImages.length, itemsPerPage, resetCollectionsGridScrollPosition, resetLibraryGridScrollPosition]);
 
   useEffect(() => {
     if (libraryView !== 'collections') {
@@ -2790,6 +2978,9 @@ export default function App() {
                           groupBy={effectiveLibraryGroupBy}
                           groupSortOrder={imageGroupingSortOrder}
                           jumpToGroupRequest={pendingJumpGroupRequest}
+                          initialScrollTop={libraryGridScrollTopRef.current}
+                          onScrollPositionChange={handleLibraryGridScrollPositionChange}
+                          scrollResetKey={libraryGridSignature}
                         />
                       ) : (
                         <ImageTable
@@ -2810,7 +3001,12 @@ export default function App() {
                   <ModelView
                     isQueueOpen={isQueueOpen}
                     onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                    page={modelViewPage}
+                    onPageChange={setModelViewPage}
+                    activeModelName={selectedModels.length === 1 ? selectedModels[0] : null}
                     onModelSelect={(modelName) => {
+                      resetLibraryGridScrollPosition();
+                      setModelViewPage(1);
                       setSelectedFilters({ models: [modelName] });
                       setLibraryView('library');
                     }}
@@ -2836,6 +3032,9 @@ export default function App() {
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
+                        initialScrollTop={collectionsGridScrollTopRef.current}
+                        onScrollPositionChange={handleCollectionsGridScrollPositionChange}
+                        scrollResetKey={collectionsGridSignature}
                       />
                     ) : (
                       <ImageTable
