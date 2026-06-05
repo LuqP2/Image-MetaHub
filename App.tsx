@@ -354,9 +354,14 @@ export default function App() {
 
   // --- Local UI State ---
   const [currentPage, setCurrentPage] = useState(1);
+  const [modelViewPage, setModelViewPage] = useState(1);
   const [pendingJumpGroupRequest, setPendingJumpGroupRequest] = useState<{ groupId: string; requestId: number } | null>(null);
   const [searchInputValue, setSearchInputValue] = useState(searchQuery);
   const previousSearchQueryRef = useRef(searchQuery);
+  const previousLibraryGridSignatureRef = useRef<string | null>(null);
+  const previousCollectionsGridSignatureRef = useRef<string | null>(null);
+  const libraryGridScrollTopRef = useRef(0);
+  const collectionsGridScrollTopRef = useRef(0);
   const pendingSearchFlowIdRef = useRef<string | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('library');
@@ -452,6 +457,22 @@ export default function App() {
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+
+  const resetLibraryGridScrollPosition = useCallback(() => {
+    libraryGridScrollTopRef.current = 0;
+  }, []);
+
+  const resetCollectionsGridScrollPosition = useCallback(() => {
+    collectionsGridScrollTopRef.current = 0;
+  }, []);
+
+  const handleLibraryGridScrollPositionChange = useCallback((scrollTop: number) => {
+    libraryGridScrollTopRef.current = scrollTop;
+  }, []);
+
+  const handleCollectionsGridScrollPositionChange = useCallback((scrollTop: number) => {
+    collectionsGridScrollTopRef.current = scrollTop;
+  }, []);
 
   const handleSearchChange = useCallback((query: string) => {
     if (pendingSearchFlowIdRef.current) {
@@ -864,6 +885,7 @@ export default function App() {
       }
 
       if (selectedFolders.size === 0) {
+        resetLibraryGridScrollPosition();
         setCurrentPage(1);
         return;
       }
@@ -877,12 +899,13 @@ export default function App() {
       );
 
       if (affectsVisibleScope) {
+        resetLibraryGridScrollPosition();
         setCurrentPage(1);
       }
     });
 
     return () => unsubscribe();
-  }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, selectedFolders, sortOrder]);
+  }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, resetLibraryGridScrollPosition, selectedFolders, sortOrder]);
 
   useEffect(() => {
     if (sortOrder === 'random' && groupBy !== 'none') {
@@ -1154,6 +1177,7 @@ export default function App() {
 
   useEffect(() => {
     if (previousSearchQueryRef.current !== searchQuery) {
+      resetLibraryGridScrollPosition();
       setCurrentPage(1);
       if (pendingSearchFlowIdRef.current) {
         markPerformanceFlow(pendingSearchFlowIdRef.current, 'store-commit', {
@@ -1172,15 +1196,16 @@ export default function App() {
       }
       previousSearchQueryRef.current = searchQuery;
     }
-  }, [safeFilteredImages.length, searchQuery]);
+  }, [resetLibraryGridScrollPosition, safeFilteredImages.length, searchQuery]);
 
   // Reset page if current page exceeds available pages after filtering
   useEffect(() => {
     const totalPages = Math.ceil(safeFilteredImages.length / itemsPerPage);
     if (currentPage > totalPages && totalPages > 0) {
+      resetLibraryGridScrollPosition();
       setCurrentPage(1);
     }
-  }, [safeFilteredImages.length, itemsPerPage, currentPage]);
+  }, [safeFilteredImages.length, itemsPerPage, currentPage, resetLibraryGridScrollPosition]);
 
   // Clean up selectedImage if its directory no longer exists
   useEffect(() => {
@@ -2002,6 +2027,73 @@ export default function App() {
       : safeFilteredImages;
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
 
+  const libraryGridSignature = useMemo(() => {
+    const firstImageId = safeFilteredImages[0]?.id ?? '';
+    const lastImageId = safeFilteredImages[safeFilteredImages.length - 1]?.id ?? '';
+
+    return [
+      safeFilteredImages.length,
+      firstImageId,
+      lastImageId,
+      searchQuery,
+      selectedModels.join('\u001f'),
+      selectedLoras.join('\u001f'),
+      selectedSamplers.join('\u001f'),
+      selectedSchedulers.join('\u001f'),
+      selectedRatings.join('\u001f'),
+      sortOrder,
+      groupBy,
+    ].join('\u001e');
+  }, [
+    groupBy,
+    safeFilteredImages,
+    searchQuery,
+    selectedLoras,
+    selectedModels,
+    selectedRatings,
+    selectedSamplers,
+    selectedSchedulers,
+    sortOrder,
+  ]);
+
+  const collectionsGridSignature = useMemo(() => {
+    const firstImageId = collectionFilteredImages[0]?.id ?? '';
+    const lastImageId = collectionFilteredImages[collectionFilteredImages.length - 1]?.id ?? '';
+
+    return [
+      activeCollectionId ?? '',
+      collectionFilteredImages.length,
+      firstImageId,
+      lastImageId,
+      searchQuery,
+      sortOrder,
+    ].join('\u001e');
+  }, [activeCollectionId, collectionFilteredImages, searchQuery, sortOrder]);
+
+  useEffect(() => {
+    if (previousLibraryGridSignatureRef.current === null) {
+      previousLibraryGridSignatureRef.current = libraryGridSignature;
+      return;
+    }
+
+    if (previousLibraryGridSignatureRef.current !== libraryGridSignature) {
+      resetLibraryGridScrollPosition();
+      previousLibraryGridSignatureRef.current = libraryGridSignature;
+    }
+  }, [libraryGridSignature, resetLibraryGridScrollPosition]);
+
+  useEffect(() => {
+    if (previousCollectionsGridSignatureRef.current === null) {
+      previousCollectionsGridSignatureRef.current = collectionsGridSignature;
+      return;
+    }
+
+    if (previousCollectionsGridSignatureRef.current !== collectionsGridSignature) {
+      resetCollectionsGridScrollPosition();
+      previousCollectionsGridSignatureRef.current = collectionsGridSignature;
+    }
+  }, [collectionsGridSignature, resetCollectionsGridScrollPosition]);
+
   useEffect(() => {
     if (libraryView !== 'comfyui') {
       return;
@@ -2259,9 +2351,11 @@ export default function App() {
   useEffect(() => {
     const scopedTotalPages = Math.ceil(displayImages.length / itemsPerPage);
     if (currentPage > scopedTotalPages && scopedTotalPages > 0) {
+      resetLibraryGridScrollPosition();
+      resetCollectionsGridScrollPosition();
       setCurrentPage(1);
     }
-  }, [currentPage, displayImages.length, itemsPerPage]);
+  }, [currentPage, displayImages.length, itemsPerPage, resetCollectionsGridScrollPosition, resetLibraryGridScrollPosition]);
 
   useEffect(() => {
     if (libraryView !== 'collections') {
@@ -2790,6 +2884,9 @@ export default function App() {
                           groupBy={effectiveLibraryGroupBy}
                           groupSortOrder={imageGroupingSortOrder}
                           jumpToGroupRequest={pendingJumpGroupRequest}
+                          initialScrollTop={libraryGridScrollTopRef.current}
+                          onScrollPositionChange={handleLibraryGridScrollPositionChange}
+                          scrollResetKey={libraryGridSignature}
                         />
                       ) : (
                         <ImageTable
@@ -2810,7 +2907,12 @@ export default function App() {
                   <ModelView
                     isQueueOpen={isQueueOpen}
                     onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                    page={modelViewPage}
+                    onPageChange={setModelViewPage}
+                    activeModelName={selectedModels.length === 1 ? selectedModels[0] : null}
                     onModelSelect={(modelName) => {
+                      resetLibraryGridScrollPosition();
+                      setModelViewPage(1);
                       setSelectedFilters({ models: [modelName] });
                       setLibraryView('library');
                     }}
@@ -2836,6 +2938,9 @@ export default function App() {
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
+                        initialScrollTop={collectionsGridScrollTopRef.current}
+                        onScrollPositionChange={handleCollectionsGridScrollPositionChange}
+                        scrollResetKey={collectionsGridSignature}
                       />
                     ) : (
                       <ImageTable
