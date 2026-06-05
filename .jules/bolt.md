@@ -39,3 +39,10 @@
 ## $(date +%Y-%m-%d) - Do not implement IIFE in JSX for performance
 **Learning:** Wrapping a loop in an IIFE directly inside JSX (e.g. `App.tsx`) to avoid mapping arrays reduces readability and is an anti-pattern. Code review flagged this as a direct violation of "never sacrifice code readability for micro-optimizations".
 **Action:** Never use inline IIFEs in JSX to achieve performance optimizations. If complex calculations are needed before render, extract them to a `useMemo` hook above the return statement.
+## $(date +%Y-%m-%d) - Eliminate chained Array methods when building Sets/Maps or resolving layouts
+**Learning:** Chaining array methods like `.map().filter()` inside heavily executed loops (e.g., collecting incoming/outgoing layout positions in `comfyUIVisualWorkflow.ts`) creates multiple intermediate array allocations that increase garbage collection overhead and execution time.
+**Action:** Replace `.map().filter()` chains with a single `for` or `for...of` loop and use conditional `.push()` to prevent unnecessary array allocation overhead per pass.
+
+## $(date +%Y-%m-%d) - Eliminate Array.map() O(N) allocation overhead for Map initialization
+**Learning:** Initializing a `Map` using `.map()` on a large array (e.g., `new Map(arr.map(item => [item.id, item]))`) causes an O(N) temporary array of tuples to be allocated and immediately discarded, triggering garbage collection pauses.
+**Action:** Replace `.map()` with a pre-instantiated `Map` and populate it directly using a `for...of` loop to scale at O(1) intermediate memory.

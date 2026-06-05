@@ -744,9 +744,15 @@ const VideoPlayer: React.FC<{
       {/* Center Play Button Overlay (only when paused and not hovering controls) */}
       {!isPlaying && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="bg-black/50 backdrop-blur-sm rounded-full p-4 text-white hover:bg-black/70 transition-all pointer-events-auto cursor-pointer transform hover:scale-110" onClick={togglePlay}>
+          <button
+            type="button"
+            aria-label="Play video"
+            title="Play video"
+            className="bg-black/50 backdrop-blur-sm rounded-full p-4 text-white hover:bg-black/70 transition-all pointer-events-auto cursor-pointer transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            onClick={togglePlay}
+          >
             <Play size={48} fill="currentColor" />
-          </div>
+          </button>
         </div>
       )}
 
@@ -764,7 +770,8 @@ const VideoPlayer: React.FC<{
                 max={duration || 100}
                 value={currentTime}
                 onChange={handleSeek}
-                className="flex-1 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer hover:h-2 transition-all accent-blue-500"
+                aria-label="Seek video"
+                className="flex-1 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer hover:h-2 transition-all accent-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             />
             <span className="text-xs font-mono text-gray-300">{formatTime(duration)}</span>
         </div>
@@ -772,12 +779,22 @@ const VideoPlayer: React.FC<{
         {/* Buttons Row */}
         <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-                <button onClick={togglePlay} className="text-white hover:text-blue-400 transition-colors">
+                <button
+                  onClick={togglePlay}
+                  className="text-white hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                  aria-label={isPlaying ? "Pause video" : "Play video"}
+                  title={isPlaying ? "Pause video" : "Play video"}
+                >
                     {isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}
                 </button>
                 
                 <div className="flex items-center gap-2 group/volume">
-                    <button onClick={toggleMute} className="text-white hover:text-blue-400 transition-colors">
+                    <button
+                      onClick={toggleMute}
+                      className="text-white hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                      aria-label={isMuted || volume === 0 ? "Unmute video" : "Mute video"}
+                      title={isMuted || volume === 0 ? "Unmute video" : "Mute video"}
+                    >
                         {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
                     </button>
                     <input
@@ -787,7 +804,8 @@ const VideoPlayer: React.FC<{
                         step={0.05}
                         value={isMuted ? 0 : volume}
                         onChange={handleVolumeChange}
-                        className="w-0 overflow-hidden group-hover/volume:w-20 transition-all duration-300 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        aria-label="Volume control"
+                        className="w-0 overflow-hidden group-hover/volume:w-20 transition-all duration-300 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     />
                 </div>
             </div>
@@ -795,8 +813,9 @@ const VideoPlayer: React.FC<{
             <div className="flex items-center gap-4">
                 <button 
                   onClick={toggleLoop} 
-                  className={`transition-colors ${isLooping ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`}
+                  className={`transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded ${isLooping ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`}
                   title={isLooping ? "Loop On" : "Loop Off"}
+                  aria-label={isLooping ? "Loop On" : "Loop Off"}
                 >
                     <Repeat size={18} />
                 </button>
@@ -3410,9 +3429,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onClick={handleZoomIn}
                 disabled={zoom >= maxViewerZoom}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                title="Zoom In"
+                title={zoom >= maxViewerZoom ? 'Zoom In (Maximum reached)' : 'Zoom In'}
+                aria-label={zoom >= maxViewerZoom ? 'Zoom In (Maximum reached)' : 'Zoom In'}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </button>
@@ -3421,23 +3441,26 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onClick={handleZoomOut}
                 disabled={zoom <= minViewerZoom}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                title="Zoom Out"
+                title={zoom <= minViewerZoom ? 'Zoom Out (Minimum reached)' : 'Zoom Out'}
+                aria-label={zoom <= minViewerZoom ? 'Zoom Out (Minimum reached)' : 'Zoom Out'}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                 </svg>
               </button>
               <button
                 onClick={handleActualSize}
                 className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isActualSizeZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
-                title="Actual Size"
+                title={isActualSizeZoom ? 'Actual Size (Current)' : 'Actual Size'}
+                aria-label={isActualSizeZoom ? 'Actual Size (Current)' : 'Actual Size'}
               >
                 1:1
               </button>
               <button
                 onClick={handleFitToScreen}
                 className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isFitZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
-                title="Fit to Screen"
+                title={isFitZoom ? 'Fit to Screen (Current)' : 'Fit to Screen'}
+                aria-label={isFitZoom ? 'Fit to Screen (Current)' : 'Fit to Screen'}
               >
                 Fit
               </button>
@@ -3516,6 +3539,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         : 'border-white/10 bg-black/35 hover:bg-black/55'
                     }`}
                     title={isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
+                    aria-label={isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
                   >
                     <SlidersHorizontal className="h-4 w-4" />
                   </button>
@@ -3524,6 +3548,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={() => setDetailsPlacement((current) => current === 'right' ? 'bottom' : 'right')}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
                   title={showSidebarOnRight ? 'Show details on bottom' : 'Show details on right'}
+                  aria-label={showSidebarOnRight ? 'Show details on bottom' : 'Show details on right'}
                 >
                   {showSidebarOnRight ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </button>
@@ -3531,6 +3556,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={() => setIsSidebarCollapsed((current) => !current)}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
                   title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
+                  aria-label={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
                 >
                   {showSidebar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -3538,6 +3564,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={toggleFullscreen}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
                   title={`Fullscreen (${toggleFullscreenKeybinding})`}
+                  aria-label={`Fullscreen (${toggleFullscreenKeybinding})`}
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
