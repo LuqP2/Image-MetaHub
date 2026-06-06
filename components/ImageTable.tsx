@@ -105,7 +105,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
   const removeImagesFromCollection = useImageStore((state) => state.removeImagesFromCollection);
   const updateCollection = useImageStore((state) => state.updateCollection);
-  const { canUseComfyUI, canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const { canUseComfyUI, canUseFileManagement, canUseImageEditor, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
   const {
@@ -184,10 +184,15 @@ const ImageTable: React.FC<ImageTableProps> = ({
     ) {
       return;
     }
+    if (!canUseImageEditor) {
+      showProModal('image_editor');
+      hideContextMenu();
+      return;
+    }
 
     onOpenImageEditor(contextMenu.image);
     hideContextMenu();
-  }, [contextMenu.image, hideContextMenu, onOpenImageEditor]);
+  }, [canUseImageEditor, contextMenu.image, hideContextMenu, onOpenImageEditor, showProModal]);
 
   const getContextTargetImages = useCallback(() => {
     if (!contextMenu.image) {
@@ -805,10 +810,11 @@ const ImageTable: React.FC<ImageTableProps> = ({
             <button
               onClick={openImageEditor}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title="Open this image in the Image Editor workspace"
+              title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature) - start trial' : 'Open this image in the Image Editor workspace'}
             >
               <ImageIcon className="w-4 h-4" />
-              Edit Image
+              <span className="flex-1">Edit Image</span>
+              {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
             </button>
           )}
 

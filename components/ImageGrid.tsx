@@ -1154,7 +1154,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
   const removeImagesFromCollection = useImageStore((state) => state.removeImagesFromCollection);
   const updateCollection = useImageStore((state) => state.updateCollection);
-  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, canUseFileManagement, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, canUseFileManagement, canUseImageEditor, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const selectedCount = selectedImages.size;
   const sensitiveTagSet = useMemo(() => {
     return new Set(
@@ -1416,9 +1416,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     ) {
       return;
     }
+    if (!canUseImageEditor) {
+      showProModal('image_editor');
+      hideContextMenu();
+      return;
+    }
     onOpenImageEditor(contextMenu.image);
     hideContextMenu();
-  }, [contextMenu.image, hideContextMenu, onOpenImageEditor]);
+  }, [canUseImageEditor, contextMenu.image, hideContextMenu, onOpenImageEditor, showProModal]);
 
   const selectForComparison = useCallback(() => {
     if (!contextMenu.image) return;
@@ -2348,10 +2353,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <button
               onClick={openImageEditor}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title="Open this image in the editor workspace"
+              title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature) - start trial' : 'Open this image in the editor workspace'}
             >
               <ImageIcon className="w-4 h-4" />
               <span className="flex-1">Open in Editor</span>
+              {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
             </button>
           )}
 

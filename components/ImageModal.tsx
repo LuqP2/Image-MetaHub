@@ -1060,7 +1060,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const { addImage, comparisonCount } = useImageComparison();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
-  const { canUseA1111, canUseComfyUI, canUseComparison, canUseBatchExport, showProModal, initialized } = useFeatureAccess();
+  const { canUseA1111, canUseComfyUI, canUseComparison, canUseBatchExport, canUseImageEditor, canUseDuringTrialOrPro, showProModal, initialized } = useFeatureAccess();
   const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
 
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
@@ -2362,6 +2362,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [directoryPath, imageEditOutputDimensions, imageUrl, isFullImageSourceReady, liveImage, normalizedImageEditRecipe]);
 
   const handleSaveEditedImageAs = useCallback(async () => {
+    if (!canUseImageEditor) {
+      showProModal('image_editor');
+      return;
+    }
+
     if (!canEditImage || !hasImageEditChanges || isSavingEditedImage) {
       return;
     }
@@ -2441,6 +2446,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     allImages,
     buildEditedDefaultPath,
     canEditImage,
+    canUseImageEditor,
     ensureFullRawMetadata,
     findDirectoryForAbsolutePath,
     hasImageEditChanges,
@@ -2450,10 +2456,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
     scanSubfolders,
     setError,
     setSuccess,
+    showProModal,
     writeEditedImage,
   ]);
 
   const handleOverwriteEditedImage = useCallback(async () => {
+    if (!canUseImageEditor) {
+      showProModal('image_editor');
+      return;
+    }
+
     if (!canEditImage || !hasImageEditChanges || isSavingEditedImage) {
       return;
     }
@@ -2555,6 +2567,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [
     canEditImage,
     canOverwriteEditedImage,
+    canUseImageEditor,
     directories,
     ensureFullRawMetadata,
     hasImageEditChanges,
@@ -2565,6 +2578,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setError,
     setImageThumbnail,
     setSuccess,
+    showProModal,
     writeEditedImage,
   ]);
 
@@ -3584,9 +3598,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <div className="flex flex-row items-center gap-2">
                 {canEditImage && onOpenImageEditor && (
                   <button
-                    onClick={() => onOpenImageEditor(liveImage)}
+                    onClick={() => {
+                      if (!canUseImageEditor) {
+                        showProModal('image_editor');
+                        return;
+                      }
+                      onOpenImageEditor(liveImage);
+                    }}
                     className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                    title="Open Image Editor"
+                    title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature) - start trial' : 'Open Image Editor'}
                   >
                     <ImageIcon className="h-4 w-4" />
                   </button>
@@ -3594,6 +3614,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 {canEditImage && (
                   <button
                     onClick={() => {
+                      if (!canUseImageEditor) {
+                        showProModal('image_editor');
+                        return;
+                      }
                       setIsAdjustmentPanelOpen((current) => !current);
                       setIsSidebarCollapsed(false);
                       setSidebarTab('details');
@@ -3603,8 +3627,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         ? 'border-cyan-400/40 bg-cyan-500/25'
                         : 'border-white/10 bg-black/35 hover:bg-black/55'
                     }`}
-                    title={isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
-                    aria-label={isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
+                    title={!canUseImageEditor && initialized ? 'Image adjustments (Pro Feature) - start trial' : isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
+                    aria-label={!canUseImageEditor && initialized ? 'Image adjustments (Pro Feature) - start trial' : isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
                   >
                     <SlidersHorizontal className="h-4 w-4" />
                   </button>
@@ -3679,26 +3703,40 @@ const ImageModal: React.FC<ImageModalProps> = ({
               {onOpenImageEditor && (
                 <button
                   type="button"
-                  onClick={() => onOpenImageEditor(liveImage)}
+                  onClick={() => {
+                    if (!canUseImageEditor) {
+                      showProModal('image_editor');
+                      return;
+                    }
+                    onOpenImageEditor(liveImage);
+                  }}
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm font-medium text-indigo-100 transition-colors hover:border-indigo-400/50 hover:bg-indigo-500/20"
                 >
                   <ImageIcon className="h-4 w-4" />
                   Open Image Editor
+                  {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
                 </button>
               )}
 
               {!isAdjustmentPanelOpen && (
                 <button
                   type="button"
-                  onClick={() => setIsAdjustmentPanelOpen(true)}
+                  onClick={() => {
+                    if (!canUseImageEditor) {
+                      showProModal('image_editor');
+                      return;
+                    }
+                    setIsAdjustmentPanelOpen(true);
+                  }}
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-100 transition-colors hover:border-cyan-400/50 hover:bg-cyan-500/20"
                 >
                   <SlidersHorizontal className="h-4 w-4" />
                   Adjust Image
+                  {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
                 </button>
               )}
 
-              {isAdjustmentPanelOpen && (
+              {isAdjustmentPanelOpen && canUseImageEditor && (
                 <ImageAdjustmentPanel
                   recipe={normalizedImageEditRecipe}
                   onChange={setImageEditRecipe}

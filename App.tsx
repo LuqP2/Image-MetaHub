@@ -603,6 +603,7 @@ export default function App() {
     isPro,
     canUseAnalytics,
     canUseBatchExport,
+    canUseImageEditor,
     showProModal,
     startTrial,
   } = useFeatureAccess();
@@ -1891,6 +1892,11 @@ export default function App() {
   }, []);
 
   const handleOpenImageEditor = useCallback((image: IndexedImage, navigationImages?: IndexedImage[]) => {
+    if (!canUseImageEditor) {
+      showProModal('image_editor');
+      return;
+    }
+
     const navigationImageIds = navigationImages && navigationImages.length > 0
       ? navigationImages.map((item) => item.id)
       : [image.id];
@@ -1899,7 +1905,7 @@ export default function App() {
     suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
     setLibraryView('editor');
-  }, [setSelectedImage]);
+  }, [canUseImageEditor, setSelectedImage, showProModal]);
 
   const handleOpenImageEditorFromImageModal = useCallback((
     modalId: string,
