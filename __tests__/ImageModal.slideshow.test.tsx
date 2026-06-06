@@ -219,6 +219,6 @@ describe('ImageModal slideshow behavior', () => {
       );
     });
 
-    await waitFor(() => expect(screen.getByText('100%')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTitle('Fit to Screen (Current)')).toBeTruthy());
   });
 });

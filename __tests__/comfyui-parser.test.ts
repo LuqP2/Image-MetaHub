@@ -112,6 +112,175 @@ describe('ComfyUI Parser - Detection from capitalized string keys', () => {
     expect(result?.prompt).toContain('Visualize a long, eel-like mutant lizard');
     expect(result?.prompt).toContain('fossilized ocean desert');
   });
+
+  it('should prefer ComfyUI graph chunks over non-empty parameters text', async () => {
+    const fixture = loadFixture('primitive-string-multiline.json');
+    const metadata: any = {
+      Prompt: JSON.stringify(fixture.prompt),
+      Workflow: JSON.stringify(fixture.workflow),
+      parameters: 'wrong prompt\nSteps: 1, Sampler: wrong, CFG scale: 1, Seed: 1, Size: 64x64, Model: wrong.safetensors'
+    };
+
+    const result = await parseImageMetadata(metadata);
+
+    expect(result?.generator).toBe('ComfyUI');
+    expect(result?.prompt).toContain('Visualize a long, eel-like mutant lizard');
+    expect(result?.model).not.toBe('wrong.safetensors');
+  });
+});
+
+describe('ComfyUI Parser - Output terminal traversal', () => {
+  it('should walk back from SaveImage through image links to prompt-bearing nodes', () => {
+    const prompt = {
+      '1': {
+        class_type: 'SaveImage',
+        inputs: {
+          images: ['2', 0],
+        },
+      },
+      '2': {
+        class_type: 'VAEDecode',
+        inputs: {
+          samples: ['3', 0],
+          vae: ['6', 2],
+        },
+      },
+      '3': {
+        class_type: 'WanImageToVideo',
+        inputs: {
+          positive: ['4', 0],
+          negative: ['5', 0],
+          vae: ['6', 2],
+          width: 832,
+          height: 480,
+          length: 49,
+          batch_size: 1,
+        },
+      },
+      '4': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'cinematic motion portrait',
+        },
+      },
+      '5': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'blur, artifacts',
+        },
+      },
+      '6': {
+        class_type: 'CheckpointLoaderSimple',
+        inputs: {
+          ckpt_name: 'wan-video-model.safetensors',
+        },
+      },
+    };
+
+    const result = resolvePromptFromGraph(undefined, prompt);
+
+    expect(result.prompt).toBe('cinematic motion portrait');
+    expect(result.negativePrompt).toBe('blur, artifacts');
+  });
+});
+
+describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
+  it('recovers prompt and seed from embedded prompt_api when old MetaHub chunks are empty', async () => {
+    const metadata: any = {
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: '',
+        negativePrompt: '',
+        seed: 0,
+        steps: 9,
+        cfg: 1,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        model: 'Z image Turbo\\z_image_turbo_bf16.safetensors',
+        vae: 'ae.safetensors',
+        denoise: 1,
+        width: 1056,
+        height: 1584,
+        loras: [],
+        workflow: { nodes: [] },
+        prompt_api: {
+          '1': {
+            class_type: 'UNETLoader',
+            inputs: { unet_name: 'Z image Turbo\\z_image_turbo_bf16.safetensors' },
+          },
+          '2': {
+            class_type: 'Lora Loader (LoraManager)',
+            inputs: {
+              text: 'luneva <lora:detail:0.80>',
+              model: ['1', 0],
+            },
+          },
+          '3': {
+            class_type: 'PathchSageAttentionKJ',
+            inputs: { model: ['2', 0] },
+          },
+          '4': {
+            class_type: 'easy positive',
+            inputs: { positive: 'gothic castle in teal fog' },
+          },
+          '5': {
+            class_type: 'JoinStrings',
+            inputs: { delimiter: ' ', string1: ['4', 0] },
+          },
+          '6': {
+            class_type: 'easy stylesSelector',
+            inputs: { positive: ['5', 0] },
+          },
+          '7': {
+            class_type: 'CLIPTextEncode',
+            inputs: { text: ['6', 0], clip: ['2', 1] },
+          },
+          '8': {
+            class_type: 'ConditioningZeroOut',
+            inputs: { conditioning: ['7', 0] },
+          },
+          '9': {
+            class_type: 'SeedGenerator',
+            inputs: { seed: 1100100895348371 },
+          },
+          '10': {
+            class_type: 'KSampler',
+            inputs: {
+              seed: ['9', 0],
+              steps: 9,
+              cfg: 1,
+              sampler_name: 'euler',
+              scheduler: 'simple',
+              denoise: 1,
+              model: ['3', 0],
+              positive: ['7', 0],
+              negative: ['8', 0],
+            },
+          },
+          '11': {
+            class_type: 'VAELoader',
+            inputs: { vae_name: 'ae.safetensors' },
+          },
+          '12': {
+            class_type: 'VAEDecode',
+            inputs: { samples: ['10', 0], vae: ['11', 0] },
+          },
+          '13': {
+            class_type: 'MetaHubSaveNode',
+            inputs: { images: ['12', 0] },
+          },
+        },
+      },
+    };
+
+    const result = await parseImageMetadata(metadata);
+
+    expect(result?.generator).toBe('ComfyUI');
+    expect(result?.prompt).toBe('gothic castle in teal fog');
+    expect(result?.negativePrompt).toBe('');
+    expect(result?.seed).toBe(1100100895348371);
+    expect(result?.model).toBe('Z image Turbo\\z_image_turbo_bf16.safetensors');
+  });
 });
 
 describe('ComfyUI Parser - Prompt-only graph payloads', () => {
@@ -215,6 +384,131 @@ describe('ComfyUI Parser - LoRA Workflows', () => {
     expect(result.cfg).toBe(7.5);
     expect(result.sampler_name).toBe('dpmpp_2m');
     expect(result.scheduler).toBe('karras');
+  });
+
+  it('should read LoraManager LoRAs from workflow widget values', () => {
+    const result = resolvePromptFromGraph({
+      nodes: [
+        {
+          id: 2,
+          type: 'Lora Loader (LoraManager)',
+          widgets_values: [
+            '',
+            'cinematic portrait',
+            [
+              { name: 'ui_lora.safetensors', active: true },
+              { name: 'disabled_lora.safetensors', active: false },
+            ],
+          ],
+          mode: 0,
+        },
+        {
+          id: 3,
+          type: 'KSampler',
+          widgets_values: [123, 'fixed', 20, 7, 'euler', 'normal', 1],
+          mode: 0,
+        },
+      ],
+    }, {
+      '2': {
+        class_type: 'Lora Loader (LoraManager)',
+        inputs: {
+          text: 'cinematic portrait',
+          model: ['1', 0],
+          clip: ['1', 1],
+        },
+      },
+      '3': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          denoise: 1,
+          model: ['2', 0],
+        },
+      },
+    });
+
+    expect(result.lora).toContain('ui_lora.safetensors');
+    expect(result.lora).not.toContain('disabled_lora.safetensors');
+  });
+
+  it('should preserve JoinStrings delimiter from widget values', () => {
+    const result = resolvePromptFromGraph({
+      nodes: [
+        {
+          id: 1,
+          type: 'String Literal',
+          widgets_values: ['alpha'],
+          mode: 0,
+        },
+        {
+          id: 2,
+          type: 'String Literal',
+          widgets_values: ['beta'],
+          mode: 0,
+        },
+        {
+          id: 3,
+          type: 'JoinStrings',
+          widgets_values: [', '],
+          mode: 0,
+        },
+        {
+          id: 4,
+          type: 'CLIPTextEncode',
+          widgets_values: [''],
+          mode: 0,
+        },
+        {
+          id: 5,
+          type: 'KSampler',
+          widgets_values: [123, 'fixed', 20, 7, 'euler', 'normal', 1],
+          mode: 0,
+        },
+      ],
+    }, {
+      '1': {
+        class_type: 'String Literal',
+        inputs: { string: 'alpha' },
+      },
+      '2': {
+        class_type: 'String Literal',
+        inputs: { string: 'beta' },
+      },
+      '3': {
+        class_type: 'JoinStrings',
+        inputs: {
+          delimiter: ', ',
+          string1: ['1', 0],
+          string2: ['2', 0],
+        },
+      },
+      '4': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: ['3', 0],
+        },
+      },
+      '5': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          denoise: 1,
+          positive: ['4', 0],
+          negative: ['4', 0],
+        },
+      },
+    });
+
+    expect(result.prompt).toBe('alpha, beta');
   });
 });
 
@@ -374,6 +668,67 @@ describe('ComfyUI Parser - MetaHub lineage metadata', () => {
       },
     });
     expect(result?.loras).toEqual([{ name: 'skin-detail', weight: 0.65 }]);
+  });
+
+  it('keeps MetaHub payload as canonical when parameters disagree', async () => {
+    const result = await parseImageMetadata({
+      parameters: 'wrong prompt\nSteps: 1, Sampler: wrong, CFG scale: 1, Seed: 1, Size: 64x64, Model: wrong.safetensors',
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'canonical prompt',
+        negativePrompt: 'canonical negative',
+        seed: 456,
+        steps: 32,
+        cfg: 7,
+        sampler_name: 'dpmpp_2m',
+        scheduler: 'karras',
+        model: 'canonical.safetensors',
+        width: 768,
+        height: 1024,
+        metadata_status: 'complete',
+        metadata_sources: { prompt: 'detected', model_name: 'detected' },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe('canonical prompt');
+    expect(result?.model).toBe('canonical.safetensors');
+    expect(result?._metadata_status).toBe('complete');
+    expect(result?._metadata_sources).toEqual({ prompt: 'detected', model_name: 'detected' });
+  });
+
+  it('preserves explicit MetaHub seed zero even when prompt graph has another seed', async () => {
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'zero seed prompt',
+        negativePrompt: '',
+        seed: 0,
+        steps: 20,
+        cfg: 7,
+        sampler_name: 'euler',
+        scheduler: 'normal',
+        model: 'zero-seed.safetensors',
+        width: 512,
+        height: 512,
+        metadata_status: 'partial',
+        metadata_sources: { seed: 'manual_override' },
+        prompt_api: {
+          '1': {
+            class_type: 'KSampler',
+            inputs: {
+              seed: 999,
+              steps: 20,
+              cfg: 7,
+              sampler_name: 'euler',
+              scheduler: 'normal',
+              denoise: 1,
+            },
+          },
+        },
+      },
+    } as any);
+
+    expect(result?.seed).toBe(0);
   });
 
   it('prefers parent_image for library lineage and keeps source_image as workflowSourceImage', async () => {

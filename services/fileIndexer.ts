@@ -2083,6 +2083,18 @@ export async function processFiles(
   };
 
   performance.mark('indexing:phaseA:start');
+  console.log('[indexing:perf]', {
+    event: 'process-files:start',
+    directoryId,
+    directoryName,
+    newFiles: fileEntries.length,
+    preloadedImages: options.preloadedImages?.length ?? 0,
+    scanSubfolders,
+    concurrency: concurrencyLimit,
+    cacheWriter: Boolean(cacheWriter),
+    flushChunkSize: chunkThreshold,
+    enrichmentBatchSize,
+  });
 
   const catalogState = new Map<string, CatalogEntryState>();
   const chunkRecords: CacheImageMetadata[][] = [];
@@ -2482,6 +2494,7 @@ export async function processFiles(
   performance.mark('indexing:phaseA:complete', {
     detail: { elapsedMs: performance.now() - phaseAStats.startTime, files: phaseAStats.processed }
   });
+  const phaseAElapsedMs = performance.now() - phaseAStats.startTime;
 
   throttledPhaseAProgress.cancel();
   if (totalNewFiles > 0) {
@@ -2491,6 +2504,22 @@ export async function processFiles(
   const ipcPerThousand = totalPhaseAFiles > 0 ? (phaseAStats.ipcCalls / totalPhaseAFiles) * 1000 : 0;
   performance.mark('indexing:phaseA:ipc-per-1k', { detail: { value: ipcPerThousand } });
   const writesPerThousand = totalPhaseAFiles > 0 ? (phaseAStats.diskWrites / totalPhaseAFiles) * 1000 : 0;
+  console.log('[indexing:perf]', {
+    event: 'phase-a:complete',
+    directoryId,
+    files: phaseAStats.processed,
+    newFiles: totalNewFiles,
+    preloadedImages: preloadedImages.length,
+    catalogEntries: catalogState.size,
+    enrichmentQueued: enrichmentQueue.length,
+    chunks: chunkRecords.length,
+    ipcCalls: phaseAStats.ipcCalls,
+    diskWrites: phaseAStats.diskWrites,
+    bytesWritten: phaseAStats.bytesWritten,
+    ipcPerThousand: Number(ipcPerThousand.toFixed(2)),
+    writesPerThousand: Number(writesPerThousand.toFixed(2)),
+    durationMs: Number(phaseAElapsedMs.toFixed(2)),
+  });
 
   if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production' && totalPhaseAFiles > 0) {
     if (ipcPerThousand > 10) {
@@ -2508,6 +2537,12 @@ export async function processFiles(
     performance.mark('indexing:phaseB:start');
     performance.mark('indexing:phaseB:complete', { detail: { elapsedMs: 0, files: 0 } });
     options.onEnrichmentProgress?.(null);
+    console.log('[indexing:perf]', {
+      event: 'phase-b:skipped',
+      directoryId,
+      reason: 'no-enrichment-needed',
+      totalElapsedMs: Number((performance.now() - phaseAStats.startTime).toFixed(2)),
+    });
     return { phaseB: Promise.resolve() };
   }
 
@@ -3163,6 +3198,28 @@ export async function processFiles(
     });
 
     console.log(`[indexing] Phase B complete: ${phaseBStats.processed}/${totalEnrichment} images enriched in ${(elapsedMs / 1000).toFixed(2)}s`);
+    console.log('[indexing:perf]', {
+      event: 'phase-b:complete',
+      directoryId,
+      processed: phaseBStats.processed,
+      totalEnrichment,
+      ipcCalls: phaseBStats.ipcCalls,
+      headReadFiles: phaseBStats.headReadFiles,
+      headReadMs: Number(phaseBStats.headReadMs.toFixed(2)),
+      tailReadFiles: phaseBStats.tailReadFiles,
+      tailReadHits: phaseBStats.tailReadHits,
+      tailReadMs: Number(phaseBStats.tailReadMs.toFixed(2)),
+      fullReadFiles: phaseBStats.fullReadFiles,
+      fullReadMs: Number(phaseBStats.fullReadMs.toFixed(2)),
+      rendererDispatchMs: Number(phaseBStats.rendererDispatchMs.toFixed(2)),
+      rendererDispatchBatches: phaseBStats.rendererDispatchBatches,
+      cacheFlushMs: Number(phaseBStats.flushMs.toFixed(2)),
+      cacheFlushChunks: phaseBStats.flushChunks,
+      metadataKinds: phaseBStats.metadataKinds,
+      fileTypes: phaseBStats.fileTypes,
+      durationMs: Number(elapsedMs.toFixed(2)),
+      totalElapsedMs: Number((performance.now() - phaseAStats.startTime).toFixed(2)),
+    });
     traceCacheDebug('indexer:phaseB:complete', () => ({
       details: {
         elapsedMs: Number(elapsedMs.toFixed(2)),

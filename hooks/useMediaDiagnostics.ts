@@ -20,6 +20,7 @@ export interface MediaDiagnosticsContext {
   fileName: string;
   surface: string;
   src?: string | null;
+  onAudioRendererError?: () => void;
 }
 
 const getSrcScheme = (src?: string | null): string | null => {
@@ -34,11 +35,15 @@ const getMediaErrorMessage = (error: MediaError | null): string | null => {
   return error.message || null;
 };
 
+export const isAudioRendererErrorMessage = (message?: string | null): boolean =>
+  typeof message === 'string' && message.includes('AUDIO_RENDERER_ERROR');
+
 export function useMediaDiagnostics(context: MediaDiagnosticsContext) {
   const logMediaEvent = useCallback(
     (event: SyntheticEvent<HTMLMediaElement>) => {
       const element = event.currentTarget;
       const mediaError = element.error;
+      const errorMessage = getMediaErrorMessage(mediaError);
 
       window.electronAPI?.logMediaPlaybackEvent?.({
         mediaKind: context.mediaKind,
@@ -50,10 +55,14 @@ export function useMediaDiagnostics(context: MediaDiagnosticsContext) {
         readyState: element.readyState,
         networkState: element.networkState,
         errorCode: mediaError?.code ?? null,
-        errorMessage: getMediaErrorMessage(mediaError),
+        errorMessage,
       });
+
+      if (event.type === 'error' && isAudioRendererErrorMessage(errorMessage)) {
+        context.onAudioRendererError?.();
+      }
     },
-    [context.fileName, context.mediaKind, context.src, context.surface],
+    [context.fileName, context.mediaKind, context.onAudioRendererError, context.src, context.surface],
   );
 
   return useMemo(

@@ -5,7 +5,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil, Workflow } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil, Workflow, Image as ImageIcon } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -18,7 +18,7 @@ import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import RenameImageModal from './RenameImageModal';
-import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import { groupImages, type ImageGroupByMode, type ImageGroupingSortOrder, type ImageGroupRenderItem } from '../utils/imageGrouping';
 
 interface ImageTableProps {
@@ -30,6 +30,7 @@ interface ImageTableProps {
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
   onFindSimilar?: (image: IndexedImage) => void;
+  onOpenImageEditor?: (image: IndexedImage) => void;
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   groupBy?: ImageGroupByMode;
   groupSortOrder?: ImageGroupingSortOrder;
@@ -78,6 +79,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   isCollectionsView = false,
   onImageRenamed,
   onFindSimilar,
+  onOpenImageEditor,
   onOpenComfyUIWorkspace,
   groupBy = 'none',
   groupSortOrder = 'date-desc',
@@ -171,6 +173,22 @@ const ImageTable: React.FC<ImageTableProps> = ({
     hideContextMenu();
   }, [canUseComfyUI, contextMenu.image, hideContextMenu, onOpenComfyUIWorkspace, showProModal]);
 
+  const openImageEditor = useCallback(() => {
+    if (!contextMenu.image || !onOpenImageEditor) {
+      return;
+    }
+    if (
+      isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) ||
+      isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) ||
+      getFileExtension(contextMenu.image.name) === '.gif'
+    ) {
+      return;
+    }
+
+    onOpenImageEditor(contextMenu.image);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, onOpenImageEditor]);
+
   const getContextTargetImages = useCallback(() => {
     if (!contextMenu.image) {
       return [];
@@ -185,6 +203,13 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
   const contextImagePrompt = contextMenu.image?.prompt || contextMenu.image?.metadata?.normalizedMetadata?.prompt;
   const canFindSimilar = Boolean(contextImagePrompt) && Boolean(onFindSimilar);
+  const canOpenContextImageEditor = Boolean(
+    onOpenImageEditor &&
+    contextMenu.image &&
+    !isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) &&
+    !isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) &&
+    getFileExtension(contextMenu.image.name) !== '.gif',
+  );
 
   const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
     const targetImageIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
@@ -775,6 +800,17 @@ const ImageTable: React.FC<ImageTableProps> = ({
             <Search className="w-4 h-4" />
             Find similar...
           </button>
+
+          {canOpenContextImageEditor && (
+            <button
+              onClick={openImageEditor}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              title="Open this image in the Image Editor workspace"
+            >
+              <ImageIcon className="w-4 h-4" />
+              Edit Image
+            </button>
+          )}
 
           {onOpenComfyUIWorkspace && (
             <button

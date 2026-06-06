@@ -25,6 +25,7 @@ interface GenerateStatus {
 export interface GenerateParams {
   customMetadata?: Partial<BaseMetadata>;
   overrides?: WorkflowOverrides;
+  directoryPath?: string;
   workflowMode?: ComfyUIWorkflowMode;
   sourceImagePolicy?: ComfyUISourceImagePolicy;
   advancedPromptJson?: string;
@@ -44,7 +45,7 @@ export function useGenerateWithComfyUI() {
       setIsGenerating(true);
       const metadata = mergeNormalizedMetadata(image, params?.customMetadata);
 
-      if (!hasPromptMetadata(metadata)) {
+      if (params?.workflowMode !== 'upscale' && !hasPromptMetadata(metadata)) {
         setIsGenerating(false);
         setGenerateStatus({
           success: false,
@@ -76,6 +77,7 @@ export function useGenerateWithComfyUI() {
           provider: 'comfyui',
           customMetadata: params?.customMetadata,
           overrides: params?.overrides,
+          directoryPath: params?.directoryPath,
           workflowMode: params?.workflowMode,
           sourceImagePolicy: params?.sourceImagePolicy,
           advancedPromptJson: params?.advancedPromptJson,

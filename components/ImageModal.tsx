@@ -1,9 +1,9 @@
 import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
-import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageAdjustments } from '../types';
+import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageEditRecipe } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow } from 'lucide-react';
+import { AlertTriangle, Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -25,11 +25,14 @@ import cacheManager from '../services/cacheManager';
 import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndexer';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
 import {
-  DEFAULT_IMAGE_ADJUSTMENTS,
-  buildImageAdjustmentFilter,
+  DEFAULT_IMAGE_EDIT_RECIPE,
+  clampImageEditCropRect,
   embedMetaHubMetadataInPngBytes,
-  hasImageAdjustments,
-  renderAdjustedImageToPngBytes,
+  getImageEditOutputDimensions,
+  hasImageEditRecipeChanges,
+  normalizeImageEditRecipe,
+  renderEditedImageToPngBlob,
+  renderEditedImageToPngBytes,
 } from '../services/imageEditingService';
 
 import { bulkSaveShadowMetadata } from '../services/imageAnnotationsStorage';
@@ -60,6 +63,7 @@ import {
 
 
 const TAG_SUGGESTION_LIMIT = 5;
+type ViewerZoomMode = 'fit' | 'actual' | 'manual';
 
 const buildTagSuggestions = (
   recentTags: string[],
@@ -140,12 +144,95 @@ const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefi
   };
 };
 
+const firstNonBlankString = (...values: Array<string | undefined | null>): string | undefined => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const firstNonEmptyArray = <T,>(...values: Array<T[] | undefined | null>): T[] | undefined => {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const firstDefined = <T,>(...values: Array<T | undefined | null>): T | undefined => {
+  for (const value of values) {
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const mergeEditedNormalizedMetadata = (
+  parsedMetadata?: BaseMetadata,
+  sourceMetadata?: BaseMetadata,
+): BaseMetadata | undefined => {
+  if (!parsedMetadata) {
+    return sourceMetadata;
+  }
+  if (!sourceMetadata) {
+    return parsedMetadata;
+  }
+
+  const merged: BaseMetadata = {
+    ...sourceMetadata,
+    ...parsedMetadata,
+    prompt: firstNonBlankString(parsedMetadata.prompt, sourceMetadata.prompt) || '',
+    negativePrompt: firstNonBlankString(parsedMetadata.negativePrompt, sourceMetadata.negativePrompt) || '',
+    model: firstNonBlankString(parsedMetadata.model, sourceMetadata.model) || '',
+    models: firstNonEmptyArray(parsedMetadata.models, sourceMetadata.models) || [],
+    loras: firstNonEmptyArray(parsedMetadata.loras, sourceMetadata.loras) || [],
+    sampler: firstNonBlankString(parsedMetadata.sampler, sourceMetadata.sampler) || '',
+    scheduler: firstNonBlankString(parsedMetadata.scheduler, sourceMetadata.scheduler) || '',
+    board: firstNonBlankString(parsedMetadata.board, sourceMetadata.board),
+    cfgScale: firstDefined(parsedMetadata.cfgScale, parsedMetadata.cfg_scale, sourceMetadata.cfgScale, sourceMetadata.cfg_scale),
+    cfg_scale: firstDefined(parsedMetadata.cfg_scale, parsedMetadata.cfgScale, sourceMetadata.cfg_scale, sourceMetadata.cfgScale),
+    steps: firstDefined(parsedMetadata.steps, sourceMetadata.steps) || 0,
+    seed: firstDefined(parsedMetadata.seed, sourceMetadata.seed),
+  };
+
+  return merged;
+};
+
+const scheduleEditedImageCacheUpsert = (
+  directory: { path: string; name: string },
+  image: IndexedImage,
+  scanSubfolders: boolean,
+) => {
+  window.setTimeout(() => {
+    const cacheModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
+    Promise.all(
+      cacheModes.map((scanSubfoldersMode) =>
+        cacheManager.applyChunkedCacheDelta(
+          directory.path,
+          directory.name,
+          [image],
+          [],
+          [],
+          scanSubfoldersMode,
+        )
+      )
+    ).catch((error) => {
+      console.error('Failed to update cache after edited image save:', error);
+    });
+  }, 0);
+};
+
 interface ImageModalProps {
   modalId?: string;
   image: IndexedImage;
   onClose: () => void;
   onFindSimilar?: (image: IndexedImage) => void;
   onOpenComfyUIWorkflow?: (image: IndexedImage) => void;
+  onOpenImageEditor?: (image: IndexedImage) => void;
   onImageDeleted?: (imageId: string) => void;
   onImageRenamed?: (oldImageId: string, newImageId: string, newRelativePath: string) => void;
   currentIndex?: number;
@@ -524,21 +611,28 @@ const VideoPlayer: React.FC<{
   onCanPlay?: React.ReactEventHandler<HTMLVideoElement>;
   onPlaying?: React.ReactEventHandler<HTMLVideoElement>;
   onEnded?: React.ReactEventHandler<HTMLVideoElement>;
+  externalPath?: string | null;
   diagnostics?: Omit<MediaDiagnosticsContext, 'mediaKind' | 'src'>;
-}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying, onEnded, diagnostics }) => {
+}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying, onEnded, externalPath, diagnostics }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const [audioRendererFailed, setAudioRendererFailed] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isHovering, setIsHovering] = useState(false);
+  const handleAudioRendererError = useCallback(() => {
+    setAudioRendererFailed(true);
+    setIsPlaying(false);
+  }, []);
   const mediaDiagnostics = useMediaDiagnostics({
     mediaKind: 'video',
     fileName: diagnostics?.fileName ?? '',
     surface: diagnostics?.surface ?? 'image-modal',
     src,
+    onAudioRendererError: handleAudioRendererError,
   });
-  
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [isHovering, setIsHovering] = useState(false);
   
   const [volume, setVolume] = useState(() => {
     const saved = localStorage.getItem('video_player_volume');
@@ -550,6 +644,11 @@ const VideoPlayer: React.FC<{
   const [isLooping, setIsLooping] = useState(() => {
     return localStorage.getItem('video_player_loop') === 'true';
   });
+
+  useEffect(() => {
+    setAudioRendererFailed(false);
+    setOpenError(null);
+  }, [src]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -613,6 +712,45 @@ const VideoPlayer: React.FC<{
       setIsMuted(false);
     }
   };
+
+  const openExternally = useCallback(async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (!externalPath) return;
+    const result = await window.electronAPI?.openPath?.(externalPath);
+    if (!result?.success) {
+      setOpenError(result?.error || 'Failed to open media externally.');
+    }
+  }, [externalPath]);
+
+  if (audioRendererFailed) {
+    return (
+      <div
+        ref={containerRef}
+        className="relative flex h-full w-full flex-col items-center justify-center gap-5 bg-black p-8 text-center text-gray-100"
+        onContextMenu={onContextMenu}
+      >
+        <div className="rounded-full border border-amber-400/30 bg-amber-400/10 p-6 text-amber-200">
+          <AlertTriangle className="h-16 w-16" />
+        </div>
+        <div>
+          <p className="text-lg font-medium text-gray-100">Audio playback failed in Electron</p>
+          <p className="mt-1 max-w-md text-sm text-gray-400">
+            The macOS audio service reported an audio renderer error.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={openExternally}
+          disabled={!externalPath}
+          className="inline-flex items-center gap-2 rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-100 transition-colors hover:border-gray-500 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <ExternalLink className="h-4 w-4" />
+          Open Externally
+        </button>
+        {openError && <p className="max-w-md text-xs text-red-300">{openError}</p>}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -754,6 +892,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onClose,
   onFindSimilar,
   onOpenComfyUIWorkflow,
+  onOpenImageEditor,
   onImageDeleted,
   onImageRenamed,
   currentIndex = 0,
@@ -808,10 +947,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isAdjustmentPanelOpen, setIsAdjustmentPanelOpen] = useState(false);
-  const [imageAdjustments, setImageAdjustments] = useState<ImageAdjustments>(DEFAULT_IMAGE_ADJUSTMENTS);
+  const [imageEditRecipe, setImageEditRecipe] = useState<ImageEditRecipe>(DEFAULT_IMAGE_EDIT_RECIPE);
+  const [imageEditorTab, setImageEditorTab] = useState<'adjust' | 'crop' | 'transform' | 'enhance'>('adjust');
+  const [imageEditSourceDimensions, setImageEditSourceDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [displayedImageNaturalSize, setDisplayedImageNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const [cropImageBounds, setCropImageBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const [editedPreviewUrl, setEditedPreviewUrl] = useState<string | null>(null);
+  const [isRenderingEditedPreview, setIsRenderingEditedPreview] = useState(false);
   const [isShowingOriginalForAdjustmentCompare, setIsShowingOriginalForAdjustmentCompare] = useState(false);
   const [isSavingEditedImage, setIsSavingEditedImage] = useState(false);
   const [isFullImageSourceReady, setIsFullImageSourceReady] = useState(false);
+  const [externalMediaPath, setExternalMediaPath] = useState<string | null>(null);
   const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => {
     if (initialWindowState) {
       return clampModalWindowToViewport(initialWindowState);
@@ -836,6 +982,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const onWindowStateChangeRef = useRef(onWindowStateChange);
   const lastReportedWindowStateRef = useRef<ModalWindowState | null>(null);
   const slideshowTimeoutRef = useRef<number | null>(null);
+  const fullImageElementRef = useRef<HTMLImageElement>(null);
+  const cropDragRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startRect: NonNullable<ImageEditRecipe['crop']['rect']>;
+  } | null>(null);
   const restoredModalWindowRef = useRef<ModalWindowState | null>(null);
   const isMinimizeAnimatingRef = useRef(false);
   const wasMinimizedRef = useRef(isMinimized);
@@ -892,6 +1045,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [enableAnimations, isMinimized, modalId, zIndex]);
 
   const [zoom, setZoom] = useState(1);
+  const [viewerZoomMode, setViewerZoomMode] = useState<ViewerZoomMode>('fit');
+  const [windowZoomFactor, setWindowZoomFactor] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -962,6 +1117,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const currentRating = liveImage.rating ?? null;
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
   const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
+  const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const recentTagSuggestions = useMemo(() => getRecentTagChips({
     recentTags,
@@ -1007,12 +1163,76 @@ const ImageModal: React.FC<ImageModalProps> = ({
     ? `${directoryPath}${/[\\/]$/.test(directoryPath) ? '' : '\\'}${image.name}`
     : image.name;
   const mediaOverlayVisibilityClass = isMediaOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
-  const adjustmentFilter = useMemo(
-    () => buildImageAdjustmentFilter(imageAdjustments),
-    [imageAdjustments]
+  const normalizedImageEditRecipe = useMemo(
+    () => normalizeImageEditRecipe(imageEditRecipe, imageEditSourceDimensions || undefined),
+    [imageEditRecipe, imageEditSourceDimensions]
   );
-  const hasAdjustmentChanges = hasImageAdjustments(imageAdjustments);
-  const shouldApplyAdjustmentFilter = canEditImage && hasAdjustmentChanges && !isShowingOriginalForAdjustmentCompare;
+  const hasImageEditChanges = hasImageEditRecipeChanges(normalizedImageEditRecipe);
+  const imageEditOutputDimensions = useMemo(
+    () => imageEditSourceDimensions
+      ? getImageEditOutputDimensions(normalizedImageEditRecipe, imageEditSourceDimensions)
+      : null,
+    [imageEditSourceDimensions, normalizedImageEditRecipe]
+  );
+  const shouldShowEditedPreview =
+    canEditImage &&
+    hasImageEditChanges &&
+    !isShowingOriginalForAdjustmentCompare &&
+    !(imageEditorTab === 'crop' && normalizedImageEditRecipe.crop.enabled);
+  const displayedImageUrl = shouldShowEditedPreview && editedPreviewUrl ? editedPreviewUrl : imageUrl;
+
+  useEffect(() => {
+    let isMounted = true;
+    setExternalMediaPath(null);
+
+    const resolveExternalMediaPath = async () => {
+      if (!isPlayableMedia) {
+        return;
+      }
+
+      const handlePath = window.electronAPI ? getElectronAbsoluteMediaPath(liveImage) : null;
+      if (handlePath) {
+        if (isMounted) setExternalMediaPath(handlePath);
+        return;
+      }
+
+      if (!directoryPath || !window.electronAPI?.joinPaths) {
+        return;
+      }
+
+      const joined = await window.electronAPI.joinPaths(directoryPath, getRelativeImagePath(liveImage));
+      if (isMounted && joined.success && joined.path) {
+        setExternalMediaPath(joined.path);
+      }
+    };
+
+    void resolveExternalMediaPath();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [directoryPath, isPlayableMedia, liveImage]);
+
+  const cropOverlayStyle = useMemo(() => {
+    const rect = normalizedImageEditRecipe.crop.rect;
+    if (!cropImageBounds || !imageEditSourceDimensions || !rect) {
+      return null;
+    }
+
+    const scaleX = cropImageBounds.width / Math.max(1, imageEditSourceDimensions.width);
+    const scaleY = cropImageBounds.height / Math.max(1, imageEditSourceDimensions.height);
+    return {
+      left: cropImageBounds.left + (rect.x * scaleX),
+      top: cropImageBounds.top + (rect.y * scaleY),
+      width: rect.width * scaleX,
+      height: rect.height * scaleY,
+    };
+  }, [cropImageBounds, imageEditSourceDimensions, normalizedImageEditRecipe.crop.rect]);
+  const showCropOverlay =
+    canEditImage &&
+    imageEditorTab === 'crop' &&
+    normalizedImageEditRecipe.crop.enabled &&
+    cropOverlayStyle;
   const rawMetadataImage = hydratedRawMetadataImage?.id === liveImage.id ? hydratedRawMetadataImage : liveImage;
 
   const ensureFullRawMetadata = useCallback(async (): Promise<IndexedImage> => {
@@ -1034,12 +1254,78 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [directoryPath, hydratedRawMetadataImage, liveImage]);
 
   useEffect(() => {
-    setImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS);
+    setImageEditRecipe(DEFAULT_IMAGE_EDIT_RECIPE);
+    setImageEditorTab('adjust');
+    setImageEditSourceDimensions(null);
+    setDisplayedImageNaturalSize(null);
+    setCropImageBounds(null);
+    setEditedPreviewUrl(null);
+    setIsRenderingEditedPreview(false);
     setIsShowingOriginalForAdjustmentCompare(false);
     setIsAdjustmentPanelOpen(false);
     setHydratedRawMetadataImage(null);
     setIsHydratingRawMetadata(false);
   }, [image.id]);
+
+  useEffect(() => () => {
+    if (editedPreviewUrl) {
+      URL.revokeObjectURL(editedPreviewUrl);
+    }
+  }, [editedPreviewUrl]);
+
+  useEffect(() => {
+    if (!canEditImage || !hasImageEditChanges || !isFullImageSourceReady) {
+      setEditedPreviewUrl((current) => {
+        if (current) {
+          URL.revokeObjectURL(current);
+        }
+        return null;
+      });
+      setIsRenderingEditedPreview(false);
+      return;
+    }
+
+    let canceled = false;
+    setIsRenderingEditedPreview(true);
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const editableSource = await mediaSourceCache.getRendererOwnedObjectUrl(liveImage, directoryPath);
+        const blob = await renderEditedImageToPngBlob(editableSource.url, normalizedImageEditRecipe);
+        if (canceled) {
+          editableSource.revoke();
+          return;
+        }
+        const nextUrl = URL.createObjectURL(blob);
+        setEditedPreviewUrl((current) => {
+          if (current) {
+            URL.revokeObjectURL(current);
+          }
+          return nextUrl;
+        });
+        editableSource.revoke();
+      } catch (error) {
+        if (!canceled) {
+          console.warn('[ImageModal] Failed to render edited preview:', error);
+        }
+      } finally {
+        if (!canceled) {
+          setIsRenderingEditedPreview(false);
+        }
+      }
+    }, 120);
+
+    return () => {
+      canceled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    canEditImage,
+    directoryPath,
+    hasImageEditChanges,
+    isFullImageSourceReady,
+    liveImage,
+    normalizedImageEditRecipe,
+  ]);
 
   useEffect(() => {
     const mountStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -1708,6 +1994,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     setZoom(1);
+    setViewerZoomMode('fit');
     setPan({ x: 0, y: 0 });
     setSlideshowVideoDuration(null);
     revealMediaOverlay();
@@ -1719,28 +2006,78 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     setZoom(1);
+    setViewerZoomMode('fit');
     setPan({ x: 0, y: 0 });
   }, [image.id, isSlideshowMode]);
 
   useEffect(() => {
     setZoom(1);
+    setViewerZoomMode('fit');
     setPan({ x: 0, y: 0 });
     setIsMediaOverlayVisible(false);
     clearMediaOverlayHideTimer();
   }, [clearMediaOverlayHideTimer, isFullscreen]);
 
+  useEffect(() => {
+    const applyWindowZoomFactor = (nextZoomFactor: number) => {
+      setWindowZoomFactor(Number.isFinite(nextZoomFactor) && nextZoomFactor > 0 ? nextZoomFactor : 1);
+    };
+
+    void window.electronAPI?.getZoomFactor?.().then(applyWindowZoomFactor);
+    return window.electronAPI?.onZoomFactorChanged?.(applyWindowZoomFactor);
+  }, []);
+
+  const getActualSizeZoom = useCallback(() => {
+    const imageElement = fullImageElementRef.current;
+    const naturalSize = displayedImageNaturalSize;
+    if (!imageElement || !naturalSize || naturalSize.width <= 0 || naturalSize.height <= 0) {
+      return 1;
+    }
+
+    const renderedWidth = imageElement.clientWidth;
+    const renderedHeight = imageElement.clientHeight;
+    if (renderedWidth <= 0 || renderedHeight <= 0) {
+      return 1;
+    }
+
+    const safeWindowZoomFactor = Math.max(windowZoomFactor, 0.01);
+    const widthZoom = naturalSize.width / (renderedWidth * safeWindowZoomFactor);
+    const heightZoom = naturalSize.height / (renderedHeight * safeWindowZoomFactor);
+    return Math.max(widthZoom, heightZoom, 0.1);
+  }, [displayedImageNaturalSize, windowZoomFactor]);
+
+  const actualSizeZoom = getActualSizeZoom();
+  const minViewerZoom = Math.min(1, actualSizeZoom);
+  const maxViewerZoom = Math.max(5, actualSizeZoom);
+  const isActualSizeZoom = viewerZoomMode === 'actual' && Math.abs(zoom - actualSizeZoom) < 0.05;
+  const isFitZoom = viewerZoomMode === 'fit' && Math.abs(zoom - 1) < 0.05;
+  const zoomLabel = isFitZoom ? 'Fit' : isActualSizeZoom ? '1:1' : `${Math.round(zoom * 100)}%`;
+
+  useLayoutEffect(() => {
+    if (viewerZoomMode !== 'actual' || typeof window === 'undefined') {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setZoom(getActualSizeZoom());
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [getActualSizeZoom, viewerZoomMode, windowZoomFactor]);
+
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
 
     const delta = e.deltaY * -0.01;
-    const newZoom = Math.min(Math.max(1, zoom + delta), 5);
+    const newZoom = Math.min(Math.max(minViewerZoom, zoom + delta), maxViewerZoom);
 
+    setViewerZoomMode('manual');
     setZoom(newZoom);
 
     if (newZoom === 1) {
       setPan({ x: 0, y: 0 });
     }
-  }, [zoom]);
+  }, [maxViewerZoom, minViewerZoom, zoom]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!(e.target instanceof Element) || !e.target.closest('img, video, audio, canvas, [data-media-element="true"]')) {
@@ -1768,15 +2105,102 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, []);
 
   const showOriginalForAdjustmentCompare = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
-    if (!hasAdjustmentChanges || event.button !== 0) {
+    if (!hasImageEditChanges || event.button !== 0 || imageEditorTab === 'crop') {
       return;
     }
 
     setIsShowingOriginalForAdjustmentCompare(true);
-  }, [hasAdjustmentChanges]);
+  }, [hasImageEditChanges, imageEditorTab]);
 
   const hideOriginalForAdjustmentCompare = useCallback(() => {
     setIsShowingOriginalForAdjustmentCompare(false);
+  }, []);
+
+  const updateCropImageBounds = useCallback(() => {
+    const imageElement = fullImageElementRef.current;
+    const containerElement = imageContainerRef.current;
+    if (!imageElement || !containerElement) {
+      setCropImageBounds(null);
+      return;
+    }
+
+    const imageRect = imageElement.getBoundingClientRect();
+    const containerRect = containerElement.getBoundingClientRect();
+    setCropImageBounds({
+      left: imageRect.left - containerRect.left,
+      top: imageRect.top - containerRect.top,
+      width: imageRect.width,
+      height: imageRect.height,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    updateCropImageBounds();
+  }, [
+    updateCropImageBounds,
+    image.id,
+    imageEditorTab,
+    normalizedImageEditRecipe.crop.enabled,
+    normalizedImageEditRecipe.crop.rect,
+    zoom,
+    pan.x,
+    pan.y,
+    displayedImageUrl,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.addEventListener('resize', updateCropImageBounds);
+    return () => window.removeEventListener('resize', updateCropImageBounds);
+  }, [updateCropImageBounds]);
+
+  const handleCropDragStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!imageEditSourceDimensions || !normalizedImageEditRecipe.crop.rect) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    cropDragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startRect: normalizedImageEditRecipe.crop.rect,
+    };
+  }, [imageEditSourceDimensions, normalizedImageEditRecipe.crop.rect]);
+
+  const handleCropDragMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = cropDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !cropImageBounds || !imageEditSourceDimensions) {
+      return;
+    }
+
+    const scaleX = imageEditSourceDimensions.width / Math.max(1, cropImageBounds.width);
+    const scaleY = imageEditSourceDimensions.height / Math.max(1, cropImageBounds.height);
+    const nextRect = clampImageEditCropRect({
+      ...drag.startRect,
+      x: drag.startRect.x + ((event.clientX - drag.startClientX) * scaleX),
+      y: drag.startRect.y + ((event.clientY - drag.startClientY) * scaleY),
+    }, imageEditSourceDimensions);
+
+    if (nextRect) {
+      setImageEditRecipe((current) => normalizeImageEditRecipe({
+        ...current,
+        crop: {
+          ...current.crop,
+          enabled: true,
+          rect: nextRect,
+        },
+      }, imageEditSourceDimensions));
+    }
+  }, [cropImageBounds, imageEditSourceDimensions]);
+
+  const handleCropDragEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (cropDragRef.current?.pointerId === event.pointerId) {
+      cropDragRef.current = null;
+    }
   }, []);
 
   const handleDragStart = useCallback((e: React.DragEvent<HTMLImageElement>) => {
@@ -1815,20 +2239,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [hideOriginalForAdjustmentCompare, isShowingOriginalForAdjustmentCompare]);
 
   const handleZoomIn = () => {
-    setZoom(prev => Math.min(prev + 0.5, 5));
+    setViewerZoomMode('manual');
+    setZoom(prev => Math.min(prev + 0.5, maxViewerZoom));
   };
 
   const handleZoomOut = () => {
-    const newZoom = Math.max(zoom - 0.5, 1);
+    const newZoom = Math.max(zoom - 0.5, minViewerZoom);
+    setViewerZoomMode('manual');
     setZoom(newZoom);
-    if (newZoom === 1) {
+    if (Math.abs(newZoom - 1) < 0.01) {
       setPan({ x: 0, y: 0 });
     }
   };
 
-  const handleResetZoom = () => {
+  const handleFitToScreen = () => {
+    setViewerZoomMode('fit');
     setZoom(1);
     setPan({ x: 0, y: 0 });
+  };
+
+  const handleActualSize = () => {
+    const nextZoom = getActualSizeZoom();
+    setViewerZoomMode('actual');
+    setZoom(nextZoom);
+    if (Math.abs(nextZoom - 1) < 0.01) {
+      setPan({ x: 0, y: 0 });
+    }
   };
 
   const buildEditedDefaultPath = useCallback(async () => {
@@ -1845,6 +2281,40 @@ const ImageModal: React.FC<ImageModalProps> = ({
     const joined = await window.electronAPI.joinPaths(directoryPath, editedRelativePath);
     return joined.success && joined.path ? joined.path : `${basename}-edited.png`;
   }, [directoryPath, liveImage]);
+
+  const handleAIUpscale = useCallback(async () => {
+    if (!canUseComfyUI) {
+      showProModal('comfyui');
+      return;
+    }
+
+    if (!comfyUIEnabled || !comfyUIServerUrl) {
+      setError('ComfyUI Upscale needs ComfyUI enabled and a server URL in Settings.');
+      return;
+    }
+
+    if (!liveImage.handle && !directoryPath) {
+      setError('ComfyUI Upscale needs desktop file access to upload the source image.');
+      return;
+    }
+
+    await generateWithComfyUI(liveImage, {
+      workflowMode: 'upscale',
+      directoryPath,
+      customMetadata: {
+        prompt: liveImage.prompt || 'ComfyUI upscale',
+      },
+    });
+  }, [
+    canUseComfyUI,
+    comfyUIEnabled,
+    comfyUIServerUrl,
+    generateWithComfyUI,
+    directoryPath,
+    liveImage,
+    setError,
+    showProModal,
+  ]);
 
   const findDirectoryForAbsolutePath = useCallback((filePath: string) => {
     const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
@@ -1871,22 +2341,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
     const editableSource = await mediaSourceCache.getRendererOwnedObjectUrl(liveImage, directoryPath);
     let pngBytes: Uint8Array;
     try {
-      pngBytes = await renderAdjustedImageToPngBytes(editableSource.url, imageAdjustments);
+      pngBytes = await renderEditedImageToPngBytes(editableSource.url, normalizedImageEditRecipe);
     } finally {
       editableSource.revoke();
     }
 
-    const outputBytes = embedMetaHubMetadataInPngBytes(pngBytes, sourceMetadata, imageAdjustments, sourceRawMetadata);
+    const outputBytes = embedMetaHubMetadataInPngBytes(
+      pngBytes,
+      sourceMetadata,
+      normalizedImageEditRecipe,
+      sourceRawMetadata,
+      imageEditOutputDimensions || undefined,
+    );
     const result = await window.electronAPI.writeFile(targetPath, outputBytes);
     if (!result.success) {
       throw new Error(result.error || 'Failed to write edited image.');
     }
 
     return pngBytes;
-  }, [directoryPath, imageAdjustments, imageUrl, isFullImageSourceReady, liveImage]);
+  }, [directoryPath, imageEditOutputDimensions, imageUrl, isFullImageSourceReady, liveImage, normalizedImageEditRecipe]);
 
   const handleSaveEditedImageAs = useCallback(async () => {
-    if (!canEditImage || !hasAdjustmentChanges || isSavingEditedImage) {
+    if (!canEditImage || !hasImageEditChanges || isSavingEditedImage) {
       return;
     }
 
@@ -1917,37 +2393,37 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (targetDirectory) {
         const indexedImage = await indexImageFileAtPath(saveResult.path, targetDirectory);
         if (indexedImage) {
-          const savedMetadata = sourceMetadata
-            ? {
-                ...indexedImage.metadata,
-                normalizedMetadata: sourceMetadata,
-              }
+          const savedNormalizedMetadata = mergeEditedNormalizedMetadata(
+            indexedImage.metadata?.normalizedMetadata as BaseMetadata | undefined,
+            sourceMetadata,
+          );
+          const savedMetadata = savedNormalizedMetadata
+            ? { ...indexedImage.metadata, normalizedMetadata: savedNormalizedMetadata }
             : indexedImage.metadata;
           const savedImage: IndexedImage = {
             ...indexedImage,
             metadata: savedMetadata,
-            metadataString: sourceMetadata ? JSON.stringify(savedMetadata) : liveImage.metadataString,
-            models: sourceMetadata?.models || liveImage.models,
-            loras: sourceMetadata?.loras || liveImage.loras,
-            sampler: sourceMetadata?.sampler || liveImage.sampler,
-            scheduler: sourceMetadata?.scheduler || liveImage.scheduler,
-            board: sourceMetadata?.board || liveImage.board,
-            prompt: sourceMetadata?.prompt || liveImage.prompt,
-            negativePrompt: sourceMetadata?.negativePrompt || liveImage.negativePrompt,
-            cfgScale: sourceMetadata?.cfgScale ?? sourceMetadata?.cfg_scale ?? liveImage.cfgScale,
-            steps: sourceMetadata?.steps || liveImage.steps,
-            seed: sourceMetadata?.seed ?? liveImage.seed,
+            metadataString: savedNormalizedMetadata ? JSON.stringify(savedMetadata) : liveImage.metadataString,
+            models: savedNormalizedMetadata?.models || liveImage.models,
+            loras: savedNormalizedMetadata?.loras || liveImage.loras,
+            sampler: savedNormalizedMetadata?.sampler || liveImage.sampler,
+            scheduler: savedNormalizedMetadata?.scheduler || liveImage.scheduler,
+            board: savedNormalizedMetadata?.board || liveImage.board,
+            prompt: savedNormalizedMetadata?.prompt || liveImage.prompt,
+            negativePrompt: savedNormalizedMetadata?.negativePrompt || liveImage.negativePrompt,
+            cfgScale: savedNormalizedMetadata?.cfgScale ?? savedNormalizedMetadata?.cfg_scale ?? liveImage.cfgScale,
+            steps: savedNormalizedMetadata?.steps || liveImage.steps,
+            seed: savedNormalizedMetadata?.seed ?? liveImage.seed,
             workflowNodes: liveImage.workflowNodes,
             enrichmentState: 'enriched',
           };
           const targetAlreadyIndexed = allImages.some((candidate) => candidate.id === savedImage.id);
           if (targetAlreadyIndexed) {
             mergeImages([savedImage]);
-            await cacheManager.updateCachedImages(targetDirectory.path, targetDirectory.name, [savedImage], scanSubfolders);
           } else {
             addImages([savedImage]);
-            await cacheManager.appendToCache(targetDirectory.path, targetDirectory.name, [savedImage], scanSubfolders);
           }
+          scheduleEditedImageCacheUpsert(targetDirectory, savedImage, scanSubfolders);
           setSuccess(`Saved edited image as ${savedImage.name}.`);
         } else {
           setSuccess('Saved edited image.');
@@ -1967,7 +2443,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     canEditImage,
     ensureFullRawMetadata,
     findDirectoryForAbsolutePath,
-    hasAdjustmentChanges,
+    hasImageEditChanges,
     isSavingEditedImage,
     liveImage,
     mergeImages,
@@ -1978,7 +2454,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   ]);
 
   const handleOverwriteEditedImage = useCallback(async () => {
-    if (!canEditImage || !hasAdjustmentChanges || isSavingEditedImage) {
+    if (!canEditImage || !hasImageEditChanges || isSavingEditedImage) {
       return;
     }
 
@@ -2021,27 +2497,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
         throw new Error('The edited image was saved, but metadata reparsing returned no image.');
       }
 
-      const preservedMetadata = sourceMetadata
-        ? {
-            ...reparsed.metadata,
-            normalizedMetadata: sourceMetadata,
-          }
+      const preservedNormalizedMetadata = mergeEditedNormalizedMetadata(
+        reparsed.metadata?.normalizedMetadata as BaseMetadata | undefined,
+        sourceMetadata,
+      );
+      const preservedMetadata = preservedNormalizedMetadata
+        ? { ...reparsed.metadata, normalizedMetadata: preservedNormalizedMetadata }
         : reparsed.metadata;
       const preservedMetadataImage: IndexedImage = {
         ...liveImage,
         ...reparsed,
         metadata: preservedMetadata,
-        metadataString: sourceMetadata ? JSON.stringify(preservedMetadata) : liveImage.metadataString,
-        models: sourceMetadata?.models || liveImage.models,
-        loras: sourceMetadata?.loras || liveImage.loras,
-        sampler: sourceMetadata?.sampler || liveImage.sampler,
-        scheduler: sourceMetadata?.scheduler || liveImage.scheduler,
-        board: sourceMetadata?.board || liveImage.board,
-        prompt: sourceMetadata?.prompt || liveImage.prompt,
-        negativePrompt: sourceMetadata?.negativePrompt || liveImage.negativePrompt,
-        cfgScale: sourceMetadata?.cfgScale ?? sourceMetadata?.cfg_scale ?? liveImage.cfgScale,
-        steps: sourceMetadata?.steps || liveImage.steps,
-        seed: sourceMetadata?.seed ?? liveImage.seed,
+        metadataString: preservedNormalizedMetadata ? JSON.stringify(preservedMetadata) : liveImage.metadataString,
+        models: preservedNormalizedMetadata?.models || liveImage.models,
+        loras: preservedNormalizedMetadata?.loras || liveImage.loras,
+        sampler: preservedNormalizedMetadata?.sampler || liveImage.sampler,
+        scheduler: preservedNormalizedMetadata?.scheduler || liveImage.scheduler,
+        board: preservedNormalizedMetadata?.board || liveImage.board,
+        prompt: preservedNormalizedMetadata?.prompt || liveImage.prompt,
+        negativePrompt: preservedNormalizedMetadata?.negativePrompt || liveImage.negativePrompt,
+        cfgScale: preservedNormalizedMetadata?.cfgScale ?? preservedNormalizedMetadata?.cfg_scale ?? liveImage.cfgScale,
+        steps: preservedNormalizedMetadata?.steps || liveImage.steps,
+        seed: preservedNormalizedMetadata?.seed ?? liveImage.seed,
         workflowNodes: liveImage.workflowNodes,
         handle: liveImage.handle,
         thumbnailHandle: liveImage.thumbnailHandle,
@@ -2067,8 +2544,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
         status: 'pending',
         error: null,
       });
-      await cacheManager.updateCachedImages(sourceDirectory.path, sourceDirectory.name, [preservedMetadataImage], scanSubfolders);
-      setImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS);
+      scheduleEditedImageCacheUpsert(sourceDirectory, preservedMetadataImage, scanSubfolders);
+      setImageEditRecipe(DEFAULT_IMAGE_EDIT_RECIPE);
       setSuccess('Overwrote original image with edits.');
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to overwrite edited image.');
@@ -2080,7 +2557,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     canOverwriteEditedImage,
     directories,
     ensureFullRawMetadata,
-    hasAdjustmentChanges,
+    hasImageEditChanges,
     isSavingEditedImage,
     liveImage,
     mergeImages,
@@ -2853,6 +3330,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   src={imageUrl}
                   title={image.name}
                   autoPlay
+                  externalPath={externalMediaPath}
                   diagnostics={{ fileName: image.name, surface: isSlideshowMode ? 'slideshow' : 'image-modal' }}
                   onContextMenu={handleContextMenu}
                   onLoadedMetadata={() => markPerformanceFlow(diagnosticsFlowId, 'audio-loadedmetadata', { imageId: image.id })}
@@ -2876,6 +3354,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   key={image.id}
                   src={imageUrl}
                   poster={preferredThumbnailUrl ?? undefined}
+                  externalPath={externalMediaPath}
                   diagnostics={{ fileName: image.name, surface: isSlideshowMode ? 'slideshow' : 'image-modal' }}
                   onContextMenu={handleContextMenu}
                   onLoadedMetadata={(event) => {
@@ -2899,35 +3378,71 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 />
               </div>
             ) : (
-              <img
-                src={imageUrl}
-                alt={image.name}
-                className="max-w-full max-h-full object-contain select-none image-alpha-grid"
-                onLoad={() => {
-                  if (!hasMarkedFullMediaReadyRef.current) {
-                    hasMarkedFullMediaReadyRef.current = true;
-                    markPerformanceFlow(diagnosticsFlowId, 'image-onload', { imageId: image.id });
-                    finishPerformanceFlow(diagnosticsFlowId, {
-                      imageId: image.id,
-                      mediaType: 'image',
-                      status: 'onload',
-                    });
-                  }
-                }}
-                onContextMenu={handleContextMenu}
-                onPointerDown={showOriginalForAdjustmentCompare}
-                onPointerUp={hideOriginalForAdjustmentCompare}
-                onPointerCancel={hideOriginalForAdjustmentCompare}
-                onPointerLeave={hideOriginalForAdjustmentCompare}
-                onDragStart={handleDragStart}
-                style={{
-                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                  filter: shouldApplyAdjustmentFilter ? adjustmentFilter : undefined,
-                  transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-                }}
-                title={hasAdjustmentChanges ? 'Hold to compare with the original image' : undefined}
-                draggable={canDragExternally && zoom === 1}
-              />
+              <>
+                <img
+                  ref={fullImageElementRef}
+                  src={displayedImageUrl}
+                  alt={image.name}
+                  className="max-w-full max-h-full object-contain select-none image-alpha-grid"
+                  onLoad={(event) => {
+                    const target = event.currentTarget;
+                    const naturalWidth = target.naturalWidth || target.width;
+                    const naturalHeight = target.naturalHeight || target.height;
+                    if (naturalWidth > 0 && naturalHeight > 0) {
+                      setDisplayedImageNaturalSize({ width: naturalWidth, height: naturalHeight });
+                    }
+                    const loadedUrl = target.currentSrc || target.src;
+                    const loadedSourceImage = Boolean(imageUrl && loadedUrl === imageUrl);
+                    if (isFullImageSourceReady && loadedSourceImage && naturalWidth > 0 && naturalHeight > 0) {
+                      setImageEditSourceDimensions({ width: naturalWidth, height: naturalHeight });
+                    }
+                    updateCropImageBounds();
+                    if (!hasMarkedFullMediaReadyRef.current) {
+                      hasMarkedFullMediaReadyRef.current = true;
+                      markPerformanceFlow(diagnosticsFlowId, 'image-onload', { imageId: image.id });
+                      finishPerformanceFlow(diagnosticsFlowId, {
+                        imageId: image.id,
+                        mediaType: 'image',
+                        status: 'onload',
+                      });
+                    }
+                  }}
+                  onContextMenu={handleContextMenu}
+                  onPointerDown={showOriginalForAdjustmentCompare}
+                  onPointerUp={hideOriginalForAdjustmentCompare}
+                  onPointerCancel={hideOriginalForAdjustmentCompare}
+                  onPointerLeave={hideOriginalForAdjustmentCompare}
+                  onDragStart={handleDragStart}
+                  style={{
+                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                    transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                  }}
+                  title={hasImageEditChanges && editedPreviewUrl ? 'Hold to compare with the original image' : undefined}
+                  draggable={canDragExternally && zoom === 1}
+                />
+                {showCropOverlay && cropOverlayStyle && (
+                  <div
+                    data-no-window-drag="true"
+                    className="absolute z-30 cursor-move border-2 border-cyan-300 bg-cyan-300/10 shadow-[0_0_0_9999px_rgba(0,0,0,0.38)]"
+                    style={cropOverlayStyle}
+                    onPointerDown={handleCropDragStart}
+                    onPointerMove={handleCropDragMove}
+                    onPointerUp={handleCropDragEnd}
+                    onPointerCancel={handleCropDragEnd}
+                    title="Drag to move crop"
+                  >
+                    <div className="absolute left-1/3 top-0 h-full w-px bg-cyan-200/45" />
+                    <div className="absolute left-2/3 top-0 h-full w-px bg-cyan-200/45" />
+                    <div className="absolute left-0 top-1/3 h-px w-full bg-cyan-200/45" />
+                    <div className="absolute left-0 top-2/3 h-px w-full bg-cyan-200/45" />
+                  </div>
+                )}
+                {isRenderingEditedPreview && hasImageEditChanges && (
+                  <div className="absolute bottom-4 right-4 z-30 rounded-md border border-white/10 bg-black/60 px-2 py-1 text-xs text-white/80 backdrop-blur-sm">
+                    Rendering preview...
+                  </div>
+                )}
+              </>
             )
           ) : (
             <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>
@@ -2977,35 +3492,42 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div data-no-window-drag="true" className={`absolute bottom-4 left-4 z-30 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
               <button
                 onClick={handleZoomIn}
-                disabled={zoom >= 5}
+                disabled={zoom >= maxViewerZoom}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                title={zoom >= 5 ? 'Zoom In (Maximum reached)' : 'Zoom In'}
-                aria-label={zoom >= 5 ? 'Zoom In (Maximum reached)' : 'Zoom In'}
+                title={zoom >= maxViewerZoom ? 'Zoom In (Maximum reached)' : 'Zoom In'}
+                aria-label={zoom >= maxViewerZoom ? 'Zoom In (Maximum reached)' : 'Zoom In'}
               >
                 <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </button>
-              <div className="text-center font-mono text-xs text-white/80">{Math.round(zoom * 100)}%</div>
+              <div className="min-w-10 text-center font-mono text-xs text-white/80">{zoomLabel}</div>
               <button
                 onClick={handleZoomOut}
-                disabled={zoom <= 1}
+                disabled={zoom <= minViewerZoom}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                title={zoom <= 1 ? 'Zoom Out (Original size)' : 'Zoom Out'}
-                aria-label={zoom <= 1 ? 'Zoom Out (Original size)' : 'Zoom Out'}
+                title={zoom <= minViewerZoom ? 'Zoom Out (Minimum reached)' : 'Zoom Out'}
+                aria-label={zoom <= minViewerZoom ? 'Zoom Out (Minimum reached)' : 'Zoom Out'}
               >
                 <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                 </svg>
               </button>
               <button
-                onClick={handleResetZoom}
-                disabled={zoom <= 1}
-                className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 text-xs"
-                title={zoom <= 1 ? 'Reset Zoom (Already at original size)' : 'Reset Zoom'}
-                aria-label={zoom <= 1 ? 'Reset Zoom (Already at original size)' : 'Reset Zoom'}
+                onClick={handleActualSize}
+                className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isActualSizeZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
+                title={isActualSizeZoom ? 'Actual Size (Current)' : 'Actual Size'}
+                aria-label={isActualSizeZoom ? 'Actual Size (Current)' : 'Actual Size'}
               >
-                Reset
+                1:1
+              </button>
+              <button
+                onClick={handleFitToScreen}
+                className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isFitZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
+                title={isFitZoom ? 'Fit to Screen (Current)' : 'Fit to Screen'}
+                aria-label={isFitZoom ? 'Fit to Screen (Current)' : 'Fit to Screen'}
+              >
+                Fit
               </button>
             </div>
           )}
@@ -3060,6 +3582,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </div>
             ) : (
               <div className="flex flex-row items-center gap-2">
+                {canEditImage && onOpenImageEditor && (
+                  <button
+                    onClick={() => onOpenImageEditor(liveImage)}
+                    className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                    title="Open Image Editor"
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                  </button>
+                )}
                 {canEditImage && (
                   <button
                     onClick={() => {
@@ -3145,6 +3676,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="p-6 space-y-4 overflow-y-auto flex-1">
           {canEditImage && (
             <>
+              {onOpenImageEditor && (
+                <button
+                  type="button"
+                  onClick={() => onOpenImageEditor(liveImage)}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm font-medium text-indigo-100 transition-colors hover:border-indigo-400/50 hover:bg-indigo-500/20"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  Open Image Editor
+                </button>
+              )}
+
               {!isAdjustmentPanelOpen && (
                 <button
                   type="button"
@@ -3158,15 +3700,22 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
               {isAdjustmentPanelOpen && (
                 <ImageAdjustmentPanel
-                  adjustments={imageAdjustments}
-                  onChange={setImageAdjustments}
-                  onReset={() => setImageAdjustments(DEFAULT_IMAGE_ADJUSTMENTS)}
+                  recipe={normalizedImageEditRecipe}
+                  onChange={setImageEditRecipe}
+                  onReset={() => setImageEditRecipe(DEFAULT_IMAGE_EDIT_RECIPE)}
                   onSaveAs={() => void handleSaveEditedImageAs()}
                   onOverwrite={() => void handleOverwriteEditedImage()}
+                  sourceDimensions={imageEditSourceDimensions || undefined}
+                  activeTab={imageEditorTab}
+                  onActiveTabChange={setImageEditorTab}
                   canOverwrite={canOverwriteEditedImage}
                   overwriteUnavailableReason="Overwrite is only available for PNG images. Use Save As to create an edited PNG copy."
                   isSaving={isSavingEditedImage}
                   disabled={!isFullImageSourceReady}
+                  onAIUpscale={() => void handleAIUpscale()}
+                  canAIUpscale={canUseComfyUI}
+                  aiUpscaleDisabledReason="Enable ComfyUI and configure the server URL in Settings."
+                  isAIUpscaling={isGeneratingComfyUI}
                 />
               )}
             </>
@@ -4194,7 +4743,8 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.startSlideshow === nextProps.startSlideshow &&
     prevProps.closeOnSlideshowExit === nextProps.closeOnSlideshowExit &&
     prevProps.diagnosticsFlowId === nextProps.diagnosticsFlowId &&
-    prevProps.onOpenComfyUIWorkflow === nextProps.onOpenComfyUIWorkflow;
+    prevProps.onOpenComfyUIWorkflow === nextProps.onOpenComfyUIWorkflow &&
+    prevProps.onOpenImageEditor === nextProps.onOpenImageEditor;
 
   return propsEqual;
 });

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -19,10 +19,21 @@ interface ModelViewProps {
   onToggleQueue?: () => void;
   onModelSelect: (modelName: string) => void;
   onFindMatchingPrompts?: (modelName: string) => void;
+  page?: number;
+  onPageChange?: (page: number) => void;
+  activeModelName?: string | null;
 }
 
 
-export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onToggleQueue, onModelSelect, onFindMatchingPrompts }) => {
+export const ModelView: React.FC<ModelViewProps> = ({
+  isQueueOpen = false,
+  onToggleQueue,
+  onModelSelect,
+  onFindMatchingPrompts,
+  page: controlledPage,
+  onPageChange,
+  activeModelName = null,
+}) => {
   const images = useImageStore((state) => state.images);
   const filteredImages = useImageStore((state) => state.filteredImages);
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
@@ -35,8 +46,10 @@ export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onTog
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
 
-  const [page, setPage] = useState(1);
+  const [internalPage, setInternalPage] = useState(1);
   const [sortBy] = useState<'count' | 'name'>('count');
+  const previousActiveModelNameRef = useRef(activeModelName);
+  const page = controlledPage ?? internalPage;
 
   const modelEntries = useMemo(() => {
     const models = new Map<string, IndexedImage[]>();
@@ -60,15 +73,45 @@ export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onTog
     }));
 
     return entries.sort((a, b) => {
+      if (activeModelName) {
+        if (a.name === activeModelName) return -1;
+        if (b.name === activeModelName) return 1;
+      }
+
       if (sortBy === 'count') {
         const countDiff = b.count - a.count;
         if (countDiff !== 0) return countDiff;
       }
       return a.name.localeCompare(b.name);
     });
-  }, [images, sortBy]);
+  }, [activeModelName, images, sortBy]);
 
   const totalPages = itemsPerPage === -1 ? 1 : Math.ceil(modelEntries.length / itemsPerPage);
+
+  useEffect(() => {
+    if (previousActiveModelNameRef.current === activeModelName) {
+      return;
+    }
+
+    previousActiveModelNameRef.current = activeModelName;
+    if (!activeModelName) {
+      return;
+    }
+
+    onPageChange?.(1);
+    if (controlledPage == null) {
+      setInternalPage(1);
+    }
+  }, [activeModelName, controlledPage, onPageChange]);
+
+  useEffect(() => {
+    if (page > totalPages && totalPages > 0) {
+      onPageChange?.(1);
+      if (controlledPage == null) {
+        setInternalPage(1);
+      }
+    }
+  }, [controlledPage, onPageChange, page, totalPages]);
   
   const paginatedEntries = useMemo(() => {
     if (itemsPerPage === -1) return modelEntries;
@@ -77,7 +120,10 @@ export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onTog
   }, [modelEntries, page, itemsPerPage]);
 
   const handlePageChange = (newPage: number) => {
-    setPage(newPage);
+    onPageChange?.(newPage);
+    if (controlledPage == null) {
+      setInternalPage(newPage);
+    }
   };
 
   return (
@@ -101,6 +147,7 @@ export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onTog
                 modelName={entry.name}
                 images={entry.images}
                 imageCount={entry.count}
+                isActive={entry.name === activeModelName}
                 onClick={() => onModelSelect(entry.name)}
                 onFindMatchingPrompts={onFindMatchingPrompts ? () => onFindMatchingPrompts(entry.name) : undefined}
               />

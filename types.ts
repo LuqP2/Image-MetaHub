@@ -98,6 +98,148 @@ export interface ImageAdjustments {
   hue: number;
 }
 
+export type ImageEditRotation = 0 | 90 | 180 | 270;
+export type ImageEditCropAspect = 'free' | 'original' | '1:1' | '4:3' | '3:2' | '16:9' | '9:16';
+
+export interface ImageEditTransform {
+  rotation: ImageEditRotation;
+  flipHorizontal: boolean;
+  flipVertical: boolean;
+}
+
+export interface ImageEditCropRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ImageEditCrop {
+  enabled: boolean;
+  aspect: ImageEditCropAspect;
+  rect: ImageEditCropRect | null;
+}
+
+export interface ImageEditResize {
+  enabled: boolean;
+  width: number;
+  height: number;
+  lockAspectRatio: boolean;
+}
+
+export interface ImageEditEffects {
+  sharpen: number;
+  blur: number;
+}
+
+export interface ImageEditRecipe {
+  adjustments: ImageAdjustments;
+  transform: ImageEditTransform;
+  crop: ImageEditCrop;
+  resize: ImageEditResize;
+  effects: ImageEditEffects;
+}
+
+export type ImageEditorTool =
+  | 'select'
+  | 'color-picker'
+  | 'crop'
+  | 'rectangle'
+  | 'ellipse'
+  | 'line'
+  | 'arrow'
+  | 'freehand'
+  | 'text'
+  | 'step'
+  | 'highlight'
+  | 'blur'
+  | 'pixelate'
+  | 'spotlight'
+  | 'magnify';
+
+export type ImageEditorObjectType =
+  | 'rectangle'
+  | 'ellipse'
+  | 'line'
+  | 'arrow'
+  | 'freehand'
+  | 'text'
+  | 'step'
+  | 'highlight'
+  | 'blur'
+  | 'pixelate'
+  | 'spotlight'
+  | 'magnify';
+
+export type ImageEditorBackgroundKind = 'transparent' | 'color' | 'gradient';
+
+export interface ImageEditorBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ImageEditorPoint {
+  x: number;
+  y: number;
+}
+
+export interface ImageEditorObjectStyle {
+  strokeColor: string;
+  fillColor: string;
+  textColor: string;
+  strokeWidth: number;
+  fontSize: number;
+  fontFamily: string;
+  opacity: number;
+}
+
+export interface ImageEditorObject {
+  id: string;
+  type: ImageEditorObjectType;
+  bounds: ImageEditorBounds;
+  points?: ImageEditorPoint[];
+  text?: string;
+  stepNumber?: number;
+  zIndex: number;
+  style: ImageEditorObjectStyle;
+}
+
+export interface ImageEditorBackground {
+  kind: ImageEditorBackgroundKind;
+  color: string;
+  gradientFrom: string;
+  gradientTo: string;
+  margin: number;
+  padding: number;
+  smartPadding: boolean;
+  roundedCorner: number;
+  shadowRadius: number;
+}
+
+export interface ImageEditorDocument {
+  sourceImageId: string;
+  sourceName: string;
+  sourceDimensions: { width: number; height: number };
+  canvasDimensions: { width: number; height: number };
+  recipe: ImageEditRecipe;
+  background: ImageEditorBackground;
+  objects: ImageEditorObject[];
+  selectedObjectIds: string[];
+}
+
+export interface ImageEditorHistoryEntry {
+  id: string;
+  label: string;
+  document: ImageEditorDocument;
+}
+
+export interface ImageEditorExportOptions {
+  flatten: boolean;
+  includeMetadata: boolean;
+}
+
 export type ImageEditSaveMode = 'save_as' | 'overwrite';
 
 export interface ImageEditSaveResult {
@@ -259,6 +401,7 @@ export interface ElectronAPI {
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
+  openPath: (filePath: string) => Promise<{ success: boolean; error?: string; errorType?: string }>;
   comfyUIViewOpen: (payload: { url: string; bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
   comfyUIViewShow: (payload?: { bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
   comfyUIViewHide: () => Promise<ComfyUIViewResult>;
@@ -325,6 +468,7 @@ export interface ElectronAPI {
   onMenuShowChangelog: (callback: () => void) => () => void;
   testUpdateDialog?: () => Promise<{ success: boolean; response?: number; error?: string }>;
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
+  getZoomFactor: () => Promise<number>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   getFullscreenState: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
@@ -858,8 +1002,26 @@ export interface ZoomState {
   y: number;
 }
 
-export type ComparisonViewMode = 'side-by-side' | 'slider' | 'hover';
+export type ComparisonViewMode =
+  | 'side-by-side'
+  | 'slider'
+  | 'hover'
+  | 'difference-map'
+  | 'flicker'
+  | 'loupe'
+  | 'edge-difference';
 export type ComparisonLayoutMode = 'strip' | 'grid';
+export type ComparisonAdvancedBaseMode = 'left' | 'right' | 'diff';
+
+export interface ComparisonAdvancedSettings {
+  threshold: number;
+  opacity: number;
+  baseMode: ComparisonAdvancedBaseMode;
+  flickerSpeedMs: number;
+  loupeSize: number;
+  loupeZoom: number;
+  showLabels: boolean;
+}
 
 export interface ComparisonPaneProps {
   image: IndexedImage;
@@ -868,6 +1030,7 @@ export interface ComparisonPaneProps {
   externalZoom?: ZoomState;
   onZoomChange?: (zoom: number, x: number, y: number) => void;
   onHoverChange?: (isHovered: boolean) => void;
+  onRemove?: () => void;
   className?: string;
   imageLabel?: string;
 }

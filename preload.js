@@ -129,6 +129,7 @@ const electronAPI = {
 
   // --- Invokable renderer-to-main functions ---
   getTheme: () => ipcRenderer.invoke('get-theme'),
+  getZoomFactor: () => ipcRenderer.invoke('get-zoom-factor'),
   trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
   renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),
@@ -159,6 +160,7 @@ const electronAPI = {
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   launchGenerator: (payload) => ipcRenderer.invoke('launch-generator', payload),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+  openPath: (filePath) => ipcRenderer.invoke('open-path', filePath),
   comfyUIViewOpen: (payload) => ipcRenderer.invoke('comfy-view-open', payload),
   comfyUIViewShow: (payload) => ipcRenderer.invoke('comfy-view-show', payload),
   comfyUIViewHide: () => ipcRenderer.invoke('comfy-view-hide'),

@@ -204,6 +204,41 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }],
     widget_order: ['lora_name', 'strength_model']
   },
+  'Lora Loader (LoraManager)': {
+    category: 'LOADING',
+    roles: ['TRANSFORM'],
+    inputs: { model: { type: 'MODEL' }, clip: { type: 'CLIP' }, text: { type: 'STRING' } },
+    outputs: { MODEL: { type: 'MODEL' }, CLIP: { type: 'CLIP' }, trigger_words: { type: 'STRING' }, loaded_loras: { type: 'STRING' } },
+    param_mapping: {
+      lora: {
+        source: 'custom_extractor',
+        extractor: (node: ParserNode) => {
+          const rawLoras = node.inputs?.loras?.__value__ ?? node.widgets_values?.[2];
+          if (Array.isArray(rawLoras)) {
+            return rawLoras
+              .filter((lora: any) => {
+                if (typeof lora === 'string') {
+                  return lora.trim().length > 0;
+                }
+                return lora && lora.active !== false && (lora.name || lora.lora_name);
+              })
+              .map((lora: any) => typeof lora === 'string' ? lora : lora.name || lora.lora_name);
+          }
+
+          const text = typeof node.inputs?.text === 'string' ? node.inputs.text : '';
+          return text ? extractors.extractLorasFromText(text) : [];
+        },
+        accumulate: true,
+      },
+      model: { source: 'trace', input: 'model' },
+      prompt: { source: 'input', key: 'text' },
+    },
+    pass_through_rules: [
+      { from_input: 'model', to_output: 'MODEL' },
+      { from_input: 'clip', to_output: 'CLIP' },
+    ],
+    widget_order: ['__lm_autocomplete_meta_text', 'text', 'loras']
+  },
   'LoRA Stacker': {
     category: 'LOADING', roles: ['TRANSFORM'],
     inputs: {}, outputs: { '*': { type: 'ANY' } },
@@ -231,6 +266,22 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     inputs: { '*': { type: 'ANY' } }, outputs: { '*': { type: 'ANY' } },
     pass_through_rules: [{ from_input: '*', to_output: '*' }],
   },
+  'Any Switch (rgthree)': {
+    category: 'ROUTING', roles: ['PASS_THROUGH'],
+    inputs: { '*': { type: 'ANY' } }, outputs: { '*': { type: 'ANY' } },
+    pass_through_rules: [{ from_input: '*', to_output: '*' }],
+  },
+  'TriggerWord Toggle (LoraManager)': {
+    category: 'ROUTING',
+    roles: ['PASS_THROUGH'],
+    inputs: { trigger_words: { type: 'STRING' } },
+    outputs: { filtered_trigger_words: { type: 'STRING' } },
+    param_mapping: {
+      prompt: { source: 'trace', input: 'trigger_words' },
+    },
+    pass_through_rules: [{ from_input: 'trigger_words', to_output: 'filtered_trigger_words' }],
+    widget_order: ['group_mode', 'default_active', 'allow_strength_adjustment', 'toggle_trigger_words', 'orinalMessage']
+  },
   ImpactSwitch: {
     category: 'ROUTING', roles: ['ROUTING'],
     inputs: { select: { type: 'INT' }, input1: { type: 'ANY' }, input2: { type: 'ANY' } },
@@ -257,7 +308,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
 
   // Common ComfyUI nodes that might appear in workflows
   SaveImage: {
-    category: 'IO', roles: ['SINK'],
+    category: 'IO', roles: ['SINK', 'PASS_THROUGH'],
     inputs: { images: { type: 'IMAGE' } }, 
     outputs: {},
     param_mapping: {},  // No direct params, but traverse inputs
@@ -265,7 +316,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
   },
 
   PreviewImage: {
-    category: 'IO', roles: ['SINK'],
+    category: 'IO', roles: ['SINK', 'PASS_THROUGH'],
     inputs: { images: { type: 'IMAGE' } }, outputs: {},
   },
 
@@ -296,6 +347,14 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     category: 'UTILS', roles: ['SOURCE'],
     inputs: { seed: { type: 'INT' } }, outputs: { INT: { type: 'INT' } },
     param_mapping: { seed: { source: 'input', key: 'seed' }, },
+  },
+  SeedGenerator: {
+    category: 'UTILS',
+    roles: ['SOURCE'],
+    inputs: { seed: { type: 'INT' } },
+    outputs: { seed: { type: 'INT' }, 'seed+1': { type: 'INT' } },
+    param_mapping: { seed: { source: 'input', key: 'seed' } },
+    widget_order: ['seed', 'control_after_generate']
   },
   'Seed (rgthree)': {
     category: 'UTILS',
@@ -556,6 +615,102 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     param_mapping: {},
     pass_through_rules: [{ from_input: 'clip', to_output: 'CLIP' }],
     widget_order: ['mean_pool', 'return_tokens']
+  },
+
+  'easy positive': {
+    category: 'UTILS',
+    roles: ['SOURCE'],
+    inputs: { positive: { type: 'STRING' } },
+    outputs: { positive: { type: 'STRING' } },
+    param_mapping: {
+      prompt: { source: 'input', key: 'positive' },
+    },
+    widget_order: ['positive']
+  },
+
+  'easy stylesSelector': {
+    category: 'UTILS',
+    roles: ['PASS_THROUGH'],
+    inputs: { positive: { type: 'STRING' }, negative: { type: 'STRING' } },
+    outputs: { positive: { type: 'STRING' }, negative: { type: 'STRING' } },
+    param_mapping: {
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: { source: 'trace', input: 'negative' },
+    },
+    pass_through_rules: [
+      { from_input: 'positive', to_output: 'positive' },
+      { from_input: 'negative', to_output: 'negative' },
+    ],
+    widget_order: ['styles', 'select_styles']
+  },
+
+  JoinStrings: {
+    category: 'UTILS',
+    roles: ['TRANSFORM'],
+    inputs: { string1: { type: 'STRING' }, string2: { type: 'STRING' }, string3: { type: 'STRING' }, string4: { type: 'STRING' } },
+    outputs: { STRING: { type: 'STRING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverseFromLink) => {
+          const delimiter = typeof node.widgets_values?.[0] === 'string'
+            ? node.widgets_values[0]
+            : (typeof node.inputs?.delimiter === 'string' ? node.inputs.delimiter : ' ');
+          return extractors.concatTextExtractor(
+            {
+              ...node,
+              inputs: {
+                ...node.inputs,
+                __joinstrings_delimiter: delimiter,
+              },
+            },
+            state,
+            graph,
+            traverseFromLink,
+            ['string1', 'string2', 'string3', 'string4'],
+            '__joinstrings_delimiter'
+          );
+        }
+      },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverseFromLink) => {
+          const delimiter = typeof node.widgets_values?.[0] === 'string'
+            ? node.widgets_values[0]
+            : (typeof node.inputs?.delimiter === 'string' ? node.inputs.delimiter : ' ');
+          return extractors.concatTextExtractor(
+            {
+              ...node,
+              inputs: {
+                ...node.inputs,
+                __joinstrings_delimiter: delimiter,
+              },
+            },
+            state,
+            graph,
+            traverseFromLink,
+            ['string1', 'string2', 'string3', 'string4'],
+            '__joinstrings_delimiter'
+          );
+        }
+      },
+    },
+    widget_order: ['delimiter']
+  },
+
+  ConditioningZeroOut: {
+    category: 'CONDITIONING',
+    roles: ['TRANSFORM'],
+    inputs: { conditioning: { type: 'CONDITIONING' } },
+    outputs: { CONDITIONING: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: { source: 'trace', input: 'conditioning' },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: () => '',
+      },
+    },
+    pass_through_rules: [{ from_input: 'conditioning', to_output: 'CONDITIONING' }]
   },
 
   ScaledFP8HybridUNetLoader: {
@@ -1193,6 +1348,16 @@ PerturbedAttention: {
   param_mapping: {},
   widget_order: ['hard_mode', 'boost'],
   pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+},
+
+PathchSageAttentionKJ: {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: { model: { type: 'MODEL' } },
+  outputs: { MODEL: { type: 'MODEL' } },
+  param_mapping: {},
+  pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }],
+  widget_order: ['sage_attention', 'allow_compile']
 },
 
 TiledDiffusion: {

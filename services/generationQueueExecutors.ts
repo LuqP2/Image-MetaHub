@@ -222,6 +222,7 @@ export async function executeComfyUIQueueJob(
     image: context.image,
     metadata,
     overrides: payload?.overrides,
+    directoryPath: payload?.directoryPath,
     workflowMode: payload?.workflowMode,
     sourceImagePolicy: payload?.sourceImagePolicy,
     advancedPromptJson: payload?.advancedPromptJson,

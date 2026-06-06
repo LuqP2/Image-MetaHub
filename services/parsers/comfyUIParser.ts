@@ -173,6 +173,24 @@ function normalizePromptWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+function firstNonBlankString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function firstNonNullish<T>(...values: Array<T | null | undefined>): T | undefined {
+  for (const value of values) {
+    if (value !== null && value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Advanced Seed Extraction with multiple formats:
  * - Numeric: "seed": 12345
@@ -833,6 +851,9 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
         const graph = workflowGraph || promptGraph
           ? createNodeMap(workflowGraph, promptGraph)
           : null;
+        const graphMetadata = graph
+          ? resolvePromptFromGraph(workflowGraph, promptGraph)
+          : {};
         const inferredLineage = graph
           ? detectComfyLineageFromGraph(graph, findTerminalNode(graph), metahubData.denoise)
           : {};
@@ -850,24 +871,32 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
                 : undefined,
             }
           : undefined;
+        const seedSource = metahubData.metadata_sources?.seed;
+        const seedIsExplicit = seedSource === 'detected' || seedSource === 'manual_override' || metahubData.metadata_status === 'complete';
+        const seed = firstNonNullish(
+          metahubData.seed === 0 && !seedIsExplicit && graphMetadata.seed !== undefined ? graphMetadata.seed : metahubData.seed,
+          graphMetadata.seed
+        );
 
         // Map MetaHub chunk fields to expected format
         return {
-          prompt: metahubData.prompt,
-          negativePrompt: metahubData.negativePrompt,
-          seed: metahubData.seed,
-          steps: metahubData.steps,
-          cfg: metahubData.cfg,
-          sampler_name: metahubData.sampler_name,
-          scheduler: metahubData.scheduler,
-          model: metahubData.model,
+          prompt: firstNonBlankString(metahubData.prompt, graphMetadata.prompt) || '',
+          negativePrompt: firstNonBlankString(metahubData.negativePrompt, graphMetadata.negativePrompt) || '',
+          seed,
+          steps: firstNonNullish(metahubData.steps, graphMetadata.steps),
+          cfg: firstNonNullish(metahubData.cfg, graphMetadata.cfg),
+          sampler_name: firstNonBlankString(metahubData.sampler_name, graphMetadata.sampler_name) || '',
+          scheduler: firstNonBlankString(metahubData.scheduler, graphMetadata.scheduler) || '',
+          model: firstNonBlankString(metahubData.model, graphMetadata.model) || '',
           model_hash: metahubData.model_hash,
-          vae: metahubData.vae,
-          denoise: metahubData.denoise,
+          vae: firstNonBlankString(metahubData.vae, graphMetadata.vae) || '',
+          denoise: firstNonNullish(metahubData.denoise, graphMetadata.denoise),
           width: metahubData.width,
           height: metahubData.height,
-          loras: metahubData.loras || [],
-          lora: metahubData.loras?.map((l: any) => l.name) || [], // Backward compatibility
+          loras: Array.isArray(metahubData.loras) && metahubData.loras.length > 0 ? metahubData.loras : (graphMetadata.loras || []),
+          lora: Array.isArray(metahubData.loras) && metahubData.loras.length > 0
+            ? metahubData.loras.map((l: any) => l.name)
+            : graphMetadata.lora || [], // Backward compatibility
           tags: userTags,
           notes: userNotes,
           generator: metahubData.generator === 'ComfyUI' ? 'ComfyUI' : 'Image MetaHub',
@@ -876,6 +905,8 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
           _detection_method: 'metahub_chunk',
           _metahub_pro: metahubData.imh_pro || null,
           _analytics: metahubData.analytics || null,
+          _metadata_status: metahubData.metadata_status || null,
+          _metadata_sources: metahubData.metadata_sources || null,
         };
       }
     }

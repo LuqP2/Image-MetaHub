@@ -37,16 +37,34 @@ const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const gpuMitigationEnabled = process.env.IMH_DISABLE_GPU === '1' || process.env.IMH_DISABLE_GPU === 'true';
 const mediaSafeModeEnabled = process.platform === 'darwin' && (process.env.IMH_MEDIA_SAFE_MODE === '1' || process.env.IMH_MEDIA_SAFE_MODE === 'true');
+const audioDiagnosticModeEnabled = process.platform === 'darwin' && (process.env.IMH_AUDIO_DIAGNOSTIC_MODE === '1' || process.env.IMH_AUDIO_DIAGNOSTIC_MODE === 'true');
+const enabledMediaCommandLineSwitches = [];
+const disabledChromiumFeatures = new Set();
 
 if (gpuMitigationEnabled || mediaSafeModeEnabled) {
   app.disableHardwareAcceleration();
+  enabledMediaCommandLineSwitches.push('disable-hardware-acceleration');
   console.warn(`[GPU] Hardware acceleration disabled via ${mediaSafeModeEnabled ? 'IMH_MEDIA_SAFE_MODE' : 'IMH_DISABLE_GPU'}.`);
 }
 
 if (mediaSafeModeEnabled) {
   app.commandLine.appendSwitch('disable-accelerated-video-decode');
   app.commandLine.appendSwitch('disable-gpu-compositing');
+  enabledMediaCommandLineSwitches.push('disable-accelerated-video-decode', 'disable-gpu-compositing');
+  disabledChromiumFeatures.add('AudioServiceSandbox');
   console.warn('[Media] macOS media safe mode enabled via IMH_MEDIA_SAFE_MODE.');
+}
+
+if (audioDiagnosticModeEnabled) {
+  disabledChromiumFeatures.add('AudioServiceSandbox');
+  disabledChromiumFeatures.add('AudioServiceOutOfProcess');
+  console.warn('[Media] macOS audio diagnostic mode enabled via IMH_AUDIO_DIAGNOSTIC_MODE.');
+}
+
+if (disabledChromiumFeatures.size > 0) {
+  const disableFeaturesValue = Array.from(disabledChromiumFeatures).join(',');
+  app.commandLine.appendSwitch('disable-features', disableFeaturesValue);
+  enabledMediaCommandLineSwitches.push(`disable-features=${disableFeaturesValue}`);
 }
 
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
@@ -54,6 +72,13 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
 const PARSER_VERSION = 7; // v7: Add audio media indexing and metadata
+
+const logMainPerf = (event, details = {}) => {
+  console.log('[main:perf]', { event, ...details });
+};
+
+const elapsedMs = (start) => Number((Date.now() - start).toFixed(2));
+const isSlowMainOp = (start, thresholdMs = 500) => Date.now() - start >= thresholdMs;
 
 // Get platform-specific icon
 function getIconPath() {
@@ -876,12 +901,35 @@ function logProcessEvent(details = {}) {
   }
 }
 
+const audioServiceCrashSummary = new Map();
+let audioServiceCrashTotal = 0;
+
+function logAudioServiceCrashSummary(details = {}) {
+  const reason = details?.reason ?? 'unknown';
+  const exitCode = details?.exitCode ?? 'unknown';
+  const key = `${reason}:${exitCode}`;
+  const count = (audioServiceCrashSummary.get(key) ?? 0) + 1;
+  audioServiceCrashSummary.set(key, count);
+  audioServiceCrashTotal += 1;
+
+  logProcessEvent({
+    kind: 'audio-service-crash-summary',
+    serviceName: 'audio.mojom.AudioService',
+    reason,
+    exitCode,
+    count,
+    totalCount: audioServiceCrashTotal,
+  });
+}
+
 function registerProcessDiagnostics() {
   logProcessEvent({
     kind: 'app-startup',
     logs: getDiagnosticsLogPaths(),
     gpuMitigationEnabled,
     mediaSafeModeEnabled,
+    audioDiagnosticModeEnabled,
+    mediaCommandLineSwitches: enabledMediaCommandLineSwitches,
     gpuFeatureStatus: app.getGPUFeatureStatus?.() ?? null,
   });
 
@@ -895,6 +943,10 @@ function registerProcessDiagnostics() {
       serviceName: details?.serviceName ?? null,
       name: details?.name ?? null,
     });
+
+    if (details?.serviceName === 'audio.mojom.AudioService') {
+      logAudioServiceCrashSummary(details);
+    }
   });
 
   app.on('gpu-process-crashed', (_event, killed) => {
@@ -2123,7 +2175,7 @@ async function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.16.1');
+    mainWindow.setTitle('Image MetaHub v0.17.0');
   }
 
   // Load the app
@@ -2422,6 +2474,9 @@ function shouldIgnoreScanDirectory(fullPath, baseDirectory) {
 async function getFilesRecursively(directory, baseDirectory) {
   const files = [];
   const directoriesToVisit = [directory];
+  const start = Date.now();
+  let directoriesVisited = 0;
+  let directoriesSkipped = 0;
 
   while (directoriesToVisit.length > 0) {
     const currentDirectory = directoriesToVisit.pop();
@@ -2430,8 +2485,10 @@ async function getFilesRecursively(directory, baseDirectory) {
     }
 
     if (shouldIgnoreScanDirectory(currentDirectory, baseDirectory)) {
+      directoriesSkipped += 1;
       continue;
     }
+    directoriesVisited += 1;
 
     try {
       const entries = await fs.readdir(currentDirectory, { withFileTypes: true });
@@ -2452,6 +2509,13 @@ async function getFilesRecursively(directory, baseDirectory) {
     }
   }
 
+  logMainPerf('list-directory-files:recursive-walk', {
+    baseDirectory,
+    directoriesVisited,
+    directoriesSkipped,
+    files: files.length,
+    durationMs: elapsedMs(start),
+  });
   return files;
 }
 
@@ -3067,6 +3131,33 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('open-path', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No path provided.' };
+      }
+
+      const normalizedFilePath = path.resolve(filePath);
+      if (!isPathAllowed(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to open path outside of allowed directories.');
+        console.error('  [open-path] Requested path:', filePath);
+        console.error('  [open-path] Normalized path:', normalizedFilePath);
+        console.error('  [open-path] Allowed directories:', Array.from(allowedDirectoryPaths));
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
+      const openError = await shell.openPath(normalizedFilePath);
+      if (openError) {
+        return { success: false, error: openError };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to open path:', error);
+      return { success: false, error: error?.message || 'Failed to open path.' };
+    }
+  });
+
   ipcMain.handle('comfy-view-open', async (event, payload) => {
     try {
       return await openComfyUIView(payload);
@@ -3181,6 +3272,8 @@ function setupFileOperationHandlers() {
     };
   });
 
+  ipcMain.handle('get-zoom-factor', () => getMainWindowZoomFactor());
+
   ipcMain.handle('get-app-version', () => {
     return app.getVersion();
   });
@@ -3215,14 +3308,58 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('get-cache-summary', async (event, cacheId) => {
+    const start = Date.now();
     const filePath = await getCacheFilePath(cacheId);
     try {
       const data = await fs.readFile(filePath, 'utf-8');
-      return { success: true, data: JSON.parse(data) };
+      const parsed = JSON.parse(data);
+      const chunkCount = parsed?.chunkCount ?? 0;
+      if (chunkCount > 0) {
+        const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+        const rootPath = await getCacheRootPath();
+        const cacheDir = path.join(rootPath, 'json_cache');
+        const maxChunkBytes = 64 * 1024 * 1024;
+
+        for (let i = 0; i < chunkCount; i += 1) {
+          const chunkPath = path.join(cacheDir, `${safeCacheId}_${i}.json`);
+          const stats = await fs.stat(chunkPath).catch(error => {
+            if (error.code === 'ENOENT') return null;
+            throw error;
+          });
+
+          if (stats && stats.size > maxChunkBytes) {
+            console.warn(`⚠️ Cache chunk too large for ${cacheId}: chunk=${i}, bytes=${stats.size}. Invalidating cache to avoid renderer freeze.`);
+            logMainPerf('get-cache-summary:oversized-chunk', {
+              cacheId,
+              chunkIndex: i,
+              bytes: stats.size,
+              durationMs: elapsedMs(start),
+            });
+            return { success: true, data: null };
+          }
+        }
+      }
+      logMainPerf('get-cache-summary:hit', {
+        cacheId,
+        imageCount: parsed?.imageCount ?? 0,
+        chunkCount,
+        mainRecordBytes: data.length,
+        durationMs: elapsedMs(start),
+      });
+      return { success: true, data: parsed };
     } catch (error) {
       if (error.code === 'ENOENT') {
+        logMainPerf('get-cache-summary:miss', {
+          cacheId,
+          durationMs: elapsedMs(start),
+        });
         return { success: true, data: null };
       }
+      logMainPerf('get-cache-summary:error', {
+        cacheId,
+        errorCode: error.code,
+        durationMs: elapsedMs(start),
+      });
       return { success: false, error: error.message };
     }
   });
@@ -3250,9 +3387,11 @@ function setupFileOperationHandlers() {
     }
   });
 
-  const CHUNK_SIZE = 5000; // Store 5000 images per chunk file
+  const CHUNK_SIZE = 1024; // Keep cache chunks small enough to parse without freezing the renderer
+  const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   ipcMain.handle('cache-data', async (event, { cacheId, data }) => {
+    const start = Date.now();
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
     const { metadata, ...cacheRecord } = data;
     const rootPath = await getCacheRootPath();
@@ -3273,10 +3412,17 @@ function setupFileOperationHandlers() {
     cacheRecord.parserVersion = PARSER_VERSION; // Add parser version
     await fs.writeFile(mainCachePath, JSON.stringify(cacheRecord, null, 2));
 
+    logMainPerf('cache-data:complete', {
+      cacheId,
+      records: metadata.length,
+      chunkCount,
+      durationMs: elapsedMs(start),
+    });
     return { success: true };
   });
 
   ipcMain.handle('prepare-cache-write', async (event, { cacheId }) => {
+    const start = Date.now();
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
       const rootPath = await getCacheRootPath();
@@ -3285,46 +3431,77 @@ function setupFileOperationHandlers() {
 
       try {
         const files = await fs.readdir(cacheDir);
+        const chunkPattern = new RegExp(`^${escapeRegExp(safeCacheId)}_(\\d+)\\.json$`);
+        const matchingFiles = files.filter(file => chunkPattern.test(file));
         await Promise.all(
-          files
-            .filter(file => file.startsWith(`${safeCacheId}_`))
+          matchingFiles
             .map(file => fs.unlink(path.join(cacheDir, file)).catch(err => {
               if (err.code !== 'ENOENT') throw err;
             }))
         );
+        logMainPerf('prepare-cache-write:cleanup', {
+          cacheId,
+          removedChunks: matchingFiles.length,
+          durationMs: elapsedMs(start),
+        });
       } catch (error) {
         if (error.code !== 'ENOENT') {
           throw error;
         }
       }
 
+      logMainPerf('prepare-cache-write:complete', {
+        cacheId,
+        durationMs: elapsedMs(start),
+      });
       return { success: true };
     } catch (error) {
+      logMainPerf('prepare-cache-write:error', {
+        cacheId,
+        errorCode: error.code,
+        durationMs: elapsedMs(start),
+      });
       return { success: false, error: error.message };
     }
   });
 
   ipcMain.handle('write-cache-chunk', async (event, { cacheId, chunkIndex, data }) => {
+    const start = Date.now();
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
       const rootPath = await getCacheRootPath();
       const cacheDir = path.join(rootPath, 'json_cache');
       await fs.mkdir(cacheDir, { recursive: true });
       const chunkPath = path.join(cacheDir, `${safeCacheId}_${chunkIndex}.json`);
-      await fs.writeFile(chunkPath, JSON.stringify(data));
+      const json = JSON.stringify(data);
+      await fs.writeFile(chunkPath, json);
+      if (isSlowMainOp(start) || json.length > 8_000_000) {
+        logMainPerf('write-cache-chunk:slow', {
+          cacheId,
+          chunkIndex,
+          records: Array.isArray(data) ? data.length : null,
+          bytes: json.length,
+          durationMs: elapsedMs(start),
+        });
+      }
       return { success: true };
     } catch (error) {
+      logMainPerf('write-cache-chunk:error', {
+        cacheId,
+        chunkIndex,
+        errorCode: error.code,
+        durationMs: elapsedMs(start),
+      });
       return { success: false, error: error.message };
     }
   });
 
   ipcMain.handle('finalize-cache-write', async (event, { cacheId, sourceCacheId, record }) => {
+    const start = Date.now();
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
       const safeSourceCacheId = sourceCacheId?.replace(/[^a-zA-Z0-9-_]/g, '_');
       if (safeSourceCacheId && safeSourceCacheId !== safeCacheId) {
-        const targetChunkPattern = new RegExp(`^${safeCacheId}_(\\d+)\\.json$`);
-        const sourceChunkPattern = new RegExp(`^${safeSourceCacheId}_(\\d+)\\.json$`);
         const rootPath = await getCacheRootPath();
         const cacheDir = path.join(rootPath, 'json_cache');
         await fs.mkdir(cacheDir, { recursive: true });
@@ -3333,43 +3510,87 @@ function setupFileOperationHandlers() {
           if (error.code === 'ENOENT') return [];
           throw error;
         });
+        const targetChunkPattern = new RegExp(`^${escapeRegExp(safeCacheId)}_(\\d+)\\.json$`);
+        const sourceChunkPattern = new RegExp(`^${escapeRegExp(safeSourceCacheId)}_(\\d+)\\.json$`);
 
+        const targetFiles = files.filter(file => targetChunkPattern.test(file));
         await Promise.all(
-          files
-            .filter(file => targetChunkPattern.test(file))
+          targetFiles
             .map(file => fs.unlink(path.join(cacheDir, file)).catch(err => {
               if (err.code !== 'ENOENT') throw err;
             }))
         );
 
-        for (const file of files.filter(file => sourceChunkPattern.test(file))) {
-          const suffix = file.slice(safeSourceCacheId.length);
+        let renamedChunks = 0;
+        for (const file of files) {
+          const match = file.match(sourceChunkPattern);
+          if (!match) {
+            continue;
+          }
           await fs.rename(
             path.join(cacheDir, file),
-            path.join(cacheDir, `${safeCacheId}${suffix}`)
+            path.join(cacheDir, `${safeCacheId}_${match[1]}.json`)
           );
+          renamedChunks += 1;
         }
+        logMainPerf('finalize-cache-write:swap-chunks', {
+          cacheId,
+          sourceCacheId,
+          removedTargetChunks: targetFiles.length,
+          renamedChunks,
+          durationMs: elapsedMs(start),
+        });
       }
 
       const mainCachePath = await getCacheFilePath(cacheId);
       // Add parser version to cache record
       const recordWithVersion = { ...record, parserVersion: PARSER_VERSION };
       await fs.writeFile(mainCachePath, JSON.stringify(recordWithVersion, null, 2));
+      logMainPerf('finalize-cache-write:complete', {
+        cacheId,
+        sourceCacheId: sourceCacheId ?? null,
+        imageCount: recordWithVersion.imageCount,
+        chunkCount: recordWithVersion.chunkCount,
+        durationMs: elapsedMs(start),
+      });
       return { success: true };
     } catch (error) {
+      logMainPerf('finalize-cache-write:error', {
+        cacheId,
+        sourceCacheId: sourceCacheId ?? null,
+        errorCode: error.code,
+        durationMs: elapsedMs(start),
+      });
       return { success: false, error: error.message };
     }
   });
 
   ipcMain.handle('get-cache-chunk', async (event, { cacheId, chunkIndex }) => {
+    const start = Date.now();
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
     const rootPath = await getCacheRootPath();
     const cacheDir = path.join(rootPath, 'json_cache');
     const chunkPath = path.join(cacheDir, `${safeCacheId}_${chunkIndex}.json`);
     try {
       const data = await fs.readFile(chunkPath, 'utf-8');
-      return { success: true, data: JSON.parse(data) };
+      const parsed = JSON.parse(data);
+      if (isSlowMainOp(start) || data.length > 8_000_000) {
+        logMainPerf('get-cache-chunk:slow', {
+          cacheId,
+          chunkIndex,
+          bytes: data.length,
+          records: Array.isArray(parsed) ? parsed.length : null,
+          durationMs: elapsedMs(start),
+        });
+      }
+      return { success: true, data: parsed };
     } catch (error) {
+      logMainPerf('get-cache-chunk:error', {
+        cacheId,
+        chunkIndex,
+        errorCode: error.code,
+        durationMs: elapsedMs(start),
+      });
       return { success: false, error: error.message };
     }
   });
@@ -4172,12 +4393,11 @@ function setupFileOperationHandlers() {
 
   // Handle listing directory files
   ipcMain.handle('list-directory-files', async (event, { dirPath, recursive = false }) => {
+    const scanStart = Date.now();
     try {
       if (!dirPath) {
         return { success: false, error: 'No directory path provided' };
       }
-
-      const scanStart = Date.now();
 
       let imageFiles = [];
 
@@ -4189,10 +4409,22 @@ function setupFileOperationHandlers() {
       }
 
       console.log(`[list-directory-files] ${dirPath} (${recursive ? 'recursive' : 'flat'}) -> ${imageFiles.length} files in ${((Date.now() - scanStart) / 1000).toFixed(2)}s`);
+      logMainPerf('list-directory-files:complete', {
+        dirPath,
+        recursive,
+        files: imageFiles.length,
+        durationMs: elapsedMs(scanStart),
+      });
 
       return { success: true, files: imageFiles };
     } catch (error) {
       console.error('Error listing directory files:', error);
+      logMainPerf('list-directory-files:error', {
+        dirPath,
+        recursive,
+        errorCode: error.code,
+        durationMs: elapsedMs(scanStart ?? Date.now()),
+      });
       return { success: false, error: error.message };
     }
   });
