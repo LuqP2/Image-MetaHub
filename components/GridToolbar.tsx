@@ -242,7 +242,11 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       return [];
     }
 
-    const pageLookup = new Map(images.map((image) => [image.id, image]));
+    // Optimization: Avoid intermediate array allocation for map creation
+    const pageLookup = new Map<string, IndexedImage>();
+    for (const image of images) {
+      pageLookup.set(image.id, image);
+    }
     const storeImages = useImageStore.getState().images;
 
     return Array.from(selectedImages)
