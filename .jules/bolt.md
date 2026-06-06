@@ -46,3 +46,6 @@
 ## $(date +%Y-%m-%d) - Eliminate Array.map() O(N) allocation overhead for Map initialization
 **Learning:** Initializing a `Map` using `.map()` on a large array (e.g., `new Map(arr.map(item => [item.id, item]))`) causes an O(N) temporary array of tuples to be allocated and immediately discarded, triggering garbage collection pauses.
 **Action:** Replace `.map()` with a pre-instantiated `Map` and populate it directly using a `for...of` loop to scale at O(1) intermediate memory.
+## 2026-06-06 - Do not optimize array allocations in cold paths
+**Learning:** Optimizing array allocations (e.g., replacing `new Map(arr.map())` with a `for` loop) inside event handlers or cold paths (like code that uses `.getState()`) provides no measurable performance improvement and violates the "premature optimization of cold paths" constraint.
+**Action:** When acting as Bolt, ensure the optimization targets a hot path, such as a render loop or a heavily accessed store derivation, where the performance impact is actually measurable.
