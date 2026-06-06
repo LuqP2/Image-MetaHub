@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, ExternalLink, Github, BadgeCheck, Puzzle } from 'lucide-react';
+import { X, ExternalLink } from 'lucide-react';
 
 interface ChangelogModalProps {
   isOpen: boolean;
@@ -128,54 +128,6 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
             </div>
           ) : (
             <>
-              {/* Message from the Dev */}
-<div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
-  <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
-  <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
-    <p>Hi there, this is Lucas -- the solo dev behind Image MetaHub.</p>
-
-    <p>v0.16 is here, and this one is a little different. A lot of the work went into making Image MetaHub feel less like a separate catalog beside your tools and more like a real workspace around them.</p>
-
-    <p>The new ComfyUI Workspace is the heart of that idea: your library, metadata, thumbnails, workflows, and a live ComfyUI session can now sit in the same place. There are also image adjustments, external ComfyUI queue detection, better cache tools, and a lot of under-the-hood work for big libraries.</p>
-
-    <p>This release took more out of me than I expected, but it also feels like an important step toward what I want IMH to become: a calm, local-first home for people making and organizing GenMedia seriously.</p>
-
-    <p>A genuine thank you to everyone who bought a Pro license, opened issues, tested rough builds, or simply kept using the app while it grew. Your support is what makes it possible to keep pushing this project forward.</p>
-
-    <p>Make sure to join our Discord server! <a href="https://discord.gg/7XgrWCSxfJ" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">https://discord.gg/7XgrWCSxfJ</a></p>
-
-    <div className="flex flex-wrap gap-3 mt-6 pt-4 border-t border-gray-700/50">
-      <a
-        href="https://github.com/LuqP2/Image-MetaHub"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-full transition-colors"
-      >
-        <Github size={16} />
-        GitHub Project
-      </a>
-      <a
-        href="https://imagemetahub.com/getpro"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium rounded-full transition-colors"
-      >
-        <BadgeCheck size={16} />
-        Get Pro License
-      </a>
-      <a
-        href="https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-full transition-colors"
-      >
-        <Puzzle size={16} />
-        ComfyUI Save Node
-      </a>
-    </div>
-  </div>
-</div>
-
               {/* Changelog Content */}
               <div className="prose prose-invert prose-sm max-w-none">
                 <ul className="list-disc list-inside space-y-1">
