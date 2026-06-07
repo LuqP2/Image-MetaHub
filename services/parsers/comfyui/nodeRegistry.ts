@@ -14,6 +14,66 @@
 import * as extractors from './extractors';
 import { NodeDefinition, ParserNode, ComfyNodeDataType, ComfyTraversableParam, ParamMappingRule, InputDefinition, OutputDefinition, PassThroughRule, NodeBehavior, ConditionalRoutingRule, WorkflowFacts } from './types';
 
+function resolveFirstTextInput(
+  node: ParserNode,
+  state: any,
+  graph: any,
+  traverse: any,
+  inputNames: string[]
+): string | null {
+  for (const inputName of inputNames) {
+    const input = node.inputs?.[inputName];
+    if (Array.isArray(input)) {
+      const resolved = traverse(input, state, graph, []);
+      if (resolved !== null && resolved !== undefined && String(resolved).trim()) {
+        return String(resolved);
+      }
+    } else if (typeof input === 'string' && input.trim()) {
+      return input;
+    }
+  }
+
+  return null;
+}
+
+function extractRgthreePowerLoras(node: ParserNode): string[] {
+  const loras: string[] = [];
+  const addLora = (value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return;
+    }
+
+    const entry = value as Record<string, unknown>;
+    if (entry.on === false) {
+      return;
+    }
+
+    const name = typeof entry.lora === 'string'
+      ? entry.lora
+      : typeof entry.lora_name === 'string'
+        ? entry.lora_name
+        : typeof entry.name === 'string'
+          ? entry.name
+          : null;
+
+    if (name && name !== 'None') {
+      loras.push(name);
+    }
+  };
+
+  for (const [key, value] of Object.entries(node.inputs || {})) {
+    if (/^lora_\d+$/i.test(key)) {
+      addLora(value);
+    }
+  }
+
+  for (const value of node.widgets_values || []) {
+    addLora(value);
+  }
+
+  return loras;
+}
+
 // =============================================================================
 // SECTION: Node Registry
 // =============================================================================
@@ -135,6 +195,37 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     },
     widget_order: ['text']
   },
+  CLIPTextEncodeSDXL: {
+    category: 'CONDITIONING',
+    roles: ['SOURCE'],
+    inputs: {
+      clip: { type: 'CLIP' },
+      text_g: { type: 'STRING' },
+      text_l: { type: 'STRING' },
+    },
+    outputs: { CONDITIONING: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          return resolveFirstTextInput(node, { ...state, targetParam: 'prompt' }, graph, traverse, ['text_g', 'text_l'])
+            || node.widgets_values?.[6]
+            || node.widgets_values?.[7]
+            || null;
+        }
+      },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          return resolveFirstTextInput(node, { ...state, targetParam: 'negativePrompt' }, graph, traverse, ['text_g', 'text_l'])
+            || node.widgets_values?.[6]
+            || node.widgets_values?.[7]
+            || null;
+        }
+      }
+    },
+    widget_order: ['width', 'height', 'crop_w', 'crop_h', 'target_width', 'target_height', 'text_g', 'text_l']
+  },
   'smZ CLIPTextEncode': {
     category: 'LOADING', roles: ['SOURCE'],
     inputs: { clip: { type: 'CLIP' }, text: { type: 'STRING' } }, outputs: { CONDITIONING: { type: 'CONDITIONING' } },
@@ -203,6 +294,25 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     },
     pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }],
     widget_order: ['lora_name', 'strength_model']
+  },
+  'Power Lora Loader (rgthree)': {
+    category: 'LOADING',
+    roles: ['TRANSFORM'],
+    inputs: { model: { type: 'MODEL' }, clip: { type: 'CLIP' } },
+    outputs: { MODEL: { type: 'MODEL' }, CLIP: { type: 'CLIP' } },
+    param_mapping: {
+      lora: {
+        source: 'custom_extractor',
+        extractor: extractRgthreePowerLoras,
+        accumulate: true,
+      },
+      model: { source: 'trace', input: 'model' },
+    },
+    pass_through_rules: [
+      { from_input: 'model', to_output: 'MODEL' },
+      { from_input: 'clip', to_output: 'CLIP' },
+    ],
+    widget_order: ['__unknown__', 'header', 'lora_1', 'lora_2', 'add_lora']
   },
   'Lora Loader (LoraManager)': {
     category: 'LOADING',
@@ -743,6 +853,40 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       height: { source: 'input', key: 'height' }
     },
     widget_order: ['width', 'height', 'batch_size']
+  },
+
+  'SDXL Empty Latent Image (rgthree)': {
+    category: 'LOADING',
+    roles: ['SOURCE'],
+    inputs: {},
+    outputs: {
+      LATENT: { type: 'LATENT' },
+      CLIP_WIDTH: { type: 'INT' },
+      CLIP_HEIGHT: { type: 'INT' },
+    },
+    param_mapping: {
+      width: {
+        source: 'custom_extractor',
+        extractor: (node: ParserNode) => {
+          const value = typeof node.inputs?.dimensions === 'string'
+            ? node.inputs.dimensions
+            : node.widgets_values?.[0];
+          const match = typeof value === 'string' ? value.match(/(\d+)\s*x\s*(\d+)/i) : null;
+          return match ? Number(match[1]) : null;
+        }
+      },
+      height: {
+        source: 'custom_extractor',
+        extractor: (node: ParserNode) => {
+          const value = typeof node.inputs?.dimensions === 'string'
+            ? node.inputs.dimensions
+            : node.widgets_values?.[0];
+          const match = typeof value === 'string' ? value.match(/(\d+)\s*x\s*(\d+)/i) : null;
+          return match ? Number(match[2]) : null;
+        }
+      }
+    },
+    widget_order: ['dimensions', 'clip_scale', 'batch_size']
   },
 
   EmptySD3LatentImage: {
@@ -1497,6 +1641,8 @@ PrimitiveNode: {
     '*': { type: 'ANY' }
   },
   param_mapping: {
+    prompt: { source: 'widget', key: 'value' },
+    negativePrompt: { source: 'widget', key: 'value' },
     seed: { source: 'widget', key: 'value' },
     steps: { source: 'widget', key: 'value' },
     cfg: { source: 'widget', key: 'value' },

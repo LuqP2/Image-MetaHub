@@ -309,6 +309,48 @@ function extractAdvancedModifiers(graph: Graph): {
   const controlnets: any[] = [];
   const loras: any[] = [];
   const vaes: any[] = [];
+  const loraKeys = new Set<string>();
+
+  const addLora = (name: unknown, weight?: unknown) => {
+    if (typeof name !== 'string' || !name.trim() || name === 'None' || name === 'unknown') {
+      return;
+    }
+
+    const numericWeight = typeof weight === 'number' ? weight : undefined;
+    const resolvedWeight = numericWeight ?? 1.0;
+    const key = `${name}::${resolvedWeight}`;
+    if (loraKeys.has(key)) {
+      return;
+    }
+
+    loraKeys.add(key);
+    loras.push({ name, weight: resolvedWeight });
+  };
+
+  const addRgthreePowerLoras = (node: ParserNode) => {
+    const addEntry = (value: unknown) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return;
+      }
+
+      const entry = value as Record<string, unknown>;
+      if (entry.on === false) {
+        return;
+      }
+
+      addLora(entry.lora || entry.lora_name || entry.name, entry.strength || entry.strength_model || entry.weight);
+    };
+
+    for (const [key, value] of Object.entries(node.inputs || {})) {
+      if (/^lora_\d+$/i.test(key)) {
+        addEntry(value);
+      }
+    }
+
+    for (const value of node.widgets_values || []) {
+      addEntry(value);
+    }
+  };
   
   for (const nodeId in graph) {
     const node = graph[nodeId];
@@ -346,10 +388,13 @@ function extractAdvancedModifiers(graph: Graph): {
     
     // LoRA detection
     if (classType.includes('lora')) {
-      const name = node.inputs?.lora_name || node.widgets_values?.[0] || 'unknown';
-      const weight = node.inputs?.strength_model || node.inputs?.weight || node.widgets_values?.[1] || 1.0;
-      
-      loras.push({ name, weight });
+      if (node.class_type === 'Power Lora Loader (rgthree)') {
+        addRgthreePowerLoras(node);
+      } else {
+        const name = node.inputs?.lora_name || node.widgets_values?.[0] || 'unknown';
+        const weight = node.inputs?.strength_model || node.inputs?.weight || node.widgets_values?.[1] || 1.0;
+        addLora(name, weight);
+      }
     }
     
     // VAE detection

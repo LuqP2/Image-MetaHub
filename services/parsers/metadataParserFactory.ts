@@ -57,6 +57,18 @@ function isComfyPromptOnlyGraph(metadata: UnknownRecord): boolean {
     return false;
 }
 
+function normalizeComfyLoras(resolvedParams: Record<string, any>): BaseMetadata['loras'] {
+    if (Array.isArray(resolvedParams.loras) && resolvedParams.loras.length > 0) {
+        return resolvedParams.loras;
+    }
+
+    if (Array.isArray(resolvedParams.lora)) {
+        return resolvedParams.lora;
+    }
+
+    return resolvedParams.lora ? [resolvedParams.lora] : [];
+}
+
 interface ParserModule {
     parse: (metadata: ImageMetadata, fileBuffer?: ArrayBuffer) => BaseMetadata | null | Promise<BaseMetadata | null>;
     generator: string;
@@ -188,7 +200,7 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
                     cfg_scale: resolvedParams.cfg,
                     scheduler: resolvedParams.scheduler || '',
                     sampler: resolvedParams.sampler_name || '',
-                    loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
+                    loras: normalizeComfyLoras(resolvedParams),
                     denoise: resolvedParams.denoise,
                     generationType: resolvedParams.generationType,
                     lineage: resolvedParams.lineage,

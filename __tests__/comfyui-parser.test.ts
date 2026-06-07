@@ -127,6 +127,127 @@ describe('ComfyUI Parser - Detection from capitalized string keys', () => {
     expect(result?.prompt).toContain('Visualize a long, eel-like mutant lizard');
     expect(result?.model).not.toBe('wrong.safetensors');
   });
+
+  it('should parse standard SaveImage exports with SDXL rgthree nodes', async () => {
+    const prompt = {
+      '3': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 152203930877602,
+          steps: 30,
+          cfg: 5,
+          sampler_name: 'dpmpp_2m_sde',
+          scheduler: 'exponential',
+          denoise: 1,
+          model: ['42', 0],
+          positive: ['30', 0],
+          negative: ['33', 0],
+          latent_image: ['43', 0],
+        },
+      },
+      '4': {
+        class_type: 'CheckpointLoaderSimple',
+        inputs: {
+          ckpt_name: 'realismByStableYogi_v60FP16.safetensors',
+        },
+      },
+      '8': {
+        class_type: 'VAEDecode',
+        inputs: {
+          samples: ['3', 0],
+          vae: ['4', 2],
+        },
+      },
+      '28': {
+        class_type: 'SaveImage',
+        inputs: {
+          filename_prefix: 'pony-',
+          images: ['8', 0],
+        },
+      },
+      '30': {
+        class_type: 'CLIPTextEncodeSDXL',
+        inputs: {
+          width: 4096,
+          height: 4096,
+          crop_w: 0,
+          crop_h: 0,
+          target_width: 4096,
+          target_height: 4096,
+          text_g: '1girl, portrait, a girl with green hair standing in front of the ocean',
+          text_l: '1girl, portrait, a girl with green hair standing in front of the ocean',
+          clip: ['42', 1],
+        },
+      },
+      '33': {
+        class_type: 'CLIPTextEncodeSDXL',
+        inputs: {
+          width: 4096,
+          height: 4096,
+          crop_w: 0,
+          crop_h: 0,
+          target_width: 4096,
+          target_height: 4096,
+          text_g: ' poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, amputation\n',
+          text_l: ' poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, amputation\n',
+          clip: ['42', 1],
+        },
+      },
+      '42': {
+        class_type: 'Power Lora Loader (rgthree)',
+        inputs: {
+          PowerLoraLoaderHeaderWidget: { type: 'PowerLoraLoaderHeaderWidget' },
+          lora_5: {
+            on: true,
+            lora: 'sdxl/Realism Lora By Stable Yogi_V3_Lite.safetensors',
+            strength: 1,
+          },
+          model: ['4', 0],
+          clip: ['4', 1],
+        },
+      },
+      '43': {
+        class_type: 'SDXL Empty Latent Image (rgthree)',
+        inputs: {
+          dimensions: ' 832 x 1216 (portrait)',
+          clip_scale: 2,
+          batch_size: 1,
+        },
+      },
+    };
+
+    const workflow = {
+      nodes: [
+        { id: 3, type: 'KSampler', widgets_values: [152203930877602, 'randomize', 30, 5, 'dpmpp_2m_sde', 'exponential', 1], mode: 0 },
+        { id: 4, type: 'CheckpointLoaderSimple', widgets_values: ['realismByStableYogi_v60FP16.safetensors'], mode: 0 },
+        { id: 28, type: 'SaveImage', widgets_values: ['pony-'], mode: 0 },
+        { id: 30, type: 'CLIPTextEncodeSDXL', widgets_values: [4096, 4096, 0, 0, 4096, 4096, '1girl, portrait, a girl with green hair standing in front of the ocean', '1girl, portrait, a girl with green hair standing in front of the ocean'], mode: 0 },
+        { id: 33, type: 'CLIPTextEncodeSDXL', widgets_values: [4096, 4096, 0, 0, 4096, 4096, ' poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, amputation\n', ' poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, amputation\n'], mode: 0 },
+        { id: 42, type: 'Power Lora Loader (rgthree)', widgets_values: [{}, { type: 'PowerLoraLoaderHeaderWidget' }, { on: true, lora: 'sdxl/Realism Lora By Stable Yogi_V3_Lite.safetensors', strength: 1 }, {}, ''], mode: 0 },
+        { id: 43, type: 'SDXL Empty Latent Image (rgthree)', widgets_values: [' 832 x 1216 (portrait)', 2, 1], mode: 0 },
+      ],
+    };
+
+    const result = await parseImageMetadata({
+      Prompt: JSON.stringify(prompt),
+      Workflow: JSON.stringify(workflow),
+    } as any);
+
+    expect(result?.generator).toBe('ComfyUI');
+    expect(result?.prompt).toBe('1girl, portrait, a girl with green hair standing in front of the ocean');
+    expect(result?.negativePrompt).toBe('poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, amputation');
+    expect(result?.model).toBe('realismByStableYogi_v60FP16.safetensors');
+    expect(result?.seed).toBe(152203930877602);
+    expect(result?.steps).toBe(30);
+    expect(result?.cfg_scale).toBe(5);
+    expect(result?.sampler).toBe('dpmpp_2m_sde');
+    expect(result?.scheduler).toBe('exponential');
+    expect(result?.denoise).toBe(1);
+    expect(result?.loras).toContainEqual({
+      name: 'sdxl/Realism Lora By Stable Yogi_V3_Lite.safetensors',
+      weight: 1,
+    });
+  });
 });
 
 describe('ComfyUI Parser - Output terminal traversal', () => {
@@ -350,7 +471,10 @@ describe('ComfyUI Parser - Prompt-only graph payloads', () => {
     expect(result?.steps).toBe(19);
     expect(result?.cfg_scale).toBe(7);
     expect(result?.sampler).toBe('euler_ancestral');
-    expect(result?.loras).toContain('urn:air:sdxl:lora:civitai:1280702@1444863');
+    expect(result?.loras).toContainEqual({
+      name: 'urn:air:sdxl:lora:civitai:1280702@1444863',
+      weight: -0.65,
+    });
   });
 });
 

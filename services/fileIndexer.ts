@@ -72,6 +72,18 @@ function throttle<T extends (...args: any[]) => any>(func: T, delay: number): Th
   return throttled;
 }
 
+function normalizeComfyLoras(resolvedParams: Record<string, any>): BaseMetadata['loras'] {
+  if (Array.isArray(resolvedParams.loras) && resolvedParams.loras.length > 0) {
+    return resolvedParams.loras;
+  }
+
+  if (Array.isArray(resolvedParams.lora)) {
+    return resolvedParams.lora;
+  }
+
+  return resolvedParams.lora ? [resolvedParams.lora] : [];
+}
+
 // Extended FileSystemFileHandle interface for Electron compatibility
 interface ElectronFileHandle extends FileSystemFileHandle {
   _filePath?: string;
@@ -1555,7 +1567,7 @@ if (rawMetadata) {
       cfg_scale: resolvedParams.cfg,
       scheduler: resolvedParams.scheduler || '',
       sampler: resolvedParams.sampler_name || '',
-      loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
+      loras: normalizeComfyLoras(resolvedParams),
       vae: resolvedParams.vae || resolvedParams.vaes?.[0]?.name,
       denoise: resolvedParams.denoise,
       generationType: resolvedParams.generationType,
