@@ -3198,13 +3198,28 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('comfy-view-reload', async () => {
+  ipcMain.handle('comfy-view-reload', async (event, payload = {}) => {
     try {
-      if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+      const targetUrl = payload?.url || comfyUIViewState.url || comfyUIViewConfiguredUrl;
+      const openResult = await openComfyUIView({ url: targetUrl, bounds: payload?.bounds });
+      if (!openResult.success) {
+        return openResult;
+      }
+
+      const contents = comfyUIView?.webContents;
+      if (!contents || contents.isDestroyed()) {
         return { success: false, error: 'ComfyUI view is not open.' };
       }
-      comfyUIView.webContents.reload();
-      return { success: true, state: updateComfyUIViewState() };
+
+      const parsed = normalizeComfyUIViewUrl(targetUrl);
+      const currentUrl = contents.getURL();
+      if (parsed && (!currentUrl || !isComfyNavigationAllowed(currentUrl))) {
+        await contents.loadURL(parsed.toString());
+      } else {
+        contents.reload();
+      }
+
+      return { success: true, state: updateComfyUIViewState({ visible: true, lastLoadFailed: false }) };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to reload embedded ComfyUI.' };
     }
