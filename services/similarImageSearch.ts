@@ -6,8 +6,11 @@ import type {
   SimilarSearchScope,
 } from '../types';
 import { normalizeFacetValue } from '../utils/facetNormalization';
+import { normalizePrompt, normalizedLevenshtein, tokenizeForSimilarity } from '../utils/similarityMetrics';
 
 const DEFAULT_SCOPE: SimilarSearchScope = 'current-view';
+export const DEFAULT_SIMILAR_PROMPT_THRESHOLD = 0.87;
+export const MAX_SIMILAR_SEARCH_RESULTS = 250;
 
 type NormalizedLoraEntry = {
   name: string;
@@ -23,6 +26,7 @@ export type SimilarSearchAvailability = {
 
 export type SimilarSearchSourceDetails = {
   normalizedPrompt: string | null;
+  normalizedSimilarityPrompt: string | null;
   loras: NormalizedLoraEntry[];
   seed: number | null;
   checkpoints: string[];
@@ -54,7 +58,7 @@ export const DEFAULT_SIMILAR_SEARCH_CRITERIA: SimilarSearchCriteria = {
   lora: false,
   matchLoraWeight: false,
   seed: false,
-  checkpointMode: 'different',
+  checkpointMode: 'ignore',
   scope: DEFAULT_SCOPE,
 };
 
@@ -196,11 +200,14 @@ export const getSimilarSearchAvailability = (image: IndexedImage): SimilarSearch
 };
 
 export const getSimilarSearchSourceDetails = (image: IndexedImage): SimilarSearchSourceDetails => {
-  const normalizedPrompt = normalizePromptForSimilarSearch(getImagePromptForSimilarSearch(image));
+  const prompt = getImagePromptForSimilarSearch(image);
+  const normalizedPrompt = normalizePromptForSimilarSearch(prompt);
+  const normalizedSimilarityPrompt = normalizePrompt(prompt);
   const checkpoints = normalizeCheckpointList(image);
 
   return {
     normalizedPrompt: normalizedPrompt || null,
+    normalizedSimilarityPrompt: normalizedSimilarityPrompt || null,
     loras: normalizeLoraEntries(image),
     seed: typeof image.seed === 'number' && Number.isFinite(image.seed) ? image.seed : null,
     checkpoints,
@@ -316,6 +323,55 @@ const choosePreselectedIds = (results: Omit<SimilarSearchResult, 'preselected'>[
 
 const compareNewestFirst = (left: IndexedImage, right: IndexedImage) => right.lastModified - left.lastModified;
 
+const jaccardFromTokens = (left: Set<string>, right: Set<string>): number => {
+  if (left.size === 0 && right.size === 0) {
+    return 1;
+  }
+
+  if (left.size === 0 || right.size === 0) {
+    return 0;
+  }
+
+  let intersection = 0;
+  for (const token of left) {
+    if (right.has(token)) {
+      intersection += 1;
+    }
+  }
+
+  const union = left.size + right.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+};
+
+const calculatePromptSimilarity = ({
+  sourcePrompt,
+  sourceTokens,
+  candidatePrompt,
+  threshold,
+}: {
+  sourcePrompt: string;
+  sourceTokens: Set<string>;
+  candidatePrompt: string;
+  threshold: number;
+}): number | null => {
+  if (sourcePrompt === candidatePrompt) {
+    return 1;
+  }
+
+  const candidateTokens = tokenizeForSimilarity(candidatePrompt);
+  const jaccard = jaccardFromTokens(sourceTokens, candidateTokens);
+  const minJaccard = Math.max(0, (threshold - 0.4) / 0.6);
+  if (jaccard < minJaccard) {
+    return null;
+  }
+
+  const requiredLevenshtein = Math.max(0, Math.min(1, (threshold - jaccard * 0.6) / 0.4));
+  const levenshtein = normalizedLevenshtein(sourcePrompt, candidatePrompt, requiredLevenshtein);
+  const similarity = jaccard * 0.6 + levenshtein * 0.4;
+
+  return similarity >= threshold ? similarity : null;
+};
+
 export const findSimilarImages = ({
   sourceImage,
   allImages,
@@ -348,7 +404,8 @@ export const findSimilarImages = ({
     };
   }
 
-  const sourceCheckpointSet = new Set(source.checkpoints);
+  const sourceSimilarityPrompt = source.normalizedSimilarityPrompt;
+  const sourceSimilarityTokens = sourceSimilarityPrompt ? tokenizeForSimilarity(sourceSimilarityPrompt) : null;
 
   const rawResults = candidates
     .filter((image) => image.id !== sourceImage.id)
@@ -357,8 +414,21 @@ export const findSimilarImages = ({
       const candidateCheckpointSet = new Set(candidateSource.checkpoints);
       const sharesCheckpoint = source.checkpoints.some((checkpoint) => candidateCheckpointSet.has(checkpoint));
 
-      if (effectiveCriteria.prompt && candidateSource.normalizedPrompt !== source.normalizedPrompt) {
-        return null;
+      let promptSimilarity: number | null = null;
+      if (effectiveCriteria.prompt) {
+        if (!sourceSimilarityPrompt || !sourceSimilarityTokens || !candidateSource.normalizedSimilarityPrompt) {
+          return null;
+        }
+
+        promptSimilarity = calculatePromptSimilarity({
+          sourcePrompt: sourceSimilarityPrompt,
+          sourceTokens: sourceSimilarityTokens,
+          candidatePrompt: candidateSource.normalizedSimilarityPrompt,
+          threshold: DEFAULT_SIMILAR_PROMPT_THRESHOLD,
+        });
+        if (promptSimilarity == null) {
+          return null;
+        }
       }
 
       if (effectiveCriteria.lora && !haveSameLoraNames(candidateSource.loras, source.loras)) {
@@ -395,28 +465,25 @@ export const findSimilarImages = ({
         }),
         primaryCheckpoint: candidateSource.primaryCheckpoint,
         sharesCheckpoint,
+        promptSimilarity,
       } satisfies Omit<SimilarSearchResult, 'preselected'>;
     })
     .filter((result): result is Omit<SimilarSearchResult, 'preselected'> => Boolean(result))
     .sort((left, right) => {
-      if (left.sharesCheckpoint !== right.sharesCheckpoint) {
-        return left.sharesCheckpoint ? 1 : -1;
-      }
-
-      const leftHasAlternate = left.primaryCheckpoint && !sourceCheckpointSet.has(left.primaryCheckpoint);
-      const rightHasAlternate = right.primaryCheckpoint && !sourceCheckpointSet.has(right.primaryCheckpoint);
-      if (leftHasAlternate !== rightHasAlternate) {
-        return leftHasAlternate ? -1 : 1;
+      if (left.promptSimilarity !== right.promptSimilarity) {
+        return (right.promptSimilarity ?? -1) - (left.promptSimilarity ?? -1);
       }
 
       return compareNewestFirst(left.image, right.image);
     });
 
   const preselectedIds = choosePreselectedIds(rawResults);
-  const results = rawResults.map((result) => ({
-    ...result,
-    preselected: preselectedIds.has(result.image.id),
-  }));
+  const results = rawResults
+    .slice(0, MAX_SIMILAR_SEARCH_RESULTS)
+    .map((result) => ({
+      ...result,
+      preselected: preselectedIds.has(result.image.id),
+    }));
 
   return {
     results,

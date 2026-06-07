@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, FolderTree, GitCompare, Layers, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Check, Eye, FolderTree, GitCompare, Layers, Search, SlidersHorizontal, X } from 'lucide-react';
 import type { IndexedImage, SimilarSearchCriteria, SimilarSearchResult } from '../types';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useThumbnail } from '../hooks/useThumbnail';
 import {
   DEFAULT_SIMILAR_SEARCH_CRITERIA,
+  MAX_SIMILAR_SEARCH_RESULTS,
   findSimilarImages,
   getSimilarSearchAvailability,
   getSimilarSearchSourceDetails,
@@ -18,6 +19,7 @@ interface FindSimilarModalProps {
   currentViewImages?: IndexedImage[];
   initialCriteria?: Partial<SimilarSearchCriteria>;
   onClose: () => void;
+  onOpenImage: (image: IndexedImage) => void;
   onOpenCompare: (images: IndexedImage[]) => void;
 }
 
@@ -33,6 +35,9 @@ const useThumbnailUrl = (image: IndexedImage | null) => {
 
 const formatModelSummary = (image: IndexedImage) => image.models[0] || 'Unknown checkpoint';
 
+const formatSimilarityPercent = (similarity: number | null) =>
+  similarity == null ? null : `${Math.round(similarity * 100)}%`;
+
 const formatLoraSummary = (image: IndexedImage) => {
   if (!image.loras || image.loras.length === 0) {
     return 'No LoRAs';
@@ -47,43 +52,68 @@ const SimilarImageCard = ({
   image,
   selected,
   badge,
+  similarityPercent,
   onClick,
+  onOpenImage,
 }: {
   image: IndexedImage;
   selected: boolean;
   badge: React.ReactNode;
+  similarityPercent: string | null;
   onClick?: () => void;
+  onOpenImage: () => void;
 }) => {
   const thumbnailUrl = useThumbnailUrl(image);
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={`group relative overflow-hidden rounded-xl border text-left transition-colors ${
         selected
           ? 'border-cyan-400 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
           : 'border-gray-700 bg-gray-950/70 hover:border-gray-500 hover:bg-gray-950'
       }`}
     >
-      <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-br from-gray-800 via-gray-900 to-gray-950">
-        {thumbnailUrl ? (
-          <img src={thumbnailUrl} alt={image.name} className="h-full w-full object-cover" loading="lazy" />
-        ) : (
-          <div className="h-full w-full bg-gradient-to-br from-gray-800 via-gray-900 to-gray-950" />
-        )}
-        <div className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-gray-100">
-          {badge}
-        </div>
-        {selected && (
-          <div className="absolute right-2 top-2 rounded-full bg-cyan-500 p-1 text-white">
-            <Check className="h-3.5 w-3.5" />
+      <button
+        type="button"
+        onClick={onClick}
+        className="block w-full text-left"
+        aria-label={`Select ${image.name} for compare`}
+      >
+        <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-br from-gray-800 via-gray-900 to-gray-950">
+          {thumbnailUrl ? (
+            <img src={thumbnailUrl} alt={image.name} className="h-full w-full object-cover" loading="lazy" />
+          ) : (
+            <div className="h-full w-full bg-gradient-to-br from-gray-800 via-gray-900 to-gray-950" />
+          )}
+          <div className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-gray-100">
+            {badge}
           </div>
-        )}
-      </div>
+          {selected && (
+            <div className="absolute right-2 top-2 rounded-full bg-cyan-500 p-1 text-white">
+              <Check className="h-3.5 w-3.5" />
+            </div>
+          )}
+        </div>
+      </button>
       <div className="space-y-1 p-3">
-        <div className="truncate text-sm font-semibold text-gray-100" title={image.name}>
-          {image.name}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-gray-100" title={image.name}>
+              {image.name}
+            </div>
+            {similarityPercent && (
+              <div className="text-xs font-medium text-emerald-300">{similarityPercent} prompt match</div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onOpenImage}
+            className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gray-700 text-gray-300 transition-colors hover:border-cyan-400/70 hover:text-cyan-100"
+            aria-label={`Open ${image.name} in image modal`}
+            title="Open image"
+          >
+            <Eye className="h-4 w-4" />
+          </button>
         </div>
         <div className="truncate text-xs text-cyan-200" title={formatModelSummary(image)}>
           {formatModelSummary(image)}
@@ -92,7 +122,7 @@ const SimilarImageCard = ({
           {formatLoraSummary(image)}
         </div>
       </div>
-    </button>
+    </div>
   );
 };
 
@@ -128,6 +158,7 @@ export default function FindSimilarModal({
   currentViewImages,
   initialCriteria,
   onClose,
+  onOpenImage,
   onOpenCompare,
 }: FindSimilarModalProps) {
   const [criteria, setCriteria] = useState<SimilarSearchCriteria>(DEFAULT_SIMILAR_SEARCH_CRITERIA);
@@ -191,6 +222,7 @@ export default function FindSimilarModal({
   }
 
   const compareDisabled = selectedIds.size === 0 || !execution.hasActiveCriterion;
+  const isResultLimited = execution.results.length >= MAX_SIMILAR_SEARCH_RESULTS;
 
   const toggleSelection = (result: SimilarSearchResult) => {
     setSelectedIds((current) => {
@@ -312,28 +344,28 @@ export default function FindSimilarModal({
               <div>
                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
                   <Layers className="h-3.5 w-3.5" />
-                  Checkpoint
+                  Checkpoint filter
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <ScopeButton
-                    active={criteria.checkpointMode === 'different'}
-                    disabled={!availability.checkpoint}
-                    onClick={() => setCriteria((current) => ({ ...current, checkpointMode: 'different' }))}
-                  >
-                    Different
-                  </ScopeButton>
+                <div className="grid grid-cols-1 gap-2">
                   <ScopeButton
                     active={criteria.checkpointMode === 'ignore'}
                     onClick={() => setCriteria((current) => ({ ...current, checkpointMode: 'ignore' }))}
                   >
-                    Ignore
+                    Any checkpoint
                   </ScopeButton>
                   <ScopeButton
                     active={criteria.checkpointMode === 'same'}
                     disabled={!availability.checkpoint}
                     onClick={() => setCriteria((current) => ({ ...current, checkpointMode: 'same' }))}
                   >
-                    Same
+                    Only same checkpoint
+                  </ScopeButton>
+                  <ScopeButton
+                    active={criteria.checkpointMode === 'different'}
+                    disabled={!availability.checkpoint}
+                    onClick={() => setCriteria((current) => ({ ...current, checkpointMode: 'different' }))}
+                  >
+                    Exclude same checkpoint
                   </ScopeButton>
                 </div>
               </div>
@@ -378,7 +410,7 @@ export default function FindSimilarModal({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-gray-100">
-                    {execution.results.length} match{execution.results.length === 1 ? '' : 'es'}
+                    {isResultLimited ? `Top ${MAX_SIMILAR_SEARCH_RESULTS}` : execution.results.length} match{execution.results.length === 1 ? '' : 'es'}
                   </div>
                   <div className="text-xs text-gray-400">{execution.candidates.length} candidates</div>
                 </div>
@@ -401,6 +433,7 @@ export default function FindSimilarModal({
                       key={result.image.id}
                       image={result.image}
                       selected={selectedIds.has(result.image.id)}
+                      similarityPercent={formatSimilarityPercent(result.promptSimilarity)}
                       badge={
                         <span>
                           #{index + 1}
@@ -408,6 +441,7 @@ export default function FindSimilarModal({
                         </span>
                       }
                       onClick={() => toggleSelection(result)}
+                      onOpenImage={() => onOpenImage(result.image)}
                     />
                   ))}
                 </div>

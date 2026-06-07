@@ -2279,6 +2279,11 @@ export default function App() {
     setFindSimilarState(null);
   }, [openComparisonModal, setComparisonImages]);
 
+  const handleOpenFindSimilarImage = useCallback((image: IndexedImage) => {
+    setFindSimilarState(null);
+    setSelectedImage(image);
+  }, [setSelectedImage]);
+
   const openModelPromptPicker = useCallback((modelName: string) => {
     setModelPromptPickerState({
       modelName,
@@ -3258,6 +3263,7 @@ export default function App() {
           currentViewImages={findSimilarState?.currentViewImages}
           initialCriteria={findSimilarState?.initialCriteria}
           onClose={closeFindSimilar}
+          onOpenImage={handleOpenFindSimilarImage}
           onOpenCompare={handleOpenFindSimilarCompare}
         />
 

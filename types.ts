@@ -780,6 +780,7 @@ export interface SimilarSearchResult {
   preselected: boolean;
   primaryCheckpoint: string | null;
   sharesCheckpoint: boolean;
+  promptSimilarity: number | null;
 }
 
 export interface SelectedFiltersUpdate {
