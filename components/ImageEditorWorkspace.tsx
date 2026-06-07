@@ -2196,7 +2196,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     <div className="flex h-full min-h-0 flex-col bg-gray-950 text-gray-100">
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-800 bg-gray-900 px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <button type="button" onClick={handleBack} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Back">
+          <button type="button" onClick={handleBack} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Back" aria-label="Back">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="min-w-0">
@@ -2208,16 +2208,16 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button type="button" onClick={undo} disabled={!history.past.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title="Undo">
+          <button type="button" onClick={undo} disabled={!history.past.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title="Undo" aria-label="Undo">
             <Undo2 className="h-4 w-4" />
           </button>
-          <button type="button" onClick={redo} disabled={!history.future.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title="Redo">
+          <button type="button" onClick={redo} disabled={!history.future.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title="Redo" aria-label="Redo">
             <Redo2 className="h-4 w-4" />
           </button>
-          <button type="button" onClick={flattenSelection} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Flatten">
+          <button type="button" onClick={flattenSelection} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Flatten" aria-label="Flatten">
             <Layers className="h-4 w-4" />
           </button>
-          <button type="button" onClick={handleCopy} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Copy image">
+          <button type="button" onClick={handleCopy} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Copy image" aria-label="Copy image">
             <Copy className="h-4 w-4" />
           </button>
           <button type="button" onClick={() => setIsInspectorOpen(true)} className="inline-flex items-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 xl:hidden" title="Open inspector">
@@ -2671,7 +2671,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                     : TOOL_DEFS.find((tool) => tool.id === activeTool)?.label}
               </div>
             </div>
-            <button type="button" onClick={() => setIsInspectorOpen(false)} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 xl:hidden" title="Close inspector">
+            <button type="button" onClick={() => setIsInspectorOpen(false)} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 xl:hidden" title="Close inspector" aria-label="Close inspector">
               <X className="h-4 w-4" />
             </button>
           </div>
