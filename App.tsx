@@ -2032,6 +2032,19 @@ export default function App() {
     return getResolvedFilteredCollectionImages(activeCollection.id);
   }, [activeCollection, getResolvedFilteredCollectionImages, safeFilteredImages]);
 
+  // Optimization: use memoized Set directly over for loop rather than map().filter()
+  // Impact: Avoids multiple O(N) allocations for arrays during directory count calculation on each collection view render
+  const collectionFilteredDirectoryCount = useMemo(() => {
+    const dirSet = new Set<string>();
+    for (let i = 0; i < collectionFilteredImages.length; i++) {
+      const dirId = collectionFilteredImages[i].directoryId;
+      if (dirId) {
+        dirSet.add(dirId);
+      }
+    }
+    return dirSet.size;
+  }, [collectionFilteredImages]);
+
   const handleNodeViewResultImagesChange = useCallback(
     (images: IndexedImage[]) => {
       setNodeViewResultImages(images);
@@ -3156,7 +3169,7 @@ export default function App() {
                   totalCount={libraryView === 'collections' ? collectionTotalImages.length : selectionTotalImages}
                   directoryCount={
                     libraryView === 'collections'
-                      ? new Set(collectionFilteredImages.map((image) => image.directoryId).filter(Boolean)).size
+                      ? collectionFilteredDirectoryCount
                       : selectionDirectoryCount
                   }
                   enrichmentProgress={enrichmentProgress}
