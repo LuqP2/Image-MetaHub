@@ -1227,7 +1227,11 @@ export function useImageLoader() {
                     })()
                     : [];
 
-            const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
+            // Optimization: Replaced new Map(arr.map()) with a for loop to avoid O(N) allocation overhead
+            const handleMap = new Map();
+            for (const h of regeneratedCachedImages) {
+                handleMap.set(h.path, h.handle);
+            }
 
             if (shouldHydratePreloadedImages) {
                 clearImages(directory.id);
