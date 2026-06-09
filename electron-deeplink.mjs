@@ -27,8 +27,27 @@ function getDirectoryFromLink(value) {
   }
 }
 
+function getDirectoryFromCliArgs(args) {
+  const argv = Array.from(args || []);
+  const dirFlagIndex = argv.indexOf('--dir');
+
+  if (dirFlagIndex !== -1 && argv[dirFlagIndex + 1]) {
+    return path.resolve(argv[dirFlagIndex + 1]);
+  }
+
+  const directPath = argv.find((arg) => {
+    if (typeof arg !== 'string' || !arg.trim() || arg.startsWith('--')) return false;
+    if (isDeepLink(arg)) return false;
+    if (arg === process.execPath) return false;
+    if (arg.endsWith('.exe') || arg.endsWith('.mjs') || arg.endsWith('.js')) return false;
+    return true;
+  });
+
+  return directPath ? path.resolve(directPath) : null;
+}
+
 function getDirectoryFromArgs(args) {
-  return getDirectoryFromLink(findDeepLink(args));
+  return getDirectoryFromLink(findDeepLink(args)) || getDirectoryFromCliArgs(args);
 }
 
 function focusMainWindow() {
