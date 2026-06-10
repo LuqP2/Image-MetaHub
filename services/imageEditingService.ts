@@ -529,7 +529,13 @@ export const normalizeImageEditorDocument = (
     .map((object) => normalizeImageEditorObject(object, canvasDimensions))
     .filter((object): object is ImageEditorObject => Boolean(object))
     .sort((left, right) => left.zIndex - right.zIndex);
-  const objectIds = new Set(objects.map((object) => object.id));
+
+  // Optimization: Eliminate Array.map() O(N) temporary array allocation
+  // Impact: Reduces garbage collection overhead when building the ID Set for selected object filtering
+  const objectIds = new Set<string>();
+  for (const object of objects) {
+    objectIds.add(object.id);
+  }
 
   return {
     sourceImageId: document.sourceImageId || '',
