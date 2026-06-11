@@ -3538,9 +3538,11 @@ function setupFileOperationHandlers() {
         const targetChunkPattern = new RegExp(`^${escapeRegExp(safeCacheId)}_(\\d+)\\.json$`);
         const sourceChunkPattern = new RegExp(`^${escapeRegExp(safeSourceCacheId)}_(\\d+)\\.json$`);
 
+        let removedTargetChunks = 0;
         for (const file of files) {
           if (targetChunkPattern.test(file)) {
             await unlinkCacheChunkWithRetry(path.join(cacheDir, file));
+            removedTargetChunks += 1;
           }
         }
 
@@ -3559,7 +3561,7 @@ function setupFileOperationHandlers() {
         logMainPerf('finalize-cache-write:swap-chunks', {
           cacheId,
           sourceCacheId,
-          removedTargetChunks: targetFiles.length,
+          removedTargetChunks,
           renamedChunks,
           durationMs: elapsedMs(start),
         });
