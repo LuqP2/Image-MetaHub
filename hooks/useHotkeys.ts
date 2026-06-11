@@ -315,6 +315,7 @@ export const useHotkeys = ({
 
       const state = useImageStore.getState();
       const hasBlockingModal =
+        hotkeyManager.areHotkeysPaused() ||
         isCommandPaletteOpen ||
         isHotkeyHelpOpen ||
         isSettingsModalOpen ||
