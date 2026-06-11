@@ -432,6 +432,29 @@ class IncrementalCacheWriter {
 
 class CacheManager {
   private isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+  private chunkedCacheDeltaLocks = new Map<string, Promise<void>>();
+
+  private async runChunkedCacheDeltaLocked<T>(cacheId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.chunkedCacheDeltaLocks.get(cacheId) ?? Promise.resolve();
+    let release: (() => void) | undefined;
+    const current = previous
+      .catch(() => undefined)
+      .then(() => new Promise<void>((resolve) => {
+        release = resolve;
+      }));
+
+    this.chunkedCacheDeltaLocks.set(cacheId, current);
+    await previous.catch(() => undefined);
+
+    try {
+      return await operation();
+    } finally {
+      release?.();
+      if (this.chunkedCacheDeltaLocks.get(cacheId) === current) {
+        this.chunkedCacheDeltaLocks.delete(cacheId);
+      }
+    }
+  }
 
   // No longer need init() for IndexedDB
   async init(): Promise<void> {
@@ -882,6 +905,7 @@ class CacheManager {
     if (imagesToUpsert.length === 0 && removedImageIds.length === 0 && removedImageNames.length === 0) return;
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    await this.runChunkedCacheDeltaLocked(cacheId, async () => {
     const outputCacheId = `${cacheId}-delta-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const start = performance.now();
     const summary = await this.getCacheSummary(directoryPath, scanSubfolders);
@@ -994,9 +1018,10 @@ class CacheManager {
       },
     });
 
-    if (!finalizeResult.success) {
+       if (!finalizeResult.success) {
       throw new Error(finalizeResult.error || 'Failed to finalize cache delta');
     }
+
     logCachePerf('chunked-delta:complete', {
       cacheId,
       outputCacheId,
@@ -1013,11 +1038,12 @@ class CacheManager {
       writeChunkMs: toFixedMs(writeChunkMs),
       durationMs: toFixedMs(performance.now() - start),
     });
-  }
+  });
+}
 
-  async replaceCachedImages(
-    directoryPath: string,
-    directoryName: string,
+async replaceCachedImages(
+  directoryPath: string,
+  directoryName: string,
     images: IndexedImage[],
     removedImageIds: string[],
     removedImageNames: string[],

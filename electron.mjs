@@ -477,6 +477,7 @@ let cachedSettings = null;
 let settingsWriteQueue = Promise.resolve();
 
 const SETTINGS_WRITE_RETRY_DELAYS_MS = [0, 50, 150];
+const CACHE_CHUNK_REPLACE_RETRY_DELAYS_MS = [0, 75, 200, 500, 1000];
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -518,6 +519,57 @@ async function replaceFileWithRetry(sourcePath, destinationPath) {
       lastError = error;
 
       if (error?.code === 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+async function unlinkCacheChunkWithRetry(filePath) {
+  let lastError = null;
+
+  for (const delayMs of CACHE_CHUNK_REPLACE_RETRY_DELAYS_MS) {
+    if (delayMs > 0) {
+      await delay(delayMs);
+    }
+
+    try {
+      await fs.unlink(filePath);
+      return;
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        return;
+      }
+
+      lastError = error;
+      if (error?.code !== 'EBUSY' && error?.code !== 'EPERM') {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+async function renameCacheChunkWithRetry(sourcePath, destinationPath) {
+  let lastError = null;
+
+  for (const delayMs of CACHE_CHUNK_REPLACE_RETRY_DELAYS_MS) {
+    if (delayMs > 0) {
+      await delay(delayMs);
+    }
+
+    try {
+      await fs.rename(sourcePath, destinationPath);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (error?.code === 'ENOENT') {
+        throw error;
+      }
+      if (error?.code !== 'EBUSY' && error?.code !== 'EPERM') {
         throw error;
       }
     }
@@ -3486,13 +3538,13 @@ function setupFileOperationHandlers() {
         const targetChunkPattern = new RegExp(`^${escapeRegExp(safeCacheId)}_(\\d+)\\.json$`);
         const sourceChunkPattern = new RegExp(`^${escapeRegExp(safeSourceCacheId)}_(\\d+)\\.json$`);
 
-        const targetFiles = files.filter(file => targetChunkPattern.test(file));
-        await Promise.all(
-          targetFiles
-            .map(file => fs.unlink(path.join(cacheDir, file)).catch(err => {
-              if (err.code !== 'ENOENT') throw err;
-            }))
-        );
+        let removedTargetChunks = 0;
+        for (const file of files) {
+          if (targetChunkPattern.test(file)) {
+            await unlinkCacheChunkWithRetry(path.join(cacheDir, file));
+            removedTargetChunks += 1;
+          }
+        }
 
         let renamedChunks = 0;
         for (const file of files) {
@@ -3500,7 +3552,7 @@ function setupFileOperationHandlers() {
           if (!match) {
             continue;
           }
-          await fs.rename(
+          await renameCacheChunkWithRetry(
             path.join(cacheDir, file),
             path.join(cacheDir, `${safeCacheId}_${match[1]}.json`)
           );
@@ -3509,7 +3561,7 @@ function setupFileOperationHandlers() {
         logMainPerf('finalize-cache-write:swap-chunks', {
           cacheId,
           sourceCacheId,
-          removedTargetChunks: targetFiles.length,
+          removedTargetChunks,
           renamedChunks,
           durationMs: elapsedMs(start),
         });
