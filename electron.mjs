@@ -375,6 +375,26 @@ let comfyUIViewState = {
 let skippedVersions = new Set();
 let isManualUpdateCheck = false;
 
+function buildUpdateNotificationPayload(info = {}) {
+  const version = info.version || app.getVersion();
+  const releaseNotes = Array.isArray(info.releaseNotes)
+    ? info.releaseNotes.map((note) => ({
+        version: note.version,
+        note: String(note.note || '').trim(),
+      })).filter((note) => note.note)
+    : typeof info.releaseNotes === 'string'
+      ? info.releaseNotes
+      : undefined;
+
+  return {
+    version,
+    releaseName: info.releaseName,
+    releaseNotes,
+    releaseDate: info.releaseDate,
+    changelogUrl: `https://github.com/LuqP2/Image-MetaHub/releases/tag/v${version}`,
+  };
+}
+
 
 // --- Zoom Management ---
 const ZOOM_STEP = 0.1;
@@ -1933,70 +1953,7 @@ if (autoUpdater) {
     }
 
     if (mainWindow) {
-      // Extract and format changelog from release notes
-      let changelogText = 'No release notes available.';
-      
-      if (info.releaseNotes) {
-        if (typeof info.releaseNotes === 'string') {
-          // Clean up markdown formatting for dialog display
-          changelogText = info.releaseNotes
-            .replace(/#{1,6}\s/g, '') // Remove markdown headers
-            .replace(/\*\*/g, '') // Remove bold markers
-            .replace(/\*/g, '•') // Convert asterisks to bullets
-            .replace(/<[^>]*>/g, '') // Remove HTML tags
-            .trim();
-        } else if (Array.isArray(info.releaseNotes)) {
-          changelogText = info.releaseNotes
-            .map(note => note.note || '')
-            .join('\n')
-            .trim();
-        }
-      }
-
-      // Limit changelog length for dialog (show main highlights only)
-      if (changelogText.length > 400) {
-        changelogText = changelogText.substring(0, 397) + '...';
-      }
-
-      // If still "No release notes available", try to extract from other fields
-      if (changelogText === 'No release notes available.' && info.releaseName) {
-        changelogText = `Release: ${info.releaseName}`;
-      }
-
-      // Add link to full changelog
-      const changelogUrl = `https://github.com/LuqP2/image-metahub/releases/tag/v${info.version}`;
-      const fullMessage = `What's new:\n\n${changelogText}\n\nView full changelog: ${changelogUrl}\n\nWould you like to download this update now?`;
-
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: '🎉 Update Available',
-        message: `Version ${info.version} is ready to download!`,
-        detail: fullMessage,
-        buttons: ['Download Now', 'Download Later', 'Skip this version'],
-        defaultId: 0,
-        cancelId: 2,
-        noLink: true
-      }).then((result) => {
-        if (result.response === 0) {
-          // User chose to download - START DOWNLOAD NOW
-          console.log('User accepted update download - starting download...');
-          isManualUpdateCheck = true;
-          autoUpdater.downloadUpdate();
-        } else if (result.response === 1) {
-          // User chose "Download Later"
-          console.log('User postponed download - will ask again later');
-          // Ensure no download starts automatically
-        } else {
-          // User chose "Skip this version"
-          console.log('User skipped version', info.version);
-          skippedVersions.add(info.version);
-          // Ensure no download starts automatically
-        }
-      }).catch((error) => {
-        console.error('Error showing update dialog:', error);
-        // If dialog fails, don't download automatically - respect user choice
-        console.log('Dialog failed - not downloading update');
-      });
+      mainWindow.webContents.send('update-available-notification', buildUpdateNotificationPayload(info));
     } else {
       console.log('Main window not available - not downloading update');
       // Don't download if we can't ask for permission
@@ -2016,16 +1973,13 @@ if (autoUpdater) {
       console.log('macOS auto-updater error - this may be due to code signing requirements');
     }
     
-    if (isManualUpdateCheck && mainWindow) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'error',
-        title: 'Update Error',
-        message: 'Failed to check for updates.',
-        detail: err.message || 'Please try again later.',
-        buttons: ['OK']
+    if (mainWindow) {
+      mainWindow.webContents.send('update-error-notification', {
+        message: err.message || 'Failed to check for updates. Please try again later.',
       });
-      isManualUpdateCheck = false;
     }
+
+    isManualUpdateCheck = false;
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
@@ -2054,35 +2008,8 @@ if (autoUpdater) {
     }
 
     if (mainWindow) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'question',
-        title: 'Update Downloaded',
-        message: `Update ${info.version} downloaded successfully!`,
-        detail: 'The update is ready to install. When would you like to apply it?',
-        buttons: ['Install Now', 'Install on Next Start', 'Cancel'],
-        defaultId: 0,
-        cancelId: 2
-      }).then((result) => {
-        if (result.response === 0) {
-          // Install now
-          console.log('User chose to install update now');
-          autoUpdater.quitAndInstall();
-        } else if (result.response === 1) {
-          // Install on next start - don't restart now
-          console.log('User chose to install update on next start');
-          // The update will be installed automatically on next app launch
-          // No need to call quitAndInstall() here
-        } else {
-          // Cancel - user changed their mind
-          console.log('User cancelled update installation');
-          // Update remains downloaded but not installed
-          // User can still install it later if they change their mind
-        }
-      }).catch((error) => {
-        console.error('Error showing installation dialog:', error);
-        // If dialog fails, don't force install - respect user choice
-        console.log('Installation dialog failed - update will install on next start');
-      });
+      mainWindow.webContents.send('update-downloaded-notification', buildUpdateNotificationPayload(info));
+      isManualUpdateCheck = false;
     } else {
       console.log('Main window not available - update will install on next start');
       // Don't force restart if window is not available
@@ -4364,9 +4291,41 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('download-update', async () => {
+    if (!autoUpdater) {
+      return { success: false, error: 'Auto-updater not available' };
+    }
+
+    try {
+      console.log('User accepted update download - starting download...');
+      isManualUpdateCheck = true;
+      await autoUpdater.downloadUpdate();
+      return { success: true };
+    } catch (error) {
+      console.error('Error downloading update:', error);
+      isManualUpdateCheck = false;
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('install-update', async () => {
+    if (!autoUpdater) {
+      return { success: false, error: 'Auto-updater not available' };
+    }
+
+    try {
+      console.log('User chose to restart and install update');
+      autoUpdater.quitAndInstall();
+      return { success: true };
+    } catch (error) {
+      console.error('Error installing update:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // TEST ONLY: Simulate update available dialog
   ipcMain.handle('test-update-dialog', async () => {
-    if (process.env.NODE_ENV !== 'development') {
+    if (!isDev) {
       return { success: false, error: 'test-update-dialog is only available in development.' };
     }
 
@@ -4391,35 +4350,9 @@ function setupFileOperationHandlers() {
 - **Optimized Rendering**: Improved grid and table view performance for large datasets`
     };
 
-    // Extract and format changelog
-    let changelogText = 'No release notes available.';
-    
-    if (mockUpdateInfo.releaseNotes) {
-      changelogText = mockUpdateInfo.releaseNotes
-        .replace(/#{1,6}\s/g, '') // Remove markdown headers
-        .replace(/\*\*/g, '') // Remove bold markers
-        .replace(/\*/g, '•') // Convert asterisks to bullets
-        .replace(/<[^>]*>/g, '') // Remove HTML tags
-        .trim();
-    }
+    mainWindow.webContents.send('update-available-notification', buildUpdateNotificationPayload(mockUpdateInfo));
 
-    // Limit changelog length
-    if (changelogText.length > 500) {
-      changelogText = changelogText.substring(0, 497) + '...';
-    }
-
-    const result = await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: '🎉 Update Available (TEST)',
-      message: `Version ${mockUpdateInfo.version} is ready to download!`,
-      detail: `What's new:\n\n${changelogText}\n\nWould you like to download this update now?`,
-      buttons: ['Download Now', 'Download Later', 'Skip this version'],
-      defaultId: 0,
-      cancelId: 2,
-      noLink: true
-    });
-
-    return { success: true, response: result.response };
+    return { success: true };
   });
 
   // Handle listing directory files

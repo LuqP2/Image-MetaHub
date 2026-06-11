@@ -18,6 +18,7 @@ import Header from './components/Header';
 import Toast from './components/Toast';
 import SettingsModal from './components/SettingsModal';
 import ChangelogModal from './components/ChangelogModal';
+import UpdateNotificationModal, { type UpdateNotificationStatus } from './components/UpdateNotificationModal';
 import ComparisonModal from './components/ComparisonModal';
 import Footer from './components/Footer';
 import cacheManager from './services/cacheManager';
@@ -58,7 +59,7 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './components/ComfyUIGenerateModal';
 import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
-import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria } from './types';
+import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria, type UpdateDownloadProgress, type UpdateNotificationPayload } from './types';
 import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
 import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
@@ -432,6 +433,19 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
+  const [updateModalState, setUpdateModalState] = useState<{
+    isOpen: boolean;
+    status: UpdateNotificationStatus;
+    update: UpdateNotificationPayload | null;
+    progress: UpdateDownloadProgress | null;
+    error: string | null;
+  }>({
+    isOpen: false,
+    status: 'available',
+    update: null,
+    progress: null,
+    error: null,
+  });
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
@@ -1177,6 +1191,104 @@ export default function App() {
       unsubscribeShowChangelog();
     };
   }, [handleSelectFolder, toggleViewMode]);
+
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    const unsubscribeUpdateAvailable = window.electronAPI.onUpdateAvailable((update) => {
+      setUpdateModalState({
+        isOpen: true,
+        status: 'available',
+        update,
+        progress: null,
+        error: null,
+      });
+    });
+
+    const unsubscribeUpdateProgress = window.electronAPI.onUpdateProgress((progress) => {
+      setUpdateModalState((current) => ({
+        ...current,
+        isOpen: current.update ? true : current.isOpen,
+        status: current.update ? 'downloading' : current.status,
+        progress,
+        error: null,
+      }));
+    });
+
+    const unsubscribeUpdateDownloaded = window.electronAPI.onUpdateDownloaded((update) => {
+      setUpdateModalState((current) => ({
+        isOpen: true,
+        status: 'downloaded',
+        update,
+        progress: current.progress,
+        error: null,
+      }));
+    });
+
+    const unsubscribeUpdateError = window.electronAPI.onUpdateError((error) => {
+      setUpdateModalState((current) => ({
+        ...current,
+        isOpen: current.update ? true : current.isOpen,
+        status: current.update ? 'error' : current.status,
+        error: error.message,
+      }));
+    });
+
+    return () => {
+      unsubscribeUpdateAvailable();
+      unsubscribeUpdateProgress();
+      unsubscribeUpdateDownloaded();
+      unsubscribeUpdateError();
+    };
+  }, []);
+
+  const handleCloseUpdateModal = useCallback(() => {
+    setUpdateModalState((current) => ({
+      ...current,
+      isOpen: false,
+    }));
+  }, []);
+
+  const handleDownloadUpdate = useCallback(async () => {
+    if (!window.electronAPI?.downloadUpdate) return;
+
+    setUpdateModalState((current) => ({
+      ...current,
+      status: 'downloading',
+      progress: current.progress ?? { percent: 0 },
+      error: null,
+    }));
+
+    const result = await window.electronAPI.downloadUpdate();
+    if (!result?.success) {
+      setUpdateModalState((current) => ({
+        ...current,
+        status: 'error',
+        error: result?.error ?? 'The update could not be downloaded. Please try again later.',
+      }));
+    }
+  }, []);
+
+  const handleSkipUpdate = useCallback(async () => {
+    const version = updateModalState.update?.version;
+    if (version && window.electronAPI?.skipUpdateVersion) {
+      await window.electronAPI.skipUpdateVersion(version);
+    }
+    handleCloseUpdateModal();
+  }, [handleCloseUpdateModal, updateModalState.update?.version]);
+
+  const handleInstallUpdateNow = useCallback(async () => {
+    if (!window.electronAPI?.installUpdate) return;
+
+    const result = await window.electronAPI.installUpdate();
+    if (!result?.success) {
+      setUpdateModalState((current) => ({
+        ...current,
+        status: 'error',
+        error: result?.error ?? 'The update could not be installed. Please try again later.',
+      }));
+    }
+  }, []);
 
   useEffect(() => {
     setSearchInputValue(searchQuery);
@@ -2650,6 +2762,7 @@ export default function App() {
     !isHotkeyHelpOpen &&
     !isCommandPaletteOpen &&
     !isChangelogModalOpen &&
+    !updateModalState.isOpen &&
     !isAnalyticsOpen &&
     !isComparisonModalOpen &&
     !isBatchExportModalOpen &&
@@ -3342,6 +3455,18 @@ export default function App() {
           isOpen={isChangelogModalOpen}
           onClose={() => setIsChangelogModalOpen(false)}
           currentVersion={currentVersion}
+        />
+
+        <UpdateNotificationModal
+          isOpen={updateModalState.isOpen}
+          status={updateModalState.status}
+          update={updateModalState.update}
+          progress={updateModalState.progress}
+          error={updateModalState.error}
+          onClose={handleCloseUpdateModal}
+          onDownload={handleDownloadUpdate}
+          onSkip={handleSkipUpdate}
+          onInstallNow={handleInstallUpdateNow}
         />
 
         <Analytics
