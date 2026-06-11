@@ -71,6 +71,7 @@ interface ComfyUIWorkspaceProps {
     title: string;
     preferNewTab: boolean;
   } | null;
+  onWorkflowLoadRequestHandled?: (requestId: number) => void;
 }
 
 const DEFAULT_VIEW_STATE: ComfyUIViewState = {
@@ -666,6 +667,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   onViewFullMetadata,
   onOpenCompare,
   workflowLoadRequest,
+  onWorkflowLoadRequestHandled,
 }) => {
   const browserHostRef = useRef<HTMLDivElement>(null);
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -946,8 +948,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     setLoadFailure(null);
     setViewState((current) => ({ ...current, lastLoadFailed: false, visible: false }));
     const bounds = browserHostRef.current ? getBounds(browserHostRef.current) : undefined;
-    await window.electronAPI?.comfyUIViewReload?.();
-    const result = await window.electronAPI?.comfyUIViewOpen?.({ url: targetUrl, bounds });
+    const result = await window.electronAPI?.comfyUIViewReload?.({ url: targetUrl, bounds });
     if (result?.state) {
       setViewState(result.state);
     }
@@ -971,6 +972,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     }
 
     handledWorkflowLoadRequestIdRef.current = workflowLoadRequest.id;
+    onWorkflowLoadRequestHandled?.(workflowLoadRequest.id);
     setActiveInspectorTab('workflow');
     setConnectionMessage('Loading workflow in ComfyUI...');
     setLoadFailure(null);
@@ -1020,6 +1022,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     isElectron,
     normalizedNavigationImages,
     setComfyUIConnectionStatus,
+    onWorkflowLoadRequestHandled,
     targetUrl,
     workflowLoadRequest,
   ]);

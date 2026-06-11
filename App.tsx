@@ -1998,6 +1998,7 @@ export default function App() {
   }, [openBatchExportModal]);
 
   const handleOpenComfyUIWorkspace = useCallback((image?: IndexedImage | null, navigationImages?: IndexedImage[]) => {
+    setComfyUIWorkspaceWorkflowLoadRequest(null);
     if (image) {
       setComfyUIWorkspaceImageId(image.id);
       setComfyUIWorkspaceDirectoryId('');
@@ -3322,6 +3323,11 @@ export default function App() {
                     onViewFullMetadata={handleComfyUIWorkspaceViewFullMetadata}
                     onOpenCompare={handleOpenFindSimilarCompare}
                     workflowLoadRequest={comfyUIWorkspaceWorkflowLoadRequest}
+                    onWorkflowLoadRequestHandled={(requestId) => {
+                      setComfyUIWorkspaceWorkflowLoadRequest((current) =>
+                        current?.id === requestId ? null : current
+                      );
+                    }}
                   />
                 ) : libraryView === 'editor' ? (
                   editorImage ? (
