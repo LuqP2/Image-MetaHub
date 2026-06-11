@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Find Similar Modal Layout**: Fixed footer visibility, sidebar scrolling, and long checkpoint/LoRA text overflow in Find Similar results.
+- **What's New Modal**: Fixed a startup race that could cause the “What’s New” modal to reopen on every launch after the current version had already been viewed.
+- **Version on UI**: Corrected versioning on Folder Selection screen.
 
 ## [0.17.0] - 2026-06-05
 

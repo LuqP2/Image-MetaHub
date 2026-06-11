@@ -594,6 +594,23 @@ function queueSettingsUpdate(updater) {
   return queuedUpdate;
 }
 
+function mergeSettingsUpdate(currentSettings, newSettings) {
+  const currentAppVersion = app.getVersion();
+  const nextSettings = {
+    ...currentSettings,
+    ...newSettings,
+  };
+
+  if (
+    currentSettings?.lastViewedVersion === currentAppVersion &&
+    newSettings?.lastViewedVersion !== currentAppVersion
+  ) {
+    nextSettings.lastViewedVersion = currentAppVersion;
+  }
+
+  return nextSettings;
+}
+
 
 async function getCacheRootPath() {
   const settings = await readSettings();
@@ -3059,13 +3076,27 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('save-settings', async (event, newSettings) => {
     try {
-      await queueSettingsUpdate((currentSettings) => ({
-        ...currentSettings,
-        ...newSettings,
-      }));
+      await queueSettingsUpdate((currentSettings) => mergeSettingsUpdate(currentSettings, newSettings));
       return { success: true };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to save settings.' };
+    }
+  });
+
+  ipcMain.handle('mark-changelog-viewed', async (event, version) => {
+    try {
+      const versionToPersist = typeof version === 'string' && version.trim().length > 0
+        ? version.trim()
+        : app.getVersion();
+
+      await queueSettingsUpdate((currentSettings) => ({
+        ...currentSettings,
+        lastViewedVersion: versionToPersist,
+      }));
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to mark changelog as viewed.' };
     }
   });
 

@@ -158,6 +158,7 @@ const electronAPI = {
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  markChangelogViewed: (version) => ipcRenderer.invoke('mark-changelog-viewed', version),
   launchGenerator: (payload) => ipcRenderer.invoke('launch-generator', payload),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   openPath: (filePath) => ipcRenderer.invoke('open-path', filePath),

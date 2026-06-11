@@ -1134,13 +1134,9 @@ export default function App() {
         setIsChangelogModalOpen(true);
         setLastViewedVersion(version);
 
-        if (window.electronAPI?.getSettings && window.electronAPI?.saveSettings) {
+        if (window.electronAPI?.markChangelogViewed) {
           try {
-            const currentSettings = await window.electronAPI.getSettings();
-            const result = await window.electronAPI.saveSettings({
-              ...(currentSettings ?? {}),
-              lastViewedVersion: version,
-            });
+            const result = await window.electronAPI.markChangelogViewed(version);
             if (!result?.success) {
               console.warn('Failed to persist last viewed changelog version:', result?.error);
             }
