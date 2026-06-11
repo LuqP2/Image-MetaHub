@@ -53,3 +53,6 @@
 ## 2024-05-24 - Eliminate Array.map().filter() O(N) allocation overhead for directory count
 **Learning:** Chaining array methods like `collectionFilteredImages.map(...).filter(...)` inside JSX inside `App.tsx` creates multiple intermediate array allocations that increase garbage collection overhead and execution time during renders. This is further exacerbated if the result is not memoized and happens on every render.
 **Action:** Extract inline chained array calculations from JSX and replace them with a `useMemo` containing a single `for` or `for...of` loop and use conditional `set.add()` to prevent unnecessary array allocation overhead per pass.
+## 2026-06-11 - Eliminate Array.map() spreading overhead for Math.max/min
+**Learning:** Using `Math.min(...arr.map())` or `Math.max(...arr.map())` creates O(N) temporary arrays and risks `Maximum call stack size exceeded` errors for large arrays because all array elements are spread into function arguments.
+**Action:** Consolidate `min/max` extraction into a single `for` loop and avoid using the spread operator on unconstrained arrays to achieve safer and more memory-efficient O(N) evaluation.
