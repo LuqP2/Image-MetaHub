@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Find Similar Workflow**: Improved Find Similar with a minimum prompt similarity slider, result-set filtering, scoped result navigation, and a smoother inspect-results flow.
 - **Large Library Performance**: Reduced temporary array, map, and set allocations across collections, file sync, image editing, and large ComfyUI workflow rendering.
 - **Accessibility**: Added clearer labels, titles, and decorative SVG handling across filter controls, the image editor, hotkey help, and browser compatibility surfaces.
+- **Update Notifications**: Replaced the native update dialog with a cleaner in-app update modal that shows release notes, download progress, and clear install options. 
 
 ### Fixed
 

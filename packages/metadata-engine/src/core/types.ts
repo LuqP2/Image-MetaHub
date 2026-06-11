@@ -18,6 +18,9 @@ export interface ElectronAPI {
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
+  installUpdate: () => Promise<{ success: boolean; error?: string }>;
+  skipUpdateVersion: (version: string) => Promise<{ success: boolean; error?: string }>;
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
@@ -46,6 +49,10 @@ export interface ElectronAPI {
   onMenuOpenSettings: (callback: () => void) => () => void;
   onMenuToggleView: (callback: () => void) => () => void;
   onMenuShowChangelog: (callback: () => void) => () => void;
+  onUpdateAvailable: (callback: (update: { version: string; releaseName?: string; releaseNotes?: string | Array<{ version?: string; note: string }>; releaseDate?: string; changelogUrl?: string }) => void) => () => void;
+  onUpdateProgress: (callback: (progress: { percent: number; transferred?: number; total?: number; bytesPerSecond?: number }) => void) => () => void;
+  onUpdateDownloaded: (callback: (update: { version: string; releaseName?: string; releaseNotes?: string | Array<{ version?: string; note: string }>; releaseDate?: string; changelogUrl?: string }) => void) => () => void;
+  onUpdateError: (callback: (error: { message: string }) => void) => () => void;
   testUpdateDialog?: () => Promise<{ success: boolean; response?: number; error?: string }>;
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;

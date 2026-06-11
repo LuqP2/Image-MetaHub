@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-const isDevelopment = process.env.NODE_ENV === 'development';
+const isDevelopment = process.env.NODE_ENV === 'development' || process.defaultApp === true;
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -103,6 +103,38 @@ const electronAPI = {
     };
   },
 
+  onUpdateAvailable: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('update-available-notification', handler);
+    return () => {
+      ipcRenderer.removeListener('update-available-notification', handler);
+    };
+  },
+
+  onUpdateProgress: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('update-progress', handler);
+    return () => {
+      ipcRenderer.removeListener('update-progress', handler);
+    };
+  },
+
+  onUpdateDownloaded: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('update-downloaded-notification', handler);
+    return () => {
+      ipcRenderer.removeListener('update-downloaded-notification', handler);
+    };
+  },
+
+  onUpdateError: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('update-error-notification', handler);
+    return () => {
+      ipcRenderer.removeListener('update-error-notification', handler);
+    };
+  },
+
   onFullscreenChanged: (callback) => {
     const handler = (event, ...args) => callback(...args);
     ipcRenderer.on('fullscreen-changed', handler);
@@ -159,6 +191,9 @@ const electronAPI = {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   markChangelogViewed: (version) => ipcRenderer.invoke('mark-changelog-viewed', version),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  skipUpdateVersion: (version) => ipcRenderer.invoke('skip-version', version),
   launchGenerator: (payload) => ipcRenderer.invoke('launch-generator', payload),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   openPath: (filePath) => ipcRenderer.invoke('open-path', filePath),
@@ -245,9 +280,7 @@ const electronAPI = {
 
 };
 
-if (isDevelopment) {
-  electronAPI.testUpdateDialog = () => ipcRenderer.invoke('test-update-dialog');
-}
+electronAPI.testUpdateDialog = () => ipcRenderer.invoke('test-update-dialog');
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
 
