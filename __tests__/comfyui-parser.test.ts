@@ -248,6 +248,65 @@ describe('ComfyUI Parser - Prompt Sources', () => {
     expect(parsed?.scheduler).toBe('ideogram4');
     expect(parsed?.negativePrompt).toBe('');
   });
+
+  it('should inherit muted parent mode for subgraph children', () => {
+    const subgraphType = 'muted-subgraph-fixture';
+    const workflow = {
+      nodes: [
+        { id: 98, type: subgraphType, widgets_values: [], mode: 0 },
+        { id: 99, type: subgraphType, widgets_values: [], mode: 2 },
+      ],
+      definitions: {
+        subgraphs: {
+          [subgraphType]: {
+            nodes: [
+              { id: 1, type: 'CLIPTextEncode', widgets_values: [''], mode: 0 },
+              { id: 2, type: 'KSampler', widgets_values: [111, 'fixed', 20, 7, 'euler', 'normal', 1], mode: 0 },
+            ],
+          },
+        },
+      },
+    };
+    const prompt = {
+      '98:1': {
+        inputs: {
+          text: 'active subgraph prompt',
+        },
+      },
+      '98:2': {
+        inputs: {
+          seed: 111,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          positive: ['98:1', 0],
+        },
+      },
+      '99:1': {
+        inputs: {
+          text: 'muted subgraph prompt',
+        },
+      },
+      '99:2': {
+        inputs: {
+          seed: 222,
+          steps: 30,
+          cfg: 9,
+          sampler_name: 'dpmpp_2m',
+          scheduler: 'karras',
+          positive: ['99:1', 0],
+        },
+      },
+    };
+
+    const result = resolvePromptFromGraph(workflow, prompt);
+
+    expect(result.prompt).toBe('active subgraph prompt');
+    expect(result.prompt).not.toBe('muted subgraph prompt');
+    expect(result.seed).toBe(111);
+    expect(result.sampler_name).toBe('euler');
+  });
 });
 
 describe('ComfyUI Parser - Detection from capitalized string keys', () => {

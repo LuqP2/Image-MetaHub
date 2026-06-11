@@ -652,6 +652,8 @@ function createNodeMap(workflow: any, prompt: any): Graph {
         for (const parentNode of workflow.nodes) {
             const parentId = parentNode.id?.toString();
             const parentType = String(parentNode.type ?? '');
+            const parentMode = parentNode.mode ?? 0;
+            const parentIsMuted = parentMode === 2 || parentMode === 4;
             const subgraph = subgraphsById.get(parentType);
             const childNodes = subgraph?.nodes;
 
@@ -672,7 +674,7 @@ function createNodeMap(workflow: any, prompt: any): Graph {
                     class_type: existingNode?.class_type || childNode.type,
                     inputs: existingNode?.inputs || {},
                     widgets_values: childNode.widgets_values || existingNode?.widgets_values || [],
-                    mode: childNode.mode ?? existingNode?.mode ?? 0,
+                    mode: parentIsMuted ? parentMode : childNode.mode ?? existingNode?.mode ?? 0,
                 };
             }
         }
