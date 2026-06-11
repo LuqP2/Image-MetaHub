@@ -756,6 +756,7 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   // Check if terminal node was found
   if (!terminalNode) {
     telemetry.warnings.push('No terminal node found');
+    return { _telemetry: telemetry };
   }
 
   // Note: width/height are NOT extracted from workflow, they're read from actual image dimensions
