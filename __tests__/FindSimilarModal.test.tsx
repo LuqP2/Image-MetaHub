@@ -30,7 +30,7 @@ const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
 
 describe('FindSimilarModal', () => {
   it('opens with similarity defaults, ignores checkpoint by default, and can open a result image', async () => {
-    const onOpenCompare = vi.fn();
+    const onApplyGridFilter = vi.fn();
     const onOpenImage = vi.fn();
     const source = createImage({
       id: 'source',
@@ -76,7 +76,7 @@ describe('FindSimilarModal', () => {
         currentViewImages={[source, altA, altB, altCNewest, altCOlder]}
         onClose={vi.fn()}
         onOpenImage={onOpenImage}
-        onOpenCompare={onOpenCompare}
+        onApplyGridFilter={onApplyGridFilter}
       />,
     );
 
@@ -85,17 +85,19 @@ describe('FindSimilarModal', () => {
     expect((screen.getByRole('checkbox', { name: /seed/i }) as HTMLInputElement).checked).toBe(false);
     expect(screen.getByText('Current view')).toBeTruthy();
     expect(screen.getByText('Any checkpoint')).toBeTruthy();
+    expect(screen.getByText('Minimum prompt similarity')).toBeTruthy();
+    expect(screen.getByText('87%')).toBeTruthy();
 
     await waitFor(() => {
-      expect(screen.getByText('Selected 3 of 3 compare slots.')).toBeTruthy();
+      expect(screen.getByText('4 matches')).toBeTruthy();
     });
 
     expect(screen.getAllByText('100% prompt match').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole('button', { name: /open alt-a\.png in image modal/i }));
-    expect(onOpenImage).toHaveBeenCalledWith(altA);
+    fireEvent.click(screen.getAllByRole('button', { name: /open alt-a\.png in image modal/i })[0]);
+    expect(onOpenImage).toHaveBeenCalledWith(altA, [altA, altB, altCNewest, altCOlder]);
 
-    fireEvent.click(screen.getByRole('button', { name: /open in compare/i }));
+    fireEvent.click(screen.getByRole('button', { name: /apply as grid filter/i }));
 
-    expect(onOpenCompare).toHaveBeenCalledWith([source, altA, altB, altCNewest]);
+    expect(onApplyGridFilter).toHaveBeenCalledWith([altA, altB, altCNewest, altCOlder]);
   });
 });
