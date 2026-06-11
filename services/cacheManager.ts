@@ -1018,9 +1018,10 @@ class CacheManager {
       },
     });
 
-    if (!finalizeResult.success) {
+       if (!finalizeResult.success) {
       throw new Error(finalizeResult.error || 'Failed to finalize cache delta');
     }
+
     logCachePerf('chunked-delta:complete', {
       cacheId,
       outputCacheId,
@@ -1037,11 +1038,12 @@ class CacheManager {
       writeChunkMs: toFixedMs(writeChunkMs),
       durationMs: toFixedMs(performance.now() - start),
     });
-  }
+  });
+}
 
-  async replaceCachedImages(
-    directoryPath: string,
-    directoryName: string,
+async replaceCachedImages(
+  directoryPath: string,
+  directoryName: string,
     images: IndexedImage[],
     removedImageIds: string[],
     removedImageNames: string[],
