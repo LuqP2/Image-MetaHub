@@ -5,23 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.17.0] - [Unreleased]
-
-### Improved
-
-- **Image Modal Navigation Performance**: Improved rapid left/right arrow navigation in the image viewer by coalescing repeated key events, using cheaper navigation indexes, and temporarily keeping heavy sidebar rendering out of the hot path while keys are held.
-
-### Fixed
-
-- **Watched File Deletion Stability**: Fixed watched file deletions so cache pruning no longer blocks the renderer, updates both flat and recursive cache variants, and safely rewrites multi-chunk caches without overwriting chunks that are still being read.
-
-## [0.16.1] - [Unreleased]
+## [0.17.1] - 2026-06-11
 
 ### Added
 
+- **Ideogram v4 Metadata Support**: Added ComfyUI parser support for Ideogram v4 / KJ prompt-builder workflows, including subgraph-prefixed nodes, prompt reconstruction, model/VAE, CFG, scheduler, sampler, steps, and seed extraction.
+- **Desktop Deep Links**: Added `imagemetahub://` protocol handling so the desktop app can open folders from deep links, CLI directory arguments, and second-instance launches.
+- **Rating Hotkeys**: Added 1–5 keyboard shortcuts for quickly applying ratings to the active image or current selection.
+
+### Improved
+
+- **Find Similar Workflow**: Improved Find Similar with a minimum prompt similarity slider, result-set filtering, scoped result navigation, and a smoother inspect-results flow.
+- **Large Library Performance**: Reduced temporary array, map, and set allocations across collections, file sync, image editing, and large ComfyUI workflow rendering.
+- **Accessibility**: Added clearer labels, titles, and decorative SVG handling across filter controls, the image editor, hotkey help, and browser compatibility surfaces.
+- **Update Notifications**: Replaced the native update dialog with a cleaner in-app update modal that shows release notes, download progress, and clear install options. 
+
+### Fixed
+
+- **Find Similar Modal Layout**: Fixed footer visibility, sidebar scrolling, and long checkpoint/LoRA text overflow in Find Similar results.
+- **What's New Modal**: Fixed a startup race that could cause the “What’s New” modal to reopen on every launch after the current version had already been viewed.
+- **Version on UI**: Corrected versioning on Folder Selection screen.
+
+## [0.17.0] - 2026-06-05
+
+### Added
+
+- **Expanded Compare View**: Added new two-image comparison modes, including slider, hover, flicker, difference map, loupe, and edge comparison.
+- **Built-in Image Editor**: Added a new local image editor for still images, with adjustments, crop, rotate, flip, resize, sharpen, blur, annotations, text, highlights, blur/pixelate regions, undo/redo, zoom, Save As, and Overwrite.
+
+
+### Improved
+
+- **Image Editing Tools**: Expanded the previous adjustment panel into a fuller editing workflow with separate controls for adjustments, crop, transform, resize, and enhance tools.
+- **Performance and Responsiveness**: Improved responsiveness in large libraries, faster image viewer navigation, and reduced UI slowdowns during cache updates, file watching, and rapid browsing.
+- **Image Viewer Navigation**: Improved rapid left/right navigation in the image viewer, especially when holding arrow keys through large folders.
+- **Image Viewer Zoom**: Improved fit/actual-size zoom behavior and zoom limits in the image viewer.
+- **ComfyUI Metadata Parsing**: Improved metadata extraction from ComfyUI workflows, including better support for additional node patterns and workflow graph structures.
+- **Edited Image Saving**: Improved Save As and Overwrite behavior for edited images so saved files are refreshed in the library more reliably.
+- **Media Playback Diagnostics**: Improved audio/video playback diagnostics to help identify desktop media playback issues.
+- **Accessibility**: Added more accessible labels and control descriptions across icon-only buttons and editor/viewer controls.
+
+### Fixed
+
+- **Watched File Deletions**: Fixed watched file deletions so removed files are cleared from library cache more reliably without blocking the app.
+- **Image Viewer Performance**: Fixed slowdowns caused by heavy sidebar updates during fast image navigation.
+- **Edited Image Metadata**: Fixed edited image saves so generated PNGs carry updated output size and edit information more consistently.
+- **Video Metadata Parsing**: Improved validation for MetaHub video metadata so invalid fallback metadata is no longer treated as a prompt.
+- **ComfyUI Seed Parsing**: Fixed explicit ComfyUI seed `0` values being treated as missing in some metadata parsing paths.
+
+## [0.16.1] - [2026-05-23]
+
+### Added
+
+- **Image Library Grouping**: Added Library Group By separators for date, name, and inferred generation sessions, plus Jump To navigation with calendar badges for date/session groups and representative thumbnails.
 - **ComfyUI Workflow Actions**: Added richer ComfyUI workflow entry points across the main app, image viewer, grid, and embedded workspace, including workflow action coverage and desktop IPC support for workspace preview behavior.
 - **ComfyUI Workspace Metadata Copying**: Added copy actions for workspace metadata fields and clearer image dimension display in the ComfyUI Workspace context panel.
-- **Image Library Grouping**: Added Library Group By separators for date, name, and inferred generation sessions, plus Jump To navigation with calendar badges for date/session groups and representative thumbnails.
 - **Media Playback Diagnostics**: Added audio/video playback event diagnostics and imh-media protocol logging to help investigate early Electron Helper crashes on macOS.
 
 ### Improved
@@ -29,7 +67,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Large Library Performance**: Reduced temporary allocations and queue overhead in large libraries by avoiding `Array.shift()` hot paths, removing intermediate arrays during `Set`/`Map` construction, and optimizing lookup map initialization across store, thumbnail, lineage, and automation flows.
 - **ComfyUI Visual Workflow Performance**: Reworked visual workflow graph depth calculation to avoid recursive stack overflows on long workflows and reduced object iteration overhead for large ComfyUI graphs.
 - **Edited PNG Metadata Preservation**: Improved edited PNG saves so ComfyUI workflow metadata is preserved when image adjustment exports write PNG bytes.
-- **Jump To Group Preview UX**: Improved Jump To Group browsing with larger hover previews that follow the cursor while keeping compact thumbnails visible in the group list.
 - **Workspace Bulk Action UX**: Added clearer disabled-state tooltips for ComfyUI Workspace bulk actions so users can tell what selection is required.
 - **Accessibility**: Added missing accessible labels to icon-only controls across the ComfyUI Workspace, directory list, preview/sidebar, image viewer, automation rules, sidebar, and batch export surfaces.
 - **Hotkey Reset Safety**: Added a confirmation dialog before resetting all custom hotkeys.

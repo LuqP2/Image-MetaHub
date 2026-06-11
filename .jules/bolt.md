@@ -39,3 +39,20 @@
 ## $(date +%Y-%m-%d) - Do not implement IIFE in JSX for performance
 **Learning:** Wrapping a loop in an IIFE directly inside JSX (e.g. `App.tsx`) to avoid mapping arrays reduces readability and is an anti-pattern. Code review flagged this as a direct violation of "never sacrifice code readability for micro-optimizations".
 **Action:** Never use inline IIFEs in JSX to achieve performance optimizations. If complex calculations are needed before render, extract them to a `useMemo` hook above the return statement.
+## $(date +%Y-%m-%d) - Eliminate chained Array methods when building Sets/Maps or resolving layouts
+**Learning:** Chaining array methods like `.map().filter()` inside heavily executed loops (e.g., collecting incoming/outgoing layout positions in `comfyUIVisualWorkflow.ts`) creates multiple intermediate array allocations that increase garbage collection overhead and execution time.
+**Action:** Replace `.map().filter()` chains with a single `for` or `for...of` loop and use conditional `.push()` to prevent unnecessary array allocation overhead per pass.
+
+## $(date +%Y-%m-%d) - Eliminate Array.map() O(N) allocation overhead for Map initialization
+**Learning:** Initializing a `Map` using `.map()` on a large array (e.g., `new Map(arr.map(item => [item.id, item]))`) causes an O(N) temporary array of tuples to be allocated and immediately discarded, triggering garbage collection pauses.
+**Action:** Replace `.map()` with a pre-instantiated `Map` and populate it directly using a `for...of` loop to scale at O(1) intermediate memory.
+## 2026-06-06 - Do not optimize array allocations in cold paths
+**Learning:** Optimizing array allocations (e.g., replacing `new Map(arr.map())` with a `for` loop) inside event handlers or cold paths (like code that uses `.getState()`) provides no measurable performance improvement and violates the "premature optimization of cold paths" constraint.
+**Action:** When acting as Bolt, ensure the optimization targets a hot path, such as a render loop or a heavily accessed store derivation, where the performance impact is actually measurable.
+## 2026-06-07 - Eliminate Array.map() O(N) allocation overhead for Map/Set initialization\n**Learning:** Initializing a `Map` or `Set` using `.map()` on a large array (e.g., `new Map(arr.map(item => [item.id, item]))`) causes an O(N) temporary array of tuples to be allocated and immediately discarded, triggering garbage collection pauses.\n**Action:** Replace `.map()` with a pre-instantiated `Map` or `Set` and populate it directly using a `for` loop to scale at O(1) intermediate memory.
+## 2024-05-24 - Eliminate Array.map().filter() O(N) allocation overhead for directory count
+**Learning:** Chaining array methods like `collectionFilteredImages.map(...).filter(...)` inside JSX inside `App.tsx` creates multiple intermediate array allocations that increase garbage collection overhead and execution time during renders. This is further exacerbated if the result is not memoized and happens on every render.
+**Action:** Extract inline chained array calculations from JSX and replace them with a `useMemo` containing a single `for` or `for...of` loop and use conditional `set.add()` to prevent unnecessary array allocation overhead per pass.
+## 2026-06-11 - Eliminate Array.map() spreading overhead for Math.max/min
+**Learning:** Using `Math.min(...arr.map())` or `Math.max(...arr.map())` creates O(N) temporary arrays and risks `Maximum call stack size exceeded` errors for large arrays because all array elements are spread into function arguments.
+**Action:** Consolidate `min/max` extraction into a single `for` loop and avoid using the spread operator on unconstrained arrays to achieve safer and more memory-efficient O(N) evaluation.

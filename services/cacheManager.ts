@@ -66,6 +66,24 @@ const DEFAULT_INCREMENTAL_CHUNK_SIZE = 1024;
 const MAX_INLINE_RAW_METADATA_BYTES = 32 * 1024;
 const RAW_METADATA_PREVIEW_BYTES = 4096;
 
+const logCachePerf = (
+  event: string,
+  details: Record<string, unknown> = {}
+) => {
+  console.log('[cache:perf]', { event, ...details });
+};
+
+const toFixedMs = (durationMs: number) => Number(durationMs.toFixed(2));
+const isSlow = (durationMs: number, thresholdMs = 500) => durationMs >= thresholdMs;
+
+const estimateJsonBytes = (value: unknown): number | null => {
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return null;
+  }
+};
+
 const isCurrentParserVersion = (parserVersion: number | undefined): boolean => (
   parserVersion === PARSER_VERSION
 );
@@ -252,10 +270,15 @@ class IncrementalCacheWriter {
   }
 
   async initialize(): Promise<void> {
+    const start = performance.now();
     const result = await window.electronAPI?.prepareCacheWrite?.({ cacheId: this.cacheId });
     if (result && !result.success) {
       throw new Error(result.error || 'Failed to prepare cache write');
     }
+    logCachePerf('incremental-writer:initialize', {
+      cacheId: this.cacheId,
+      durationMs: toFixedMs(performance.now() - start),
+    });
   }
 
   async append(images: IndexedImage[], precomputed?: CacheImageMetadata[]): Promise<CacheImageMetadata[]> {
@@ -270,6 +293,7 @@ class IncrementalCacheWriter {
 
     this.writeQueue = this.writeQueue.then(async () => {
       try {
+        const writeStart = performance.now();
         const result = await window.electronAPI?.writeCacheChunk?.({
           cacheId: this.cacheId,
           chunkIndex: chunkNumber,
@@ -278,10 +302,22 @@ class IncrementalCacheWriter {
         if (result && !result.success) {
           throw new Error(result.error || 'Failed to write cache chunk');
         }
+        const durationMs = performance.now() - writeStart;
+        const estimatedBytes = estimateJsonBytes(preparedMetadata);
+        if (isSlow(durationMs) || (estimatedBytes ?? 0) > 8_000_000) {
+          logCachePerf('incremental-writer:append-chunk:slow', {
+            cacheId: this.cacheId,
+            chunkIndex: chunkNumber,
+            images: images.length,
+            estimatedBytes,
+            durationMs: toFixedMs(durationMs),
+          });
+        }
       } catch (err) {
         if (isCloneError(err)) {
           console.warn('[Cache] Cache chunk serialization failed, retrying with sanitized payload.', err);
           preparedMetadata = sanitizeCacheMetadata(metadata, { forceClone: true });
+          const retryStart = performance.now();
           const retry = await window.electronAPI?.writeCacheChunk?.({
             cacheId: this.cacheId,
             chunkIndex: chunkNumber,
@@ -291,6 +327,13 @@ class IncrementalCacheWriter {
             console.error('[Cache] Failed to write cache chunk after sanitization:', retry.error);
             throw new Error(retry.error || 'Failed to write cache chunk');
           }
+          logCachePerf('incremental-writer:append-chunk-retry', {
+            cacheId: this.cacheId,
+            chunkIndex: chunkNumber,
+            images: images.length,
+            estimatedBytes: estimateJsonBytes(preparedMetadata),
+            durationMs: toFixedMs(performance.now() - retryStart),
+          });
           return;
         }
         throw err;
@@ -309,6 +352,7 @@ class IncrementalCacheWriter {
     const preparedMetadata = sanitizeCacheMetadata(metadata);
     this.writeQueue = this.writeQueue.then(async () => {
       try {
+        const writeStart = performance.now();
         const result = await window.electronAPI?.writeCacheChunk?.({
           cacheId: this.cacheId,
           chunkIndex,
@@ -317,11 +361,23 @@ class IncrementalCacheWriter {
         if (result && !result.success) {
           throw new Error(result.error || 'Failed to rewrite cache chunk');
         }
+        const durationMs = performance.now() - writeStart;
+        const estimatedBytes = estimateJsonBytes(preparedMetadata);
+        if (isSlow(durationMs) || (estimatedBytes ?? 0) > 8_000_000) {
+          logCachePerf('incremental-writer:overwrite-chunk:slow', {
+            cacheId: this.cacheId,
+            chunkIndex,
+            records: metadata.length,
+            estimatedBytes,
+            durationMs: toFixedMs(durationMs),
+          });
+        }
       } catch (err) {
         if (isCloneError(err)) {
           console.warn('[Cache] Cache chunk rewrite serialization failed, retrying with sanitized payload.', err);
           const sanitized = sanitizeCacheMetadata(metadata, { forceClone: true });
           metadata.splice(0, metadata.length, ...sanitized);
+          const retryStart = performance.now();
           const retry = await window.electronAPI?.writeCacheChunk?.({
             cacheId: this.cacheId,
             chunkIndex,
@@ -331,6 +387,13 @@ class IncrementalCacheWriter {
             console.error('[Cache] Failed to rewrite cache chunk after sanitization:', retry.error);
             throw new Error(retry.error || 'Failed to rewrite cache chunk');
           }
+          logCachePerf('incremental-writer:overwrite-chunk-retry', {
+            cacheId: this.cacheId,
+            chunkIndex,
+            records: sanitized.length,
+            estimatedBytes: estimateJsonBytes(sanitized),
+            durationMs: toFixedMs(performance.now() - retryStart),
+          });
           return;
         }
         throw err;
@@ -341,6 +404,7 @@ class IncrementalCacheWriter {
   }
 
   async finalize(): Promise<void> {
+    const start = performance.now();
     await this.writeQueue;
 
     const record = {
@@ -357,6 +421,12 @@ class IncrementalCacheWriter {
     if (result && !result.success) {
       throw new Error(result.error || 'Failed to finalize cache write');
     }
+    logCachePerf('incremental-writer:finalize', {
+      cacheId: this.cacheId,
+      imageCount: this.totalImages,
+      chunkCount: this.chunkIndex,
+      durationMs: toFixedMs(performance.now() - start),
+    });
   }
 }
 
@@ -403,15 +473,24 @@ class CacheManager {
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
     const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
+    const start = performance.now();
     const result = await summaryFn(cacheId);
 
     if (!result.success) {
       console.error('Failed to get cached data:', result.error);
+      logCachePerf('get-cached-data:error', {
+        cacheId,
+        durationMs: toFixedMs(performance.now() - start),
+      });
       return null;
     }
 
     const summary = result.data;
     if (!summary) {
+      logCachePerf('get-cached-data:miss', {
+        cacheId,
+        durationMs: toFixedMs(performance.now() - start),
+      });
       return null;
     }
     if (!isCurrentParserVersion(summary.parserVersion)) {
@@ -426,8 +505,11 @@ class CacheManager {
 
     if (metadata.length === 0 && chunkCount > 0) {
       const chunks: CacheImageMetadata[] = [];
+      let chunkReadMs = 0;
       for (let i = 0; i < chunkCount; i++) {
+        const chunkStart = performance.now();
         const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: i });
+        chunkReadMs += performance.now() - chunkStart;
         if (chunkResult.success && Array.isArray(chunkResult.data)) {
           chunks.push(...compactCacheMetadataEntries(chunkResult.data));
         } else if (!chunkResult.success) {
@@ -435,6 +517,12 @@ class CacheManager {
         }
       }
       metadata = chunks;
+      logCachePerf('get-cached-data:chunks-loaded', {
+        cacheId,
+        chunkCount,
+        records: metadata.length,
+        chunkReadMs: toFixedMs(chunkReadMs),
+      });
     }
 
     const cacheEntry: CacheEntry = {
@@ -448,6 +536,12 @@ class CacheManager {
       parserVersion: summary.parserVersion,
     };
 
+    logCachePerf('get-cached-data:hit', {
+      cacheId,
+      records: metadata.length,
+      chunkCount,
+      durationMs: toFixedMs(performance.now() - start),
+    });
     return cacheEntry;
   }
 
@@ -459,12 +553,17 @@ class CacheManager {
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
     const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
+    const start = performance.now();
     const result = await summaryFn(cacheId);
 
     if (!result.success || !result.data) {
       if (!result.success) {
         console.error('Failed to get cache summary:', result.error);
       }
+      logCachePerf(result.success ? 'get-cache-summary:miss' : 'get-cache-summary:error', {
+        cacheId,
+        durationMs: toFixedMs(performance.now() - start),
+      });
       return null;
     }
 
@@ -474,6 +573,13 @@ class CacheManager {
       return null;
     }
 
+    logCachePerf('get-cache-summary:hit', {
+      cacheId,
+      imageCount: summary.imageCount ?? 0,
+      chunkCount: summary.chunkCount ?? 0,
+      hasInlineMetadata: Array.isArray(summary.metadata),
+      durationMs: toFixedMs(performance.now() - start),
+    });
     return {
       id: summary.id,
       directoryPath: summary.directoryPath,
@@ -498,12 +604,17 @@ class CacheManager {
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
     const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
+    const start = performance.now();
     const result = await summaryFn(cacheId);
 
     if (!result.success || !result.data) {
       if (!result.success) {
         console.error('Failed to iterate cached metadata:', result.error);
       }
+      logCachePerf(result.success ? 'iterate-cached-metadata:miss' : 'iterate-cached-metadata:error', {
+        cacheId,
+        durationMs: toFixedMs(performance.now() - start),
+      });
       return;
     }
 
@@ -515,18 +626,40 @@ class CacheManager {
 
     if (Array.isArray(summary.metadata) && summary.metadata.length > 0) {
       await onChunk(compactCacheMetadataEntries(summary.metadata));
+      logCachePerf('iterate-cached-metadata:inline-complete', {
+        cacheId,
+        records: summary.metadata.length,
+        durationMs: toFixedMs(performance.now() - start),
+      });
       return;
     }
 
     const chunkCount = summary.chunkCount ?? 0;
+    let records = 0;
+    let chunkReadMs = 0;
+    let callbackMs = 0;
     for (let i = 0; i < chunkCount; i++) {
+      const chunkStart = performance.now();
       const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: i });
+      chunkReadMs += performance.now() - chunkStart;
       if (chunkResult.success && Array.isArray(chunkResult.data) && chunkResult.data.length > 0) {
-        await onChunk(compactCacheMetadataEntries(chunkResult.data));
+        const compacted = compactCacheMetadataEntries(chunkResult.data);
+        records += compacted.length;
+        const callbackStart = performance.now();
+        await onChunk(compacted);
+        callbackMs += performance.now() - callbackStart;
       } else if (!chunkResult.success) {
         console.error(`Failed to load cache chunk ${i} for ${cacheId}:`, chunkResult.error);
       }
     }
+    logCachePerf('iterate-cached-metadata:chunks-complete', {
+      cacheId,
+      chunkCount,
+      records,
+      chunkReadMs: toFixedMs(chunkReadMs),
+      callbackMs: toFixedMs(callbackMs),
+      durationMs: toFixedMs(performance.now() - start),
+    });
   }
 
 
@@ -540,6 +673,7 @@ class CacheManager {
     if (!this.isElectron) return;
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    const start = performance.now();
     const metadata = sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true });
     
     const cacheEntry: CacheEntry = {
@@ -556,6 +690,12 @@ class CacheManager {
     if (!result.success) {
       console.error("Failed to cache data:", result.error);
     }
+    logCachePerf(result.success ? 'cache-data:complete' : 'cache-data:error', {
+      cacheId,
+      images: images.length,
+      metadataBuildAndWriteMs: toFixedMs(performance.now() - start),
+      estimatedBytes: estimateJsonBytes(metadata),
+    });
   }
 
   async appendToCache(
@@ -570,10 +710,16 @@ class CacheManager {
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
     const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
+    const start = performance.now();
     const summaryResult = await summaryFn(cacheId);
 
     if (!summaryResult.success || !summaryResult.data) {
       await this.cacheData(directoryPath, directoryName, images, scanSubfolders);
+      logCachePerf('append-to-cache:fallback-cache-data', {
+        cacheId,
+        images: images.length,
+        durationMs: toFixedMs(performance.now() - start),
+      });
       return;
     }
 
@@ -628,6 +774,12 @@ class CacheManager {
     if (!finalizeResult.success) {
       console.error('Failed to finalize appended cache write:', finalizeResult.error);
     }
+    logCachePerf(finalizeResult.success ? 'append-to-cache:complete' : 'append-to-cache:error', {
+      cacheId,
+      images: images.length,
+      chunkCount: chunkIndex,
+      durationMs: toFixedMs(performance.now() - start),
+    });
   }
 
   async createIncrementalWriter(
@@ -755,15 +907,25 @@ class CacheManager {
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
     await this.runChunkedCacheDeltaLocked(cacheId, async () => {
     const outputCacheId = `${cacheId}-delta-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const start = performance.now();
     const summary = await this.getCacheSummary(directoryPath, scanSubfolders);
     if (!summary) {
       if (imagesToUpsert.length > 0) {
         await this.cacheData(directoryPath, directoryName, imagesToUpsert, scanSubfolders);
       }
+      logCachePerf('chunked-delta:fallback-cache-data', {
+        cacheId,
+        upserts: imagesToUpsert.length,
+        removedIds: removedImageIds.length,
+        removedNames: removedImageNames.length,
+        durationMs: toFixedMs(performance.now() - start),
+      });
       return;
     }
 
+    const buildUpsertsStart = performance.now();
     const upserts = sanitizeCacheMetadata(toCacheMetadata(imagesToUpsert), { forceClone: true });
+    const buildUpsertsMs = performance.now() - buildUpsertsStart;
     const pruneIds = [
       ...removedImageIds,
       ...upserts.map((image) => image.id),
@@ -776,6 +938,10 @@ class CacheManager {
     const outputBuffer: CacheImageMetadata[] = [];
     let outputChunkIndex = 0;
     let imageCount = 0;
+    let readChunks = 0;
+    let readChunkMs = 0;
+    let writeChunkMs = 0;
+    let pruneMs = 0;
 
     const flushOutputChunk = async (force = false) => {
       if (outputBuffer.length === 0 || (!force && outputBuffer.length < outputChunkSize)) {
@@ -783,11 +949,13 @@ class CacheManager {
       }
 
       const chunk = outputBuffer.splice(0, outputBuffer.length);
+      const writeStart = performance.now();
       const result = await window.electronAPI.writeCacheChunk({
         cacheId: outputCacheId,
         chunkIndex: outputChunkIndex,
         data: chunk,
       });
+      writeChunkMs += performance.now() - writeStart;
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to write cache delta chunk');
@@ -805,24 +973,31 @@ class CacheManager {
     };
 
     if (Array.isArray(summary.metadata) && summary.metadata.length > 0) {
+      const pruneStart = performance.now();
       const pruned = pruneCacheMetadata(summary.metadata, {
         ids: pruneIds,
         names: pruneNames,
       });
+      pruneMs += performance.now() - pruneStart;
       await appendOutputEntries(pruned);
     }
 
     const chunkCount = summary.chunkCount ?? 0;
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+      const readStart = performance.now();
       const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex });
+      readChunkMs += performance.now() - readStart;
+      readChunks += 1;
       if (!chunkResult.success || !Array.isArray(chunkResult.data)) {
         throw new Error(chunkResult.error || `Failed to read cache chunk ${chunkIndex}`);
       }
 
+      const pruneStart = performance.now();
       const pruned = pruneCacheMetadata(compactCacheMetadataEntries(chunkResult.data), {
         ids: pruneIds,
         names: pruneNames,
       });
+      pruneMs += performance.now() - pruneStart;
       await appendOutputEntries(pruned);
     }
 
@@ -846,6 +1021,21 @@ class CacheManager {
     if (!finalizeResult.success) {
       throw new Error(finalizeResult.error || 'Failed to finalize cache delta');
     }
+    logCachePerf('chunked-delta:complete', {
+      cacheId,
+      outputCacheId,
+      upserts: imagesToUpsert.length,
+      removedIds: removedImageIds.length,
+      removedNames: removedImageNames.length,
+      inputChunks: chunkCount,
+      readChunks,
+      outputChunks: outputChunkIndex,
+      finalImageCount: imageCount,
+      buildUpsertsMs: toFixedMs(buildUpsertsMs),
+      readChunkMs: toFixedMs(readChunkMs),
+      pruneMs: toFixedMs(pruneMs),
+      writeChunkMs: toFixedMs(writeChunkMs),
+      durationMs: toFixedMs(performance.now() - start),
     });
   }
 
@@ -1002,7 +1192,13 @@ class CacheManager {
     scopePath?: string,
     options: { includeCachedImages?: boolean } = {}
   ): Promise<CacheDiff> {
+    const start = performance.now();
     if (!this.isElectron) {
+      logCachePerf('validate-diff:browser-full-refresh', {
+        directoryPath,
+        currentFiles: currentFiles.length,
+        durationMs: toFixedMs(performance.now() - start),
+      });
       return {
         newAndModifiedFiles: currentFiles,
         deletedFileIds: [],
@@ -1011,10 +1207,21 @@ class CacheManager {
       };
     }
 
+    const summaryStart = performance.now();
     const cachedSummary = await this.getCacheSummary(directoryPath, scanSubfolders);
+    const summaryMs = performance.now() - summaryStart;
     
     // If no cache exists, all files are new
     if (!cachedSummary) {
+      logCachePerf('validate-diff:no-cache', {
+        directoryPath,
+        directoryName,
+        currentFiles: currentFiles.length,
+        scanSubfolders,
+        scopePath: scopePath ?? null,
+        summaryMs: toFixedMs(summaryMs),
+        durationMs: toFixedMs(performance.now() - start),
+      });
       return {
         newAndModifiedFiles: currentFiles,
         deletedFileIds: [],
@@ -1027,17 +1234,24 @@ class CacheManager {
     const newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }[] = [];
     const cachedImages: IndexedImage[] = [];
     const deletedFileIds: string[] = [];
+    const mapStart = performance.now();
     const currentFilesMap = new Map<string, { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }>();
     for (const file of currentFiles) {
       currentFilesMap.set(file.name, file);
     }
+    const currentMapMs = performance.now() - mapStart;
     const seenCachedFileNames = new Set<string>();
 
     // Helper to normalize paths for comparison (ensure forward slashes)
     const normalize = (p: string) => p.replace(/\\/g, '/');
     const normalizedScope = scopePath ? normalize(scopePath) : undefined;
 
+    const iterateStart = performance.now();
+    let cachedRecordsScanned = 0;
+    let cachedChunksScanned = 0;
     await this.iterateCachedMetadata(directoryPath, scanSubfolders, async (cachedChunk) => {
+      cachedChunksScanned += 1;
+      cachedRecordsScanned += cachedChunk.length;
       for (const cachedFile of cachedChunk) {
         seenCachedFileNames.add(cachedFile.name);
         const file = currentFilesMap.get(cachedFile.name);
@@ -1075,7 +1289,9 @@ class CacheManager {
         }
       }
     });
+    const iterateMs = performance.now() - iterateStart;
 
+    const newFileScanStart = performance.now();
     for (const file of currentFiles) {
       if (!seenCachedFileNames.has(file.name)) {
         newAndModifiedFiles.push({
@@ -1088,6 +1304,27 @@ class CacheManager {
         });
       }
     }
+    const newFileScanMs = performance.now() - newFileScanStart;
+
+    logCachePerf('validate-diff:complete', {
+      directoryPath,
+      directoryName,
+      currentFiles: currentFiles.length,
+      cachedImageCount: cachedSummary.imageCount ?? 0,
+      cachedChunksScanned,
+      cachedRecordsScanned,
+      cachedImagesReturned: cachedImages.length,
+      newAndModifiedFiles: newAndModifiedFiles.length,
+      deletedFileIds: deletedFileIds.length,
+      includeCachedImages,
+      scanSubfolders,
+      scopePath: scopePath ?? null,
+      summaryMs: toFixedMs(summaryMs),
+      currentMapMs: toFixedMs(currentMapMs),
+      iterateMs: toFixedMs(iterateMs),
+      newFileScanMs: toFixedMs(newFileScanMs),
+      durationMs: toFixedMs(performance.now() - start),
+    });
 
     return {
       newAndModifiedFiles,

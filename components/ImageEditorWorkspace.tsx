@@ -122,6 +122,26 @@ const TOOL_DEFS: Array<{ id: ImageEditorTool; label: string; icon: React.ReactNo
   { id: 'pixelate', label: 'Pixelate', icon: <Shield className="h-4 w-4" /> },
 ];
 
+const readPngDimensions = (bytes: Uint8Array): { width: number; height: number } | null => {
+  const isPng = bytes.byteLength >= 24
+    && bytes[0] === 0x89
+    && bytes[1] === 0x50
+    && bytes[2] === 0x4e
+    && bytes[3] === 0x47
+    && bytes[12] === 0x49
+    && bytes[13] === 0x48
+    && bytes[14] === 0x44
+    && bytes[15] === 0x52;
+  if (!isPng) {
+    return null;
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset + 16, 8);
+  const width = view.getUint32(0, false);
+  const height = view.getUint32(4, false);
+  return width > 0 && height > 0 ? { width, height } : null;
+};
+
 const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
   { id: 'edit', label: 'Edit' },
   { id: 'style', label: 'Style' },
@@ -373,6 +393,37 @@ const toCanvasPercentBounds = (bounds: ImageEditorObject['bounds'], dimensions: 
   height: `${(bounds.height / dimensions.height) * 100}%`,
 });
 
+const areDimensionsEqual = (
+  first: { width: number; height: number },
+  second: { width: number; height: number },
+) => first.width === second.width && first.height === second.height;
+
+const remapObjectToCanvasDimensions = (
+  object: ImageEditorObject,
+  from: { width: number; height: number },
+  to: { width: number; height: number },
+): ImageEditorObject => {
+  const scaleX = to.width / Math.max(1, from.width);
+  const scaleY = to.height / Math.max(1, from.height);
+  const bounds = {
+    x: clamp(object.bounds.x * scaleX, 0, Math.max(0, to.width - 1)),
+    y: clamp(object.bounds.y * scaleY, 0, Math.max(0, to.height - 1)),
+    width: clamp(object.bounds.width * scaleX, 1, to.width),
+    height: clamp(object.bounds.height * scaleY, 1, to.height),
+  };
+  bounds.width = clamp(bounds.width, 1, Math.max(1, to.width - bounds.x));
+  bounds.height = clamp(bounds.height, 1, Math.max(1, to.height - bounds.y));
+
+  return {
+    ...object,
+    bounds,
+    points: object.points?.map((point) => ({
+      x: clamp(point.x * scaleX, 0, to.width),
+      y: clamp(point.y * scaleY, 0, to.height),
+    })),
+  };
+};
+
 const getEditorCursor = (tool: ImageEditorTool, isPanning: boolean) => {
   if (isPanning) return 'grabbing';
   switch (tool) {
@@ -593,6 +644,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const previewImageRef = useRef<HTMLImageElement>(null);
   const textEditorRef = useRef<HTMLTextAreaElement>(null);
   const sessionRef = useRef<EditorSessionState | null>(null);
+  const shouldSkipSessionCacheRef = useRef(false);
   const panStateRef = useRef<PanState | null>(null);
 
   const directories = useImageStore((state) => state.directories);
@@ -718,6 +770,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     setHydratedImage(null);
 
     const load = async () => {
+      shouldSkipSessionCacheRef.current = false;
       try {
         const source = await mediaSourceCache.getOrLoad(image, directoryPath, { prioritize: true });
         if (!mounted) return;
@@ -755,7 +808,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     void load();
     return () => {
       mounted = false;
-      if (sessionRef.current) {
+      if (!shouldSkipSessionCacheRef.current && sessionRef.current) {
         editorSessionCache.set(image.id, sessionRef.current);
       }
     };
@@ -839,7 +892,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     const sourceImage = await ensureHydratedImage();
     const sourceMetadata = getUsableNormalizedMetadata(sourceImage);
     const rawMetadata = sourceImage.metadata as Record<string, unknown> | undefined;
-    const outputDimensions = {
+    const outputDimensions = readPngDimensions(bytes) || {
       width: normalizedDocument.canvasDimensions.width,
       height: normalizedDocument.canvasDimensions.height,
     };
@@ -980,8 +1033,11 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     if (hasChanges && !window.confirm('Leave the image editor and discard the current editor state?')) {
       return;
     }
+    shouldSkipSessionCacheRef.current = true;
+    editorSessionCache.delete(image.id);
+    sessionRef.current = null;
     onBack();
-  }, [hasChanges, onBack]);
+  }, [hasChanges, image.id, onBack]);
 
   const undo = useCallback(() => {
     setHistory((current) => {
@@ -1008,7 +1064,30 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   }, [documentState]);
 
   const updateRecipe = useCallback((recipe: ImageEditorDocument['recipe']) => {
-    commitDocument((current) => ({ ...current, recipe: normalizeImageEditRecipe(recipe, current.sourceDimensions) }), 'Edit recipe');
+    commitDocument((current) => {
+      const normalizedRecipe = normalizeImageEditRecipe(recipe, current.sourceDimensions);
+      const nextCanvasDimensions = getImageEditOutputDimensions(normalizedRecipe, current.sourceDimensions);
+      const currentCanvasDimensions = current.canvasDimensions;
+
+      if (areDimensionsEqual(currentCanvasDimensions, nextCanvasDimensions)) {
+        return {
+          ...current,
+          recipe: normalizedRecipe,
+          canvasDimensions: nextCanvasDimensions,
+        };
+      }
+
+      return {
+        ...current,
+        recipe: normalizedRecipe,
+        canvasDimensions: nextCanvasDimensions,
+        objects: current.objects.map((object) => remapObjectToCanvasDimensions(
+          object,
+          currentCanvasDimensions,
+          nextCanvasDimensions,
+        )),
+      };
+    }, 'Edit recipe');
   }, [commitDocument]);
 
   const updateSelectedObjectStyle = useCallback((style: Partial<ImageEditorObjectStyle>) => {
@@ -1048,6 +1127,9 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     if (!window.confirm('Restore the original image and discard all editor changes?')) {
       return;
     }
+    shouldSkipSessionCacheRef.current = true;
+    editorSessionCache.delete(image.id);
+    sessionRef.current = null;
     setDocumentState(createImageEditorDocument({
       imageId: image.id,
       name: image.name,
@@ -1900,7 +1982,19 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               <input
                 type="checkbox"
                 checked={normalizedDocument.recipe.resize.enabled}
-                onChange={(event) => updateRecipe({ ...normalizedDocument.recipe, resize: { ...normalizedDocument.recipe.resize, enabled: event.target.checked } })}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  const base = baseOutputDimensions || normalizedDocument.sourceDimensions;
+                  updateRecipe({
+                    ...normalizedDocument.recipe,
+                    resize: {
+                      ...normalizedDocument.recipe.resize,
+                      enabled,
+                      width: enabled ? Math.max(1, Math.round(base.width)) : normalizedDocument.recipe.resize.width,
+                      height: enabled ? Math.max(1, Math.round(base.height)) : normalizedDocument.recipe.resize.height,
+                    },
+                  });
+                }}
                 className="h-4 w-4 accent-cyan-500"
               />
               Enable
@@ -2102,7 +2196,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     <div className="flex h-full min-h-0 flex-col bg-gray-950 text-gray-100">
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-800 bg-gray-900 px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <button type="button" onClick={handleBack} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Back">
+          <button type="button" onClick={handleBack} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Back" aria-label="Back">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="min-w-0">
@@ -2114,16 +2208,16 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button type="button" onClick={undo} disabled={!history.past.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title="Undo">
+          <button type="button" onClick={undo} disabled={!history.past.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title={!history.past.length ? 'Nothing to undo' : 'Undo'} aria-label={!history.past.length ? 'Nothing to undo' : 'Undo'}>
             <Undo2 className="h-4 w-4" />
           </button>
-          <button type="button" onClick={redo} disabled={!history.future.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title="Redo">
+          <button type="button" onClick={redo} disabled={!history.future.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title={!history.future.length ? 'Nothing to redo' : 'Redo'} aria-label={!history.future.length ? 'Nothing to redo' : 'Redo'}>
             <Redo2 className="h-4 w-4" />
           </button>
-          <button type="button" onClick={flattenSelection} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Flatten">
+          <button type="button" onClick={flattenSelection} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Flatten" aria-label="Flatten">
             <Layers className="h-4 w-4" />
           </button>
-          <button type="button" onClick={handleCopy} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Copy image">
+          <button type="button" onClick={handleCopy} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Copy image" aria-label="Copy image">
             <Copy className="h-4 w-4" />
           </button>
           <button type="button" onClick={() => setIsInspectorOpen(true)} className="inline-flex items-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 xl:hidden" title="Open inspector">
@@ -2577,7 +2671,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                     : TOOL_DEFS.find((tool) => tool.id === activeTool)?.label}
               </div>
             </div>
-            <button type="button" onClick={() => setIsInspectorOpen(false)} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 xl:hidden" title="Close inspector">
+            <button type="button" onClick={() => setIsInspectorOpen(false)} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 xl:hidden" title="Close inspector" aria-label="Close inspector">
               <X className="h-4 w-4" />
             </button>
           </div>

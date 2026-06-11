@@ -14,6 +14,8 @@ import {
   buildImageSourceReference,
   prepareOriginalWorkflowForExecution,
 } from './comfyUIWorkflowBuilder';
+import { getElectronAbsoluteMediaPath, getRelativeImagePath } from './mediaSourceCache';
+import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
 
 export interface ComfyUIConfig {
   serverUrl: string;        // e.g., "http://127.0.0.1:8188"
@@ -71,6 +73,34 @@ const getErrorMessage = (error: unknown): string => error instanceof Error ? err
 
 const isString = (value: unknown): value is string => typeof value === 'string';
 
+const createFileFromRendererData = (data: unknown, fileName: string): File => {
+  const mimeType = inferMimeTypeFromName(fileName, 'image/png');
+
+  if (typeof data === 'string') {
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return new File([bytes], fileName, { type: mimeType });
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return new File([data], fileName, { type: mimeType });
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    return new File([new Uint8Array(view)], fileName, { type: mimeType });
+  }
+
+  if (data && typeof data === 'object' && 'data' in data && Array.isArray((data as { data: unknown }).data)) {
+    return new File([new Uint8Array((data as { data: number[] }).data)], fileName, { type: mimeType });
+  }
+
+  throw new Error('ComfyUI Upscale could not read the source image data.');
+};
+
 const isProgressUpdate = (value: unknown): value is ComfyUIProgressUpdate => {
   if (!value || typeof value !== 'object') {
     return false;
@@ -91,6 +121,7 @@ const isProgressUpdate = (value: unknown): value is ComfyUIProgressUpdate => {
 export interface PrepareWorkflowParams {
   image: IndexedImage;
   metadata: BaseMetadata;
+  directoryPath?: string;
   workflowMode?: ComfyUIWorkflowMode;
   sourceImagePolicy?: ComfyUISourceImagePolicy;
   overrides?: WorkflowOverrides;
@@ -424,15 +455,37 @@ export class ComfyUIApiClient {
     };
   }
 
-  private async buildUpscaleWorkflowFromImage(image: IndexedImage, metadata: BaseMetadata): Promise<{
-    workflow: ComfyUIExecutionPayload;
-    warnings: string[];
-  }> {
-    if (!image.handle) {
+  private async getSourceImageFile(image: IndexedImage, directoryPath?: string): Promise<File> {
+    const handleWithFile = image.handle as { getFile?: () => Promise<File> } | undefined;
+    if (typeof handleWithFile?.getFile === 'function') {
+      return handleWithFile.getFile();
+    }
+
+    let absolutePath = getElectronAbsoluteMediaPath(image);
+    if (!absolutePath && directoryPath && window.electronAPI?.joinPaths) {
+      const joined = await window.electronAPI.joinPaths(directoryPath, getRelativeImagePath(image));
+      if (joined.success && joined.path) {
+        absolutePath = joined.path;
+      }
+    }
+
+    if (!absolutePath || !window.electronAPI?.readFile) {
       throw new Error('ComfyUI Upscale needs access to the source image file.');
     }
 
-    const uploadedImageName = await this.uploadAsset(await image.handle.getFile(), 'image');
+    const result = await window.electronAPI.readFile(absolutePath);
+    if (!result.success || result.data === undefined) {
+      throw new Error(result.error || 'ComfyUI Upscale could not read the source image file.');
+    }
+
+    return createFileFromRendererData(result.data, image.name);
+  }
+
+  private async buildUpscaleWorkflowFromImage(image: IndexedImage, metadata: BaseMetadata, directoryPath?: string): Promise<{
+    workflow: ComfyUIExecutionPayload;
+    warnings: string[];
+  }> {
+    const uploadedImageName = await this.uploadAsset(await this.getSourceImageFile(image, directoryPath), 'image');
     const warnings: string[] = [];
     let upscaleModelName: string | null = null;
 
@@ -522,7 +575,7 @@ export class ComfyUIApiClient {
     warnings: string[];
   }> {
     if (params.workflowMode === 'upscale') {
-      const prepared = await this.buildUpscaleWorkflowFromImage(params.image, params.metadata);
+      const prepared = await this.buildUpscaleWorkflowFromImage(params.image, params.metadata, params.directoryPath);
       return {
         workflow: prepared.workflow,
         modeUsed: 'upscale',

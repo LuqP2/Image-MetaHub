@@ -6,7 +6,7 @@ import { useImageSelection } from './useImageSelection';
 import { useImageLoader } from './useImageLoader';
 import { useFeatureAccess } from './useFeatureAccess';
 import { transferIndexedImages } from '../services/fileTransferService';
-import type { Directory } from '../types';
+import type { Directory, ImageRating } from '../types';
 
 interface HotkeyProps {
   isCommandPaletteOpen: boolean;
@@ -48,6 +48,31 @@ const createTransferDestination = (directories: Directory[], destinationPath: st
     destinationRelativePath: relativePath,
     displayName: relativePath ? `${rootDirectory.name}/${relativePath}` : rootDirectory.name,
   };
+};
+
+const isEditableHotkeyTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT'
+  );
+};
+
+const getRatingFromKeyboardEvent = (event: KeyboardEvent): ImageRating | null => {
+  if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.repeat) {
+    return null;
+  }
+
+  if (!['1', '2', '3', '4', '5'].includes(event.key)) {
+    return null;
+  }
+
+  return Number(event.key) as ImageRating;
 };
 
 export const useHotkeys = ({
@@ -280,6 +305,49 @@ export const useHotkeys = ({
     setIsHotkeyHelpOpen,
     setIsSettingsModalOpen,
   ]);
+
+  useEffect(() => {
+    const handleRatingHotkey = (event: KeyboardEvent) => {
+      const rating = getRatingFromKeyboardEvent(event);
+      if (rating === null || isEditableHotkeyTarget(event.target)) {
+        return;
+      }
+
+      const state = useImageStore.getState();
+      const hasBlockingModal =
+        hotkeyManager.areHotkeysPaused() ||
+        isCommandPaletteOpen ||
+        isHotkeyHelpOpen ||
+        isSettingsModalOpen ||
+        (Boolean(document.querySelector('[role="dialog"]')) && !state.selectedImage);
+
+      if (hasBlockingModal) {
+        return;
+      }
+
+      const targetImageIds = state.selectedImage
+        ? [state.selectedImage.id]
+        : state.selectedImages.size > 0
+          ? Array.from(state.selectedImages)
+          : state.previewImage
+            ? [state.previewImage.id]
+            : [];
+
+      if (targetImageIds.length === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      state.bulkSetImageRating(targetImageIds, rating).catch((error) => {
+        console.error('Failed to apply rating hotkey:', error);
+      });
+    };
+
+    document.addEventListener('keydown', handleRatingHotkey);
+    return () => {
+      document.removeEventListener('keydown', handleRatingHotkey);
+    };
+  }, [isCommandPaletteOpen, isHotkeyHelpOpen, isSettingsModalOpen]);
 
   const commands = useMemo(() => [
     { id: 'toggle-theme', name: 'Toggle Theme', description: 'Switch between light and dark mode', action: () => {

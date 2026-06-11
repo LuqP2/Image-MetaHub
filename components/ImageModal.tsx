@@ -144,6 +144,64 @@ const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefi
   };
 };
 
+const firstNonBlankString = (...values: Array<string | undefined | null>): string | undefined => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const firstNonEmptyArray = <T,>(...values: Array<T[] | undefined | null>): T[] | undefined => {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const firstDefined = <T,>(...values: Array<T | undefined | null>): T | undefined => {
+  for (const value of values) {
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const mergeEditedNormalizedMetadata = (
+  parsedMetadata?: BaseMetadata,
+  sourceMetadata?: BaseMetadata,
+): BaseMetadata | undefined => {
+  if (!parsedMetadata) {
+    return sourceMetadata;
+  }
+  if (!sourceMetadata) {
+    return parsedMetadata;
+  }
+
+  const merged: BaseMetadata = {
+    ...sourceMetadata,
+    ...parsedMetadata,
+    prompt: firstNonBlankString(parsedMetadata.prompt, sourceMetadata.prompt) || '',
+    negativePrompt: firstNonBlankString(parsedMetadata.negativePrompt, sourceMetadata.negativePrompt) || '',
+    model: firstNonBlankString(parsedMetadata.model, sourceMetadata.model) || '',
+    models: firstNonEmptyArray(parsedMetadata.models, sourceMetadata.models) || [],
+    loras: firstNonEmptyArray(parsedMetadata.loras, sourceMetadata.loras) || [],
+    sampler: firstNonBlankString(parsedMetadata.sampler, sourceMetadata.sampler) || '',
+    scheduler: firstNonBlankString(parsedMetadata.scheduler, sourceMetadata.scheduler) || '',
+    board: firstNonBlankString(parsedMetadata.board, sourceMetadata.board),
+    cfgScale: firstDefined(parsedMetadata.cfgScale, parsedMetadata.cfg_scale, sourceMetadata.cfgScale, sourceMetadata.cfg_scale),
+    cfg_scale: firstDefined(parsedMetadata.cfg_scale, parsedMetadata.cfgScale, sourceMetadata.cfg_scale, sourceMetadata.cfgScale),
+    steps: firstDefined(parsedMetadata.steps, sourceMetadata.steps) || 0,
+    seed: firstDefined(parsedMetadata.seed, sourceMetadata.seed),
+  };
+
+  return merged;
+};
+
 const scheduleEditedImageCacheUpsert = (
   directory: { path: string; name: string },
   image: IndexedImage,
@@ -744,9 +802,15 @@ const VideoPlayer: React.FC<{
       {/* Center Play Button Overlay (only when paused and not hovering controls) */}
       {!isPlaying && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="bg-black/50 backdrop-blur-sm rounded-full p-4 text-white hover:bg-black/70 transition-all pointer-events-auto cursor-pointer transform hover:scale-110" onClick={togglePlay}>
+          <button
+            type="button"
+            aria-label="Play video"
+            title="Play video"
+            className="bg-black/50 backdrop-blur-sm rounded-full p-4 text-white hover:bg-black/70 transition-all pointer-events-auto cursor-pointer transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            onClick={togglePlay}
+          >
             <Play size={48} fill="currentColor" />
-          </div>
+          </button>
         </div>
       )}
 
@@ -764,7 +828,8 @@ const VideoPlayer: React.FC<{
                 max={duration || 100}
                 value={currentTime}
                 onChange={handleSeek}
-                className="flex-1 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer hover:h-2 transition-all accent-blue-500"
+                aria-label="Seek video"
+                className="flex-1 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer hover:h-2 transition-all accent-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             />
             <span className="text-xs font-mono text-gray-300">{formatTime(duration)}</span>
         </div>
@@ -772,12 +837,22 @@ const VideoPlayer: React.FC<{
         {/* Buttons Row */}
         <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-                <button onClick={togglePlay} className="text-white hover:text-blue-400 transition-colors">
+                <button
+                  onClick={togglePlay}
+                  className="text-white hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                  aria-label={isPlaying ? "Pause video" : "Play video"}
+                  title={isPlaying ? "Pause video" : "Play video"}
+                >
                     {isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}
                 </button>
                 
                 <div className="flex items-center gap-2 group/volume">
-                    <button onClick={toggleMute} className="text-white hover:text-blue-400 transition-colors">
+                    <button
+                      onClick={toggleMute}
+                      className="text-white hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                      aria-label={isMuted || volume === 0 ? "Unmute video" : "Mute video"}
+                      title={isMuted || volume === 0 ? "Unmute video" : "Mute video"}
+                    >
                         {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
                     </button>
                     <input
@@ -787,7 +862,8 @@ const VideoPlayer: React.FC<{
                         step={0.05}
                         value={isMuted ? 0 : volume}
                         onChange={handleVolumeChange}
-                        className="w-0 overflow-hidden group-hover/volume:w-20 transition-all duration-300 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        aria-label="Volume control"
+                        className="w-0 overflow-hidden group-hover/volume:w-20 transition-all duration-300 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     />
                 </div>
             </div>
@@ -795,8 +871,9 @@ const VideoPlayer: React.FC<{
             <div className="flex items-center gap-4">
                 <button 
                   onClick={toggleLoop} 
-                  className={`transition-colors ${isLooping ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`}
+                  className={`transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded ${isLooping ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`}
                   title={isLooping ? "Loop On" : "Loop Off"}
+                  aria-label={isLooping ? "Loop On" : "Loop Off"}
                 >
                     <Repeat size={18} />
                 </button>
@@ -983,7 +1060,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const { addImage, comparisonCount } = useImageComparison();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
-  const { canUseA1111, canUseComfyUI, canUseComparison, canUseBatchExport, showProModal, initialized } = useFeatureAccess();
+  const { canUseA1111, canUseComfyUI, canUseComparison, canUseBatchExport, canUseImageEditor, canUseDuringTrialOrPro, showProModal, initialized } = useFeatureAccess();
   const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
 
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
@@ -1211,10 +1288,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     let canceled = false;
     setIsRenderingEditedPreview(true);
     const timeoutId = window.setTimeout(async () => {
-      const editableSource = await mediaSourceCache.getRendererOwnedObjectUrl(liveImage, directoryPath);
       try {
+        const editableSource = await mediaSourceCache.getRendererOwnedObjectUrl(liveImage, directoryPath);
         const blob = await renderEditedImageToPngBlob(editableSource.url, normalizedImageEditRecipe);
         if (canceled) {
+          editableSource.revoke();
           return;
         }
         const nextUrl = URL.createObjectURL(blob);
@@ -1224,12 +1302,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
           }
           return nextUrl;
         });
+        editableSource.revoke();
       } catch (error) {
         if (!canceled) {
           console.warn('[ImageModal] Failed to render edited preview:', error);
         }
       } finally {
-        editableSource.revoke();
         if (!canceled) {
           setIsRenderingEditedPreview(false);
         }
@@ -2215,13 +2293,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    if (!liveImage.handle) {
+    if (!liveImage.handle && !directoryPath) {
       setError('ComfyUI Upscale needs desktop file access to upload the source image.');
       return;
     }
 
     await generateWithComfyUI(liveImage, {
       workflowMode: 'upscale',
+      directoryPath,
       customMetadata: {
         prompt: liveImage.prompt || 'ComfyUI upscale',
       },
@@ -2231,6 +2310,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     comfyUIEnabled,
     comfyUIServerUrl,
     generateWithComfyUI,
+    directoryPath,
     liveImage,
     setError,
     showProModal,
@@ -2282,6 +2362,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [directoryPath, imageEditOutputDimensions, imageUrl, isFullImageSourceReady, liveImage, normalizedImageEditRecipe]);
 
   const handleSaveEditedImageAs = useCallback(async () => {
+    if (!canUseImageEditor) {
+      showProModal('image_editor');
+      return;
+    }
+
     if (!canEditImage || !hasImageEditChanges || isSavingEditedImage) {
       return;
     }
@@ -2313,26 +2398,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (targetDirectory) {
         const indexedImage = await indexImageFileAtPath(saveResult.path, targetDirectory);
         if (indexedImage) {
-          const savedMetadata = sourceMetadata
-            ? {
-                ...indexedImage.metadata,
-                normalizedMetadata: sourceMetadata,
-              }
+          const savedNormalizedMetadata = mergeEditedNormalizedMetadata(
+            indexedImage.metadata?.normalizedMetadata as BaseMetadata | undefined,
+            sourceMetadata,
+          );
+          const savedMetadata = savedNormalizedMetadata
+            ? { ...indexedImage.metadata, normalizedMetadata: savedNormalizedMetadata }
             : indexedImage.metadata;
           const savedImage: IndexedImage = {
             ...indexedImage,
             metadata: savedMetadata,
-            metadataString: sourceMetadata ? JSON.stringify(savedMetadata) : liveImage.metadataString,
-            models: sourceMetadata?.models || liveImage.models,
-            loras: sourceMetadata?.loras || liveImage.loras,
-            sampler: sourceMetadata?.sampler || liveImage.sampler,
-            scheduler: sourceMetadata?.scheduler || liveImage.scheduler,
-            board: sourceMetadata?.board || liveImage.board,
-            prompt: sourceMetadata?.prompt || liveImage.prompt,
-            negativePrompt: sourceMetadata?.negativePrompt || liveImage.negativePrompt,
-            cfgScale: sourceMetadata?.cfgScale ?? sourceMetadata?.cfg_scale ?? liveImage.cfgScale,
-            steps: sourceMetadata?.steps || liveImage.steps,
-            seed: sourceMetadata?.seed ?? liveImage.seed,
+            metadataString: savedNormalizedMetadata ? JSON.stringify(savedMetadata) : liveImage.metadataString,
+            models: savedNormalizedMetadata?.models || liveImage.models,
+            loras: savedNormalizedMetadata?.loras || liveImage.loras,
+            sampler: savedNormalizedMetadata?.sampler || liveImage.sampler,
+            scheduler: savedNormalizedMetadata?.scheduler || liveImage.scheduler,
+            board: savedNormalizedMetadata?.board || liveImage.board,
+            prompt: savedNormalizedMetadata?.prompt || liveImage.prompt,
+            negativePrompt: savedNormalizedMetadata?.negativePrompt || liveImage.negativePrompt,
+            cfgScale: savedNormalizedMetadata?.cfgScale ?? savedNormalizedMetadata?.cfg_scale ?? liveImage.cfgScale,
+            steps: savedNormalizedMetadata?.steps || liveImage.steps,
+            seed: savedNormalizedMetadata?.seed ?? liveImage.seed,
             workflowNodes: liveImage.workflowNodes,
             enrichmentState: 'enriched',
           };
@@ -2360,6 +2446,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     allImages,
     buildEditedDefaultPath,
     canEditImage,
+    canUseImageEditor,
     ensureFullRawMetadata,
     findDirectoryForAbsolutePath,
     hasImageEditChanges,
@@ -2369,10 +2456,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
     scanSubfolders,
     setError,
     setSuccess,
+    showProModal,
     writeEditedImage,
   ]);
 
   const handleOverwriteEditedImage = useCallback(async () => {
+    if (!canUseImageEditor) {
+      showProModal('image_editor');
+      return;
+    }
+
     if (!canEditImage || !hasImageEditChanges || isSavingEditedImage) {
       return;
     }
@@ -2416,27 +2509,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
         throw new Error('The edited image was saved, but metadata reparsing returned no image.');
       }
 
-      const preservedMetadata = sourceMetadata
-        ? {
-            ...reparsed.metadata,
-            normalizedMetadata: sourceMetadata,
-          }
+      const preservedNormalizedMetadata = mergeEditedNormalizedMetadata(
+        reparsed.metadata?.normalizedMetadata as BaseMetadata | undefined,
+        sourceMetadata,
+      );
+      const preservedMetadata = preservedNormalizedMetadata
+        ? { ...reparsed.metadata, normalizedMetadata: preservedNormalizedMetadata }
         : reparsed.metadata;
       const preservedMetadataImage: IndexedImage = {
         ...liveImage,
         ...reparsed,
         metadata: preservedMetadata,
-        metadataString: sourceMetadata ? JSON.stringify(preservedMetadata) : liveImage.metadataString,
-        models: sourceMetadata?.models || liveImage.models,
-        loras: sourceMetadata?.loras || liveImage.loras,
-        sampler: sourceMetadata?.sampler || liveImage.sampler,
-        scheduler: sourceMetadata?.scheduler || liveImage.scheduler,
-        board: sourceMetadata?.board || liveImage.board,
-        prompt: sourceMetadata?.prompt || liveImage.prompt,
-        negativePrompt: sourceMetadata?.negativePrompt || liveImage.negativePrompt,
-        cfgScale: sourceMetadata?.cfgScale ?? sourceMetadata?.cfg_scale ?? liveImage.cfgScale,
-        steps: sourceMetadata?.steps || liveImage.steps,
-        seed: sourceMetadata?.seed ?? liveImage.seed,
+        metadataString: preservedNormalizedMetadata ? JSON.stringify(preservedMetadata) : liveImage.metadataString,
+        models: preservedNormalizedMetadata?.models || liveImage.models,
+        loras: preservedNormalizedMetadata?.loras || liveImage.loras,
+        sampler: preservedNormalizedMetadata?.sampler || liveImage.sampler,
+        scheduler: preservedNormalizedMetadata?.scheduler || liveImage.scheduler,
+        board: preservedNormalizedMetadata?.board || liveImage.board,
+        prompt: preservedNormalizedMetadata?.prompt || liveImage.prompt,
+        negativePrompt: preservedNormalizedMetadata?.negativePrompt || liveImage.negativePrompt,
+        cfgScale: preservedNormalizedMetadata?.cfgScale ?? preservedNormalizedMetadata?.cfg_scale ?? liveImage.cfgScale,
+        steps: preservedNormalizedMetadata?.steps || liveImage.steps,
+        seed: preservedNormalizedMetadata?.seed ?? liveImage.seed,
         workflowNodes: liveImage.workflowNodes,
         handle: liveImage.handle,
         thumbnailHandle: liveImage.thumbnailHandle,
@@ -2473,6 +2567,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [
     canEditImage,
     canOverwriteEditedImage,
+    canUseImageEditor,
     directories,
     ensureFullRawMetadata,
     hasImageEditChanges,
@@ -2483,6 +2578,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setError,
     setImageThumbnail,
     setSuccess,
+    showProModal,
     writeEditedImage,
   ]);
 
@@ -3313,7 +3409,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     if (naturalWidth > 0 && naturalHeight > 0) {
                       setDisplayedImageNaturalSize({ width: naturalWidth, height: naturalHeight });
                     }
-                    if (isFullImageSourceReady && naturalWidth > 0 && naturalHeight > 0) {
+                    const loadedUrl = target.currentSrc || target.src;
+                    const loadedSourceImage = Boolean(imageUrl && loadedUrl === imageUrl);
+                    if (isFullImageSourceReady && loadedSourceImage && naturalWidth > 0 && naturalHeight > 0) {
                       setImageEditSourceDimensions({ width: naturalWidth, height: naturalHeight });
                     }
                     updateCropImageBounds();
@@ -3414,9 +3512,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onClick={handleZoomIn}
                 disabled={zoom >= maxViewerZoom}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                title="Zoom In"
+                title={zoom >= maxViewerZoom ? 'Zoom In (Maximum reached)' : 'Zoom In'}
+                aria-label={zoom >= maxViewerZoom ? 'Zoom In (Maximum reached)' : 'Zoom In'}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </button>
@@ -3425,23 +3524,26 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onClick={handleZoomOut}
                 disabled={zoom <= minViewerZoom}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                title="Zoom Out"
+                title={zoom <= minViewerZoom ? 'Zoom Out (Minimum reached)' : 'Zoom Out'}
+                aria-label={zoom <= minViewerZoom ? 'Zoom Out (Minimum reached)' : 'Zoom Out'}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                 </svg>
               </button>
               <button
                 onClick={handleActualSize}
                 className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isActualSizeZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
-                title="Actual Size"
+                title={isActualSizeZoom ? 'Actual Size (Current)' : 'Actual Size'}
+                aria-label={isActualSizeZoom ? 'Actual Size (Current)' : 'Actual Size'}
               >
                 1:1
               </button>
               <button
                 onClick={handleFitToScreen}
                 className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isFitZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
-                title="Fit to Screen"
+                title={isFitZoom ? 'Fit to Screen (Current)' : 'Fit to Screen'}
+                aria-label={isFitZoom ? 'Fit to Screen (Current)' : 'Fit to Screen'}
               >
                 Fit
               </button>
@@ -3500,9 +3602,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <div className="flex flex-row items-center gap-2">
                 {canEditImage && onOpenImageEditor && (
                   <button
-                    onClick={() => onOpenImageEditor(liveImage)}
+                    onClick={() => {
+                      if (!canUseImageEditor) {
+                        showProModal('image_editor');
+                        return;
+                      }
+                      onOpenImageEditor(liveImage);
+                    }}
                     className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                    title="Open Image Editor"
+                    title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature) - start trial' : 'Open Image Editor'}
                   >
                     <ImageIcon className="h-4 w-4" />
                   </button>
@@ -3510,6 +3618,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 {canEditImage && (
                   <button
                     onClick={() => {
+                      if (!canUseImageEditor) {
+                        showProModal('image_editor');
+                        return;
+                      }
                       setIsAdjustmentPanelOpen((current) => !current);
                       setIsSidebarCollapsed(false);
                       setSidebarTab('details');
@@ -3519,7 +3631,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         ? 'border-cyan-400/40 bg-cyan-500/25'
                         : 'border-white/10 bg-black/35 hover:bg-black/55'
                     }`}
-                    title={isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
+                    title={!canUseImageEditor && initialized ? 'Image adjustments (Pro Feature) - start trial' : isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
+                    aria-label={!canUseImageEditor && initialized ? 'Image adjustments (Pro Feature) - start trial' : isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
                   >
                     <SlidersHorizontal className="h-4 w-4" />
                   </button>
@@ -3528,6 +3641,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={() => setDetailsPlacement((current) => current === 'right' ? 'bottom' : 'right')}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
                   title={showSidebarOnRight ? 'Show details on bottom' : 'Show details on right'}
+                  aria-label={showSidebarOnRight ? 'Show details on bottom' : 'Show details on right'}
                 >
                   {showSidebarOnRight ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </button>
@@ -3535,6 +3649,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={() => setIsSidebarCollapsed((current) => !current)}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
                   title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
+                  aria-label={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
                 >
                   {showSidebar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -3542,6 +3657,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={toggleFullscreen}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
                   title={`Fullscreen (${toggleFullscreenKeybinding})`}
+                  aria-label={`Fullscreen (${toggleFullscreenKeybinding})`}
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
@@ -3591,26 +3707,40 @@ const ImageModal: React.FC<ImageModalProps> = ({
               {onOpenImageEditor && (
                 <button
                   type="button"
-                  onClick={() => onOpenImageEditor(liveImage)}
+                  onClick={() => {
+                    if (!canUseImageEditor) {
+                      showProModal('image_editor');
+                      return;
+                    }
+                    onOpenImageEditor(liveImage);
+                  }}
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm font-medium text-indigo-100 transition-colors hover:border-indigo-400/50 hover:bg-indigo-500/20"
                 >
                   <ImageIcon className="h-4 w-4" />
                   Open Image Editor
+                  {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
                 </button>
               )}
 
               {!isAdjustmentPanelOpen && (
                 <button
                   type="button"
-                  onClick={() => setIsAdjustmentPanelOpen(true)}
+                  onClick={() => {
+                    if (!canUseImageEditor) {
+                      showProModal('image_editor');
+                      return;
+                    }
+                    setIsAdjustmentPanelOpen(true);
+                  }}
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-100 transition-colors hover:border-cyan-400/50 hover:bg-cyan-500/20"
                 >
                   <SlidersHorizontal className="h-4 w-4" />
                   Adjust Image
+                  {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
                 </button>
               )}
 
-              {isAdjustmentPanelOpen && (
+              {isAdjustmentPanelOpen && canUseImageEditor && (
                 <ImageAdjustmentPanel
                   recipe={normalizedImageEditRecipe}
                   onChange={setImageEditRecipe}

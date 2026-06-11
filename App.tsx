@@ -18,6 +18,7 @@ import Header from './components/Header';
 import Toast from './components/Toast';
 import SettingsModal from './components/SettingsModal';
 import ChangelogModal from './components/ChangelogModal';
+import UpdateNotificationModal, { type UpdateNotificationStatus } from './components/UpdateNotificationModal';
 import ComparisonModal from './components/ComparisonModal';
 import Footer from './components/Footer';
 import cacheManager from './services/cacheManager';
@@ -58,7 +59,7 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './components/ComfyUIGenerateModal';
 import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
-import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria } from './types';
+import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria, type UpdateDownloadProgress, type UpdateNotificationPayload } from './types';
 import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
 import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
@@ -69,7 +70,7 @@ interface OpenImageModalState {
   modalId: string;
   imageId: string;
   navigationImageIds: string[];
-  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow' | 'comfyui';
+  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow' | 'comfyui' | 'find-similar';
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
@@ -99,6 +100,11 @@ interface FindSimilarState {
   initialCriteria?: Partial<SimilarSearchCriteria>;
 }
 
+interface FindSimilarGridFilterState {
+  sourceImageName: string;
+  imageIds: string[];
+}
+
 type BatchExportSource = 'selected' | 'filtered';
 
 interface BatchExportRequestState {
@@ -110,6 +116,7 @@ const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
 const RIGHT_SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-right-sidebar-width';
 const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
 const COMFYUI_WORKSPACE_APPLY_FILTERS_STORAGE_KEY = 'image-metahub-comfyui-workspace-apply-library-filters';
+const FIND_SIMILAR_IMAGE_MODAL_MIN_Z_INDEX = 151;
 const SIDEBAR_DEFAULT_WIDTH = 320;
 const SIDEBAR_MIN_WIDTH = 280;
 const SIDEBAR_MAX_WIDTH = 640;
@@ -128,6 +135,11 @@ interface PendingWatchedRemovalCacheDelta {
 }
 
 const getImageTimestamp = (image: IndexedImage): number => image.contentModifiedMs ?? image.lastModified ?? 0;
+
+const areStringArraysEqual = (left: string[] | null, right: string[]): boolean =>
+  Array.isArray(left) &&
+  left.length === right.length &&
+  left.every((value, index) => value === right[index]);
 
 const sortImagesNewestFirst = (images: IndexedImage[]): IndexedImage[] =>
   [...images].sort((a, b) => getImageTimestamp(b) - getImageTimestamp(a) || a.name.localeCompare(b.name));
@@ -252,11 +264,25 @@ export default function App() {
   const availableSchedulers = useImageStore((state) => state.availableSchedulers);
   const availableDimensions = useImageStore((state) => state.availableDimensions);
   const selectedModels = useImageStore((state) => state.selectedModels);
+  const excludedModels = useImageStore((state) => state.excludedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
+  const excludedLoras = useImageStore((state) => state.excludedLoras);
   const selectedSamplers = useImageStore((state) => state.selectedSamplers);
+  const excludedSamplers = useImageStore((state) => state.excludedSamplers);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
+  const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
+  const selectedGenerators = useImageStore((state) => state.selectedGenerators);
+  const excludedGenerators = useImageStore((state) => state.excludedGenerators);
+  const selectedGpuDevices = useImageStore((state) => state.selectedGpuDevices);
+  const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
   const advancedFilters = useImageStore((state) => state.advancedFilters);
   const selectedRatings = useImageStore((state) => state.selectedRatings);
+  const selectedTags = useImageStore((state) => state.selectedTags);
+  const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedTagsMatchMode = useImageStore((state) => state.selectedTagsMatchMode);
+  const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+  const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
+  const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
   const setSelectedTags = useImageStore((state) => state.setSelectedTags);
   const setExcludedTags = useImageStore((state) => state.setExcludedTags);
   const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
@@ -302,6 +328,7 @@ export default function App() {
   const loadAutomationRules = useImageStore((state) => state.loadAutomationRules);
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
+  const randomSeed = useImageStore((state) => state.randomSeed);
   const reshuffle = useImageStore((state) => state.reshuffle);
   const getResolvedCollectionImages = useImageStore((state) => state.getResolvedCollectionImages);
   const getResolvedFilteredCollectionImages = useImageStore((state) => state.getResolvedFilteredCollectionImages);
@@ -357,9 +384,14 @@ export default function App() {
 
   // --- Local UI State ---
   const [currentPage, setCurrentPage] = useState(1);
+  const [modelViewPage, setModelViewPage] = useState(1);
   const [pendingJumpGroupRequest, setPendingJumpGroupRequest] = useState<{ groupId: string; requestId: number } | null>(null);
   const [searchInputValue, setSearchInputValue] = useState(searchQuery);
   const previousSearchQueryRef = useRef(searchQuery);
+  const previousLibraryGridSignatureRef = useRef<string | null>(null);
+  const previousCollectionsGridSignatureRef = useRef<string | null>(null);
+  const libraryGridScrollTopRef = useRef(0);
+  const collectionsGridScrollTopRef = useRef(0);
   const pendingSearchFlowIdRef = useRef<string | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('library');
@@ -409,6 +441,19 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
+  const [updateModalState, setUpdateModalState] = useState<{
+    isOpen: boolean;
+    status: UpdateNotificationStatus;
+    update: UpdateNotificationPayload | null;
+    progress: UpdateDownloadProgress | null;
+    error: string | null;
+  }>({
+    isOpen: false,
+    status: 'available',
+    update: null,
+    progress: null,
+    error: null,
+  });
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
@@ -438,6 +483,7 @@ export default function App() {
   const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
   const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
   const [findSimilarState, setFindSimilarState] = useState<FindSimilarState | null>(null);
+  const [findSimilarGridFilter, setFindSimilarGridFilter] = useState<FindSimilarGridFilterState | null>(null);
   const [modelPromptPickerState, setModelPromptPickerState] = useState<{
     modelName: string;
     groups: ModelPromptOverlapGroup[];
@@ -456,6 +502,22 @@ export default function App() {
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+
+  const resetLibraryGridScrollPosition = useCallback(() => {
+    libraryGridScrollTopRef.current = 0;
+  }, []);
+
+  const resetCollectionsGridScrollPosition = useCallback(() => {
+    collectionsGridScrollTopRef.current = 0;
+  }, []);
+
+  const handleLibraryGridScrollPositionChange = useCallback((scrollTop: number) => {
+    libraryGridScrollTopRef.current = scrollTop;
+  }, []);
+
+  const handleCollectionsGridScrollPositionChange = useCallback((scrollTop: number) => {
+    collectionsGridScrollTopRef.current = scrollTop;
+  }, []);
 
   const handleSearchChange = useCallback((query: string) => {
     if (pendingSearchFlowIdRef.current) {
@@ -571,6 +633,7 @@ export default function App() {
     isPro,
     canUseAnalytics,
     canUseBatchExport,
+    canUseImageEditor,
     showProModal,
     startTrial,
   } = useFeatureAccess();
@@ -959,6 +1022,7 @@ export default function App() {
       }
 
       if (selectedFolders.size === 0) {
+        resetLibraryGridScrollPosition();
         setCurrentPage(1);
         return;
       }
@@ -972,12 +1036,13 @@ export default function App() {
       );
 
       if (affectsVisibleScope) {
+        resetLibraryGridScrollPosition();
         setCurrentPage(1);
       }
     });
 
     return () => unsubscribe();
-  }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, selectedFolders, sortOrder]);
+  }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, resetLibraryGridScrollPosition, selectedFolders, sortOrder]);
 
   useEffect(() => {
     if (sortOrder === 'random' && groupBy !== 'none') {
@@ -1165,13 +1230,9 @@ export default function App() {
         setIsChangelogModalOpen(true);
         setLastViewedVersion(version);
 
-        if (window.electronAPI?.getSettings && window.electronAPI?.saveSettings) {
+        if (window.electronAPI?.markChangelogViewed) {
           try {
-            const currentSettings = await window.electronAPI.getSettings();
-            const result = await window.electronAPI.saveSettings({
-              ...(currentSettings ?? {}),
-              lastViewedVersion: version,
-            });
+            const result = await window.electronAPI.markChangelogViewed(version);
             if (!result?.success) {
               console.warn('Failed to persist last viewed changelog version:', result?.error);
             }
@@ -1214,6 +1275,104 @@ export default function App() {
   }, [handleSelectFolder, toggleViewMode]);
 
   useEffect(() => {
+    if (!window.electronAPI) return;
+
+    const unsubscribeUpdateAvailable = window.electronAPI.onUpdateAvailable((update) => {
+      setUpdateModalState({
+        isOpen: true,
+        status: 'available',
+        update,
+        progress: null,
+        error: null,
+      });
+    });
+
+    const unsubscribeUpdateProgress = window.electronAPI.onUpdateProgress((progress) => {
+      setUpdateModalState((current) => ({
+        ...current,
+        isOpen: current.update ? true : current.isOpen,
+        status: current.update ? 'downloading' : current.status,
+        progress,
+        error: null,
+      }));
+    });
+
+    const unsubscribeUpdateDownloaded = window.electronAPI.onUpdateDownloaded((update) => {
+      setUpdateModalState((current) => ({
+        isOpen: true,
+        status: 'downloaded',
+        update,
+        progress: current.progress,
+        error: null,
+      }));
+    });
+
+    const unsubscribeUpdateError = window.electronAPI.onUpdateError((error) => {
+      setUpdateModalState((current) => ({
+        ...current,
+        isOpen: current.update ? true : current.isOpen,
+        status: current.update ? 'error' : current.status,
+        error: error.message,
+      }));
+    });
+
+    return () => {
+      unsubscribeUpdateAvailable();
+      unsubscribeUpdateProgress();
+      unsubscribeUpdateDownloaded();
+      unsubscribeUpdateError();
+    };
+  }, []);
+
+  const handleCloseUpdateModal = useCallback(() => {
+    setUpdateModalState((current) => ({
+      ...current,
+      isOpen: false,
+    }));
+  }, []);
+
+  const handleDownloadUpdate = useCallback(async () => {
+    if (!window.electronAPI?.downloadUpdate) return;
+
+    setUpdateModalState((current) => ({
+      ...current,
+      status: 'downloading',
+      progress: current.progress ?? { percent: 0 },
+      error: null,
+    }));
+
+    const result = await window.electronAPI.downloadUpdate();
+    if (!result?.success) {
+      setUpdateModalState((current) => ({
+        ...current,
+        status: 'error',
+        error: result?.error ?? 'The update could not be downloaded. Please try again later.',
+      }));
+    }
+  }, []);
+
+  const handleSkipUpdate = useCallback(async () => {
+    const version = updateModalState.update?.version;
+    if (version && window.electronAPI?.skipUpdateVersion) {
+      await window.electronAPI.skipUpdateVersion(version);
+    }
+    handleCloseUpdateModal();
+  }, [handleCloseUpdateModal, updateModalState.update?.version]);
+
+  const handleInstallUpdateNow = useCallback(async () => {
+    if (!window.electronAPI?.installUpdate) return;
+
+    const result = await window.electronAPI.installUpdate();
+    if (!result?.success) {
+      setUpdateModalState((current) => ({
+        ...current,
+        status: 'error',
+        error: result?.error ?? 'The update could not be installed. Please try again later.',
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
     setSearchInputValue(searchQuery);
   }, [searchQuery]);
 
@@ -1231,6 +1390,7 @@ export default function App() {
 
   useEffect(() => {
     if (previousSearchQueryRef.current !== searchQuery) {
+      resetLibraryGridScrollPosition();
       setCurrentPage(1);
       if (pendingSearchFlowIdRef.current) {
         markPerformanceFlow(pendingSearchFlowIdRef.current, 'store-commit', {
@@ -1249,15 +1409,16 @@ export default function App() {
       }
       previousSearchQueryRef.current = searchQuery;
     }
-  }, [safeFilteredImages.length, searchQuery]);
+  }, [resetLibraryGridScrollPosition, safeFilteredImages.length, searchQuery]);
 
   // Reset page if current page exceeds available pages after filtering
   useEffect(() => {
     const totalPages = Math.ceil(safeFilteredImages.length / itemsPerPage);
     if (currentPage > totalPages && totalPages > 0) {
+      resetLibraryGridScrollPosition();
       setCurrentPage(1);
     }
-  }, [safeFilteredImages.length, itemsPerPage, currentPage]);
+  }, [safeFilteredImages.length, itemsPerPage, currentPage, resetLibraryGridScrollPosition]);
 
   // Clean up selectedImage if its directory no longer exists
   useEffect(() => {
@@ -1491,6 +1652,10 @@ export default function App() {
     }
 
     if (modal.navigationSource === 'comfyui') {
+      return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
+    }
+
+    if (modal.navigationSource === 'find-similar') {
       return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
     }
 
@@ -1915,6 +2080,7 @@ export default function App() {
   }, [openBatchExportModal]);
 
   const handleOpenComfyUIWorkspace = useCallback((image?: IndexedImage | null, navigationImages?: IndexedImage[]) => {
+    setComfyUIWorkspaceWorkflowLoadRequest(null);
     if (image) {
       setComfyUIWorkspaceImageId(image.id);
       setComfyUIWorkspaceDirectoryId('');
@@ -1928,14 +2094,20 @@ export default function App() {
   }, []);
 
   const handleOpenImageEditor = useCallback((image: IndexedImage, navigationImages?: IndexedImage[]) => {
+    if (!canUseImageEditor) {
+      showProModal('image_editor');
+      return;
+    }
+
     const navigationImageIds = navigationImages && navigationImages.length > 0
       ? navigationImages.map((item) => item.id)
       : [image.id];
     setEditorImageId(image.id);
     setEditorNavigationImageIds(navigationImageIds);
+    suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
     setLibraryView('editor');
-  }, [setSelectedImage]);
+  }, [canUseImageEditor, setSelectedImage, showProModal]);
 
   const handleOpenImageEditorFromImageModal = useCallback((
     modalId: string,
@@ -1943,7 +2115,6 @@ export default function App() {
     navigationImages?: IndexedImage[],
   ) => {
     handleOpenImageEditor(image, navigationImages);
-    suppressSelectedImageModalOpenRef.current = image.id;
     setOpenImageModals((current) => current.filter((modal) => modal.modalId !== modalId));
     setActiveImageModalId((current) => (current === modalId ? null : current));
   }, [handleOpenImageEditor]);
@@ -2063,6 +2234,19 @@ export default function App() {
     return getResolvedFilteredCollectionImages(activeCollection.id);
   }, [activeCollection, getResolvedFilteredCollectionImages, safeFilteredImages]);
 
+  // Optimization: use memoized Set directly over for loop rather than map().filter()
+  // Impact: Avoids multiple O(N) allocations for arrays during directory count calculation on each collection view render
+  const collectionFilteredDirectoryCount = useMemo(() => {
+    const dirSet = new Set<string>();
+    for (let i = 0; i < collectionFilteredImages.length; i++) {
+      const dirId = collectionFilteredImages[i].directoryId;
+      if (dirId) {
+        dirSet.add(dirId);
+      }
+    }
+    return dirSet.size;
+  }, [collectionFilteredImages]);
+
   const handleNodeViewResultImagesChange = useCallback(
     (images: IndexedImage[]) => {
       setNodeViewResultImages(images);
@@ -2071,13 +2255,172 @@ export default function App() {
     [setActiveImageScope],
   );
 
+  const findSimilarFilteredImages = useMemo(() => {
+    if (!findSimilarGridFilter) {
+      return null;
+    }
+
+    const filteredIds = new Set(findSimilarGridFilter.imageIds);
+    return safeFilteredImages.filter((image) => filteredIds.has(image.id));
+  }, [findSimilarGridFilter, safeFilteredImages]);
+
   const displayImages =
     libraryView === 'collections'
       ? collectionFilteredImages
       : libraryView === 'node'
       ? nodeViewResultImages
+      : libraryView === 'library' && findSimilarFilteredImages
+      ? findSimilarFilteredImages
       : safeFilteredImages;
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
+
+  const libraryGridSignature = useMemo(() => {
+    const firstImageId = safeFilteredImages[0]?.id ?? '';
+    const lastImageId = safeFilteredImages[safeFilteredImages.length - 1]?.id ?? '';
+
+    return [
+      safeFilteredImages.length,
+      firstImageId,
+      lastImageId,
+      findSimilarGridFilter?.imageIds.join('\u001f') ?? '',
+      searchQuery,
+      selectedModels.join('\u001f'),
+      excludedModels.join('\u001f'),
+      selectedLoras.join('\u001f'),
+      excludedLoras.join('\u001f'),
+      selectedSamplers.join('\u001f'),
+      excludedSamplers.join('\u001f'),
+      selectedSchedulers.join('\u001f'),
+      excludedSchedulers.join('\u001f'),
+      selectedGenerators.join('\u001f'),
+      excludedGenerators.join('\u001f'),
+      selectedGpuDevices.join('\u001f'),
+      excludedGpuDevices.join('\u001f'),
+      selectedTags.join('\u001f'),
+      excludedTags.join('\u001f'),
+      selectedTagsMatchMode,
+      selectedAutoTags.join('\u001f'),
+      excludedAutoTags.join('\u001f'),
+      favoriteFilterMode,
+      selectedRatings.join('\u001f'),
+      JSON.stringify(advancedFilters),
+      sortOrder,
+      randomSeed,
+      groupBy,
+    ].join('\u001e');
+  }, [
+    advancedFilters,
+    excludedAutoTags,
+    excludedGenerators,
+    excludedGpuDevices,
+    excludedLoras,
+    excludedModels,
+    excludedSamplers,
+    excludedSchedulers,
+    excludedTags,
+    favoriteFilterMode,
+    findSimilarGridFilter,
+    groupBy,
+    randomSeed,
+    safeFilteredImages,
+    searchQuery,
+    selectedAutoTags,
+    selectedGenerators,
+    selectedGpuDevices,
+    selectedLoras,
+    selectedModels,
+    selectedRatings,
+    selectedSamplers,
+    selectedSchedulers,
+    selectedTags,
+    selectedTagsMatchMode,
+    sortOrder,
+  ]);
+
+  const collectionsGridSignature = useMemo(() => {
+    const firstImageId = collectionFilteredImages[0]?.id ?? '';
+    const lastImageId = collectionFilteredImages[collectionFilteredImages.length - 1]?.id ?? '';
+
+    return [
+      activeCollectionId ?? '',
+      collectionFilteredImages.length,
+      firstImageId,
+      lastImageId,
+      searchQuery,
+      selectedModels.join('\u001f'),
+      excludedModels.join('\u001f'),
+      selectedLoras.join('\u001f'),
+      excludedLoras.join('\u001f'),
+      selectedSamplers.join('\u001f'),
+      excludedSamplers.join('\u001f'),
+      selectedSchedulers.join('\u001f'),
+      excludedSchedulers.join('\u001f'),
+      selectedGenerators.join('\u001f'),
+      excludedGenerators.join('\u001f'),
+      selectedGpuDevices.join('\u001f'),
+      excludedGpuDevices.join('\u001f'),
+      selectedTags.join('\u001f'),
+      excludedTags.join('\u001f'),
+      selectedTagsMatchMode,
+      selectedAutoTags.join('\u001f'),
+      excludedAutoTags.join('\u001f'),
+      favoriteFilterMode,
+      selectedRatings.join('\u001f'),
+      JSON.stringify(advancedFilters),
+      sortOrder,
+      randomSeed,
+    ].join('\u001e');
+  }, [
+    activeCollectionId,
+    advancedFilters,
+    collectionFilteredImages,
+    excludedAutoTags,
+    excludedGenerators,
+    excludedGpuDevices,
+    excludedLoras,
+    excludedModels,
+    excludedSamplers,
+    excludedSchedulers,
+    excludedTags,
+    favoriteFilterMode,
+    randomSeed,
+    searchQuery,
+    selectedAutoTags,
+    selectedGenerators,
+    selectedGpuDevices,
+    selectedLoras,
+    selectedModels,
+    selectedRatings,
+    selectedSamplers,
+    selectedSchedulers,
+    selectedTags,
+    selectedTagsMatchMode,
+    sortOrder,
+  ]);
+
+  useEffect(() => {
+    if (previousLibraryGridSignatureRef.current === null) {
+      previousLibraryGridSignatureRef.current = libraryGridSignature;
+      return;
+    }
+
+    if (previousLibraryGridSignatureRef.current !== libraryGridSignature) {
+      resetLibraryGridScrollPosition();
+      previousLibraryGridSignatureRef.current = libraryGridSignature;
+    }
+  }, [libraryGridSignature, resetLibraryGridScrollPosition]);
+
+  useEffect(() => {
+    if (previousCollectionsGridSignatureRef.current === null) {
+      previousCollectionsGridSignatureRef.current = collectionsGridSignature;
+      return;
+    }
+
+    if (previousCollectionsGridSignatureRef.current !== collectionsGridSignature) {
+      resetCollectionsGridScrollPosition();
+      previousCollectionsGridSignatureRef.current = collectionsGridSignature;
+    }
+  }, [collectionsGridSignature, resetCollectionsGridScrollPosition]);
 
   useEffect(() => {
     if (libraryView !== 'comfyui') {
@@ -2101,7 +2444,9 @@ export default function App() {
       : comfyUIWorkspaceSourceImages;
     const scopedImageIds = scopedImages.map((image) => image.id);
 
-    setComfyUIWorkspaceNavigationImageIds(scopedImageIds);
+    setComfyUIWorkspaceNavigationImageIds((current) =>
+      areStringArraysEqual(current, scopedImageIds) ? current : scopedImageIds
+    );
     setComfyUIWorkspaceImageId((current) => {
       if (current && scopedImageIds.includes(current)) {
         return current;
@@ -2156,11 +2501,70 @@ export default function App() {
     setFindSimilarState(null);
   }, []);
 
+  const handleApplyFindSimilarGridFilter = useCallback((images: IndexedImage[]) => {
+    const sourceImage = findSimilarState?.sourceImage;
+    const imageIds = Array.from(new Set(images.map((image) => image.id).filter(Boolean)));
+    setFindSimilarGridFilter({
+      sourceImageName: sourceImage?.name ?? 'similar image',
+      imageIds,
+    });
+    setLibraryView('library');
+    resetLibraryGridScrollPosition();
+    setCurrentPage(1);
+    setFindSimilarState(null);
+  }, [findSimilarState?.sourceImage, resetLibraryGridScrollPosition]);
+
   const handleOpenFindSimilarCompare = useCallback((images: IndexedImage[]) => {
     setComparisonImages(images);
     openComparisonModal();
     setFindSimilarState(null);
   }, [openComparisonModal, setComparisonImages]);
+
+  const handleOpenFindSimilarImage = useCallback((image: IndexedImage, navigationImages: IndexedImage[]) => {
+    const navigationImageIds = navigationImages.length > 0
+      ? navigationImages.map((entry) => entry.id)
+      : [image.id];
+    const existingModalForImage = openImageModals.find((modal) => modal.imageId === image.id);
+    const modalId = existingModalForImage?.modalId ?? `image-modal-${Date.now()}-${image.id}`;
+
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const nextZIndex = Math.max(highestZIndex + 1, FIND_SIMILAR_IMAGE_MODAL_MIN_Z_INDEX);
+      const existingModal = current.find((modal) => modal.imageId === image.id);
+
+      if (existingModal) {
+        return current.map((modal) =>
+          modal.modalId === existingModal.modalId
+            ? {
+                ...modal,
+                navigationImageIds,
+                navigationSource: 'find-similar',
+                zIndex: nextZIndex,
+                isMinimized: false,
+              }
+            : modal
+        );
+      }
+
+      return [
+        ...current,
+        {
+          modalId,
+          imageId: image.id,
+          navigationImageIds,
+          navigationSource: 'find-similar',
+          zIndex: nextZIndex,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(image.id, 'find-similar'),
+        },
+      ];
+    });
+
+    setActiveImageModalId(modalId);
+    suppressSelectedImageModalOpenRef.current = image.id;
+    setSelectedImage(image);
+  }, [beginModalOpenFlow, openImageModals, setSelectedImage]);
 
   const openModelPromptPicker = useCallback((modelName: string) => {
     setModelPromptPickerState({
@@ -2223,7 +2627,10 @@ export default function App() {
       ? comfyUIWorkspaceSourceImages.filter((candidate) => candidate.directoryId === nextDirectoryId)
       : comfyUIWorkspaceSourceImages;
 
-    setComfyUIWorkspaceNavigationImageIds(nextImages.map((candidate) => candidate.id));
+    const nextImageIds = nextImages.map((candidate) => candidate.id);
+    setComfyUIWorkspaceNavigationImageIds((current) =>
+      areStringArraysEqual(current, nextImageIds) ? current : nextImageIds
+    );
     setComfyUIWorkspaceImageId(nextImages[0]?.id ?? null);
   }, [comfyUIWorkspaceSourceImages]);
   const handleComfyUIWorkspaceApplyLibraryFiltersChange = useCallback((applyFilters: boolean) => {
@@ -2331,9 +2738,11 @@ export default function App() {
   useEffect(() => {
     const scopedTotalPages = Math.ceil(displayImages.length / itemsPerPage);
     if (currentPage > scopedTotalPages && scopedTotalPages > 0) {
+      resetLibraryGridScrollPosition();
+      resetCollectionsGridScrollPosition();
       setCurrentPage(1);
     }
-  }, [currentPage, displayImages.length, itemsPerPage]);
+  }, [currentPage, displayImages.length, itemsPerPage, resetCollectionsGridScrollPosition, resetLibraryGridScrollPosition]);
 
   useEffect(() => {
     if (libraryView !== 'collections') {
@@ -2436,6 +2845,7 @@ export default function App() {
     !isHotkeyHelpOpen &&
     !isCommandPaletteOpen &&
     !isChangelogModalOpen &&
+    !updateModalState.isOpen &&
     !isAnalyticsOpen &&
     !isComparisonModalOpen &&
     !isBatchExportModalOpen &&
@@ -2589,6 +2999,7 @@ export default function App() {
           onClearAllFilters={() => {
             setSearchInputValue('');
             setSearchQuery('');
+            setFindSimilarGridFilter(null);
             setSelectedFilters({
               models: [],
               excludedModels: [],
@@ -2840,6 +3251,31 @@ export default function App() {
                   />
                 )}
 
+                {libraryView === 'library' && findSimilarGridFilter && (
+                  <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
+                    <div className="min-w-0">
+                      <span className="font-medium">Find Similar filter</span>
+                      <span className="text-cyan-200/80"> from </span>
+                      <span className="inline-block max-w-[320px] truncate align-bottom" title={findSimilarGridFilter.sourceImageName}>
+                        {findSimilarGridFilter.sourceImageName}
+                      </span>
+                      <span className="text-cyan-200/80"> · {displayImages.length} match{displayImages.length === 1 ? '' : 'es'} in current filters</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFindSimilarGridFilter(null);
+                        resetLibraryGridScrollPosition();
+                        setCurrentPage(1);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-cyan-400/40 px-2 py-1 text-xs font-medium text-cyan-100 transition-colors hover:bg-cyan-500/20"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Clear
+                    </button>
+                  </div>
+                )}
+
               <div className={`flex-1 min-h-0 transition-[filter,opacity] duration-150 ease-out ${libraryContentFocusClass}`}>
                 {libraryView === 'library' ? (
                   shouldShowLibraryPlaceholder ? (
@@ -2862,6 +3298,9 @@ export default function App() {
                           groupBy={effectiveLibraryGroupBy}
                           groupSortOrder={imageGroupingSortOrder}
                           jumpToGroupRequest={pendingJumpGroupRequest}
+                          initialScrollTop={libraryGridScrollTopRef.current}
+                          onScrollPositionChange={handleLibraryGridScrollPositionChange}
+                          scrollResetKey={libraryGridSignature}
                         />
                       ) : (
                         <ImageTable
@@ -2882,7 +3321,12 @@ export default function App() {
                   <ModelView
                     isQueueOpen={isQueueOpen}
                     onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                    page={modelViewPage}
+                    onPageChange={setModelViewPage}
+                    activeModelName={selectedModels.length === 1 ? selectedModels[0] : null}
                     onModelSelect={(modelName) => {
+                      resetLibraryGridScrollPosition();
+                      setModelViewPage(1);
                       setSelectedFilters({ models: [modelName] });
                       setLibraryView('library');
                     }}
@@ -2908,6 +3352,9 @@ export default function App() {
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
+                        initialScrollTop={collectionsGridScrollTopRef.current}
+                        onScrollPositionChange={handleCollectionsGridScrollPositionChange}
+                        scrollResetKey={collectionsGridSignature}
                       />
                     ) : (
                       <ImageTable
@@ -2958,6 +3405,11 @@ export default function App() {
                     onViewFullMetadata={handleComfyUIWorkspaceViewFullMetadata}
                     onOpenCompare={handleOpenFindSimilarCompare}
                     workflowLoadRequest={comfyUIWorkspaceWorkflowLoadRequest}
+                    onWorkflowLoadRequestHandled={(requestId) => {
+                      setComfyUIWorkspaceWorkflowLoadRequest((current) =>
+                        current?.id === requestId ? null : current
+                      );
+                    }}
                   />
                 ) : libraryView === 'editor' ? (
                   editorImage ? (
@@ -3023,7 +3475,7 @@ export default function App() {
                   totalCount={libraryView === 'collections' ? collectionTotalImages.length : selectionTotalImages}
                   directoryCount={
                     libraryView === 'collections'
-                      ? new Set(collectionFilteredImages.map((image) => image.directoryId).filter(Boolean)).size
+                      ? collectionFilteredDirectoryCount
                       : selectionDirectoryCount
                   }
                   enrichmentProgress={enrichmentProgress}
@@ -3093,6 +3545,18 @@ export default function App() {
           currentVersion={currentVersion}
         />
 
+        <UpdateNotificationModal
+          isOpen={updateModalState.isOpen}
+          status={updateModalState.status}
+          update={updateModalState.update}
+          progress={updateModalState.progress}
+          error={updateModalState.error}
+          onClose={handleCloseUpdateModal}
+          onDownload={handleDownloadUpdate}
+          onSkip={handleSkipUpdate}
+          onInstallNow={handleInstallUpdateNow}
+        />
+
         <Analytics
           isOpen={isAnalyticsOpen}
           onClose={() => setIsAnalyticsOpen(false)}
@@ -3125,7 +3589,8 @@ export default function App() {
           currentViewImages={findSimilarState?.currentViewImages}
           initialCriteria={findSimilarState?.initialCriteria}
           onClose={closeFindSimilar}
-          onOpenCompare={handleOpenFindSimilarCompare}
+          onOpenImage={handleOpenFindSimilarImage}
+          onApplyGridFilter={handleApplyFindSimilarGridFilter}
         />
 
         {/* Generate Modals */}

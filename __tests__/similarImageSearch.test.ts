@@ -32,7 +32,7 @@ describe('similarImageSearch helpers', () => {
     expect(promptsExactlyMatchNormalized('Hello world', 'Hello moon')).toBe(false);
   });
 
-  it('matches prompt-only groups while excluding the source checkpoint in different mode', () => {
+  it('matches prompt-similar groups while ignoring checkpoint by default', () => {
     const source = createImage({
       id: 'source',
       prompt: 'A castle on a hill',
@@ -43,6 +43,7 @@ describe('similarImageSearch helpers', () => {
       source,
       createImage({ id: 'same-model', prompt: 'A castle on a hill', models: ['model-a'], lastModified: 30 }),
       createImage({ id: 'alt-model', prompt: 'a castle   on a hill', models: ['model-b'], lastModified: 20 }),
+      createImage({ id: 'similar-prompt', prompt: 'A castle on hill', models: ['model-c'], lastModified: 10 }),
       createImage({ id: 'no-prompt-match', prompt: 'A forest', models: ['model-c'], lastModified: 40 }),
     ];
 
@@ -53,8 +54,37 @@ describe('similarImageSearch helpers', () => {
       criteria: DEFAULT_SIMILAR_SEARCH_CRITERIA,
     });
 
-    expect(result.results.map((entry) => entry.image.id)).toEqual(['alt-model']);
+    expect(result.effectiveCriteria.checkpointMode).toBe('ignore');
+    expect(result.results.map((entry) => entry.image.id)).toEqual(['same-model', 'alt-model', 'similar-prompt']);
     expect(result.results[0]?.matchedFields).toContain('prompt');
+    expect(result.results[0]?.promptSimilarity).toBe(1);
+    expect(result.results[2]?.promptSimilarity).toBeGreaterThanOrEqual(0.87);
+  });
+
+  it('can still exclude the source checkpoint when requested', () => {
+    const source = createImage({
+      id: 'source',
+      prompt: 'A castle on a hill',
+      models: ['model-a'],
+      lastModified: 10,
+    });
+    const images = [
+      source,
+      createImage({ id: 'same-model', prompt: 'A castle on a hill', models: ['model-a'], lastModified: 30 }),
+      createImage({ id: 'alt-model', prompt: 'a castle   on a hill', models: ['model-b'], lastModified: 20 }),
+    ];
+
+    const result = findSimilarImages({
+      sourceImage: source,
+      allImages: images,
+      currentViewImages: images,
+      criteria: {
+        ...DEFAULT_SIMILAR_SEARCH_CRITERIA,
+        checkpointMode: 'different',
+      },
+    });
+
+    expect(result.results.map((entry) => entry.image.id)).toEqual(['alt-model']);
     expect(result.results[0]?.matchedFields).toContain('checkpoint');
   });
 
@@ -155,6 +185,46 @@ describe('similarImageSearch helpers', () => {
     });
 
     expect(result.results.map((entry) => entry.image.id)).toEqual(['weight-match']);
+  });
+
+  it('disables prompt matching when similarity normalization removes the source prompt', () => {
+    const source = createImage({
+      id: 'source',
+      prompt: '<lora:style-lora:1>',
+      models: ['model-a'],
+      loras: ['style-lora'],
+    });
+    const images = [
+      source,
+      createImage({
+        id: 'lora-match',
+        prompt: '<lora:style-lora:1>',
+        models: ['model-b'],
+        loras: ['style-lora'],
+      }),
+      createImage({
+        id: 'lora-miss',
+        prompt: '<lora:other-lora:1>',
+        models: ['model-c'],
+        loras: ['other-lora'],
+      }),
+    ];
+
+    const result = findSimilarImages({
+      sourceImage: source,
+      allImages: images,
+      currentViewImages: images,
+      criteria: {
+        ...DEFAULT_SIMILAR_SEARCH_CRITERIA,
+        lora: true,
+      },
+    });
+
+    expect(result.availability.prompt).toBe(false);
+    expect(result.effectiveCriteria.prompt).toBe(false);
+    expect(result.effectiveCriteria.lora).toBe(true);
+    expect(result.results.map((entry) => entry.image.id)).toEqual(['lora-match']);
+    expect(result.results[0]?.matchedFields).toEqual(['lora']);
   });
 
   it('disables unavailable source criteria and falls back to the remaining active rules', () => {

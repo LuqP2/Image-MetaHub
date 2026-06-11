@@ -275,6 +275,26 @@ export interface IndexedImageTransferResultItem {
   type?: string;
 }
 
+export interface UpdateReleaseNote {
+  version?: string;
+  note: string;
+}
+
+export interface UpdateNotificationPayload {
+  version: string;
+  releaseName?: string;
+  releaseNotes?: string | UpdateReleaseNote[];
+  releaseDate?: string;
+  changelogUrl?: string;
+}
+
+export interface UpdateDownloadProgress {
+  percent: number;
+  transferred?: number;
+  total?: number;
+  bytesPerSecond?: number;
+}
+
 export interface PerformanceTraceEvent {
   id: string;
   name: string;
@@ -399,6 +419,10 @@ export interface ElectronAPI {
   getUserDataPath: () => Promise<string>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  markChangelogViewed: (version: string) => Promise<{ success: boolean; error?: string }>;
+  downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
+  installUpdate: () => Promise<{ success: boolean; error?: string }>;
+  skipUpdateVersion: (version: string) => Promise<{ success: boolean; error?: string }>;
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
   openPath: (filePath: string) => Promise<{ success: boolean; error?: string; errorType?: string }>;
@@ -407,7 +431,7 @@ export interface ElectronAPI {
   comfyUIViewHide: () => Promise<ComfyUIViewResult>;
   comfyUIViewSuspend: () => Promise<ComfyUIViewResult>;
   comfyUIViewSetBounds: (payload: { bounds: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
-  comfyUIViewReload: () => Promise<ComfyUIViewResult>;
+  comfyUIViewReload: (payload?: { url?: string; bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
   comfyUIViewGoBack: () => Promise<ComfyUIViewResult>;
   comfyUIViewGoForward: () => Promise<ComfyUIViewResult>;
   comfyUIViewGetState: () => Promise<ComfyUIViewResult>;
@@ -466,6 +490,10 @@ export interface ElectronAPI {
   onMenuOpenSettings: (callback: () => void) => () => void;
   onMenuToggleView: (callback: () => void) => () => void;
   onMenuShowChangelog: (callback: () => void) => () => void;
+  onUpdateAvailable: (callback: (update: UpdateNotificationPayload) => void) => () => void;
+  onUpdateProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void;
+  onUpdateDownloaded: (callback: (update: UpdateNotificationPayload) => void) => () => void;
+  onUpdateError: (callback: (error: { message: string }) => void) => () => void;
   testUpdateDialog?: () => Promise<{ success: boolean; response?: number; error?: string }>;
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   getZoomFactor: () => Promise<number>;
@@ -767,6 +795,7 @@ export type CheckpointMatchMode = 'ignore' | 'same' | 'different';
 
 export interface SimilarSearchCriteria {
   prompt: boolean;
+  promptThreshold: number;
   lora: boolean;
   matchLoraWeight: boolean;
   seed: boolean;
@@ -780,6 +809,7 @@ export interface SimilarSearchResult {
   preselected: boolean;
   primaryCheckpoint: string | null;
   sharesCheckpoint: boolean;
+  promptSimilarity: number | null;
 }
 
 export interface SelectedFiltersUpdate {

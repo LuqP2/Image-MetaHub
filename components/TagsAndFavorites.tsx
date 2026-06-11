@@ -396,6 +396,7 @@ const TagsAndFavorites: React.FC = () => {
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
+        aria-label={isExpanded ? 'Collapse Ratings, Favorites & Tags' : 'Expand Ratings, Favorites & Tags'}
       >
         <div className="flex items-center space-x-2">
           <span className="text-gray-300 font-medium">Ratings, Favorites & Tags</span>
@@ -443,6 +444,7 @@ const TagsAndFavorites: React.FC = () => {
                       onClick={() => setSelectedRatings([])}
                       className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
                       title="Clear rating filters"
+                      aria-label="Clear rating filters"
                     >
                       <X size={16} />
                     </button>
@@ -542,6 +544,7 @@ const TagsAndFavorites: React.FC = () => {
                         onClick={clearSelectedTags}
                         className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
                         title="Clear tag filters"
+                        aria-label="Clear tag filters"
                       >
                         <X size={16} />
                       </button>
@@ -619,6 +622,7 @@ const TagsAndFavorites: React.FC = () => {
                         onClick={clearSelectedAutoTags}
                         className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
                         title="Clear auto-tag filters"
+                        aria-label="Clear auto-tag filters"
                       >
                         <X size={16} />
                       </button>

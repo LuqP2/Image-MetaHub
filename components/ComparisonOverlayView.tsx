@@ -23,7 +23,7 @@ interface ComparisonOverlayViewProps {
   highlightedRegion?: VisualComparisonMetrics['strongestRegion'] | null;
 }
 
-const ADVANCED_MODES = new Set<ComparisonViewMode>(['difference-map', 'flicker', 'loupe', 'edge-difference']);
+const ADVANCED_MODES = new Set<ComparisonViewMode>(['difference-map', 'loupe', 'edge-difference']);
 
 const getContainedRect = (
   containerWidth: number,

@@ -379,8 +379,11 @@ export const getImageEditOutputDimensions = (
 
 export const hasImageEditRecipeChanges = (
   recipeOrAdjustments: Partial<ImageEditRecipe> | Partial<ImageAdjustments>,
+  sourceDimensions?: { width: number; height: number },
 ): boolean => {
-  const recipe = normalizeImageEditRecipe(recipeOrAdjustments);
+  const recipe = normalizeImageEditRecipe(recipeOrAdjustments, sourceDimensions);
+  const inputRecipe = isRecipeLike(recipeOrAdjustments) ? recipeOrAdjustments : undefined;
+  const hasExplicitResizeEdit = Boolean(inputRecipe?.resize?.enabled);
   return (
     hasImageAdjustments(recipe.adjustments) ||
     recipe.transform.rotation !== DEFAULT_IMAGE_EDIT_RECIPE.transform.rotation ||
@@ -388,6 +391,7 @@ export const hasImageEditRecipeChanges = (
     recipe.transform.flipVertical !== DEFAULT_IMAGE_EDIT_RECIPE.transform.flipVertical ||
     recipe.crop.enabled ||
     recipe.resize.enabled ||
+    hasExplicitResizeEdit ||
     recipe.effects.sharpen !== DEFAULT_IMAGE_EDIT_RECIPE.effects.sharpen ||
     recipe.effects.blur !== DEFAULT_IMAGE_EDIT_RECIPE.effects.blur
   );
@@ -525,7 +529,13 @@ export const normalizeImageEditorDocument = (
     .map((object) => normalizeImageEditorObject(object, canvasDimensions))
     .filter((object): object is ImageEditorObject => Boolean(object))
     .sort((left, right) => left.zIndex - right.zIndex);
-  const objectIds = new Set(objects.map((object) => object.id));
+
+  // Optimization: Eliminate Array.map() O(N) temporary array allocation
+  // Impact: Reduces garbage collection overhead when building the ID Set for selected object filtering
+  const objectIds = new Set<string>();
+  for (const object of objects) {
+    objectIds.add(object.id);
+  }
 
   return {
     sourceImageId: document.sourceImageId || '',
@@ -545,7 +555,7 @@ export const hasImageEditorDocumentChanges = (
   const normalized = normalizeImageEditorDocument(document);
   const background = normalized.background;
   return (
-    hasImageEditRecipeChanges(normalized.recipe) ||
+    hasImageEditRecipeChanges(normalized.recipe, normalized.sourceDimensions) ||
     normalized.objects.length > 0 ||
     background.kind !== DEFAULT_IMAGE_EDITOR_BACKGROUND.kind ||
     background.margin !== DEFAULT_IMAGE_EDITOR_BACKGROUND.margin ||
@@ -1196,6 +1206,16 @@ const buildMetaHubEditPayload = (
     sourceImageId?: string;
   },
 ) => {
+  const payloadWidth = Number.isFinite(outputDimensions?.width)
+    ? outputDimensions?.width
+    : Number.isFinite(metadata.width)
+      ? metadata.width
+      : 0;
+  const payloadHeight = Number.isFinite(outputDimensions?.height)
+    ? outputDimensions?.height
+    : Number.isFinite(metadata.height)
+      ? metadata.height
+      : 0;
   const payload: Record<string, unknown> = {
     generator: 'Image MetaHub',
     source_generator: typeof metadata.generator === 'string' ? metadata.generator : null,
@@ -1216,8 +1236,8 @@ const buildMetaHubEditPayload = (
     sampler_name: metadata.sampler || '',
     scheduler: metadata.scheduler || '',
     model: metadata.model || metadata.models?.[0] || '',
-    width: Number.isFinite(metadata.width) ? metadata.width : 0,
-    height: Number.isFinite(metadata.height) ? metadata.height : 0,
+    width: payloadWidth,
+    height: payloadHeight,
     loras: toLoraPayload(metadata.loras),
     imh_pro: {
       notes: typeof metadata.notes === 'string' ? metadata.notes : '',
@@ -1299,7 +1319,13 @@ export const embedMetaHubMetadataInPngBytes = (
     return pngBytes;
   }
 
-  const normalizedRecipe = normalizeImageEditRecipe(recipeOrAdjustments);
+  const sourceDimensions = metadata && Number.isFinite(metadata.width) && Number.isFinite(metadata.height)
+    ? {
+        width: Math.max(1, Math.round(metadata.width || 1)),
+        height: Math.max(1, Math.round(metadata.height || 1)),
+      }
+    : undefined;
+  const normalizedRecipe = normalizeImageEditRecipe(recipeOrAdjustments, sourceDimensions);
   const chunks: Uint8Array[] = [];
 
   if (metadata) {

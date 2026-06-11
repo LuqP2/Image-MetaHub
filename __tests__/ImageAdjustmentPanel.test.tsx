@@ -153,6 +153,26 @@ describe('ImageAdjustmentPanel', () => {
     }));
   });
 
+  it('seeds resize controls from base dimensions when resize is enabled', () => {
+    const onChange = vi.fn();
+    render(
+      <ImageAdjustmentPanel
+        recipe={DEFAULT_IMAGE_EDIT_RECIPE}
+        onChange={onChange}
+        onReset={vi.fn()}
+        onSaveAs={vi.fn()}
+        onOverwrite={vi.fn()}
+        sourceDimensions={{ width: 100, height: 50 }}
+        activeTab="transform"
+      />
+    );
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /^resize$/i }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      resize: expect.objectContaining({ width: 100, height: 50 }),
+    }));
+  });
+
   it('emits crop and AI upscale actions', () => {
     const onChange = vi.fn();
     const onAIUpscale = vi.fn();

@@ -124,6 +124,7 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
                     cfg_scale: resolvedParams.cfg,
                     scheduler: resolvedParams.scheduler || '',
                     sampler: resolvedParams.sampler_name || '',
+                    vae: resolvedParams.vae || resolvedParams.vaes?.[0]?.name,
                     loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
                 } as BaseMetadata;
             },

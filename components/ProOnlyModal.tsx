@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download, Tag } from 'lucide-react';
+import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download, Tag, Image as ImageIcon } from 'lucide-react';
 import { ProFeature } from '../hooks/useFeatureAccess';
 import { TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
@@ -103,6 +103,17 @@ const featureInfo = {
       'Preserve tags, favorites, and shadow metadata',
       'Organize multiple images in a single action',
       'Resolve filename conflicts automatically',
+    ],
+  },
+  image_editor: {
+    name: 'Image Editor',
+    icon: ImageIcon,
+    description: 'Edit images with adjustments, crop, transform, annotations, and metadata-preserving PNG exports',
+    benefits: [
+      'Open images in the dedicated editor workspace',
+      'Adjust brightness, contrast, saturation, and hue',
+      'Crop, transform, annotate, and inspect edits',
+      'Save edited PNGs while preserving metadata',
     ],
   },
 };

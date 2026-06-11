@@ -95,6 +95,219 @@ describe('ComfyUI Parser - Prompt Sources', () => {
     const facts = resolveWorkflowFactsFromGraph(undefined, prompt);
     expect(facts?.prompts.positive).toBe('upstream populated prompt');
   });
+
+  it('should parse Ideogram v4 KJ prompt-builder workflows wrapped in ComfyUI subgraphs', async () => {
+    const subgraphType = '5b810a92-4e47-4e55-9059-ideogram-v4-subgraph';
+    const noteText = 'UNRELATED NOTE NODE: do not use this as a prompt';
+    const importJson = {
+      high_level_description: 'a luminous explorer inspecting a floating archive',
+      style_description: 'editorial sci-fi realism with crisp graphic composition',
+      compositional_deconstruction: {
+        background: 'a dark observatory wall filled with brass star charts',
+        elements: [
+          { desc: 'transparent holographic index cards orbiting the subject' },
+          { desc: 'a small glowing navigation compass in the foreground' },
+        ],
+      },
+    };
+
+    const workflow = {
+      nodes: [
+        { id: 98, type: subgraphType, widgets_values: [], mode: 0 },
+        { id: 200, type: 'SaveImage', widgets_values: ['Ideogram'], mode: 0 },
+      ],
+      definitions: {
+        subgraphs: {
+          [subgraphType]: {
+            nodes: [
+              { id: 11, type: 'UNETLoader', widgets_values: ['Ideogram\\ideogram4_fp8_scaled.safetensors', 'fp8_e4m3fn'], mode: 0 },
+              { id: 12, type: 'VAELoader', widgets_values: ['flux2-vae.safetensors'], mode: 0 },
+              { id: 17, type: 'Ideogram4PromptBuilderKJ', widgets_values: [
+                1024,
+                1024,
+                'a luminous explorer inspecting a floating archive',
+                'a dark observatory wall filled with brass star charts',
+                'editorial sci-fi realism',
+                'crisp graphic composition',
+                'polished, detailed, cinematic',
+                'soft rim light and cool key light',
+                'digital painting',
+                JSON.stringify([{ text: 'deep indigo and burnished gold palette' }]),
+                JSON.stringify([
+                  { desc: 'transparent holographic index cards orbiting the subject' },
+                  { text: 'a small glowing navigation compass in the foreground' },
+                ]),
+                JSON.stringify(importJson),
+              ], mode: 0 },
+              { id: 19, type: 'Note', widgets_values: [noteText], mode: 0 },
+              { id: 23, type: 'Ideogram4Scheduler', widgets_values: [12, 1024, 1024, 1, 1], mode: 0 },
+              { id: 44, type: 'KSamplerSelect', widgets_values: ['euler'], mode: 0 },
+              { id: 45, type: 'RandomNoise', widgets_values: [22958748446911, 'fixed'], mode: 0 },
+              { id: 80, type: 'EmptyFlux2LatentImage', widgets_values: [1024, 1024, 1], mode: 0 },
+              { id: 155, type: 'DualModelGuider', widgets_values: [7], mode: 0 },
+              { id: 160, type: 'CFGOverride', widgets_values: [1.5, 0, 1], mode: 0 },
+              { id: 170, type: 'SamplerCustomAdvanced', widgets_values: [], mode: 0 },
+              { id: 180, type: 'VAEDecode', widgets_values: [], mode: 0 },
+            ],
+          },
+        },
+      },
+    };
+
+    const prompt = {
+      '98:11': {
+        inputs: {
+          unet_name: 'Ideogram\\ideogram4_fp8_scaled.safetensors',
+          weight_dtype: 'fp8_e4m3fn',
+        },
+      },
+      '98:12': {
+        inputs: {
+          vae_name: 'flux2-vae.safetensors',
+        },
+      },
+      '98:17': {
+        inputs: {},
+      },
+      '98:19': {
+        class_type: 'Note',
+        inputs: {
+          text: noteText,
+        },
+      },
+      '98:23': {
+        inputs: {},
+      },
+      '98:44': {
+        inputs: {},
+      },
+      '98:45': {
+        inputs: {},
+      },
+      '98:80': {
+        inputs: {
+          width: 1024,
+          height: 1024,
+          batch_size: 1,
+        },
+      },
+      '98:155': {
+        inputs: {
+          model: ['98:160', 0],
+          positive: ['98:17', 0],
+          model_negative: ['98:160', 0],
+          negative: '',
+        },
+      },
+      '98:160': {
+        inputs: {
+          model: ['98:11', 0],
+        },
+      },
+      '98:170': {
+        inputs: {
+          noise: ['98:45', 0],
+          guider: ['98:155', 0],
+          sampler: ['98:44', 0],
+          sigmas: ['98:23', 0],
+          latent_image: ['98:80', 0],
+        },
+      },
+      '98:180': {
+        inputs: {
+          samples: ['98:170', 0],
+          vae: ['98:12', 0],
+        },
+      },
+      '200': {
+        class_type: 'SaveImage',
+        inputs: {
+          images: ['98:180', 0],
+        },
+      },
+    };
+
+    const parsed = await parseImageMetadata({
+      Prompt: JSON.stringify(prompt),
+      Workflow: JSON.stringify(workflow),
+    } as any);
+
+    expect(parsed?.generator).toBe('ComfyUI');
+    expect(parsed?.prompt).toContain('a luminous explorer inspecting a floating archive');
+    expect(parsed?.prompt).toContain('a dark observatory wall filled with brass star charts');
+    expect(parsed?.prompt).toContain('editorial sci-fi realism');
+    expect(parsed?.prompt).toContain('transparent holographic index cards orbiting the subject');
+    expect(parsed?.prompt).toContain('a small glowing navigation compass in the foreground');
+    expect(parsed?.prompt).not.toContain(noteText);
+    expect(parsed?.model).toBe('Ideogram\\ideogram4_fp8_scaled.safetensors');
+    expect(parsed?.vae).toBe('flux2-vae.safetensors');
+    expect(parsed?.seed).toBe(22958748446911);
+    expect(parsed?.steps).toBe(12);
+    expect(parsed?.cfg_scale).toBe(7);
+    expect(parsed?.sampler).toBe('euler');
+    expect(parsed?.scheduler).toBe('ideogram4');
+    expect(parsed?.negativePrompt).toBe('');
+  });
+
+  it('should inherit muted parent mode for subgraph children', () => {
+    const subgraphType = 'muted-subgraph-fixture';
+    const workflow = {
+      nodes: [
+        { id: 98, type: subgraphType, widgets_values: [], mode: 0 },
+        { id: 99, type: subgraphType, widgets_values: [], mode: 2 },
+      ],
+      definitions: {
+        subgraphs: {
+          [subgraphType]: {
+            nodes: [
+              { id: 1, type: 'CLIPTextEncode', widgets_values: [''], mode: 0 },
+              { id: 2, type: 'KSampler', widgets_values: [111, 'fixed', 20, 7, 'euler', 'normal', 1], mode: 0 },
+              { id: 3, type: 'KSampler', widgets_values: [999, 'fixed', 40, 11, 'uni_pc', 'simple', 1], mode: 0 },
+            ],
+          },
+        },
+      },
+    };
+    const prompt = {
+      '98:1': {
+        inputs: {
+          text: 'active subgraph prompt',
+        },
+      },
+      '98:2': {
+        inputs: {
+          seed: 111,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          positive: ['98:1', 0],
+        },
+      },
+      '99:1': {
+        inputs: {
+          text: 'muted subgraph prompt',
+        },
+      },
+      '99:2': {
+        inputs: {
+          seed: 222,
+          steps: 30,
+          cfg: 9,
+          sampler_name: 'dpmpp_2m',
+          scheduler: 'karras',
+          positive: ['99:1', 0],
+        },
+      },
+    };
+
+    const result = resolvePromptFromGraph(workflow, prompt);
+
+    expect(result.prompt).toBe('active subgraph prompt');
+    expect(result.prompt).not.toBe('muted subgraph prompt');
+    expect(result.seed).toBe(111);
+    expect(result.sampler_name).toBe('euler');
+  });
 });
 
 describe('ComfyUI Parser - Detection from capitalized string keys', () => {
@@ -126,6 +339,127 @@ describe('ComfyUI Parser - Detection from capitalized string keys', () => {
     expect(result?.generator).toBe('ComfyUI');
     expect(result?.prompt).toContain('Visualize a long, eel-like mutant lizard');
     expect(result?.model).not.toBe('wrong.safetensors');
+  });
+
+  it('should parse standard SaveImage exports with SDXL rgthree nodes', async () => {
+    const prompt = {
+      '3': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 152203930877602,
+          steps: 30,
+          cfg: 5,
+          sampler_name: 'dpmpp_2m_sde',
+          scheduler: 'exponential',
+          denoise: 1,
+          model: ['42', 0],
+          positive: ['30', 0],
+          negative: ['33', 0],
+          latent_image: ['43', 0],
+        },
+      },
+      '4': {
+        class_type: 'CheckpointLoaderSimple',
+        inputs: {
+          ckpt_name: 'realismByStableYogi_v60FP16.safetensors',
+        },
+      },
+      '8': {
+        class_type: 'VAEDecode',
+        inputs: {
+          samples: ['3', 0],
+          vae: ['4', 2],
+        },
+      },
+      '28': {
+        class_type: 'SaveImage',
+        inputs: {
+          filename_prefix: 'pony-',
+          images: ['8', 0],
+        },
+      },
+      '30': {
+        class_type: 'CLIPTextEncodeSDXL',
+        inputs: {
+          width: 4096,
+          height: 4096,
+          crop_w: 0,
+          crop_h: 0,
+          target_width: 4096,
+          target_height: 4096,
+          text_g: '1girl, portrait, a girl with green hair standing in front of the ocean',
+          text_l: '1girl, portrait, a girl with green hair standing in front of the ocean',
+          clip: ['42', 1],
+        },
+      },
+      '33': {
+        class_type: 'CLIPTextEncodeSDXL',
+        inputs: {
+          width: 4096,
+          height: 4096,
+          crop_w: 0,
+          crop_h: 0,
+          target_width: 4096,
+          target_height: 4096,
+          text_g: ' poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, amputation\n',
+          text_l: ' poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, amputation\n',
+          clip: ['42', 1],
+        },
+      },
+      '42': {
+        class_type: 'Power Lora Loader (rgthree)',
+        inputs: {
+          PowerLoraLoaderHeaderWidget: { type: 'PowerLoraLoaderHeaderWidget' },
+          lora_5: {
+            on: true,
+            lora: 'sdxl/Realism Lora By Stable Yogi_V3_Lite.safetensors',
+            strength: 1,
+          },
+          model: ['4', 0],
+          clip: ['4', 1],
+        },
+      },
+      '43': {
+        class_type: 'SDXL Empty Latent Image (rgthree)',
+        inputs: {
+          dimensions: ' 832 x 1216 (portrait)',
+          clip_scale: 2,
+          batch_size: 1,
+        },
+      },
+    };
+
+    const workflow = {
+      nodes: [
+        { id: 3, type: 'KSampler', widgets_values: [152203930877602, 'randomize', 30, 5, 'dpmpp_2m_sde', 'exponential', 1], mode: 0 },
+        { id: 4, type: 'CheckpointLoaderSimple', widgets_values: ['realismByStableYogi_v60FP16.safetensors'], mode: 0 },
+        { id: 28, type: 'SaveImage', widgets_values: ['pony-'], mode: 0 },
+        { id: 30, type: 'CLIPTextEncodeSDXL', widgets_values: [4096, 4096, 0, 0, 4096, 4096, '1girl, portrait, a girl with green hair standing in front of the ocean', '1girl, portrait, a girl with green hair standing in front of the ocean'], mode: 0 },
+        { id: 33, type: 'CLIPTextEncodeSDXL', widgets_values: [4096, 4096, 0, 0, 4096, 4096, ' poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, amputation\n', ' poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, amputation\n'], mode: 0 },
+        { id: 42, type: 'Power Lora Loader (rgthree)', widgets_values: [{}, { type: 'PowerLoraLoaderHeaderWidget' }, { on: true, lora: 'sdxl/Realism Lora By Stable Yogi_V3_Lite.safetensors', strength: 1 }, {}, ''], mode: 0 },
+        { id: 43, type: 'SDXL Empty Latent Image (rgthree)', widgets_values: [' 832 x 1216 (portrait)', 2, 1], mode: 0 },
+      ],
+    };
+
+    const result = await parseImageMetadata({
+      Prompt: JSON.stringify(prompt),
+      Workflow: JSON.stringify(workflow),
+    } as any);
+
+    expect(result?.generator).toBe('ComfyUI');
+    expect(result?.prompt).toBe('1girl, portrait, a girl with green hair standing in front of the ocean');
+    expect(result?.negativePrompt).toBe('poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, amputation');
+    expect(result?.model).toBe('realismByStableYogi_v60FP16.safetensors');
+    expect(result?.seed).toBe(152203930877602);
+    expect(result?.steps).toBe(30);
+    expect(result?.cfg_scale).toBe(5);
+    expect(result?.sampler).toBe('dpmpp_2m_sde');
+    expect(result?.scheduler).toBe('exponential');
+    expect(result?.denoise).toBe(1);
+    expect(result?.loras).toContainEqual({
+      name: 'sdxl/Realism Lora By Stable Yogi_V3_Lite.safetensors',
+      weight: 1,
+    });
   });
 });
 
@@ -350,7 +684,10 @@ describe('ComfyUI Parser - Prompt-only graph payloads', () => {
     expect(result?.steps).toBe(19);
     expect(result?.cfg_scale).toBe(7);
     expect(result?.sampler).toBe('euler_ancestral');
-    expect(result?.loras).toContain('urn:air:sdxl:lora:civitai:1280702@1444863');
+    expect(result?.loras).toContainEqual({
+      name: 'urn:air:sdxl:lora:civitai:1280702@1444863',
+      weight: -0.65,
+    });
   });
 });
 
@@ -384,6 +721,131 @@ describe('ComfyUI Parser - LoRA Workflows', () => {
     expect(result.cfg).toBe(7.5);
     expect(result.sampler_name).toBe('dpmpp_2m');
     expect(result.scheduler).toBe('karras');
+  });
+
+  it('should read LoraManager LoRAs from workflow widget values', () => {
+    const result = resolvePromptFromGraph({
+      nodes: [
+        {
+          id: 2,
+          type: 'Lora Loader (LoraManager)',
+          widgets_values: [
+            '',
+            'cinematic portrait',
+            [
+              { name: 'ui_lora.safetensors', active: true },
+              { name: 'disabled_lora.safetensors', active: false },
+            ],
+          ],
+          mode: 0,
+        },
+        {
+          id: 3,
+          type: 'KSampler',
+          widgets_values: [123, 'fixed', 20, 7, 'euler', 'normal', 1],
+          mode: 0,
+        },
+      ],
+    }, {
+      '2': {
+        class_type: 'Lora Loader (LoraManager)',
+        inputs: {
+          text: 'cinematic portrait',
+          model: ['1', 0],
+          clip: ['1', 1],
+        },
+      },
+      '3': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          denoise: 1,
+          model: ['2', 0],
+        },
+      },
+    });
+
+    expect(result.lora).toContain('ui_lora.safetensors');
+    expect(result.lora).not.toContain('disabled_lora.safetensors');
+  });
+
+  it('should preserve JoinStrings delimiter from widget values', () => {
+    const result = resolvePromptFromGraph({
+      nodes: [
+        {
+          id: 1,
+          type: 'String Literal',
+          widgets_values: ['alpha'],
+          mode: 0,
+        },
+        {
+          id: 2,
+          type: 'String Literal',
+          widgets_values: ['beta'],
+          mode: 0,
+        },
+        {
+          id: 3,
+          type: 'JoinStrings',
+          widgets_values: [', '],
+          mode: 0,
+        },
+        {
+          id: 4,
+          type: 'CLIPTextEncode',
+          widgets_values: [''],
+          mode: 0,
+        },
+        {
+          id: 5,
+          type: 'KSampler',
+          widgets_values: [123, 'fixed', 20, 7, 'euler', 'normal', 1],
+          mode: 0,
+        },
+      ],
+    }, {
+      '1': {
+        class_type: 'String Literal',
+        inputs: { string: 'alpha' },
+      },
+      '2': {
+        class_type: 'String Literal',
+        inputs: { string: 'beta' },
+      },
+      '3': {
+        class_type: 'JoinStrings',
+        inputs: {
+          delimiter: ', ',
+          string1: ['1', 0],
+          string2: ['2', 0],
+        },
+      },
+      '4': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: ['3', 0],
+        },
+      },
+      '5': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          denoise: 1,
+          positive: ['4', 0],
+          negative: ['4', 0],
+        },
+      },
+    });
+
+    expect(result.prompt).toBe('alpha, beta');
   });
 });
 
@@ -569,6 +1031,41 @@ describe('ComfyUI Parser - MetaHub lineage metadata', () => {
     expect(result?.model).toBe('canonical.safetensors');
     expect(result?._metadata_status).toBe('complete');
     expect(result?._metadata_sources).toEqual({ prompt: 'detected', model_name: 'detected' });
+  });
+
+  it('preserves explicit MetaHub seed zero even when prompt graph has another seed', async () => {
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'zero seed prompt',
+        negativePrompt: '',
+        seed: 0,
+        steps: 20,
+        cfg: 7,
+        sampler_name: 'euler',
+        scheduler: 'normal',
+        model: 'zero-seed.safetensors',
+        width: 512,
+        height: 512,
+        metadata_status: 'partial',
+        metadata_sources: { seed: 'manual_override' },
+        prompt_api: {
+          '1': {
+            class_type: 'KSampler',
+            inputs: {
+              seed: 999,
+              steps: 20,
+              cfg: 7,
+              sampler_name: 'euler',
+              scheduler: 'normal',
+              denoise: 1,
+            },
+          },
+        },
+      },
+    } as any);
+
+    expect(result?.seed).toBe(0);
   });
 
   it('prefers parent_image for library lineage and keeps source_image as workflowSourceImage', async () => {

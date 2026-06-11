@@ -190,6 +190,20 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
     });
   };
 
+  const setResizeEnabled = (enabled: boolean) => {
+    const base = baseOutputDimensions || sourceDimensions || { width: 1, height: 1 };
+    const shouldSeedFromBase = enabled && !normalizedRecipe.resize.enabled;
+    emit({
+      ...normalizedRecipe,
+      resize: {
+        ...normalizedRecipe.resize,
+        enabled,
+        width: shouldSeedFromBase ? base.width : normalizedRecipe.resize.width,
+        height: shouldSeedFromBase ? base.height : normalizedRecipe.resize.height,
+      },
+    });
+  };
+
   const applyResizePreset = (scale: number) => {
     const base = baseOutputDimensions || sourceDimensions;
     if (!base) {
@@ -398,7 +412,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
                   type="checkbox"
                   checked={normalizedRecipe.resize.enabled}
                   disabled={controlsDisabled || !sourceDimensions}
-                  onChange={(event) => emit({ ...normalizedRecipe, resize: { ...normalizedRecipe.resize, enabled: event.target.checked } })}
+                  onChange={(event) => setResizeEnabled(event.target.checked)}
                   className="h-4 w-4 accent-cyan-500"
                 />
                 Resize

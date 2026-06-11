@@ -330,7 +330,8 @@ export function resolve(args: { startNode: ParserNode, param: ComfyTraversablePa
                     const [sourceNodeId] = inputLink;
                     let nextNode = args.graph[sourceNodeId];
 
-                    // Suporte para grouped nodes
+                    // Suporte para grouped nodes: keep exact prefixed ids (for example "98:17")
+                    // when present, and only fall back to the parent node if the exact child is absent.
                     if (!nextNode && sourceNodeId.includes(':')) {
                         const parentId = sourceNodeId.split(':')[0];
                         nextNode = args.graph[parentId];
@@ -385,6 +386,8 @@ function checkIfParamNeedsAccumulation(startNode: ParserNode | null, param: Comf
                 const [sourceNodeId] = inputLink;
                 let nextNode = graph[sourceNodeId];
 
+                // Keep exact prefixed ids (for example "98:17") when present, and only
+                // fall back to the parent node if the exact child is absent.
                 if (!nextNode && sourceNodeId.includes(':')) {
                     const parentId = sourceNodeId.split(':')[0];
                     nextNode = graph[parentId];

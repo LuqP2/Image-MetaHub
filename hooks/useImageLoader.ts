@@ -13,6 +13,16 @@ const log = (...args: any[]) => DEBUG && console.log(...args);
 const warn = (...args: any[]) => DEBUG && console.warn(...args);
 const error = (...args: any[]) => console.error(...args); // Keep error logging for critical issues
 
+const logIndexingPerf = (
+    event: string,
+    details: Record<string, unknown> = {}
+) => {
+    console.log('[indexing:perf]', { event, ...details });
+};
+
+const toFixedMs = (durationMs: number) => Number(durationMs.toFixed(2));
+const isSlowRendererOp = (durationMs: number, thresholdMs = 100) => durationMs >= thresholdMs;
+
 // Throttle function for progress updates to avoid excessive re-renders
 function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T {
   let timeoutId: NodeJS.Timeout | null = null;
@@ -388,6 +398,7 @@ export function useImageLoader() {
             suppressSuccessMessage?: boolean;
         } = {}
     ) => {
+        const finalizeStart = performance.now();
         const suppressIndexingState = options.suppressIndexingState ?? false;
         const suppressSuccessMessage = options.suppressSuccessMessage ?? false;
 
@@ -401,13 +412,23 @@ export function useImageLoader() {
         // Flush any pending batched image inserts before final counts
         const flushPending = useImageStore.getState().flushPendingImages;
         if (flushPending) {
+            const flushPendingStart = performance.now();
             flushPending();
+            logIndexingPerf('finalize:flush-pending-images', {
+                directoryId: directory.id,
+                durationMs: toFixedMs(performance.now() - flushPendingStart),
+            });
         }
         
         // Wait a bit to ensure all images are added to the store
         await new Promise(resolve => setTimeout(resolve, 100));
         
         const finalDirectoryImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
+        logIndexingPerf('finalize:count-images', {
+            directoryId: directory.id,
+            finalDirectoryImages: finalDirectoryImages.length,
+            durationMs: toFixedMs(performance.now() - finalizeStart),
+        });
 
         traceCacheDebug('loader:finalizeDirectoryLoad:beforeRefresh', () => ({
             directoryId: directory.id,
@@ -469,6 +490,12 @@ export function useImageLoader() {
             delete (window as any)[finalizationKey];
             completedTimeoutRef.current = null;
         }, 3000);
+        logIndexingPerf('finalize:complete', {
+            directoryId: directory.id,
+            finalDirectoryImages: finalDirectoryImages.length,
+            suppressIndexingState,
+            durationMs: toFixedMs(performance.now() - finalizeStart),
+        });
     }, [refreshLineageDirectorySignature, setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing]);
 
     const CACHE_HYDRATE_FLUSH_SIZE = 2048;
@@ -496,7 +523,16 @@ export function useImageLoader() {
         }
 
         const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
+        const start = performance.now();
         const summary = await cacheManager.getCacheSummary(directory.path, shouldScanSubfolders);
+        logIndexingPerf('lineage-signature-refresh', {
+            directoryId: directory.id,
+            directoryName: directory.name,
+            durationMs: toFixedMs(performance.now() - start),
+            hasSummary: Boolean(summary),
+            imageCount: summary?.imageCount ?? 0,
+            chunkCount: summary?.chunkCount ?? 0,
+        });
         if (!summary) {
             setLineageDirectorySignature(directory.id, null);
             return;
@@ -531,7 +567,17 @@ export function useImageLoader() {
         const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
         await cacheManager.init();
 
+        const listStart = performance.now();
         const allCurrentFiles = await getDirectoryFiles(activeDirectory.handle, activeDirectory.path, shouldScanSubfolders);
+        logIndexingPerf('startup-reconcile:list-files', {
+            directoryId: activeDirectory.id,
+            directoryName: activeDirectory.name,
+            scanSubfolders: shouldScanSubfolders,
+            files: allCurrentFiles.length,
+            durationMs: toFixedMs(performance.now() - listStart),
+        });
+
+        const statsMapStart = performance.now();
         const fileStatsMap = new Map(
             allCurrentFiles.map(file => [file.name, {
                 size: file.size,
@@ -540,8 +586,14 @@ export function useImageLoader() {
                 contentModifiedMs: file.contentModifiedMs ?? file.lastModified,
             }])
         );
+        logIndexingPerf('startup-reconcile:build-stats-map', {
+            directoryId: activeDirectory.id,
+            files: allCurrentFiles.length,
+            durationMs: toFixedMs(performance.now() - statsMapStart),
+        });
 
         const preferLightweightReconcile = allCurrentFiles.length >= 10000;
+        const diffStart = performance.now();
         const diff = await cacheManager.validateCacheAndGetDiff(
             activeDirectory.path,
             activeDirectory.name,
@@ -550,6 +602,16 @@ export function useImageLoader() {
             undefined,
             { includeCachedImages: !preferLightweightReconcile },
         );
+        logIndexingPerf('startup-reconcile:cache-diff', {
+            directoryId: activeDirectory.id,
+            currentFiles: allCurrentFiles.length,
+            cachedImages: diff.cachedImages.length,
+            newAndModifiedFiles: diff.newAndModifiedFiles.length,
+            deletedFileIds: diff.deletedFileIds.length,
+            needsFullRefresh: diff.needsFullRefresh,
+            lightweightCandidate: preferLightweightReconcile,
+            durationMs: toFixedMs(performance.now() - diffStart),
+        });
         const useLightweightReconcile = preferLightweightReconcile && !diff.needsFullRefresh;
 
         traceCacheDebug('loader:reconcileCachedDirectory:diff', () => ({
@@ -599,7 +661,20 @@ export function useImageLoader() {
                     : [];
 
                 const fileHandles = sortedFilesWithStats.length > 0
-                    ? await getFileHandles(activeDirectory.handle, activeDirectory.path, sortedFilesWithStats)
+                    ? await (() => {
+                        const handlesStart = performance.now();
+                        return getFileHandles(activeDirectory.handle, activeDirectory.path, sortedFilesWithStats)
+                            .then((handles) => {
+                                logIndexingPerf('startup-reconcile:create-handles', {
+                                    directoryId: activeDirectory.id,
+                                    files: sortedFilesWithStats.length,
+                                    handles: handles.length,
+                                    mode: 'lightweight',
+                                    durationMs: toFixedMs(performance.now() - handlesStart),
+                                });
+                                return handles;
+                            });
+                    })()
                     : [];
                 const cacheUpserts: IndexedImage[] = [];
 
@@ -631,7 +706,15 @@ export function useImageLoader() {
                     }
                 );
 
+                const phaseBStart = performance.now();
                 await phaseB;
+                logIndexingPerf('startup-reconcile:phase-b-complete', {
+                    directoryId: activeDirectory.id,
+                    mode: 'lightweight',
+                    cacheUpserts: cacheUpserts.length,
+                    durationMs: toFixedMs(performance.now() - phaseBStart),
+                });
+                const deltaStart = performance.now();
                 await cacheManager.applyChunkedCacheDelta(
                     activeDirectory.path,
                     activeDirectory.name,
@@ -640,6 +723,13 @@ export function useImageLoader() {
                     [],
                     shouldScanSubfolders
                 );
+                logIndexingPerf('startup-reconcile:cache-delta', {
+                    directoryId: activeDirectory.id,
+                    mode: 'lightweight',
+                    upserts: cacheUpserts.length,
+                    removed: diff.deletedFileIds.length + changedIds.length,
+                    durationMs: toFixedMs(performance.now() - deltaStart),
+                });
                 await refreshLineageDirectorySignature(activeDirectory);
                 scheduleLineageRebuild(800);
                 traceCacheDebug('loader:reconcileCachedDirectory:lightweightComplete', () => ({
@@ -685,7 +775,20 @@ export function useImageLoader() {
                 : [];
 
             const fileHandles = sortedFilesWithStats.length > 0
-                ? await getFileHandles(activeDirectory.handle, activeDirectory.path, sortedFilesWithStats)
+                ? await (() => {
+                    const handlesStart = performance.now();
+                    return getFileHandles(activeDirectory.handle, activeDirectory.path, sortedFilesWithStats)
+                        .then((handles) => {
+                            logIndexingPerf('startup-reconcile:create-handles', {
+                                directoryId: activeDirectory.id,
+                                files: sortedFilesWithStats.length,
+                                handles: handles.length,
+                                mode: 'full',
+                                durationMs: toFixedMs(performance.now() - handlesStart),
+                            });
+                            return handles;
+                        });
+                })()
                 : [];
 
             const { phaseB } = await processFiles(
@@ -724,7 +827,13 @@ export function useImageLoader() {
                 }
             );
 
+            const phaseBStart = performance.now();
             await phaseB;
+            logIndexingPerf('startup-reconcile:phase-b-complete', {
+                directoryId: activeDirectory.id,
+                mode: 'full',
+                durationMs: toFixedMs(performance.now() - phaseBStart),
+            });
             await refreshLineageDirectorySignature(activeDirectory);
             scheduleLineageRebuild(800);
             traceCacheDebug('loader:reconcileCachedDirectory:complete', () => ({
@@ -790,10 +899,21 @@ export function useImageLoader() {
 
 
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
+        const loadStart = performance.now();
         try {
             await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
+            const summaryStart = performance.now();
             const cachedData = await cacheManager.getCacheSummary(directory.path, shouldScanSubfolders);
+            logIndexingPerf('cache-hydrate:summary', {
+                directoryId: directory.id,
+                directoryName: directory.name,
+                scanSubfolders: shouldScanSubfolders,
+                hasCache: Boolean(cachedData),
+                imageCount: cachedData?.imageCount ?? 0,
+                chunkCount: cachedData?.chunkCount ?? 0,
+                durationMs: toFixedMs(performance.now() - summaryStart),
+            });
 
             if (cachedData && cachedData.imageCount > 0) {
                 setLineageDirectorySignature(directory.id, {
@@ -809,6 +929,11 @@ export function useImageLoader() {
                 const hydratedImagesBuffer: IndexedImage[] = [];
                 let hasHydratedDirectory = false;
                 let cacheWarmupScheduled = false;
+                let chunksLoaded = 0;
+                let flushCount = 0;
+                let totalJoinPathsMs = 0;
+                let totalMapImagesMs = 0;
+                let totalFlushMs = 0;
                 setProgress({ current: 0, total: cachedData.imageCount });
                 setDirectoryProgress(directory.id, { current: 0, total: cachedData.imageCount });
 
@@ -818,6 +943,7 @@ export function useImageLoader() {
                     }
 
                     const batch = hydratedImagesBuffer.splice(0, hydratedImagesBuffer.length);
+                    const flushStart = performance.now();
 
                     if (!hasHydratedDirectory) {
                         replaceDirectoryImagesRaw(directory.id, batch);
@@ -833,6 +959,8 @@ export function useImageLoader() {
 
                     // Yield between large cache batches to keep the renderer responsive.
                     await new Promise(resolve => setTimeout(resolve, 0));
+                    flushCount += 1;
+                    totalFlushMs += performance.now() - flushStart;
                 };
 
                 await cacheManager.iterateCachedMetadata(directory.path, shouldScanSubfolders, async (metadataChunk) => {
@@ -846,7 +974,9 @@ export function useImageLoader() {
 
                     // Use batch path joining for optimal performance
                     const fileNames = metadataChunk.map(meta => meta.name);
+                    const joinStart = performance.now();
                     const batchResult = await electronAPI.joinPathsBatch({ basePath: directory.path, fileNames });
+                    totalJoinPathsMs += performance.now() - joinStart;
 
                     let filePaths: string[];
                     if (batchResult.success && batchResult.paths) {
@@ -857,6 +987,7 @@ export function useImageLoader() {
                         filePaths = fileNames.map(name => `${directory.path}/${name}`);
                     }
 
+                    const mapStart = performance.now();
                     const chunkImages: IndexedImage[] = metadataChunk.map((meta, i) => {
                         const filePath = filePaths[i];
 
@@ -871,6 +1002,8 @@ export function useImageLoader() {
                             thumbnailError: null,
                         };
                     });
+                    totalMapImagesMs += performance.now() - mapStart;
+                    chunksLoaded += 1;
 
                     const validImages = chunkImages.filter(image => {
                         const fileHandle = image.thumbnailHandle || image.handle;
@@ -900,9 +1033,26 @@ export function useImageLoader() {
                     log(`Loaded ${totalLoaded} images from cache for ${directory.name}`);
                 }
                 setDirectoryProgress(directory.id, null);
+                logIndexingPerf('cache-hydrate:complete', {
+                    directoryId: directory.id,
+                    directoryName: directory.name,
+                    totalLoaded,
+                    totalFilteredOut,
+                    chunksLoaded,
+                    flushCount,
+                    joinPathsMs: toFixedMs(totalJoinPathsMs),
+                    mapImagesMs: toFixedMs(totalMapImagesMs),
+                    storeFlushMs: toFixedMs(totalFlushMs),
+                    durationMs: toFixedMs(performance.now() - loadStart),
+                });
             } else {
                 setLineageDirectorySignature(directory.id, null);
                 setDirectoryProgress(directory.id, null);
+                logIndexingPerf('cache-hydrate:miss', {
+                    directoryId: directory.id,
+                    directoryName: directory.name,
+                    durationMs: toFixedMs(performance.now() - loadStart),
+                });
             }
         } catch (err) {
             error(`Failed to load directory from cache ${directory.name}:`, err);
@@ -921,6 +1071,7 @@ export function useImageLoader() {
             suppressErrorMessage?: boolean;
         } = {}
     ) => {
+        const loadStart = performance.now();
         const suppressIndexingState = isUpdate;
         const suppressSuccessMessage = options.suppressSuccessMessage ?? false;
         const suppressErrorMessage = options.suppressErrorMessage ?? false;
@@ -958,7 +1109,13 @@ export function useImageLoader() {
             if (getIsElectron()) {
                 const electronAPI = window.electronAPI;
                 const allPaths = useImageStore.getState().directories.map(d => d.path);
+                const allowedPathsStart = performance.now();
                 await electronAPI?.updateAllowedPaths(allPaths);
+                logIndexingPerf('load-directory:update-allowed-paths', {
+                    directoryId: directory.id,
+                    pathCount: allPaths.length,
+                    durationMs: toFixedMs(performance.now() - allowedPathsStart),
+                });
             }
 
             await cacheManager.init();
@@ -968,7 +1125,16 @@ export function useImageLoader() {
             const scanPath = refreshPath || directory.path;
             
             // Get files from disk (either full directory or specific subfolder)
+            const listStart = performance.now();
             let allCurrentFiles = await getDirectoryFiles(directory.handle, scanPath, shouldScanSubfolders);
+            logIndexingPerf('load-directory:list-files', {
+                directoryId: directory.id,
+                directoryName: directory.name,
+                scanPath,
+                scanSubfolders: shouldScanSubfolders,
+                files: allCurrentFiles.length,
+                durationMs: toFixedMs(performance.now() - listStart),
+            });
 
             // If we scanned a subfolder, we need to adjust the file paths to be relative to the ROOT directory
             // because the cache expects paths relative to directory.path, not scanPath
@@ -994,6 +1160,7 @@ export function useImageLoader() {
 
             // Pass the relative prefix as the scopePath to validateCacheAndGetDiff
             // This ensures we only delete files within that scope
+            const diffStart = performance.now();
             const diff = await cacheManager.validateCacheAndGetDiff(
                 directory.path, 
                 directory.name, 
@@ -1001,6 +1168,15 @@ export function useImageLoader() {
                 shouldScanSubfolders,
                 refreshPath ? relativePrefix : undefined
             );
+            logIndexingPerf('load-directory:cache-diff', {
+                directoryId: directory.id,
+                currentFiles: allCurrentFiles.length,
+                cachedImages: diff.cachedImages.length,
+                newAndModifiedFiles: diff.newAndModifiedFiles.length,
+                deletedFileIds: diff.deletedFileIds.length,
+                needsFullRefresh: diff.needsFullRefresh,
+                durationMs: toFixedMs(performance.now() - diffStart),
+            });
 
             const isScopedRefresh = Boolean(refreshPath);
             const changedIds = Array.from(new Set(
@@ -1012,7 +1188,12 @@ export function useImageLoader() {
 
             if (shouldUseWriter) {
                 try {
+                    const writerStart = performance.now();
                     cacheWriter = await cacheManager.createIncrementalWriter(directory.path, directory.name, shouldScanSubfolders);
+                    logIndexingPerf('load-directory:init-cache-writer', {
+                        directoryId: directory.id,
+                        durationMs: toFixedMs(performance.now() - writerStart),
+                    });
                 } catch (err) {
                     console.error('Failed to initialize incremental cache writer:', err);
                 }
@@ -1022,20 +1203,35 @@ export function useImageLoader() {
             const shouldHydratePreloadedImages = !isUpdate || diff.needsFullRefresh;
             const regeneratedCachedImages =
                 shouldHydratePreloadedImages && diff.cachedImages.length > 0
-                    ? await getFileHandles(
-                        directory.handle,
-                        directory.path,
-                        diff.cachedImages.map(img => ({
-                            name: img.name,
-                            lastModified: img.lastModified,
-                            size: fileStatsMap.get(img.name)?.size,
-                            type: fileStatsMap.get(img.name)?.type,
-                            contentModifiedMs: fileStatsMap.get(img.name)?.contentModifiedMs,
-                        }))
-                    )
+                    ? await (() => {
+                        const handlesStart = performance.now();
+                        return getFileHandles(
+                            directory.handle,
+                            directory.path,
+                            diff.cachedImages.map(img => ({
+                                name: img.name,
+                                lastModified: img.lastModified,
+                                size: fileStatsMap.get(img.name)?.size,
+                                type: fileStatsMap.get(img.name)?.type,
+                                contentModifiedMs: fileStatsMap.get(img.name)?.contentModifiedMs,
+                            }))
+                        ).then((handles) => {
+                            logIndexingPerf('load-directory:create-preloaded-handles', {
+                                directoryId: directory.id,
+                                cachedImages: diff.cachedImages.length,
+                                handles: handles.length,
+                                durationMs: toFixedMs(performance.now() - handlesStart),
+                            });
+                            return handles;
+                        });
+                    })()
                     : [];
 
-            const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
+            // Optimization: Replaced new Map(arr.map()) with a for loop to avoid O(N) allocation overhead
+            const handleMap = new Map();
+            for (const h of regeneratedCachedImages) {
+                handleMap.set(h.path, h.handle);
+            }
 
             if (shouldHydratePreloadedImages) {
                 clearImages(directory.id);
@@ -1083,7 +1279,19 @@ export function useImageLoader() {
             }));
 
             const fileHandles = sortedFilesWithStats.length > 0
-                ? await getFileHandles(directory.handle, directory.path, sortedFilesWithStats)
+                ? await (() => {
+                    const handlesStart = performance.now();
+                    return getFileHandles(directory.handle, directory.path, sortedFilesWithStats)
+                        .then((handles) => {
+                            logIndexingPerf('load-directory:create-new-handles', {
+                                directoryId: directory.id,
+                                files: sortedFilesWithStats.length,
+                                handles: handles.length,
+                                durationMs: toFixedMs(performance.now() - handlesStart),
+                            });
+                            return handles;
+                        });
+                })()
                 : [];
 
             const totalCatalogItems = preloadedImages.length + totalNewFiles;
@@ -1093,6 +1301,7 @@ export function useImageLoader() {
             }
 
             const handleBatchProcessed = (batch: IndexedImage[]) => {
+                const batchStart = performance.now();
                 if (isScopedRefresh) {
                     for (const image of batch) {
                         scopedCacheUpsertsById.set(image.id, image);
@@ -1104,6 +1313,16 @@ export function useImageLoader() {
                     setDirectoryProgress(directory.id, {
                         current: Math.min(loadedCatalogItems, totalCatalogItems),
                         total: totalCatalogItems,
+                    });
+                }
+                const durationMs = performance.now() - batchStart;
+                if (isSlowRendererOp(durationMs)) {
+                    logIndexingPerf('load-directory:store-catalog-batch:slow', {
+                        directoryId: directory.id,
+                        batchCount: batch.length,
+                        loadedCatalogItems,
+                        totalCatalogItems,
+                        durationMs: toFixedMs(durationMs),
                     });
                 }
             };
@@ -1156,11 +1375,22 @@ export function useImageLoader() {
                 }
 
                 const indexingConcurrency = useSettingsStore.getState().indexingConcurrency ?? 4;
+                logIndexingPerf('load-directory:pipeline-start', {
+                    directoryId: directory.id,
+                    totalCatalogItems,
+                    totalNewFiles,
+                    preloadedImages: preloadedImages.length,
+                    deletedFileIds: diff.deletedFileIds.length,
+                    cacheWriter: Boolean(cacheWriter),
+                    scopedRefresh: isScopedRefresh,
+                    concurrency: indexingConcurrency,
+                });
 
                 setEnrichmentProgress(null);
                 thumbnailManager.cancelQueuedJobs({ queue: 'low' });
                 releaseBackgroundThumbnailPause = thumbnailManager.pauseBackgroundWork();
 
+                const phaseAStart = performance.now();
                 const { phaseB } = await processFiles(
                     fileHandles,
                     throttledSetProgress,
@@ -1181,6 +1411,12 @@ export function useImageLoader() {
                         hydratePreloadedImages: shouldHydratePreloadedImages,
                     }
                 );
+                logIndexingPerf('load-directory:phase-a-returned', {
+                    directoryId: directory.id,
+                    totalCatalogItems,
+                    totalNewFiles,
+                    durationMs: toFixedMs(performance.now() - phaseAStart),
+                });
 
                 const handlePhaseBComplete = () => {
                     releaseThumbnailPause();
@@ -1188,12 +1424,24 @@ export function useImageLoader() {
                     scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:indexed`, indexedImages);
                     // Keep the progress bar visible for 2 seconds after completion
                     setTimeout(() => setEnrichmentProgress(null), 2000);
+                    logIndexingPerf('load-directory:phase-b-followup', {
+                        directoryId: directory.id,
+                        indexedImages: indexedImages.length,
+                        totalElapsedMs: toFixedMs(performance.now() - loadStart),
+                    });
                 };
 
                 if (isScopedRefresh) {
                     try {
+                        const phaseBStart = performance.now();
                         await phaseB;
+                        logIndexingPerf('load-directory:phase-b-complete', {
+                            directoryId: directory.id,
+                            scopedRefresh: true,
+                            durationMs: toFixedMs(performance.now() - phaseBStart),
+                        });
                         if (shouldApplyScopedCacheDelta && getIsElectron()) {
+                            const deltaStart = performance.now();
                             await cacheManager.applyChunkedCacheDelta(
                                 directory.path,
                                 directory.name,
@@ -1202,6 +1450,12 @@ export function useImageLoader() {
                                 [],
                                 shouldScanSubfolders
                             );
+                            logIndexingPerf('load-directory:scoped-cache-delta', {
+                                directoryId: directory.id,
+                                upserts: scopedCacheUpsertsById.size,
+                                removed: diff.deletedFileIds.length + changedIds.length,
+                                durationMs: toFixedMs(performance.now() - deltaStart),
+                            });
                         }
                         handlePhaseBComplete();
                     } catch (err) {
@@ -1215,8 +1469,16 @@ export function useImageLoader() {
                         finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
                     }
                 } else {
+                    const phaseBStart = performance.now();
                     phaseB
-                        .then(handlePhaseBComplete)
+                        .then(() => {
+                            logIndexingPerf('load-directory:phase-b-complete', {
+                                directoryId: directory.id,
+                                scopedRefresh: false,
+                                durationMs: toFixedMs(performance.now() - phaseBStart),
+                            });
+                            handlePhaseBComplete();
+                        })
                         .catch(err => {
                             releaseThumbnailPause();
                             console.error('Phase B enrichment failed', err);
@@ -1231,11 +1493,17 @@ export function useImageLoader() {
             } else {
                 releaseThumbnailPause();
                 if (shouldHydratePreloadedImages && preloadedImages.length > 0) {
+                    const preloadStart = performance.now();
                     addImages(preloadedImages);
                     scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:preloaded`, preloadedImages);
                     setDirectoryProgress(directory.id, {
                         current: preloadedImages.length,
                         total: preloadedImages.length,
+                    });
+                    logIndexingPerf('load-directory:add-preloaded-only', {
+                        directoryId: directory.id,
+                        images: preloadedImages.length,
+                        durationMs: toFixedMs(performance.now() - preloadStart),
                     });
                 }
                 finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });

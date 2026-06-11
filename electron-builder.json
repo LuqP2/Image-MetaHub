@@ -4,9 +4,16 @@
   "directories": {
     "output": "dist-electron"
   },
+  "protocols": [
+    {
+      "name": "Image MetaHub Protocol",
+      "schemes": ["imagemetahub"]
+    }
+  ],
   "files": [
     "dist/**/*",
     "electron.mjs",
+    "electron-deeplink.mjs",
     "preload.js",
     "services/**/*",
     "utils/**/*.js",

@@ -29,6 +29,7 @@ const Header: React.FC<HeaderProps> = ({
   const {
     canUseAnalytics,
     canUseComfyUI,
+    canUseImageEditor,
     showProModal,
     isTrialActive,
     trialDaysRemaining,
@@ -338,9 +339,13 @@ const Header: React.FC<HeaderProps> = ({
       showProModal('comfyui');
       return;
     }
+    if (view === 'editor' && !canUseImageEditor) {
+      showProModal('image_editor');
+      return;
+    }
 
     onLibraryViewChange?.(view);
-  }, [canUseComfyUI, onLibraryViewChange, showProModal]);
+  }, [canUseComfyUI, canUseImageEditor, onLibraryViewChange, showProModal]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-4 py-2.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">

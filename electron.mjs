@@ -73,6 +73,13 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 // This ensures cache is invalidated when parsing rules change
 const PARSER_VERSION = 7; // v7: Add audio media indexing and metadata
 
+const logMainPerf = (event, details = {}) => {
+  console.log('[main:perf]', { event, ...details });
+};
+
+const elapsedMs = (start) => Number((Date.now() - start).toFixed(2));
+const isSlowMainOp = (start, thresholdMs = 500) => Date.now() - start >= thresholdMs;
+
 // Get platform-specific icon
 function getIconPath() {
   if (process.platform === 'win32') {
@@ -368,6 +375,26 @@ let comfyUIViewState = {
 let skippedVersions = new Set();
 let isManualUpdateCheck = false;
 
+function buildUpdateNotificationPayload(info = {}) {
+  const version = info.version || app.getVersion();
+  const releaseNotes = Array.isArray(info.releaseNotes)
+    ? info.releaseNotes.map((note) => ({
+        version: note.version,
+        note: String(note.note || '').trim(),
+      })).filter((note) => note.note)
+    : typeof info.releaseNotes === 'string'
+      ? info.releaseNotes
+      : undefined;
+
+  return {
+    version,
+    releaseName: info.releaseName,
+    releaseNotes,
+    releaseDate: info.releaseDate,
+    changelogUrl: `https://github.com/LuqP2/Image-MetaHub/releases/tag/v${version}`,
+  };
+}
+
 
 // --- Zoom Management ---
 const ZOOM_STEP = 0.1;
@@ -637,6 +664,23 @@ function queueSettingsUpdate(updater) {
   );
 
   return queuedUpdate;
+}
+
+function mergeSettingsUpdate(currentSettings, newSettings) {
+  const currentAppVersion = app.getVersion();
+  const nextSettings = {
+    ...currentSettings,
+    ...newSettings,
+  };
+
+  if (
+    currentSettings?.lastViewedVersion === currentAppVersion &&
+    newSettings?.lastViewedVersion !== currentAppVersion
+  ) {
+    nextSettings.lastViewedVersion = currentAppVersion;
+  }
+
+  return nextSettings;
 }
 
 
@@ -1961,70 +2005,7 @@ if (autoUpdater) {
     }
 
     if (mainWindow) {
-      // Extract and format changelog from release notes
-      let changelogText = 'No release notes available.';
-      
-      if (info.releaseNotes) {
-        if (typeof info.releaseNotes === 'string') {
-          // Clean up markdown formatting for dialog display
-          changelogText = info.releaseNotes
-            .replace(/#{1,6}\s/g, '') // Remove markdown headers
-            .replace(/\*\*/g, '') // Remove bold markers
-            .replace(/\*/g, '•') // Convert asterisks to bullets
-            .replace(/<[^>]*>/g, '') // Remove HTML tags
-            .trim();
-        } else if (Array.isArray(info.releaseNotes)) {
-          changelogText = info.releaseNotes
-            .map(note => note.note || '')
-            .join('\n')
-            .trim();
-        }
-      }
-
-      // Limit changelog length for dialog (show main highlights only)
-      if (changelogText.length > 400) {
-        changelogText = changelogText.substring(0, 397) + '...';
-      }
-
-      // If still "No release notes available", try to extract from other fields
-      if (changelogText === 'No release notes available.' && info.releaseName) {
-        changelogText = `Release: ${info.releaseName}`;
-      }
-
-      // Add link to full changelog
-      const changelogUrl = `https://github.com/LuqP2/image-metahub/releases/tag/v${info.version}`;
-      const fullMessage = `What's new:\n\n${changelogText}\n\nView full changelog: ${changelogUrl}\n\nWould you like to download this update now?`;
-
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: '🎉 Update Available',
-        message: `Version ${info.version} is ready to download!`,
-        detail: fullMessage,
-        buttons: ['Download Now', 'Download Later', 'Skip this version'],
-        defaultId: 0,
-        cancelId: 2,
-        noLink: true
-      }).then((result) => {
-        if (result.response === 0) {
-          // User chose to download - START DOWNLOAD NOW
-          console.log('User accepted update download - starting download...');
-          isManualUpdateCheck = true;
-          autoUpdater.downloadUpdate();
-        } else if (result.response === 1) {
-          // User chose "Download Later"
-          console.log('User postponed download - will ask again later');
-          // Ensure no download starts automatically
-        } else {
-          // User chose "Skip this version"
-          console.log('User skipped version', info.version);
-          skippedVersions.add(info.version);
-          // Ensure no download starts automatically
-        }
-      }).catch((error) => {
-        console.error('Error showing update dialog:', error);
-        // If dialog fails, don't download automatically - respect user choice
-        console.log('Dialog failed - not downloading update');
-      });
+      mainWindow.webContents.send('update-available-notification', buildUpdateNotificationPayload(info));
     } else {
       console.log('Main window not available - not downloading update');
       // Don't download if we can't ask for permission
@@ -2044,16 +2025,13 @@ if (autoUpdater) {
       console.log('macOS auto-updater error - this may be due to code signing requirements');
     }
     
-    if (isManualUpdateCheck && mainWindow) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'error',
-        title: 'Update Error',
-        message: 'Failed to check for updates.',
-        detail: err.message || 'Please try again later.',
-        buttons: ['OK']
+    if (mainWindow) {
+      mainWindow.webContents.send('update-error-notification', {
+        message: err.message || 'Failed to check for updates. Please try again later.',
       });
-      isManualUpdateCheck = false;
     }
+
+    isManualUpdateCheck = false;
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
@@ -2082,35 +2060,8 @@ if (autoUpdater) {
     }
 
     if (mainWindow) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'question',
-        title: 'Update Downloaded',
-        message: `Update ${info.version} downloaded successfully!`,
-        detail: 'The update is ready to install. When would you like to apply it?',
-        buttons: ['Install Now', 'Install on Next Start', 'Cancel'],
-        defaultId: 0,
-        cancelId: 2
-      }).then((result) => {
-        if (result.response === 0) {
-          // Install now
-          console.log('User chose to install update now');
-          autoUpdater.quitAndInstall();
-        } else if (result.response === 1) {
-          // Install on next start - don't restart now
-          console.log('User chose to install update on next start');
-          // The update will be installed automatically on next app launch
-          // No need to call quitAndInstall() here
-        } else {
-          // Cancel - user changed their mind
-          console.log('User cancelled update installation');
-          // Update remains downloaded but not installed
-          // User can still install it later if they change their mind
-        }
-      }).catch((error) => {
-        console.error('Error showing installation dialog:', error);
-        // If dialog fails, don't force install - respect user choice
-        console.log('Installation dialog failed - update will install on next start');
-      });
+      mainWindow.webContents.send('update-downloaded-notification', buildUpdateNotificationPayload(info));
+      isManualUpdateCheck = false;
     } else {
       console.log('Main window not available - update will install on next start');
       // Don't force restart if window is not available
@@ -2220,7 +2171,7 @@ async function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.17.0-rc');
+    mainWindow.setTitle('Image MetaHub v0.17.1');
   }
 
   // Load the app
@@ -2519,6 +2470,9 @@ function shouldIgnoreScanDirectory(fullPath, baseDirectory) {
 async function getFilesRecursively(directory, baseDirectory) {
   const files = [];
   const directoriesToVisit = [directory];
+  const start = Date.now();
+  let directoriesVisited = 0;
+  let directoriesSkipped = 0;
 
   while (directoriesToVisit.length > 0) {
     const currentDirectory = directoriesToVisit.pop();
@@ -2527,8 +2481,10 @@ async function getFilesRecursively(directory, baseDirectory) {
     }
 
     if (shouldIgnoreScanDirectory(currentDirectory, baseDirectory)) {
+      directoriesSkipped += 1;
       continue;
     }
+    directoriesVisited += 1;
 
     try {
       const entries = await fs.readdir(currentDirectory, { withFileTypes: true });
@@ -2549,6 +2505,13 @@ async function getFilesRecursively(directory, baseDirectory) {
     }
   }
 
+  logMainPerf('list-directory-files:recursive-walk', {
+    baseDirectory,
+    directoriesVisited,
+    directoriesSkipped,
+    files: files.length,
+    durationMs: elapsedMs(start),
+  });
   return files;
 }
 
@@ -3092,13 +3055,27 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('save-settings', async (event, newSettings) => {
     try {
-      await queueSettingsUpdate((currentSettings) => ({
-        ...currentSettings,
-        ...newSettings,
-      }));
+      await queueSettingsUpdate((currentSettings) => mergeSettingsUpdate(currentSettings, newSettings));
       return { success: true };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to save settings.' };
+    }
+  });
+
+  ipcMain.handle('mark-changelog-viewed', async (event, version) => {
+    try {
+      const versionToPersist = typeof version === 'string' && version.trim().length > 0
+        ? version.trim()
+        : app.getVersion();
+
+      await queueSettingsUpdate((currentSettings) => ({
+        ...currentSettings,
+        lastViewedVersion: versionToPersist,
+      }));
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to mark changelog as viewed.' };
     }
   });
 
@@ -3231,13 +3208,28 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('comfy-view-reload', async () => {
+  ipcMain.handle('comfy-view-reload', async (event, payload = {}) => {
     try {
-      if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+      const targetUrl = payload?.url || comfyUIViewState.url || comfyUIViewConfiguredUrl;
+      const openResult = await openComfyUIView({ url: targetUrl, bounds: payload?.bounds });
+      if (!openResult.success) {
+        return openResult;
+      }
+
+      const contents = comfyUIView?.webContents;
+      if (!contents || contents.isDestroyed()) {
         return { success: false, error: 'ComfyUI view is not open.' };
       }
-      comfyUIView.webContents.reload();
-      return { success: true, state: updateComfyUIViewState() };
+
+      const parsed = normalizeComfyUIViewUrl(targetUrl);
+      const currentUrl = contents.getURL();
+      if (parsed && (!currentUrl || !isComfyNavigationAllowed(currentUrl))) {
+        await contents.loadURL(parsed.toString());
+      } else {
+        contents.reload();
+      }
+
+      return { success: true, state: updateComfyUIViewState({ visible: true, lastLoadFailed: false }) };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to reload embedded ComfyUI.' };
     }
@@ -3341,6 +3333,7 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('get-cache-summary', async (event, cacheId) => {
+    const start = Date.now();
     const filePath = await getCacheFilePath(cacheId);
     try {
       const data = await fs.readFile(filePath, 'utf-8');
@@ -3361,15 +3354,37 @@ function setupFileOperationHandlers() {
 
           if (stats && stats.size > maxChunkBytes) {
             console.warn(`⚠️ Cache chunk too large for ${cacheId}: chunk=${i}, bytes=${stats.size}. Invalidating cache to avoid renderer freeze.`);
+            logMainPerf('get-cache-summary:oversized-chunk', {
+              cacheId,
+              chunkIndex: i,
+              bytes: stats.size,
+              durationMs: elapsedMs(start),
+            });
             return { success: true, data: null };
           }
         }
       }
+      logMainPerf('get-cache-summary:hit', {
+        cacheId,
+        imageCount: parsed?.imageCount ?? 0,
+        chunkCount,
+        mainRecordBytes: data.length,
+        durationMs: elapsedMs(start),
+      });
       return { success: true, data: parsed };
     } catch (error) {
       if (error.code === 'ENOENT') {
+        logMainPerf('get-cache-summary:miss', {
+          cacheId,
+          durationMs: elapsedMs(start),
+        });
         return { success: true, data: null };
       }
+      logMainPerf('get-cache-summary:error', {
+        cacheId,
+        errorCode: error.code,
+        durationMs: elapsedMs(start),
+      });
       return { success: false, error: error.message };
     }
   });
@@ -3401,6 +3416,7 @@ function setupFileOperationHandlers() {
   const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   ipcMain.handle('cache-data', async (event, { cacheId, data }) => {
+    const start = Date.now();
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
     const { metadata, ...cacheRecord } = data;
     const rootPath = await getCacheRootPath();
@@ -3421,10 +3437,17 @@ function setupFileOperationHandlers() {
     cacheRecord.parserVersion = PARSER_VERSION; // Add parser version
     await fs.writeFile(mainCachePath, JSON.stringify(cacheRecord, null, 2));
 
+    logMainPerf('cache-data:complete', {
+      cacheId,
+      records: metadata.length,
+      chunkCount,
+      durationMs: elapsedMs(start),
+    });
     return { success: true };
   });
 
   ipcMain.handle('prepare-cache-write', async (event, { cacheId }) => {
+    const start = Date.now();
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
       const rootPath = await getCacheRootPath();
@@ -3434,40 +3457,72 @@ function setupFileOperationHandlers() {
       try {
         const files = await fs.readdir(cacheDir);
         const chunkPattern = new RegExp(`^${escapeRegExp(safeCacheId)}_(\\d+)\\.json$`);
+        const matchingFiles = files.filter(file => chunkPattern.test(file));
         await Promise.all(
-          files
-            .filter(file => chunkPattern.test(file))
+          matchingFiles
             .map(file => fs.unlink(path.join(cacheDir, file)).catch(err => {
               if (err.code !== 'ENOENT') throw err;
             }))
         );
+        logMainPerf('prepare-cache-write:cleanup', {
+          cacheId,
+          removedChunks: matchingFiles.length,
+          durationMs: elapsedMs(start),
+        });
       } catch (error) {
         if (error.code !== 'ENOENT') {
           throw error;
         }
       }
 
+      logMainPerf('prepare-cache-write:complete', {
+        cacheId,
+        durationMs: elapsedMs(start),
+      });
       return { success: true };
     } catch (error) {
+      logMainPerf('prepare-cache-write:error', {
+        cacheId,
+        errorCode: error.code,
+        durationMs: elapsedMs(start),
+      });
       return { success: false, error: error.message };
     }
   });
 
   ipcMain.handle('write-cache-chunk', async (event, { cacheId, chunkIndex, data }) => {
+    const start = Date.now();
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
       const rootPath = await getCacheRootPath();
       const cacheDir = path.join(rootPath, 'json_cache');
       await fs.mkdir(cacheDir, { recursive: true });
       const chunkPath = path.join(cacheDir, `${safeCacheId}_${chunkIndex}.json`);
-      await fs.writeFile(chunkPath, JSON.stringify(data));
+      const json = JSON.stringify(data);
+      await fs.writeFile(chunkPath, json);
+      if (isSlowMainOp(start) || json.length > 8_000_000) {
+        logMainPerf('write-cache-chunk:slow', {
+          cacheId,
+          chunkIndex,
+          records: Array.isArray(data) ? data.length : null,
+          bytes: json.length,
+          durationMs: elapsedMs(start),
+        });
+      }
       return { success: true };
     } catch (error) {
+      logMainPerf('write-cache-chunk:error', {
+        cacheId,
+        chunkIndex,
+        errorCode: error.code,
+        durationMs: elapsedMs(start),
+      });
       return { success: false, error: error.message };
     }
   });
 
   ipcMain.handle('finalize-cache-write', async (event, { cacheId, sourceCacheId, record }) => {
+    const start = Date.now();
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
       const safeSourceCacheId = sourceCacheId?.replace(/[^a-zA-Z0-9-_]/g, '_');
@@ -3489,6 +3544,7 @@ function setupFileOperationHandlers() {
           }
         }
 
+        let renamedChunks = 0;
         for (const file of files) {
           const match = file.match(sourceChunkPattern);
           if (!match) {
@@ -3498,28 +3554,66 @@ function setupFileOperationHandlers() {
             path.join(cacheDir, file),
             path.join(cacheDir, `${safeCacheId}_${match[1]}.json`)
           );
+          renamedChunks += 1;
         }
+        logMainPerf('finalize-cache-write:swap-chunks', {
+          cacheId,
+          sourceCacheId,
+          removedTargetChunks: targetFiles.length,
+          renamedChunks,
+          durationMs: elapsedMs(start),
+        });
       }
 
       const mainCachePath = await getCacheFilePath(cacheId);
       // Add parser version to cache record
       const recordWithVersion = { ...record, parserVersion: PARSER_VERSION };
       await fs.writeFile(mainCachePath, JSON.stringify(recordWithVersion, null, 2));
+      logMainPerf('finalize-cache-write:complete', {
+        cacheId,
+        sourceCacheId: sourceCacheId ?? null,
+        imageCount: recordWithVersion.imageCount,
+        chunkCount: recordWithVersion.chunkCount,
+        durationMs: elapsedMs(start),
+      });
       return { success: true };
     } catch (error) {
+      logMainPerf('finalize-cache-write:error', {
+        cacheId,
+        sourceCacheId: sourceCacheId ?? null,
+        errorCode: error.code,
+        durationMs: elapsedMs(start),
+      });
       return { success: false, error: error.message };
     }
   });
 
   ipcMain.handle('get-cache-chunk', async (event, { cacheId, chunkIndex }) => {
+    const start = Date.now();
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
     const rootPath = await getCacheRootPath();
     const cacheDir = path.join(rootPath, 'json_cache');
     const chunkPath = path.join(cacheDir, `${safeCacheId}_${chunkIndex}.json`);
     try {
       const data = await fs.readFile(chunkPath, 'utf-8');
-      return { success: true, data: JSON.parse(data) };
+      const parsed = JSON.parse(data);
+      if (isSlowMainOp(start) || data.length > 8_000_000) {
+        logMainPerf('get-cache-chunk:slow', {
+          cacheId,
+          chunkIndex,
+          bytes: data.length,
+          records: Array.isArray(parsed) ? parsed.length : null,
+          durationMs: elapsedMs(start),
+        });
+      }
+      return { success: true, data: parsed };
     } catch (error) {
+      logMainPerf('get-cache-chunk:error', {
+        cacheId,
+        chunkIndex,
+        errorCode: error.code,
+        durationMs: elapsedMs(start),
+      });
       return { success: false, error: error.message };
     }
   });
@@ -4262,9 +4356,41 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('download-update', async () => {
+    if (!autoUpdater) {
+      return { success: false, error: 'Auto-updater not available' };
+    }
+
+    try {
+      console.log('User accepted update download - starting download...');
+      isManualUpdateCheck = true;
+      await autoUpdater.downloadUpdate();
+      return { success: true };
+    } catch (error) {
+      console.error('Error downloading update:', error);
+      isManualUpdateCheck = false;
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('install-update', async () => {
+    if (!autoUpdater) {
+      return { success: false, error: 'Auto-updater not available' };
+    }
+
+    try {
+      console.log('User chose to restart and install update');
+      autoUpdater.quitAndInstall();
+      return { success: true };
+    } catch (error) {
+      console.error('Error installing update:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // TEST ONLY: Simulate update available dialog
   ipcMain.handle('test-update-dialog', async () => {
-    if (process.env.NODE_ENV !== 'development') {
+    if (!isDev) {
       return { success: false, error: 'test-update-dialog is only available in development.' };
     }
 
@@ -4289,45 +4415,18 @@ function setupFileOperationHandlers() {
 - **Optimized Rendering**: Improved grid and table view performance for large datasets`
     };
 
-    // Extract and format changelog
-    let changelogText = 'No release notes available.';
-    
-    if (mockUpdateInfo.releaseNotes) {
-      changelogText = mockUpdateInfo.releaseNotes
-        .replace(/#{1,6}\s/g, '') // Remove markdown headers
-        .replace(/\*\*/g, '') // Remove bold markers
-        .replace(/\*/g, '•') // Convert asterisks to bullets
-        .replace(/<[^>]*>/g, '') // Remove HTML tags
-        .trim();
-    }
+    mainWindow.webContents.send('update-available-notification', buildUpdateNotificationPayload(mockUpdateInfo));
 
-    // Limit changelog length
-    if (changelogText.length > 500) {
-      changelogText = changelogText.substring(0, 497) + '...';
-    }
-
-    const result = await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: '🎉 Update Available (TEST)',
-      message: `Version ${mockUpdateInfo.version} is ready to download!`,
-      detail: `What's new:\n\n${changelogText}\n\nWould you like to download this update now?`,
-      buttons: ['Download Now', 'Download Later', 'Skip this version'],
-      defaultId: 0,
-      cancelId: 2,
-      noLink: true
-    });
-
-    return { success: true, response: result.response };
+    return { success: true };
   });
 
   // Handle listing directory files
   ipcMain.handle('list-directory-files', async (event, { dirPath, recursive = false }) => {
+    const scanStart = Date.now();
     try {
       if (!dirPath) {
         return { success: false, error: 'No directory path provided' };
       }
-
-      const scanStart = Date.now();
 
       let imageFiles = [];
 
@@ -4339,10 +4438,22 @@ function setupFileOperationHandlers() {
       }
 
       console.log(`[list-directory-files] ${dirPath} (${recursive ? 'recursive' : 'flat'}) -> ${imageFiles.length} files in ${((Date.now() - scanStart) / 1000).toFixed(2)}s`);
+      logMainPerf('list-directory-files:complete', {
+        dirPath,
+        recursive,
+        files: imageFiles.length,
+        durationMs: elapsedMs(scanStart),
+      });
 
       return { success: true, files: imageFiles };
     } catch (error) {
       console.error('Error listing directory files:', error);
+      logMainPerf('list-directory-files:error', {
+        dirPath,
+        recursive,
+        errorCode: error.code,
+        durationMs: elapsedMs(scanStart ?? Date.now()),
+      });
       return { success: false, error: error.message };
     }
   });

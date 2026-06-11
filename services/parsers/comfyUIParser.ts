@@ -309,6 +309,48 @@ function extractAdvancedModifiers(graph: Graph): {
   const controlnets: any[] = [];
   const loras: any[] = [];
   const vaes: any[] = [];
+  const loraKeys = new Set<string>();
+
+  const addLora = (name: unknown, weight?: unknown) => {
+    if (typeof name !== 'string' || !name.trim() || name === 'None' || name === 'unknown') {
+      return;
+    }
+
+    const numericWeight = typeof weight === 'number' ? weight : undefined;
+    const resolvedWeight = numericWeight ?? 1.0;
+    const key = `${name}::${resolvedWeight}`;
+    if (loraKeys.has(key)) {
+      return;
+    }
+
+    loraKeys.add(key);
+    loras.push({ name, weight: resolvedWeight });
+  };
+
+  const addRgthreePowerLoras = (node: ParserNode) => {
+    const addEntry = (value: unknown) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return;
+      }
+
+      const entry = value as Record<string, unknown>;
+      if (entry.on === false) {
+        return;
+      }
+
+      addLora(entry.lora || entry.lora_name || entry.name, entry.strength || entry.strength_model || entry.weight);
+    };
+
+    for (const [key, value] of Object.entries(node.inputs || {})) {
+      if (/^lora_\d+$/i.test(key)) {
+        addEntry(value);
+      }
+    }
+
+    for (const value of node.widgets_values || []) {
+      addEntry(value);
+    }
+  };
   
   for (const nodeId in graph) {
     const node = graph[nodeId];
@@ -346,10 +388,13 @@ function extractAdvancedModifiers(graph: Graph): {
     
     // LoRA detection
     if (classType.includes('lora')) {
-      const name = node.inputs?.lora_name || node.widgets_values?.[0] || 'unknown';
-      const weight = node.inputs?.strength_model || node.inputs?.weight || node.widgets_values?.[1] || 1.0;
-      
-      loras.push({ name, weight });
+      if (node.class_type === 'Power Lora Loader (rgthree)') {
+        addRgthreePowerLoras(node);
+      } else {
+        const name = node.inputs?.lora_name || node.widgets_values?.[0] || 'unknown';
+        const weight = node.inputs?.strength_model || node.inputs?.weight || node.widgets_values?.[1] || 1.0;
+        addLora(name, weight);
+      }
     }
     
     // VAE detection
@@ -590,6 +635,54 @@ function createNodeMap(workflow: any, prompt: any): Graph {
         }
     }
 
+    // Overlay UI metadata from ComfyUI subgraph definitions onto prompt nodes.
+    // Prompt APIs can reference internal subgraph nodes with ids like "98:17";
+    // those nodes often carry execution inputs while the widget values only exist
+    // in workflow.definitions.subgraphs.
+    const subgraphs = workflow?.definitions?.subgraphs;
+    if (subgraphs && workflow?.nodes) {
+        const subgraphEntries: Array<[string, any]> = Array.isArray(subgraphs)
+            ? subgraphs.map((subgraph: any) => [String(subgraph?.id ?? subgraph?.name ?? subgraph?.type ?? ''), subgraph])
+            : Object.entries(subgraphs).map(([id, subgraph]) => [String(id), subgraph]);
+
+        const subgraphsById = new Map(
+            subgraphEntries.filter(([id, subgraph]) => id && subgraph)
+        );
+
+        for (const parentNode of workflow.nodes) {
+            const parentId = parentNode.id?.toString();
+            const parentType = String(parentNode.type ?? '');
+            const parentMode = parentNode.mode ?? 0;
+            const parentIsMuted = parentMode === 2 || parentMode === 4;
+            const subgraph = subgraphsById.get(parentType);
+            const childNodes = subgraph?.nodes;
+
+            if (!parentId || !Array.isArray(childNodes)) {
+                continue;
+            }
+
+            for (const childNode of childNodes) {
+                if (childNode?.id === undefined || childNode?.id === null) {
+                    continue;
+                }
+
+                const id = `${parentId}:${childNode.id}`;
+                const existingNode = graph[id];
+                if (!existingNode) {
+                    continue;
+                }
+
+                graph[id] = {
+                    id,
+                    class_type: existingNode?.class_type || childNode.type,
+                    inputs: existingNode?.inputs || {},
+                    widgets_values: childNode.widgets_values || existingNode?.widgets_values || [],
+                    mode: parentIsMuted ? parentMode : childNode.mode ?? existingNode?.mode ?? 0,
+                };
+            }
+        }
+    }
+
     // If workflow has links, populate inputs for nodes without them (fallback for incomplete prompts)
     if (workflow?.links) {
         for (const link of workflow.links) {
@@ -663,6 +756,7 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   // Check if terminal node was found
   if (!terminalNode) {
     telemetry.warnings.push('No terminal node found');
+    return { _telemetry: telemetry };
   }
 
   // Note: width/height are NOT extracted from workflow, they're read from actual image dimensions
@@ -871,15 +965,18 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
                 : undefined,
             }
           : undefined;
+        const seedSource = metahubData.metadata_sources?.seed;
+        const seedIsExplicit = seedSource === 'detected' || seedSource === 'manual_override' || metahubData.metadata_status === 'complete';
+        const seed = firstNonNullish(
+          metahubData.seed === 0 && !seedIsExplicit && graphMetadata.seed !== undefined ? graphMetadata.seed : metahubData.seed,
+          graphMetadata.seed
+        );
 
         // Map MetaHub chunk fields to expected format
         return {
           prompt: firstNonBlankString(metahubData.prompt, graphMetadata.prompt) || '',
           negativePrompt: firstNonBlankString(metahubData.negativePrompt, graphMetadata.negativePrompt) || '',
-          seed: firstNonNullish(
-            metahubData.seed === 0 && graphMetadata.seed !== undefined ? graphMetadata.seed : metahubData.seed,
-            graphMetadata.seed
-          ),
+          seed,
           steps: firstNonNullish(metahubData.steps, graphMetadata.steps),
           cfg: firstNonNullish(metahubData.cfg, graphMetadata.cfg),
           sampler_name: firstNonBlankString(metahubData.sampler_name, graphMetadata.sampler_name) || '',

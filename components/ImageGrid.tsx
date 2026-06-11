@@ -41,7 +41,7 @@ import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
-import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import { groupImages, type ImageGroup, type ImageGroupByMode, type ImageGroupingSortOrder } from '../utils/imageGrouping';
 import {
   beginPerformanceFlow,
@@ -1043,6 +1043,9 @@ interface ImageGridProps {
   groupBy?: ImageGroupByMode;
   groupSortOrder?: ImageGroupingSortOrder;
   jumpToGroupRequest?: { groupId: string; requestId: number } | null;
+  initialScrollTop?: number;
+  onScrollPositionChange?: (scrollTop: number) => void;
+  scrollResetKey?: string;
 }
 
 const InnerGridElement = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
@@ -1068,6 +1071,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   groupBy = 'none',
   groupSortOrder = 'date-desc',
   jumpToGroupRequest = null,
+  initialScrollTop = 0,
+  onScrollPositionChange,
+  scrollResetKey,
 }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
@@ -1103,6 +1109,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const cardRefCallbacksRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
   const columnCountRef = useRef<number>(1);
   const lastWarmupWindowRef = useRef<string>('');
+  const lastScrollResetKeyRef = useRef<string | undefined>(scrollResetKey);
+  const lastRestoredScrollKeyRef = useRef<string>('');
   const releasePaginatedBackgroundPauseRef = useRef<(() => void) | null>(null);
   const lastScrollSampleRef = useRef<{ top: number; at: number }>({ top: 0, at: 0 });
   const focusedImageIndexRef = useRef<number | null>(null);
@@ -1146,7 +1154,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
   const removeImagesFromCollection = useImageStore((state) => state.removeImagesFromCollection);
   const updateCollection = useImageStore((state) => state.updateCollection);
-  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, canUseFileManagement, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, canUseFileManagement, canUseImageEditor, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const selectedCount = selectedImages.size;
   const sensitiveTagSet = useMemo(() => {
     return new Set(
@@ -1189,6 +1197,62 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const submenuHorizontalClass = contextMenu.horizontalDirection === 'left' ? 'right-full' : 'left-full';
 
   const getGridScrollElement = useCallback(() => gridScrollRef.current ?? gridScopeRef.current, []);
+
+  const restoreGridScrollPosition = useCallback((scrollTop: number) => {
+    const nextScrollTop = Math.max(0, scrollTop);
+
+    virtualGridRef.current?.scrollTo({ scrollTop: nextScrollTop, scrollLeft: 0 });
+
+    const scrollElement = getGridScrollElement();
+    if (scrollElement) {
+      scrollElement.scrollTop = nextScrollTop;
+      scrollElement.scrollLeft = 0;
+    }
+  }, [getGridScrollElement]);
+
+  const getScrollRestoreKey = useCallback((scrollTop: number) => (
+    `${scrollResetKey ?? 'grid'}:${isInfinite ? 'virtual' : 'static'}:${Math.round(Math.max(0, scrollTop))}`
+  ), [isInfinite, scrollResetKey]);
+
+  useEffect(() => {
+    if (lastScrollResetKeyRef.current === scrollResetKey) {
+      return;
+    }
+
+    lastScrollResetKeyRef.current = scrollResetKey;
+    if (!scrollResetKey) {
+      return;
+    }
+
+    lastRestoredScrollKeyRef.current = getScrollRestoreKey(initialScrollTop);
+    restoreGridScrollPosition(0);
+    onScrollPositionChange?.(0);
+  }, [getScrollRestoreKey, initialScrollTop, onScrollPositionChange, restoreGridScrollPosition, scrollResetKey]);
+
+  useEffect(() => {
+    const restoreKey = getScrollRestoreKey(initialScrollTop);
+    if (lastRestoredScrollKeyRef.current === restoreKey) {
+      return;
+    }
+
+    lastRestoredScrollKeyRef.current = restoreKey;
+    if (initialScrollTop <= 0) {
+      return;
+    }
+
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        restoreGridScrollPosition(initialScrollTop);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [getScrollRestoreKey, initialScrollTop, restoreGridScrollPosition]);
 
   const getActiveColumnCount = useCallback(() => {
     if (isInfinite) {
@@ -1345,9 +1409,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   const openImageEditor = useCallback(() => {
     if (!contextMenu.image || !onOpenImageEditor) return;
+    if (
+      isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) ||
+      isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) ||
+      getFileExtension(contextMenu.image.name) === '.gif'
+    ) {
+      return;
+    }
+    if (!canUseImageEditor) {
+      showProModal('image_editor');
+      hideContextMenu();
+      return;
+    }
     onOpenImageEditor(contextMenu.image);
     hideContextMenu();
-  }, [contextMenu.image, hideContextMenu, onOpenImageEditor]);
+  }, [canUseImageEditor, contextMenu.image, hideContextMenu, onOpenImageEditor, showProModal]);
 
   const selectForComparison = useCallback(() => {
     if (!contextMenu.image) return;
@@ -1389,6 +1465,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   const contextImagePrompt = contextMenu.image?.prompt || contextMenu.image?.metadata?.normalizedMetadata?.prompt;
   const canFindSimilar = Boolean(contextImagePrompt) && Boolean(onFindSimilar);
+  const canOpenContextImageEditor = Boolean(
+    onOpenImageEditor &&
+    contextMenu.image &&
+    !isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) &&
+    !isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) &&
+    getFileExtension(contextMenu.image.name) !== '.gif',
+  );
 
   const getContextTargetImages = useCallback(() => {
     if (!contextMenu.image) {
@@ -2266,14 +2349,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <span className="flex-1">Find similar...</span>
           </button>
 
-          {onOpenImageEditor && (
+          {canOpenContextImageEditor && (
             <button
               onClick={openImageEditor}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title="Open this image in the editor workspace"
+              title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature) - start trial' : 'Open this image in the editor workspace'}
             >
               <ImageIcon className="w-4 h-4" />
               <span className="flex-1">Open in Editor</span>
+              {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
             </button>
           )}
 
@@ -2668,6 +2752,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     width={width}
                     outerRef={gridScrollRef}
                     className="no-scrollbar-if-needed"
+                    initialScrollTop={Math.max(0, initialScrollTop)}
                     itemData={cellData}
                     itemKey={({ columnIndex, rowIndex, data }) => {
                       const itemIndex = rowIndex * safeColumnCount + columnIndex;
@@ -2686,6 +2771,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     style={{ overflowX: 'hidden' }}
                     innerElementType={InnerGridElement}
                     onScroll={({ scrollTop, scrollUpdateWasRequested }) => {
+                      onScrollPositionChange?.(scrollTop);
                       const currentAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
                       const previousSample = lastScrollSampleRef.current;
                       const deltaMs = Math.max(1, currentAt - previousSample.at);
@@ -2830,6 +2916,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onScroll={(event) => {
+          onScrollPositionChange?.(event.currentTarget.scrollTop);
+        }}
       >
         <div
           className="flex flex-wrap gap-4"

@@ -26,20 +26,47 @@ const isRecord = (value: unknown): value is UnknownRecord =>
 
 // Case-insensitive metadata key lookup (PNG/iTXt tags sometimes come capitalized)
 function getCaseInsensitive<T = unknown>(obj: UnknownRecord, key: string): T | undefined {
-    const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
-    return foundKey ? (obj[foundKey] as T) : undefined;
+    // Optimization: Avoids Object.keys() and .find() array allocations
+    // Impact: Reduces garbage collection pressure in metadata parsing hot paths
+    const lowerKey = key.toLowerCase();
+    for (const k in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, k)) {
+            if (k.toLowerCase() === lowerKey) {
+                return obj[k] as T;
+            }
+        }
+    }
+    return undefined;
 }
 
 function isComfyPromptOnlyGraph(metadata: UnknownRecord): boolean {
-    return Object.entries(metadata).some(([key, value]) => {
-        if (key === 'extra' || key === 'extraMetadata') {
-            return false;
-        }
+    // Optimization: Avoids Object.entries() and .some() array allocations
+    // Impact: Reduces garbage collection pressure in metadata parsing hot paths
+    for (const key in metadata) {
+        if (Object.prototype.hasOwnProperty.call(metadata, key)) {
+            if (key === 'extra' || key === 'extraMetadata') {
+                continue;
+            }
 
-        return isRecord(value) &&
-            'class_type' in value &&
-            'inputs' in value;
-    });
+            const value = metadata[key];
+            if (isRecord(value) && 'class_type' in value && 'inputs' in value) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function normalizeComfyLoras(resolvedParams: Record<string, any>): BaseMetadata['loras'] {
+    if (Array.isArray(resolvedParams.loras) && resolvedParams.loras.length > 0) {
+        return resolvedParams.loras;
+    }
+
+    if (Array.isArray(resolvedParams.lora)) {
+        return resolvedParams.lora;
+    }
+
+    return resolvedParams.lora ? [resolvedParams.lora] : [];
 }
 
 interface ParserModule {
@@ -109,6 +136,7 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
                     cfg_scale: result.cfg,
                     scheduler: result.scheduler || '',
                     sampler: result.sampler_name || '',
+                    vae: result.vae || result.vaes?.[0]?.name,
                     loras: result.loras || [],
                     denoise: result.denoise,
                     generationType: result.generationType,
@@ -173,7 +201,8 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
                     cfg_scale: resolvedParams.cfg,
                     scheduler: resolvedParams.scheduler || '',
                     sampler: resolvedParams.sampler_name || '',
-                    loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
+                    vae: resolvedParams.vae || resolvedParams.vaes?.[0]?.name,
+                    loras: normalizeComfyLoras(resolvedParams),
                     denoise: resolvedParams.denoise,
                     generationType: resolvedParams.generationType,
                     lineage: resolvedParams.lineage,

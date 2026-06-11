@@ -17,6 +17,7 @@ export type ComfyUIQueuePayload = {
   provider: 'comfyui';
   customMetadata?: Partial<BaseMetadata>;
   overrides?: WorkflowOverrides;
+  directoryPath?: string;
   workflowMode?: ComfyUIWorkflowMode;
   sourceImagePolicy?: ComfyUISourceImagePolicy;
   advancedPromptJson?: string;

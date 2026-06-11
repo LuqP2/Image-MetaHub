@@ -14,6 +14,202 @@
 import * as extractors from './extractors';
 import { NodeDefinition, ParserNode, ComfyNodeDataType, ComfyTraversableParam, ParamMappingRule, InputDefinition, OutputDefinition, PassThroughRule, NodeBehavior, ConditionalRoutingRule, WorkflowFacts } from './types';
 
+function resolveFirstTextInput(
+  node: ParserNode,
+  state: any,
+  graph: any,
+  traverse: any,
+  inputNames: string[]
+): string | null {
+  for (const inputName of inputNames) {
+    const input = node.inputs?.[inputName];
+    if (Array.isArray(input)) {
+      const resolved = traverse(input, state, graph, []);
+      if (resolved !== null && resolved !== undefined && String(resolved).trim()) {
+        return String(resolved);
+      }
+    } else if (typeof input === 'string' && input.trim()) {
+      return input;
+    }
+  }
+
+  return null;
+}
+
+function extractRgthreePowerLoras(node: ParserNode): string[] {
+  const loras: string[] = [];
+  const addLora = (value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return;
+    }
+
+    const entry = value as Record<string, unknown>;
+    if (entry.on === false) {
+      return;
+    }
+
+    const name = typeof entry.lora === 'string'
+      ? entry.lora
+      : typeof entry.lora_name === 'string'
+        ? entry.lora_name
+        : typeof entry.name === 'string'
+          ? entry.name
+          : null;
+
+    if (name && name !== 'None') {
+      loras.push(name);
+    }
+  };
+
+  for (const [key, value] of Object.entries(node.inputs || {})) {
+    if (/^lora_\d+$/i.test(key)) {
+      addLora(value);
+    }
+  }
+
+  for (const value of node.widgets_values || []) {
+    addLora(value);
+  }
+
+  return loras;
+}
+
+function parseJsonSafely(value: unknown): any {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function normalizePromptPart(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized ? normalized : null;
+}
+
+function collectUsefulText(value: unknown, out: string[], preferredKeys = new Set(['desc', 'text', 'description', 'style_description', 'background', 'name'])): void {
+  if (typeof value === 'string') {
+    const parsed = parseJsonSafely(value);
+    if (parsed) {
+      collectUsefulText(parsed, out, preferredKeys);
+      return;
+    }
+
+    const normalized = normalizePromptPart(value);
+    if (normalized) {
+      out.push(normalized);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectUsefulText(item, out, preferredKeys);
+    }
+    return;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const key of preferredKeys) {
+    collectUsefulText(record[key], out, preferredKeys);
+  }
+}
+
+function getPromptBuilderValue(
+  node: ParserNode,
+  state: any,
+  graph: any,
+  traverse: any,
+  key: string
+): unknown {
+  const inputValue = node.inputs?.[key];
+  if (Array.isArray(inputValue) && inputValue.length === 2) {
+    return traverse(inputValue as any, { ...state, targetParam: 'prompt' }, graph, []);
+  }
+  if (inputValue !== undefined && inputValue !== null) {
+    return inputValue;
+  }
+
+  const nodeDef = NodeRegistry[node.class_type];
+  const widgetIndex = nodeDef?.widget_order?.indexOf(key) ?? -1;
+  if (widgetIndex !== -1) {
+    return node.widgets_values?.[widgetIndex];
+  }
+
+  return undefined;
+}
+
+function extractIdeogram4PromptBuilderKJ(
+  node: ParserNode,
+  state: any,
+  graph: any,
+  traverse: any
+): string | null {
+  const parts: string[] = [];
+  const addPart = (value: unknown) => {
+    const normalized = normalizePromptPart(value);
+    if (normalized) {
+      parts.push(normalized);
+    }
+  };
+  const addUsefulText = (value: unknown) => {
+    const usefulParts: string[] = [];
+    collectUsefulText(value, usefulParts);
+    parts.push(...usefulParts);
+  };
+
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'high_level_description'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'background'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'style'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'style.art_style'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'aesthetics'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'lighting'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'medium'));
+  addUsefulText(getPromptBuilderValue(node, state, graph, traverse, 'style_palette_data'));
+  addUsefulText(getPromptBuilderValue(node, state, graph, traverse, 'elements_data'));
+
+  const importJson = getPromptBuilderValue(node, state, graph, traverse, 'import_json');
+  const parsedImport = typeof importJson === 'string'
+    ? parseJsonSafely(importJson)
+    : importJson;
+
+  if (parsedImport && typeof parsedImport === 'object') {
+    const record = parsedImport as Record<string, any>;
+    addPart(record.high_level_description);
+    addPart(record.style_description);
+    addPart(record.compositional_deconstruction?.background);
+    if (Array.isArray(record.compositional_deconstruction?.elements)) {
+      for (const element of record.compositional_deconstruction.elements) {
+        addPart(element?.desc);
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  const uniqueParts = parts.filter((part) => {
+    const key = part.toLocaleLowerCase();
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+
+  return uniqueParts.length > 0 ? uniqueParts.join(', ') : null;
+}
+
 // =============================================================================
 // SECTION: Node Registry
 // =============================================================================
@@ -135,6 +331,37 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     },
     widget_order: ['text']
   },
+  CLIPTextEncodeSDXL: {
+    category: 'CONDITIONING',
+    roles: ['SOURCE'],
+    inputs: {
+      clip: { type: 'CLIP' },
+      text_g: { type: 'STRING' },
+      text_l: { type: 'STRING' },
+    },
+    outputs: { CONDITIONING: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          return resolveFirstTextInput(node, { ...state, targetParam: 'prompt' }, graph, traverse, ['text_g', 'text_l'])
+            || node.widgets_values?.[6]
+            || node.widgets_values?.[7]
+            || null;
+        }
+      },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          return resolveFirstTextInput(node, { ...state, targetParam: 'negativePrompt' }, graph, traverse, ['text_g', 'text_l'])
+            || node.widgets_values?.[6]
+            || node.widgets_values?.[7]
+            || null;
+        }
+      }
+    },
+    widget_order: ['width', 'height', 'crop_w', 'crop_h', 'target_width', 'target_height', 'text_g', 'text_l']
+  },
   'smZ CLIPTextEncode': {
     category: 'LOADING', roles: ['SOURCE'],
     inputs: { clip: { type: 'CLIP' }, text: { type: 'STRING' } }, outputs: { CONDITIONING: { type: 'CONDITIONING' } },
@@ -204,6 +431,25 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }],
     widget_order: ['lora_name', 'strength_model']
   },
+  'Power Lora Loader (rgthree)': {
+    category: 'LOADING',
+    roles: ['TRANSFORM'],
+    inputs: { model: { type: 'MODEL' }, clip: { type: 'CLIP' } },
+    outputs: { MODEL: { type: 'MODEL' }, CLIP: { type: 'CLIP' } },
+    param_mapping: {
+      lora: {
+        source: 'custom_extractor',
+        extractor: extractRgthreePowerLoras,
+        accumulate: true,
+      },
+      model: { source: 'trace', input: 'model' },
+    },
+    pass_through_rules: [
+      { from_input: 'model', to_output: 'MODEL' },
+      { from_input: 'clip', to_output: 'CLIP' },
+    ],
+    widget_order: ['__unknown__', 'header', 'lora_1', 'lora_2', 'add_lora']
+  },
   'Lora Loader (LoraManager)': {
     category: 'LOADING',
     roles: ['TRANSFORM'],
@@ -213,11 +459,16 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       lora: {
         source: 'custom_extractor',
         extractor: (node: ParserNode) => {
-          const rawLoras = node.inputs?.loras?.__value__;
+          const rawLoras = node.inputs?.loras?.__value__ ?? node.widgets_values?.[2];
           if (Array.isArray(rawLoras)) {
             return rawLoras
-              .filter((lora: any) => lora && lora.active !== false && (lora.name || lora.lora_name))
-              .map((lora: any) => lora.name || lora.lora_name);
+              .filter((lora: any) => {
+                if (typeof lora === 'string') {
+                  return lora.trim().length > 0;
+                }
+                return lora && lora.active !== false && (lora.name || lora.lora_name);
+              })
+              .map((lora: any) => typeof lora === 'string' ? lora : lora.name || lora.lora_name);
           }
 
           const text = typeof node.inputs?.text === 'string' ? node.inputs.text : '';
@@ -338,6 +589,45 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     },
     widget_order: ['value']
   },
+  Ideogram4PromptBuilderKJ: {
+    category: 'UTILS',
+    roles: ['SOURCE'],
+    inputs: {
+      width: { type: 'INT' },
+      height: { type: 'INT' },
+      high_level_description: { type: 'STRING' },
+      background: { type: 'STRING' },
+      style: { type: 'STRING' },
+      'style.art_style': { type: 'STRING' },
+      aesthetics: { type: 'STRING' },
+      lighting: { type: 'STRING' },
+      medium: { type: 'STRING' },
+      style_palette_data: { type: 'STRING' },
+      elements_data: { type: 'STRING' },
+      import_json: { type: 'STRING' },
+    },
+    outputs: { prompt: { type: 'STRING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: extractIdeogram4PromptBuilderKJ,
+      },
+    },
+    widget_order: [
+      'width',
+      'height',
+      'high_level_description',
+      'background',
+      'style',
+      'style.art_style',
+      'aesthetics',
+      'lighting',
+      'medium',
+      'style_palette_data',
+      'elements_data',
+      'import_json',
+    ],
+  },
   'Seed Generator': {
     category: 'UTILS', roles: ['SOURCE'],
     inputs: { seed: { type: 'INT' } }, outputs: { INT: { type: 'INT' } },
@@ -394,6 +684,17 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     outputs: { MODEL: { type: 'MODEL' } },
     param_mapping: {},
     pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+  },
+  CFGOverride: {
+    category: 'TRANSFORM',
+    roles: ['PASS_THROUGH'],
+    inputs: { model: { type: 'MODEL' } },
+    outputs: { MODEL: { type: 'MODEL' } },
+    param_mapping: {
+      model: { source: 'trace', input: 'model' },
+    },
+    pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }],
+    widget_order: ['cfg', 'start_percent', 'end_percent'],
   },
   ModelSamplingAuraFlow: {
     category: 'TRANSFORM',
@@ -647,13 +948,47 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     param_mapping: {
       prompt: {
         source: 'custom_extractor',
-        extractor: (node, state, graph, traverseFromLink) =>
-          extractors.concatTextExtractor(node, state, graph, traverseFromLink, ['string1', 'string2', 'string3', 'string4'])
+        extractor: (node, state, graph, traverseFromLink) => {
+          const delimiter = typeof node.widgets_values?.[0] === 'string'
+            ? node.widgets_values[0]
+            : (typeof node.inputs?.delimiter === 'string' ? node.inputs.delimiter : ' ');
+          return extractors.concatTextExtractor(
+            {
+              ...node,
+              inputs: {
+                ...node.inputs,
+                __joinstrings_delimiter: delimiter,
+              },
+            },
+            state,
+            graph,
+            traverseFromLink,
+            ['string1', 'string2', 'string3', 'string4'],
+            '__joinstrings_delimiter'
+          );
+        }
       },
       negativePrompt: {
         source: 'custom_extractor',
-        extractor: (node, state, graph, traverseFromLink) =>
-          extractors.concatTextExtractor(node, state, graph, traverseFromLink, ['string1', 'string2', 'string3', 'string4'])
+        extractor: (node, state, graph, traverseFromLink) => {
+          const delimiter = typeof node.widgets_values?.[0] === 'string'
+            ? node.widgets_values[0]
+            : (typeof node.inputs?.delimiter === 'string' ? node.inputs.delimiter : ' ');
+          return extractors.concatTextExtractor(
+            {
+              ...node,
+              inputs: {
+                ...node.inputs,
+                __joinstrings_delimiter: delimiter,
+              },
+            },
+            state,
+            graph,
+            traverseFromLink,
+            ['string1', 'string2', 'string3', 'string4'],
+            '__joinstrings_delimiter'
+          );
+        }
       },
     },
     widget_order: ['delimiter']
@@ -704,6 +1039,55 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       height: { source: 'input', key: 'height' }
     },
     widget_order: ['width', 'height', 'batch_size']
+  },
+
+  EmptyFlux2LatentImage: {
+    category: 'LOADING',
+    roles: ['SOURCE'],
+    inputs: {
+      width: { type: 'INT' },
+      height: { type: 'INT' },
+    },
+    outputs: { LATENT: { type: 'LATENT' } },
+    param_mapping: {
+      width: { source: 'input', key: 'width' },
+      height: { source: 'input', key: 'height' },
+    },
+    widget_order: ['width', 'height', 'batch_size'],
+  },
+
+  'SDXL Empty Latent Image (rgthree)': {
+    category: 'LOADING',
+    roles: ['SOURCE'],
+    inputs: {},
+    outputs: {
+      LATENT: { type: 'LATENT' },
+      CLIP_WIDTH: { type: 'INT' },
+      CLIP_HEIGHT: { type: 'INT' },
+    },
+    param_mapping: {
+      width: {
+        source: 'custom_extractor',
+        extractor: (node: ParserNode) => {
+          const value = typeof node.inputs?.dimensions === 'string'
+            ? node.inputs.dimensions
+            : node.widgets_values?.[0];
+          const match = typeof value === 'string' ? value.match(/(\d+)\s*x\s*(\d+)/i) : null;
+          return match ? Number(match[1]) : null;
+        }
+      },
+      height: {
+        source: 'custom_extractor',
+        extractor: (node: ParserNode) => {
+          const value = typeof node.inputs?.dimensions === 'string'
+            ? node.inputs.dimensions
+            : node.widgets_values?.[0];
+          const match = typeof value === 'string' ? value.match(/(\d+)\s*x\s*(\d+)/i) : null;
+          return match ? Number(match[2]) : null;
+        }
+      }
+    },
+    widget_order: ['dimensions', 'clip_scale', 'batch_size']
   },
 
   EmptySD3LatentImage: {
@@ -886,6 +1270,27 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     pass_through_rules: []
   },
 
+  Ideogram4Scheduler: {
+    category: 'UTILS',
+    roles: ['SOURCE'],
+    inputs: {
+      steps: { type: 'INT' },
+      width: { type: 'INT' },
+      height: { type: 'INT' },
+      mu: { type: 'FLOAT' },
+      std: { type: 'FLOAT' },
+    },
+    outputs: { SIGMAS: { type: 'SIGMAS' } },
+    param_mapping: {
+      steps: { source: 'widget', key: 'steps' },
+      scheduler: {
+        source: 'custom_extractor',
+        extractor: () => 'ideogram4',
+      },
+    },
+    widget_order: ['steps', 'width', 'height', 'mu', 'std'],
+  },
+
   SamplerCustomAdvanced: {
     category: 'SAMPLING', roles: ['SINK'],
     inputs: {
@@ -920,6 +1325,34 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       negativePrompt: { source: 'trace', input: 'conditioning' }
     },
     widget_order: []
+  },
+
+  DualModelGuider: {
+    category: 'CONDITIONING',
+    roles: ['TRANSFORM'],
+    inputs: {
+      model: { type: 'MODEL' },
+      positive: { type: 'CONDITIONING' },
+      model_negative: { type: 'MODEL' },
+      negative: { type: 'CONDITIONING' },
+    },
+    outputs: { GUIDER: { type: 'GUIDER' } },
+    param_mapping: {
+      cfg: { source: 'widget', key: 'cfg' },
+      model: { source: 'trace', input: 'model' },
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverseFromLink) => {
+          const negativeInput = node.inputs?.negative;
+          if (Array.isArray(negativeInput)) {
+            return traverseFromLink(negativeInput as any, { ...state, targetParam: 'negativePrompt' }, graph, []);
+          }
+          return typeof negativeInput === 'string' ? negativeInput : '';
+        },
+      },
+    },
+    widget_order: ['cfg'],
   },
 
   CFGGuider: {
@@ -1458,6 +1891,8 @@ PrimitiveNode: {
     '*': { type: 'ANY' }
   },
   param_mapping: {
+    prompt: { source: 'widget', key: 'value' },
+    negativePrompt: { source: 'widget', key: 'value' },
     seed: { source: 'widget', key: 'value' },
     steps: { source: 'widget', key: 'value' },
     cfg: { source: 'widget', key: 'value' },

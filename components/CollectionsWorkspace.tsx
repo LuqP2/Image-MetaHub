@@ -92,7 +92,12 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
   }, [collections, searchQuery]);
 
   const collectionPreviewImages = useMemo(() => {
-    const imageById = new Map(images.map((image) => [image.id, image]));
+    // Optimization: Avoids new Map(arr.map()) array allocation overhead
+    // Impact: Reduces garbage collection pauses by eliminating O(N) temporary tuple array allocations
+    const imageById = new Map<string, IndexedImage>();
+    for (const image of images) {
+      imageById.set(image.id, image);
+    }
 
     return new Map(
       collections.map((collection) => {

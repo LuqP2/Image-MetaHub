@@ -299,12 +299,21 @@ function buildHybridLayout(
     placedInPass = false;
 
     for (const nodeId of Array.from(unresolved)) {
-      const incoming = (incomingEdgesByNode.get(nodeId) || [])
-        .map((edge) => hybridLayout.get(edge.from))
-        .filter((entry): entry is { x: number; y: number } => Boolean(entry));
-      const outgoing = (outgoingEdgesByNode.get(nodeId) || [])
-        .map((edge) => hybridLayout.get(edge.to))
-        .filter((entry): entry is { x: number; y: number } => Boolean(entry));
+      // Optimization: Replace .map().filter() with a for loop to avoid intermediate array allocations in a hot loop
+      // Impact: Reduces garbage collection overhead by eliminating O(N) array allocation overhead per pass
+      const incoming: { x: number; y: number }[] = [];
+      const incomingEdges = incomingEdgesByNode.get(nodeId) || [];
+      for (const edge of incomingEdges) {
+        const position = hybridLayout.get(edge.from);
+        if (position) incoming.push(position);
+      }
+
+      const outgoing: { x: number; y: number }[] = [];
+      const outgoingEdges = outgoingEdgesByNode.get(nodeId) || [];
+      for (const edge of outgoingEdges) {
+        const position = hybridLayout.get(edge.to);
+        if (position) outgoing.push(position);
+      }
 
       if (incoming.length === 0 && outgoing.length === 0) {
         continue;

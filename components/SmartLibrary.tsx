@@ -95,7 +95,13 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({
   );
 
   const imageMap = useMemo(() => {
-    return new Map(safeFilteredImages.map((image) => [image.id, image]));
+    // Optimization: Avoids new Map(arr.map()) array allocation overhead
+    // Impact: Reduces garbage collection pauses by eliminating O(N) temporary tuple array allocations
+    const map = new Map<string, IndexedImage>();
+    for (const image of safeFilteredImages) {
+      map.set(image.id, image);
+    }
+    return map;
   }, [safeFilteredImages]);
 
   const clusterEntries = useMemo(() => {
