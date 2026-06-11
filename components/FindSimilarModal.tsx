@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Eye, FolderTree, GitCompare, Layers, Search, SlidersHorizontal, X } from 'lucide-react';
-import type { IndexedImage, SimilarSearchCriteria, SimilarSearchResult } from '../types';
+import { Eye, FolderTree, Layers, ListFilter, Search, SlidersHorizontal, X } from 'lucide-react';
+import type { IndexedImage, SimilarSearchCriteria } from '../types';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useThumbnail } from '../hooks/useThumbnail';
 import {
@@ -20,11 +20,11 @@ interface FindSimilarModalProps {
   initialCriteria?: Partial<SimilarSearchCriteria>;
   onClose: () => void;
   onOpenImage: (image: IndexedImage) => void;
-  onOpenCompare: (images: IndexedImage[]) => void;
+  onApplyGridFilter: (images: IndexedImage[]) => void;
 }
 
-const overlayClassName = 'fixed inset-0 z-[150] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm';
-const panelClassName = 'flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl';
+const overlayClassName = 'fixed inset-0 z-[150] flex items-start justify-center overflow-y-auto bg-black/80 px-4 py-6 backdrop-blur-sm';
+const panelClassName = 'flex h-[calc(100dvh-3rem)] max-h-[92dvh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl';
 const pillButtonClassName = 'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors';
 
 const useThumbnailUrl = (image: IndexedImage | null) => {
@@ -50,14 +50,12 @@ const formatLoraSummary = (image: IndexedImage) => {
 
 const SimilarImageCard = ({
   image,
-  selected,
   badge,
   similarityPercent,
   onClick,
   onOpenImage,
 }: {
   image: IndexedImage;
-  selected: boolean;
   badge: React.ReactNode;
   similarityPercent: string | null;
   onClick?: () => void;
@@ -67,17 +65,13 @@ const SimilarImageCard = ({
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-xl border text-left transition-colors ${
-        selected
-          ? 'border-cyan-400 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
-          : 'border-gray-700 bg-gray-950/70 hover:border-gray-500 hover:bg-gray-950'
-      }`}
+      className="group relative overflow-hidden rounded-xl border border-gray-700 bg-gray-950/70 text-left transition-colors hover:border-gray-500 hover:bg-gray-950"
     >
       <button
         type="button"
         onClick={onClick}
         className="block w-full text-left"
-        aria-label={`Select ${image.name} for compare`}
+        aria-label={`Open ${image.name} in image modal`}
       >
         <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-br from-gray-800 via-gray-900 to-gray-950">
           {thumbnailUrl ? (
@@ -88,11 +82,6 @@ const SimilarImageCard = ({
           <div className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-gray-100">
             {badge}
           </div>
-          {selected && (
-            <div className="absolute right-2 top-2 rounded-full bg-cyan-500 p-1 text-white">
-              <Check className="h-3.5 w-3.5" />
-            </div>
-          )}
         </div>
       </button>
       <div className="space-y-1 p-3">
@@ -159,10 +148,9 @@ export default function FindSimilarModal({
   initialCriteria,
   onClose,
   onOpenImage,
-  onOpenCompare,
+  onApplyGridFilter,
 }: FindSimilarModalProps) {
   const [criteria, setCriteria] = useState<SimilarSearchCriteria>(DEFAULT_SIMILAR_SEARCH_CRITERIA);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isOpen || !sourceImage) {
@@ -199,54 +187,18 @@ export default function FindSimilarModal({
     });
   }, [allImages, criteria, currentViewImages, sourceImage]);
 
-  useEffect(() => {
-    if (!execution) {
-      setSelectedIds(new Set());
-      return;
-    }
-
-    // Optimization: Replaced `.filter().map()` with a `for` loop
-    // to eliminate the O(N) allocation of intermediate arrays.
-    // Impact: Reduces garbage collection pauses during modal updates.
-    const nextSelectedIds = new Set<string>();
-    for (const result of execution.results) {
-      if (result.preselected) {
-        nextSelectedIds.add(result.image.id);
-      }
-    }
-    setSelectedIds(nextSelectedIds);
-  }, [execution]);
-
   if (!isOpen || !sourceImage || !availability || !sourceDetails || !execution || typeof document === 'undefined') {
     return null;
   }
 
-  const compareDisabled = selectedIds.size === 0 || !execution.hasActiveCriterion;
+  const filterDisabled = execution.results.length === 0 || !execution.hasActiveCriterion;
   const isResultLimited = execution.results.length >= MAX_SIMILAR_SEARCH_RESULTS;
-
-  const toggleSelection = (result: SimilarSearchResult) => {
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      if (next.has(result.image.id)) {
-        next.delete(result.image.id);
-        return next;
-      }
-
-      if (next.size >= 3) {
-        return current;
-      }
-
-      next.add(result.image.id);
-      return next;
-    });
-  };
-
-  const selectedResults = execution.results.filter((result) => selectedIds.has(result.image.id)).slice(0, 3);
+  const resultImages = execution.results.map((result) => result.image);
 
   return createPortal(
     <div className={overlayClassName} role="dialog" aria-modal="true" aria-label="Find similar images">
       <div className={panelClassName}>
-        <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-800 px-5 py-4">
           <div className="text-lg font-semibold text-gray-100">Find similar...</div>
           <button
             type="button"
@@ -259,7 +211,7 @@ export default function FindSimilarModal({
         </div>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className="border-b border-gray-800 p-5 lg:border-b-0 lg:border-r">
+          <aside className="min-h-0 overflow-y-auto border-b border-gray-800 p-5 lg:border-b-0 lg:border-r">
             <div className="mb-5 text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Source image</div>
             <div className="overflow-hidden rounded-2xl border border-gray-800 bg-gray-950/80">
               <div className="aspect-[4/5] overflow-hidden bg-gradient-to-br from-gray-800 via-gray-900 to-black">
@@ -273,10 +225,14 @@ export default function FindSimilarModal({
                 <div className="truncate text-sm font-semibold text-gray-100" title={sourceImage.name}>
                   {sourceImage.name}
                 </div>
-                <div className="rounded-lg border border-gray-800 bg-gray-900/80 p-3 text-xs text-gray-300">
-                  <div className="mb-1 font-medium text-cyan-200">{formatModelSummary(sourceImage)}</div>
+                <div className="min-w-0 overflow-hidden rounded-lg border border-gray-800 bg-gray-900/80 p-3 text-xs text-gray-300">
+                  <div className="mb-1 truncate font-medium text-cyan-200" title={formatModelSummary(sourceImage)}>
+                    {formatModelSummary(sourceImage)}
+                  </div>
                   <div className="mb-1">{sourceImage.seed != null ? `Seed ${sourceImage.seed}` : 'No seed'}</div>
-                  <div title={formatLoraSummary(sourceImage)}>{formatLoraSummary(sourceImage)}</div>
+                  <div className="line-clamp-2 break-all" title={formatLoraSummary(sourceImage)}>
+                    {formatLoraSummary(sourceImage)}
+                  </div>
                 </div>
                 <div className="max-h-24 overflow-auto rounded-lg border border-gray-800 bg-gray-900/80 p-3 text-xs leading-relaxed text-gray-300">
                   {sourceImage.prompt || ''}
@@ -405,17 +361,14 @@ export default function FindSimilarModal({
             </div>
           </aside>
 
-          <section className="flex min-h-0 flex-col">
-            <div className="border-b border-gray-800 px-5 py-4">
+          <section className="flex min-h-0 flex-col overflow-hidden">
+            <div className="flex-shrink-0 border-b border-gray-800 px-5 py-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-gray-100">
                     {isResultLimited ? `Top ${MAX_SIMILAR_SEARCH_RESULTS}` : execution.results.length} match{execution.results.length === 1 ? '' : 'es'}
                   </div>
                   <div className="text-xs text-gray-400">{execution.candidates.length} candidates</div>
-                </div>
-                <div className="text-xs text-gray-400">
-                  Selected {selectedResults.length} of 3 compare slots.
                 </div>
               </div>
             </div>
@@ -432,7 +385,6 @@ export default function FindSimilarModal({
                     <SimilarImageCard
                       key={result.image.id}
                       image={result.image}
-                      selected={selectedIds.has(result.image.id)}
                       similarityPercent={formatSimilarityPercent(result.promptSimilarity)}
                       badge={
                         <span>
@@ -440,7 +392,7 @@ export default function FindSimilarModal({
                           {result.primaryCheckpoint ? ` · ${result.primaryCheckpoint}` : ''}
                         </span>
                       }
-                      onClick={() => toggleSelection(result)}
+                      onClick={() => onOpenImage(result.image)}
                       onOpenImage={() => onOpenImage(result.image)}
                     />
                   ))}
@@ -448,7 +400,7 @@ export default function FindSimilarModal({
               )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-800 px-5 py-4">
+            <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-3 border-t border-gray-800 px-5 py-4">
               <div />
               <div className="flex items-center gap-3">
                 <button
@@ -460,12 +412,12 @@ export default function FindSimilarModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onOpenCompare([sourceImage, ...selectedResults.map((result) => result.image)].slice(0, 4))}
-                  disabled={compareDisabled}
+                  onClick={() => onApplyGridFilter(resultImages)}
+                  disabled={filterDisabled}
                   className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/60 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
                 >
-                  <GitCompare className="h-4 w-4" />
-                  Open in Compare
+                  <ListFilter className="h-4 w-4" />
+                  Apply as Grid Filter
                 </button>
               </div>
             </div>
