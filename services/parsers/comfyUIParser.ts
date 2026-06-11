@@ -668,6 +668,9 @@ function createNodeMap(workflow: any, prompt: any): Graph {
 
                 const id = `${parentId}:${childNode.id}`;
                 const existingNode = graph[id];
+                if (!existingNode) {
+                    continue;
+                }
 
                 graph[id] = {
                     id,

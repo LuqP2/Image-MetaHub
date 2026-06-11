@@ -262,6 +262,7 @@ describe('ComfyUI Parser - Prompt Sources', () => {
             nodes: [
               { id: 1, type: 'CLIPTextEncode', widgets_values: [''], mode: 0 },
               { id: 2, type: 'KSampler', widgets_values: [111, 'fixed', 20, 7, 'euler', 'normal', 1], mode: 0 },
+              { id: 3, type: 'KSampler', widgets_values: [999, 'fixed', 40, 11, 'uni_pc', 'simple', 1], mode: 0 },
             ],
           },
         },
