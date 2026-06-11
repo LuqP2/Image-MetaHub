@@ -57,6 +57,7 @@ The parser uses a **priority-based extraction system**:
 - Merges `workflow` (UI data with widgets_values) and `prompt` (execution data with inputs)
 - Handles NaN sanitization in exported JSON
 - Overlays workflow.nodes onto prompt data for complete graph representation
+- Overlays `workflow.definitions.subgraphs` UI node metadata onto prefixed prompt node ids (for example `98:17`) when a parent workflow node type matches a subgraph id
 - Populates inputs from workflow.links for incomplete prompts
 
 **3. Traversal Engine (`traversalEngine.ts`)** (Fallback)
@@ -71,6 +72,11 @@ The parser uses a **priority-based extraction system**:
   - `checkIfParamNeedsAccumulation()`: Detects params marked with `accumulate: true`
   - Replaces hardcoded LoRA collection with declarative parameter rules
   - `resolveFacts()`: Returns structured `WorkflowFacts` object with type-safe metadata
+
+**Subgraph-wrapped Ideogram v4 workflows**
+- Ideogram v4 workflows generated with KJ nodes can be wrapped in ComfyUI subgraphs. The execution `prompt` graph may reference internal nodes as prefixed ids such as `98:17`, `98:155`, or `98:23`.
+- In those exports, the prefixed prompt nodes often have the useful execution `inputs`, while `workflow.definitions.subgraphs` contains the UI node `type`, `widgets_values`, and `mode`. `createNodeMap()` overlays that subgraph UI metadata onto the exact prefixed node id and preserves prompt inputs.
+- `Ideogram4PromptBuilderKJ` is the prompt source for these workflows. Unrelated `Note` nodes are documentation only and should not be registered or used as prompt sources.
 
 **4. Node Registry (`nodeRegistry.ts`)** (Fallback)
 - Declarative node definitions with:

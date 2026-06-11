@@ -635,6 +635,49 @@ function createNodeMap(workflow: any, prompt: any): Graph {
         }
     }
 
+    // Overlay UI metadata from ComfyUI subgraph definitions onto prompt nodes.
+    // Prompt APIs can reference internal subgraph nodes with ids like "98:17";
+    // those nodes often carry execution inputs while the widget values only exist
+    // in workflow.definitions.subgraphs.
+    const subgraphs = workflow?.definitions?.subgraphs;
+    if (subgraphs && workflow?.nodes) {
+        const subgraphEntries: Array<[string, any]> = Array.isArray(subgraphs)
+            ? subgraphs.map((subgraph: any) => [String(subgraph?.id ?? subgraph?.name ?? subgraph?.type ?? ''), subgraph])
+            : Object.entries(subgraphs).map(([id, subgraph]) => [String(id), subgraph]);
+
+        const subgraphsById = new Map(
+            subgraphEntries.filter(([id, subgraph]) => id && subgraph)
+        );
+
+        for (const parentNode of workflow.nodes) {
+            const parentId = parentNode.id?.toString();
+            const parentType = String(parentNode.type ?? '');
+            const subgraph = subgraphsById.get(parentType);
+            const childNodes = subgraph?.nodes;
+
+            if (!parentId || !Array.isArray(childNodes)) {
+                continue;
+            }
+
+            for (const childNode of childNodes) {
+                if (childNode?.id === undefined || childNode?.id === null) {
+                    continue;
+                }
+
+                const id = `${parentId}:${childNode.id}`;
+                const existingNode = graph[id];
+
+                graph[id] = {
+                    id,
+                    class_type: existingNode?.class_type || childNode.type,
+                    inputs: existingNode?.inputs || {},
+                    widgets_values: childNode.widgets_values || existingNode?.widgets_values || [],
+                    mode: childNode.mode ?? existingNode?.mode ?? 0,
+                };
+            }
+        }
+    }
+
     // If workflow has links, populate inputs for nodes without them (fallback for incomplete prompts)
     if (workflow?.links) {
         for (const link of workflow.links) {

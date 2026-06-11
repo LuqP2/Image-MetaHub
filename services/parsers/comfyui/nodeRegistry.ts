@@ -74,6 +74,142 @@ function extractRgthreePowerLoras(node: ParserNode): string[] {
   return loras;
 }
 
+function parseJsonSafely(value: unknown): any {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function normalizePromptPart(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized ? normalized : null;
+}
+
+function collectUsefulText(value: unknown, out: string[], preferredKeys = new Set(['desc', 'text', 'description', 'style_description', 'background', 'name'])): void {
+  if (typeof value === 'string') {
+    const parsed = parseJsonSafely(value);
+    if (parsed) {
+      collectUsefulText(parsed, out, preferredKeys);
+      return;
+    }
+
+    const normalized = normalizePromptPart(value);
+    if (normalized) {
+      out.push(normalized);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectUsefulText(item, out, preferredKeys);
+    }
+    return;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const key of preferredKeys) {
+    collectUsefulText(record[key], out, preferredKeys);
+  }
+}
+
+function getPromptBuilderValue(
+  node: ParserNode,
+  state: any,
+  graph: any,
+  traverse: any,
+  key: string
+): unknown {
+  const inputValue = node.inputs?.[key];
+  if (Array.isArray(inputValue) && inputValue.length === 2) {
+    return traverse(inputValue as any, { ...state, targetParam: 'prompt' }, graph, []);
+  }
+  if (inputValue !== undefined && inputValue !== null) {
+    return inputValue;
+  }
+
+  const nodeDef = NodeRegistry[node.class_type];
+  const widgetIndex = nodeDef?.widget_order?.indexOf(key) ?? -1;
+  if (widgetIndex !== -1) {
+    return node.widgets_values?.[widgetIndex];
+  }
+
+  return undefined;
+}
+
+function extractIdeogram4PromptBuilderKJ(
+  node: ParserNode,
+  state: any,
+  graph: any,
+  traverse: any
+): string | null {
+  const parts: string[] = [];
+  const addPart = (value: unknown) => {
+    const normalized = normalizePromptPart(value);
+    if (normalized) {
+      parts.push(normalized);
+    }
+  };
+  const addUsefulText = (value: unknown) => {
+    const usefulParts: string[] = [];
+    collectUsefulText(value, usefulParts);
+    parts.push(...usefulParts);
+  };
+
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'high_level_description'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'background'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'style'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'style.art_style'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'aesthetics'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'lighting'));
+  addPart(getPromptBuilderValue(node, state, graph, traverse, 'medium'));
+  addUsefulText(getPromptBuilderValue(node, state, graph, traverse, 'style_palette_data'));
+  addUsefulText(getPromptBuilderValue(node, state, graph, traverse, 'elements_data'));
+
+  const importJson = getPromptBuilderValue(node, state, graph, traverse, 'import_json');
+  const parsedImport = typeof importJson === 'string'
+    ? parseJsonSafely(importJson)
+    : importJson;
+
+  if (parsedImport && typeof parsedImport === 'object') {
+    const record = parsedImport as Record<string, any>;
+    addPart(record.high_level_description);
+    addPart(record.style_description);
+    addPart(record.compositional_deconstruction?.background);
+    if (Array.isArray(record.compositional_deconstruction?.elements)) {
+      for (const element of record.compositional_deconstruction.elements) {
+        addPart(element?.desc);
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  const uniqueParts = parts.filter((part) => {
+    const key = part.toLocaleLowerCase();
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+
+  return uniqueParts.length > 0 ? uniqueParts.join(', ') : null;
+}
+
 // =============================================================================
 // SECTION: Node Registry
 // =============================================================================
@@ -453,6 +589,45 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     },
     widget_order: ['value']
   },
+  Ideogram4PromptBuilderKJ: {
+    category: 'UTILS',
+    roles: ['SOURCE'],
+    inputs: {
+      width: { type: 'INT' },
+      height: { type: 'INT' },
+      high_level_description: { type: 'STRING' },
+      background: { type: 'STRING' },
+      style: { type: 'STRING' },
+      'style.art_style': { type: 'STRING' },
+      aesthetics: { type: 'STRING' },
+      lighting: { type: 'STRING' },
+      medium: { type: 'STRING' },
+      style_palette_data: { type: 'STRING' },
+      elements_data: { type: 'STRING' },
+      import_json: { type: 'STRING' },
+    },
+    outputs: { prompt: { type: 'STRING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: extractIdeogram4PromptBuilderKJ,
+      },
+    },
+    widget_order: [
+      'width',
+      'height',
+      'high_level_description',
+      'background',
+      'style',
+      'style.art_style',
+      'aesthetics',
+      'lighting',
+      'medium',
+      'style_palette_data',
+      'elements_data',
+      'import_json',
+    ],
+  },
   'Seed Generator': {
     category: 'UTILS', roles: ['SOURCE'],
     inputs: { seed: { type: 'INT' } }, outputs: { INT: { type: 'INT' } },
@@ -509,6 +684,17 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     outputs: { MODEL: { type: 'MODEL' } },
     param_mapping: {},
     pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+  },
+  CFGOverride: {
+    category: 'TRANSFORM',
+    roles: ['PASS_THROUGH'],
+    inputs: { model: { type: 'MODEL' } },
+    outputs: { MODEL: { type: 'MODEL' } },
+    param_mapping: {
+      model: { source: 'trace', input: 'model' },
+    },
+    pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }],
+    widget_order: ['cfg', 'start_percent', 'end_percent'],
   },
   ModelSamplingAuraFlow: {
     category: 'TRANSFORM',
@@ -855,6 +1041,21 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     widget_order: ['width', 'height', 'batch_size']
   },
 
+  EmptyFlux2LatentImage: {
+    category: 'LOADING',
+    roles: ['SOURCE'],
+    inputs: {
+      width: { type: 'INT' },
+      height: { type: 'INT' },
+    },
+    outputs: { LATENT: { type: 'LATENT' } },
+    param_mapping: {
+      width: { source: 'input', key: 'width' },
+      height: { source: 'input', key: 'height' },
+    },
+    widget_order: ['width', 'height', 'batch_size'],
+  },
+
   'SDXL Empty Latent Image (rgthree)': {
     category: 'LOADING',
     roles: ['SOURCE'],
@@ -1069,6 +1270,27 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     pass_through_rules: []
   },
 
+  Ideogram4Scheduler: {
+    category: 'UTILS',
+    roles: ['SOURCE'],
+    inputs: {
+      steps: { type: 'INT' },
+      width: { type: 'INT' },
+      height: { type: 'INT' },
+      mu: { type: 'FLOAT' },
+      std: { type: 'FLOAT' },
+    },
+    outputs: { SIGMAS: { type: 'SIGMAS' } },
+    param_mapping: {
+      steps: { source: 'widget', key: 'steps' },
+      scheduler: {
+        source: 'custom_extractor',
+        extractor: () => 'ideogram4',
+      },
+    },
+    widget_order: ['steps', 'width', 'height', 'mu', 'std'],
+  },
+
   SamplerCustomAdvanced: {
     category: 'SAMPLING', roles: ['SINK'],
     inputs: {
@@ -1103,6 +1325,34 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       negativePrompt: { source: 'trace', input: 'conditioning' }
     },
     widget_order: []
+  },
+
+  DualModelGuider: {
+    category: 'CONDITIONING',
+    roles: ['TRANSFORM'],
+    inputs: {
+      model: { type: 'MODEL' },
+      positive: { type: 'CONDITIONING' },
+      model_negative: { type: 'MODEL' },
+      negative: { type: 'CONDITIONING' },
+    },
+    outputs: { GUIDER: { type: 'GUIDER' } },
+    param_mapping: {
+      cfg: { source: 'widget', key: 'cfg' },
+      model: { source: 'trace', input: 'model' },
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverseFromLink) => {
+          const negativeInput = node.inputs?.negative;
+          if (Array.isArray(negativeInput)) {
+            return traverseFromLink(negativeInput as any, { ...state, targetParam: 'negativePrompt' }, graph, []);
+          }
+          return typeof negativeInput === 'string' ? negativeInput : '';
+        },
+      },
+    },
+    widget_order: ['cfg'],
   },
 
   CFGGuider: {

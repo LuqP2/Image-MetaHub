@@ -95,6 +95,159 @@ describe('ComfyUI Parser - Prompt Sources', () => {
     const facts = resolveWorkflowFactsFromGraph(undefined, prompt);
     expect(facts?.prompts.positive).toBe('upstream populated prompt');
   });
+
+  it('should parse Ideogram v4 KJ prompt-builder workflows wrapped in ComfyUI subgraphs', async () => {
+    const subgraphType = '5b810a92-4e47-4e55-9059-ideogram-v4-subgraph';
+    const noteText = 'UNRELATED NOTE NODE: do not use this as a prompt';
+    const importJson = {
+      high_level_description: 'a luminous explorer inspecting a floating archive',
+      style_description: 'editorial sci-fi realism with crisp graphic composition',
+      compositional_deconstruction: {
+        background: 'a dark observatory wall filled with brass star charts',
+        elements: [
+          { desc: 'transparent holographic index cards orbiting the subject' },
+          { desc: 'a small glowing navigation compass in the foreground' },
+        ],
+      },
+    };
+
+    const workflow = {
+      nodes: [
+        { id: 98, type: subgraphType, widgets_values: [], mode: 0 },
+        { id: 200, type: 'SaveImage', widgets_values: ['Ideogram'], mode: 0 },
+      ],
+      definitions: {
+        subgraphs: {
+          [subgraphType]: {
+            nodes: [
+              { id: 11, type: 'UNETLoader', widgets_values: ['Ideogram\\ideogram4_fp8_scaled.safetensors', 'fp8_e4m3fn'], mode: 0 },
+              { id: 12, type: 'VAELoader', widgets_values: ['flux2-vae.safetensors'], mode: 0 },
+              { id: 17, type: 'Ideogram4PromptBuilderKJ', widgets_values: [
+                1024,
+                1024,
+                'a luminous explorer inspecting a floating archive',
+                'a dark observatory wall filled with brass star charts',
+                'editorial sci-fi realism',
+                'crisp graphic composition',
+                'polished, detailed, cinematic',
+                'soft rim light and cool key light',
+                'digital painting',
+                JSON.stringify([{ text: 'deep indigo and burnished gold palette' }]),
+                JSON.stringify([
+                  { desc: 'transparent holographic index cards orbiting the subject' },
+                  { text: 'a small glowing navigation compass in the foreground' },
+                ]),
+                JSON.stringify(importJson),
+              ], mode: 0 },
+              { id: 19, type: 'Note', widgets_values: [noteText], mode: 0 },
+              { id: 23, type: 'Ideogram4Scheduler', widgets_values: [12, 1024, 1024, 1, 1], mode: 0 },
+              { id: 44, type: 'KSamplerSelect', widgets_values: ['euler'], mode: 0 },
+              { id: 45, type: 'RandomNoise', widgets_values: [22958748446911, 'fixed'], mode: 0 },
+              { id: 80, type: 'EmptyFlux2LatentImage', widgets_values: [1024, 1024, 1], mode: 0 },
+              { id: 155, type: 'DualModelGuider', widgets_values: [7], mode: 0 },
+              { id: 160, type: 'CFGOverride', widgets_values: [1.5, 0, 1], mode: 0 },
+              { id: 170, type: 'SamplerCustomAdvanced', widgets_values: [], mode: 0 },
+              { id: 180, type: 'VAEDecode', widgets_values: [], mode: 0 },
+            ],
+          },
+        },
+      },
+    };
+
+    const prompt = {
+      '98:11': {
+        inputs: {
+          unet_name: 'Ideogram\\ideogram4_fp8_scaled.safetensors',
+          weight_dtype: 'fp8_e4m3fn',
+        },
+      },
+      '98:12': {
+        inputs: {
+          vae_name: 'flux2-vae.safetensors',
+        },
+      },
+      '98:17': {
+        inputs: {},
+      },
+      '98:19': {
+        class_type: 'Note',
+        inputs: {
+          text: noteText,
+        },
+      },
+      '98:23': {
+        inputs: {},
+      },
+      '98:44': {
+        inputs: {},
+      },
+      '98:45': {
+        inputs: {},
+      },
+      '98:80': {
+        inputs: {
+          width: 1024,
+          height: 1024,
+          batch_size: 1,
+        },
+      },
+      '98:155': {
+        inputs: {
+          model: ['98:160', 0],
+          positive: ['98:17', 0],
+          model_negative: ['98:160', 0],
+          negative: '',
+        },
+      },
+      '98:160': {
+        inputs: {
+          model: ['98:11', 0],
+        },
+      },
+      '98:170': {
+        inputs: {
+          noise: ['98:45', 0],
+          guider: ['98:155', 0],
+          sampler: ['98:44', 0],
+          sigmas: ['98:23', 0],
+          latent_image: ['98:80', 0],
+        },
+      },
+      '98:180': {
+        inputs: {
+          samples: ['98:170', 0],
+          vae: ['98:12', 0],
+        },
+      },
+      '200': {
+        class_type: 'SaveImage',
+        inputs: {
+          images: ['98:180', 0],
+        },
+      },
+    };
+
+    const parsed = await parseImageMetadata({
+      Prompt: JSON.stringify(prompt),
+      Workflow: JSON.stringify(workflow),
+    } as any);
+
+    expect(parsed?.generator).toBe('ComfyUI');
+    expect(parsed?.prompt).toContain('a luminous explorer inspecting a floating archive');
+    expect(parsed?.prompt).toContain('a dark observatory wall filled with brass star charts');
+    expect(parsed?.prompt).toContain('editorial sci-fi realism');
+    expect(parsed?.prompt).toContain('transparent holographic index cards orbiting the subject');
+    expect(parsed?.prompt).toContain('a small glowing navigation compass in the foreground');
+    expect(parsed?.prompt).not.toContain(noteText);
+    expect(parsed?.model).toBe('Ideogram\\ideogram4_fp8_scaled.safetensors');
+    expect(parsed?.vae).toBe('flux2-vae.safetensors');
+    expect(parsed?.seed).toBe(22958748446911);
+    expect(parsed?.steps).toBe(12);
+    expect(parsed?.cfg_scale).toBe(7);
+    expect(parsed?.sampler).toBe('euler');
+    expect(parsed?.scheduler).toBe('ideogram4');
+    expect(parsed?.negativePrompt).toBe('');
+  });
 });
 
 describe('ComfyUI Parser - Detection from capitalized string keys', () => {
