@@ -19,7 +19,7 @@ interface FindSimilarModalProps {
   currentViewImages?: IndexedImage[];
   initialCriteria?: Partial<SimilarSearchCriteria>;
   onClose: () => void;
-  onOpenImage: (image: IndexedImage) => void;
+  onOpenImage: (image: IndexedImage, navigationImages: IndexedImage[]) => void;
   onApplyGridFilter: (images: IndexedImage[]) => void;
 }
 
@@ -37,6 +37,8 @@ const formatModelSummary = (image: IndexedImage) => image.models[0] || 'Unknown 
 
 const formatSimilarityPercent = (similarity: number | null) =>
   similarity == null ? null : `${Math.round(similarity * 100)}%`;
+
+const formatThresholdPercent = (threshold: number) => `${Math.round(threshold * 100)}%`;
 
 const formatLoraSummary = (image: IndexedImage) => {
   if (!image.loras || image.loras.length === 0) {
@@ -157,9 +159,14 @@ export default function FindSimilarModal({
       return;
     }
 
-    setCriteria({
+    const nextCriteria = {
       ...DEFAULT_SIMILAR_SEARCH_CRITERIA,
       ...initialCriteria,
+    };
+
+    setCriteria({
+      ...nextCriteria,
+      promptThreshold: nextCriteria.promptThreshold ?? DEFAULT_SIMILAR_SEARCH_CRITERIA.promptThreshold,
     });
   }, [initialCriteria, isOpen, sourceImage]);
 
@@ -256,6 +263,37 @@ export default function FindSimilarModal({
                     />
                     <span className="block font-medium">Prompt</span>
                   </label>
+
+                  <div className="ml-6 rounded-lg border border-gray-800 bg-gray-900/70 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                      <span className={criteria.prompt && availability.prompt ? 'font-medium text-gray-200' : 'font-medium text-gray-500'}>
+                        Minimum prompt similarity
+                      </span>
+                      <span className={criteria.prompt && availability.prompt ? 'font-semibold text-emerald-300' : 'font-semibold text-gray-500'}>
+                        {formatThresholdPercent(criteria.promptThreshold)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={50}
+                      max={100}
+                      step={1}
+                      value={Math.round(criteria.promptThreshold * 100)}
+                      disabled={!criteria.prompt || !availability.prompt}
+                      onChange={(event) =>
+                        setCriteria((current) => ({
+                          ...current,
+                          promptThreshold: Number(event.target.value) / 100,
+                        }))
+                      }
+                      className="w-full accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Minimum prompt similarity"
+                    />
+                    <div className="mt-1 flex justify-between text-[10px] text-gray-500">
+                      <span>50%</span>
+                      <span>100%</span>
+                    </div>
+                  </div>
 
                   <label className="flex items-start gap-3 text-sm text-gray-200">
                     <input
@@ -392,8 +430,8 @@ export default function FindSimilarModal({
                           {result.primaryCheckpoint ? ` · ${result.primaryCheckpoint}` : ''}
                         </span>
                       }
-                      onClick={() => onOpenImage(result.image)}
-                      onOpenImage={() => onOpenImage(result.image)}
+                      onClick={() => onOpenImage(result.image, resultImages)}
+                      onOpenImage={() => onOpenImage(result.image, resultImages)}
                     />
                   ))}
                 </div>

@@ -69,7 +69,7 @@ interface OpenImageModalState {
   modalId: string;
   imageId: string;
   navigationImageIds: string[];
-  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow' | 'comfyui';
+  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow' | 'comfyui' | 'find-similar';
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
@@ -115,6 +115,7 @@ const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
 const RIGHT_SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-right-sidebar-width';
 const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
 const COMFYUI_WORKSPACE_APPLY_FILTERS_STORAGE_KEY = 'image-metahub-comfyui-workspace-apply-library-filters';
+const FIND_SIMILAR_IMAGE_MODAL_MIN_Z_INDEX = 151;
 const SIDEBAR_DEFAULT_WIDTH = 320;
 const SIDEBAR_MIN_WIDTH = 280;
 const SIDEBAR_MAX_WIDTH = 640;
@@ -1464,6 +1465,10 @@ export default function App() {
       return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
     }
 
+    if (modal.navigationSource === 'find-similar') {
+      return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
+    }
+
     return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
   }, [activeScopeNavigationImageIds, filteredNavigationImageIds, getImageByIdFromStore, imageLookup]);
 
@@ -2311,10 +2316,51 @@ export default function App() {
     setFindSimilarState(null);
   }, [openComparisonModal, setComparisonImages]);
 
-  const handleOpenFindSimilarImage = useCallback((image: IndexedImage) => {
-    setFindSimilarState(null);
+  const handleOpenFindSimilarImage = useCallback((image: IndexedImage, navigationImages: IndexedImage[]) => {
+    const navigationImageIds = navigationImages.length > 0
+      ? navigationImages.map((entry) => entry.id)
+      : [image.id];
+    const existingModalForImage = openImageModals.find((modal) => modal.imageId === image.id);
+    const modalId = existingModalForImage?.modalId ?? `image-modal-${Date.now()}-${image.id}`;
+
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const nextZIndex = Math.max(highestZIndex + 1, FIND_SIMILAR_IMAGE_MODAL_MIN_Z_INDEX);
+      const existingModal = current.find((modal) => modal.imageId === image.id);
+
+      if (existingModal) {
+        return current.map((modal) =>
+          modal.modalId === existingModal.modalId
+            ? {
+                ...modal,
+                navigationImageIds,
+                navigationSource: 'find-similar',
+                zIndex: nextZIndex,
+                isMinimized: false,
+              }
+            : modal
+        );
+      }
+
+      return [
+        ...current,
+        {
+          modalId,
+          imageId: image.id,
+          navigationImageIds,
+          navigationSource: 'find-similar',
+          zIndex: nextZIndex,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(image.id, 'find-similar'),
+        },
+      ];
+    });
+
+    setActiveImageModalId(modalId);
+    suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
-  }, [setSelectedImage]);
+  }, [beginModalOpenFlow, openImageModals, setSelectedImage]);
 
   const openModelPromptPicker = useCallback((modelName: string) => {
     setModelPromptPickerState({

@@ -767,6 +767,7 @@ export type CheckpointMatchMode = 'ignore' | 'same' | 'different';
 
 export interface SimilarSearchCriteria {
   prompt: boolean;
+  promptThreshold: number;
   lora: boolean;
   matchLoraWeight: boolean;
   seed: boolean;

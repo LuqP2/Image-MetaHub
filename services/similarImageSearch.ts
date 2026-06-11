@@ -55,6 +55,7 @@ const LO_RA_WEIGHT_EPSILON = 1e-9;
 
 export const DEFAULT_SIMILAR_SEARCH_CRITERIA: SimilarSearchCriteria = {
   prompt: true,
+  promptThreshold: DEFAULT_SIMILAR_PROMPT_THRESHOLD,
   lora: false,
   matchLoraWeight: false,
   seed: false,
@@ -424,7 +425,7 @@ export const findSimilarImages = ({
           sourcePrompt: sourceSimilarityPrompt,
           sourceTokens: sourceSimilarityTokens,
           candidatePrompt: candidateSource.normalizedSimilarityPrompt,
-          threshold: DEFAULT_SIMILAR_PROMPT_THRESHOLD,
+          threshold: effectiveCriteria.promptThreshold,
         });
         if (promptSimilarity == null) {
           return null;
