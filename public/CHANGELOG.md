@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.2] - 2026-06-11
+
+### Fixed
+
+- **ComfyUI Workspace Reloads**: Fixed embedded ComfyUI reload behavior so failed or hidden views can reopen the configured ComfyUI URL correctly.
+- **ComfyUI Workflow Loading**: Fixed stale workflow load requests that could be reused after already being handled.
+- **Watched Folder Deletions**: Improved deletion handling for auto-watched folders so removed files are reconciled through the watcher instead of being removed twice.
+- **Cache Delta Updates**: Improved cache delta writes after watched file removals and added safer retry handling when replacing cache chunks.
+
 ## [0.17.1] - 2026-06-11
 
 ### Added
