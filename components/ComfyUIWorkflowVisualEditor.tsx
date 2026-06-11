@@ -148,16 +148,38 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
       return null;
     }
 
-    const minX = Math.min(...graph.nodes.map((node) => node.x));
-    const minY = Math.min(...graph.nodes.map((node) => node.y));
-    const normalizedNodes = graph.nodes.map((node) => ({
-      ...node,
-      x: node.x - minX + 80,
-      y: node.y - minY + 60,
-    }));
-    const width = Math.max(...normalizedNodes.map((node) => node.x + node.width)) + 120;
-    const height = Math.max(...normalizedNodes.map((node) => node.y + node.height)) + 120;
-    const nodeMap = new Map(normalizedNodes.map((node) => [node.id, node]));
+    let minX = Infinity;
+    let minY = Infinity;
+    for (const node of graph.nodes) {
+      if (node.x < minX) minX = node.x;
+      if (node.y < minY) minY = node.y;
+    }
+
+    const normalizedNodes: Array<typeof graph.nodes[0]> = [];
+    let width = 0;
+    let height = 0;
+
+    // Optimization: Eliminate Array.map() allocations and spread operator stack overflow risks by consolidating normalization, dimension calculation, and map building into a single loop.
+    // Impact: Reduces operations from O(5N) to O(N) and prevents "maximum call stack exceeded" on large graphs.
+    const nodeMap = new Map<typeof graph.nodes[0]['id'], typeof graph.nodes[0]>();
+
+    for (const node of graph.nodes) {
+      const normalizedNode = {
+        ...node,
+        x: node.x - minX + 80,
+        y: node.y - minY + 60,
+      };
+      normalizedNodes.push(normalizedNode);
+      nodeMap.set(normalizedNode.id, normalizedNode);
+
+      const nodeRight = normalizedNode.x + Math.max(normalizedNode.width || 0, 0);
+      const nodeBottom = normalizedNode.y + Math.max(normalizedNode.height || 0, 0);
+      if (nodeRight > width) width = nodeRight;
+      if (nodeBottom > height) height = nodeBottom;
+    }
+
+    width += 120;
+    height += 120;
 
     return {
       width,
