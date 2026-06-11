@@ -69,7 +69,7 @@ interface OpenImageModalState {
   modalId: string;
   imageId: string;
   navigationImageIds: string[];
-  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow' | 'comfyui';
+  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow' | 'comfyui' | 'find-similar';
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
@@ -99,6 +99,11 @@ interface FindSimilarState {
   initialCriteria?: Partial<SimilarSearchCriteria>;
 }
 
+interface FindSimilarGridFilterState {
+  sourceImageName: string;
+  imageIds: string[];
+}
+
 type BatchExportSource = 'selected' | 'filtered';
 
 interface BatchExportRequestState {
@@ -110,6 +115,7 @@ const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
 const RIGHT_SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-right-sidebar-width';
 const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
 const COMFYUI_WORKSPACE_APPLY_FILTERS_STORAGE_KEY = 'image-metahub-comfyui-workspace-apply-library-filters';
+const FIND_SIMILAR_IMAGE_MODAL_MIN_Z_INDEX = 151;
 const SIDEBAR_DEFAULT_WIDTH = 320;
 const SIDEBAR_MIN_WIDTH = 280;
 const SIDEBAR_MAX_WIDTH = 640;
@@ -455,6 +461,7 @@ export default function App() {
   const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
   const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
   const [findSimilarState, setFindSimilarState] = useState<FindSimilarState | null>(null);
+  const [findSimilarGridFilter, setFindSimilarGridFilter] = useState<FindSimilarGridFilterState | null>(null);
   const [modelPromptPickerState, setModelPromptPickerState] = useState<{
     modelName: string;
     groups: ModelPromptOverlapGroup[];
@@ -1458,6 +1465,10 @@ export default function App() {
       return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
     }
 
+    if (modal.navigationSource === 'find-similar') {
+      return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
+    }
+
     return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
   }, [activeScopeNavigationImageIds, filteredNavigationImageIds, getImageByIdFromStore, imageLookup]);
 
@@ -2053,11 +2064,22 @@ export default function App() {
     [setActiveImageScope],
   );
 
+  const findSimilarFilteredImages = useMemo(() => {
+    if (!findSimilarGridFilter) {
+      return null;
+    }
+
+    const filteredIds = new Set(findSimilarGridFilter.imageIds);
+    return safeFilteredImages.filter((image) => filteredIds.has(image.id));
+  }, [findSimilarGridFilter, safeFilteredImages]);
+
   const displayImages =
     libraryView === 'collections'
       ? collectionFilteredImages
       : libraryView === 'node'
       ? nodeViewResultImages
+      : libraryView === 'library' && findSimilarFilteredImages
+      ? findSimilarFilteredImages
       : safeFilteredImages;
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
 
@@ -2069,6 +2091,7 @@ export default function App() {
       safeFilteredImages.length,
       firstImageId,
       lastImageId,
+      findSimilarGridFilter?.imageIds.join('\u001f') ?? '',
       searchQuery,
       selectedModels.join('\u001f'),
       excludedModels.join('\u001f'),
@@ -2105,6 +2128,7 @@ export default function App() {
     excludedSchedulers,
     excludedTags,
     favoriteFilterMode,
+    findSimilarGridFilter,
     groupBy,
     randomSeed,
     safeFilteredImages,
@@ -2286,11 +2310,70 @@ export default function App() {
     setFindSimilarState(null);
   }, []);
 
+  const handleApplyFindSimilarGridFilter = useCallback((images: IndexedImage[]) => {
+    const sourceImage = findSimilarState?.sourceImage;
+    const imageIds = Array.from(new Set(images.map((image) => image.id).filter(Boolean)));
+    setFindSimilarGridFilter({
+      sourceImageName: sourceImage?.name ?? 'similar image',
+      imageIds,
+    });
+    setLibraryView('library');
+    resetLibraryGridScrollPosition();
+    setCurrentPage(1);
+    setFindSimilarState(null);
+  }, [findSimilarState?.sourceImage, resetLibraryGridScrollPosition]);
+
   const handleOpenFindSimilarCompare = useCallback((images: IndexedImage[]) => {
     setComparisonImages(images);
     openComparisonModal();
     setFindSimilarState(null);
   }, [openComparisonModal, setComparisonImages]);
+
+  const handleOpenFindSimilarImage = useCallback((image: IndexedImage, navigationImages: IndexedImage[]) => {
+    const navigationImageIds = navigationImages.length > 0
+      ? navigationImages.map((entry) => entry.id)
+      : [image.id];
+    const existingModalForImage = openImageModals.find((modal) => modal.imageId === image.id);
+    const modalId = existingModalForImage?.modalId ?? `image-modal-${Date.now()}-${image.id}`;
+
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const nextZIndex = Math.max(highestZIndex + 1, FIND_SIMILAR_IMAGE_MODAL_MIN_Z_INDEX);
+      const existingModal = current.find((modal) => modal.imageId === image.id);
+
+      if (existingModal) {
+        return current.map((modal) =>
+          modal.modalId === existingModal.modalId
+            ? {
+                ...modal,
+                navigationImageIds,
+                navigationSource: 'find-similar',
+                zIndex: nextZIndex,
+                isMinimized: false,
+              }
+            : modal
+        );
+      }
+
+      return [
+        ...current,
+        {
+          modalId,
+          imageId: image.id,
+          navigationImageIds,
+          navigationSource: 'find-similar',
+          zIndex: nextZIndex,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(image.id, 'find-similar'),
+        },
+      ];
+    });
+
+    setActiveImageModalId(modalId);
+    suppressSelectedImageModalOpenRef.current = image.id;
+    setSelectedImage(image);
+  }, [beginModalOpenFlow, openImageModals, setSelectedImage]);
 
   const openModelPromptPicker = useCallback((modelName: string) => {
     setModelPromptPickerState({
@@ -2724,6 +2807,7 @@ export default function App() {
           onClearAllFilters={() => {
             setSearchInputValue('');
             setSearchQuery('');
+            setFindSimilarGridFilter(null);
             setSelectedFilters({
               models: [],
               excludedModels: [],
@@ -2973,6 +3057,31 @@ export default function App() {
                     groupBy={effectiveLibraryGroupBy}
                     onJumpToGroup={(groupId) => setPendingJumpGroupRequest({ groupId, requestId: Date.now() })}
                   />
+                )}
+
+                {libraryView === 'library' && findSimilarGridFilter && (
+                  <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
+                    <div className="min-w-0">
+                      <span className="font-medium">Find Similar filter</span>
+                      <span className="text-cyan-200/80"> from </span>
+                      <span className="inline-block max-w-[320px] truncate align-bottom" title={findSimilarGridFilter.sourceImageName}>
+                        {findSimilarGridFilter.sourceImageName}
+                      </span>
+                      <span className="text-cyan-200/80"> · {displayImages.length} match{displayImages.length === 1 ? '' : 'es'} in current filters</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFindSimilarGridFilter(null);
+                        resetLibraryGridScrollPosition();
+                        setCurrentPage(1);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-cyan-400/40 px-2 py-1 text-xs font-medium text-cyan-100 transition-colors hover:bg-cyan-500/20"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Clear
+                    </button>
+                  </div>
                 )}
 
               <div className={`flex-1 min-h-0 transition-[filter,opacity] duration-150 ease-out ${libraryContentFocusClass}`}>
@@ -3271,7 +3380,8 @@ export default function App() {
           currentViewImages={findSimilarState?.currentViewImages}
           initialCriteria={findSimilarState?.initialCriteria}
           onClose={closeFindSimilar}
-          onOpenCompare={handleOpenFindSimilarCompare}
+          onOpenImage={handleOpenFindSimilarImage}
+          onApplyGridFilter={handleApplyFindSimilarGridFilter}
         />
 
         {/* Generate Modals */}
