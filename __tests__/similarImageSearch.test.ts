@@ -187,6 +187,46 @@ describe('similarImageSearch helpers', () => {
     expect(result.results.map((entry) => entry.image.id)).toEqual(['weight-match']);
   });
 
+  it('disables prompt matching when similarity normalization removes the source prompt', () => {
+    const source = createImage({
+      id: 'source',
+      prompt: '<lora:style-lora:1>',
+      models: ['model-a'],
+      loras: ['style-lora'],
+    });
+    const images = [
+      source,
+      createImage({
+        id: 'lora-match',
+        prompt: '<lora:style-lora:1>',
+        models: ['model-b'],
+        loras: ['style-lora'],
+      }),
+      createImage({
+        id: 'lora-miss',
+        prompt: '<lora:other-lora:1>',
+        models: ['model-c'],
+        loras: ['other-lora'],
+      }),
+    ];
+
+    const result = findSimilarImages({
+      sourceImage: source,
+      allImages: images,
+      currentViewImages: images,
+      criteria: {
+        ...DEFAULT_SIMILAR_SEARCH_CRITERIA,
+        lora: true,
+      },
+    });
+
+    expect(result.availability.prompt).toBe(false);
+    expect(result.effectiveCriteria.prompt).toBe(false);
+    expect(result.effectiveCriteria.lora).toBe(true);
+    expect(result.results.map((entry) => entry.image.id)).toEqual(['lora-match']);
+    expect(result.results[0]?.matchedFields).toEqual(['lora']);
+  });
+
   it('disables unavailable source criteria and falls back to the remaining active rules', () => {
     const source = createImage({
       id: 'source',

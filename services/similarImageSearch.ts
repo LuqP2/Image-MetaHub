@@ -188,7 +188,7 @@ const haveSameLoraWeights = (left: NormalizedLoraEntry[], right: NormalizedLoraE
 };
 
 export const getSimilarSearchAvailability = (image: IndexedImage): SimilarSearchAvailability => {
-  const normalizedPrompt = normalizePromptForSimilarSearch(getImagePromptForSimilarSearch(image));
+  const normalizedPrompt = normalizePrompt(getImagePromptForSimilarSearch(image));
   const loras = normalizeLoraEntries(image);
   const checkpoints = normalizeCheckpointList(image);
 
@@ -222,7 +222,7 @@ const getEffectiveCriteria = (
   criteria: SimilarSearchCriteria,
 ): SimilarSearchCriteria => ({
   ...criteria,
-  prompt: criteria.prompt && Boolean(source.normalizedPrompt),
+  prompt: criteria.prompt && Boolean(source.normalizedSimilarityPrompt),
   lora: criteria.lora && source.loras.length > 0,
   matchLoraWeight: criteria.lora && criteria.matchLoraWeight && source.loras.length > 0,
   seed: criteria.seed && source.seed != null,
