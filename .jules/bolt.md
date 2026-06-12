@@ -56,3 +56,6 @@
 ## 2026-06-11 - Eliminate Array.map() spreading overhead for Math.max/min
 **Learning:** Using `Math.min(...arr.map())` or `Math.max(...arr.map())` creates O(N) temporary arrays and risks `Maximum call stack size exceeded` errors for large arrays because all array elements are spread into function arguments.
 **Action:** Consolidate `min/max` extraction into a single `for` loop and avoid using the spread operator on unconstrained arrays to achieve safer and more memory-efficient O(N) evaluation.
+## 2026-06-12 - Eliminate Array.map() O(N) tuple allocation for Map initialization
+**Learning:** Initializing a `Map` using `.map()` on a large array (e.g., `new Map(safeDirectories.map(dir => [dir.id, dir.path]))`) inside a `useMemo` allocates a temporary O(N) array of tuples. On heavy re-renders where the source array identity changes, this tuple array is instantly created and discarded, driving up garbage collection pressure and reducing frame rates.
+**Action:** Replace the array-mapping pattern with a pre-instantiated `Map` and populate it directly using a standard `for...of` loop to ensure O(1) intermediate memory scaling and eliminate unnecessary GC thrashing.
