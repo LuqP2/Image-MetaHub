@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowRightLeft, Copy, Folder, MoveRight, X } from 'lucide-react';
+import { ArrowRightLeft, Copy, Folder, FolderPlus, MoveRight, X } from 'lucide-react';
 import type { Directory, IndexedImage, IndexedImageTransferMode, IndexedImageTransferProgress } from '../types';
 
 export type TransferDestination = Directory & {
@@ -28,6 +28,8 @@ interface DestinationOption {
   realPath?: string;
   relativePath: string;
   depth: number;
+  parentId: string | null;
+  hasSubfolders?: boolean;
 }
 
 const toForwardSlashes = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -57,11 +59,17 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
 }) => {
   const [selectedDirectoryId, setSelectedDirectoryId] = useState<string>('');
   const [subfolderOptions, setSubfolderOptions] = useState<DestinationOption[]>([]);
+  const [expandedDirectoryIds, setExpandedDirectoryIds] = useState<Set<string>>(new Set());
   const [isLoadingSubfolders, setIsLoadingSubfolders] = useState(false);
   const [subfolderLoadError, setSubfolderLoadError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const [isNewFolderFormOpen, setIsNewFolderFormOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderError, setNewFolderError] = useState<string | null>(null);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [pendingSelectedDirectoryId, setPendingSelectedDirectoryId] = useState<string | null>(null);
 
   const imageCount = images.length;
-  const firstImage = images[0];
   const title = mode === 'move' ? 'Move To' : 'Copy To';
 
   const sortedDirectories = useMemo(
@@ -77,14 +85,44 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
       path: directory.path,
       relativePath: '',
       depth: 0,
+      parentId: null,
     }));
 
-    return [...rootOptions, ...subfolderOptions].sort((a, b) => {
+    const options = [...rootOptions, ...subfolderOptions].sort((a, b) => {
       const rootCompare = a.rootDirectory.name.localeCompare(b.rootDirectory.name);
       if (rootCompare !== 0) return rootCompare;
       return a.relativePath.localeCompare(b.relativePath);
     });
+
+    const childCountByParent = new Map<string, number>();
+    for (const option of options) {
+      if (option.parentId) {
+        childCountByParent.set(option.parentId, (childCountByParent.get(option.parentId) ?? 0) + 1);
+      }
+    }
+
+    return options.map((option) => ({
+      ...option,
+      hasSubfolders: (childCountByParent.get(option.id) ?? 0) > 0,
+    }));
   }, [sortedDirectories, subfolderOptions]);
+
+  const visibleDestinationOptions = useMemo(() => {
+    const byId = new Map(destinationOptions.map((option) => [option.id, option]));
+
+    const isVisible = (option: DestinationOption): boolean => {
+      let parentId = option.parentId;
+      while (parentId) {
+        if (!expandedDirectoryIds.has(parentId)) {
+          return false;
+        }
+        parentId = byId.get(parentId)?.parentId ?? null;
+      }
+      return true;
+    };
+
+    return destinationOptions.filter(isVisible);
+  }, [destinationOptions, expandedDirectoryIds]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -100,8 +138,14 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   useEffect(() => {
     if (!isOpen) {
       setSubfolderOptions([]);
+      setExpandedDirectoryIds(new Set());
       setIsLoadingSubfolders(false);
       setSubfolderLoadError(null);
+      setIsNewFolderFormOpen(false);
+      setNewFolderName('');
+      setNewFolderError(null);
+      setIsCreatingFolder(false);
+      setPendingSelectedDirectoryId(null);
       return;
     }
 
@@ -120,7 +164,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
       const loadedOptions: DestinationOption[] = [];
       const visitedRealPaths = new Set<string>();
 
-      const visit = async (rootDirectory: Directory, folderPath: string, depth: number) => {
+      const visit = async (rootDirectory: Directory, folderPath: string, depth: number, parentId: string) => {
         const result = await window.electronAPI!.listSubfolders(folderPath);
         if (!result.success) {
           if (!cancelled) {
@@ -150,9 +194,10 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
             realPath: subfolder.realPath,
             relativePath,
             depth,
+            parentId,
           });
 
-          await visit(rootDirectory, subfolder.path, depth + 1);
+          await visit(rootDirectory, subfolder.path, depth + 1, `${rootDirectory.id}::${relativePath}`);
         }
       };
 
@@ -160,12 +205,19 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
         for (const directory of sortedDirectories) {
           const rootKey = directory.path.replace(/\\/g, '/');
           visitedRealPaths.add(rootKey);
-          await visit(directory, directory.path, 1);
+          await visit(directory, directory.path, 1, `${directory.id}::.`);
         }
       } finally {
         if (!cancelled) {
           setSubfolderOptions(loadedOptions);
           setIsLoadingSubfolders(false);
+          if (pendingSelectedDirectoryId && [
+            ...sortedDirectories.map((directory) => `${directory.id}::.`),
+            ...loadedOptions.map((option) => option.id),
+          ].includes(pendingSelectedDirectoryId)) {
+            setSelectedDirectoryId(pendingSelectedDirectoryId);
+            setPendingSelectedDirectoryId(null);
+          }
         }
       }
     };
@@ -175,7 +227,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, sortedDirectories]);
+  }, [isOpen, pendingSelectedDirectoryId, reloadToken, sortedDirectories]);
 
 
   if (!isOpen) return null;
@@ -198,6 +250,64 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   const progressPercent = progress && progress.total > 0
     ? Math.max(0, Math.min(100, Math.round((progress.processed / progress.total) * 100)))
     : 0;
+
+  const toggleExpanded = (directoryId: string) => {
+    setExpandedDirectoryIds((current) => {
+      const next = new Set(current);
+      if (next.has(directoryId)) {
+        next.delete(directoryId);
+      } else {
+        next.add(directoryId);
+      }
+      return next;
+    });
+  };
+
+  const handleCreateFolder = async () => {
+    if (!selectedOption || isCreatingFolder) {
+      return;
+    }
+
+    const trimmedName = newFolderName.trim();
+    if (!trimmedName) {
+      setNewFolderError('Enter a folder name.');
+      return;
+    }
+    if (/[<>:"/\\|?*]/.test(trimmedName)) {
+      setNewFolderError('Folder name contains invalid characters.');
+      return;
+    }
+    if (!window.electronAPI?.joinPaths || !window.electronAPI?.ensureDirectory) {
+      setNewFolderError('Creating folders is only available in the desktop app.');
+      return;
+    }
+
+    setIsCreatingFolder(true);
+    setNewFolderError(null);
+    try {
+      const joined = await window.electronAPI.joinPaths(selectedOption.path, trimmedName);
+      if (!joined.success || !joined.path) {
+        setNewFolderError(joined.error || 'Failed to resolve folder path.');
+        return;
+      }
+
+      const result = await window.electronAPI.ensureDirectory(joined.path);
+      if (!result.success) {
+        setNewFolderError(result.error || 'Failed to create folder.');
+        return;
+      }
+
+      const relativePath = getRelativePath(selectedOption.rootDirectory.path, joined.path);
+      const nextId = `${selectedOption.rootDirectory.id}::${relativePath || '.'}`;
+      setExpandedDirectoryIds((current) => new Set(current).add(selectedOption.id));
+      setPendingSelectedDirectoryId(nextId);
+      setNewFolderName('');
+      setIsNewFolderFormOpen(false);
+      setReloadToken((current) => current + 1);
+    } finally {
+      setIsCreatingFolder(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -233,11 +343,6 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                 {mode === 'move' ? 'Move' : 'Copy'} will preserve tags, favorites, and shadow metadata.
               </span>
             </div>
-            {firstImage && (
-              <p className="mt-2 text-xs text-gray-400 truncate">
-                Example: {firstImage.name}
-              </p>
-            )}
             {isSubmitting && (
               <div className="mt-3 space-y-2">
                 <div className="h-2 overflow-hidden rounded-full bg-gray-700">
@@ -254,27 +359,64 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm text-gray-300">Destination folder</label>
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {destinationOptions.map((directory) => (
-                <button
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-sm text-gray-300">Destination folder</label>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNewFolderFormOpen(true);
+                  setNewFolderError(null);
+                }}
+                disabled={!selectedOption || isSubmitting}
+                className="inline-flex items-center gap-1.5 rounded-md border border-gray-700 bg-gray-800/40 px-2.5 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <FolderPlus className="h-3.5 w-3.5" />
+                New Folder
+              </button>
+            </div>
+            <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+              {visibleDestinationOptions.map((directory) => (
+                <div
                   key={directory.id}
-                  type="button"
-                  onClick={() => setSelectedDirectoryId(directory.id)}
-                  className={`w-full text-left rounded-lg border px-4 py-3 transition-colors ${
+                  className={`flex w-full items-stretch rounded-lg border transition-colors ${
                     selectedDirectoryId === directory.id
                       ? 'border-blue-500 bg-blue-500/10 text-blue-100'
-                      : 'border-gray-700 bg-gray-800/40 text-gray-200 hover:bg-gray-800'
+                      : 'border-gray-700 bg-gray-800/25 text-gray-200 hover:bg-gray-800/70'
                   }`}
                 >
-                  <div className="flex items-center gap-2" style={{ paddingLeft: `${directory.depth * 16}px` }}>
-                    <Folder className="w-4 h-4 flex-shrink-0" />
-                    <span className="font-medium truncate">
-                      {directory.depth === 0 ? directory.name : directory.relativePath}
-                    </span>
+                  <div className="flex items-center py-1.5 pl-2" style={{ paddingLeft: `${8 + directory.depth * 18}px` }}>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (directory.hasSubfolders) {
+                          toggleExpanded(directory.id);
+                        }
+                      }}
+                      className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-xs font-semibold text-gray-400 ${
+                        directory.hasSubfolders ? 'hover:bg-gray-700 hover:text-gray-100' : 'opacity-30'
+                      }`}
+                      aria-label={expandedDirectoryIds.has(directory.id) ? 'Collapse folder' : 'Expand folder'}
+                      disabled={!directory.hasSubfolders || isSubmitting}
+                    >
+                      {directory.hasSubfolders ? (expandedDirectoryIds.has(directory.id) ? '-' : '+') : ''}
+                    </button>
                   </div>
-                  <p className="mt-1 text-xs text-gray-400 truncate">{directory.path}</p>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDirectoryId(directory.id)}
+                    disabled={isSubmitting}
+                    className="min-w-0 flex-1 px-2 py-1.5 pr-3 text-left disabled:cursor-not-allowed"
+                    title={directory.path}
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Folder className={`w-4 h-4 flex-shrink-0 ${directory.depth === 0 ? 'text-blue-300' : 'text-amber-300'}`} />
+                      <span className="truncate font-medium">
+                        {directory.name}
+                      </span>
+                    </div>
+                  </button>
+                </div>
               ))}
               {isLoadingSubfolders && (
                 <div className="rounded-lg border border-gray-700 bg-gray-800/40 px-4 py-3 text-sm text-gray-400">
@@ -292,6 +434,55 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                 </div>
               )}
             </div>
+            {isNewFolderFormOpen && (
+              <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-2.5">
+                <div className="mb-2 truncate text-xs text-gray-400">
+                  New folder inside: {selectedDirectory?.displayName || 'Select a destination first'}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={newFolderName}
+                    onChange={(event) => {
+                      setNewFolderName(event.target.value);
+                      setNewFolderError(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void handleCreateFolder();
+                      }
+                    }}
+                    disabled={!selectedOption || isCreatingFolder || isSubmitting}
+                    placeholder="Folder name"
+                    className="min-w-0 flex-1 rounded-md border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleCreateFolder()}
+                    disabled={!selectedOption || isCreatingFolder || isSubmitting}
+                    className="rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-500"
+                  >
+                    Create
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNewFolderFormOpen(false);
+                      setNewFolderName('');
+                      setNewFolderError(null);
+                    }}
+                    disabled={isCreatingFolder || isSubmitting}
+                    className="rounded-md border border-gray-700 px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {newFolderError && (
+                  <p className="mt-2 text-xs text-amber-200">{newFolderError}</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex gap-3">
