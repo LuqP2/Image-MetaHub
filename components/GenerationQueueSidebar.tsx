@@ -53,6 +53,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
   onOpenGeneratedOutputs,
 }) => {
   const items = useGenerationQueueStore((state) => state.items);
+  const hasFinishedItems = items.some(item => ['done', 'failed', 'canceled'].includes(item.status));
   const removeJob = useGenerationQueueStore((state) => state.removeJob);
   const clearByStatus = useGenerationQueueStore((state) => state.clearByStatus);
   const setJobStatus = useGenerationQueueStore((state) => state.setJobStatus);
@@ -289,7 +290,9 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
         <div className="flex items-center gap-2 text-xs text-gray-400">
           <button
             onClick={() => clearByStatus(['done', 'failed', 'canceled'])}
-            className="px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 text-gray-200 transition-colors"
+            disabled={!hasFinishedItems}
+            title={!hasFinishedItems ? 'No finished items to clear' : 'Clear all finished items'}
+            className="px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Clear finished
           </button>
