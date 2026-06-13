@@ -262,6 +262,20 @@ const addFlag = (flags: Map<string, Set<CleanupTechnicalFlag>>, imageId: string,
   flags.set(imageId, imageFlags);
 };
 
+const technicalFlagPriority: CleanupTechnicalFlag[] = [
+  'decode_failed',
+  'preview_or_grid_candidate',
+  'intermediate_output_candidate',
+  'too_dark',
+  'too_bright',
+  'very_small_file',
+  'upscale_duplicate_candidate',
+  'low_variation_from_previous',
+];
+
+const isTechnicalFlag = (flag: CleanupTechnicalFlag): boolean =>
+  technicalFlagPriority.includes(flag);
+
 const areLikelySimilar = (
   leftImage: IndexedImage,
   rightImage: IndexedImage,
@@ -328,12 +342,12 @@ const chunkImageIds = (imageIds: string[], size: number): string[][] => {
 
 const createStackTitle = (index: number, imageIds: string[], reasons: CleanupTechnicalFlag[]) => {
   if (reasons.includes('near_duplicate')) {
-    return `Near-duplicate stack ${index}`;
+    return `Similar group ${index}`;
   }
   if (reasons.length > 0) {
-    return `Likely rejects`;
+    return `Flagged images`;
   }
-  return imageIds.length === 1 ? 'Single image review' : `Visual stack ${index}`;
+  return imageIds.length === 1 ? 'Remaining image' : `Remaining images ${index}`;
 };
 
 export async function analyzeCleanupSession(
@@ -354,10 +368,9 @@ export async function analyzeCleanupSession(
     signatures.set(image.id, signature);
   }
 
-  options.onProgress?.({ current: total, total, message: 'Building cleanup stacks...' });
+  options.onProgress?.({ current: total, total, message: 'Building cleanup groups...' });
 
   const flags = new Map<string, Set<CleanupTechnicalFlag>>();
-  const dimensionsCount = new Map<string, number>();
   const sortedImages = [...staticImages].sort((left, right) => left.lastModified - right.lastModified || left.name.localeCompare(right.name));
 
   for (const image of sortedImages) {
@@ -387,21 +400,6 @@ export async function analyzeCleanupSession(
       addFlag(flags, image.id, 'intermediate_output_candidate');
     }
 
-    const dimensionsKey = getDimensionsKey(signature);
-    if (dimensionsKey) {
-      dimensionsCount.set(dimensionsKey, (dimensionsCount.get(dimensionsKey) ?? 0) + 1);
-    }
-  }
-
-  const dominantDimensions = Array.from(dimensionsCount.entries()).sort((left, right) => right[1] - left[1])[0]?.[0] ?? '';
-  if (dominantDimensions && dimensionsCount.get(dominantDimensions)! >= 3) {
-    for (const image of sortedImages) {
-      const signature = signatures.get(image.id);
-      const dimensionsKey = signature ? getDimensionsKey(signature) : '';
-      if (dimensionsKey && dimensionsKey !== dominantDimensions) {
-        addFlag(flags, image.id, 'session_dimension_outlier');
-      }
-    }
   }
 
   const disjointSet = new DisjointSet();
@@ -474,7 +472,7 @@ export async function analyzeCleanupSession(
       if (!imageFlags) {
         return false;
       }
-      return Array.from(imageFlags).some((flag) => flag !== 'near_duplicate');
+      return Array.from(imageFlags).some(isTechnicalFlag);
     })
     .map((image) => image.id);
 
@@ -483,11 +481,11 @@ export async function analyzeCleanupSession(
   likelyRejectChunks.forEach((chunk, index) => {
     stacks.push({
       id: `likely-rejects-${index + 1}-${chunk[0]}`,
-      title: likelyRejectChunks.length === 1 ? 'Likely rejects' : `Likely rejects ${index + 1}`,
+      title: likelyRejectChunks.length === 1 ? 'Flagged images' : `Flagged images ${index + 1}`,
       imageIds: chunk,
       representativeImageId: chunk[0],
       score: 1,
-      reasons: Array.from(new Set(chunk.flatMap((id) => Array.from(flags.get(id) ?? [])))),
+      reasons: Array.from(new Set(chunk.flatMap((id) => Array.from(flags.get(id) ?? []).filter(isTechnicalFlag)))),
       kind: 'likely-rejects',
     });
   });
@@ -499,6 +497,24 @@ export async function analyzeCleanupSession(
 
   for (const group of visualGroups) {
     const imageIds = group.map((image) => image.id);
+    const nearDuplicateIds = imageIds.filter((imageId) => flags.get(imageId)?.has('near_duplicate'));
+    if (nearDuplicateIds.length >= 2) {
+      const chunks = chunkImageIds(nearDuplicateIds, MAX_STACK_SIZE);
+      for (const chunk of chunks) {
+        stacks.push({
+          id: `visual-${stackIndex}-${chunk[0]}`,
+          title: createStackTitle(stackIndex, chunk, ['near_duplicate']),
+          imageIds: chunk,
+          representativeImageId: chunk[0],
+          score: Math.min(1, chunk.length / MAX_STACK_SIZE),
+          reasons: ['near_duplicate'],
+          kind: 'visual',
+        });
+        stackIndex += 1;
+      }
+      continue;
+    }
+
     const chunks = chunkImageIds(imageIds, MAX_STACK_SIZE);
     for (const chunk of chunks) {
       stacks.push({
@@ -553,19 +569,6 @@ export const applyCleanupDecision = (
   const next = new Map(decisions);
   for (const imageId of imageIds) {
     next.set(imageId, decision);
-  }
-  return next;
-};
-
-export const promoteUnreviewedToMaybe = (
-  decisions: Map<string, CleanupImageDecision>,
-  imageIds: string[],
-): Map<string, CleanupImageDecision> => {
-  const next = new Map(decisions);
-  for (const imageId of imageIds) {
-    if (!next.has(imageId) || next.get(imageId) === 'unreviewed') {
-      next.set(imageId, 'maybe');
-    }
   }
   return next;
 };

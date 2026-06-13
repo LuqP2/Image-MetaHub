@@ -1173,7 +1173,6 @@ export type CleanupTechnicalFlag =
   | 'too_bright'
   | 'low_variation_from_previous'
   | 'very_small_file'
-  | 'session_dimension_outlier'
   | 'decode_failed'
   | 'preview_or_grid_candidate'
   | 'intermediate_output_candidate'

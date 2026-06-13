@@ -25,7 +25,6 @@ import {
   analyzeCleanupSession,
   applyCleanupDecision,
   isCleanupStaticImage,
-  promoteUnreviewedToMaybe,
 } from '../services/cleanupAssistantEngine';
 import {
   loadCleanupDecisions,
@@ -54,9 +53,9 @@ type AnalysisState =
   | { status: 'error'; message: string; current: number; total: number };
 
 const waveLabels: Record<CleanupWave, string> = {
-  'obvious-rejects': 'Obvious rejects',
-  'choose-winners': 'Choose winners',
-  'review-maybe': 'Review maybe',
+  'obvious-rejects': 'Technical Flags',
+  'choose-winners': 'Review Groups',
+  'review-maybe': 'Maybe Review',
   quarantine: 'Quarantine',
 };
 
@@ -66,7 +65,6 @@ const flagLabels: Record<CleanupTechnicalFlag, string> = {
   too_bright: 'too bright',
   low_variation_from_previous: 'low variation',
   very_small_file: 'very small file',
-  session_dimension_outlier: 'dimension outlier',
   decode_failed: 'decode failed',
   preview_or_grid_candidate: 'preview/grid',
   intermediate_output_candidate: 'intermediate output',
@@ -164,7 +162,7 @@ const getVisibleStacks = (
     return stacks.filter((stack) => stack.kind === 'likely-rejects');
   }
   if (wave === 'choose-winners') {
-    return stacks.filter((stack) => stack.kind !== 'likely-rejects');
+    return stacks.filter((stack) => stack.kind === 'visual' || stack.kind === 'singletons');
   }
   if (wave === 'review-maybe') {
     return stacks.filter((stack) => stack.imageIds.some((imageId) => getDecision(decisions, imageId) === 'maybe'));
@@ -245,7 +243,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
         setFlagsByImageId(result.flagsByImageId);
         setAnalysisState({
           status: 'ready',
-          message: `Ready: ${result.stacks.length} review stack${result.stacks.length === 1 ? '' : 's'}`,
+          message: `Ready: ${result.stacks.length} review group${result.stacks.length === 1 ? '' : 's'}`,
           current: result.staticImages.length,
           total: result.staticImages.length,
         });
@@ -274,9 +272,20 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
     [decisions, stacks, wave],
   );
   const activeStack = visibleStacks[stackIndex] ?? visibleStacks[0] ?? null;
+  const activeStackImageIds = useMemo(() => {
+    if (!activeStack) {
+      return [];
+    }
+
+    if (wave === 'review-maybe') {
+      return activeStack.imageIds.filter((imageId) => getDecision(decisions, imageId) === 'maybe');
+    }
+
+    return activeStack.imageIds;
+  }, [activeStack, decisions, wave]);
   const activeImages = useMemo(
-    () => (activeStack ? activeStack.imageIds.map((imageId) => imageMap.get(imageId)).filter((image): image is IndexedImage => Boolean(image)) : []),
-    [activeStack, imageMap],
+    () => activeStackImageIds.map((imageId) => imageMap.get(imageId)).filter((image): image is IndexedImage => Boolean(image)),
+    [activeStackImageIds, imageMap],
   );
   const stackPageCount = Math.max(1, Math.ceil(activeImages.length / gridSize));
   const displayedImages = useMemo(() => {
@@ -345,6 +354,18 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
     );
   }, [sessionId]);
 
+  const markDecisionUpdates = useCallback(async (updates: Array<{ imageId: string; decision: CleanupImageDecision }>) => {
+    if (updates.length === 0) {
+      return;
+    }
+
+    const next = new Map(decisions);
+    for (const update of updates) {
+      next.set(update.imageId, update.decision);
+    }
+    await persistDecisionUpdates(next, updates.map((update) => update.imageId));
+  }, [decisions, persistDecisionUpdates]);
+
   const markImages = useCallback(async (imageIds: string[], decision: CleanupImageDecision) => {
     if (imageIds.length === 0) {
       return;
@@ -354,17 +375,8 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
   }, [decisions, persistDecisionUpdates]);
 
   const handleWaveChange = useCallback(async (nextWave: CleanupWave) => {
-    if (nextWave === 'review-maybe') {
-      const next = promoteUnreviewedToMaybe(decisions, staticImages.map((image) => image.id));
-      const changedIds = staticImages
-        .map((image) => image.id)
-        .filter((imageId) => getDecision(decisions, imageId) !== getDecision(next, imageId));
-      if (changedIds.length > 0) {
-        await persistDecisionUpdates(next, changedIds);
-      }
-    }
     setWave(nextWave);
-  }, [decisions, persistDecisionUpdates, staticImages]);
+  }, []);
 
   const toggleSelected = (imageId: string) => {
     setSelectedIds((current) => {
@@ -378,7 +390,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
     });
   };
 
-  const handleNextStack = () => {
+  const handleNextStack = useCallback(() => {
     setSelectedIds(new Set());
     if (stackPageIndex < stackPageCount - 1) {
       setStackPageIndex((current) => current + 1);
@@ -392,7 +404,22 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
       }
       return current >= visibleStacks.length - 1 ? 0 : current + 1;
     });
-  };
+  }, [stackPageCount, stackPageIndex, visibleStacks.length]);
+
+  const handleKeepSelectedRejectRest = useCallback(async () => {
+    const selectedInBatch = displayedImageIds.filter((imageId) => selectedIds.has(imageId));
+    if (selectedInBatch.length === 0) {
+      return;
+    }
+
+    await markDecisionUpdates([
+      ...selectedInBatch.map((imageId) => ({ imageId, decision: 'keep' as const })),
+      ...displayedImageIds
+        .filter((imageId) => !selectedIds.has(imageId))
+        .map((imageId) => ({ imageId, decision: 'reject' as const })),
+    ]);
+    handleNextStack();
+  }, [displayedImageIds, handleNextStack, markDecisionUpdates, selectedIds]);
 
   const handleCompareTwo = () => {
     const selectedImages = Array.from(selectedIds)
@@ -434,6 +461,17 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
   const progressPercent = analysisState.total > 0
     ? Math.round((analysisState.current / analysisState.total) * 100)
     : 0;
+  const selectedInBatchCount = displayedImageIds.filter((imageId) => selectedIds.has(imageId)).length;
+  const activeGroupTypeLabel = activeStack?.kind === 'likely-rejects'
+    ? 'Flagged batch'
+    : activeStack?.kind === 'visual'
+    ? 'Similar group'
+    : 'Remaining images';
+  const waveHelperText = wave === 'obvious-rejects'
+    ? 'Technical Flags only shows strong technical suspects, such as corrupted files, previews, intermediates, or extreme exposure. It is expected to be small.'
+    : wave === 'choose-winners'
+    ? 'Select the images worth keeping in this batch. The main action keeps those and rejects the rest of the visible batch.'
+    : 'Review only images you explicitly marked as maybe.';
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-gradient-to-br from-gray-950 via-slate-950 to-gray-900 text-gray-100">
@@ -456,7 +494,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
             </div>
           </div>
           <div className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100">
-            Review by stacks, not one by one.
+            Review by similar groups, not one by one.
           </div>
         </div>
       </div>
@@ -467,7 +505,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
             <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Session cleanup</div>
             <div className="text-sm leading-relaxed text-gray-300">
               This session has <span className="font-semibold text-white">{staticImages.length}</span> static images.
-              Review close variations in waves, then move rejects to quarantine.
+              Pick keepers from similar groups, mark uncertain images as maybe, then move only rejected files to quarantine.
             </div>
             {analysisState.status === 'loading' && (
               <div className="mt-4 space-y-2">
@@ -535,6 +573,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                 <h3 className="text-2xl font-bold text-white">Move rejected to quarantine</h3>
                 <p className="mt-2 text-sm text-gray-400">
                   {rejectedImages.length} rejected image{rejectedImages.length === 1 ? '' : 's'} · {formatBytes(rejectedBytes)}
+                  {counts.unreviewed > 0 ? ` · ${counts.unreviewed} unreviewed left untouched` : ''}
                 </p>
                 <button
                   type="button"
@@ -560,8 +599,9 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                     <h3 className="text-lg font-bold text-white">{activeStack.title}</h3>
                   </div>
                   <p className="mt-1 text-sm text-gray-400">
-                    Stack {stackIndex + 1} of {visibleStacks.length} · showing {displayedStart}-{displayedEnd} of {activeStack.imageIds.length}
+                    {activeGroupTypeLabel} {stackIndex + 1} of {visibleStacks.length} · batch {stackPageIndex + 1}/{stackPageCount} · showing {displayedStart}-{displayedEnd} of {activeImages.length}
                   </p>
+                  <p className="mt-1 max-w-3xl text-xs text-gray-500">{waveHelperText}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {[6, 9, 12].map((size) => (
@@ -582,46 +622,85 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
               </div>
 
               <div className="mb-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void markImages(Array.from(selectedIds), 'keep')}
-                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
-                >
-                  <ThumbsUp className="h-4 w-4" />
-                  Keep selected
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void markImages(displayedImageIds.filter((imageId) => !selectedIds.has(imageId)), 'reject')}
-                  className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-500"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Reject unselected
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void markImages(activeStack.imageIds, 'reject')}
-                  className="inline-flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-100 hover:bg-rose-500/20"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Reject whole stack
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void markImages(displayedImageIds, 'keep')}
-                  className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20"
-                >
-                  <Check className="h-4 w-4" />
-                  Keep all
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void markImages(Array.from(selectedIds), 'maybe')}
-                  className="inline-flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-500/20"
-                >
-                  <HelpCircle className="h-4 w-4" />
-                  Mark selected as Maybe
-                </button>
+                {wave === 'choose-winners' ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={selectedInBatchCount === 0}
+                      onClick={() => void handleKeepSelectedRejectRest()}
+                      className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500"
+                    >
+                      <Check className="h-4 w-4" />
+                      Keep selected, reject rest
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void markImages(displayedImageIds, 'keep');
+                        handleNextStack();
+                      }}
+                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20"
+                    >
+                      <ThumbsUp className="h-4 w-4" />
+                      Keep all visible
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedInBatchCount === 0}
+                      onClick={() => {
+                        void markImages(Array.from(selectedIds), 'maybe');
+                        handleNextStack();
+                      }}
+                      className="inline-flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-900 disabled:text-gray-600"
+                    >
+                      <HelpCircle className="h-4 w-4" />
+                      Maybe selected
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={selectedInBatchCount === 0}
+                      onClick={() => void markImages(Array.from(selectedIds), 'keep')}
+                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-900 disabled:text-gray-600"
+                    >
+                      <ThumbsUp className="h-4 w-4" />
+                      Keep selected
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedInBatchCount === 0}
+                      onClick={() => void markImages(Array.from(selectedIds), 'reject')}
+                      className="inline-flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-100 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-900 disabled:text-gray-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Reject selected
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedInBatchCount === 0}
+                      onClick={() => void markImages(Array.from(selectedIds), 'maybe')}
+                      className="inline-flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-900 disabled:text-gray-600"
+                    >
+                      <HelpCircle className="h-4 w-4" />
+                      Maybe selected
+                    </button>
+                    {wave === 'review-maybe' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void markImages(displayedImageIds, 'keep');
+                          handleNextStack();
+                        }}
+                        className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20"
+                      >
+                        <Check className="h-4 w-4" />
+                        Keep all visible
+                      </button>
+                    )}
+                  </>
+                )}
                 <button
                   type="button"
                   disabled={selectedIds.size !== 2}
@@ -637,7 +716,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                   className="ml-auto inline-flex items-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/20"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  {stackPageIndex < stackPageCount - 1 ? 'Next batch' : 'Next stack'}
+                  {stackPageIndex < stackPageCount - 1 ? 'Skip to next batch' : 'Skip to next group'}
                 </button>
               </div>
 
@@ -660,7 +739,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center rounded-3xl border border-gray-800 bg-gray-900/50 p-8 text-center text-gray-400">
-              No stacks in this wave. Try the next wave, or move to quarantine when you are ready.
+              No groups in this wave. Try the next wave, or move to quarantine when you are ready.
             </div>
           )}
         </main>
