@@ -343,10 +343,15 @@ export default function App() {
   const safeDirectories = useMemo(() => Array.isArray(directories) ? directories : [], [directories]);
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
   const hasDirectories = safeDirectories.length > 0;
-  const directoryPathById = useMemo(
-    () => new Map(safeDirectories.map((directory) => [directory.id, directory.path])),
-    [safeDirectories]
-  );
+  const directoryPathById = useMemo(() => {
+    // Optimization: Avoid new Map(arr.map()) temporary tuple array allocation
+    // Impact: Eliminates O(N) intermediate memory allocation and GC pressure on re-renders
+    const map = new Map<string, string>();
+    for (const directory of safeDirectories) {
+      map.set(directory.id, directory.path);
+    }
+    return map;
+  }, [safeDirectories]);
   const imageLookup = useMemo(() => {
     const lookup = new Map<string, IndexedImage>();
 
