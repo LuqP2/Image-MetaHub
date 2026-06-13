@@ -59,3 +59,6 @@
 ## 2026-06-12 - Eliminate Array.map() O(N) tuple allocation for Map initialization
 **Learning:** Initializing a `Map` using `.map()` on a large array (e.g., `new Map(safeDirectories.map(dir => [dir.id, dir.path]))`) inside a `useMemo` allocates a temporary O(N) array of tuples. On heavy re-renders where the source array identity changes, this tuple array is instantly created and discarded, driving up garbage collection pressure and reducing frame rates.
 **Action:** Replace the array-mapping pattern with a pre-instantiated `Map` and populate it directly using a standard `for...of` loop to ensure O(1) intermediate memory scaling and eliminate unnecessary GC thrashing.
+## 2026-06-13 - Eliminate Array.map() O(N) tuple allocation for Map initialization
+**Learning:** Initializing a `Map` using `.map()` on a large array (e.g., `new Map(directories.map(dir => [dir.id, dir.path]))`) inside a `useMemo` allocates a temporary O(N) array of tuples. On heavy re-renders where the source array identity changes, this tuple array is instantly created and discarded, driving up garbage collection pressure and reducing frame rates.
+**Action:** Replace the array-mapping pattern with a pre-instantiated `Map` and populate it directly using a standard `for...of` loop to ensure O(1) intermediate memory scaling and eliminate unnecessary GC thrashing.
