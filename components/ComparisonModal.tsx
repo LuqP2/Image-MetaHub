@@ -54,10 +54,15 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
     []
   );
   const isAdvancedMode = advancedModes.has(viewMode);
-  const directoryPathById = useMemo(
-    () => new Map(directories.map((directory) => [directory.id, directory.path])),
-    [directories]
-  );
+  const directoryPathById = useMemo(() => {
+    // Optimization: Eliminate Array.map() O(N) allocation overhead for Map initialization.
+    // Impact: Avoids GC pauses by preventing temporary array of tuples during re-renders.
+    const map = new Map<string, string>();
+    for (const directory of directories) {
+      map.set(directory.id, directory.path);
+    }
+    return map;
+  }, [directories]);
 
   const updateSharedZoom = (zoom: number, x: number, y: number) => {
     setSharedZoom((current) => {
