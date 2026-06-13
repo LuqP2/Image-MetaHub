@@ -342,12 +342,12 @@ const chunkImageIds = (imageIds: string[], size: number): string[][] => {
 
 const createStackTitle = (index: number, imageIds: string[], reasons: CleanupTechnicalFlag[]) => {
   if (reasons.includes('near_duplicate')) {
-    return `Similar group ${index}`;
+    return `Similar review set ${index}`;
   }
   if (reasons.length > 0) {
-    return `Flagged images`;
+    return 'Technical flags';
   }
-  return imageIds.length === 1 ? 'Remaining image' : `Remaining images ${index}`;
+  return imageIds.length === 1 ? 'General review' : `General review ${index}`;
 };
 
 export async function analyzeCleanupSession(
@@ -481,7 +481,7 @@ export async function analyzeCleanupSession(
   likelyRejectChunks.forEach((chunk, index) => {
     stacks.push({
       id: `likely-rejects-${index + 1}-${chunk[0]}`,
-      title: likelyRejectChunks.length === 1 ? 'Flagged images' : `Flagged images ${index + 1}`,
+      title: likelyRejectChunks.length === 1 ? 'Technical flags' : `Technical flags ${index + 1}`,
       imageIds: chunk,
       representativeImageId: chunk[0],
       score: 1,

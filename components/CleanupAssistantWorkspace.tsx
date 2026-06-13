@@ -293,8 +293,6 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
     return activeImages.slice(start, start + gridSize);
   }, [activeImages, gridSize, stackPageIndex]);
   const displayedImageIds = useMemo(() => displayedImages.map((image) => image.id), [displayedImages]);
-  const displayedStart = activeImages.length === 0 ? 0 : stackPageIndex * gridSize + 1;
-  const displayedEnd = Math.min(activeImages.length, displayedStart + displayedImages.length - 1);
 
   useEffect(() => {
     setStackIndex(0);
@@ -462,16 +460,37 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
     ? Math.round((analysisState.current / analysisState.total) * 100)
     : 0;
   const selectedInBatchCount = displayedImageIds.filter((imageId) => selectedIds.has(imageId)).length;
-  const activeGroupTypeLabel = activeStack?.kind === 'likely-rejects'
-    ? 'Flagged batch'
+  const getStackVisibleImageCount = useCallback((stack: CleanupStack) => {
+    if (wave === 'review-maybe') {
+      return stack.imageIds.filter((imageId) => getDecision(decisions, imageId) === 'maybe').length;
+    }
+    return stack.imageIds.length;
+  }, [decisions, wave]);
+
+  const totalReviewSetCount = visibleStacks.reduce((total, stack) => (
+    total + Math.max(1, Math.ceil(getStackVisibleImageCount(stack) / gridSize))
+  ), 0);
+  const currentReviewSetNumber = visibleStacks
+    .slice(0, stackIndex)
+    .reduce((total, stack) => total + Math.max(1, Math.ceil(getStackVisibleImageCount(stack) / gridSize)), 0)
+    + stackPageIndex
+    + 1;
+  const activeGroupTitle = activeStack?.kind === 'likely-rejects'
+    ? 'Technical review set'
     : activeStack?.kind === 'visual'
-    ? 'Similar group'
-    : 'Remaining images';
+    ? 'Similar review set'
+    : activeStack?.kind === 'singletons'
+    ? 'General review set'
+    : 'Review set';
+  const activeShowingText = `${displayedImages.length} image${displayedImages.length === 1 ? '' : 's'}`;
+  const activeGroupSummary = `Set ${currentReviewSetNumber} of ${Math.max(1, totalReviewSetCount)} · ${activeShowingText}`;
   const waveHelperText = wave === 'obvious-rejects'
-    ? 'Technical Flags only shows strong technical suspects, such as corrupted files, previews, intermediates, or extreme exposure. It is expected to be small.'
+    ? 'These are technical suspects only. The app is suggesting review, not deciding.'
+    : wave === 'choose-winners' && activeStack?.kind === 'visual'
+    ? 'Pick the images worth keeping from what is on screen. Use the main action only when every unselected image here should be rejected.'
     : wave === 'choose-winners'
-    ? 'Select the images worth keeping in this batch. The main action keeps those and rejects the rest of the visible batch.'
-    : 'Review only images you explicitly marked as maybe.';
+    ? 'This is a normal review set from the session. Mark images directly; nothing here was auto-rejected.'
+    : 'Only images you explicitly marked as maybe appear here.';
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-gradient-to-br from-gray-950 via-slate-950 to-gray-900 text-gray-100">
@@ -596,10 +615,10 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                     ) : (
                       <Sparkles className="h-5 w-5 text-cyan-300" />
                     )}
-                    <h3 className="text-lg font-bold text-white">{activeStack.title}</h3>
+                    <h3 className="text-lg font-bold text-white">{activeGroupTitle}</h3>
                   </div>
                   <p className="mt-1 text-sm text-gray-400">
-                    {activeGroupTypeLabel} {stackIndex + 1} of {visibleStacks.length} · batch {stackPageIndex + 1}/{stackPageCount} · showing {displayedStart}-{displayedEnd} of {activeImages.length}
+                    {activeGroupSummary}
                   </p>
                   <p className="mt-1 max-w-3xl text-xs text-gray-500">{waveHelperText}</p>
                 </div>
@@ -631,7 +650,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                       className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500"
                     >
                       <Check className="h-4 w-4" />
-                      Keep selected, reject rest
+                      Keep selected, reject rest on screen
                     </button>
                     <button
                       type="button"
@@ -642,7 +661,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                       className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20"
                     >
                       <ThumbsUp className="h-4 w-4" />
-                      Keep all visible
+                      Keep all on screen
                     </button>
                     <button
                       type="button"
@@ -696,7 +715,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                         className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20"
                       >
                         <Check className="h-4 w-4" />
-                        Keep all visible
+                        Keep all on screen
                       </button>
                     )}
                   </>
@@ -716,7 +735,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                   className="ml-auto inline-flex items-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/20"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  {stackPageIndex < stackPageCount - 1 ? 'Skip to next batch' : 'Skip to next group'}
+                  Next set
                 </button>
               </div>
 
