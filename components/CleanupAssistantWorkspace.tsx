@@ -196,6 +196,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
   const [decisions, setDecisions] = useState<Map<string, CleanupImageDecision>>(new Map());
   const [wave, setWave] = useState<CleanupWave>('obvious-rejects');
   const [stackIndex, setStackIndex] = useState(0);
+  const [stackPageIndex, setStackPageIndex] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [gridSize, setGridSize] = useState<6 | 9 | 12>(9);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
@@ -277,10 +278,18 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
     () => (activeStack ? activeStack.imageIds.map((imageId) => imageMap.get(imageId)).filter((image): image is IndexedImage => Boolean(image)) : []),
     [activeStack, imageMap],
   );
-  const displayedImages = activeImages;
+  const stackPageCount = Math.max(1, Math.ceil(activeImages.length / gridSize));
+  const displayedImages = useMemo(() => {
+    const start = stackPageIndex * gridSize;
+    return activeImages.slice(start, start + gridSize);
+  }, [activeImages, gridSize, stackPageIndex]);
+  const displayedImageIds = useMemo(() => displayedImages.map((image) => image.id), [displayedImages]);
+  const displayedStart = activeImages.length === 0 ? 0 : stackPageIndex * gridSize + 1;
+  const displayedEnd = Math.min(activeImages.length, displayedStart + displayedImages.length - 1);
 
   useEffect(() => {
     setStackIndex(0);
+    setStackPageIndex(0);
     setSelectedIds(new Set());
   }, [wave]);
 
@@ -289,6 +298,17 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
       setStackIndex(Math.max(0, visibleStacks.length - 1));
     }
   }, [stackIndex, visibleStacks.length]);
+
+  useEffect(() => {
+    setStackPageIndex(0);
+    setSelectedIds(new Set());
+  }, [activeStack?.id, gridSize]);
+
+  useEffect(() => {
+    if (stackPageIndex >= stackPageCount) {
+      setStackPageIndex(Math.max(0, stackPageCount - 1));
+    }
+  }, [stackPageCount, stackPageIndex]);
 
   const counts = useMemo(() => {
     let keep = 0;
@@ -360,7 +380,18 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
 
   const handleNextStack = () => {
     setSelectedIds(new Set());
-    setStackIndex((current) => Math.min(current + 1, Math.max(visibleStacks.length - 1, 0)));
+    if (stackPageIndex < stackPageCount - 1) {
+      setStackPageIndex((current) => current + 1);
+      return;
+    }
+
+    setStackPageIndex(0);
+    setStackIndex((current) => {
+      if (visibleStacks.length === 0) {
+        return 0;
+      }
+      return current >= visibleStacks.length - 1 ? 0 : current + 1;
+    });
   };
 
   const handleCompareTwo = () => {
@@ -529,7 +560,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                     <h3 className="text-lg font-bold text-white">{activeStack.title}</h3>
                   </div>
                   <p className="mt-1 text-sm text-gray-400">
-                    Stack {stackIndex + 1} of {visibleStacks.length} · {activeStack.imageIds.length} image{activeStack.imageIds.length === 1 ? '' : 's'}
+                    Stack {stackIndex + 1} of {visibleStacks.length} · showing {displayedStart}-{displayedEnd} of {activeStack.imageIds.length}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -561,7 +592,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => void markImages(activeStack.imageIds.filter((imageId) => !selectedIds.has(imageId)), 'reject')}
+                  onClick={() => void markImages(displayedImageIds.filter((imageId) => !selectedIds.has(imageId)), 'reject')}
                   className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-500"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -577,7 +608,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => void markImages(activeStack.imageIds, 'keep')}
+                  onClick={() => void markImages(displayedImageIds, 'keep')}
                   className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20"
                 >
                   <Check className="h-4 w-4" />
@@ -606,7 +637,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
                   className="ml-auto inline-flex items-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/20"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  Next stack
+                  {stackPageIndex < stackPageCount - 1 ? 'Next batch' : 'Next stack'}
                 </button>
               </div>
 
