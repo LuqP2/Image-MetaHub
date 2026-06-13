@@ -753,6 +753,8 @@ interface CellData {
   sensitiveTagSet?: Set<string>;
   blurSensitiveImages?: boolean;
   toggleImageSelection: (imageId: string, multiSelect: boolean) => void;
+  groupImagesById: Map<string, IndexedImage[]>;
+  onOpenCleanupSession?: (group: ImageGroup, images: IndexedImage[]) => void;
 }
 
 type GridRenderItem =
@@ -761,7 +763,11 @@ type GridRenderItem =
   | { type: 'group-header'; group: ImageGroup }
   | { type: 'group-spacer'; groupId: string; index: number };
 
-const GroupHeader: React.FC<{ group: ImageGroup }> = ({ group }) => (
+const GroupHeader: React.FC<{
+  group: ImageGroup;
+  images?: IndexedImage[];
+  onOpenCleanupSession?: (group: ImageGroup, images: IndexedImage[]) => void;
+}> = ({ group, images = [], onOpenCleanupSession }) => (
   <div
     className="h-full w-full pt-[14px]"
     data-group-id={group.id}
@@ -774,6 +780,18 @@ const GroupHeader: React.FC<{ group: ImageGroup }> = ({ group }) => (
       <div className="shrink-0 rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-400">
         {group.count} item{group.count === 1 ? '' : 's'}
       </div>
+      {group.id.startsWith('session-') && onOpenCleanupSession && images.length >= 3 && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenCleanupSession(group, images);
+          }}
+          className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/20"
+        >
+          Cleanup
+        </button>
+      )}
     </div>
   </div>
 );
@@ -895,7 +913,9 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     enableSafeMode,
     sensitiveTagSet,
     blurSensitiveImages,
-    toggleImageSelection
+    toggleImageSelection,
+    groupImagesById,
+    onOpenCleanupSession,
   } = data;
 
   const index = rowIndex * columnCount + columnIndex;
@@ -924,7 +944,11 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
           height: GROUP_HEADER_HEIGHT,
         }}
       >
-        <GroupHeader group={item.group} />
+        <GroupHeader
+          group={item.group}
+          images={groupImagesById.get(item.group.id)}
+          onOpenCleanupSession={onOpenCleanupSession}
+        />
       </div>
     );
   }
@@ -1046,6 +1070,7 @@ interface ImageGridProps {
   initialScrollTop?: number;
   onScrollPositionChange?: (scrollTop: number) => void;
   scrollResetKey?: string;
+  onOpenCleanupSession?: (group: ImageGroup, images: IndexedImage[]) => void;
 }
 
 const InnerGridElement = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
@@ -1074,6 +1099,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   initialScrollTop = 0,
   onScrollPositionChange,
   scrollResetKey,
+  onOpenCleanupSession,
 }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
@@ -1100,6 +1126,24 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
     return groupedImages.items.map((item) => item.type === 'group-header' ? item : item.image);
   }, [effectiveGroupBy, groupedImages.items, images, isStackingEnabled, stackedItems]);
+  const groupImagesById = useMemo(() => {
+    const map = new Map<string, IndexedImage[]>();
+    let activeGroupId: string | null = null;
+
+    for (const item of groupedImages.items) {
+      if (item.type === 'group-header') {
+        activeGroupId = item.group.id;
+        map.set(activeGroupId, []);
+        continue;
+      }
+
+      if (activeGroupId) {
+        map.get(activeGroupId)?.push(item.image);
+      }
+    }
+
+    return map;
+  }, [groupedImages.items]);
   const isInfinite = itemsPerPage === -1;
   const gridScopeRef = useRef<HTMLDivElement>(null);
   const gridScrollRef = useRef<HTMLDivElement>(null);
@@ -2735,7 +2779,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     enableSafeMode,
                     sensitiveTagSet,
                     blurSensitiveImages,
-                    toggleImageSelection
+                    toggleImageSelection,
+                    groupImagesById,
+                    onOpenCleanupSession,
                 };
 
                 return (
@@ -2934,7 +2980,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               }
               return (
                 <div key={item.group.id} className="basis-full" data-group-id={item.group.id}>
-                  <GroupHeader group={item.group} />
+                  <GroupHeader
+                    group={item.group}
+                    images={groupImagesById.get(item.group.id)}
+                    onOpenCleanupSession={onOpenCleanupSession}
+                  />
                 </div>
               );
             }

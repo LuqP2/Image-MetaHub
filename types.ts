@@ -1161,6 +1161,68 @@ export interface ClusterPreference {
   updatedAt: number;
 }
 
+// ===== Cleanup Assistant Types =====
+
+export type CleanupImageDecision = 'unreviewed' | 'keep' | 'reject' | 'maybe';
+
+export type CleanupWave = 'obvious-rejects' | 'choose-winners' | 'review-maybe' | 'quarantine';
+
+export type CleanupTechnicalFlag =
+  | 'near_duplicate'
+  | 'too_dark'
+  | 'too_bright'
+  | 'low_variation_from_previous'
+  | 'very_small_file'
+  | 'session_dimension_outlier'
+  | 'decode_failed'
+  | 'preview_or_grid_candidate'
+  | 'intermediate_output_candidate'
+  | 'upscale_duplicate_candidate';
+
+export interface CleanupSession {
+  id: string;
+  sourceGroupId: string;
+  label: string;
+  subtitle?: string;
+  startTime?: number;
+  endTime?: number;
+  imageIds: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CleanupStack {
+  id: string;
+  title: string;
+  imageIds: string[];
+  representativeImageId: string;
+  score: number;
+  reasons: CleanupTechnicalFlag[];
+  kind: 'visual' | 'likely-rejects' | 'singletons';
+}
+
+export interface CleanupDecisionRecord {
+  sessionId: string;
+  imageId: string;
+  decision: CleanupImageDecision;
+  updatedAt: number;
+}
+
+export interface CleanupVisualSignature {
+  imageId: string;
+  signatureVersion: number;
+  lastModified: number;
+  width: number;
+  height: number;
+  averageLuma: number;
+  lumaVariance: number;
+  dhash: string;
+  histogram: number[];
+  thumbnail: number[];
+  error?: string;
+  updatedAt: number;
+}
+
 /**
  * UI state for stack view
  */

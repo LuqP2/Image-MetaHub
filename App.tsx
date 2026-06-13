@@ -38,6 +38,7 @@ import ModelPromptPickerModal from './components/ModelPromptPickerModal';
 import CollectionsWorkspace from './components/CollectionsWorkspace';
 import ComfyUIWorkspace from './components/ComfyUIWorkspace';
 import ImageEditorWorkspace from './components/ImageEditorWorkspace';
+import CleanupAssistantWorkspace from './components/CleanupAssistantWorkspace';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
@@ -462,7 +463,8 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor' | 'cleanup'>('library');
+  const [cleanupSession, setCleanupSession] = useState<{ group: ImageGroup; images: IndexedImage[] } | null>(null);
   const [nodeViewVisibleImages, setNodeViewVisibleImages] = useState<IndexedImage[]>([]);
   const [nodeViewResultImages, setNodeViewResultImages] = useState<IndexedImage[]>([]);
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
@@ -564,8 +566,8 @@ export default function App() {
       setNodeViewResultImages([]);
     }
   }, [libraryView, nodeViewResultImages.length]);
-  const hasLeftSidebar = hasDirectories && libraryView !== 'comfyui' && libraryView !== 'editor';
-  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && libraryView !== 'comfyui' && libraryView !== 'editor'));
+  const hasLeftSidebar = hasDirectories && libraryView !== 'comfyui' && libraryView !== 'editor' && libraryView !== 'cleanup';
+  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && libraryView !== 'comfyui' && libraryView !== 'editor' && libraryView !== 'cleanup'));
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
       resolveSidebarWidths({
@@ -2260,6 +2262,11 @@ export default function App() {
     [setActiveImageScope],
   );
 
+  const handleOpenCleanupSession = useCallback((group: ImageGroup, sessionImages: IndexedImage[]) => {
+    setCleanupSession({ group, images: sessionImages });
+    setLibraryView('cleanup');
+  }, []);
+
   const findSimilarFilteredImages = useMemo(() => {
     if (!findSimilarGridFilter) {
       return null;
@@ -3128,7 +3135,7 @@ export default function App() {
           onSubmit={handleSaveCurrentFilteredAsCollection}
         />
 
-        <main className={`flex-1 flex flex-col min-h-0 w-full ${libraryView === 'comfyui' || libraryView === 'editor' ? 'p-0' : 'mx-auto p-4'}`}>
+        <main className={`flex-1 flex flex-col min-h-0 w-full ${libraryView === 'comfyui' || libraryView === 'editor' || libraryView === 'cleanup' ? 'p-0' : 'mx-auto p-4'}`}>
           {showGeneratorSetupNotice && (
             <div className="my-4 flex items-center justify-between gap-3 rounded-lg border border-blue-700/40 bg-blue-900/30 p-3 text-blue-100">
               <div className="flex-1 text-sm">
@@ -3300,6 +3307,7 @@ export default function App() {
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                           onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                           onOpenComfyUIWorkspace={(image) => openComfyUIWorkflowInWorkspace(image, displayImages)}
+                          onOpenCleanupSession={handleOpenCleanupSession}
                           groupBy={effectiveLibraryGroupBy}
                           groupSortOrder={imageGroupingSortOrder}
                           jumpToGroupRequest={pendingJumpGroupRequest}
@@ -3317,6 +3325,7 @@ export default function App() {
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                           onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                           onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
+                          onOpenCleanupSession={handleOpenCleanupSession}
                           groupBy={effectiveLibraryGroupBy}
                           groupSortOrder={imageGroupingSortOrder}
                           jumpToGroupRequest={pendingJumpGroupRequest}
@@ -3455,6 +3464,17 @@ export default function App() {
                       </div>
                     </div>
                   )
+                ) : libraryView === 'cleanup' && cleanupSession ? (
+                  <CleanupAssistantWorkspace
+                    sessionGroup={cleanupSession.group}
+                    images={cleanupSession.images}
+                    directories={safeDirectories}
+                    onBack={() => setLibraryView('library')}
+                    onOpenCompare={(images) => {
+                      setComparisonImages(images);
+                      openComparisonModal();
+                    }}
+                  />
                 ) : (
                   <SmartLibrary
                     isQueueOpen={isQueueOpen}

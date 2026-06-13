@@ -19,7 +19,7 @@ import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import RenameImageModal from './RenameImageModal';
 import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
-import { groupImages, type ImageGroupByMode, type ImageGroupingSortOrder, type ImageGroupRenderItem } from '../utils/imageGrouping';
+import { groupImages, type ImageGroup, type ImageGroupByMode, type ImageGroupingSortOrder, type ImageGroupRenderItem } from '../utils/imageGrouping';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -35,6 +35,7 @@ interface ImageTableProps {
   groupBy?: ImageGroupByMode;
   groupSortOrder?: ImageGroupingSortOrder;
   jumpToGroupRequest?: { groupId: string; requestId: number } | null;
+  onOpenCleanupSession?: (group: ImageGroup, images: IndexedImage[]) => void;
 }
 
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
@@ -84,6 +85,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   groupBy = 'none',
   groupSortOrder = 'date-desc',
   jumpToGroupRequest = null,
+  onOpenCleanupSession,
 }) => {
   const directories = useImageStore((state) => state.directories);
   const transferProgress = useImageStore((state) => state.transferProgress);
@@ -463,6 +465,24 @@ const ImageTable: React.FC<ImageTableProps> = ({
     () => groupImages(sortedImages, groupBy, { sortOrder: groupSortOrder }).items,
     [groupBy, groupSortOrder, sortedImages]
   );
+  const groupImagesById = useMemo(() => {
+    const map = new Map<string, IndexedImage[]>();
+    let activeGroupId: string | null = null;
+
+    for (const item of groupedRows) {
+      if (item.type === 'group-header') {
+        activeGroupId = item.group.id;
+        map.set(activeGroupId, []);
+        continue;
+      }
+
+      if (activeGroupId) {
+        map.get(activeGroupId)?.push(item.image);
+      }
+    }
+
+    return map;
+  }, [groupedRows]);
   const enableRowThumbnails = sortedImages.length <= 5000;
 
   const columnWidths = [
@@ -485,6 +505,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
     }
 
     if (item.type === 'group-header') {
+      const sessionImages = groupImagesById.get(item.group.id) ?? [];
       return (
         <div style={style} data-group-id={item.group.id}>
           <div className="flex h-full items-center justify-between gap-3 border-y border-gray-700/70 bg-gray-900/95 px-4 text-gray-200">
@@ -495,6 +516,15 @@ const ImageTable: React.FC<ImageTableProps> = ({
             <div className="shrink-0 rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-400">
               {item.group.count} item{item.group.count === 1 ? '' : 's'}
             </div>
+            {item.group.id.startsWith('session-') && onOpenCleanupSession && sessionImages.length >= 3 && (
+              <button
+                type="button"
+                onClick={() => onOpenCleanupSession(item.group, sessionImages)}
+                className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/20"
+              >
+                Cleanup
+              </button>
+            )}
           </div>
         </div>
       );

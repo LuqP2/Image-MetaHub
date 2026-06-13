@@ -7,7 +7,7 @@ import { A1111ApiClient } from '../services/a1111ApiClient';
 import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
 
-type LibraryView = 'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor';
+type LibraryView = 'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor' | 'cleanup';
 
 interface HeaderProps {
     onOpenSettings: () => void;
