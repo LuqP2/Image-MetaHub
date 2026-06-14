@@ -163,10 +163,14 @@ export default function AutomationRulesModal({
   const [isCreateCollectionModalOpen, setIsCreateCollectionModalOpen] = useState(false);
   const didInitializeForOpenRef = useRef(false);
 
-  const collectionNames = useMemo(
-    () => new Map(collections.map((collection) => [collection.id, collection.name])),
-    [collections],
-  );
+  const collectionNames = useMemo(() => {
+    // Optimization: Avoids new Map(arr.map()) array allocation overhead
+    const map = new Map<string, string>();
+    for (const collection of collections) {
+      map.set(collection.id, collection.name);
+    }
+    return map;
+  }, [collections]);
 
   const valueSource = useMemo(() => ({
     images,
