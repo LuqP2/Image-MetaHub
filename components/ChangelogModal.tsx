@@ -112,7 +112,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-gray-50"
+            className="p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             title="Close"
             aria-label="Close changelog"
           >
@@ -142,14 +142,14 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
         <div className="flex items-center justify-between p-6 border-t border-gray-700 bg-gray-900/50">
           <button
             onClick={openGitHubReleases}
-            className="flex items-center gap-2 text-sm text-gray-400 hover:text-accent transition-colors"
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
           >
             <ExternalLink size={16} />
             View Full Release Notes
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-accent hover:bg-blue-700 text-white rounded-lg transition-colors"
+            className="px-4 py-2 bg-accent hover:bg-blue-700 text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             Got it!
           </button>
