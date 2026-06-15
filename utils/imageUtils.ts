@@ -162,47 +162,32 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
 /**
  * Copies the file path to clipboard
  * @param image - The IndexedImage object containing the file path
+ * @param directoryPath - Optional directory path to join with the image name
  * @returns Promise with operation result
  */
-export const copyFilePathToClipboard = async (image: IndexedImage): Promise<OperationResult> => {
+export const copyFilePathToClipboard = async (image: IndexedImage, directoryPath?: string): Promise<OperationResult> => {
   try {
     // Ensure document has focus before clipboard operation
-    if (document.hidden || !document.hasFocus()) {
+    if (typeof document !== 'undefined' && (document.hidden || !document.hasFocus())) {
       window.focus();
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Determine the path to copy based on environment
-    const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
     let pathToCopy: string;
 
-    if (isElectron) {
-      // In Electron, construct full path from directory + relative path
-      let directoryPath = localStorage.getItem('invokeai-electron-directory-path');
+    // Use provided directoryPath or fallback to stored paths
+    const effectiveDirectoryPath = directoryPath ||
+      localStorage.getItem('invokeai-electron-directory-path') ||
+      sessionStorage.getItem('invokeai-electron-directory-path');
 
-      // Try sessionStorage as fallback if localStorage is null
-      if (!directoryPath) {
-        directoryPath = sessionStorage.getItem('invokeai-electron-directory-path');
-      }
-
-      pathToCopy = await joinElectronPath(directoryPath, image.name);
+    if (effectiveDirectoryPath) {
+      pathToCopy = await joinElectronPath(effectiveDirectoryPath, image.name);
     } else {
-      // In browser, use relative path
+      // Fallback to image ID which often contains the path or is the unique identifier
       pathToCopy = image.id;
     }
 
     await navigator.clipboard.writeText(pathToCopy);
-
-    // Show confirmation messages
-    if (isElectron) {
-      // Electron handles its own confirmation
-    } else {
-      // Show additional context if we have directory name
-      if (image.directoryName) {
-        // Browser-specific handling
-      }
-    }
-
     return { success: true };
   } catch (error) {
     console.error('❌ Failed to copy file path:', error);

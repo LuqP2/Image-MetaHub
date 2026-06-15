@@ -118,6 +118,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
     copySeed,
     copyImage,
     copyModel,
+    copyPath,
     showInFolder,
     exportImage,
     copyRawMetadata
@@ -755,6 +756,12 @@ const ImageTable: React.FC<ImageTableProps> = ({
                   disabled={!contextMenu.image?.models?.[0]}
                 >
                   Checkpoint
+                </button>
+                <button
+                  onClick={copyPath}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                >
+                  File Path
                 </button>
               </div>
             )}

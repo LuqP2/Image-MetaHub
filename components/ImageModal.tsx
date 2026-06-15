@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, 
 import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageEditRecipe } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
-import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
+import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
 import { AlertTriangle, Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -1159,9 +1159,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const showSidebar = !isFullViewportModal && !isSidebarCollapsed && !isRapidKeyboardNavigating;
   const showSidebarOnBottom = showSidebar && detailsPlacement === 'bottom';
   const showSidebarOnRight = showSidebar && detailsPlacement === 'right';
-  const imageFullPath = directoryPath
-    ? `${directoryPath}${/[\\/]$/.test(directoryPath) ? '' : '\\'}${image.name}`
-    : image.name;
+  const imageFullPath = useMemo(() => {
+    if (!directoryPath) return image.name;
+    const separator = directoryPath.endsWith('/') || directoryPath.endsWith('\\') ? '' : (directoryPath.includes('\\') ? '\\' : '/');
+    return `${directoryPath}${separator}${image.name}`;
+  }, [directoryPath, image.name]);
   const mediaOverlayVisibilityClass = isMediaOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
   const normalizedImageEditRecipe = useMemo(
     () => normalizeImageEditRecipe(imageEditRecipe, imageEditSourceDimensions || undefined),
@@ -1947,6 +1949,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const copyModel = () => {
     copyToClipboardElectron(nMeta?.model || '', 'Model');
     hideContextMenu();
+  };
+
+  const copyPath = async () => {
+    hideContextMenu();
+    const result = await copyFilePathToClipboard(image, directoryPath);
+    if (!result.success) {
+      alert(`Failed to copy file path: ${result.error}`);
+    }
   };
 
   const copySelection = () => {
@@ -3255,6 +3265,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <span className="min-w-0 truncate" title={imageFullPath}>
                   {imageFullPath}
                 </span>
+                <button
+                  onClick={async (event) => {
+                    event.stopPropagation();
+                    const result = await copyFilePathToClipboard(image, directoryPath);
+                    if (!result.success) {
+                      alert(`Failed to copy file path: ${result.error}`);
+                    }
+                  }}
+                  className="shrink-0 rounded p-0.5 hover:bg-gray-800 hover:text-gray-100 transition-colors"
+                  title="Copy full path"
+                  aria-label="Copy full path"
+                >
+                  <Copy size={12} />
+                </button>
                 {hasVerifiedTelemetry(liveImage) && (
                   <span
                     className="shrink-0 rounded-full border border-green-500/20 bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-green-400"
@@ -4706,6 +4730,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
               >
                 <Copy className="w-4 h-4" />
                 Copy Model
+              </button>
+              <button
+                onClick={copyPath}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <Copy className="w-4 h-4" />
+                Copy File Path
               </button>
 
               <button

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { type IndexedImage } from '../types';
-import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
+import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -220,6 +220,18 @@ export const useContextMenu = () => {
     copyToClipboardElectron(model, 'Model');
   };
 
+  const copyPath = async () => {
+    if (!contextMenu.image) return;
+    hideContextMenu();
+
+    const result = await copyFilePathToClipboard(contextMenu.image, contextMenu.directoryPath);
+    if (result.success) {
+      showNotification('File path copied to clipboard!');
+    } else {
+      alert(`Failed to copy file path: ${result.error}`);
+    }
+  };
+
   const showInFolder = () => {
     if (!contextMenu.image || !contextMenu.directoryPath) {
       alert('Cannot determine file location: directory path is missing.');
@@ -365,6 +377,7 @@ export const useContextMenu = () => {
     copySeed,
     copyImage,
     copyModel,
+    copyPath,
     showInFolder,
     exportImage,
     copyMetadataToA1111,

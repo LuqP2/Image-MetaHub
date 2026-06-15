@@ -16,3 +16,7 @@
 ## 2024-05-15 - ComparisonOverlayView Icon Buttons Missing ARIA Labels
 **Learning:** Icon-only buttons for zooming, resetting zoom, and pausing/resuming the flicker mode in the `ComparisonOverlayView` were missing `aria-label` attributes.
 **Action:** Added descriptive `aria-label` attributes to these icon-only buttons to improve screen reader accessibility. Also added `aria-hidden="true"` to the decorative SVGs to prevent redundant announcements by screen readers.
+
+## 2024-05-22 - Centralizing File System Operations
+**Learning:** Micro-UX features involving file paths (like "Copy File Path") often require different logic for Electron vs. Web. Implementing this logic multiple times in hooks (`useContextMenu`) and components (`ImageModal`) leads to bugs, inconsistent separators, and high maintenance.
+**Action:** Always centralize filesystem-adjacent UX utilities (path construction, clipboard interaction) in `utils/imageUtils.ts` or dedicated service files. Ensure they handle the environment check internally to keep UI components clean and focused on presentation.

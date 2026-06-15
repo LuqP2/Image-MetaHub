@@ -1187,6 +1187,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     copySeed,
     copyImage,
     copyModel,
+    copyPath,
     showInFolder,
     exportImage,
     copyMetadataToA1111,
@@ -2320,6 +2321,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                   disabled={!contextMenu.image?.models?.[0] && !(contextMenu.image?.metadata as any)?.model}
                 >
                   Checkpoint
+                </button>
+                <button
+                  onClick={copyPath}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                >
+                  File Path
                 </button>
               </div>
             )}
