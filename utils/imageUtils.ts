@@ -1,4 +1,5 @@
 import { type IndexedImage } from '../types';
+import { getRelativeImagePath } from './imagePaths';
 
 // Utility functions for image operations
 
@@ -40,7 +41,7 @@ export const copyImageToClipboard = async (image: IndexedImage, directoryPath?: 
       // image.id might be an internal ID like "dirId::filename" or just "filename" depending on context
       if (directoryPath) {
         // Safe path joining via Electron API
-        const joined = await window.electronAPI.joinPaths(directoryPath, image.name);
+        const joined = await window.electronAPI.joinPaths(directoryPath, getRelativeImagePath(image));
         if (joined.success && joined.path) {
           fullPath = joined.path;
         }
@@ -99,7 +100,7 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
           directoryPath = sessionStorage.getItem('invokeai-electron-directory-path');
         }
 
-        fullPath = await joinElectronPath(directoryPath, imageOrPath.name);
+        fullPath = await joinElectronPath(directoryPath, getRelativeImagePath(imageOrPath));
       }
       
       const result = await (window as any).electronAPI.showItemInFolder(fullPath);
@@ -181,7 +182,7 @@ export const copyFilePathToClipboard = async (image: IndexedImage, directoryPath
       sessionStorage.getItem('invokeai-electron-directory-path');
 
     if (effectiveDirectoryPath) {
-      pathToCopy = await joinElectronPath(effectiveDirectoryPath, image.name);
+      pathToCopy = await joinElectronPath(effectiveDirectoryPath, getRelativeImagePath(image));
     } else {
       // Fallback to image ID which often contains the path or is the unique identifier
       pathToCopy = image.id;
