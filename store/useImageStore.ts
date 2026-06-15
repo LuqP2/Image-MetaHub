@@ -2010,9 +2010,14 @@ export const useImageStore = create<ImageState>((set, get) => {
             includeSubfolders,
         } = state;
 
-        const visibleDirectoryIds = new Set(
-            directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
-        );
+        // Optimization: Use a single loop instead of .filter().map() to avoid intermediate array allocation
+        // Impact: Reduces garbage collection overhead during frequent state derivation calls
+        const visibleDirectoryIds = new Set<string>();
+        for (const dir of directories) {
+            if (dir.visible ?? true) {
+                visibleDirectoryIds.add(dir.id);
+            }
+        }
 
         const directoryPathMap = new Map<string, string>();
         directories.forEach(dir => {
