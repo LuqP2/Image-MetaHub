@@ -122,6 +122,7 @@ function compactCacheMetadataEntry(entry: CacheImageMetadata): CacheImageMetadat
       _analytics: payload._analytics,
       imh_pro: payload.imh_pro,
       _metahub_pro: payload._metahub_pro,
+      imh_attribution: payload.imh_attribution,
     };
   }
 

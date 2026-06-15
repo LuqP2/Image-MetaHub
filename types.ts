@@ -700,6 +700,14 @@ export interface ImageLineage {
   resizeMode?: string | null;
 }
 
+export interface MetaHubAttribution {
+  schema_version?: number;
+  token: string;
+  source?: string;
+  node_version?: string;
+  [key: string]: unknown;
+}
+
 export interface BaseMetadata extends SharedBaseMetadata {
   clip_skip?: number;
   media_type?: 'image' | 'video' | 'audio';
@@ -710,6 +718,7 @@ export interface BaseMetadata extends SharedBaseMetadata {
   lineage?: ImageLineage | null;
   tags?: string[];
   notes?: string;
+  imh_attribution?: MetaHubAttribution | null;
   analytics?: {
     vram_peak_mb?: number | null;
     gpu_device?: string | null;

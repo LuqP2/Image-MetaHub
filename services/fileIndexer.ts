@@ -1291,6 +1291,7 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
                 : undefined,
             }
           : inferredLineage,
+        imh_attribution: payload.imh_attribution || null,
         _analytics: payload.analytics || null,
         _metahub_pro: payload.imh_pro || null,
         _detection_method: 'metahub_chunk_direct',
@@ -1323,6 +1324,7 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
     denoise: enhancedResult.denoise,
     generationType: enhancedResult.generationType,
     lineage: enhancedResult.lineage,
+    imh_attribution: enhancedResult.imh_attribution || null,
     _analytics: enhancedResult._analytics || null,
     _metahub_pro: enhancedResult._metahub_pro || null,
     _detection_method: enhancedResult._detection_method,
@@ -1976,6 +1978,7 @@ function compactRawMetadataForRuntime(
       _analytics: payload._analytics,
       imh_pro: payload.imh_pro,
       _metahub_pro: payload._metahub_pro,
+      imh_attribution: payload.imh_attribution,
     };
   }
 
