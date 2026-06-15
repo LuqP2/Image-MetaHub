@@ -278,8 +278,9 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
               onClick={() => setIsFlickerPaused((current) => !current)}
               className="rounded p-1 text-gray-200 hover:bg-white/10 hover:text-white"
               title={isFlickerPaused ? 'Resume flicker' : 'Pause flicker'}
+              aria-label={isFlickerPaused ? 'Resume flicker' : 'Pause flicker'}
             >
-              {isFlickerPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+              {isFlickerPaused ? <Play aria-hidden="true" className="h-3.5 w-3.5" /> : <Pause aria-hidden="true" className="h-3.5 w-3.5" />}
             </button>
             {advancedSettings.showLabels ? <span>{isFlickerShowingRight ? `Image B: ${rightImage.name}` : `Image A: ${leftImage.name}`}</span> : <span>{isFlickerShowingRight ? 'Image B' : 'Image A'}</span>}
           </div>
@@ -553,22 +554,25 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                 onClick={() => zoomIn()}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Zoom In"
+                aria-label="Zoom In"
               >
-                <ZoomIn className="w-5 h-5 text-white" />
+                <ZoomIn aria-hidden="true" className="w-5 h-5 text-white" />
               </button>
               <button
                 onClick={() => zoomOut()}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Zoom Out"
+                aria-label="Zoom Out"
               >
-                <ZoomOut className="w-5 h-5 text-white" />
+                <ZoomOut aria-hidden="true" className="w-5 h-5 text-white" />
               </button>
               <button
                 onClick={() => resetTransform()}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Reset Zoom"
+                aria-label="Reset Zoom"
               >
-                <RotateCcw className="w-5 h-5 text-white" />
+                <RotateCcw aria-hidden="true" className="w-5 h-5 text-white" />
               </button>
             </div>
 
