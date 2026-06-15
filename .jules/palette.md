@@ -13,3 +13,6 @@
 ## 2024-05-20 - Descriptive Titles on Disabled States
 **Learning:** Icon-only buttons that change state (like Undo/Redo) can cause confusion when disabled without explanation. Adding dynamic `title` attributes that explain *why* an action is disabled (e.g. "Nothing to undo" instead of just "Undo") provides immediate, helpful feedback to users.
 **Action:** When implementing interactive elements with disabled states, especially icon-only buttons, provide dynamic `title` attributes explaining the disabled reason to improve clarity.
+## 2024-05-15 - ComparisonOverlayView Icon Buttons Missing ARIA Labels
+**Learning:** Icon-only buttons for zooming, resetting zoom, and pausing/resuming the flicker mode in the `ComparisonOverlayView` were missing `aria-label` attributes.
+**Action:** Added descriptive `aria-label` attributes to these icon-only buttons to improve screen reader accessibility. Also added `aria-hidden="true"` to the decorative SVGs to prevent redundant announcements by screen readers.
