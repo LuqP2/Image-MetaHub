@@ -62,3 +62,6 @@
 ## 2026-06-13 - Eliminate Array.map() O(N) tuple allocation for Map initialization
 **Learning:** Initializing a `Map` using `.map()` on a large array (e.g., `new Map(directories.map(dir => [dir.id, dir.path]))`) inside a `useMemo` allocates a temporary O(N) array of tuples. On heavy re-renders where the source array identity changes, this tuple array is instantly created and discarded, driving up garbage collection pressure and reducing frame rates.
 **Action:** Replace the array-mapping pattern with a pre-instantiated `Map` and populate it directly using a standard `for...of` loop to ensure O(1) intermediate memory scaling and eliminate unnecessary GC thrashing.
+## 2024-06-14 - Eliminate Array.map().filter() chaining for Set initialization in store derivations
+**Learning:** Chaining array methods like `directories.filter(...).map(...)` directly inside the constructor of a `Set` within a frequently-executed store derivation (like `filterAndSort` in `useImageStore.ts`) creates multiple intermediate array allocations that increase garbage collection overhead on every state change.
+**Action:** Replace the array method chaining with a pre-instantiated `Set` and populate it directly using a standard `for...of` loop with a conditional check to ensure O(1) intermediate memory scaling and eliminate unnecessary GC thrashing.
