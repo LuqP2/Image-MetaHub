@@ -4221,10 +4221,15 @@ function setupFileOperationHandlers() {
   // Handle show item in folder
   ipcMain.handle('show-item-in-folder', async (event, filePath) => {
     try {
-      // Allow opening any folder/file that the user has access to via the OS dialogs
-      // We removed the isPathAllowed check here because export destinations can be anywhere
-      
       const normalizedFilePath = path.normalize(filePath);
+
+      if (!isAllowedOrInternal(normalizedFilePath) && !isApprovedWritePath(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to show item in folder outside of allowed directories.');
+        console.error('  Requested path:', filePath);
+        console.error('  Normalized path:', normalizedFilePath);
+        return { success: false, error: 'Access denied: Path is not within an indexed or approved directory.' };
+      }
+
       console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 
       // Verify the path exists before trying to open or show it
@@ -4258,15 +4263,23 @@ function setupFileOperationHandlers() {
     }
   });
 
-  // Handle open cache location (without security restrictions since it's app's internal cache)
+  // Handle open cache location
   ipcMain.handle('open-cache-location', async (event, cachePath) => {
     try {
+      const rootPath = await getCacheRootPath();
       const normalizedCachePath = path.normalize(cachePath);
-      const parentPath = path.dirname(normalizedCachePath);
-      console.log('📂 Opening cache parent directory:', parentPath);
+      const normalizedRootPath = normalizeAllowedPath(rootPath);
+      const normalizedRequestedPath = normalizeAllowedPath(normalizedCachePath);
 
+      if (!isSameOrChildPath(normalizedRequestedPath, normalizedRootPath)) {
+        console.error('SECURITY VIOLATION: Attempted to open cache location outside of cache root.');
+        console.error('  Requested path:', cachePath);
+        console.error('  Cache root:', rootPath);
+        return { success: false, error: 'Access denied: Path is not within the cache root.' };
+      }
+
+      const parentPath = path.dirname(normalizedCachePath);
       shell.showItemInFolder(parentPath);
-      console.log('✅ shell.showItemInFolder called for:', parentPath);
 
       return { success: true };
     } catch (error) {

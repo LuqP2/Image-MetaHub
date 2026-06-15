@@ -2,7 +2,7 @@
 
 🛡️ Security learnings and critical observations.
 
-## 2025-05-15 - Unauthorized File System Enumeration in IPC Handler
-**Vulnerability:** The `list-directory-files` IPC handler lacked path validation, allowing the renderer process to list contents of any directory the OS user had access to, bypassing the application's directory indexing restrictions.
-**Learning:** Security-critical utility functions (like `isPathAllowed`) must be consistently applied to all new IPC handlers that interact with the file system. In a large `electron.mjs` file, it is easy to overlook these checks when adding new functionality.
-**Prevention:** Implement a middleware-like pattern for IPC handlers or use a strictly typed IPC registry that enforces path validation for all handlers accepting file or directory paths.
+## 2025-05-15 - Unauthorized File System Enumeration and Information Disclosure in IPC Handlers
+**Vulnerability:** Several IPC handlers (`list-directory-files`, `open-cache-location`, `show-item-in-folder`) lacked sufficient path validation. This allowed the renderer process to list contents of any directory, disclose existence of files outside allowed scopes, or open system folders arbitrarily.
+**Learning:** Security-critical utility functions (like `isPathAllowed`, `isAllowedOrInternal`) must be consistently applied to all IPC handlers that interact with the file system. Selective or removed validation for "convenience" (like in exports or internal cache opening) creates path traversal risks.
+**Prevention:** Enforce mandatory path validation for every file-system-related IPC handler. Use a defense-in-depth approach by combining `isPathAllowed` (for indexed content) with `isApprovedWritePath` (for exports) and `isInternalPath` (for app data).
