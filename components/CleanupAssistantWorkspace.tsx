@@ -78,6 +78,13 @@ const decisionClasses: Record<CleanupImageDecision, string> = {
   maybe: 'border-amber-500/50 bg-amber-500/15 text-amber-100',
 };
 
+const decisionFilterLabels: Record<CleanupImageDecision, string> = {
+  keep: 'Kept',
+  reject: 'Rejected',
+  maybe: 'Maybe',
+  unreviewed: 'Unreviewed',
+};
+
 const getSessionId = (group: ImageGroup) => group.id;
 
 const formatBytes = (bytes: number) => {
@@ -197,6 +204,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
   const [stackPageIndex, setStackPageIndex] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [gridSize, setGridSize] = useState<6 | 9 | 12>(9);
+  const [decisionFilter, setDecisionFilter] = useState<CleanupImageDecision | null>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
   const [transferStatusText, setTransferStatusText] = useState('');
@@ -267,17 +275,41 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
     };
   }, [sessionId, staticImages]);
 
-  const visibleStacks = useMemo(
+  const baseVisibleStacks = useMemo(
     () => getVisibleStacks(stacks, wave, decisions),
     [decisions, stacks, wave],
   );
+  const decisionFilterStacks = useMemo<CleanupStack[]>(() => {
+    if (!decisionFilter) {
+      return [];
+    }
+
+    const filteredImageIds = staticImages
+      .filter((image) => getDecision(decisions, image.id) === decisionFilter)
+      .map((image) => image.id);
+    const chunks: string[][] = [];
+    for (let index = 0; index < filteredImageIds.length; index += gridSize) {
+      chunks.push(filteredImageIds.slice(index, index + gridSize));
+    }
+
+    return chunks.map((chunk, index) => ({
+      id: `decision-${decisionFilter}-${index + 1}-${chunk[0]}`,
+      title: `${decisionFilterLabels[decisionFilter]} images`,
+      imageIds: chunk,
+      representativeImageId: chunk[0],
+      score: 0,
+      reasons: [],
+      kind: 'singletons',
+    }));
+  }, [decisionFilter, decisions, gridSize, staticImages]);
+  const visibleStacks = decisionFilter ? decisionFilterStacks : baseVisibleStacks;
   const activeStack = visibleStacks[stackIndex] ?? visibleStacks[0] ?? null;
   const activeStackImageIds = useMemo(() => {
     if (!activeStack) {
       return [];
     }
 
-    if (wave === 'review-maybe') {
+    if (!decisionFilter && wave === 'review-maybe') {
       return activeStack.imageIds.filter((imageId) => getDecision(decisions, imageId) === 'maybe');
     }
 
@@ -298,7 +330,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
     setStackIndex(0);
     setStackPageIndex(0);
     setSelectedIds(new Set());
-  }, [wave]);
+  }, [decisionFilter, wave]);
 
   useEffect(() => {
     if (stackIndex >= visibleStacks.length) {
@@ -373,7 +405,12 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
   }, [decisions, persistDecisionUpdates]);
 
   const handleWaveChange = useCallback(async (nextWave: CleanupWave) => {
+    setDecisionFilter(null);
     setWave(nextWave);
+  }, []);
+
+  const handleDecisionFilterChange = useCallback((nextFilter: CleanupImageDecision) => {
+    setDecisionFilter((current) => current === nextFilter ? null : nextFilter);
   }, []);
 
   const toggleSelected = (imageId: string) => {
@@ -461,11 +498,11 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
     : 0;
   const selectedInBatchCount = displayedImageIds.filter((imageId) => selectedIds.has(imageId)).length;
   const getStackVisibleImageCount = useCallback((stack: CleanupStack) => {
-    if (wave === 'review-maybe') {
+    if (!decisionFilter && wave === 'review-maybe') {
       return stack.imageIds.filter((imageId) => getDecision(decisions, imageId) === 'maybe').length;
     }
     return stack.imageIds.length;
-  }, [decisions, wave]);
+  }, [decisionFilter, decisions, wave]);
 
   const totalReviewSetCount = visibleStacks.reduce((total, stack) => (
     total + Math.max(1, Math.ceil(getStackVisibleImageCount(stack) / gridSize))
@@ -475,7 +512,10 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
     .reduce((total, stack) => total + Math.max(1, Math.ceil(getStackVisibleImageCount(stack) / gridSize)), 0)
     + stackPageIndex
     + 1;
-  const activeGroupTitle = activeStack?.kind === 'likely-rejects'
+  const decisionFilterLabel = decisionFilter ? decisionFilterLabels[decisionFilter] : '';
+  const activeGroupTitle = decisionFilter
+    ? `${decisionFilterLabel} images`
+    : activeStack?.kind === 'likely-rejects'
     ? 'Technical review set'
     : activeStack?.kind === 'visual'
     ? 'Similar review set'
@@ -484,7 +524,9 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
     : 'Review set';
   const activeShowingText = `${displayedImages.length} image${displayedImages.length === 1 ? '' : 's'}`;
   const activeGroupSummary = `Set ${currentReviewSetNumber} of ${Math.max(1, totalReviewSetCount)} · ${activeShowingText}`;
-  const waveHelperText = wave === 'obvious-rejects'
+  const waveHelperText = decisionFilter
+    ? `Showing only ${decisionFilterLabel.toLowerCase()} images. Click the counter again to clear this filter.`
+    : wave === 'obvious-rejects'
     ? 'These are technical suspects only. The app is suggesting review, not deciding.'
     : wave === 'choose-winners' && activeStack?.kind === 'visual'
     ? 'Pick the images worth keeping from what is on screen. Use the main action only when every unselected image here should be rejected.'
@@ -545,22 +587,54 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3">
+            <button
+              type="button"
+              onClick={() => handleDecisionFilterChange('keep')}
+              className={`rounded-xl border p-3 text-left transition-colors ${
+                decisionFilter === 'keep'
+                  ? 'border-emerald-300 bg-emerald-500/20 ring-1 ring-emerald-300/40'
+                  : 'border-emerald-500/20 bg-emerald-500/10 hover:bg-emerald-500/15'
+              }`}
+            >
               <div className="text-xl font-bold text-emerald-100">{counts.keep}</div>
               <div className="text-xs text-emerald-200/80">Kept</div>
-            </div>
-            <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3">
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDecisionFilterChange('reject')}
+              className={`rounded-xl border p-3 text-left transition-colors ${
+                decisionFilter === 'reject'
+                  ? 'border-rose-300 bg-rose-500/20 ring-1 ring-rose-300/40'
+                  : 'border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/15'
+              }`}
+            >
               <div className="text-xl font-bold text-rose-100">{counts.reject}</div>
               <div className="text-xs text-rose-200/80">Rejected</div>
-            </div>
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3">
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDecisionFilterChange('maybe')}
+              className={`rounded-xl border p-3 text-left transition-colors ${
+                decisionFilter === 'maybe'
+                  ? 'border-amber-300 bg-amber-500/20 ring-1 ring-amber-300/40'
+                  : 'border-amber-500/20 bg-amber-500/10 hover:bg-amber-500/15'
+              }`}
+            >
               <div className="text-xl font-bold text-amber-100">{counts.maybe}</div>
               <div className="text-xs text-amber-200/80">Maybe</div>
-            </div>
-            <div className="rounded-xl border border-gray-700 bg-gray-900 p-3">
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDecisionFilterChange('unreviewed')}
+              className={`rounded-xl border p-3 text-left transition-colors ${
+                decisionFilter === 'unreviewed'
+                  ? 'border-gray-400 bg-gray-800 ring-1 ring-gray-400/40'
+                  : 'border-gray-700 bg-gray-900 hover:bg-gray-800'
+              }`}
+            >
               <div className="text-xl font-bold text-gray-100">{counts.unreviewed}</div>
               <div className="text-xs text-gray-400">Unreviewed</div>
-            </div>
+            </button>
           </div>
 
           <div className="mt-4 space-y-2">
@@ -641,7 +715,7 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
               </div>
 
               <div className="mb-4 flex flex-wrap gap-2">
-                {wave === 'choose-winners' ? (
+                {wave === 'choose-winners' && !decisionFilter ? (
                   <>
                     <button
                       type="button"
@@ -758,7 +832,9 @@ const CleanupAssistantWorkspace: React.FC<CleanupAssistantWorkspaceProps> = ({
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center rounded-3xl border border-gray-800 bg-gray-900/50 p-8 text-center text-gray-400">
-              No groups in this wave. Try the next wave, or move to quarantine when you are ready.
+              {decisionFilter
+                ? `No ${decisionFilterLabel.toLowerCase()} images yet.`
+                : 'No review sets in this wave. Try the next wave, or move to quarantine when you are ready.'}
             </div>
           )}
         </main>
