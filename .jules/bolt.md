@@ -65,3 +65,7 @@
 ## 2024-06-14 - Eliminate Array.map().filter() chaining for Set initialization in store derivations
 **Learning:** Chaining array methods like `directories.filter(...).map(...)` directly inside the constructor of a `Set` within a frequently-executed store derivation (like `filterAndSort` in `useImageStore.ts`) creates multiple intermediate array allocations that increase garbage collection overhead on every state change.
 **Action:** Replace the array method chaining with a pre-instantiated `Set` and populate it directly using a standard `for...of` loop with a conditional check to ensure O(1) intermediate memory scaling and eliminate unnecessary GC thrashing.
+
+## 2026-06-15 - Pre-normalize Invariant Filter Criteria to Avoid O(N * E) Path Operations
+**Learning:** Performing path normalization (e.g., `normalizePath`) inside a hot loop for every image (N) and every filter criteria (E) introduces significant overhead due to redundant regex and string operations. This is especially impactful in `filterAndSort` derivation logic.
+**Action:** Pre-normalize static filter criteria (like `excludedFolders` and `selectedFolders`) outside of the iteration. Use these pre-computed values or optimized structures like a `Set` for lookup inside the loop to achieve O(N) performance.
