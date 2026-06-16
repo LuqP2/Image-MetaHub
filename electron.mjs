@@ -4267,8 +4267,7 @@ function setupFileOperationHandlers() {
 
       if (!isInternalPath(normalizedCachePath)) {
         const rootPath = await getCacheRootPath();
-        const normalizedRootPath = path.normalize(rootPath);
-        if (!normalizedCachePath.startsWith(normalizedRootPath)) {
+        if (!isSameOrChildPath(normalizeAllowedPath(normalizedCachePath), normalizeAllowedPath(rootPath))) {
           console.error('SECURITY VIOLATION: Attempted to open cache location outside of cache root.');
           return { success: false, error: 'Access denied: Cannot open cache locations outside of the cache root.' };
         }
