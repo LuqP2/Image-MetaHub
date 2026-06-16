@@ -136,4 +136,55 @@ describe('metadataEngine MetaHub PNG chunks', () => {
     expect(result.metadata?.model).toBe('fallback-future.safetensors');
     expect(result.metadata?.imh_attribution).toBeUndefined();
   });
+
+  it('falls back to standard parameters when imagemetahub_data has only a generator', async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-cli-metahub-empty-'));
+    const filePath = path.join(tempDir, 'empty.png');
+
+    await fs.writeFile(
+      filePath,
+      minimalPng([
+        iTextChunk('imagemetahub_data', JSON.stringify({ generator: 'ComfyUI' })),
+        textChunk('parameters', 'generator-only fallback\nSteps: 8, Sampler: euler, CFG scale: 4, Seed: 77, Size: 512x768, Model: fallback-empty.safetensors'),
+      ])
+    );
+
+    const result = await parseImageFile(filePath);
+
+    expect(result.rawSource).toBe('png');
+    expect((result.rawMetadata as any)?.imagemetahub_data).toBeUndefined();
+    expect(result.rawMetadata).toMatchObject({
+      parameters: expect.stringContaining('generator-only fallback'),
+    });
+    expect(result.metadata?.prompt).toBe('generator-only fallback');
+    expect(result.metadata?.model).toBe('fallback-empty.safetensors');
+    expect(result.metadata?.imh_attribution).toBeUndefined();
+  });
+
+  it('accepts attribution-only imagemetahub_data as usable MetaHub metadata', async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-cli-metahub-token-'));
+    const filePath = path.join(tempDir, 'token-only.png');
+
+    await fs.writeFile(
+      filePath,
+      minimalPng([
+        iTextChunk('imagemetahub_data', JSON.stringify({
+          generator: 'ComfyUI',
+          imh_attribution: {
+            schema_version: 1,
+            token: 'imhcrt_token_only',
+            source: 'metahub_save_node',
+            node_version: '1.0.10',
+          },
+        })),
+        textChunk('parameters', 'ignored fallback\nSteps: 1, Seed: 1'),
+      ])
+    );
+
+    const result = await parseImageFile(filePath);
+
+    expect(result.rawSource).toBe('png');
+    expect((result.rawMetadata as any)?.imagemetahub_data?.imh_attribution?.token).toBe('imhcrt_token_only');
+    expect(result.metadata?.imh_attribution?.token).toBe('imhcrt_token_only');
+  });
 });

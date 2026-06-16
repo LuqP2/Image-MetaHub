@@ -126,13 +126,64 @@ const buildAudioInfoFromProbe = (stream: VideoProbeStream, format: VideoProbeFor
   };
 };
 
+const isRecord = (value: unknown): value is MetadataRecord =>
+  Boolean(value && typeof value === 'object' && !Array.isArray(value));
+
+const hasNonBlankString = (value: unknown): boolean =>
+  typeof value === 'string' && value.trim().length > 0;
+
+const hasFiniteNumber = (value: unknown): boolean =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const hasUsableMetaHubField = (payload: MetadataRecord): boolean => {
+  const attribution = isRecord(payload.imh_attribution) ? payload.imh_attribution : null;
+  if (hasNonBlankString(attribution?.token)) {
+    return true;
+  }
+
+  if (
+    hasNonBlankString(payload.prompt) ||
+    hasNonBlankString(payload.negativePrompt) ||
+    hasNonBlankString(payload.model) ||
+    hasNonBlankString(payload.sampler_name) ||
+    hasNonBlankString(payload.scheduler) ||
+    hasNonBlankString(payload.vae)
+  ) {
+    return true;
+  }
+
+  if (
+    hasFiniteNumber(payload.seed) ||
+    hasFiniteNumber(payload.steps) ||
+    hasFiniteNumber(payload.cfg) ||
+    hasFiniteNumber(payload.width) ||
+    hasFiniteNumber(payload.height) ||
+    hasFiniteNumber(payload.denoise)
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(payload.loras) && payload.loras.length > 0) {
+    return true;
+  }
+
+  if (isRecord(payload.workflow) || isRecord(payload.prompt_api) || isRecord(payload.imh_pro) || isRecord(payload.analytics)) {
+    return true;
+  }
+
+  return false;
+};
+
 const isSupportedMetaHubPayload = (value: unknown): value is MetadataRecord => {
   if (!value || typeof value !== 'object') {
     return false;
   }
 
   const payload = value as MetadataRecord;
-  return payload.generator === 'ComfyUI' || payload.generator === 'Image MetaHub';
+  return (
+    (payload.generator === 'ComfyUI' || payload.generator === 'Image MetaHub') &&
+    hasUsableMetaHubField(payload)
+  );
 };
 
 async function readMediaMetadataWithFfprobe(filePath: string): Promise<{ comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null } | null> {
