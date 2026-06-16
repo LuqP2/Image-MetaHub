@@ -1,0 +1,4 @@
+## 2025-05-15 - Hardening IPC Path Validation
+**Vulnerability:** Path Traversal and unauthorized file disclosure through IPC handlers. The handlers `show-item-in-folder`, `open-cache-location`, and `list-directory-files` lacked sufficient path validation, potentially allowing a compromised renderer to access files outside of the user's indexed folders.
+**Learning:** Security checks were previously relaxed or omitted in certain handlers to simplify feature implementation (e.g., revealing exported files in their destination folders). This created gaps in the application's "local-first" security model.
+**Prevention:** Ensure all IPC handlers that take file paths as input strictly validate those paths using the established security helper functions (`isAllowedOrInternal`, `isPathAllowed`, `isApprovedWritePath`). Never assume a path is safe just because it might originate from a "trusted" UI flow like a file dialog, as the renderer can be compromised.
