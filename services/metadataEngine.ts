@@ -254,7 +254,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     try {
       return { imagemetahub_data: JSON.parse(chunks.imagemetahub_data) } as ImageMetadata;
     } catch {
-      return { imagemetahub_data: chunks.imagemetahub_data } as ImageMetadata;
+      // Ignore malformed MetaHub chunks so standard workflow/parameters chunks can be used.
     }
   }
 

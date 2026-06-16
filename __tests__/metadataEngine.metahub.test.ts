@@ -88,4 +88,28 @@ describe('metadataEngine MetaHub PNG chunks', () => {
     expect(result.metadata?.prompt).toBe('cli metahub prompt');
     expect(result.metadata?.imh_attribution?.token).toBe('imhcrt_br_creator_workflow_v1_random');
   });
+
+  it('falls back to standard parameters when imagemetahub_data is malformed', async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-cli-metahub-bad-'));
+    const filePath = path.join(tempDir, 'fallback.png');
+
+    await fs.writeFile(
+      filePath,
+      minimalPng([
+        iTextChunk('imagemetahub_data', '{"generator":"ComfyUI","prompt":'),
+        textChunk('parameters', 'fallback prompt\nSteps: 12, Sampler: euler, CFG scale: 6, Seed: 99, Size: 512x768, Model: fallback.safetensors'),
+      ])
+    );
+
+    const result = await parseImageFile(filePath);
+
+    expect(result.rawSource).toBe('png');
+    expect((result.rawMetadata as any)?.imagemetahub_data).toBeUndefined();
+    expect(result.rawMetadata).toMatchObject({
+      parameters: expect.stringContaining('fallback prompt'),
+    });
+    expect(result.metadata?.prompt).toBe('fallback prompt');
+    expect(result.metadata?.model).toBe('fallback.safetensors');
+    expect(result.metadata?.imh_attribution).toBeUndefined();
+  });
 });
