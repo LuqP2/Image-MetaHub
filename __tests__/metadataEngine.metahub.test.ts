@@ -112,4 +112,28 @@ describe('metadataEngine MetaHub PNG chunks', () => {
     expect(result.metadata?.model).toBe('fallback.safetensors');
     expect(result.metadata?.imh_attribution).toBeUndefined();
   });
+
+  it('falls back to standard parameters when imagemetahub_data is unsupported', async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-cli-metahub-unsupported-'));
+    const filePath = path.join(tempDir, 'unsupported.png');
+
+    await fs.writeFile(
+      filePath,
+      minimalPng([
+        iTextChunk('imagemetahub_data', JSON.stringify({ generator: 'Future MetaHub' })),
+        textChunk('parameters', 'unsupported fallback\nSteps: 10, Sampler: euler, CFG scale: 5, Seed: 88, Size: 512x768, Model: fallback-future.safetensors'),
+      ])
+    );
+
+    const result = await parseImageFile(filePath);
+
+    expect(result.rawSource).toBe('png');
+    expect((result.rawMetadata as any)?.imagemetahub_data).toBeUndefined();
+    expect(result.rawMetadata).toMatchObject({
+      parameters: expect.stringContaining('unsupported fallback'),
+    });
+    expect(result.metadata?.prompt).toBe('unsupported fallback');
+    expect(result.metadata?.model).toBe('fallback-future.safetensors');
+    expect(result.metadata?.imh_attribution).toBeUndefined();
+  });
 });

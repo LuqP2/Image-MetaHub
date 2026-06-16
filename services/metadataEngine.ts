@@ -126,6 +126,15 @@ const buildAudioInfoFromProbe = (stream: VideoProbeStream, format: VideoProbeFor
   };
 };
 
+const isSupportedMetaHubPayload = (value: unknown): value is MetadataRecord => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const payload = value as MetadataRecord;
+  return payload.generator === 'ComfyUI' || payload.generator === 'Image MetaHub';
+};
+
 async function readMediaMetadataWithFfprobe(filePath: string): Promise<{ comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null } | null> {
   const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
 
@@ -252,7 +261,10 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
 
   if (chunks.imagemetahub_data) {
     try {
-      return { imagemetahub_data: JSON.parse(chunks.imagemetahub_data) } as ImageMetadata;
+      const metaHubPayload = JSON.parse(chunks.imagemetahub_data);
+      if (isSupportedMetaHubPayload(metaHubPayload)) {
+        return { imagemetahub_data: metaHubPayload } as ImageMetadata;
+      }
     } catch {
       // Ignore malformed MetaHub chunks so standard workflow/parameters chunks can be used.
     }
