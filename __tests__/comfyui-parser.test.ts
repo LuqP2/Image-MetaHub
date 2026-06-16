@@ -980,6 +980,12 @@ describe('ComfyUI Parser - MetaHub lineage metadata', () => {
         width: 768,
         height: 1024,
         loras: [{ name: 'skin-detail', weight: 0.65 }],
+        imh_attribution: {
+          schema_version: 1,
+          token: 'imhcrt_br_creator_workflow_v1_random',
+          source: 'metahub_save_node',
+          node_version: '1.0.9',
+        },
         imh_pro: {
           user_tags: 'portrait, retouch',
           notes: 'Edited in Image MetaHub',
@@ -1005,6 +1011,7 @@ describe('ComfyUI Parser - MetaHub lineage metadata', () => {
       },
     });
     expect(result?.loras).toEqual([{ name: 'skin-detail', weight: 0.65 }]);
+    expect(result?.imh_attribution?.token).toBe('imhcrt_br_creator_workflow_v1_random');
   });
 
   it('keeps MetaHub payload as canonical when parameters disagree', async () => {

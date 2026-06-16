@@ -141,6 +141,7 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
                     denoise: result.denoise,
                     generationType: result.generationType,
                     lineage: result.lineage,
+                    imh_attribution: result.imh_attribution || null,
                     _analytics: result._analytics || null,
                     _metahub_pro: result._metahub_pro || null,
                     _metadata_status: result._metadata_status || null,
