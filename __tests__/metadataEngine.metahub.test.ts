@@ -187,4 +187,43 @@ describe('metadataEngine MetaHub PNG chunks', () => {
     expect((result.rawMetadata as any)?.imagemetahub_data?.imh_attribution?.token).toBe('imhcrt_token_only');
     expect(result.metadata?.imh_attribution?.token).toBe('imhcrt_token_only');
   });
+
+  it('accepts object prompt graphs as usable MetaHub metadata', async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-cli-metahub-prompt-graph-'));
+    const filePath = path.join(tempDir, 'prompt-graph.png');
+
+    await fs.writeFile(
+      filePath,
+      minimalPng([
+        iTextChunk('imagemetahub_data', JSON.stringify({
+          generator: 'ComfyUI',
+          prompt: {
+            '1': {
+              class_type: 'CLIPTextEncode',
+              inputs: { text: 'graph prompt from metahub chunk' },
+            },
+            '2': {
+              class_type: 'KSampler',
+              inputs: {
+                seed: 1234,
+                steps: 22,
+                cfg: 6.5,
+                sampler_name: 'euler',
+                scheduler: 'normal',
+                positive: ['1', 0],
+              },
+            },
+          },
+        })),
+      ])
+    );
+
+    const result = await parseImageFile(filePath);
+
+    expect(result.rawSource).toBe('png');
+    expect((result.rawMetadata as any)?.imagemetahub_data?.prompt).toBeTruthy();
+    expect(result.metadata?.prompt).toBe('graph prompt from metahub chunk');
+    expect(result.metadata?.seed).toBe(1234);
+    expect(result.metadata?.steps).toBe(22);
+  });
 });

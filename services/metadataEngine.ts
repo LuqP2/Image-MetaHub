@@ -167,7 +167,13 @@ const hasUsableMetaHubField = (payload: MetadataRecord): boolean => {
     return true;
   }
 
-  if (isRecord(payload.workflow) || isRecord(payload.prompt_api) || isRecord(payload.imh_pro) || isRecord(payload.analytics)) {
+  if (
+    isRecord(payload.workflow) ||
+    isRecord(payload.prompt_api) ||
+    isRecord(payload.prompt) ||
+    isRecord(payload.imh_pro) ||
+    isRecord(payload.analytics)
+  ) {
     return true;
   }
 
