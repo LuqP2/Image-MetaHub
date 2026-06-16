@@ -3964,10 +3964,22 @@ export const useImageStore = create<ImageState>((set, get) => {
                     case 'complete': {
                         const generatedAt = Date.now();
                         const tagMap = new Map<string, string[]>();
-                        Object.entries(payload.autoTags || {}).forEach(([id, tags]: [string, AutoTag[]]) => {
-                            const normalizedTags = (tags || []).map((tag) => tag.tag).filter(Boolean);
+                        // Optimization: Replace Object.entries().forEach with for...in and chained .map().filter() with a single loop
+                        // Impact: Eliminates O(N) array allocation from Object.entries and temporary mapped arrays, reducing GC pressure during auto-tag payload processing.
+                        const payloadAutoTags = payload.autoTags || {};
+                        for (const id in payloadAutoTags) {
+                            const tags = payloadAutoTags[id];
+                            const normalizedTags: string[] = [];
+                            if (tags) {
+                                for (let i = 0; i < tags.length; i++) {
+                                    const tagStr = tags[i]?.tag;
+                                    if (tagStr) {
+                                        normalizedTags.push(tagStr);
+                                    }
+                                }
+                            }
                             tagMap.set(id, normalizedTags);
-                        });
+                        }
 
                         set(state => {
                             const updateList = (list: IndexedImage[]) => list.map(img => {
@@ -3994,7 +4006,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                         worker.terminate();
                         set({ autoTaggingWorker: null });
-                        console.log(`Auto-tagging complete: ${Object.keys(payload.autoTags || {}).length} images tagged`);
+                        console.log(`Auto-tagging complete: ${tagMap.size} images tagged`);
 
                         if (payload.autoTags && payload.tfidfModel) {
                             import('../services/clusterCacheManager')
