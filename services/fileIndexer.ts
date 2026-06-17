@@ -1233,11 +1233,27 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
     const payload = metaHubData as Record<string, any>;
     if (payload.generator === 'ComfyUI') {
       const rawTags = payload.imh_pro?.user_tags;
-      const tags = Array.isArray(rawTags)
-        ? rawTags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0).map((tag) => tag.trim())
-        : typeof rawTags === 'string'
-          ? rawTags.split(',').map((tag: string) => tag.trim()).filter(Boolean)
-          : [];
+      // Optimization: Replace chained array methods with single loops
+      // Impact: Reduces garbage collection overhead by eliminating O(N) intermediate array allocations during file indexing
+      const tags: string[] = [];
+      if (Array.isArray(rawTags)) {
+        for (const tag of rawTags) {
+          if (typeof tag === 'string') {
+            const trimmed = tag.trim();
+            if (trimmed.length > 0) {
+              tags.push(trimmed);
+            }
+          }
+        }
+      } else if (typeof rawTags === 'string') {
+        const splitTags = rawTags.split(',');
+        for (let i = 0; i < splitTags.length; i++) {
+          const trimmed = splitTags[i]!.trim();
+          if (trimmed.length > 0) {
+            tags.push(trimmed);
+          }
+        }
+      }
       const notes = typeof payload.imh_pro?.notes === 'string' ? payload.imh_pro.notes : '';
       const explicitGenerationType = typeof payload.generation_type === 'string'
         ? payload.generation_type as BaseMetadata['generationType']
