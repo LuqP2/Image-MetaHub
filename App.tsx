@@ -7,7 +7,7 @@ import { useImageSelection } from './hooks/useImageSelection';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useFeatureAccess } from './hooks/useFeatureAccess';
 import { Directory } from './types';
-import { Image as ImageIcon, X } from 'lucide-react';
+import { Image as ImageIcon, X, Search } from 'lucide-react';
 
 import FolderSelector from './components/FolderSelector';
 import ImageGrid from './components/ImageGrid';
@@ -290,6 +290,7 @@ export default function App() {
   const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
   const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
   const setSelectedRatings = useImageStore((state) => state.setSelectedRatings);
+  const setSelectedTagsMatchMode = useImageStore((state) => state.setSelectedTagsMatchMode);
 
   // Folder selection selectors
   const selectedFolders = useImageStore((state) => state.selectedFolders);
@@ -2090,6 +2091,34 @@ export default function App() {
     setIsBatchExportModalOpen(true);
   }, [canUseBatchExport, showProModal]);
 
+  const handleClearAllFilters = useCallback(() => {
+    setSearchInputValue('');
+    setSearchQuery('');
+    setFindSimilarGridFilter(null);
+    setSelectedFilters({
+      models: [],
+      excludedModels: [],
+      loras: [],
+      excludedLoras: [],
+      samplers: [],
+      excludedSamplers: [],
+      schedulers: [],
+      excludedSchedulers: [],
+      generators: [],
+      excludedGenerators: [],
+      gpuDevices: [],
+      excludedGpuDevices: [],
+    });
+    setSelectedTags([]);
+    setExcludedTags([]);
+    setSelectedAutoTags([]);
+    setExcludedAutoTags([]);
+    setFavoriteFilterMode('neutral');
+    setSelectedRatings([]);
+    setSelectedTagsMatchMode('any');
+    setAdvancedFilters({});
+  }, [setAdvancedFilters, setExcludedAutoTags, setExcludedTags, setFavoriteFilterMode, setSearchQuery, setSelectedAutoTags, setSelectedFilters, setSelectedRatings, setSelectedTags, setSelectedTagsMatchMode]);
+
   const handleOpenBatchExport = useCallback(() => {
     openBatchExportModal();
   }, [openBatchExportModal]);
@@ -2854,6 +2883,29 @@ export default function App() {
   const hasVisibleImageModal = openImageModalEntries.some(
     (modal) => !modal.isMinimized
   );
+  const hasAnyActiveFilters = useMemo(() =>
+    selectedModels.length > 0 ||
+    excludedModels.length > 0 ||
+    selectedLoras.length > 0 ||
+    excludedLoras.length > 0 ||
+    selectedSamplers.length > 0 ||
+    excludedSamplers.length > 0 ||
+    selectedSchedulers.length > 0 ||
+    excludedSchedulers.length > 0 ||
+    selectedGenerators.length > 0 ||
+    excludedGenerators.length > 0 ||
+    selectedGpuDevices.length > 0 ||
+    excludedGpuDevices.length > 0 ||
+    selectedTags.length > 0 ||
+    excludedTags.length > 0 ||
+    selectedAutoTags.length > 0 ||
+    excludedAutoTags.length > 0 ||
+    !!searchQuery ||
+    favoriteFilterMode !== 'neutral' ||
+    selectedRatings.length > 0 ||
+    (advancedFilters && Object.keys(advancedFilters).length > 0) ||
+    !!findSimilarGridFilter,
+  [advancedFilters, excludedAutoTags, excludedGenerators, excludedGpuDevices, excludedLoras, excludedModels, excludedSamplers, excludedSchedulers, excludedTags, favoriteFilterMode, findSimilarGridFilter, searchQuery, selectedAutoTags, selectedGenerators, selectedGpuDevices, selectedLoras, selectedModels, selectedRatings, selectedSamplers, selectedSchedulers, selectedTags]);
   const shouldShowEmbeddedComfyUIView =
     libraryView === 'comfyui' &&
     !isSettingsModalOpen &&
@@ -3011,32 +3063,7 @@ export default function App() {
           onLoraChange={(loras) => setSelectedFilters({ loras })}
           onSamplerChange={(samplers) => setSelectedFilters({ samplers })}
           onSchedulerChange={(schedulers) => setSelectedFilters({ schedulers })}
-          onClearAllFilters={() => {
-            setSearchInputValue('');
-            setSearchQuery('');
-            setFindSimilarGridFilter(null);
-            setSelectedFilters({
-              models: [],
-              excludedModels: [],
-              loras: [],
-              excludedLoras: [],
-              samplers: [],
-              excludedSamplers: [],
-              schedulers: [],
-              excludedSchedulers: [],
-              generators: [],
-              excludedGenerators: [],
-              gpuDevices: [],
-              excludedGpuDevices: [],
-            });
-            setSelectedTags([]);
-            setExcludedTags([]);
-            setSelectedAutoTags([]);
-            setExcludedAutoTags([]);
-            setFavoriteFilterMode('neutral');
-            setSelectedRatings([]);
-            setAdvancedFilters({});
-          }}
+          onClearAllFilters={handleClearAllFilters}
           advancedFilters={advancedFilters}
           onAdvancedFiltersChange={setAdvancedFilters}
           onClearAdvancedFilters={() => {
@@ -3297,6 +3324,22 @@ export default function App() {
                     <div className="flex h-full items-center justify-center text-sm text-gray-500">
                       Loading folder...
                     </div>
+                  ) : displayImages.length === 0 && hasAnyActiveFilters && !isLoading ? (
+                    <div className="flex flex-col items-center justify-center h-full py-12 text-center animate-in fade-in duration-500">
+                      <div className="rounded-full bg-gray-800/50 p-6 mb-4 border border-gray-700/50">
+                        <Search className="w-12 h-12 text-gray-500" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-gray-200 mb-2">No matching images</h3>
+                      <p className="text-gray-400 max-w-sm mb-6">
+                        No images match your current filters. Try adjusting your search or clearing filters to see more results.
+                      </p>
+                      <button
+                        onClick={handleClearAllFilters}
+                        className="bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-6 rounded-lg transition-colors shadow-lg"
+                      >
+                        Clear all filters
+                      </button>
+                    </div>
                   ) : viewMode === 'grid' ? (
                         <ImageGrid
                           images={paginatedImages}
@@ -3352,7 +3395,23 @@ export default function App() {
                     filteredImages={collectionFilteredImages}
                     totalImages={collectionTotalImages}
                   >
-                    {viewMode === 'grid' ? (
+                    {collectionFilteredImages.length === 0 && hasAnyActiveFilters && !isLoading ? (
+                      <div className="flex flex-col items-center justify-center h-full py-12 text-center animate-in fade-in duration-500">
+                        <div className="rounded-full bg-gray-800/50 p-6 mb-4 border border-gray-700/50">
+                          <Search className="w-12 h-12 text-gray-500" />
+                        </div>
+                        <h3 className="text-xl font-semibold text-gray-200 mb-2">No matching images</h3>
+                        <p className="text-gray-400 max-w-sm mb-6">
+                          No images in this collection match your current filters.
+                        </p>
+                        <button
+                          onClick={handleClearAllFilters}
+                          className="bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-6 rounded-lg transition-colors shadow-lg"
+                        >
+                          Clear all filters
+                        </button>
+                      </div>
+                    ) : viewMode === 'grid' ? (
                       <ImageGrid
                         images={paginatedImages}
                         onImageClick={handleGridImageClick}
