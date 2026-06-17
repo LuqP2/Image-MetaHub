@@ -4221,10 +4221,13 @@ function setupFileOperationHandlers() {
   // Handle show item in folder
   ipcMain.handle('show-item-in-folder', async (event, filePath) => {
     try {
-      // Allow opening any folder/file that the user has access to via the OS dialogs
-      // We removed the isPathAllowed check here because export destinations can be anywhere
-      
       const normalizedFilePath = path.normalize(filePath);
+
+      if (!isAllowedOrInternal(normalizedFilePath) && !isApprovedWritePath(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to show item in folder outside approved directories.');
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
       console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 
       // Verify the path exists before trying to open or show it
@@ -4258,10 +4261,16 @@ function setupFileOperationHandlers() {
     }
   });
 
-  // Handle open cache location (without security restrictions since it's app's internal cache)
+  // Handle open cache location
   ipcMain.handle('open-cache-location', async (event, cachePath) => {
     try {
       const normalizedCachePath = path.normalize(cachePath);
+
+      if (!isInternalPath(normalizedCachePath)) {
+        console.error('SECURITY VIOLATION: Attempted to open cache location outside internal paths.');
+        return { success: false, error: 'Access denied' };
+      }
+
       const parentPath = path.dirname(normalizedCachePath);
       console.log('📂 Opening cache parent directory:', parentPath);
 
@@ -4428,6 +4437,11 @@ function setupFileOperationHandlers() {
     try {
       if (!dirPath) {
         return { success: false, error: 'No directory path provided' };
+      }
+
+      if (!isPathAllowed(dirPath)) {
+        console.error('SECURITY VIOLATION: Attempted to list files outside of allowed directories.');
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
       }
 
       let imageFiles = [];
