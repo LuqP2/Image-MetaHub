@@ -129,15 +129,19 @@ export function calculatePeriodStats(
   const currentPeriodStart = now - periodMs;
   const previousPeriodStart = currentPeriodStart - periodMs;
 
-  const currentCount = images.filter(
-    (img) => img.lastModified >= currentPeriodStart
-  ).length;
+  let currentCount = 0;
+  let previousCount = 0;
 
-  const previousCount = images.filter(
-    (img) =>
-      img.lastModified >= previousPeriodStart &&
-      img.lastModified < currentPeriodStart
-  ).length;
+  // Optimization: Single-pass loop to calculate counts for both periods,
+  // avoiding multiple O(N) filter passes and intermediate array allocations.
+  for (let i = 0; i < images.length; i++) {
+    const lastModified = images[i].lastModified;
+    if (lastModified >= currentPeriodStart) {
+      currentCount++;
+    } else if (lastModified >= previousPeriodStart) {
+      previousCount++;
+    }
+  }
 
   const variationAbsolute = currentCount - previousCount;
   const variation =
@@ -1100,8 +1104,19 @@ export const buildAnalyticsExplorerData = ({
 }): AnalyticsExplorerData => {
   const totalImages = scopeImages.length;
   const averages = calculatePerformanceAverages(scopeImages);
-  const dominantModel = collectFacetItems(scopeImages, (image) => image.models || [], 1)[0]?.label;
-  const dominantGenerator = collectFacetItems(scopeImages, (image) => [getImageGenerator(image)], 1)[0]?.label;
+
+  // Optimization: Pre-calculate resources and periodStats to avoid redundant passes
+  // and multiple calls to expensive statistic functions.
+  const generators = collectFacetItems(scopeImages, (image) => [getImageGenerator(image)], 10);
+  const models = collectFacetItems(scopeImages, (image) => image.models || [], 12);
+  const loras = collectFacetItems(scopeImages, getImageLoraNames, 12);
+  const samplers = collectFacetItems(scopeImages, (image) => image.sampler ? [image.sampler] : [], 12);
+  const schedulers = collectFacetItems(scopeImages, (image) => image.scheduler ? [image.scheduler] : [], 12);
+
+  const dominantModel = models[0]?.label;
+  const dominantGenerator = generators[0]?.label;
+  const periodStats = calculatePeriodStats(allImages, 30);
+
   const favoritesCount = scopeImages.filter((image) => image.isFavorite).length;
   const unratedCount = scopeImages.filter((image) => typeof image.rating !== 'number').length;
   const ratingDistribution = [
@@ -1141,22 +1156,29 @@ export const buildAnalyticsExplorerData = ({
     dominantModel,
     dominantGenerator,
     telemetryCoverage: averages.telemetryPercentage / 100,
-    periodStats: calculatePeriodStats(allImages, 30),
+    periodStats,
     insights: generateInsights(
       allImages,
-      calculatePeriodStats(allImages, 30),
-      calculateTopItems(scopeImages, 'models', 5),
+      periodStats,
+      models.slice(0, 5).map(m => ({
+        name: m.label,
+        total: m.count,
+        favorites: m.favorites,
+        keeperRate: m.keeperRate,
+        averageRating: m.averageRating,
+        ratingCount: m.ratingCount,
+      })),
       undefined,
       scopeMode === 'context' ? 'current scope' : 'library',
       totalImages
     ),
     samples: [...scopeImages].sort((a, b) => b.lastModified - a.lastModified).slice(0, 8),
     resources: {
-      generators: collectFacetItems(scopeImages, (image) => [getImageGenerator(image)], 10),
-      models: collectFacetItems(scopeImages, (image) => image.models || [], 12),
-      loras: collectFacetItems(scopeImages, getImageLoraNames, 12),
-      samplers: collectFacetItems(scopeImages, (image) => image.sampler ? [image.sampler] : [], 12),
-      schedulers: collectFacetItems(scopeImages, (image) => image.scheduler ? [image.scheduler] : [], 12),
+      generators,
+      models,
+      loras,
+      samplers,
+      schedulers,
     },
     time: {
       timeline: buildTimelinePoints(scopeImages),
