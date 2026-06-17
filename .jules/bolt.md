@@ -72,3 +72,7 @@
 ## $(date +%Y-%m-%d) - Eliminate Object.entries().forEach and chained .map().filter() allocations during payload processing
 **Learning:** Using `Object.entries(payload.obj || {}).forEach(...)` along with chained array methods like `.map().filter()` inside a payload processing loop (e.g., when receiving auto-tags from a worker) creates significant memory allocation overhead. This generates a temporary array of keys/values and multiple intermediate arrays per processed item, leading to increased garbage collection (GC) pressure.
 **Action:** Replace `Object.entries()` with a direct `for...in` loop. Replace chained `.map().filter()` operations with a single `for` loop pushing valid items into a pre-instantiated array. Also, prefer `Map.size` over `Object.keys().length` for logging sizes to avoid allocating an array of keys solely for counting.
+
+## 2026-06-17 - Consolidate Multiple O(N) Passes in Analytics Derivation
+**Learning:** The analytics dashboard was performing ~14 full array traversals (filter/map) to compute rating distribution and favorite metrics. This creates significant CPU overhead and garbage collection pressure for users with large libraries.
+**Action:** Replace multiple .filter() calls with a single O(N) for loop that tallies all required metrics into a Map or local counters. This reduces the time complexity constant factor significantly.

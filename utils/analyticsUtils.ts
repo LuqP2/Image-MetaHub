@@ -1117,37 +1117,70 @@ export const buildAnalyticsExplorerData = ({
   const dominantGenerator = generators[0]?.label;
   const periodStats = calculatePeriodStats(allImages, 30);
 
-  const favoritesCount = scopeImages.filter((image) => image.isFavorite).length;
-  const unratedCount = scopeImages.filter((image) => typeof image.rating !== 'number').length;
-  const ratingDistribution = [
-    ...RATING_VALUES.map((rating) => {
-      const count = scopeImages.filter((image) => image.rating === rating).length;
-      const matchingImages = scopeImages.filter((image) => image.rating === rating);
-      const favorites = matchingImages.filter((image) => image.isFavorite).length;
-      return {
+  // Optimization: Consolidate curation metrics calculation into a single pass.
+  // Impact: Reduces O(N) array traversals from ~13 passes to 1, minimizing heap allocations and GC pressure.
+  let favoritesCount = 0;
+  let unratedCount = 0;
+  let unratedFavoritesCount = 0;
+  const ratingStats = new Map<number, { count: number; favorites: number }>();
+
+  for (let i = 0; i < RATING_VALUES.length; i++) {
+    ratingStats.set(RATING_VALUES[i], { count: 0, favorites: 0 });
+  }
+
+  for (let i = 0; i < scopeImages.length; i++) {
+    const image = scopeImages[i];
+    const isFavorite = image.isFavorite === true;
+    const rating = image.rating;
+
+    if (isFavorite) {
+      favoritesCount++;
+    }
+
+    if (typeof rating === 'number' && ratingStats.has(rating)) {
+      const stats = ratingStats.get(rating)!;
+      stats.count++;
+      if (isFavorite) {
+        stats.favorites++;
+      }
+    } else {
+      unratedCount++;
+      if (isFavorite) {
+        unratedFavoritesCount++;
+      }
+    }
+  }
+
+  const ratingDistribution: AnalyticsFacetItem[] = [];
+  for (let i = 0; i < RATING_VALUES.length; i++) {
+    const rating = RATING_VALUES[i];
+    const stats = ratingStats.get(rating)!;
+    if (stats.count > 0) {
+      ratingDistribution.push({
         key: String(rating),
         label: `${rating}★`,
-        count,
-        share: totalImages > 0 ? count / totalImages : 0,
-        favorites,
-        keeperRate: count > 0 ? favorites / count : 0,
-        averageRating: count > 0 ? rating : 0,
-        ratingCount: count,
-      };
-    }),
-    {
+        count: stats.count,
+        share: totalImages > 0 ? stats.count / totalImages : 0,
+        favorites: stats.favorites,
+        keeperRate: stats.count > 0 ? stats.favorites / stats.count : 0,
+        averageRating: rating,
+        ratingCount: stats.count,
+      });
+    }
+  }
+
+  if (unratedCount > 0) {
+    ratingDistribution.push({
       key: 'unrated',
       label: 'Unrated',
       count: unratedCount,
       share: totalImages > 0 ? unratedCount / totalImages : 0,
-      favorites: scopeImages.filter((image) => typeof image.rating !== 'number' && image.isFavorite).length,
-      keeperRate: unratedCount > 0
-        ? scopeImages.filter((image) => typeof image.rating !== 'number' && image.isFavorite).length / unratedCount
-        : 0,
+      favorites: unratedFavoritesCount,
+      keeperRate: unratedCount > 0 ? unratedFavoritesCount / unratedCount : 0,
       averageRating: 0,
       ratingCount: 0,
-    },
-  ].filter((item) => item.count > 0);
+    });
+  }
 
   const explorerData: AnalyticsExplorerData = {
     scopeMode,
