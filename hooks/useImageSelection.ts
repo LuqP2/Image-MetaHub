@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useImageStore } from '../store/useImageStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { IndexedImage } from '../types';
 import { FileOperations } from '../services/fileOperations';
 
