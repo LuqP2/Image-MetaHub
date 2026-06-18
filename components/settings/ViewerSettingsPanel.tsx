@@ -22,6 +22,8 @@ export const ViewerSettingsPanel: React.FC = () => {
   const setShowFullFilePath = useSettingsStore((state) => state.setShowFullFilePath);
   const doubleClickToOpen = useSettingsStore((state) => state.doubleClickToOpen);
   const setDoubleClickToOpen = useSettingsStore((state) => state.setDoubleClickToOpen);
+  const skipDeleteConfirmation = useSettingsStore((state) => state.skipDeleteConfirmation);
+  const setSkipDeleteConfirmation = useSettingsStore((state) => state.setSkipDeleteConfirmation);
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
   const setTagSuggestionLimit = useSettingsStore((state) => state.setTagSuggestionLimit);
   const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
@@ -48,6 +50,11 @@ export const ViewerSettingsPanel: React.FC = () => {
           label="Double-click to open"
           description="Keep single click for selection and open details on double click."
           control={<SettingSwitch checked={doubleClickToOpen} onChange={setDoubleClickToOpen} />}
+        />
+        <SettingRow
+          label="Skip delete confirmation"
+          description="Bypass the confirmation dialog when deleting files to the trash."
+          control={<SettingSwitch checked={skipDeleteConfirmation} onChange={setSkipDeleteConfirmation} />}
         />
       </SettingsSectionCard>
 
