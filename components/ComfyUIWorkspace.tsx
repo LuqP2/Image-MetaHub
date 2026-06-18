@@ -1311,13 +1311,16 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       return;
     }
 
-    const confirmed = window.confirm(
-      targetImages.length === 1
-        ? `Delete "${targetImages[0].name}"? This sends the file to the recycle bin.`
-        : `Delete ${targetImages.length} selected images? This sends the files to the recycle bin.`,
-    );
-    if (!confirmed) {
-      return;
+    const { skipDeleteConfirmation } = useSettingsStore.getState();
+    if (!skipDeleteConfirmation) {
+      const confirmed = window.confirm(
+        targetImages.length === 1
+          ? `Delete "${targetImages[0].name}"? This sends the file to the recycle bin.`
+          : `Delete ${targetImages.length} selected images? This sends the files to the recycle bin.`,
+      );
+      if (!confirmed) {
+        return;
+      }
     }
 
     const results = await Promise.all(targetImages.map((candidate) => FileOperations.deleteFile(candidate)));

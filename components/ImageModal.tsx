@@ -2796,7 +2796,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
+    const { skipDeleteConfirmation } = useSettingsStore.getState();
+    if (skipDeleteConfirmation || window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
       const idToDelete = image.id;
       const imageToDelete = image;
       const sourceDirectory = directories.find((directory) => directory.id === imageToDelete.directoryId);
