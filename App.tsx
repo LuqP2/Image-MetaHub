@@ -67,6 +67,7 @@ import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload }
 import { groupImages, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
 import { findLatestCreatorAttributionToken } from './utils/creatorAttribution';
 import { indexImageFileAtPath } from './services/fileIndexer';
+import { areFilesystemPathsEqual } from './utils/filesystemPath';
 
 interface OpenImageModalState {
   modalId: string;
@@ -513,6 +514,7 @@ export default function App() {
   const lastOpenedModalImageIdRef = useRef<string | null>(null);
   const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
   const watchedRemovalCacheDeltaQueueRef = useRef<Map<string, PendingWatchedRemovalCacheDelta>>(new Map());
+  const startupHydrationPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const appProfilerOnRender = useMemo(() => createProfilerOnRender('App'), []);
 
   const queueCount = useGenerationQueueStore((state) =>
@@ -874,6 +876,8 @@ export default function App() {
     }
 
     try {
+      await startupHydrationPromiseRef.current;
+
       const dirnameResult = await window.electronAPI.dirname(filePath);
       if (!dirnameResult.success || !dirnameResult.path) {
         throw new Error(dirnameResult.error || 'Could not resolve the image directory.');
@@ -881,10 +885,8 @@ export default function App() {
 
       const directoryPath = dirnameResult.path;
       const currentState = useImageStore.getState();
-      const normalizeDirectoryPath = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-      const directoryKey = normalizeDirectoryPath(directoryPath);
       let directory = currentState.directories.find(
-        (candidate) => normalizeDirectoryPath(candidate.path) === directoryKey
+        (candidate) => areFilesystemPathsEqual(candidate.path, directoryPath)
       );
 
       if (!directory) {
@@ -915,10 +917,11 @@ export default function App() {
       }
 
       const latestState = useImageStore.getState();
-      latestState.setImages([
-        ...latestState.images.filter((image) => image.id !== indexedImage.id),
-        indexedImage,
-      ]);
+      if (latestState.images.some((image) => image.id === indexedImage.id)) {
+        latestState.mergeImages([indexedImage]);
+      } else {
+        latestState.appendImagesSilently([indexedImage]);
+      }
       latestState.setSelectedImage(indexedImage);
     } catch (error) {
       console.error('Error opening file from Image MetaHub deep link:', error);
@@ -931,7 +934,7 @@ export default function App() {
   // On mount, load directories stored in localStorage
   useEffect(() => {
     // Only run once on mount
-    handleLoadFromStorage();
+    startupHydrationPromiseRef.current = handleLoadFromStorage();
   }, []);
 
   // Listen for directory load events from the main process (e.g., from CLI argument)

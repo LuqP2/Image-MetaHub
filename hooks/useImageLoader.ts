@@ -6,6 +6,7 @@ import { thumbnailManager } from '../services/thumbnailManager';
 import { IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
+import { areFilesystemPathsEqual } from '../utils/filesystemPath';
 
 // Configure logging level
 const DEBUG = false;
@@ -1590,17 +1591,36 @@ export function useImageLoader() {
 
             const directoryId = path; // Use path as a unique ID
             const { directories } = useImageStore.getState();
+            const existingDirectory = directories.find(directory =>
+                areFilesystemPathsEqual(directory.path, path)
+            );
 
-            if (directories.some(d => d.id === directoryId)) {
+            if (existingDirectory && !existingDirectory.transient) {
                 setError(`Directory "${name}" is already loaded.`);
                 return;
             }
 
             const globalAutoWatch = useSettingsStore.getState().globalAutoWatch;
-            const newDirectory: Directory = { id: directoryId, path, name, handle, autoWatch: globalAutoWatch };
+            const newDirectory: Directory = existingDirectory
+                ? {
+                    ...existingDirectory,
+                    name,
+                    handle,
+                    autoWatch: globalAutoWatch,
+                    transient: false,
+                }
+                : { id: directoryId, path, name, handle, autoWatch: globalAutoWatch };
 
             // Add to store first
-            addDirectory(newDirectory);
+            if (existingDirectory) {
+                useImageStore.setState(state => ({
+                    directories: state.directories.map(directory =>
+                        directory.id === existingDirectory.id ? newDirectory : directory
+                    ),
+                }));
+            } else {
+                addDirectory(newDirectory);
+            }
 
             // Persist the *new* state after adding
             const updatedDirectories = useImageStore.getState().directories;
