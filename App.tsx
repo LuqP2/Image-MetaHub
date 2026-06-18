@@ -290,7 +290,6 @@ export default function App() {
   const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
   const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
   const setSelectedRatings = useImageStore((state) => state.setSelectedRatings);
-  const setSelectedTagsMatchMode = useImageStore((state) => state.setSelectedTagsMatchMode);
 
   // Folder selection selectors
   const selectedFolders = useImageStore((state) => state.selectedFolders);
@@ -301,6 +300,8 @@ export default function App() {
   const isComparisonModalOpen = useImageStore((state) => state.isComparisonModalOpen);
   const isAnnotationsLoaded = useImageStore((state) => state.isAnnotationsLoaded);
   const refreshingDirectories = useImageStore((state) => state.refreshingDirectories);
+  const isStoreFilteringActive = useImageStore((state) => state.isFilteringActive());
+  const clearAllStoreFilters = useImageStore((state) => state.clearAllFilters);
 
   // Action selectors
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
@@ -2093,31 +2094,9 @@ export default function App() {
 
   const handleClearAllFilters = useCallback(() => {
     setSearchInputValue('');
-    setSearchQuery('');
     setFindSimilarGridFilter(null);
-    setSelectedFilters({
-      models: [],
-      excludedModels: [],
-      loras: [],
-      excludedLoras: [],
-      samplers: [],
-      excludedSamplers: [],
-      schedulers: [],
-      excludedSchedulers: [],
-      generators: [],
-      excludedGenerators: [],
-      gpuDevices: [],
-      excludedGpuDevices: [],
-    });
-    setSelectedTags([]);
-    setExcludedTags([]);
-    setSelectedAutoTags([]);
-    setExcludedAutoTags([]);
-    setFavoriteFilterMode('neutral');
-    setSelectedRatings([]);
-    setSelectedTagsMatchMode('any');
-    setAdvancedFilters({});
-  }, [setAdvancedFilters, setExcludedAutoTags, setExcludedTags, setFavoriteFilterMode, setSearchQuery, setSelectedAutoTags, setSelectedFilters, setSelectedRatings, setSelectedTags, setSelectedTagsMatchMode]);
+    clearAllStoreFilters();
+  }, [clearAllStoreFilters]);
 
   const handleOpenBatchExport = useCallback(() => {
     openBatchExportModal();
@@ -2883,29 +2862,7 @@ export default function App() {
   const hasVisibleImageModal = openImageModalEntries.some(
     (modal) => !modal.isMinimized
   );
-  const hasAnyActiveFilters = useMemo(() =>
-    selectedModels.length > 0 ||
-    excludedModels.length > 0 ||
-    selectedLoras.length > 0 ||
-    excludedLoras.length > 0 ||
-    selectedSamplers.length > 0 ||
-    excludedSamplers.length > 0 ||
-    selectedSchedulers.length > 0 ||
-    excludedSchedulers.length > 0 ||
-    selectedGenerators.length > 0 ||
-    excludedGenerators.length > 0 ||
-    selectedGpuDevices.length > 0 ||
-    excludedGpuDevices.length > 0 ||
-    selectedTags.length > 0 ||
-    excludedTags.length > 0 ||
-    selectedAutoTags.length > 0 ||
-    excludedAutoTags.length > 0 ||
-    !!searchQuery ||
-    favoriteFilterMode !== 'neutral' ||
-    selectedRatings.length > 0 ||
-    (advancedFilters && Object.keys(advancedFilters).length > 0) ||
-    !!findSimilarGridFilter,
-  [advancedFilters, excludedAutoTags, excludedGenerators, excludedGpuDevices, excludedLoras, excludedModels, excludedSamplers, excludedSchedulers, excludedTags, favoriteFilterMode, findSimilarGridFilter, searchQuery, selectedAutoTags, selectedGenerators, selectedGpuDevices, selectedLoras, selectedModels, selectedRatings, selectedSamplers, selectedSchedulers, selectedTags]);
+  const hasAnyActiveFilters = isStoreFilteringActive || !!findSimilarGridFilter;
   const shouldShowEmbeddedComfyUIView =
     libraryView === 'comfyui' &&
     !isSettingsModalOpen &&

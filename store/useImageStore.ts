@@ -928,6 +928,8 @@ interface ImageState {
   reorderCollections: (orderedCollectionIds: string[]) => Promise<void>;
   addImagesToCollection: (collectionId: string, imageIds: string[]) => Promise<SmartCollection | null>;
   removeImagesFromCollection: (collectionId: string, imageIds: string[]) => Promise<SmartCollection | null>;
+  isFilteringActive: () => boolean;
+  clearAllFilters: () => void;
   getCollectionById: (collectionId: string) => SmartCollection | null;
   getResolvedCollectionImages: (collectionId: string) => IndexedImage[];
   getResolvedFilteredCollectionImages: (collectionId: string) => IndexedImage[];
@@ -1303,6 +1305,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         if (state.selectedGpuDevices?.length || state.excludedGpuDevices?.length) return true;
         if (state.advancedFilters && Object.keys(state.advancedFilters).length > 0) return true;
         if (state.selectedFolders && state.selectedFolders.size > 0) return true;
+        if (state.excludedFolders && state.excludedFolders.size > 0) return true;
         if (state.directories.some(dir => dir.visible === false)) return true;
         return false;
     };
@@ -2770,6 +2773,51 @@ export const useImageStore = create<ImageState>((set, get) => {
                 });
 
                 return finalState;
+            });
+        },
+
+        isFilteringActive: () => {
+            return isFilteringActive(get());
+        },
+
+        clearAllFilters: () => {
+            set(state => {
+                const nextDirectories = state.directories.map(dir => ({ ...dir, visible: true }));
+                const nextState = {
+                    ...state,
+                    searchQuery: '',
+                    selectedModels: [],
+                    excludedModels: [],
+                    selectedLoras: [],
+                    excludedLoras: [],
+                    selectedSamplers: [],
+                    excludedSamplers: [],
+                    selectedSchedulers: [],
+                    excludedSchedulers: [],
+                    selectedGenerators: [],
+                    excludedGenerators: [],
+                    selectedGpuDevices: [],
+                    excludedGpuDevices: [],
+                    selectedTags: [],
+                    excludedTags: [],
+                    selectedAutoTags: [],
+                    excludedAutoTags: [],
+                    favoriteFilterMode: 'neutral' as InclusionFilterMode,
+                    selectedRatings: [],
+                    selectedTagsMatchMode: 'any' as TagMatchMode,
+                    advancedFilters: {},
+                    selectedFolders: new Set<string>(),
+                    excludedFolders: new Set<string>(),
+                    directories: nextDirectories,
+                };
+
+                saveSelectedFolders([]).catch(console.error);
+                saveExcludedFolders([]).catch(console.error);
+
+                return {
+                    ...nextState,
+                    ...filterAndSort(nextState),
+                };
             });
         },
 
