@@ -1010,27 +1010,45 @@ const buildNumericBuckets = (
   labelFactory: (entry: { min?: number; max?: number }) => string,
   selector: (image: IndexedImage) => number | null,
   ranges: Array<{ key: string; min?: number; max?: number }>
-): AnalyticsNumericBucket[] => ranges
-  .map((range) => ({
-    key: range.key,
-    label: labelFactory(range),
-    count: images.filter((image) => {
-      const value = selector(image);
-      if (value === null) {
-        return false;
+): AnalyticsNumericBucket[] => {
+  // Optimization: Consolidate multiple filter passes into a single O(N) pass.
+  // Impact: Reduces full array traversals from K (number of ranges) to 1.
+  const counts = new Array(ranges.length).fill(0);
+
+  for (let i = 0; i < images.length; i++) {
+    const value = selector(images[i]);
+    if (value === null) {
+      continue;
+    }
+
+    for (let j = 0; j < ranges.length; j++) {
+      const range = ranges[j];
+      if (
+        (range.min === undefined || value >= range.min) &&
+        (range.max === undefined || value < range.max)
+      ) {
+        counts[j]++;
       }
-      if (range.min !== undefined && value < range.min) {
-        return false;
-      }
-      if (range.max !== undefined && value >= range.max) {
-        return false;
-      }
-      return true;
-    }).length,
-    min: range.min,
-    max: range.max,
-  }))
-  .filter((bucket) => bucket.count > 0);
+    }
+  }
+
+  const buckets: AnalyticsNumericBucket[] = [];
+  for (let j = 0; j < ranges.length; j++) {
+    const count = counts[j];
+    if (count > 0) {
+      const range = ranges[j];
+      buckets.push({
+        key: range.key,
+        label: labelFactory(range),
+        count,
+        min: range.min,
+        max: range.max,
+      });
+    }
+  }
+
+  return buckets;
+};
 
 const buildCompareCohort = (
   images: IndexedImage[],
