@@ -917,12 +917,35 @@ export default function App() {
       }
 
       const latestState = useImageStore.getState();
-      if (latestState.images.some((image) => image.id === indexedImage.id)) {
+      const imageAlreadyIndexed = latestState.images.some((image) => image.id === indexedImage.id);
+      if (imageAlreadyIndexed) {
         latestState.mergeImages([indexedImage]);
       } else {
         latestState.appendImagesSilently([indexedImage]);
       }
       latestState.setSelectedImage(indexedImage);
+
+      if (!directory.transient) {
+        if (imageAlreadyIndexed) {
+          await cacheManager.updateCachedImages(
+            directory.path,
+            directory.name,
+            [indexedImage],
+            latestState.scanSubfolders
+          );
+        } else {
+          await cacheManager.appendToCache(
+            directory.path,
+            directory.name,
+            [indexedImage],
+            latestState.scanSubfolders
+          );
+        }
+      }
+
+      if (!imageAlreadyIndexed || !latestState.isAnnotationsLoaded) {
+        await useImageStore.getState().importMetadataTags([indexedImage]);
+      }
     } catch (error) {
       console.error('Error opening file from Image MetaHub deep link:', error);
       useImageStore.getState().setError(

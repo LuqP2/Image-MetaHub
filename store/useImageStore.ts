@@ -4795,6 +4795,10 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         importMetadataTags: async (images) => {
             if (!images || images.length === 0) return;
+            if (!get().isAnnotationsLoaded) {
+                queueMetadataTagImports(images);
+                return;
+            }
 
             const { annotations } = get();
             const updatedAnnotations: ImageAnnotations[] = [];
