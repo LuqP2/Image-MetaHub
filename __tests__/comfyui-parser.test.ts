@@ -586,8 +586,8 @@ describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
 
     expect(result?.prompt).toBe('A white cat on the roof of a brick house');
     expect(result?.loras).toEqual([
-      { name: 'Z-Detail-Slider.safetensors' },
-      { name: 'zy_CinematicShot_zit.safetensors' },
+      { name: 'Z-Detail-Slider.safetensors', weight: 0.5325 },
+      { name: 'zy_CinematicShot_zit.safetensors', weight: 0.6875 },
     ]);
   });
 
