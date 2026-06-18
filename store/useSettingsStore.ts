@@ -124,6 +124,8 @@ interface SettingsState {
   performanceDiagnosticsEnabled: boolean;
   slideshowIntervalSeconds: number;
   slideshowShowFilename: boolean;
+  creatorAttributionToken: string | null;
+  creatorAttributionUpdatedAt: number | null;
 
   // A1111 Integration settings
   a1111Enabled: boolean;
@@ -171,6 +173,7 @@ interface SettingsState {
   setPerformanceDiagnosticsEnabled: (value: boolean) => void;
   setSlideshowIntervalSeconds: (value: number) => void;
   setSlideshowShowFilename: (value: boolean) => void;
+  setCreatorAttributionToken: (token: string | null) => void;
   setA1111Enabled: (value: boolean) => void;
   setA1111ServerUrl: (url: string) => void;
   toggleA1111AutoStart: () => void;
@@ -223,6 +226,8 @@ export const useSettingsStore = create<SettingsState>()(
       performanceDiagnosticsEnabled: false,
       slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
       slideshowShowFilename: true,
+      creatorAttributionToken: null,
+      creatorAttributionUpdatedAt: null,
 
       // A1111 Integration initial state
       a1111Enabled: true,
@@ -283,6 +288,13 @@ export const useSettingsStore = create<SettingsState>()(
       setSlideshowIntervalSeconds: (value) =>
         set({ slideshowIntervalSeconds: sanitizeSlideshowIntervalSeconds(value) }),
       setSlideshowShowFilename: (value) => set({ slideshowShowFilename: !!value }),
+      setCreatorAttributionToken: (token) => {
+        const normalizedToken = typeof token === 'string' ? token.trim() : '';
+        set({
+          creatorAttributionToken: normalizedToken || null,
+          creatorAttributionUpdatedAt: normalizedToken ? Date.now() : null,
+        });
+      },
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
           keymap: {
@@ -350,6 +362,8 @@ export const useSettingsStore = create<SettingsState>()(
         performanceDiagnosticsEnabled: false,
         slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
         slideshowShowFilename: true,
+        creatorAttributionToken: null,
+        creatorAttributionUpdatedAt: null,
         a1111Enabled: true,
         a1111ServerUrl: 'http://127.0.0.1:7860',
         a1111AutoStart: false,
@@ -448,6 +462,16 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.slideshowShowFilename !== 'boolean') {
           state.slideshowShowFilename = true;
+        }
+
+        if (state && typeof state.creatorAttributionToken !== 'string') {
+          state.creatorAttributionToken = null;
+        } else if (state) {
+          state.creatorAttributionToken = state.creatorAttributionToken.trim() || null;
+        }
+
+        if (state && typeof state.creatorAttributionUpdatedAt !== 'number') {
+          state.creatorAttributionUpdatedAt = null;
         }
 
         if (state && typeof state.a1111Enabled !== 'boolean') {

@@ -519,6 +519,78 @@ describe('ComfyUI Parser - Output terminal traversal', () => {
 });
 
 describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
+  it('recovers ZiT style prompts and rgthree Power LoRAs from malformed MetaHub fields', async () => {
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: '',
+        negativePrompt: '',
+        loras: [
+          {
+            name: {
+              on: true,
+              lora: 'Z-Detail-Slider.safetensors',
+              strength: 0.5325,
+            },
+            weight: 1,
+          },
+        ],
+        workflow: { nodes: [] },
+        prompt_api: {
+          '61': {
+            class_type: 'SamplerCustomAdvanced',
+            inputs: {
+              guider: ['101', 0],
+            },
+          },
+          '67': {
+            class_type: 'Power Lora Loader (rgthree)',
+            inputs: {
+              lora_1: {
+                on: true,
+                lora: 'Z-Detail-Slider.safetensors',
+                strength: 0.5325,
+              },
+              lora_2: {
+                on: true,
+                lora: 'zy_CinematicShot_zit.safetensors',
+                strength: 0.6875,
+              },
+            },
+          },
+          '100': {
+            class_type: 'ModelSamplingAuraFlow',
+            inputs: {
+              shift: 5,
+              model: ['67', 0],
+            },
+          },
+          '101': {
+            class_type: 'BasicGuider',
+            inputs: {
+              model: ['100', 0],
+              conditioning: ['114', 0],
+            },
+          },
+          '114': {
+            class_type: 'StylePromptEncoder2 //ZImagePowerNodes',
+            inputs: {
+              style: '"Production Photo"',
+              text: 'A white cat on the roof of a brick house',
+              clip: ['67', 1],
+            },
+          },
+        },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe('A white cat on the roof of a brick house');
+    expect(result?.loras).toEqual([
+      { name: 'Z-Detail-Slider.safetensors', weight: 0.5325 },
+      { name: 'zy_CinematicShot_zit.safetensors', weight: 0.6875 },
+    ]);
+  });
+
   it('recovers prompt and seed from embedded prompt_api when old MetaHub chunks are empty', async () => {
     const metadata: any = {
       imagemetahub_data: {
@@ -980,6 +1052,12 @@ describe('ComfyUI Parser - MetaHub lineage metadata', () => {
         width: 768,
         height: 1024,
         loras: [{ name: 'skin-detail', weight: 0.65 }],
+        imh_attribution: {
+          schema_version: 1,
+          token: 'imhcrt_br_creator_workflow_v1_random',
+          source: 'metahub_save_node',
+          node_version: '1.0.9',
+        },
         imh_pro: {
           user_tags: 'portrait, retouch',
           notes: 'Edited in Image MetaHub',
@@ -1005,6 +1083,7 @@ describe('ComfyUI Parser - MetaHub lineage metadata', () => {
       },
     });
     expect(result?.loras).toEqual([{ name: 'skin-detail', weight: 0.65 }]);
+    expect(result?.imh_attribution?.token).toBe('imhcrt_br_creator_workflow_v1_random');
   });
 
   it('keeps MetaHub payload as canonical when parameters disagree', async () => {

@@ -1233,11 +1233,27 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
     const payload = metaHubData as Record<string, any>;
     if (payload.generator === 'ComfyUI') {
       const rawTags = payload.imh_pro?.user_tags;
-      const tags = Array.isArray(rawTags)
-        ? rawTags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0).map((tag) => tag.trim())
-        : typeof rawTags === 'string'
-          ? rawTags.split(',').map((tag: string) => tag.trim()).filter(Boolean)
-          : [];
+      // Optimization: Replace chained array methods with single loops
+      // Impact: Reduces garbage collection overhead by eliminating O(N) intermediate array allocations during file indexing
+      const tags: string[] = [];
+      if (Array.isArray(rawTags)) {
+        for (const tag of rawTags) {
+          if (typeof tag === 'string') {
+            const trimmed = tag.trim();
+            if (trimmed.length > 0) {
+              tags.push(trimmed);
+            }
+          }
+        }
+      } else if (typeof rawTags === 'string') {
+        const splitTags = rawTags.split(',');
+        for (let i = 0; i < splitTags.length; i++) {
+          const trimmed = splitTags[i]!.trim();
+          if (trimmed.length > 0) {
+            tags.push(trimmed);
+          }
+        }
+      }
       const notes = typeof payload.imh_pro?.notes === 'string' ? payload.imh_pro.notes : '';
       const explicitGenerationType = typeof payload.generation_type === 'string'
         ? payload.generation_type as BaseMetadata['generationType']
@@ -1252,16 +1268,31 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
       const height = fallbackDims?.height ?? 0;
       let inferredGenerationType: BaseMetadata['generationType'] | undefined;
       let inferredLineage: BaseMetadata['lineage'] | undefined;
+      let recoveredMetadata: Record<string, any> | undefined;
+      const hasPromptGraph = Boolean(payload.workflow || payload.prompt_api || payload.prompt);
+      const embeddedLorasAreValid = Array.isArray(payload.loras) && payload.loras.every((lora: unknown) =>
+        typeof lora === 'string'
+        || Boolean(lora && typeof lora === 'object' && typeof (lora as Record<string, unknown>).name === 'string')
+      );
+      const needsGraphRecovery = hasPromptGraph && (
+        !(typeof payload.prompt === 'string' && payload.prompt.trim())
+        || !embeddedLorasAreValid
+        || !explicitGenerationType
+      );
 
-      if (!explicitGenerationType && (payload.workflow || payload.prompt_api || payload.prompt)) {
-        const enhancedResult = await parseComfyUIMetadataEnhanced({ imagemetahub_data: payload });
-        inferredGenerationType = enhancedResult.generationType as BaseMetadata['generationType'] | undefined;
-        inferredLineage = enhancedResult.lineage as BaseMetadata['lineage'] | undefined;
+      if (needsGraphRecovery) {
+        recoveredMetadata = await parseComfyUIMetadataEnhanced({ imagemetahub_data: payload });
+        inferredGenerationType = recoveredMetadata.generationType as BaseMetadata['generationType'] | undefined;
+        inferredLineage = recoveredMetadata.lineage as BaseMetadata['lineage'] | undefined;
       }
 
       return {
-        prompt: typeof payload.prompt === 'string' ? payload.prompt : '',
-        negativePrompt: typeof payload.negativePrompt === 'string' ? payload.negativePrompt : '',
+        prompt: typeof payload.prompt === 'string' && payload.prompt.trim()
+          ? payload.prompt
+          : recoveredMetadata?.prompt || '',
+        negativePrompt: typeof payload.negativePrompt === 'string' && payload.negativePrompt.trim()
+          ? payload.negativePrompt
+          : recoveredMetadata?.negativePrompt || '',
         model: typeof payload.model === 'string' ? payload.model : '',
         models: typeof payload.model === 'string' && payload.model ? [payload.model] : [],
         width,
@@ -1272,7 +1303,9 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
         cfg_scale: typeof payload.cfg === 'number' ? payload.cfg : undefined,
         scheduler: typeof payload.scheduler === 'string' ? payload.scheduler : '',
         sampler: typeof payload.sampler_name === 'string' ? payload.sampler_name : '',
-        loras: Array.isArray(payload.loras) ? payload.loras : [],
+        loras: embeddedLorasAreValid && Array.isArray(payload.loras) && payload.loras.length > 0
+          ? payload.loras
+          : recoveredMetadata?.loras || [],
         tags,
         notes,
         vae: typeof payload.vae === 'string' ? payload.vae : undefined,
@@ -1291,6 +1324,7 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
                 : undefined,
             }
           : inferredLineage,
+        imh_attribution: payload.imh_attribution || null,
         _analytics: payload.analytics || null,
         _metahub_pro: payload.imh_pro || null,
         _detection_method: 'metahub_chunk_direct',
@@ -1323,6 +1357,7 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
     denoise: enhancedResult.denoise,
     generationType: enhancedResult.generationType,
     lineage: enhancedResult.lineage,
+    imh_attribution: enhancedResult.imh_attribution || null,
     _analytics: enhancedResult._analytics || null,
     _metahub_pro: enhancedResult._metahub_pro || null,
     _detection_method: enhancedResult._detection_method,
@@ -1976,6 +2011,7 @@ function compactRawMetadataForRuntime(
       _analytics: payload._analytics,
       imh_pro: payload.imh_pro,
       _metahub_pro: payload._metahub_pro,
+      imh_attribution: payload.imh_attribution,
     };
   }
 

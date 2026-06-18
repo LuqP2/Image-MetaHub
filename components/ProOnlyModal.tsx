@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download, Tag, Image as ImageIcon } from 'lucide-react';
 import { ProFeature } from '../hooks/useFeatureAccess';
 import { TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { buildProLicenseUrl } from '../utils/creatorAttribution';
 
 interface ProOnlyModalProps {
   isOpen: boolean;
@@ -129,6 +131,9 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
   isExpired,
   isPro,
 }) => {
+  const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
+  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken);
+
   if (!isOpen) return null;
 
   const info = featureInfo[feature] ?? {
@@ -227,7 +232,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
               </button>
             )}
             <a
-              href="https://imagemetahub.com/getpro"
+              href={proLicenseUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full inline-flex items-center justify-center gap-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 font-semibold py-3 px-6 rounded-lg transition-colors border border-purple-500/40"
@@ -235,6 +240,9 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
               <Crown className="w-5 h-5" />
               Buy Pro license
             </a>
+            {creatorAttributionToken ? (
+              <p className="text-center text-xs text-gray-500">Creator attribution will be included at checkout.</p>
+            ) : null}
             <button
               onClick={onClose}
               className="w-full inline-flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold py-2.5 px-6 rounded-lg transition-colors border border-gray-700"

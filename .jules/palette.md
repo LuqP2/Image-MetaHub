@@ -20,3 +20,6 @@
 ## 2024-05-22 - Centralizing File System Operations
 **Learning:** Micro-UX features involving file paths (like "Copy File Path") often require different logic for Electron vs. Web. Implementing this logic multiple times in hooks (`useContextMenu`) and components (`ImageModal`) leads to bugs, inconsistent separators, and high maintenance.
 **Action:** Always centralize filesystem-adjacent UX utilities (path construction, clipboard interaction) in `utils/imageUtils.ts` or dedicated service files. Ensure they handle the environment check internally to keep UI components clean and focused on presentation.
+## 2025-06-17 - Keyboard Focus States for Custom UI Controls
+**Learning:** Custom UI controls like `SettingSwitch` (which uses a `button` with `role="switch"`) and complex sidebar navigation items can easily lose visible focus states when styled with Tailwind if not explicitly configured, making keyboard navigation difficult or invisible.
+**Action:** When implementing or modifying custom interactive elements (especially switches, toggles, or navigation pills), always verify that `focus-visible` classes are present to ensure they are accessible via the Tab key without relying on browser default outlines that may be suppressed by global CSS resets.

@@ -65,6 +65,7 @@ import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
 import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload } from './utils/watcherRemovalUtils';
 import { groupImages, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
+import { findLatestCreatorAttributionToken } from './utils/creatorAttribution';
 
 interface OpenImageModalState {
   modalId: string;
@@ -385,7 +386,16 @@ export default function App() {
     globalAutoWatch,
     generatorLaunchCommand,
     comfyUIWorkspaceAutoOpenSelectedImage,
+    creatorAttributionToken,
+    setCreatorAttributionToken,
   } = useSettingsStore();
+
+  useEffect(() => {
+    const latestAttributionToken = findLatestCreatorAttributionToken(safeImages);
+    if (latestAttributionToken && latestAttributionToken !== creatorAttributionToken) {
+      setCreatorAttributionToken(latestAttributionToken);
+    }
+  }, [creatorAttributionToken, safeImages, setCreatorAttributionToken]);
 
   // --- Local UI State ---
   const [currentPage, setCurrentPage] = useState(1);

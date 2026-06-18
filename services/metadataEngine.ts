@@ -126,6 +126,72 @@ const buildAudioInfoFromProbe = (stream: VideoProbeStream, format: VideoProbeFor
   };
 };
 
+const isRecord = (value: unknown): value is MetadataRecord =>
+  Boolean(value && typeof value === 'object' && !Array.isArray(value));
+
+const hasNonBlankString = (value: unknown): boolean =>
+  typeof value === 'string' && value.trim().length > 0;
+
+const hasFiniteNumber = (value: unknown): boolean =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const hasUsableMetaHubField = (payload: MetadataRecord): boolean => {
+  const attribution = isRecord(payload.imh_attribution) ? payload.imh_attribution : null;
+  if (hasNonBlankString(attribution?.token)) {
+    return true;
+  }
+
+  if (
+    hasNonBlankString(payload.prompt) ||
+    hasNonBlankString(payload.negativePrompt) ||
+    hasNonBlankString(payload.model) ||
+    hasNonBlankString(payload.sampler_name) ||
+    hasNonBlankString(payload.scheduler) ||
+    hasNonBlankString(payload.vae)
+  ) {
+    return true;
+  }
+
+  if (
+    hasFiniteNumber(payload.seed) ||
+    hasFiniteNumber(payload.steps) ||
+    hasFiniteNumber(payload.cfg) ||
+    hasFiniteNumber(payload.width) ||
+    hasFiniteNumber(payload.height) ||
+    hasFiniteNumber(payload.denoise)
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(payload.loras) && payload.loras.length > 0) {
+    return true;
+  }
+
+  if (
+    isRecord(payload.workflow) ||
+    isRecord(payload.prompt_api) ||
+    isRecord(payload.prompt) ||
+    isRecord(payload.imh_pro) ||
+    isRecord(payload.analytics)
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
+const isSupportedMetaHubPayload = (value: unknown): value is MetadataRecord => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const payload = value as MetadataRecord;
+  return (
+    (payload.generator === 'ComfyUI' || payload.generator === 'Image MetaHub') &&
+    hasUsableMetaHubField(payload)
+  );
+};
+
 async function readMediaMetadataWithFfprobe(filePath: string): Promise<{ comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null } | null> {
   const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
 
@@ -185,9 +251,18 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   let offset = 8;
   const decoder = new TextDecoder();
   const chunks: Record<string, string> = {};
+  const metadataChunkKeywords = new Set([
+    'invokeai_metadata',
+    'parameters',
+    'Parameters',
+    'workflow',
+    'prompt',
+    'Description',
+    'imagemetahub_data',
+  ]);
 
   let foundChunks = 0;
-  const maxChunks = 5; // invokeai_metadata, parameters, workflow, prompt, Description
+  const maxChunks = 7; // invokeai_metadata, parameters, workflow, prompt, Description, imagemetahub_data
 
   while (offset < view.byteLength && foundChunks < maxChunks) {
     const length = view.getUint32(offset);
@@ -198,7 +273,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
       const chunkString = decoder.decode(chunkData);
       const [keyword, text] = chunkString.split('\0');
 
-      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description'].includes(keyword) && text) {
+      if (metadataChunkKeywords.has(keyword) && text) {
         chunks[keyword.toLowerCase()] = text;
         foundChunks++;
       }
@@ -211,7 +286,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
       }
       const keyword = decoder.decode(chunkData.slice(0, keywordEndIndex));
 
-      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description'].includes(keyword)) {
+      if (metadataChunkKeywords.has(keyword)) {
         const compressionFlag = chunkData[keywordEndIndex + 1];
         let currentIndex = keywordEndIndex + 3; // Skip null separator, compression flag, and method
 
@@ -239,6 +314,17 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
 
     if (type === 'IEND') break;
     offset += 12 + length;
+  }
+
+  if (chunks.imagemetahub_data) {
+    try {
+      const metaHubPayload = JSON.parse(chunks.imagemetahub_data);
+      if (isSupportedMetaHubPayload(metaHubPayload)) {
+        return { imagemetahub_data: metaHubPayload } as ImageMetadata;
+      }
+    } catch {
+      // Ignore malformed MetaHub chunks so standard workflow/parameters chunks can be used.
+    }
   }
 
   if (chunks.workflow) {

@@ -71,7 +71,7 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 7; // v7: Add audio media indexing and metadata
+const PARSER_VERSION = 8; // v8: Add Image MetaHub creator attribution metadata
 
 const logMainPerf = (event, details = {}) => {
   console.log('[main:perf]', { event, ...details });
