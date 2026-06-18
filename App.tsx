@@ -66,6 +66,7 @@ import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './ser
 import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload } from './utils/watcherRemovalUtils';
 import { groupImages, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
 import { findLatestCreatorAttributionToken } from './utils/creatorAttribution';
+import { indexImageFileAtPath } from './services/fileIndexer';
 
 interface OpenImageModalState {
   modalId: string;
@@ -867,6 +868,66 @@ export default function App() {
     }
   }, [loadDirectory, safeDirectories, globalAutoWatch]);
 
+  const handleOpenFileFromDeepLink = useCallback(async (filePath: string) => {
+    if (!filePath || !window.electronAPI) {
+      return;
+    }
+
+    try {
+      const dirnameResult = await window.electronAPI.dirname(filePath);
+      if (!dirnameResult.success || !dirnameResult.path) {
+        throw new Error(dirnameResult.error || 'Could not resolve the image directory.');
+      }
+
+      const directoryPath = dirnameResult.path;
+      const currentState = useImageStore.getState();
+      const normalizeDirectoryPath = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+      const directoryKey = normalizeDirectoryPath(directoryPath);
+      let directory = currentState.directories.find(
+        (candidate) => normalizeDirectoryPath(candidate.path) === directoryKey
+      );
+
+      if (!directory) {
+        const directoryName = directoryPath.split(/[\\/]/).pop() || directoryPath;
+        directory = {
+          id: directoryPath,
+          name: directoryName,
+          path: directoryPath,
+          handle: {
+            name: directoryName,
+            kind: 'directory',
+          } as FileSystemDirectoryHandle,
+          autoWatch: false,
+          transient: true,
+        };
+        currentState.addDirectory(directory);
+      }
+
+      const allowedPaths = useImageStore.getState().directories.map((candidate) => candidate.path);
+      const allowResult = await window.electronAPI.updateAllowedPaths(allowedPaths);
+      if (!allowResult.success) {
+        throw new Error(allowResult.error || 'Could not authorize access to the image directory.');
+      }
+
+      const indexedImage = await indexImageFileAtPath(filePath, directory);
+      if (!indexedImage) {
+        throw new Error('The selected file could not be indexed.');
+      }
+
+      const latestState = useImageStore.getState();
+      latestState.setImages([
+        ...latestState.images.filter((image) => image.id !== indexedImage.id),
+        indexedImage,
+      ]);
+      latestState.setSelectedImage(indexedImage);
+    } catch (error) {
+      console.error('Error opening file from Image MetaHub deep link:', error);
+      useImageStore.getState().setError(
+        error instanceof Error ? error.message : 'Failed to open the generated image.'
+      );
+    }
+  }, []);
+
   // On mount, load directories stored in localStorage
   useEffect(() => {
     // Only run once on mount
@@ -886,6 +947,16 @@ export default function App() {
       return unsubscribe;
     }
   }, [handleLoadFromPath]);
+
+  useEffect(() => {
+    if (!window.electronAPI || typeof window.electronAPI.onOpenFileFromDeepLink !== 'function') {
+      return;
+    }
+
+    return window.electronAPI.onOpenFileFromDeepLink((filePath: string) => {
+      void handleOpenFileFromDeepLink(filePath);
+    });
+  }, [handleOpenFileFromDeepLink]);
 
   const normalizeFolderPath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
 

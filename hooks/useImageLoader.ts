@@ -1605,7 +1605,10 @@ export function useImageLoader() {
             // Persist the *new* state after adding
             const updatedDirectories = useImageStore.getState().directories;
             if (getIsElectron()) {
-                localStorage.setItem('image-metahub-directories', JSON.stringify(updatedDirectories.map(d => d.path)));
+                localStorage.setItem(
+                    'image-metahub-directories',
+                    JSON.stringify(updatedDirectories.filter(d => !d.transient).map(d => d.path))
+                );
             }
 
             // Now load the content of the new directory

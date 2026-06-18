@@ -206,10 +206,14 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
     annotations: nextAnnotations,
   });
 
-  localStorage.setItem('image-metahub-directories', JSON.stringify(nextDirectories.map((directory) => directory.path)));
+  const persistentDirectories = nextDirectories.filter((directory) => !directory.transient);
+  localStorage.setItem(
+    'image-metahub-directories',
+    JSON.stringify(persistentDirectories.map((directory) => directory.path)),
+  );
   localStorage.setItem(
     'image-metahub-directory-watchers',
-    JSON.stringify(Object.fromEntries(nextDirectories.map((directory) => [
+    JSON.stringify(Object.fromEntries(persistentDirectories.map((directory) => [
       directory.id,
       { enabled: !!directory.autoWatch, path: directory.path },
     ]))),

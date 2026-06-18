@@ -1,6 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const isDevelopment = process.env.NODE_ENV === 'development' || process.defaultApp === true;
+const pendingDeepLinkFiles = [];
+const deepLinkFileListeners = new Set();
+
+ipcRenderer.on('open-file-from-deep-link', (_event, filePath) => {
+  if (deepLinkFileListeners.size === 0) {
+    pendingDeepLinkFiles.push(filePath);
+    return;
+  }
+  deepLinkFileListeners.forEach((listener) => listener(filePath));
+});
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -12,6 +22,16 @@ const electronAPI = {
     // Return a cleanup function to remove the listener
     return () => {
       ipcRenderer.removeListener('load-directory-from-cli', handler);
+    };
+  },
+
+  onOpenFileFromDeepLink: (callback) => {
+    deepLinkFileListeners.add(callback);
+    while (pendingDeepLinkFiles.length > 0) {
+      callback(pendingDeepLinkFiles.shift());
+    }
+    return () => {
+      deepLinkFileListeners.delete(callback);
     };
   },
 

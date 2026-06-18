@@ -2666,12 +2666,13 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 // Persistir directories no localStorage
                 if (typeof window !== 'undefined') {
-                    const paths = directories.map(d => d.path);
+                    const persistentDirectories = directories.filter(d => !d.transient);
+                    const paths = persistentDirectories.map(d => d.path);
                     localStorage.setItem('image-metahub-directories', JSON.stringify(paths));
 
                     // Persistir estado de autoWatch separadamente para manter sincronizado
                     const watchStates = Object.fromEntries(
-                        directories.map(d => [d.id, { enabled: !!d.autoWatch, path: d.path }])
+                        persistentDirectories.map(d => [d.id, { enabled: !!d.autoWatch, path: d.path }])
                     );
                     localStorage.setItem('image-metahub-directory-watchers', JSON.stringify(watchStates));
                 }
@@ -2813,7 +2814,10 @@ export const useImageStore = create<ImageState>((set, get) => {
             const newDirectories = directories.filter(d => d.id !== directoryId);
             purgePendingDirectoryEntries(directoryId);
             if (window.electronAPI) {
-                localStorage.setItem('image-metahub-directories', JSON.stringify(newDirectories.map(d => d.path)));
+                localStorage.setItem(
+                    'image-metahub-directories',
+                    JSON.stringify(newDirectories.filter(d => !d.transient).map(d => d.path))
+                );
             }
             const newImages = images.filter(img => img.directoryId !== directoryId);
 
