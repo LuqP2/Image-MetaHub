@@ -4430,6 +4430,13 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No directory path provided' };
       }
 
+      if (!isPathAllowed(dirPath)) {
+        console.error('SECURITY VIOLATION: Attempted to list directory files outside of allowed directories.');
+        console.error('  [list-directory-files] Requested path:', dirPath);
+        console.error('  [list-directory-files] Allowed directories:', Array.from(allowedDirectoryPaths));
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
       let imageFiles = [];
 
       if (recursive) {
