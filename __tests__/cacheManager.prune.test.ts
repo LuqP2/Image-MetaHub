@@ -44,6 +44,19 @@ describe('pruneCacheMetadata', () => {
     ).toEqual(['root::nested/a.png', 'root::nested/deeper/b.png', 'root::nested-like/c.png', 'root::other.png']);
   });
 
+  it('uses the relative path from the id when cached names contain only basenames', () => {
+    const metadata = [
+      makeEntry('root::image.png', 'image.png'),
+      makeEntry('root::nested/image.png', 'image.png'),
+    ];
+
+    expect(
+      pruneCacheMetadata(metadata, {
+        names: ['image.png'],
+      }).map((entry) => entry.id),
+    ).toEqual(['root::nested/image.png']);
+  });
+
   it('removes all cached entries when ids cover every record', () => {
     const metadata = [
       makeEntry('root::a.png', 'a.png'),

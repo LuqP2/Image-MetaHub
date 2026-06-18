@@ -7,6 +7,7 @@ import { IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
 import { areFilesystemPathsEqual } from '../utils/filesystemPath';
+import { waitForDirectoryActivityToSettle } from '../utils/directoryActivity';
 
 // Configure logging level
 const DEBUG = false;
@@ -1787,6 +1788,7 @@ export function useImageLoader() {
         files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean }>
     ) => {
         try {
+            await waitForDirectoryActivityToSettle(directory.id);
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
             const normalizedFiles = files.map(file => {
                 const relativePath = toRelativeWatchPath(file.path, directory.path);
@@ -1905,18 +1907,22 @@ export function useImageLoader() {
             await phaseB;
             console.log('[auto-watch] Phase B completed!');
 
-            if (getIsElectron() && enrichedForCache.length > 0) {
+            if (getIsElectron() && (enrichedForCache.length > 0 || refreshedForCache.length > 0)) {
                 try {
-                    await cacheManager.appendToCache(directory.path, directory.name, enrichedForCache, shouldScanSubfolders);
+                    const directoryImages = useImageStore.getState().images.filter(
+                        image => image.directoryId === directory.id
+                    );
+                    await cacheManager.applyChunkedCacheDelta(
+                        directory.path,
+                        directory.name,
+                        [...enrichedForCache, ...refreshedForCache],
+                        [],
+                        [],
+                        shouldScanSubfolders,
+                        { fallbackImages: directoryImages }
+                    );
                 } catch (err) {
-                    console.error('Failed to append auto-watch images to cache:', err);
-                }
-            }
-            if (getIsElectron() && refreshedForCache.length > 0) {
-                try {
-                    await cacheManager.updateCachedImages(directory.path, directory.name, refreshedForCache, shouldScanSubfolders);
-                } catch (err) {
-                    console.error('Failed to update auto-watch cache entries:', err);
+                    console.error('Failed to upsert auto-watch cache entries:', err);
                 }
             }
 

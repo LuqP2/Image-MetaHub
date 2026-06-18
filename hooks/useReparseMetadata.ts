@@ -82,11 +82,20 @@ export function useReparseMetadata() {
         }
 
         for (const [directoryPath, payload] of updatesByDirectory.entries()) {
-          await cacheManager.updateCachedImages(
+          const directory = directories.find((candidate) => candidate.path === directoryPath);
+          const updatesById = new Map(payload.images.map((image) => [image.id, image]));
+          const fallbackImages = useImageStore.getState().images
+            .filter((image) => image.directoryId === directory?.id)
+            .map((image) => updatesById.get(image.id) ?? image);
+
+          await cacheManager.applyChunkedCacheDelta(
             directoryPath,
             payload.directoryName,
             payload.images,
-            scanSubfolders
+            [],
+            [],
+            scanSubfolders,
+            { fallbackImages }
           );
         }
       }

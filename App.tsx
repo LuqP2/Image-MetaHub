@@ -68,6 +68,7 @@ import { groupImages, type ImageGroup, type ImageGroupingSortOrder } from './uti
 import { findLatestCreatorAttributionToken } from './utils/creatorAttribution';
 import { indexImageFileAtPath } from './services/fileIndexer';
 import { areFilesystemPathsEqual } from './utils/filesystemPath';
+import { waitForDirectoryActivityToSettle } from './utils/directoryActivity';
 
 interface OpenImageModalState {
   modalId: string;
@@ -825,9 +826,11 @@ export default function App() {
   // Handler for loading directory from a path
   const handleLoadFromPath = useCallback(async (path: string) => {
     try {
+      await startupHydrationPromiseRef.current;
 
-      // Check if directory already exists in the store
-      const existingDir = safeDirectories.find(d => d.path === path);
+      const existingDir = useImageStore.getState().directories.find(
+        (directory) => areFilesystemPathsEqual(directory.path, path)
+      );
       if (existingDir) {
         return;
       }
@@ -846,6 +849,12 @@ export default function App() {
         handle: mockHandle as unknown as FileSystemDirectoryHandle,
         autoWatch: globalAutoWatch
       };
+
+      useImageStore.getState().addDirectory(newDirectory);
+      const persistentPaths = useImageStore.getState().directories
+        .filter((directory) => !directory.transient)
+        .map((directory) => directory.path);
+      localStorage.setItem('image-metahub-directories', JSON.stringify(persistentPaths));
 
       // Load the directory using the hook's loadDirectory function
       await loadDirectory(newDirectory, false);
@@ -868,7 +877,7 @@ export default function App() {
     } catch (error) {
       console.error('Error loading directory from path:', error);
     }
-  }, [loadDirectory, safeDirectories, globalAutoWatch]);
+  }, [loadDirectory, globalAutoWatch]);
 
   const handleOpenFileFromDeepLink = useCallback(async (filePath: string) => {
     if (!filePath || !window.electronAPI) {
@@ -904,6 +913,9 @@ export default function App() {
         };
         currentState.addDirectory(directory);
       }
+      const targetDirectory = directory;
+
+      await waitForDirectoryActivityToSettle(targetDirectory.id);
 
       const allowedPaths = useImageStore.getState().directories.map((candidate) => candidate.path);
       const allowResult = await window.electronAPI.updateAllowedPaths(allowedPaths);
@@ -911,7 +923,7 @@ export default function App() {
         throw new Error(allowResult.error || 'Could not authorize access to the image directory.');
       }
 
-      const indexedImage = await indexImageFileAtPath(filePath, directory);
+      const indexedImage = await indexImageFileAtPath(filePath, targetDirectory);
       if (!indexedImage) {
         throw new Error('The selected file could not be indexed.');
       }
@@ -925,22 +937,19 @@ export default function App() {
       }
       latestState.setSelectedImage(indexedImage);
 
-      if (!directory.transient) {
-        if (imageAlreadyIndexed) {
-          await cacheManager.updateCachedImages(
-            directory.path,
-            directory.name,
-            [indexedImage],
-            latestState.scanSubfolders
-          );
-        } else {
-          await cacheManager.appendToCache(
-            directory.path,
-            directory.name,
-            [indexedImage],
-            latestState.scanSubfolders
-          );
-        }
+      if (!targetDirectory.transient) {
+        const directoryImages = useImageStore.getState().images.filter(
+          (image) => image.directoryId === targetDirectory.id
+        );
+        await cacheManager.applyChunkedCacheDelta(
+          targetDirectory.path,
+          targetDirectory.name,
+          [indexedImage],
+          [],
+          [],
+          latestState.scanSubfolders,
+          { fallbackImages: directoryImages }
+        );
       }
 
       if (!imageAlreadyIndexed || !latestState.isAnnotationsLoaded) {
@@ -1023,6 +1032,7 @@ export default function App() {
     }
 
     void (async () => {
+      await waitForDirectoryActivityToSettle(pending.directory.id);
       const activeScanSubfolders = useImageStore.getState().scanSubfolders;
       const cacheModes = Array.from(new Set([activeScanSubfolders, !activeScanSubfolders]));
 
@@ -1247,6 +1257,9 @@ export default function App() {
     const restoreWatchers = async () => {
       console.log('[App] Restoring watchers for directories:', directories.map(d => ({ id: d.id, name: d.name, autoWatch: d.autoWatch })));
       for (const dir of directories) {
+        if (dir.transient) {
+          continue;
+        }
         if (dir.autoWatch) {
           try {
             console.log(`[App] Starting watcher for ${dir.name} (${dir.path})`);
@@ -1277,6 +1290,9 @@ export default function App() {
     const syncAutoWatch = async () => {
       console.log(`[App] Syncing all directories to globalAutoWatch: ${globalAutoWatch}`);
       for (const dir of directories) {
+        if (dir.transient) {
+          continue;
+        }
         // Update directory autoWatch state if it differs from global
         if (dir.autoWatch !== globalAutoWatch) {
           console.log(`[App] Updating ${dir.name} autoWatch from ${dir.autoWatch} to ${globalAutoWatch}`);

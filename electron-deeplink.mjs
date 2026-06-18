@@ -15,6 +15,10 @@ function findDeepLink(args) {
   return Array.from(args || []).find(isDeepLink) || null;
 }
 
+function normalizeCliArgs(args) {
+  return Array.from(args || []).slice(app.isPackaged ? 1 : 2);
+}
+
 function getTargetFromLink(value) {
   if (!isDeepLink(value)) return null;
   try {
@@ -32,7 +36,7 @@ function getTargetFromLink(value) {
 }
 
 function getDirectoryFromCliArgs(args) {
-  const argv = Array.from(args || []);
+  const argv = normalizeCliArgs(args);
   const dirFlagIndex = argv.indexOf('--dir');
 
   if (dirFlagIndex !== -1 && argv[dirFlagIndex + 1]) {
@@ -131,6 +135,7 @@ if (!lock) {
       dispatchTarget(target);
       return;
     }
+    focusMainWindow();
     sendDirectoryToRenderer(getDirectoryFromArgs(argv));
   });
 
