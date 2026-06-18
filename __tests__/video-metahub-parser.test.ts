@@ -19,12 +19,6 @@ describe('Video MetaHub parser', () => {
       metadata_sources: {
         prompt: 'default',
       },
-      imh_attribution: {
-        schema_version: 1,
-        token: 'imhcrt_br_creator_video_v1_random',
-        source: 'metahub_save_node',
-        node_version: '1.0.9',
-      },
     });
 
     expect(result).toMatchObject({
@@ -34,9 +28,6 @@ describe('Video MetaHub parser', () => {
       height: 480,
       media_type: 'video',
       _metadata_status: 'partial',
-      imh_attribution: {
-        token: 'imhcrt_br_creator_video_v1_random',
-      },
     });
   });
 

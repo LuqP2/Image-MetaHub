@@ -115,21 +115,15 @@ const TagsAndFavorites: React.FC = () => {
     [images, isIndexing]
   );
   const quickRatingOptions = [1, 2, 3, 4, 5] as const;
-  const quickRatingCounts = useMemo(() => {
-    // Optimization: Consolidate 5 Array.filter passes into a single O(N) loop and avoid new Map(arr.map()) allocation overhead
-    const counts = new Map<number, number>([
-      [1, 0], [2, 0], [3, 0], [4, 0], [5, 0],
-    ]);
-    if (!isIndexing) {
-      for (let i = 0; i < images.length; i++) {
-        const rating = images[i].rating;
-        if (rating && rating >= 1 && rating <= 5) {
-          counts.set(rating, (counts.get(rating) || 0) + 1);
-        }
-      }
-    }
-    return counts;
-  }, [images, isIndexing]);
+  const quickRatingCounts = useMemo(
+    () => new Map(
+      quickRatingOptions.map((value) => [
+        value,
+        isIndexing ? 0 : images.filter((img) => img.rating === value).length,
+      ]),
+    ),
+    [images, isIndexing]
+  );
 
   const toggleSelectedRating = (value: typeof quickRatingOptions[number]) => {
     setSelectedRatings(

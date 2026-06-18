@@ -111,7 +111,6 @@ export const parseVideoMetaHubMetadata = (rawData: unknown): BaseMetadata | null
     loras: payload.loras || [],
     tags: userTags,
     notes: payload.imh_pro?.notes || '',
-    imh_attribution: payload.imh_attribution || null,
     generator: payload.generator || 'ComfyUI',
     media_type: payload.media_type || 'video',
     video: payload.video || null,

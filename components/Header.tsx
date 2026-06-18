@@ -6,7 +6,6 @@ import { useImageStore } from '../store/useImageStore';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
-import { buildProLicenseUrl } from '../utils/creatorAttribution';
 
 type LibraryView = 'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor';
 
@@ -51,8 +50,6 @@ const Header: React.FC<HeaderProps> = ({
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
   const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
-  const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken);
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
   const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
   const viewingStackPrompt = useImageStore((state) => state.viewingStackPrompt);
@@ -463,7 +460,7 @@ const Header: React.FC<HeaderProps> = ({
 
           {!isPro && (
             <a
-              href={proLicenseUrl}
+              href="https://imagemetahub.com/getpro"
               target="_blank"
               rel="noopener noreferrer"
               className="app-top-pill hidden h-9 border-amber-700/30 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 hover:border-amber-600/40 hover:bg-amber-500/15 hover:text-amber-100 lg:inline-flex"

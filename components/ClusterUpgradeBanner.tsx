@@ -1,8 +1,6 @@
 import React from 'react';
 import { Crown, Sparkles, TrendingUp } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
-import { useSettingsStore } from '../store/useSettingsStore';
-import { buildProLicenseUrl } from '../utils/creatorAttribution';
 
 interface ClusterUpgradeBannerProps {
   processedCount: number;
@@ -16,8 +14,6 @@ const ClusterUpgradeBanner: React.FC<ClusterUpgradeBannerProps> = ({
   clusterCount,
 }) => {
   const { showProModal, canStartTrial } = useFeatureAccess();
-  const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken);
 
   return (
     <div className="mt-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/30 rounded-lg p-4">
@@ -47,7 +43,7 @@ const ClusterUpgradeBanner: React.FC<ClusterUpgradeBannerProps> = ({
             </button>
 
             <a
-              href={proLicenseUrl}
+              href="https://imagemetahub.com/getpro"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold py-2 px-4 rounded-lg transition-colors border border-gray-700"

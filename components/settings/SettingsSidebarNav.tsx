@@ -16,7 +16,7 @@ interface SettingsSidebarNavProps {
 }
 
 const baseButtonClassName =
-  'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset';
+  'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors';
 
 export const SettingsSidebarNav: React.FC<SettingsSidebarNavProps> = ({
   items,

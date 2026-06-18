@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import cacheManager, { PARSER_VERSION } from '../services/cacheManager';
+import cacheManager from '../services/cacheManager';
 
 declare global {
   interface Window {
@@ -23,7 +23,7 @@ describe('cacheManager workflowNodes hydration', () => {
           directoryName: 'Library',
           lastScan: Date.now(),
           imageCount: 1,
-          parserVersion: PARSER_VERSION,
+          parserVersion: 7,
           metadata: [
             {
               id: 'dir-1::a.png',
@@ -68,7 +68,7 @@ describe('cacheManager workflowNodes hydration', () => {
               directoryName: 'Library',
               lastScan: 1,
               imageCount: 1,
-              parserVersion: PARSER_VERSION,
+              parserVersion: 7,
               metadata: [
                 {
                   id: 'dir-1::a.png',
@@ -130,7 +130,7 @@ describe('cacheManager workflowNodes hydration', () => {
               directoryName: 'Library',
               lastScan: 1,
               imageCount: 1,
-              parserVersion: PARSER_VERSION,
+              parserVersion: 7,
               metadata: [
                 {
                   id: 'dir-1::a.png',
@@ -188,7 +188,7 @@ describe('cacheManager workflowNodes hydration', () => {
       directoryName: 'Library',
       lastScan: 1,
       imageCount: 2,
-      parserVersion: PARSER_VERSION,
+      parserVersion: 7,
       metadata: [
         {
           id: 'dir-1::old.png',
@@ -269,7 +269,7 @@ describe('cacheManager workflowNodes hydration', () => {
           directoryName: 'Library',
           lastScan: 1,
           imageCount: 2,
-          parserVersion: PARSER_VERSION,
+          parserVersion: 7,
           metadata: [
             {
               id: 'dir-1::keep.png',
@@ -368,7 +368,7 @@ describe('cacheManager workflowNodes hydration', () => {
           directoryName: 'Library',
           lastScan: 1,
           imageCount: 1025,
-          parserVersion: PARSER_VERSION,
+          parserVersion: 7,
           chunkCount: 2,
         },
       }),
@@ -419,7 +419,7 @@ describe('cacheManager workflowNodes hydration', () => {
           directoryName: 'Library',
           lastScan: 1,
           imageCount: 1,
-          parserVersion: PARSER_VERSION,
+          parserVersion: 7,
           metadata: [
             {
               id: 'dir-1::existing.png',

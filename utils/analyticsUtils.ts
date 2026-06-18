@@ -129,19 +129,15 @@ export function calculatePeriodStats(
   const currentPeriodStart = now - periodMs;
   const previousPeriodStart = currentPeriodStart - periodMs;
 
-  let currentCount = 0;
-  let previousCount = 0;
+  const currentCount = images.filter(
+    (img) => img.lastModified >= currentPeriodStart
+  ).length;
 
-  // Optimization: Single-pass loop to calculate counts for both periods,
-  // avoiding multiple O(N) filter passes and intermediate array allocations.
-  for (let i = 0; i < images.length; i++) {
-    const lastModified = images[i].lastModified;
-    if (lastModified >= currentPeriodStart) {
-      currentCount++;
-    } else if (lastModified >= previousPeriodStart) {
-      previousCount++;
-    }
-  }
+  const previousCount = images.filter(
+    (img) =>
+      img.lastModified >= previousPeriodStart &&
+      img.lastModified < currentPeriodStart
+  ).length;
 
   const variationAbsolute = currentCount - previousCount;
   const variation =
@@ -1010,45 +1006,27 @@ const buildNumericBuckets = (
   labelFactory: (entry: { min?: number; max?: number }) => string,
   selector: (image: IndexedImage) => number | null,
   ranges: Array<{ key: string; min?: number; max?: number }>
-): AnalyticsNumericBucket[] => {
-  // Optimization: Consolidate multiple filter passes into a single O(N) pass.
-  // Impact: Reduces full array traversals from K (number of ranges) to 1.
-  const counts = new Array(ranges.length).fill(0);
-
-  for (let i = 0; i < images.length; i++) {
-    const value = selector(images[i]);
-    if (value === null) {
-      continue;
-    }
-
-    for (let j = 0; j < ranges.length; j++) {
-      const range = ranges[j];
-      if (
-        (range.min === undefined || value >= range.min) &&
-        (range.max === undefined || value < range.max)
-      ) {
-        counts[j]++;
+): AnalyticsNumericBucket[] => ranges
+  .map((range) => ({
+    key: range.key,
+    label: labelFactory(range),
+    count: images.filter((image) => {
+      const value = selector(image);
+      if (value === null) {
+        return false;
       }
-    }
-  }
-
-  const buckets: AnalyticsNumericBucket[] = [];
-  for (let j = 0; j < ranges.length; j++) {
-    const count = counts[j];
-    if (count > 0) {
-      const range = ranges[j];
-      buckets.push({
-        key: range.key,
-        label: labelFactory(range),
-        count,
-        min: range.min,
-        max: range.max,
-      });
-    }
-  }
-
-  return buckets;
-};
+      if (range.min !== undefined && value < range.min) {
+        return false;
+      }
+      if (range.max !== undefined && value >= range.max) {
+        return false;
+      }
+      return true;
+    }).length,
+    min: range.min,
+    max: range.max,
+  }))
+  .filter((bucket) => bucket.count > 0);
 
 const buildCompareCohort = (
   images: IndexedImage[],
@@ -1122,83 +1100,39 @@ export const buildAnalyticsExplorerData = ({
 }): AnalyticsExplorerData => {
   const totalImages = scopeImages.length;
   const averages = calculatePerformanceAverages(scopeImages);
-
-  // Optimization: Pre-calculate resources and periodStats to avoid redundant passes
-  // and multiple calls to expensive statistic functions.
-  const generators = collectFacetItems(scopeImages, (image) => [getImageGenerator(image)], 10);
-  const models = collectFacetItems(scopeImages, (image) => image.models || [], 12);
-  const loras = collectFacetItems(scopeImages, getImageLoraNames, 12);
-  const samplers = collectFacetItems(scopeImages, (image) => image.sampler ? [image.sampler] : [], 12);
-  const schedulers = collectFacetItems(scopeImages, (image) => image.scheduler ? [image.scheduler] : [], 12);
-
-  const dominantModel = models[0]?.label;
-  const dominantGenerator = generators[0]?.label;
-  const periodStats = calculatePeriodStats(allImages, 30);
-
-  // Optimization: Consolidate curation metrics calculation into a single pass.
-  // Impact: Reduces O(N) array traversals from ~13 passes to 1, minimizing heap allocations and GC pressure.
-  let favoritesCount = 0;
-  let unratedCount = 0;
-  let unratedFavoritesCount = 0;
-  const ratingStats = new Map<number, { count: number; favorites: number }>();
-
-  for (let i = 0; i < RATING_VALUES.length; i++) {
-    ratingStats.set(RATING_VALUES[i], { count: 0, favorites: 0 });
-  }
-
-  for (let i = 0; i < scopeImages.length; i++) {
-    const image = scopeImages[i];
-    const isFavorite = image.isFavorite === true;
-    const rating = image.rating;
-
-    if (isFavorite) {
-      favoritesCount++;
-    }
-
-    if (typeof rating === 'number' && ratingStats.has(rating)) {
-      const stats = ratingStats.get(rating)!;
-      stats.count++;
-      if (isFavorite) {
-        stats.favorites++;
-      }
-    } else {
-      unratedCount++;
-      if (isFavorite) {
-        unratedFavoritesCount++;
-      }
-    }
-  }
-
-  const ratingDistribution: AnalyticsFacetItem[] = [];
-  for (let i = 0; i < RATING_VALUES.length; i++) {
-    const rating = RATING_VALUES[i];
-    const stats = ratingStats.get(rating)!;
-    if (stats.count > 0) {
-      ratingDistribution.push({
+  const dominantModel = collectFacetItems(scopeImages, (image) => image.models || [], 1)[0]?.label;
+  const dominantGenerator = collectFacetItems(scopeImages, (image) => [getImageGenerator(image)], 1)[0]?.label;
+  const favoritesCount = scopeImages.filter((image) => image.isFavorite).length;
+  const unratedCount = scopeImages.filter((image) => typeof image.rating !== 'number').length;
+  const ratingDistribution = [
+    ...RATING_VALUES.map((rating) => {
+      const count = scopeImages.filter((image) => image.rating === rating).length;
+      const matchingImages = scopeImages.filter((image) => image.rating === rating);
+      const favorites = matchingImages.filter((image) => image.isFavorite).length;
+      return {
         key: String(rating),
         label: `${rating}★`,
-        count: stats.count,
-        share: totalImages > 0 ? stats.count / totalImages : 0,
-        favorites: stats.favorites,
-        keeperRate: stats.count > 0 ? stats.favorites / stats.count : 0,
-        averageRating: rating,
-        ratingCount: stats.count,
-      });
-    }
-  }
-
-  if (unratedCount > 0) {
-    ratingDistribution.push({
+        count,
+        share: totalImages > 0 ? count / totalImages : 0,
+        favorites,
+        keeperRate: count > 0 ? favorites / count : 0,
+        averageRating: count > 0 ? rating : 0,
+        ratingCount: count,
+      };
+    }),
+    {
       key: 'unrated',
       label: 'Unrated',
       count: unratedCount,
       share: totalImages > 0 ? unratedCount / totalImages : 0,
-      favorites: unratedFavoritesCount,
-      keeperRate: unratedCount > 0 ? unratedFavoritesCount / unratedCount : 0,
+      favorites: scopeImages.filter((image) => typeof image.rating !== 'number' && image.isFavorite).length,
+      keeperRate: unratedCount > 0
+        ? scopeImages.filter((image) => typeof image.rating !== 'number' && image.isFavorite).length / unratedCount
+        : 0,
       averageRating: 0,
       ratingCount: 0,
-    });
-  }
+    },
+  ].filter((item) => item.count > 0);
 
   const explorerData: AnalyticsExplorerData = {
     scopeMode,
@@ -1207,29 +1141,22 @@ export const buildAnalyticsExplorerData = ({
     dominantModel,
     dominantGenerator,
     telemetryCoverage: averages.telemetryPercentage / 100,
-    periodStats,
+    periodStats: calculatePeriodStats(allImages, 30),
     insights: generateInsights(
       allImages,
-      periodStats,
-      models.slice(0, 5).map(m => ({
-        name: m.label,
-        total: m.count,
-        favorites: m.favorites,
-        keeperRate: m.keeperRate,
-        averageRating: m.averageRating,
-        ratingCount: m.ratingCount,
-      })),
+      calculatePeriodStats(allImages, 30),
+      calculateTopItems(scopeImages, 'models', 5),
       undefined,
       scopeMode === 'context' ? 'current scope' : 'library',
       totalImages
     ),
     samples: [...scopeImages].sort((a, b) => b.lastModified - a.lastModified).slice(0, 8),
     resources: {
-      generators,
-      models,
-      loras,
-      samplers,
-      schedulers,
+      generators: collectFacetItems(scopeImages, (image) => [getImageGenerator(image)], 10),
+      models: collectFacetItems(scopeImages, (image) => image.models || [], 12),
+      loras: collectFacetItems(scopeImages, getImageLoraNames, 12),
+      samplers: collectFacetItems(scopeImages, (image) => image.sampler ? [image.sampler] : [], 12),
+      schedulers: collectFacetItems(scopeImages, (image) => image.scheduler ? [image.scheduler] : [], 12),
     },
     time: {
       timeline: buildTimelinePoints(scopeImages),

@@ -10,7 +10,7 @@ import {
  * Parser version - increment when parser logic changes significantly
  * This ensures cache is invalidated when parsing rules change
  */
-export const PARSER_VERSION = 8; // v8: Add Image MetaHub creator attribution metadata
+export const PARSER_VERSION = 7; // v7: Add audio media indexing and metadata
 
 // Simplified metadata structure for the JSON cache
 export interface CacheImageMetadata {
@@ -122,7 +122,6 @@ function compactCacheMetadataEntry(entry: CacheImageMetadata): CacheImageMetadat
       _analytics: payload._analytics,
       imh_pro: payload.imh_pro,
       _metahub_pro: payload._metahub_pro,
-      imh_attribution: payload.imh_attribution,
     };
   }
 

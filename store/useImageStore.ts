@@ -2025,24 +2025,6 @@ export const useImageStore = create<ImageState>((set, get) => {
             directoryPathMap.set(dir.id, normalized);
         });
 
-        // Optimization: Pre-normalize folder paths for selection and exclusion to avoid redundant O(N * E) path operations.
-        // Impact: Eliminates expensive string normalization inside the filter loop, significantly improving responsiveness for large libraries.
-        const normalizedExcludedFolders: string[] = [];
-        if (excludedFolders && excludedFolders.size > 0) {
-            for (const folder of excludedFolders) {
-                normalizedExcludedFolders.push(normalizePath(folder));
-            }
-        }
-
-        const normalizedSelectedFolders: string[] = [];
-        if (selectedFolders && selectedFolders.size > 0) {
-            for (const folder of selectedFolders) {
-                normalizedSelectedFolders.push(normalizePath(folder));
-            }
-        }
-        const hasSelectedFolders = normalizedSelectedFolders.length > 0;
-        const selectedFoldersSet = new Set(normalizedSelectedFolders);
-
         // Filter images based on folder selection and exclusion
         const selectionFiltered = images.filter((img) => {
             if (!visibleDirectoryIds.has(img.directoryId || '')) {
@@ -2057,9 +2039,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             const folderPath = normalizePath(getImageFolderPath(img, parentPath));
 
             // EXCLUSION CHECK: If folder is excluded, hide image
-            if (normalizedExcludedFolders.length > 0) {
-                for (let i = 0; i < normalizedExcludedFolders.length; i++) {
-                    const normalizedExcluded = normalizedExcludedFolders[i];
+            if (excludedFolders && excludedFolders.size > 0) {
+                for (const excludedFolder of excludedFolders) {
+                    const normalizedExcluded = normalizePath(excludedFolder);
                     // Check if folderPath IS the excluded folder or IS A CHILD of the excluded folder
                     if (folderPath === normalizedExcluded ||
                         folderPath.startsWith(normalizedExcluded + '/') ||
@@ -2070,19 +2052,19 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
 
             // If no folders are selected, show all images from visible directories (unless excluded)
-            if (!hasSelectedFolders) {
+            if (selectedFolders.size === 0) {
                 return true;
             }
 
             // Direct matching - check if folder is explicitly selected
-            if (selectedFoldersSet.has(folderPath)) {
+            if (selectedFolders.has(folderPath)) {
                 return true;
             }
 
             // If includeSubfolders is enabled, check if any parent folder is selected
             if (includeSubfolders) {
-                for (let i = 0; i < normalizedSelectedFolders.length; i++) {
-                    const normalizedSelected = normalizedSelectedFolders[i];
+                for (const selectedFolder of selectedFolders) {
+                    const normalizedSelected = normalizePath(selectedFolder);
                     // Check if folderPath is a subfolder of selectedFolder
                     if (folderPath.startsWith(normalizedSelected + '/') || folderPath.startsWith(normalizedSelected + '\\')) {
                         return true;
@@ -3964,22 +3946,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                     case 'complete': {
                         const generatedAt = Date.now();
                         const tagMap = new Map<string, string[]>();
-                        // Optimization: Replace Object.entries().forEach with for...in and chained .map().filter() with a single loop
-                        // Impact: Eliminates O(N) array allocation from Object.entries and temporary mapped arrays, reducing GC pressure during auto-tag payload processing.
-                        const payloadAutoTags = payload.autoTags || {};
-                        for (const id in payloadAutoTags) {
-                            const tags = payloadAutoTags[id];
-                            const normalizedTags: string[] = [];
-                            if (tags) {
-                                for (let i = 0; i < tags.length; i++) {
-                                    const tagStr = tags[i]?.tag;
-                                    if (tagStr) {
-                                        normalizedTags.push(tagStr);
-                                    }
-                                }
-                            }
+                        Object.entries(payload.autoTags || {}).forEach(([id, tags]: [string, AutoTag[]]) => {
+                            const normalizedTags = (tags || []).map((tag) => tag.tag).filter(Boolean);
                             tagMap.set(id, normalizedTags);
-                        }
+                        });
 
                         set(state => {
                             const updateList = (list: IndexedImage[]) => list.map(img => {
@@ -4006,7 +3976,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                         worker.terminate();
                         set({ autoTaggingWorker: null });
-                        console.log(`Auto-tagging complete: ${tagMap.size} images tagged`);
+                        console.log(`Auto-tagging complete: ${Object.keys(payload.autoTags || {}).length} images tagged`);
 
                         if (payload.autoTags && payload.tfidfModel) {
                             import('../services/clusterCacheManager')

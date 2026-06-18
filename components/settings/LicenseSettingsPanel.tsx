@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Crown } from 'lucide-react';
 import { useLicenseStore } from '../../store/useLicenseStore';
-import { useSettingsStore } from '../../store/useSettingsStore';
 import { SettingsPanel } from './SettingsPanel';
 import { SettingsSectionCard } from './SettingsSectionCard';
-import { buildProLicenseUrl } from '../../utils/creatorAttribution';
 
 const licenseStatusClassName: Record<string, string> = {
   free: 'border-gray-700 bg-gray-800 text-gray-300',
@@ -27,8 +25,6 @@ export const LicenseSettingsPanel: React.FC = () => {
   const licenseEmail = useLicenseStore((state) => state.licenseEmail);
   const licenseKey = useLicenseStore((state) => state.licenseKey);
   const activateLicense = useLicenseStore((state) => state.activateLicense);
-  const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken);
 
   const [licenseEmailInput, setLicenseEmailInput] = useState(licenseEmail ?? '');
   const [licenseKeyInput, setLicenseKeyInput] = useState(licenseKey ?? '');
@@ -122,16 +118,13 @@ export const LicenseSettingsPanel: React.FC = () => {
             {isActivatingLicense ? 'Activating...' : 'Activate license'}
           </button>
           <a
-            href={proLicenseUrl}
+            href="https://imagemetahub.com/getpro"
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm text-blue-300 hover:text-blue-200"
           >
             Get Pro license
           </a>
-          {creatorAttributionToken ? (
-            <span className="text-xs text-gray-500">Creator attribution detected.</span>
-          ) : null}
         </div>
 
         {licenseMessage ? <p className="text-sm text-gray-300">{licenseMessage}</p> : null}

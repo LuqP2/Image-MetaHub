@@ -331,39 +331,6 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     },
     widget_order: ['text']
   },
-  'StylePromptEncoder2 //ZImagePowerNodes': {
-    category: 'CONDITIONING',
-    roles: ['SOURCE'],
-    inputs: {
-      clip: { type: 'CLIP' },
-      customization: { type: 'STRING' },
-      text: { type: 'STRING' },
-    },
-    outputs: {
-      CONDITIONING: { type: 'CONDITIONING' },
-      STRING: { type: 'STRING' },
-    },
-    param_mapping: {
-      prompt: {
-        source: 'custom_extractor',
-        extractor: (node, state, graph, traverse) => {
-          const textInput = node.inputs?.text;
-          if (Array.isArray(textInput)) {
-            return traverse(textInput as any, { ...state, targetParam: 'prompt' }, graph, []);
-          }
-          if (typeof textInput === 'string' && textInput.trim()) {
-            return textInput;
-          }
-          return node.widgets_values?.[3] || null;
-        },
-      },
-      negativePrompt: {
-        source: 'custom_extractor',
-        extractor: () => '',
-      },
-    },
-    widget_order: ['style', 'gallery', 'spacer', 'text'],
-  },
   CLIPTextEncodeSDXL: {
     category: 'CONDITIONING',
     roles: ['SOURCE'],
