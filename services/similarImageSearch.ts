@@ -408,75 +408,81 @@ export const findSimilarImages = ({
   const sourceSimilarityPrompt = source.normalizedSimilarityPrompt;
   const sourceSimilarityTokens = sourceSimilarityPrompt ? tokenizeForSimilarity(sourceSimilarityPrompt) : null;
 
-  const rawResults = candidates
-    .filter((image) => image.id !== sourceImage.id)
-    .map((image) => {
-      const candidateSource = getSimilarSearchSourceDetails(image);
-      const candidateCheckpointSet = new Set(candidateSource.checkpoints);
-      const sharesCheckpoint = source.checkpoints.some((checkpoint) => candidateCheckpointSet.has(checkpoint));
+  // Optimization: Replace chained .filter().map().filter() with a single loop to avoid allocating intermediate arrays
+  // Impact: Reduces garbage collection overhead when executing similar image search on large datasets
+  const rawResults: Omit<SimilarSearchResult, 'preselected'>[] = [];
 
-      let promptSimilarity: number | null = null;
-      if (effectiveCriteria.prompt) {
-        if (!sourceSimilarityPrompt || !sourceSimilarityTokens || !candidateSource.normalizedSimilarityPrompt) {
-          return null;
-        }
+  for (const image of candidates) {
+    if (image.id === sourceImage.id) {
+      continue;
+    }
 
-        promptSimilarity = calculatePromptSimilarity({
-          sourcePrompt: sourceSimilarityPrompt,
-          sourceTokens: sourceSimilarityTokens,
-          candidatePrompt: candidateSource.normalizedSimilarityPrompt,
-          threshold: effectiveCriteria.promptThreshold,
-        });
-        if (promptSimilarity == null) {
-          return null;
-        }
+    const candidateSource = getSimilarSearchSourceDetails(image);
+    const candidateCheckpointSet = new Set(candidateSource.checkpoints);
+    const sharesCheckpoint = source.checkpoints.some((checkpoint) => candidateCheckpointSet.has(checkpoint));
+
+    let promptSimilarity: number | null = null;
+    if (effectiveCriteria.prompt) {
+      if (!sourceSimilarityPrompt || !sourceSimilarityTokens || !candidateSource.normalizedSimilarityPrompt) {
+        continue;
       }
 
-      if (effectiveCriteria.lora && !haveSameLoraNames(candidateSource.loras, source.loras)) {
-        return null;
+      promptSimilarity = calculatePromptSimilarity({
+        sourcePrompt: sourceSimilarityPrompt,
+        sourceTokens: sourceSimilarityTokens,
+        candidatePrompt: candidateSource.normalizedSimilarityPrompt,
+        threshold: effectiveCriteria.promptThreshold,
+      });
+      if (promptSimilarity == null) {
+        continue;
+      }
+    }
+
+    if (effectiveCriteria.lora && !haveSameLoraNames(candidateSource.loras, source.loras)) {
+      continue;
+    }
+
+    if (effectiveCriteria.lora && effectiveCriteria.matchLoraWeight && !haveSameLoraWeights(candidateSource.loras, source.loras)) {
+      continue;
+    }
+
+    if (effectiveCriteria.seed && candidateSource.seed !== source.seed) {
+      continue;
+    }
+
+    if (effectiveCriteria.checkpointMode === 'same' && !sharesCheckpoint) {
+      continue;
+    }
+
+    if (effectiveCriteria.checkpointMode === 'different') {
+      if (candidateSource.checkpoints.length === 0) {
+        continue;
       }
 
-      if (effectiveCriteria.lora && effectiveCriteria.matchLoraWeight && !haveSameLoraWeights(candidateSource.loras, source.loras)) {
-        return null;
+      if (sharesCheckpoint) {
+        continue;
       }
+    }
 
-      if (effectiveCriteria.seed && candidateSource.seed !== source.seed) {
-        return null;
-      }
-
-      if (effectiveCriteria.checkpointMode === 'same' && !sharesCheckpoint) {
-        return null;
-      }
-
-      if (effectiveCriteria.checkpointMode === 'different') {
-        if (candidateSource.checkpoints.length === 0) {
-          return null;
-        }
-
-        if (sharesCheckpoint) {
-          return null;
-        }
-      }
-
-      return {
-        image,
-        matchedFields: buildMatchedFields({
-          criteria: effectiveCriteria,
-          sharesCheckpoint,
-        }),
-        primaryCheckpoint: candidateSource.primaryCheckpoint,
+    rawResults.push({
+      image,
+      matchedFields: buildMatchedFields({
+        criteria: effectiveCriteria,
         sharesCheckpoint,
-        promptSimilarity,
-      } satisfies Omit<SimilarSearchResult, 'preselected'>;
-    })
-    .filter((result): result is Omit<SimilarSearchResult, 'preselected'> => Boolean(result))
-    .sort((left, right) => {
-      if (left.promptSimilarity !== right.promptSimilarity) {
-        return (right.promptSimilarity ?? -1) - (left.promptSimilarity ?? -1);
-      }
-
-      return compareNewestFirst(left.image, right.image);
+      }),
+      primaryCheckpoint: candidateSource.primaryCheckpoint,
+      sharesCheckpoint,
+      promptSimilarity,
     });
+  }
+
+  rawResults.sort((left, right) => {
+    if (left.promptSimilarity !== right.promptSimilarity) {
+      return (right.promptSimilarity ?? -1) - (left.promptSimilarity ?? -1);
+    }
+
+    return compareNewestFirst(left.image, right.image);
+  });
 
   const preselectedIds = choosePreselectedIds(rawResults);
   const results = rawResults
