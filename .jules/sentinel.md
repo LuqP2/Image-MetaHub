@@ -1,0 +1,4 @@
+## 2025-05-22 - IPC Path Traversal in Filesystem Handlers
+**Vulnerability:** Several IPC handlers (`list-directory-files`, `show-item-in-folder`, `open-cache-location`) lacked robust path validation, allowing the renderer process to potentially access or expose files outside of user-approved directories.
+**Learning:** Security checks were previously removed from `show-item-in-folder` to allow opening export destinations anywhere, but this created a gap for arbitrary path traversal. Using `isApprovedWritePath` allows specific user-selected paths without compromising general security.
+**Prevention:** All IPC handlers exposing filesystem functionality must use appropriate validation helpers (`isPathAllowed`, `isInternalPath`, or `isApprovedWritePath`) before performing any I/O or shell operations.
