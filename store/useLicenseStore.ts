@@ -97,7 +97,8 @@ export const useLicenseStore = create<LicenseState>()(
       nextReleaseTrialResetApplied: false,
       trialStartDate: null,
       trialActivated: false,
-      licenseStatus: 'free',
+      // 🔓 HARDCODED PRO BYPASS - FOR PERSONAL TESTING ONLY
+      licenseStatus: 'pro',
       licenseKey: null,
       licenseEmail: null,
 
@@ -127,6 +128,16 @@ export const useLicenseStore = create<LicenseState>()(
       // Check license status (called on app start and periodically)
       checkLicenseStatus: async () => {
         const state = get();
+
+        // 🔓 HARDCODED PRO BYPASS - FOR PERSONAL TESTING ONLY
+        set({
+          initialized: true,
+          migrationResetApplied: true,
+          expiredTrialResetApplied: true,
+          nextReleaseTrialResetApplied: true,
+          licenseStatus: 'pro',
+        });
+        return;
 
         // Persisted Pro/Lifetime state must still match a valid offline key.
         if (state.licenseStatus === 'pro' || state.licenseStatus === 'lifetime') {

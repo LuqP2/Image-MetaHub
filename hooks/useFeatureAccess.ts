@@ -61,23 +61,24 @@ export const useFeatureAccess = () => {
                      localStorage.getItem('IMH_DEV_LICENSE') === 'pro';
 
   const isInitialized = licenseStore.initialized;
-  const hasProLicense = isInitialized && (licenseStore.licenseStatus === 'pro' || licenseStore.licenseStatus === 'lifetime');
 
   // Compute status (CENTRALIZED LOGIC HERE!)
-  const isPro = devOverride || hasProLicense;
+  // 🔓 HARDCODED PRO BYPASS - FOR PERSONAL TESTING ONLY
+  const isPro = true;
+  const hasProLicense = true;
 
   const isTrialActive = isInitialized &&
                         licenseStore.licenseStatus === 'trial' &&
                         !isTrialExpired(licenseStore.trialStartDate);
 
-  const isExpired = isInitialized && licenseStore.licenseStatus === 'expired';
-  const isFree = isInitialized && licenseStore.licenseStatus === 'free';
+  const isExpired = false;
+  const isFree = false;
   const trialUsed = isInitialized && licenseStore.trialActivated;
-  const canStartTrial = isInitialized && !hasProLicense && !isTrialActive && !trialUsed;
+  const canStartTrial = false;
 
   // Keep the development shortcut working, but do not open paid features before license state loads.
-  const allowDuringInit = devOverride;
-  const canUseDuringTrialOrPro = isPro || isTrialActive;
+  const allowDuringInit = true;
+  const canUseDuringTrialOrPro = true;
 
   // Feature flags (all Pro features have same access requirements)
   const canUseA1111 = allowDuringInit || canUseDuringTrialOrPro;
@@ -100,11 +101,8 @@ export const useFeatureAccess = () => {
 
   // Optional derived label for status indicators
   const statusLabel = useMemo(() => {
-    if (isPro) return 'Pro License';
-    if (isTrialActive) return `Pro Trial (${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'day' : 'days'} left)`;
-    if (isExpired) return 'Trial expired';
-    return 'Free Version';
-  }, [isPro, isTrialActive, isExpired, trialDaysRemaining]);
+    return 'Pro License (Bypassed)';
+  }, []);
 
   const startTrial = () => {
     licenseStore.activateTrial();
