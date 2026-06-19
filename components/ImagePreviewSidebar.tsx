@@ -89,6 +89,20 @@ const formatDurationSeconds = (seconds: number): string => {
   return `${minutes}m ${remainingSeconds}s`;
 };
 
+const formatFileSize = (bytes?: number | null): string => {
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  const decimals = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(decimals)} ${units[unitIndex]}`;
+};
+
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
     return null;
@@ -159,6 +173,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
       null;
   });
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [tagInput, setTagInput] = useState('');
@@ -230,6 +245,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
     const hasPreview = Boolean(preferredThumbnailUrl);
     setImageUrl(isVideo || isAudio ? null : preferredThumbnailUrl);
+    setImageDimensions(null);
 
     const loadImage = async () => {
       if (!isMounted) return;
@@ -374,6 +390,30 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     return null;
   }
   const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds ?? (nMeta as any)?.audio?.duration_seconds;
+  const metaWidth = (nMeta as any)?.width as number | undefined;
+  const metaHeight = (nMeta as any)?.height as number | undefined;
+  const resolvedResolution = (() => {
+    if (typeof metaWidth === 'number' && typeof metaHeight === 'number' && metaWidth > 0 && metaHeight > 0) {
+      return { width: metaWidth, height: metaHeight, source: 'metadata' as const };
+    }
+    if (imageDimensions && imageDimensions.width > 0 && imageDimensions.height > 0) {
+      return { width: imageDimensions.width, height: imageDimensions.height, source: 'file' as const };
+    }
+    const dimString = activeImage?.dimensions;
+    if (typeof dimString === 'string' && dimString.includes('x')) {
+      const [w, h] = dimString.split('x').map((value) => Number.parseInt(value, 10));
+      if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+        return { width: w, height: h, source: 'metadata' as const };
+      }
+    }
+    return null;
+  })();
+  const resolutionLabel = resolvedResolution
+    ? `${resolvedResolution.width} × ${resolvedResolution.height}`
+    : '';
+  const fileSizeLabel = formatFileSize(activeImage?.fileSize);
+  const hasResolutionInfo = Boolean(resolutionLabel);
+  const hasFileSizeInfo = Boolean(fileSizeLabel);
   const exportScopeImages = (() => {
     if (!activeImage) return [];
     const candidateScopes = [
@@ -562,7 +602,19 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 {...videoDiagnostics}
               />
             ) : (
-              <img src={imageUrl} alt={activeImage.name} className="max-w-full max-h-96 object-contain image-alpha-grid" />
+              <img
+                src={imageUrl}
+                alt={activeImage.name}
+                className="max-w-full max-h-96 object-contain image-alpha-grid"
+                onLoad={(event) => {
+                  const target = event.currentTarget;
+                  const naturalWidth = target.naturalWidth || target.width;
+                  const naturalHeight = target.naturalHeight || target.height;
+                  if (naturalWidth > 0 && naturalHeight > 0) {
+                    setImageDimensions({ width: naturalWidth, height: naturalHeight });
+                  }
+                }}
+              />
             )
           ) : (
             <div className="w-full h-64 animate-pulse bg-gray-700 rounded-md"></div>
@@ -584,6 +636,32 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
             )}
           </div>
           <p className="text-xs text-blue-400 font-mono break-all">{new Date(activeImage.lastModified).toLocaleString()}</p>
+          {(hasResolutionInfo || hasFileSizeInfo) && (
+            <div className="mt-1 flex items-center gap-3 flex-wrap text-xs text-gray-600 dark:text-gray-400 font-mono">
+              {hasResolutionInfo && (
+                <span
+                  className="inline-flex items-center gap-1"
+                  title={
+                    resolvedResolution?.source === 'file'
+                      ? 'Resolution measured from the loaded image file'
+                      : 'Resolution from embedded metadata'
+                  }
+                >
+                  <span className="uppercase tracking-wider text-[10px] text-gray-500 dark:text-gray-500">Resolution</span>
+                  <span className="text-gray-800 dark:text-gray-200">{resolutionLabel}</span>
+                </span>
+              )}
+              {hasResolutionInfo && hasFileSizeInfo && (
+                <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">•</span>
+              )}
+              {hasFileSizeInfo && (
+                <span className="inline-flex items-center gap-1" title="File size on disk">
+                  <span className="uppercase tracking-wider text-[10px] text-gray-500 dark:text-gray-500">Size</span>
+                  <span className="text-gray-800 dark:text-gray-200">{fileSizeLabel}</span>
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Annotations Section */}
