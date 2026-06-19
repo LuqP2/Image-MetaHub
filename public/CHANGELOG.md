@@ -5,11 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.17.3] - 2026-06-19
+
+### Added
+
+- **Creator Attribution**: Added Image MetaHub creator attribution support from embedded metadata, including persisted attribution tokens and attribution-aware Pro/license checkout links.
+
+### Improved
+
+- **MetaHub Save Node Metadata**: Improved parsing for MetaHub-generated PNG, JPEG, WebP, and video metadata, preserving attribution, analytics, Pro payloads, generation type, lineage, LoRAs, and recovered workflow details.
+- **ComfyUI Workflow Parsing**: Improved extraction for subgraph-backed ComfyUI workflows, grouped Flux workflows, Ideogram 4 scheduler flows, rgthree/LoraManager LoRA nodes, text joiners, guiders, schedulers, switches, and muted-node handling.
+- **Find Similar Matching**: Improved similar-image matching with normalized prompts, LoRA weight handling, checkpoint and folder scoping, better result scoring, and model/prompt overlap grouping.
+- **Cache Delta Reliability**: Improved chunked cache delta writes with serialized updates, safer payload sanitization, fallback cache creation, and pruning by both image id and relative path.
 
 ### Fixed
 
 - **Open Generated Image Deep Link**: The MetaHub Save Node deep link now adds the containing folder to the Directory List, indexes only the generated file, and opens it directly instead of scanning the entire output folder.
+- **Watched Folder Removals**: Fixed watched-file removal handling so UI state, open modals, selection, comparison, and cache entries stay in sync after files are deleted.
+- **MetaHub Attribution Preservation**: Fixed MetaHub attribution preservation across desktop indexing, cache compaction, parser-version invalidation, and CLI/metadata parsing paths.
 
 ## [0.17.2] - 2026-06-11
 
