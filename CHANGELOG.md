@@ -10,11 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Creator Attribution**: Added Image MetaHub creator attribution support from embedded metadata, including persisted attribution tokens and attribution-aware Pro/license checkout links.
+- **Delete Confirmation Option**: Added a Viewer setting to skip delete confirmations for faster cleanup workflows.
 
 ### Improved
 
 - **MetaHub Save Node Metadata**: Improved parsing for MetaHub-generated PNG, JPEG, WebP, and video metadata, preserving attribution, analytics, Pro payloads, generation type, lineage, LoRAs, and recovered workflow details.
 - **ComfyUI Workflow Parsing**: Improved extraction for subgraph-backed ComfyUI workflows, grouped Flux workflows, Ideogram 4 scheduler flows, rgthree/LoraManager LoRA nodes, text joiners, guiders, schedulers, switches, and muted-node handling.
+- **Performance**: Reduced unnecessary intermediate array allocations across analytics, file indexing, library filtering, automation rules, similar-image search, and cache-heavy paths to improve responsiveness on large libraries.
+- **Accessibility**: Improved keyboard and screen reader accessibility across comparison controls, changelog buttons, settings controls, and modal/navigation focus states.
 - **Find Similar Matching**: Improved similar-image matching with normalized prompts, LoRA weight handling, checkpoint and folder scoping, better result scoring, and model/prompt overlap grouping.
 - **Cache Delta Reliability**: Improved chunked cache delta writes with serialized updates, safer payload sanitization, fallback cache creation, and pruning by both image id and relative path.
 
@@ -22,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Open Generated Image Deep Link**: The MetaHub Save Node deep link now adds the containing folder to the Directory List, indexes only the generated file, and opens it directly instead of scanning the entire output folder.
 - **Watched Folder Removals**: Fixed watched-file removal handling so UI state, open modals, selection, comparison, and cache entries stay in sync after files are deleted.
-- **MetaHub Attribution Preservation**: Fixed MetaHub attribution preservation across desktop indexing, cache compaction, parser-version invalidation, and CLI/metadata parsing paths.
+- **Generation Queue Controls**: Fixed the Clear Finished button state so it is disabled and clearly explained when there are no finished items to clear.
 
 ## [0.17.2] - 2026-06-11
 
