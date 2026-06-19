@@ -911,7 +911,7 @@ class CacheManager {
     removedImageIds: string[],
     removedImageNames: string[],
     scanSubfolders: boolean,
-    options: { fallbackImages?: IndexedImage[] } = {}
+    options: { fallbackImages?: IndexedImage[]; createIfMissing?: boolean } = {}
   ): Promise<void> {
     if (!this.isElectron) return;
     if (imagesToUpsert.length === 0 && removedImageIds.length === 0 && removedImageNames.length === 0) return;
@@ -922,6 +922,9 @@ class CacheManager {
     const start = performance.now();
     const summary = await this.getCacheSummary(directoryPath, scanSubfolders);
     if (!summary) {
+      if (options.createIfMissing === false) {
+        return;
+      }
       const fallbackById = new Map<string, IndexedImage>();
       for (const image of options.fallbackImages ?? []) {
         fallbackById.set(image.id, image);

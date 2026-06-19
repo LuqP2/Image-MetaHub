@@ -67,7 +67,11 @@ import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload }
 import { groupImages, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
 import { findLatestCreatorAttributionToken } from './utils/creatorAttribution';
 import { indexImageFileAtPath } from './services/fileIndexer';
-import { areFilesystemPathsEqual } from './utils/filesystemPath';
+import {
+  areFilesystemPathsEqual,
+  isFilesystemPathWithinDirectory,
+  normalizeFilesystemPath,
+} from './utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from './utils/directoryActivity';
 
 interface OpenImageModalState {
@@ -894,9 +898,27 @@ export default function App() {
 
       const directoryPath = dirnameResult.path;
       const currentState = useImageStore.getState();
-      let directory = currentState.directories.find(
-        (candidate) => areFilesystemPathsEqual(candidate.path, directoryPath)
+      const exactPersistentDirectory = currentState.directories.find(
+        (candidate) => !candidate.transient && areFilesystemPathsEqual(candidate.path, directoryPath)
       );
+      const ancestorDirectory = currentState.scanSubfolders
+        ? currentState.directories
+            .filter(
+              (candidate) =>
+                !candidate.transient &&
+                isFilesystemPathWithinDirectory(filePath, candidate.path)
+            )
+            .sort(
+              (left, right) =>
+                normalizeFilesystemPath(right.path).length -
+                normalizeFilesystemPath(left.path).length
+            )[0]
+        : undefined;
+      let directory = exactPersistentDirectory ??
+        ancestorDirectory ??
+        currentState.directories.find(
+          (candidate) => areFilesystemPathsEqual(candidate.path, directoryPath)
+        );
 
       if (!directory) {
         const directoryName = directoryPath.split(/[\\/]/).pop() || directoryPath;

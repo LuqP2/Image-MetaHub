@@ -10,40 +10,35 @@ export const waitForDirectoryActivityToSettle = async (
   directoryId: string,
   timeoutMs = 10_000,
 ): Promise<void> => {
-  if (!isDirectoryActive(directoryId)) {
-    return;
-  }
+  while (isDirectoryActive(directoryId)) {
+    const settled = await new Promise<boolean>((resolve) => {
+      let completed = false;
+      let unsubscribe = () => {};
 
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    let unsubscribe = () => {};
+      const finish = (didSettle: boolean) => {
+        if (completed) {
+          return;
+        }
+        completed = true;
+        clearTimeout(timer);
+        unsubscribe();
+        resolve(didSettle);
+      };
 
-    const finish = (error?: Error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      unsubscribe();
-      if (error) {
-        reject(error);
-      } else {
-        resolve();
-      }
-    };
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      unsubscribe = useImageStore.subscribe(() => {
+        if (!isDirectoryActive(directoryId)) {
+          finish(true);
+        }
+      });
 
-    const timer = setTimeout(() => {
-      finish(new Error(`Timed out waiting for directory activity to finish: ${directoryId}`));
-    }, timeoutMs);
-
-    unsubscribe = useImageStore.subscribe(() => {
       if (!isDirectoryActive(directoryId)) {
-        finish();
+        finish(true);
       }
     });
 
-    if (!isDirectoryActive(directoryId)) {
-      finish();
+    if (!settled) {
+      console.warn(`Directory activity is still running; keeping queued event: ${directoryId}`);
     }
-  });
+  }
 };

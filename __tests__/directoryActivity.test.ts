@@ -31,7 +31,7 @@ describe('waitForDirectoryActivityToSettle', () => {
     expect(settled).toBe(true);
   });
 
-  it('rejects and unsubscribes when directory activity does not settle before the timeout', async () => {
+  it('keeps waiting and renews the subscription when activity exceeds the timeout', async () => {
     vi.useFakeTimers();
     useImageStore.getState().setDirectoryProgress('dir-1', { current: 1, total: 2 });
 
@@ -45,13 +45,15 @@ describe('waitForDirectoryActivityToSettle', () => {
       };
     }) as typeof useImageStore.subscribe);
 
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const waiting = waitForDirectoryActivityToSettle('dir-1', 1_000);
-    const rejection = expect(waiting).rejects.toThrow(
-      'Timed out waiting for directory activity to finish: dir-1'
-    );
 
     await vi.advanceTimersByTimeAsync(1_000);
-    await rejection;
+    expect(warning).toHaveBeenCalledTimes(1);
     expect(unsubscribe).toHaveBeenCalledTimes(1);
+
+    useImageStore.getState().setDirectoryProgress('dir-1', null);
+    await waiting;
+    expect(unsubscribe).toHaveBeenCalledTimes(2);
   });
 });

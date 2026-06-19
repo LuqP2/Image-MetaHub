@@ -600,6 +600,39 @@ describe('cacheManager workflowNodes hydration', () => {
     expect(cacheData.mock.calls[0][0].data.imageCount).toBe(2);
   });
 
+  it('does not create a missing cache variant when fallback creation is disabled', async () => {
+    const cacheData = vi.fn().mockResolvedValue({ success: true });
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockResolvedValue({ success: true, data: null }),
+      cacheData,
+    };
+    (cacheManager as any).isElectron = true;
+
+    await cacheManager.applyChunkedCacheDelta(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::image.png',
+          name: 'image.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{}',
+          lastModified: 1,
+          models: [],
+          loras: [],
+          scheduler: '',
+        } as any,
+      ],
+      [],
+      [],
+      true,
+      { fallbackImages: [], createIfMissing: false }
+    );
+
+    expect(cacheData).not.toHaveBeenCalled();
+  });
+
   it('preserves nested same-name files when rebuilding a missing cache after a root removal', async () => {
     const cacheData = vi.fn().mockResolvedValue({ success: true });
     window.electronAPI = {
