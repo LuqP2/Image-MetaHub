@@ -16,7 +16,7 @@ export const waitForDirectoryActivityToSettle = async (
 
   await new Promise<void>((resolve, reject) => {
     let settled = false;
-    let unsubscribe: (() => void) | undefined;
+    let unsubscribe = () => {};
 
     const finish = (error?: Error) => {
       if (settled) {
@@ -24,7 +24,7 @@ export const waitForDirectoryActivityToSettle = async (
       }
       settled = true;
       clearTimeout(timer);
-      unsubscribe?.();
+      unsubscribe();
       if (error) {
         reject(error);
       } else {
