@@ -141,6 +141,16 @@ function compactCacheMetadataEntries(metadata: CacheImageMetadata[]): CacheImage
   return metadata.map(compactCacheMetadataEntry);
 }
 
+const getRelativeCacheName = (id: string, name: string): string => {
+  const separatorIndex = id.indexOf('::');
+  const idRelativeName = separatorIndex >= 0
+    ? id.slice(separatorIndex + 2)
+    : '';
+  return (idRelativeName || name)
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '');
+};
+
 export function pruneCacheMetadata(
   metadata: CacheImageMetadata[],
   options: { ids?: Iterable<string>; names?: Iterable<string> }
@@ -156,7 +166,7 @@ export function pruneCacheMetadata(
   }
 
   return metadata.filter((entry) => {
-    const normalizedName = entry.name.replace(/\\/g, '/').replace(/^\/+/, '');
+    const normalizedName = getRelativeCacheName(entry.id, entry.name);
     const matchedName = names.has(normalizedName);
     return !ids.has(entry.id) && !matchedName;
   });
@@ -900,7 +910,8 @@ class CacheManager {
     imagesToUpsert: IndexedImage[],
     removedImageIds: string[],
     removedImageNames: string[],
-    scanSubfolders: boolean
+    scanSubfolders: boolean,
+    options: { fallbackImages?: IndexedImage[]; createIfMissing?: boolean } = {}
   ): Promise<void> {
     if (!this.isElectron) return;
     if (imagesToUpsert.length === 0 && removedImageIds.length === 0 && removedImageNames.length === 0) return;
@@ -911,12 +922,33 @@ class CacheManager {
     const start = performance.now();
     const summary = await this.getCacheSummary(directoryPath, scanSubfolders);
     if (!summary) {
-      if (imagesToUpsert.length > 0) {
-        await this.cacheData(directoryPath, directoryName, imagesToUpsert, scanSubfolders);
+      if (options.createIfMissing === false) {
+        return;
+      }
+      const fallbackById = new Map<string, IndexedImage>();
+      for (const image of options.fallbackImages ?? []) {
+        fallbackById.set(image.id, image);
+      }
+      for (const image of imagesToUpsert) {
+        fallbackById.set(image.id, image);
+      }
+      for (const imageId of removedImageIds) {
+        fallbackById.delete(imageId);
+      }
+      const removedNames = new Set(
+        removedImageNames.map((name) => name.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+      );
+      const fallbackImages = Array.from(fallbackById.values()).filter(
+        (image) => !removedNames.has(getRelativeCacheName(image.id, image.name))
+      );
+
+      if (fallbackImages.length > 0) {
+        await this.cacheData(directoryPath, directoryName, fallbackImages, scanSubfolders);
       }
       logCachePerf('chunked-delta:fallback-cache-data', {
         cacheId,
         upserts: imagesToUpsert.length,
+        fallbackImages: fallbackImages.length,
         removedIds: removedImageIds.length,
         removedNames: removedImageNames.length,
         durationMs: toFixedMs(performance.now() - start),
@@ -933,7 +965,6 @@ class CacheManager {
     ];
     const pruneNames = [
       ...removedImageNames,
-      ...upserts.map((image) => image.name),
     ];
     const outputChunkSize = DEFAULT_INCREMENTAL_CHUNK_SIZE;
     const outputBuffer: CacheImageMetadata[] = [];
@@ -1054,48 +1085,48 @@ async replaceCachedImages(
 
     const replacements = sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true });
     const replacementIds = replacements.map((image) => image.id);
-    const replacementNames = replacements.map((image) => image.name);
     const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
 
     for (const mode of candidateModes) {
-      const existing = await this.getCachedData(directoryPath, mode);
-      if (!existing) {
-        continue;
-      }
-
-      const metadataWithoutOldEntries = pruneCacheMetadata(existing.metadata, {
-        ids: removedImageIds,
-        names: removedImageNames,
-      });
-
-      if (metadataWithoutOldEntries.length === existing.metadata.length) {
-        continue;
-      }
-
-      const metadata = [
-        ...pruneCacheMetadata(metadataWithoutOldEntries, {
-          ids: replacementIds,
-          names: replacementNames,
-        }),
-        ...replacements,
-      ];
       const cacheId = `${directoryPath}-${mode ? 'recursive' : 'flat'}`;
-      const result = await window.electronAPI.cacheData({
-        cacheId,
-        data: {
-          id: existing.id,
-          directoryPath,
-          directoryName: existing.directoryName ?? directoryName,
-          lastScan: Date.now(),
-          imageCount: metadata.length,
-          metadata,
-          parserVersion: PARSER_VERSION,
-        },
-      });
+      await this.runChunkedCacheDeltaLocked(cacheId, async () => {
+        const existing = await this.getCachedData(directoryPath, mode);
+        if (!existing) {
+          return;
+        }
 
-      if (!result.success) {
-        console.error('Failed to replace cached images:', result.error);
-      }
+        const metadataWithoutOldEntries = pruneCacheMetadata(existing.metadata, {
+          ids: removedImageIds,
+          names: removedImageNames,
+        });
+
+        if (metadataWithoutOldEntries.length === existing.metadata.length) {
+          return;
+        }
+
+        const metadata = [
+          ...pruneCacheMetadata(metadataWithoutOldEntries, {
+            ids: replacementIds,
+          }),
+          ...replacements,
+        ];
+        const result = await window.electronAPI.cacheData({
+          cacheId,
+          data: {
+            id: existing.id,
+            directoryPath,
+            directoryName: existing.directoryName ?? directoryName,
+            lastScan: Date.now(),
+            imageCount: metadata.length,
+            metadata,
+            parserVersion: PARSER_VERSION,
+          },
+        });
+
+        if (!result.success) {
+          console.error('Failed to replace cached images:', result.error);
+        }
+      });
     }
   }
 

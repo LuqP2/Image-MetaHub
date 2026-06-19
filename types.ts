@@ -486,6 +486,7 @@ export interface ElectronAPI {
   restartApp: () => Promise<{ success: boolean; error?: string }>;
 
   onLoadDirectoryFromCLI: (callback: (dirPath: string) => void) => () => void;
+  onOpenFileFromDeepLink: (callback: (filePath: string) => void) => () => void;
   onMenuAddFolder: (callback: () => void) => () => void;
   onMenuOpenSettings: (callback: () => void) => () => void;
   onMenuToggleView: (callback: () => void) => () => void;
@@ -999,6 +1000,7 @@ export interface Directory {
   handle: FileSystemDirectoryHandle;
   visible?: boolean; // Whether images from this directory should be shown (default: true)
   autoWatch?: boolean; // Whether to automatically watch this directory for new images (default: false)
+  transient?: boolean; // Session-only directory that must not be restored as a full-library scan
 }
 
 export interface FilterOptions {

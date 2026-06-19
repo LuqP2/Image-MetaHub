@@ -3,6 +3,7 @@
 import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager';
 
 import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
+import { getFilesystemPathComparisonKey, normalizeFilesystemPath } from '../utils/filesystemPath';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './parsers/comfyUIParser';
 import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
@@ -1817,19 +1818,18 @@ export async function reparseIndexedImage(
   );
 }
 
-const normalizePathForComparison = (value: string): string => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-
 const getRelativePathWithinDirectory = (filePath: string, directoryPath: string): string | null => {
-  const normalizedFile = filePath.replace(/\\/g, '/');
-  const normalizedDirectory = directoryPath.replace(/\\/g, '/').replace(/\/+$/, '');
-  const fileKey = normalizePathForComparison(normalizedFile);
-  const directoryKey = normalizePathForComparison(normalizedDirectory);
+  const normalizedFile = normalizeFilesystemPath(filePath);
+  const normalizedDirectory = normalizeFilesystemPath(directoryPath);
+  const fileKey = getFilesystemPathComparisonKey(normalizedFile);
+  const directoryKey = getFilesystemPathComparisonKey(normalizedDirectory);
 
-  if (fileKey === directoryKey || !fileKey.startsWith(`${directoryKey}/`)) {
+  const directoryPrefix = directoryKey.endsWith('/') ? directoryKey : `${directoryKey}/`;
+  if (fileKey === directoryKey || !fileKey.startsWith(directoryPrefix)) {
     return null;
   }
 
-  return normalizedFile.slice(normalizedDirectory.length + 1).replace(/^\/+/, '');
+  return normalizedFile.slice(normalizedDirectory.length).replace(/^\/+/, '');
 };
 
 export async function indexImageFileAtPath(

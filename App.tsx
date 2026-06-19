@@ -66,6 +66,13 @@ import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './ser
 import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload } from './utils/watcherRemovalUtils';
 import { groupImages, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
 import { findLatestCreatorAttributionToken } from './utils/creatorAttribution';
+import { indexImageFileAtPath } from './services/fileIndexer';
+import {
+  areFilesystemPathsEqual,
+  isFilesystemPathWithinDirectory,
+  normalizeFilesystemPath,
+} from './utils/filesystemPath';
+import { waitForDirectoryActivityToSettle } from './utils/directoryActivity';
 
 interface OpenImageModalState {
   modalId: string;
@@ -512,6 +519,7 @@ export default function App() {
   const lastOpenedModalImageIdRef = useRef<string | null>(null);
   const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
   const watchedRemovalCacheDeltaQueueRef = useRef<Map<string, PendingWatchedRemovalCacheDelta>>(new Map());
+  const startupHydrationPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const appProfilerOnRender = useMemo(() => createProfilerOnRender('App'), []);
 
   const queueCount = useGenerationQueueStore((state) =>
@@ -822,9 +830,11 @@ export default function App() {
   // Handler for loading directory from a path
   const handleLoadFromPath = useCallback(async (path: string) => {
     try {
+      await startupHydrationPromiseRef.current;
 
-      // Check if directory already exists in the store
-      const existingDir = safeDirectories.find(d => d.path === path);
+      const existingDir = useImageStore.getState().directories.find(
+        (directory) => areFilesystemPathsEqual(directory.path, path)
+      );
       if (existingDir) {
         return;
       }
@@ -843,6 +853,12 @@ export default function App() {
         handle: mockHandle as unknown as FileSystemDirectoryHandle,
         autoWatch: globalAutoWatch
       };
+
+      useImageStore.getState().addDirectory(newDirectory);
+      const persistentPaths = useImageStore.getState().directories
+        .filter((directory) => !directory.transient)
+        .map((directory) => directory.path);
+      localStorage.setItem('image-metahub-directories', JSON.stringify(persistentPaths));
 
       // Load the directory using the hook's loadDirectory function
       await loadDirectory(newDirectory, false);
@@ -865,12 +881,114 @@ export default function App() {
     } catch (error) {
       console.error('Error loading directory from path:', error);
     }
-  }, [loadDirectory, safeDirectories, globalAutoWatch]);
+  }, [loadDirectory, globalAutoWatch]);
+
+  const handleOpenFileFromDeepLink = useCallback(async (filePath: string) => {
+    if (!filePath || !window.electronAPI) {
+      return;
+    }
+
+    try {
+      await startupHydrationPromiseRef.current;
+
+      const dirnameResult = await window.electronAPI.dirname(filePath);
+      if (!dirnameResult.success || !dirnameResult.path) {
+        throw new Error(dirnameResult.error || 'Could not resolve the image directory.');
+      }
+
+      const directoryPath = dirnameResult.path;
+      const currentState = useImageStore.getState();
+      const exactPersistentDirectory = currentState.directories.find(
+        (candidate) => !candidate.transient && areFilesystemPathsEqual(candidate.path, directoryPath)
+      );
+      const ancestorDirectory = currentState.scanSubfolders
+        ? currentState.directories
+            .filter(
+              (candidate) =>
+                !candidate.transient &&
+                isFilesystemPathWithinDirectory(filePath, candidate.path)
+            )
+            .sort(
+              (left, right) =>
+                normalizeFilesystemPath(right.path).length -
+                normalizeFilesystemPath(left.path).length
+            )[0]
+        : undefined;
+      let directory = exactPersistentDirectory ??
+        ancestorDirectory ??
+        currentState.directories.find(
+          (candidate) => areFilesystemPathsEqual(candidate.path, directoryPath)
+        );
+
+      if (!directory) {
+        const directoryName = directoryPath.split(/[\\/]/).pop() || directoryPath;
+        directory = {
+          id: directoryPath,
+          name: directoryName,
+          path: directoryPath,
+          handle: {
+            name: directoryName,
+            kind: 'directory',
+          } as FileSystemDirectoryHandle,
+          autoWatch: false,
+          transient: true,
+        };
+        currentState.addDirectory(directory);
+      }
+      const targetDirectory = directory;
+
+      await waitForDirectoryActivityToSettle(targetDirectory.id);
+
+      const allowedPaths = useImageStore.getState().directories.map((candidate) => candidate.path);
+      const allowResult = await window.electronAPI.updateAllowedPaths(allowedPaths);
+      if (!allowResult.success) {
+        throw new Error(allowResult.error || 'Could not authorize access to the image directory.');
+      }
+
+      const indexedImage = await indexImageFileAtPath(filePath, targetDirectory);
+      if (!indexedImage) {
+        throw new Error('The selected file could not be indexed.');
+      }
+
+      const latestState = useImageStore.getState();
+      const imageAlreadyIndexed = latestState.images.some((image) => image.id === indexedImage.id);
+      if (imageAlreadyIndexed) {
+        latestState.mergeImages([indexedImage]);
+      } else {
+        latestState.appendImagesSilently([indexedImage]);
+      }
+      latestState.setSelectedImage(indexedImage);
+
+      if (!targetDirectory.transient) {
+        const directoryImages = useImageStore.getState().images.filter(
+          (image) => image.directoryId === targetDirectory.id
+        );
+        await cacheManager.applyChunkedCacheDelta(
+          targetDirectory.path,
+          targetDirectory.name,
+          [indexedImage],
+          [],
+          [],
+          latestState.scanSubfolders,
+          { fallbackImages: directoryImages }
+        );
+      }
+
+      if (!imageAlreadyIndexed || !latestState.isAnnotationsLoaded) {
+        await useImageStore.getState().importMetadataTags([indexedImage]);
+      }
+    } catch (error) {
+      console.error('Error opening file from Image MetaHub deep link:', error);
+      useImageStore.getState().setError(
+        error instanceof Error ? error.message : 'Failed to open the generated image.'
+      );
+    }
+  }, []);
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
     // Only run once on mount
-    handleLoadFromStorage();
+    startupHydrationPromiseRef.current = handleLoadFromStorage();
   }, []);
 
   // Listen for directory load events from the main process (e.g., from CLI argument)
@@ -886,6 +1004,16 @@ export default function App() {
       return unsubscribe;
     }
   }, [handleLoadFromPath]);
+
+  useEffect(() => {
+    if (!window.electronAPI || typeof window.electronAPI.onOpenFileFromDeepLink !== 'function') {
+      return;
+    }
+
+    return window.electronAPI.onOpenFileFromDeepLink((filePath: string) => {
+      void handleOpenFileFromDeepLink(filePath);
+    });
+  }, [handleOpenFileFromDeepLink]);
 
   const normalizeFolderPath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
 
@@ -926,6 +1054,7 @@ export default function App() {
     }
 
     void (async () => {
+      await waitForDirectoryActivityToSettle(pending.directory.id);
       const activeScanSubfolders = useImageStore.getState().scanSubfolders;
       const cacheModes = Array.from(new Set([activeScanSubfolders, !activeScanSubfolders]));
 
@@ -1150,6 +1279,9 @@ export default function App() {
     const restoreWatchers = async () => {
       console.log('[App] Restoring watchers for directories:', directories.map(d => ({ id: d.id, name: d.name, autoWatch: d.autoWatch })));
       for (const dir of directories) {
+        if (dir.transient) {
+          continue;
+        }
         if (dir.autoWatch) {
           try {
             console.log(`[App] Starting watcher for ${dir.name} (${dir.path})`);
@@ -1180,6 +1312,9 @@ export default function App() {
     const syncAutoWatch = async () => {
       console.log(`[App] Syncing all directories to globalAutoWatch: ${globalAutoWatch}`);
       for (const dir of directories) {
+        if (dir.transient) {
+          continue;
+        }
         // Update directory autoWatch state if it differs from global
         if (dir.autoWatch !== globalAutoWatch) {
           console.log(`[App] Updating ${dir.name} autoWatch from ${dir.autoWatch} to ${globalAutoWatch}`);

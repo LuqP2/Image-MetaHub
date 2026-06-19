@@ -332,6 +332,76 @@ describe('cacheManager workflowNodes hydration', () => {
     expect(finalizeCacheWrite.mock.calls[0][0].record.chunkCount).toBe(1);
   });
 
+  it('does not remove a different cached image that shares the upserted file name', async () => {
+    const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
+    const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          id: 'D:/library-recursive',
+          directoryPath: 'D:/library',
+          directoryName: 'Library',
+          lastScan: 1,
+          imageCount: 2,
+          parserVersion: PARSER_VERSION,
+          metadata: [
+            {
+              id: 'dir-1::sub1/image.png',
+              name: 'image.png',
+              metadataString: '{"folder":1}',
+              metadata: {},
+              lastModified: 1,
+              models: [],
+              loras: [],
+              scheduler: '',
+            },
+            {
+              id: 'dir-1::sub2/image.png',
+              name: 'image.png',
+              metadataString: '{"folder":2}',
+              metadata: {},
+              lastModified: 1,
+              models: [],
+              loras: [],
+              scheduler: '',
+            },
+          ],
+        },
+      }),
+      writeCacheChunk,
+      finalizeCacheWrite,
+    };
+    (cacheManager as any).isElectron = true;
+
+    await cacheManager.applyChunkedCacheDelta(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::sub1/image.png',
+          name: 'image.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{"updated":true}',
+          lastModified: 2,
+          models: [],
+          loras: [],
+          scheduler: '',
+        } as any,
+      ],
+      [],
+      [],
+      true
+    );
+
+    expect(writeCacheChunk.mock.calls[0][0].data.map((entry: any) => entry.id)).toEqual([
+      'dir-1::sub2/image.png',
+      'dir-1::sub1/image.png',
+    ]);
+    expect(finalizeCacheWrite.mock.calls[0][0].record.imageCount).toBe(2);
+  });
+
   it('writes chunked cache deltas to a temporary cache before replacing the source chunks', async () => {
     const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
     const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
@@ -404,6 +474,203 @@ describe('cacheManager workflowNodes hydration', () => {
       sourceCacheId: writeCacheChunk.mock.calls[0][0].cacheId,
     }));
     expect(finalizeCacheWrite.mock.calls[0][0].record.imageCount).toBe(1024);
+  });
+
+  it('serializes concurrent cache delta upserts for the same directory', async () => {
+    let persistedMetadata: any[] = [];
+    const temporaryChunks = new Map<string, any[][]>();
+    let releaseFirstFinalize: (() => void) | undefined;
+    const firstFinalizeGate = new Promise<void>((resolve) => {
+      releaseFirstFinalize = resolve;
+    });
+    let finalizeCount = 0;
+
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockImplementation(async () => ({
+        success: true,
+        data: {
+          id: 'D:/library-flat',
+          directoryPath: 'D:/library',
+          directoryName: 'Library',
+          lastScan: 1,
+          imageCount: persistedMetadata.length,
+          parserVersion: PARSER_VERSION,
+          metadata: persistedMetadata,
+        },
+      })),
+      writeCacheChunk: vi.fn().mockImplementation(async ({ cacheId, chunkIndex, data }) => {
+        const chunks = temporaryChunks.get(cacheId) ?? [];
+        chunks[chunkIndex] = data;
+        temporaryChunks.set(cacheId, chunks);
+        return { success: true };
+      }),
+      finalizeCacheWrite: vi.fn().mockImplementation(async ({ sourceCacheId }) => {
+        finalizeCount += 1;
+        if (finalizeCount === 1) {
+          await firstFinalizeGate;
+        }
+        persistedMetadata = (temporaryChunks.get(sourceCacheId) ?? []).flat();
+        return { success: true };
+      }),
+    };
+    (cacheManager as any).isElectron = true;
+
+    const createImage = (name: string) => ({
+      id: `dir-1::${name}`,
+      name,
+      handle: {} as any,
+      metadata: {},
+      metadataString: '{}',
+      lastModified: 1,
+      models: [],
+      loras: [],
+      scheduler: '',
+    } as any);
+
+    const first = cacheManager.applyChunkedCacheDelta(
+      'D:/library',
+      'Library',
+      [createImage('first.png')],
+      [],
+      [],
+      false
+    );
+
+    await vi.waitFor(() => {
+      expect(window.electronAPI.finalizeCacheWrite).toHaveBeenCalledTimes(1);
+    });
+
+    const second = cacheManager.applyChunkedCacheDelta(
+      'D:/library',
+      'Library',
+      [createImage('second.png')],
+      [],
+      [],
+      false
+    );
+
+    expect(window.electronAPI.getCacheSummary).toHaveBeenCalledTimes(1);
+    releaseFirstFinalize?.();
+    await Promise.all([first, second]);
+
+    expect(window.electronAPI.getCacheSummary).toHaveBeenCalledTimes(2);
+    expect(persistedMetadata.map((entry) => entry.id)).toEqual([
+      'dir-1::first.png',
+      'dir-1::second.png',
+    ]);
+  });
+
+  it('uses the complete in-memory directory snapshot when rebuilding a missing cache', async () => {
+    const cacheData = vi.fn().mockResolvedValue({ success: true });
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockResolvedValue({ success: true, data: null }),
+      cacheData,
+    };
+    (cacheManager as any).isElectron = true;
+
+    const createImage = (name: string, lastModified: number) => ({
+      id: `dir-1::${name}`,
+      name,
+      handle: {} as any,
+      metadata: {},
+      metadataString: '{}',
+      lastModified,
+      models: [],
+      loras: [],
+      scheduler: '',
+    } as any);
+    const existing = createImage('existing.png', 1);
+    const generated = createImage('generated.png', 2);
+
+    await cacheManager.applyChunkedCacheDelta(
+      'D:/library',
+      'Library',
+      [generated],
+      [],
+      [],
+      false,
+      { fallbackImages: [existing, generated] }
+    );
+
+    expect(cacheData).toHaveBeenCalledTimes(1);
+    expect(cacheData.mock.calls[0][0].data.metadata.map((entry: any) => entry.id)).toEqual([
+      'dir-1::existing.png',
+      'dir-1::generated.png',
+    ]);
+    expect(cacheData.mock.calls[0][0].data.imageCount).toBe(2);
+  });
+
+  it('does not create a missing cache variant when fallback creation is disabled', async () => {
+    const cacheData = vi.fn().mockResolvedValue({ success: true });
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockResolvedValue({ success: true, data: null }),
+      cacheData,
+    };
+    (cacheManager as any).isElectron = true;
+
+    await cacheManager.applyChunkedCacheDelta(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::image.png',
+          name: 'image.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{}',
+          lastModified: 1,
+          models: [],
+          loras: [],
+          scheduler: '',
+        } as any,
+      ],
+      [],
+      [],
+      true,
+      { fallbackImages: [], createIfMissing: false }
+    );
+
+    expect(cacheData).not.toHaveBeenCalled();
+  });
+
+  it('preserves nested same-name files when rebuilding a missing cache after a root removal', async () => {
+    const cacheData = vi.fn().mockResolvedValue({ success: true });
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockResolvedValue({ success: true, data: null }),
+      cacheData,
+    };
+    (cacheManager as any).isElectron = true;
+
+    const createImage = (id: string) => ({
+      id,
+      name: 'image.png',
+      handle: {} as any,
+      metadata: {},
+      metadataString: '{}',
+      lastModified: 1,
+      models: [],
+      loras: [],
+      scheduler: '',
+    } as any);
+
+    await cacheManager.applyChunkedCacheDelta(
+      'D:/library',
+      'Library',
+      [],
+      ['dir-1::image.png'],
+      ['image.png'],
+      true,
+      {
+        fallbackImages: [
+          createImage('dir-1::image.png'),
+          createImage('dir-1::nested/image.png'),
+        ],
+      }
+    );
+
+    expect(cacheData.mock.calls[0][0].data.metadata.map((entry: any) => entry.id)).toEqual([
+      'dir-1::nested/image.png',
+    ]);
   });
 
   it('migrates inline metadata before appending new cache chunks', async () => {

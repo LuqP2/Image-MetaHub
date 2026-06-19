@@ -82,12 +82,24 @@ export function useReparseMetadata() {
         }
 
         for (const [directoryPath, payload] of updatesByDirectory.entries()) {
-          await cacheManager.updateCachedImages(
-            directoryPath,
-            payload.directoryName,
-            payload.images,
-            scanSubfolders
-          );
+          const directory = directories.find((candidate) => candidate.path === directoryPath);
+          const updatesById = new Map(payload.images.map((image) => [image.id, image]));
+          const fallbackImages = useImageStore.getState().images
+            .filter((image) => image.directoryId === directory?.id)
+            .map((image) => updatesById.get(image.id) ?? image);
+
+          const cacheModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
+          for (const cacheMode of cacheModes) {
+            await cacheManager.applyChunkedCacheDelta(
+              directoryPath,
+              payload.directoryName,
+              payload.images,
+              [],
+              [],
+              cacheMode,
+              { fallbackImages, createIfMissing: false }
+            );
+          }
         }
       }
 

@@ -6,6 +6,8 @@ import { thumbnailManager } from '../services/thumbnailManager';
 import { IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
+import { areFilesystemPathsEqual } from '../utils/filesystemPath';
+import { waitForDirectoryActivityToSettle } from '../utils/directoryActivity';
 
 // Configure logging level
 const DEBUG = false;
@@ -1590,22 +1592,44 @@ export function useImageLoader() {
 
             const directoryId = path; // Use path as a unique ID
             const { directories } = useImageStore.getState();
+            const existingDirectory = directories.find(directory =>
+                areFilesystemPathsEqual(directory.path, path)
+            );
 
-            if (directories.some(d => d.id === directoryId)) {
+            if (existingDirectory && !existingDirectory.transient) {
                 setError(`Directory "${name}" is already loaded.`);
                 return;
             }
 
             const globalAutoWatch = useSettingsStore.getState().globalAutoWatch;
-            const newDirectory: Directory = { id: directoryId, path, name, handle, autoWatch: globalAutoWatch };
+            const newDirectory: Directory = existingDirectory
+                ? {
+                    ...existingDirectory,
+                    name,
+                    handle,
+                    autoWatch: globalAutoWatch,
+                    transient: false,
+                }
+                : { id: directoryId, path, name, handle, autoWatch: globalAutoWatch };
 
             // Add to store first
-            addDirectory(newDirectory);
+            if (existingDirectory) {
+                useImageStore.setState(state => ({
+                    directories: state.directories.map(directory =>
+                        directory.id === existingDirectory.id ? newDirectory : directory
+                    ),
+                }));
+            } else {
+                addDirectory(newDirectory);
+            }
 
             // Persist the *new* state after adding
             const updatedDirectories = useImageStore.getState().directories;
             if (getIsElectron()) {
-                localStorage.setItem('image-metahub-directories', JSON.stringify(updatedDirectories.map(d => d.path)));
+                localStorage.setItem(
+                    'image-metahub-directories',
+                    JSON.stringify(updatedDirectories.filter(d => !d.transient).map(d => d.path))
+                );
             }
 
             // Now load the content of the new directory
@@ -1764,6 +1788,7 @@ export function useImageLoader() {
         files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean }>
     ) => {
         try {
+            await waitForDirectoryActivityToSettle(directory.id);
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
             const normalizedFiles = files.map(file => {
                 const relativePath = toRelativeWatchPath(file.path, directory.path);
@@ -1882,18 +1907,22 @@ export function useImageLoader() {
             await phaseB;
             console.log('[auto-watch] Phase B completed!');
 
-            if (getIsElectron() && enrichedForCache.length > 0) {
+            if (getIsElectron() && (enrichedForCache.length > 0 || refreshedForCache.length > 0)) {
                 try {
-                    await cacheManager.appendToCache(directory.path, directory.name, enrichedForCache, shouldScanSubfolders);
+                    const directoryImages = useImageStore.getState().images.filter(
+                        image => image.directoryId === directory.id
+                    );
+                    await cacheManager.applyChunkedCacheDelta(
+                        directory.path,
+                        directory.name,
+                        [...enrichedForCache, ...refreshedForCache],
+                        [],
+                        [],
+                        shouldScanSubfolders,
+                        { fallbackImages: directoryImages }
+                    );
                 } catch (err) {
-                    console.error('Failed to append auto-watch images to cache:', err);
-                }
-            }
-            if (getIsElectron() && refreshedForCache.length > 0) {
-                try {
-                    await cacheManager.updateCachedImages(directory.path, directory.name, refreshedForCache, shouldScanSubfolders);
-                } catch (err) {
-                    console.error('Failed to update auto-watch cache entries:', err);
+                    console.error('Failed to upsert auto-watch cache entries:', err);
                 }
             }
 
