@@ -4221,10 +4221,13 @@ function setupFileOperationHandlers() {
   // Handle show item in folder
   ipcMain.handle('show-item-in-folder', async (event, filePath) => {
     try {
-      // Allow opening any folder/file that the user has access to via the OS dialogs
-      // We removed the isPathAllowed check here because export destinations can be anywhere
-      
       const normalizedFilePath = path.normalize(filePath);
+
+      if (!isAllowedOrInternal(normalizedFilePath) && !isApprovedWritePath(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to show item outside of allowed directories.');
+        return { success: false, error: 'Access denied: Cannot show items outside of the allowed directories.' };
+      }
+
       console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 
       // Verify the path exists before trying to open or show it
@@ -4262,6 +4265,12 @@ function setupFileOperationHandlers() {
   ipcMain.handle('open-cache-location', async (event, cachePath) => {
     try {
       const normalizedCachePath = path.normalize(cachePath);
+
+      if (!isInternalPath(normalizedCachePath)) {
+        console.error('SECURITY VIOLATION: Attempted to open cache location outside of internal paths.');
+        return { success: false, error: 'Access denied: Cannot open cache location outside of the application internal paths.' };
+      }
+
       const parentPath = path.dirname(normalizedCachePath);
       console.log('📂 Opening cache parent directory:', parentPath);
 
@@ -4428,6 +4437,11 @@ function setupFileOperationHandlers() {
     try {
       if (!dirPath) {
         return { success: false, error: 'No directory path provided' };
+      }
+
+      if (!isPathAllowed(dirPath)) {
+        console.error('SECURITY VIOLATION: Attempted to list directory files outside of allowed directories.');
+        return { success: false, error: 'Access denied: Cannot list files outside of the allowed directories.' };
       }
 
       let imageFiles = [];
