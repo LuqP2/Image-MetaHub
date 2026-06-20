@@ -19,7 +19,11 @@ const formatRangeLabel = (label: string, range?: NumericRangeFilter, suffix = ''
   return `${label} ${min}-${max}${suffix}`;
 };
 
-const ActiveFilters: React.FC = () => {
+interface ActiveFiltersProps {
+  onClearAll?: () => void;
+}
+
+const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
   const selectedModels = useImageStore((state) => state.selectedModels);
   const excludedModels = useImageStore((state) => state.excludedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
@@ -89,10 +93,18 @@ const ActiveFilters: React.FC = () => {
 
   return (
     <div className="px-4 pb-3 pt-2">
-      <div className="mb-2">
+      <div className="mb-2 flex items-center justify-between">
         <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
           Active Filters
         </span>
+        {onClearAll && (
+          <button
+            onClick={onClearAll}
+            className="text-[10px] font-medium text-blue-400 transition-colors hover:text-blue-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            Clear All
+          </button>
+        )}
       </div>
       <div className="flex flex-wrap gap-2">
         {searchQuery && (
