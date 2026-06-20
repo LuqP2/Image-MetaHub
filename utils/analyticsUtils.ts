@@ -885,10 +885,20 @@ export const getImageGpuDevice = (image: IndexedImage): string | null => {
   return typeof gpuDevice === 'string' && gpuDevice.trim().length > 0 ? gpuDevice : null;
 };
 
-const getImageLoraNames = (image: IndexedImage): string[] =>
-  (image.loras || [])
-    .map((lora) => (typeof lora === 'string' ? lora : lora?.name))
-    .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
+// Optimization: Avoid chained array methods (.map().filter()) to reduce garbage collection overhead
+// Impact: Eliminates creation of intermediate arrays during hot path metadata extraction
+const getImageLoraNames = (image: IndexedImage): string[] => {
+  if (!image.loras) return [];
+  const result: string[] = [];
+  for (let i = 0; i < image.loras.length; i++) {
+    const lora = image.loras[i];
+    const name = typeof lora === 'string' ? lora : lora?.name;
+    if (typeof name === 'string' && name.trim().length > 0) {
+      result.push(name);
+    }
+  }
+  return result;
+};
 
 export const hasTelemetryData = (image: IndexedImage): boolean => {
   const analytics = getImageAnalytics(image);
@@ -903,6 +913,8 @@ export const hasTelemetryData = (image: IndexedImage): boolean => {
   );
 };
 
+// Optimization: Avoid chained array methods (.map().filter()) when populating Sets
+// Impact: Eliminates creation of intermediate arrays during hot path facet collection
 const collectFacetItems = (
   images: IndexedImage[],
   getKeys: (image: IndexedImage) => string[],
@@ -911,11 +923,15 @@ const collectFacetItems = (
   const stats = new Map<string, { count: number; favorites: number; ratingTotal: number; ratingCount: number }>();
 
   images.forEach((image) => {
-    const uniqueKeys = new Set(
-      getKeys(image)
-        .map((key) => normalizeItemName(key))
-        .filter((key): key is string => Boolean(key))
-    );
+    const rawKeys = getKeys(image);
+    const uniqueKeys = new Set<string>();
+
+    for (let i = 0; i < rawKeys.length; i++) {
+      const normalized = normalizeItemName(rawKeys[i]);
+      if (normalized) {
+        uniqueKeys.add(normalized);
+      }
+    }
 
     uniqueKeys.forEach((key) => {
       const entry = stats.get(key) || { count: 0, favorites: 0, ratingTotal: 0, ratingCount: 0 };
