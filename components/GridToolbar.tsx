@@ -574,7 +574,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <Tooltip label={`Start slideshow from ${slideshowSourceLabel}`}>
                   <button
                     onClick={onStartSlideshow}
-                    className="p-1.5 text-gray-400 hover:text-blue-300 hover:bg-gray-700 rounded transition-colors"
+                    className="p-1.5 text-gray-400 hover:text-blue-300 hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     title={`Start slideshow from ${slideshowSourceLabel} (${slideshowImageCount} item${slideshowImageCount === 1 ? '' : 's'})`}
                     aria-label="Start slideshow"
                   >
@@ -594,7 +594,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <Tooltip label="Clear selection">
                   <button
                     onClick={clearImageSelection}
-                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     title="Clear selection"
                     aria-label="Clear selection"
                   >
@@ -606,7 +606,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <Tooltip label="Copy to Clipboard">
                   <button
                     onClick={handleCopyToClipboard}
-                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     title="Copy to Clipboard"
                     aria-label="Copy to Clipboard"
                     disabled={selectedCount !== 1}
@@ -619,7 +619,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <Tooltip label="Show in Folder">
                   <button
                     onClick={handleShowInFolder}
-                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     title="Show in Folder"
                     aria-label="Show in Folder"
                     disabled={selectedCount !== 1}
@@ -632,7 +632,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <Tooltip label={selectedCount > 1 ? 'Export selected images' : 'Export'}>
                   <button
                     onClick={handleExport}
-                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     title={selectedCount > 1 ? 'Export selected images' : 'Export'}
                     aria-label={selectedCount > 1 ? 'Export selected images' : 'Export'}
                     disabled={selectedCount === 0}
@@ -645,7 +645,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <Tooltip label={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}>
                   <button
                     onClick={handleToggleFavorites}
-                    className={`p-1.5 rounded transition-colors ${
+                    className={`p-1.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       allFavorites
                         ? 'text-rose-400 hover:text-rose-300 hover:bg-gray-700'
                         : 'text-gray-400 hover:text-rose-400 hover:bg-gray-700'
@@ -660,7 +660,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <Tooltip label={selectedCount === 1 ? 'Reparse metadata' : `Reparse selected (${selectedCount})`}>
                   <button
                     onClick={handleReparseSelected}
-                    className={`p-1.5 rounded transition-colors ${
+                    className={`p-1.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       isReparsing
                         ? 'text-cyan-300 bg-cyan-500/10 cursor-wait'
                         : 'text-gray-400 hover:text-cyan-300 hover:bg-gray-700'
@@ -677,7 +677,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                  <Tooltip label="Add/Remove Tags">
                    <button
                     onClick={handleTagClick}
-                    className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-700 rounded transition-colors"
+                    className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     title="Add/Remove Tags"
                     aria-label="Add/Remove Tags"
                   >
@@ -692,7 +692,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <Tooltip label={canOpenSelectedImageEditor && !canUseImageEditor ? 'Image Editor (Pro Feature) - start trial' : editImageTooltip}>
                   <button
                     onClick={handleOpenImageEditor}
-                    className={`p-1.5 rounded transition-colors ${
+                    className={`p-1.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       canOpenSelectedImageEditor
                         ? 'text-gray-400 hover:text-cyan-300 hover:bg-gray-700'
                         : 'text-gray-600 cursor-not-allowed'
@@ -709,7 +709,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <Tooltip label={selectedCount >= 2 && selectedCount <= 4 ? `Compare ${selectedCount} Images` : 'Select between 2 and 4 images to compare'}>
                   <button
                     onClick={handleCompare}
-                    className={`p-1.5 rounded transition-colors ${
+                    className={`p-1.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       selectedCount >= 2 && selectedCount <= 4
                         ? 'text-gray-400 hover:text-purple-400 hover:bg-gray-700'
                         : 'text-gray-600 cursor-not-allowed'
@@ -727,7 +727,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                   <Tooltip label="Generate">
                     <button
                       onClick={() => setGenerateDropdownOpen(!generateDropdownOpen)}
-                      className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5"
+                      className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                       title="Generate"
                       aria-label="Generate"
                       disabled={selectedCount !== 1}
@@ -770,7 +770,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <Tooltip label="Delete Selected">
                   <button
                     onClick={onDeleteSelected}
-                    className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded transition-colors"
+                    className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     title="Delete Selected"
                     aria-label="Delete Selected"
                   >
@@ -789,7 +789,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                   <Tooltip label={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}>
                     <button
                       onClick={() => setIsCollectionActionsOpen((open) => !open)}
-                      className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                      className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                       title={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}
                       aria-label="Collection actions"
                     >
@@ -866,7 +866,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                         }
                         setIsJumpMenuOpen(true);
                       }}
-                      className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5"
+                      className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                       title="Jump to group"
                       aria-label="Jump to group"
                     >
