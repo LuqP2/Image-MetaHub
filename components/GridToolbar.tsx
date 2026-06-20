@@ -63,6 +63,7 @@ interface GridToolbarProps {
   groups?: ImageGroup[];
   groupBy?: ImageGroupByMode;
   onJumpToGroup?: (groupId: string) => void;
+  onClearAllFilters?: () => void;
 }
 
 const formatCalendarDateKey = (date: Date): string => {
@@ -213,6 +214,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   groups = [],
   groupBy = 'none',
   onJumpToGroup,
+  onClearAllFilters,
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
   const [isCollectionActionsOpen, setIsCollectionActionsOpen] = useState(false);
@@ -1009,7 +1011,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
 
             {/* Active Filters */}
             <div className="flex-1 min-w-0 overflow-hidden">
-               <ActiveFilters />
+               <ActiveFilters onClearAll={onClearAllFilters} />
             </div>
         </div>
       </div>

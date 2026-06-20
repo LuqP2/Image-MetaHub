@@ -7,7 +7,7 @@ import { useImageSelection } from './hooks/useImageSelection';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useFeatureAccess } from './hooks/useFeatureAccess';
 import { Directory } from './types';
-import { Image as ImageIcon, X } from 'lucide-react';
+import { Image as ImageIcon, X, Search } from 'lucide-react';
 
 import FolderSelector from './components/FolderSelector';
 import ImageGrid from './components/ImageGrid';
@@ -541,6 +541,45 @@ export default function App() {
   const handleCollectionsGridScrollPositionChange = useCallback((scrollTop: number) => {
     collectionsGridScrollTopRef.current = scrollTop;
   }, []);
+
+  const handleClearAllFilters = useCallback(() => {
+    setSearchInputValue('');
+    setSearchQuery('');
+    setFindSimilarGridFilter(null);
+    setSelectedFilters({
+      models: [],
+      excludedModels: [],
+      loras: [],
+      excludedLoras: [],
+      samplers: [],
+      excludedSamplers: [],
+      schedulers: [],
+      excludedSchedulers: [],
+      generators: [],
+      excludedGenerators: [],
+      gpuDevices: [],
+      excludedGpuDevices: [],
+    });
+    setSelectedTags([]);
+    setExcludedTags([]);
+    setSelectedAutoTags([]);
+    setExcludedAutoTags([]);
+    setFavoriteFilterMode('neutral');
+    setSelectedRatings([]);
+    setAdvancedFilters({});
+  }, [
+    setAdvancedFilters,
+    setExcludedAutoTags,
+    setExcludedTags,
+    setFavoriteFilterMode,
+    setFindSimilarGridFilter,
+    setSearchInputValue,
+    setSearchQuery,
+    setSelectedAutoTags,
+    setSelectedFilters,
+    setSelectedRatings,
+    setSelectedTags,
+  ]);
 
   const handleSearchChange = useCallback((query: string) => {
     if (pendingSearchFlowIdRef.current) {
@@ -3146,32 +3185,7 @@ export default function App() {
           onLoraChange={(loras) => setSelectedFilters({ loras })}
           onSamplerChange={(samplers) => setSelectedFilters({ samplers })}
           onSchedulerChange={(schedulers) => setSelectedFilters({ schedulers })}
-          onClearAllFilters={() => {
-            setSearchInputValue('');
-            setSearchQuery('');
-            setFindSimilarGridFilter(null);
-            setSelectedFilters({
-              models: [],
-              excludedModels: [],
-              loras: [],
-              excludedLoras: [],
-              samplers: [],
-              excludedSamplers: [],
-              schedulers: [],
-              excludedSchedulers: [],
-              generators: [],
-              excludedGenerators: [],
-              gpuDevices: [],
-              excludedGpuDevices: [],
-            });
-            setSelectedTags([]);
-            setExcludedTags([]);
-            setSelectedAutoTags([]);
-            setExcludedAutoTags([]);
-            setFavoriteFilterMode('neutral');
-            setSelectedRatings([]);
-            setAdvancedFilters({});
-          }}
+          onClearAllFilters={handleClearAllFilters}
           advancedFilters={advancedFilters}
           onAdvancedFiltersChange={setAdvancedFilters}
           onClearAdvancedFilters={() => {
@@ -3398,6 +3412,7 @@ export default function App() {
                     groups={libraryView === 'library' ? currentLibraryGroups : []}
                     groupBy={effectiveLibraryGroupBy}
                     onJumpToGroup={(groupId) => setPendingJumpGroupRequest({ groupId, requestId: Date.now() })}
+                    onClearAllFilters={handleClearAllFilters}
                   />
                 )}
 
@@ -3431,6 +3446,22 @@ export default function App() {
                   shouldShowLibraryPlaceholder ? (
                     <div className="flex h-full items-center justify-center text-sm text-gray-500">
                       Loading folder...
+                    </div>
+                  ) : displayImages.length === 0 ? (
+                    <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+                      <div className="mb-4 rounded-full bg-gray-800 p-6 text-gray-500">
+                        <Search size={48} strokeWidth={1.5} />
+                      </div>
+                      <h3 className="mb-2 text-xl font-semibold text-gray-200">No images match your filters</h3>
+                      <p className="mb-6 max-w-sm text-sm text-gray-400">
+                        Try adjusting your search terms or clearing some of the active filters to find what you're looking for.
+                      </p>
+                      <button
+                        onClick={handleClearAllFilters}
+                        className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-800"
+                      >
+                        Clear All Filters
+                      </button>
                     </div>
                   ) : viewMode === 'grid' ? (
                         <ImageGrid

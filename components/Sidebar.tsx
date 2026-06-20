@@ -295,7 +295,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       <div className="flex-1 overflow-y-auto scrollbar-sidebar">
         <div className="border-b border-gray-800/80">
-          <ActiveFilters />
+          <ActiveFilters onClearAll={onClearAllFilters} />
         </div>
 
         <div className="px-4 py-3 border-b border-gray-700">
