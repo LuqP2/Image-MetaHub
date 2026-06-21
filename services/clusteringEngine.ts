@@ -48,6 +48,8 @@ interface ClusterBuilder {
   promptHash: string;
   basePrompt: string;
   tokens: Set<string>;
+  keywords: string[];
+  keywordSet: Set<string>;
   imageIds: string[];
   imageTimestamps: Map<string, number>; // For sorting
   averageSimilarity?: number; // Average similarity of merged clusters
@@ -164,10 +166,13 @@ function performExactMatching(
     const hash = generatePromptHash(image.prompt);
 
     if (!clusters.has(hash)) {
+      const keywords = extractKeywords(normalized, 10);
       clusters.set(hash, {
         promptHash: hash,
         basePrompt: normalized,
         tokens: tokenizeForSimilarity(normalized),
+        keywords,
+        keywordSet: new Set(keywords),
         imageIds: [],
         imageTimestamps: new Map(),
       });
@@ -198,9 +203,9 @@ function performTokenBucketing(
   const keywordIndex = new Map<string, Set<string>>();
 
   for (const [hash, cluster] of exactClusters.entries()) {
-    const keywords = extractKeywords(cluster.basePrompt, 10);
-
-    for (const keyword of keywords) {
+    // Optimization: Use pre-calculated keywords from exact matching phase
+    // to avoid redundant extraction overhead.
+    for (const keyword of cluster.keywords) {
       if (!keywordIndex.has(keyword)) {
         keywordIndex.set(keyword, new Set());
       }
@@ -228,9 +233,10 @@ function performTokenBucketing(
       }
 
       bucket.add(currentHash);
-      const keywords = extractKeywords(currentCluster.basePrompt, 10);
 
-      for (const keyword of keywords) {
+      // Optimization: Use pre-calculated keywordSet from exact matching phase
+      // to avoid redundant extraction and enable faster sharing checks.
+      for (const keyword of currentCluster.keywords) {
         const relatedHashes = keywordIndex.get(keyword);
         if (!relatedHashes || relatedHashes.size > maxKeywordClusterCount) {
           continue;
@@ -242,7 +248,7 @@ function performTokenBucketing(
           const relatedCluster = exactClusters.get(relatedHash);
           if (!relatedCluster) continue;
 
-          if (shareKeywords(currentCluster.basePrompt, relatedCluster.basePrompt, 2)) {
+          if (shareKeywords(currentCluster.keywordSet, relatedCluster.keywordSet, 2)) {
             processed.add(relatedHash);
             queue.push(relatedHash);
           }
@@ -515,6 +521,8 @@ function mergeSimilarClusters(
       promptHash: clusters[root].promptHash,
       basePrompt: clusters[root].basePrompt,
       tokens: clusters[root].tokens,
+      keywords: clusters[root].keywords,
+      keywordSet: clusters[root].keywordSet,
       imageIds: [],
       imageTimestamps: new Map(),
       averageSimilarity,
