@@ -9,3 +9,11 @@
 ## 2025-01-24 - Optimized Jaccard Similarity via Direct Set Interrogation
 **Learning:** Calculating set-based metrics like Jaccard similarity using array spreads and filters (`new Set([...a].filter(x => b.has(x)))`) creates significant garbage collection pressure due to multiple intermediate array and set allocations per call. This is particularly impactful in hot loops like image clustering or similarity search.
 **Action:** Use direct `for...of` loops to count intersections and apply the inclusion-exclusion principle (|A| + |B| - |A \cap B|) to determine the union size. This approach avoids all intermediate allocations while maintaining O(N) complexity, resulting in a ~75% performance boost in micro-benchmarks.
+
+## 2025-01-24 - Optimized Jaccard Similarity via Direct Set Interrogation
+**Learning:** Calculating set-based metrics like Jaccard similarity using array spreads and filters (`new Set([...a].filter(x => b.has(x)))`) creates significant garbage collection pressure due to multiple intermediate array and set allocations per call. This is particularly impactful in hot loops like image clustering or similarity search.
+**Action:** Use direct `for...of` loops to count intersections and apply the inclusion-exclusion principle (|A| + |B| - |A \cap B|) to determine the union size. This approach avoids all intermediate allocations while maintaining O(N) complexity, resulting in a ~75% performance boost in micro-benchmarks.
+
+## 2025-01-24 - Optimized `shareKeywords` via Direct Loop and Early Return
+**Learning:** Checking for set intersections using spread operators and array filters (e.g., `[...setA].filter(x => setB.has(x)).length`) allocates unnecessary intermediate arrays, straining garbage collection in performance-critical areas like similarity calculations.
+**Action:** Replace these patterns with direct `for...of` loops and implement early returns when a required threshold is met. This avoids intermediate array allocations and short-circuits execution, minimizing performance overhead in hot paths.

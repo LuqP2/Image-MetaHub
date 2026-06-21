@@ -288,7 +288,17 @@ export function shareKeywords(
   const keywords1 = new Set(extractKeywords(prompt1, 10));
   const keywords2 = new Set(extractKeywords(prompt2, 10));
 
-  const sharedCount = [...keywords1].filter((kw) => keywords2.has(kw)).length;
+  // Optimization: Direct loop avoids intermediate array spread and filter allocations
+  let sharedCount = 0;
+  for (const kw of keywords1) {
+    if (keywords2.has(kw)) {
+      sharedCount++;
+      // Early return optimization: if we reach minShared, no need to keep checking
+      if (sharedCount >= minShared) {
+        return true;
+      }
+    }
+  }
 
   return sharedCount >= minShared;
 }
