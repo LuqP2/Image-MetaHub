@@ -266,12 +266,18 @@ export function generatePromptHash(prompt: string): string {
 export function extractKeywords(prompt: string, topN: number = 5): string[] {
   const normalized = normalizePrompt(prompt);
   const tokens = tokenizeForSimilarity(normalized);
+  const keywords: string[] = [];
 
-  // Filter for likely meaningful words (length >= 3, not pure digits)
-  const keywords = [...tokens]
-    .filter((token) => token.length >= 3)
-    .filter((token) => !/^\d+$/.test(token))
-    .slice(0, topN);
+  // Optimization: Use a for...of loop with early break instead of chained array methods
+  // to avoid intermediate allocations and redundant processing once topN is reached.
+  for (const token of tokens) {
+    if (token.length >= 3 && !/^\d+$/.test(token)) {
+      keywords.push(token);
+      if (keywords.length >= topN) {
+        break;
+      }
+    }
+  }
 
   return keywords;
 }
@@ -281,14 +287,24 @@ export function extractKeywords(prompt: string, topN: number = 5): string[] {
  * Used to reduce comparison space in clustering
  */
 export function shareKeywords(
-  prompt1: string,
-  prompt2: string,
+  prompt1: string | Set<string>,
+  prompt2: string | Set<string>,
   minShared: number = 2
 ): boolean {
-  const keywords1 = new Set(extractKeywords(prompt1, 10));
-  const keywords2 = new Set(extractKeywords(prompt2, 10));
+  // Optimization: Accept pre-calculated Set<string> to avoid redundant extraction.
+  const keywords1 = prompt1 instanceof Set ? prompt1 : new Set(extractKeywords(prompt1, 10));
+  const keywords2 = prompt2 instanceof Set ? prompt2 : new Set(extractKeywords(prompt2, 10));
 
-  const sharedCount = [...keywords1].filter((kw) => keywords2.has(kw)).length;
+  let sharedCount = 0;
+  for (const kw of keywords1) {
+    if (keywords2.has(kw)) {
+      sharedCount++;
+      // Early return as soon as threshold is met.
+      if (sharedCount >= minShared) {
+        return true;
+      }
+    }
+  }
 
-  return sharedCount >= minShared;
+  return false;
 }
