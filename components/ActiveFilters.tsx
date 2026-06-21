@@ -1,5 +1,6 @@
 import React from 'react';
 import { Calendar, CheckCircle, Heart, Settings, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
 import type { AdvancedFilters, NumericRangeFilter } from '../types';
 import { RatingValueIcons } from './RatingStars';
@@ -107,14 +108,15 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         )}
       </div>
       <div className="flex flex-wrap gap-2">
+        <AnimatePresence mode="popLayout">
         {searchQuery && (
-          <div className={`${chipClass} border-gray-700 bg-gray-800/70 text-gray-200`}>
+          <motion.div layout initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} className={`${chipClass} border-gray-700 bg-gray-800/70 text-gray-200`}>
             <span className="opacity-70">Search</span>
             <span className="max-w-[180px] truncate">"{searchQuery}"</span>
-            <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" title="Clear search filter" className="rounded p-0.5 hover:bg-gray-700 hover:text-white">
+            <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" title="Clear search filter" className="rounded p-0.5 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {favoriteFilterMode === 'include' && (
@@ -301,6 +303,7 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {excludedAutoTags.map((value) => (
           <FacetChip key={`auto-ex-${value}`} label="Exclude auto tag" value={value} tone="rose" onRemove={() => setExcludedAutoTags(excludedAutoTags.filter((item) => item !== value))} />
         ))}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -324,13 +327,13 @@ const toneClasses: Record<FacetChipProps['tone'], string> = {
 };
 
 const FacetChip: React.FC<FacetChipProps> = ({ label, value, tone, onRemove }) => (
-  <div className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium ${toneClasses[tone]}`}>
+  <motion.div layout initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium ${toneClasses[tone]}`}>
     <span className="opacity-70">{label}</span>
     <span className="max-w-[180px] truncate">{value}</span>
-    <button onClick={onRemove} aria-label={`Remove ${label} filter`} title={`Remove ${label} filter`} className="rounded p-0.5 hover:bg-black/10">
+    <button onClick={onRemove} aria-label={`Remove ${label} filter`} title={`Remove ${label} filter`} className="rounded p-0.5 hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
       <X size={12} />
     </button>
-  </div>
+  </motion.div>
 );
 
 export default ActiveFilters;
