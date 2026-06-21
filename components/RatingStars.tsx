@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Star } from 'lucide-react';
+import { motion } from 'framer-motion';
 import type { ImageRating } from '../types';
 
 interface RatingStarsProps {
@@ -95,10 +96,12 @@ const RatingStars: React.FC<RatingStarsProps> = ({
       {RATING_VALUES.map((value) => {
         const active = previewRating !== null && value <= previewRating;
         return (
-          <button
+          <motion.button
             key={value}
             type="button"
             disabled={!isInteractive}
+            whileHover={isInteractive ? { scale: 1.1 } : {}}
+            whileTap={isInteractive ? { scale: 0.95 } : {}}
             onMouseEnter={() => {
               if (isInteractive) {
                 setHoverRating(value);
@@ -110,7 +113,7 @@ const RatingStars: React.FC<RatingStarsProps> = ({
               }
               onChange(value === rating ? null : value);
             }}
-            className={`inline-flex items-center justify-center rounded-md transition-all ${
+            className={`inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
               size <= 16 ? 'h-6 w-6' : 'h-7 w-7'
             } ${
               active
@@ -121,7 +124,7 @@ const RatingStars: React.FC<RatingStarsProps> = ({
             aria-label={rating === value ? `Clear rating ${value}` : `Set rating ${value}`}
           >
             <Star size={size} className={active ? 'fill-current' : ''} strokeWidth={1.9} />
-          </button>
+          </motion.button>
         );
       })}
     </div>

@@ -319,12 +319,12 @@ const Footer: React.FC<FooterProps> = ({
             <div className="w-px h-4 bg-gray-700/50"></div>
             <div className="flex items-center gap-1 bg-gray-800/40 p-1 rounded-lg border border-gray-700/30">
               <Tooltip label="First page">
-                <button onClick={() => onPageChange(1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="First page" aria-label="First page">
+                <button onClick={() => onPageChange(1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title="First page" aria-label="First page">
                   <ChevronsLeft className="w-4 h-4" />
                 </button>
               </Tooltip>
               <Tooltip label="Previous page">
-                <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="Previous page" aria-label="Previous page">
+                <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title="Previous page" aria-label="Previous page">
                   <ChevronLeft className="w-4 h-4" />
                 </button>
               </Tooltip>
@@ -366,12 +366,12 @@ const Footer: React.FC<FooterProps> = ({
               </div>
 
               <Tooltip label="Next page">
-                <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="Next page" aria-label="Next page">
+                <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title="Next page" aria-label="Next page">
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </Tooltip>
               <Tooltip label="Last page">
-                <button onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="Last page" aria-label="Last page">
+                <button onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title="Last page" aria-label="Last page">
                   <ChevronsRight className="w-4 h-4" />
                 </button>
               </Tooltip>
@@ -382,7 +382,7 @@ const Footer: React.FC<FooterProps> = ({
       <div className="flex items-center gap-3 border-l border-gray-700/50 pl-3">
         <ImageSizeSlider />
         <Tooltip label={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
-          <button onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')} className="p-2 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-all hover:shadow-md" title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`} aria-label={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
+          <button onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')} className="p-2 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`} aria-label={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
             {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
           </button>
         </Tooltip>
@@ -390,7 +390,7 @@ const Footer: React.FC<FooterProps> = ({
           <Tooltip label="Toggle Queue">
             <button
               onClick={onToggleQueue}
-              className={`relative p-2 rounded-lg transition-all border ${
+              className={`relative p-2 rounded-lg transition-all border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                 isQueueOpen
                   ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
                   : 'hover:bg-gray-800 text-gray-400 hover:text-white border-transparent hover:border-gray-700'
