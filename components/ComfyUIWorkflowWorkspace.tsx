@@ -258,7 +258,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     loras: [],
     sampler: undefined,
     scheduler: undefined,
-    workflowMode: 'original',
+    workflowMode: workflowAnalysis.originalAvailable ? 'original' : 'simple',
     sourceImagePolicy: 'reuse_original',
     advancedPromptJson: '',
     advancedWorkflowJson: '',
@@ -427,7 +427,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     const parsedModel = parseStoredJson<ComfyUIModelResource>(storedModel, 'stored ComfyUI model');
     const parsedLoras = parseStoredJson<ComfyUILoRAConfig[]>(storedLoras, 'stored ComfyUI LoRAs') ?? [];
 
-    const nextWorkflowMode: ComfyUIWorkflowMode = 'original';
+    const nextWorkflowMode: ComfyUIWorkflowMode = workflowAnalysis.originalAvailable ? 'original' : 'simple';
 
     const nextParams: GenerationParams = {
       prompt: normalizedMetadata.prompt || '',
@@ -466,7 +466,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     setModelSearch('');
     setLoraSearch('');
     const preferredTab = storedWorkspaceTab === 'nodes' ? 'nodes' : defaultTab;
-    setActiveTab(preferredTab);
+    setActiveTab(workflowAnalysis.originalAvailable ? preferredTab : 'workflow');
     setSelectedVisualNodeId(null);
   }, [
     defaultTab,
@@ -514,12 +514,16 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
   }, [selectedVisualNodeId, visualGraph]);
 
   const compatibleModelFamilies = useMemo(() => {
+    if (params.workflowMode === 'simple') {
+      return new Set<ComfyUIModelFamily>(['checkpoint']);
+    }
+
     return new Set<ComfyUIModelFamily>(
       visualPromptAnalysis.compatibleModelFamilies.length > 0
         ? visualPromptAnalysis.compatibleModelFamilies
         : ['checkpoint']
     );
-  }, [visualPromptAnalysis.compatibleModelFamilies]);
+  }, [params.workflowMode, visualPromptAnalysis.compatibleModelFamilies]);
 
   const filteredModels = useMemo(() => {
     const allModels = resources?.models || [];
@@ -553,16 +557,12 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
       return generateDisabledReason;
     }
 
-    if (workflowUnavailable) {
-      return 'This image does not contain an executable embedded ComfyUI workflow.';
-    }
-
     if (comfyUILastConnectionStatus === 'error' || (!!resourcesError && !resources)) {
       return 'ComfyUI server is offline or unreachable. You can still inspect and edit the embedded workflow locally.';
     }
 
     return null;
-  }, [comfyUILastConnectionStatus, generateDisabledReason, resources, resourcesError, workflowUnavailable]);
+  }, [comfyUILastConnectionStatus, generateDisabledReason, resources, resourcesError]);
 
   const syncParamsFromVisualField = (
     currentParams: GenerationParams,
@@ -828,6 +828,13 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
         </div>
       )}
 
+      {workflowUnavailable && (
+        <div className="flex items-start gap-2 rounded-lg border border-blue-700/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
+          <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+          <span>No executable workflow is embedded. Generation will use the image's normalized metadata.</span>
+        </div>
+      )}
+
       <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-2">
         <div className="flex flex-wrap gap-2">
           <button
@@ -844,12 +851,13 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
           </button>
           <button
             type="button"
+            disabled={workflowUnavailable}
             onClick={() => changeActiveTab('nodes')}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
               activeTab === 'nodes'
                 ? 'bg-blue-500/15 text-blue-100 ring-1 ring-blue-400/40'
                 : 'text-gray-300 hover:bg-gray-800'
-            }`}
+            } ${workflowUnavailable ? 'cursor-not-allowed opacity-50 hover:bg-transparent' : ''}`}
           >
             <Boxes size={16} />
             Nodes
