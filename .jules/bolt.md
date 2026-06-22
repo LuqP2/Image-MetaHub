@@ -13,3 +13,6 @@
 ## 2025-01-24 - Keyword Memoization in Clustering Engine
 **Learning:** Performing keyword extraction (normalization + tokenization + filtering) multiple times for the same prompt during bucketing and pair comparisons is a significant performance bottleneck in large-scale clustering.
 **Action:** Pre-calculate and store expensive derived metadata (like keyword sets) in internal builder objects during initial O(N) passes. This reduces redundant regex-based processing from O(N * B) to O(N) where B is the average bucket size, significantly speeding up the bucketing phase.
+## 2024-05-25 - Optimizing Cohort Analytics
+**Learning:** Computing cohort aggregates using chained `.filter()` or `.reduce()` for each property (favorites, ratings, telemetry) creates multiple $O(N)$ passes and redundant intermediate arrays.
+**Action:** When calculating cohort statistics, consolidate all property aggregations into a single $O(N)$ `for` loop that updates local variables, significantly reducing array allocations and improving speed for large datasets.

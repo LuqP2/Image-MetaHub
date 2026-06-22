@@ -1094,19 +1094,35 @@ const buildCompareCohort = (
     }
   });
 
-  const favoriteCount = cohortImages.filter((image) => image.isFavorite).length;
-  const ratedImages = cohortImages.filter((image) => typeof image.rating === 'number');
+  // Optimization: Consolidate cohort metrics calculation into a single pass.
+  // Impact: Reduces O(N) array traversals from 3 passes down to 1, minimizing heap allocations.
+  let favoriteCount = 0;
+  let ratedCount = 0;
+  let ratingSum = 0;
+  let telemetryCount = 0;
+
+  for (let i = 0; i < cohortImages.length; i++) {
+    const image = cohortImages[i];
+    if (image.isFavorite) {
+      favoriteCount++;
+    }
+    if (typeof image.rating === 'number') {
+      ratedCount++;
+      ratingSum += image.rating;
+    }
+    if (hasTelemetryData(image)) {
+      telemetryCount++;
+    }
+  }
+
   const dominantModel = collectFacetItems(cohortImages, (image) => image.models || [], 1)[0]?.label;
-  const telemetryCount = cohortImages.filter((image) => hasTelemetryData(image)).length;
 
   return {
     key,
     label: key === 'present' ? 'Has telemetry' : key === 'missing' ? 'Missing telemetry' : key,
     count: cohortImages.length,
     favoriteRate: cohortImages.length > 0 ? favoriteCount / cohortImages.length : 0,
-    averageRating: ratedImages.length > 0
-      ? ratedImages.reduce((sum, image) => sum + (image.rating || 0), 0) / ratedImages.length
-      : 0,
+    averageRating: ratedCount > 0 ? ratingSum / ratedCount : 0,
     telemetryCoverage: cohortImages.length > 0 ? telemetryCount / cohortImages.length : 0,
     dominantModel,
   };
