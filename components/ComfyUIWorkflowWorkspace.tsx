@@ -551,6 +551,14 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     || visualPromptAnalysis.generationType === 'outpaint';
   const requiresMaskInput = isTransformation && visualPromptAnalysis.maskTargets.length > 0;
   const workflowUnavailable = !workflowAnalysis.originalAvailable || !workingPromptGraph;
+  const workflowEditingUnavailable = workflowUnavailable || params.workflowMode !== 'original';
+
+  useEffect(() => {
+    if (workflowEditingUnavailable && activeTab === 'nodes') {
+      setActiveTab('workflow');
+      persistActiveTab('workflow');
+    }
+  }, [activeTab, workflowEditingUnavailable]);
 
   const effectiveGenerateDisabledReason = useMemo(() => {
     if (generateDisabledReason) {
@@ -851,13 +859,13 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
           </button>
           <button
             type="button"
-            disabled={workflowUnavailable}
+            disabled={workflowEditingUnavailable}
             onClick={() => changeActiveTab('nodes')}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
               activeTab === 'nodes'
                 ? 'bg-blue-500/15 text-blue-100 ring-1 ring-blue-400/40'
                 : 'text-gray-300 hover:bg-gray-800'
-            } ${workflowUnavailable ? 'cursor-not-allowed opacity-50 hover:bg-transparent' : ''}`}
+            } ${workflowEditingUnavailable ? 'cursor-not-allowed opacity-50 hover:bg-transparent' : ''}`}
           >
             <Boxes size={16} />
             Nodes
@@ -867,9 +875,11 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
 
       {activeTab === 'workflow' ? (
         <>
-          {workflowUnavailable ? (
+          {workflowEditingUnavailable ? (
             <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-6 text-sm text-gray-400">
-              Visual workflow is unavailable because this image does not contain an executable embedded prompt graph.
+              {workflowUnavailable
+                ? 'Visual workflow is unavailable because this image does not contain an executable embedded prompt graph.'
+                : 'Visual workflow editing is disabled while the metadata-only compatibility workflow is active.'}
             </div>
           ) : (
             <ComfyUIWorkflowVisualEditor
