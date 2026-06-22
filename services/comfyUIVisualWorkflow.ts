@@ -114,7 +114,12 @@ function getNodeCategory(nodeId: string, node: ComfyUIPromptNode, analysis?: Com
     return 'mask';
   }
 
-  if (analysis?.saveNodeIds.includes(nodeId) || classType === 'metahubsavenode' || classType === 'saveimage') {
+  if (
+    analysis?.saveNodeIds.includes(nodeId)
+    || classType === 'metahubsavenode'
+    || classType === 'metahubsaveimage'
+    || classType === 'saveimage'
+  ) {
     return 'save';
   }
 

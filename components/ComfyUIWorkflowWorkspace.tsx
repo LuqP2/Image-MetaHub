@@ -1180,6 +1180,27 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
             </button>
             {showAdvancedEditor && (
               <div className="mt-4 space-y-4">
+                {workflowAnalysis.originalAvailable && (
+                  <label className="flex items-start gap-3 rounded-lg border border-gray-700 bg-gray-950/60 px-3 py-3 text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={params.workflowMode === 'simple'}
+                      onChange={(event) =>
+                        applyNextParams({
+                          ...params,
+                          workflowMode: event.target.checked ? 'simple' : 'original',
+                        })
+                      }
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="block font-medium text-gray-100">Use metadata-only compatibility workflow</span>
+                      <span className="mt-1 block text-xs text-gray-400">
+                        Rebuilds a basic workflow from normalized metadata when the embedded workflow requires unavailable custom nodes.
+                      </span>
+                    </span>
+                  </label>
+                )}
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
                   <span>Prompt API JSON is authoritative for execution in original mode.</span>
                   <button
