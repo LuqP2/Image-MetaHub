@@ -34,7 +34,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
         onChange={(e) => onChange(e.target.value)}
         placeholder="Search by prompt, model, etc..."
         aria-label="Search"
-        className="w-full bg-gray-800/50 backdrop-blur-sm text-gray-200 placeholder-gray-400 py-3 pl-10 pr-10 rounded-xl border border-gray-700/50 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all duration-300 shadow-sm hover:bg-gray-800/70"
+        className="peer w-full bg-gray-800/50 backdrop-blur-sm text-gray-200 placeholder-gray-400 py-3 pl-10 pr-10 rounded-xl border border-gray-700/50 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all duration-300 shadow-sm hover:bg-gray-800/70"
         data-testid="search-input"
       />
       <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors duration-300 group-focus-within:text-blue-500">
@@ -42,6 +42,14 @@ const SearchBar: React.FC<SearchBarProps> = ({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
       </div>
+
+      {!value && (
+        <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 transition-opacity duration-200 peer-focus:opacity-0">
+          <kbd className="hidden h-5 items-center rounded border border-gray-700/50 bg-gray-900/50 px-1.5 font-sans text-[10px] font-medium text-gray-500 sm:inline-flex">
+            /
+          </kbd>
+        </div>
+      )}
       
       {value && (
         <button
