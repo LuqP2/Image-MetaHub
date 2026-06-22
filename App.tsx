@@ -2558,6 +2558,7 @@ export default function App() {
       JSON.stringify(advancedFilters),
       sortOrder,
       randomSeed,
+      groupBy,
     ].join('\u001e');
   }, [
     activeCollectionId,
@@ -2572,6 +2573,7 @@ export default function App() {
     excludedSchedulers,
     excludedTags,
     favoriteFilterMode,
+    groupBy,
     randomSeed,
     searchQuery,
     selectedAutoTags,
@@ -2951,18 +2953,20 @@ export default function App() {
     },
     [displayImages, currentPage, itemsPerPage]
   );
-  const effectiveLibraryGroupBy = libraryView === 'library' && sortOrder !== 'random' ? groupBy : 'none';
+  const canGroupCurrentImages =
+    libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection));
+  const effectiveImageGroupBy = canGroupCurrentImages && sortOrder !== 'random' ? groupBy : 'none';
   const imageGroupingSortOrder = sortOrder as ImageGroupingSortOrder;
-  const currentLibraryGroups = useMemo<ImageGroup[]>(
-    () => effectiveLibraryGroupBy === 'none'
+  const currentImageGroups = useMemo<ImageGroup[]>(
+    () => effectiveImageGroupBy === 'none'
       ? []
-      : groupImages(paginatedImages, effectiveLibraryGroupBy, { sortOrder: imageGroupingSortOrder }).groups,
-    [effectiveLibraryGroupBy, imageGroupingSortOrder, paginatedImages]
+      : groupImages(paginatedImages, effectiveImageGroupBy, { sortOrder: imageGroupingSortOrder }).groups,
+    [effectiveImageGroupBy, imageGroupingSortOrder, paginatedImages]
   );
 
   useEffect(() => {
     setPendingJumpGroupRequest(null);
-  }, [currentPage, effectiveLibraryGroupBy, viewMode]);
+  }, [currentPage, effectiveImageGroupBy, viewMode]);
 
   const totalPages = itemsPerPage === -1
     ? 1
@@ -3409,8 +3413,8 @@ export default function App() {
                     onStartSlideshow={handleStartSlideshow}
                     slideshowImageCount={slideshowImageCount}
                     slideshowSourceLabel={slideshowSourceLabel}
-                    groups={libraryView === 'library' ? currentLibraryGroups : []}
-                    groupBy={effectiveLibraryGroupBy}
+                    groups={currentImageGroups}
+                    groupBy={effectiveImageGroupBy}
                     onJumpToGroup={(groupId) => setPendingJumpGroupRequest({ groupId, requestId: Date.now() })}
                     onClearAllFilters={handleClearAllFilters}
                   />
@@ -3476,7 +3480,7 @@ export default function App() {
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                           onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                           onOpenComfyUIWorkspace={(image) => openComfyUIWorkflowInWorkspace(image, displayImages)}
-                          groupBy={effectiveLibraryGroupBy}
+                          groupBy={effectiveImageGroupBy}
                           groupSortOrder={imageGroupingSortOrder}
                           jumpToGroupRequest={pendingJumpGroupRequest}
                           initialScrollTop={libraryGridScrollTopRef.current}
@@ -3493,7 +3497,7 @@ export default function App() {
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                           onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                           onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
-                          groupBy={effectiveLibraryGroupBy}
+                          groupBy={effectiveImageGroupBy}
                           groupSortOrder={imageGroupingSortOrder}
                           jumpToGroupRequest={pendingJumpGroupRequest}
                         />
@@ -3533,6 +3537,9 @@ export default function App() {
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
+                        groupBy={effectiveImageGroupBy}
+                        groupSortOrder={imageGroupingSortOrder}
+                        jumpToGroupRequest={pendingJumpGroupRequest}
                         initialScrollTop={collectionsGridScrollTopRef.current}
                         onScrollPositionChange={handleCollectionsGridScrollPositionChange}
                         scrollResetKey={collectionsGridSignature}
@@ -3549,6 +3556,9 @@ export default function App() {
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
+                        groupBy={effectiveImageGroupBy}
+                        groupSortOrder={imageGroupingSortOrder}
+                        jumpToGroupRequest={pendingJumpGroupRequest}
                       />
                     )}
                   </CollectionsWorkspace>
