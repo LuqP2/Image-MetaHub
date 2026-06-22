@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, Eye, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, Boxes, ChevronDown, ChevronUp, Workflow, X } from 'lucide-react';
 import { BaseMetadata, IndexedImage } from '../types';
 import { useComfyUIModels } from '../hooks/useComfyUIModels';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -22,6 +22,7 @@ import {
   hydrateImageForEmbeddedComfyWorkflow,
 } from '../services/comfyUIWorkflowHydration';
 import { buildVisualWorkflowGraph } from '../services/comfyUIVisualWorkflow';
+import ComfyUIWorkflowNodeList from './ComfyUIWorkflowNodeList';
 import ComfyUIWorkflowVisualEditor from './ComfyUIWorkflowVisualEditor';
 
 export interface GenerationParams {
@@ -45,7 +46,7 @@ export interface GenerationParams {
   maskFile?: File | null;
 }
 
-type WorkspaceTab = 'parameters' | 'visual';
+type WorkspaceTab = 'workflow' | 'nodes';
 const WORKSPACE_TAB_STORAGE_KEY = 'IMH_COMFYUI_LAST_WORKSPACE_TAB';
 
 interface ComfyUIWorkflowWorkspaceProps {
@@ -222,7 +223,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
   image,
   onGenerate,
   isGenerating,
-  defaultTab = 'parameters',
+  defaultTab = 'workflow',
   viewportHeight = 560,
   onCancel,
   showCancelButton = true,
@@ -257,7 +258,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     loras: [],
     sampler: undefined,
     scheduler: undefined,
-    workflowMode: workflowAnalysis.originalAvailable ? 'original' : 'simple',
+    workflowMode: 'original',
     sourceImagePolicy: 'reuse_original',
     advancedPromptJson: '',
     advancedWorkflowJson: '',
@@ -413,9 +414,6 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
       return;
     }
 
-    const storedMode = typeof window !== 'undefined'
-      ? localStorage.getItem('IMH_COMFYUI_LAST_MODE') as ComfyUIWorkflowMode | null
-      : null;
     const storedSourcePolicy = typeof window !== 'undefined'
       ? localStorage.getItem('IMH_COMFYUI_LAST_SOURCE_POLICY') as ComfyUISourceImagePolicy | null
       : null;
@@ -429,9 +427,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     const parsedModel = parseStoredJson<ComfyUIModelResource>(storedModel, 'stored ComfyUI model');
     const parsedLoras = parseStoredJson<ComfyUILoRAConfig[]>(storedLoras, 'stored ComfyUI LoRAs') ?? [];
 
-    const nextWorkflowMode = workflowAnalysis.originalAvailable
-      ? (storedMode || 'original')
-      : 'simple';
+    const nextWorkflowMode: ComfyUIWorkflowMode = 'original';
 
     const nextParams: GenerationParams = {
       prompt: normalizedMetadata.prompt || '',
@@ -469,8 +465,8 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     setValidationError('');
     setModelSearch('');
     setLoraSearch('');
-    const preferredTab = storedWorkspaceTab || defaultTab;
-    setActiveTab(preferredTab === 'visual' && workflowAnalysis.originalAvailable ? 'visual' : 'parameters');
+    const preferredTab = storedWorkspaceTab === 'nodes' ? 'nodes' : defaultTab;
+    setActiveTab(preferredTab);
     setSelectedVisualNodeId(null);
   }, [
     defaultTab,
@@ -480,13 +476,6 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     normalizedMetadata,
     workflowAnalysis.originalAvailable,
   ]);
-
-  useEffect(() => {
-    if (params.workflowMode !== 'original' && activeTab === 'visual') {
-      setActiveTab('parameters');
-      persistActiveTab('parameters');
-    }
-  }, [activeTab, params.workflowMode]);
 
   useEffect(() => {
     setParams((prev) => {
@@ -525,16 +514,12 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
   }, [selectedVisualNodeId, visualGraph]);
 
   const compatibleModelFamilies = useMemo(() => {
-    if (params.workflowMode === 'simple') {
-      return new Set<ComfyUIModelFamily>(['checkpoint']);
-    }
-
     return new Set<ComfyUIModelFamily>(
       visualPromptAnalysis.compatibleModelFamilies.length > 0
         ? visualPromptAnalysis.compatibleModelFamilies
         : ['checkpoint']
     );
-  }, [params.workflowMode, visualPromptAnalysis.compatibleModelFamilies]);
+  }, [visualPromptAnalysis.compatibleModelFamilies]);
 
   const filteredModels = useMemo(() => {
     const allModels = resources?.models || [];
@@ -561,11 +546,15 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     || visualPromptAnalysis.generationType === 'inpaint'
     || visualPromptAnalysis.generationType === 'outpaint';
   const requiresMaskInput = isTransformation && visualPromptAnalysis.maskTargets.length > 0;
-  const visualTabDisabled = params.workflowMode !== 'original' || !workflowAnalysis.originalAvailable || !workingPromptGraph;
+  const workflowUnavailable = !workflowAnalysis.originalAvailable || !workingPromptGraph;
 
   const effectiveGenerateDisabledReason = useMemo(() => {
     if (generateDisabledReason) {
       return generateDisabledReason;
+    }
+
+    if (workflowUnavailable) {
+      return 'This image does not contain an executable embedded ComfyUI workflow.';
     }
 
     if (comfyUILastConnectionStatus === 'error' || (!!resourcesError && !resources)) {
@@ -573,7 +562,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     }
 
     return null;
-  }, [comfyUILastConnectionStatus, generateDisabledReason, resources, resourcesError]);
+  }, [comfyUILastConnectionStatus, generateDisabledReason, resources, resourcesError, workflowUnavailable]);
 
   const syncParamsFromVisualField = (
     currentParams: GenerationParams,
@@ -768,7 +757,6 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     setValidationError('');
 
     if (typeof window !== 'undefined') {
-      localStorage.setItem('IMH_COMFYUI_LAST_MODE', params.workflowMode);
       localStorage.setItem('IMH_COMFYUI_LAST_SOURCE_POLICY', params.sourceImagePolicy);
       localStorage.setItem('IMH_COMFYUI_LAST_RANDOM_SEED', String(params.randomSeed));
       localStorage.setItem(WORKSPACE_TAB_STORAGE_KEY, activeTab);
@@ -808,96 +796,85 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
-        <h3 className="mb-3 text-sm font-semibold text-gray-300">Workflow Mode</h3>
-        <div className="grid gap-3 md:grid-cols-2">
-          <button
-            type="button"
-            disabled={!workflowAnalysis.originalAvailable}
-            onClick={() => applyNextParams({ ...params, workflowMode: 'original' })}
-            className={`rounded-lg border px-4 py-3 text-left transition-colors ${
-              params.workflowMode === 'original'
-                ? 'border-purple-400 bg-purple-500/10 text-purple-100'
-                : 'border-gray-700 bg-gray-800 hover:border-gray-600'
-            } ${!workflowAnalysis.originalAvailable ? 'cursor-not-allowed opacity-50' : ''}`}
-          >
-            <div className="text-sm font-semibold">Original workflow</div>
-            <div className="mt-1 text-xs text-gray-400">Patches the embedded ComfyUI graph and keeps provenance.</div>
-          </button>
-          <button
-            type="button"
-            onClick={() => applyNextParams({ ...params, workflowMode: 'simple' })}
-            className={`rounded-lg border px-4 py-3 text-left transition-colors ${
-              params.workflowMode === 'simple'
-                ? 'border-blue-400 bg-blue-500/10 text-blue-100'
-                : 'border-gray-700 bg-gray-800 hover:border-gray-600'
-            }`}
-          >
-            <div className="text-sm font-semibold">Simple rebuild</div>
-            <div className="mt-1 text-xs text-gray-400">Builds a safe txt2img pipeline from normalized metadata.</div>
-          </button>
+      {(workflowAnalysis.warnings.length > 0 || resourcesError || effectiveGenerateDisabledReason) && (
+        <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
+          {workflowAnalysis.warnings.length > 0 && (
+            <div className="space-y-2">
+              {workflowAnalysis.warnings.map((warning) => (
+                <div
+                  key={warning}
+                  className="flex items-start gap-2 rounded-md border border-yellow-700/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200"
+                >
+                  <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                  <span>{warning}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {resourcesError && (
+            <div className="mt-2 flex items-start gap-2 rounded-md border border-gray-700 bg-gray-950/70 px-3 py-2 text-xs text-gray-300">
+              <AlertTriangle size={14} className="mt-0.5 flex-shrink-0 text-amber-300" />
+              <span>
+                Resource catalog is unavailable right now. Embedded workflow values stay editable, but dropdown choices may fall back to free-text inputs.
+              </span>
+            </div>
+          )}
+          {effectiveGenerateDisabledReason && (
+            <div className="mt-2 flex items-start gap-2 rounded-md border border-red-700/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+              <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+              <span>{effectiveGenerateDisabledReason}</span>
+            </div>
+          )}
         </div>
-        {workflowAnalysis.warnings.length > 0 && (
-          <div className="mt-3 space-y-2">
-            {workflowAnalysis.warnings.map((warning) => (
-              <div
-                key={warning}
-                className="flex items-start gap-2 rounded-md border border-yellow-700/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200"
-              >
-                <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-                <span>{warning}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {resourcesError && (
-          <div className="mt-3 flex items-start gap-2 rounded-md border border-gray-700 bg-gray-950/70 px-3 py-2 text-xs text-gray-300">
-            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0 text-amber-300" />
-            <span>
-              Resource catalog is unavailable right now. Embedded workflow values stay editable, but dropdown choices may fall back to free-text inputs.
-            </span>
-          </div>
-        )}
-        {effectiveGenerateDisabledReason && (
-          <div className="mt-3 flex items-start gap-2 rounded-md border border-red-700/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-            <span>{effectiveGenerateDisabledReason}</span>
-          </div>
-        )}
-      </div>
+      )}
 
       <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-2">
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => changeActiveTab('parameters')}
+            onClick={() => changeActiveTab('workflow')}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
-              activeTab === 'parameters'
+              activeTab === 'workflow'
                 ? 'bg-purple-500/15 text-purple-100 ring-1 ring-purple-400/40'
                 : 'text-gray-300 hover:bg-gray-800'
             }`}
           >
-            <SlidersHorizontal size={16} />
-            Parameters
+            <Workflow size={16} />
+            Workflow
           </button>
           <button
             type="button"
-            disabled={visualTabDisabled}
-            onClick={() => !visualTabDisabled && changeActiveTab('visual')}
+            onClick={() => changeActiveTab('nodes')}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
-              activeTab === 'visual'
+              activeTab === 'nodes'
                 ? 'bg-blue-500/15 text-blue-100 ring-1 ring-blue-400/40'
                 : 'text-gray-300 hover:bg-gray-800'
-            } ${visualTabDisabled ? 'cursor-not-allowed opacity-50 hover:bg-transparent' : ''}`}
+            }`}
           >
-            <Eye size={16} />
-            Visual Workflow
+            <Boxes size={16} />
+            Nodes
           </button>
         </div>
       </div>
 
-      {activeTab === 'parameters' ? (
+      {activeTab === 'workflow' ? (
         <>
+          {workflowUnavailable ? (
+            <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-6 text-sm text-gray-400">
+              Visual workflow is unavailable because this image does not contain an executable embedded prompt graph.
+            </div>
+          ) : (
+            <ComfyUIWorkflowVisualEditor
+              key={image.id}
+              graph={visualGraph}
+              selectedNodeId={selectedVisualNodeId}
+              fieldOptions={visualFieldOptions}
+              viewportHeight={viewportHeight}
+              onSelectNode={setSelectedVisualNodeId}
+              onFieldChange={handleVisualFieldChange}
+            />
+          )}
+
           <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
             <h3 className="mb-3 text-sm font-semibold text-gray-300">Core</h3>
             <div className="space-y-2">
@@ -1234,24 +1211,11 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
           </div>
         </>
       ) : (
-        <div className="space-y-4">
-          {visualTabDisabled ? (
-            <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-6 text-sm text-gray-400">
-              Visual editing is available only in <span className="font-semibold text-gray-200">Original workflow</span> mode with an embedded executable prompt graph.
-            </div>
-          ) : (
-            <>
-              <ComfyUIWorkflowVisualEditor
-                graph={visualGraph}
-                selectedNodeId={selectedVisualNodeId}
-                fieldOptions={visualFieldOptions}
-                viewportHeight={viewportHeight}
-                onSelectNode={setSelectedVisualNodeId}
-                onFieldChange={handleVisualFieldChange}
-              />
-            </>
-          )}
-        </div>
+        <ComfyUIWorkflowNodeList
+          graph={visualGraph}
+          fieldOptions={visualFieldOptions}
+          onFieldChange={handleVisualFieldChange}
+        />
       )}
 
       <div className="flex items-center justify-end gap-3">

@@ -100,8 +100,8 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
             directoryPath={directoryPath}
             onGenerate={onGenerate}
             isGenerating={isGenerating}
-            defaultTab="parameters"
-            viewportHeight={isExpandedModal ? 720 : 560}
+            defaultTab="workflow"
+            viewportHeight={isExpandedModal ? 780 : 680}
             onCancel={onClose}
             showCancelButton
           />

@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Eye, Move, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { Eye, Maximize2, Minimize2, Move, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
 import {
   type VisualWorkflowField,
@@ -18,35 +18,35 @@ interface ComfyUIWorkflowVisualEditorProps {
 
 const CATEGORY_STYLES: Record<VisualWorkflowNode['category'], { card: string; badge: string }> = {
   prompt: {
-    card: 'border-emerald-500/40 bg-emerald-500/10',
+    card: 'border-emerald-500/50 bg-gray-950',
     badge: 'border-emerald-400/40 bg-emerald-500/20 text-emerald-100',
   },
   sampler: {
-    card: 'border-blue-500/40 bg-blue-500/10',
+    card: 'border-blue-500/50 bg-gray-950',
     badge: 'border-blue-400/40 bg-blue-500/20 text-blue-100',
   },
   model: {
-    card: 'border-violet-500/40 bg-violet-500/10',
+    card: 'border-violet-500/50 bg-gray-950',
     badge: 'border-violet-400/40 bg-violet-500/20 text-violet-100',
   },
   lora: {
-    card: 'border-fuchsia-500/40 bg-fuchsia-500/10',
+    card: 'border-fuchsia-500/50 bg-gray-950',
     badge: 'border-fuchsia-400/40 bg-fuchsia-500/20 text-fuchsia-100',
   },
   image: {
-    card: 'border-amber-500/40 bg-amber-500/10',
+    card: 'border-amber-500/50 bg-gray-950',
     badge: 'border-amber-400/40 bg-amber-500/20 text-amber-100',
   },
   mask: {
-    card: 'border-orange-500/40 bg-orange-500/10',
+    card: 'border-orange-500/50 bg-gray-950',
     badge: 'border-orange-400/40 bg-orange-500/20 text-orange-100',
   },
   save: {
-    card: 'border-teal-500/40 bg-teal-500/10',
+    card: 'border-teal-500/50 bg-gray-950',
     badge: 'border-teal-400/40 bg-teal-500/20 text-teal-100',
   },
   timer: {
-    card: 'border-cyan-500/40 bg-cyan-500/10',
+    card: 'border-cyan-500/50 bg-gray-950',
     badge: 'border-cyan-400/40 bg-cyan-500/20 text-cyan-100',
   },
   generic: {
@@ -57,7 +57,7 @@ const CATEGORY_STYLES: Record<VisualWorkflowNode['category'], { card: string; ba
 
 const LONG_TEXT_KEYS = new Set(['text', 'prompt', 'positive', 'negative', 'positive_prompt', 'negative_prompt']);
 
-function renderFieldControl(
+export function renderWorkflowFieldControl(
   field: VisualWorkflowField,
   options: Array<string | number | boolean> | undefined,
   onChange: (value: string | number | boolean) => void
@@ -143,6 +143,75 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
   onSelectNode,
   onFieldChange,
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [nodeOffsets, setNodeOffsets] = useState<Record<string, { x: number; y: number }>>({});
+  const dragState = useRef<{
+    nodeId: string;
+    startClientX: number;
+    startClientY: number;
+    startOffsetX: number;
+    startOffsetY: number;
+    scale: number;
+  } | null>(null);
+
+  const getRenderedScale = (element: HTMLElement): number => {
+    let current: HTMLElement | null = element.parentElement;
+    while (current) {
+      const transform = window.getComputedStyle(current).transform;
+      if (transform && transform !== 'none') {
+        const matrix = new DOMMatrixReadOnly(transform);
+        return matrix.a || 1;
+      }
+      current = current.parentElement;
+    }
+    return 1;
+  };
+
+  const handleNodePointerDown = (event: React.PointerEvent<HTMLDivElement>, nodeId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    onSelectNode(nodeId);
+
+    const currentOffset = nodeOffsets[nodeId] || { x: 0, y: 0 };
+    dragState.current = {
+      nodeId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startOffsetX: currentOffset.x,
+      startOffsetY: currentOffset.y,
+      scale: getRenderedScale(event.currentTarget),
+    };
+  };
+
+  const handleNodePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragState.current;
+    if (!drag || !event.currentTarget.hasPointerCapture(event.pointerId)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const nextOffset = {
+      x: drag.startOffsetX + (event.clientX - drag.startClientX) / drag.scale,
+      y: drag.startOffsetY + (event.clientY - drag.startClientY) / drag.scale,
+    };
+    setNodeOffsets((current) => ({
+      ...current,
+      [drag.nodeId]: nextOffset,
+    }));
+  };
+
+  const handleNodePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragState.current) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    dragState.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
   const scene = useMemo(() => {
     if (!graph || graph.nodes.length === 0) {
       return null;
@@ -166,8 +235,8 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
     for (const node of graph.nodes) {
       const normalizedNode = {
         ...node,
-        x: node.x - minX + 80,
-        y: node.y - minY + 60,
+        x: node.x - minX + 80 + (nodeOffsets[node.id]?.x || 0),
+        y: node.y - minY + 60 + (nodeOffsets[node.id]?.y || 0),
       };
       normalizedNodes.push(normalizedNode);
       nodeMap.set(normalizedNode.id, normalizedNode);
@@ -187,7 +256,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
       nodes: normalizedNodes,
       nodeMap,
     };
-  }, [graph]);
+  }, [graph, nodeOffsets]);
 
   const selectedNode = scene?.nodeMap.get(selectedNodeId || '') || scene?.nodes[0] || null;
 
@@ -200,8 +269,15 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="rounded-lg border border-gray-700 bg-gray-900/60 overflow-hidden">
+    <div
+      className={
+        isExpanded
+          ? 'fixed inset-3 z-[80] overflow-auto rounded-xl border border-gray-700 bg-gray-950 p-4 shadow-2xl'
+          : ''
+      }
+    >
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="rounded-lg border border-gray-700 bg-gray-900/60 overflow-hidden">
         <div className="flex items-center justify-between border-b border-gray-700 px-4 py-3">
           <div>
             <div className="text-sm font-semibold text-gray-100">Workflow Overview</div>
@@ -210,17 +286,37 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
               {graph.hasStoredLayout ? ' • using embedded layout' : ' • using auto-layout'}
             </div>
           </div>
-          <div className="rounded-full border border-gray-700 bg-gray-800/80 px-3 py-1 text-[11px] text-gray-300">
-            <span className="inline-flex items-center gap-1">
-              <Move size={12} />
-              Drag anywhere to pan
-            </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setNodeOffsets({})}
+              disabled={Object.keys(nodeOffsets).length === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-2 text-xs text-gray-200 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Restore the workflow preview layout"
+            >
+              <RotateCcw size={14} />
+              <span className="hidden sm:inline">Restore layout</span>
+            </button>
+            <div className="hidden rounded-full border border-gray-700 bg-gray-800 px-3 py-1 text-[11px] text-gray-300 sm:block">
+              <span className="inline-flex items-center gap-1">
+                <Move size={12} />
+                Drag background to pan · drag nodes to arrange
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsExpanded((current) => !current)}
+              className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-200 transition-colors hover:bg-gray-700"
+              title={isExpanded ? 'Exit expanded workflow' : 'Expand workflow'}
+            >
+              {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
           </div>
         </div>
 
         <div
           className="relative bg-[radial-gradient(circle_at_center,rgba(148,163,184,0.08),transparent_55%)]"
-          style={{ height: `${viewportHeight}px` }}
+          style={{ height: isExpanded ? 'calc(100vh - 112px)' : `${Math.max(viewportHeight, 640)}px` }}
         >
           <TransformWrapper
             minScale={0.35}
@@ -294,6 +390,10 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                           <div
                             key={node.id}
                             onClick={() => onSelectNode(node.id)}
+                            onPointerDown={(event) => handleNodePointerDown(event, node.id)}
+                            onPointerMove={handleNodePointerMove}
+                            onPointerUp={handleNodePointerUp}
+                            onPointerCancel={handleNodePointerUp}
                             onKeyDown={(event) => {
                               if (event.key === 'Enter' || event.key === ' ') {
                                 event.preventDefault();
@@ -302,7 +402,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                             }}
                             role="button"
                             tabIndex={0}
-                            className={`absolute cursor-grab rounded-xl border p-3 text-left shadow-lg transition-all active:cursor-grabbing ${styles.card} ${
+                            className={`workflow-node absolute cursor-grab touch-none select-none rounded-xl border p-3 text-left shadow-lg transition-[border-color,box-shadow] active:cursor-grabbing ${styles.card} ${
                               isSelected
                                 ? 'ring-2 ring-purple-400 shadow-purple-500/30'
                                 : 'hover:border-gray-500'
@@ -371,7 +471,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                     type="button"
                     onClick={() => resetTransform()}
                     className="rounded-lg border border-gray-700 bg-gray-900/80 p-2 text-gray-200 transition-colors hover:bg-gray-800"
-                    title="Reset view"
+                    title="Reset zoom and pan"
                   >
                     <RotateCcw size={16} />
                   </button>
@@ -380,9 +480,9 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
             )}
           </TransformWrapper>
         </div>
-      </div>
+        </div>
 
-      <aside className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
+        <aside className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
         {selectedNode ? (
           <div className="space-y-4">
             <div>
@@ -407,7 +507,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                 {selectedNode.fields.map((field) => (
                   <label key={field.key} className="block space-y-1.5">
                     <span className="text-sm font-medium text-gray-300">{field.label}</span>
-                    {renderFieldControl(
+                    {renderWorkflowFieldControl(
                       field,
                       fieldOptions?.[`${selectedNode.id}:${field.key}`],
                       (value) => onFieldChange(selectedNode.id, field.key, value)
@@ -429,7 +529,8 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
             </div>
           </div>
         )}
-      </aside>
+        </aside>
+      </div>
     </div>
   );
 };

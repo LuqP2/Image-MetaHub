@@ -4433,8 +4433,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   }}
                   isGenerating={isGeneratingComfyUI}
                   status={generateStatusComfyUI}
-                  defaultTab="parameters"
-                  viewportHeight={showSidebarOnBottom ? 420 : 520}
+                  defaultTab="workflow"
+                  viewportHeight={showSidebarOnBottom ? 600 : 680}
                   showCancelButton={false}
                 />
             </div>

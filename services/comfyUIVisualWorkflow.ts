@@ -50,11 +50,13 @@ export interface VisualWorkflowGraph {
   hasStoredLayout: boolean;
 }
 
-const AUTO_LAYOUT_X_GAP = 320;
-const AUTO_LAYOUT_Y_GAP = 190;
+const AUTO_LAYOUT_X_GAP = 360;
+const AUTO_LAYOUT_Y_GAP = 260;
 const DEFAULT_NODE_WIDTH = 260;
 const MIN_NODE_HEIGHT = 128;
 const MIN_NODE_WIDTH = 220;
+const MAX_NODE_HEIGHT = 240;
+const MAX_NODE_WIDTH = 300;
 
 function sortNodeIds(nodeIds: string[]): string[] {
   return [...nodeIds].sort((left, right) => {
@@ -188,8 +190,12 @@ function getNodeDimensions(
   const previewHeight = Math.max(MIN_NODE_HEIGHT, 88 + Math.min(fields.length, 3) * 38);
 
   return {
-    width: typeof storedWidth === 'number' ? Math.max(MIN_NODE_WIDTH, storedWidth) : DEFAULT_NODE_WIDTH,
-    height: typeof storedHeight === 'number' ? Math.max(previewHeight, storedHeight) : previewHeight,
+    width: typeof storedWidth === 'number'
+      ? Math.min(MAX_NODE_WIDTH, Math.max(MIN_NODE_WIDTH, storedWidth))
+      : DEFAULT_NODE_WIDTH,
+    height: typeof storedHeight === 'number'
+      ? Math.min(MAX_NODE_HEIGHT, Math.max(previewHeight, storedHeight))
+      : previewHeight,
   };
 }
 
@@ -226,8 +232,29 @@ function positionsOverlap(
   left: { x: number; y: number },
   right: { x: number; y: number }
 ): boolean {
-  return Math.abs(left.x - right.x) < MIN_NODE_WIDTH * 0.75
-    && Math.abs(left.y - right.y) < AUTO_LAYOUT_Y_GAP * 0.75;
+  return Math.abs(left.x - right.x) < MAX_NODE_WIDTH + 20
+    && Math.abs(left.y - right.y) < MAX_NODE_HEIGHT + 10;
+}
+
+function removeStoredLayoutCollisions(
+  promptNodeIds: string[],
+  storedLayout: Map<string, { x: number; y: number }>
+): Map<string, { x: number; y: number }> {
+  const collisionSafeLayout = new Map<string, { x: number; y: number }>();
+  const occupiedPositions: Array<{ x: number; y: number }> = [];
+
+  for (const nodeId of sortNodeIds(promptNodeIds)) {
+    const storedPosition = storedLayout.get(nodeId);
+    if (!storedPosition) {
+      continue;
+    }
+
+    const position = resolveHybridCollision(storedPosition, occupiedPositions);
+    collisionSafeLayout.set(nodeId, position);
+    occupiedPositions.push(position);
+  }
+
+  return collisionSafeLayout;
 }
 
 function resolveHybridCollision(
@@ -265,10 +292,10 @@ function buildHybridLayout(
   }
 
   if (storedLayout.size >= promptNodeIds.length && hasCompleteStoredLayout(promptNodeIds, storedLayout)) {
-    return storedLayout;
+    return removeStoredLayoutCollisions(promptNodeIds, storedLayout);
   }
 
-  const hybridLayout = new Map(storedLayout);
+  const hybridLayout = removeStoredLayoutCollisions(promptNodeIds, storedLayout);
   const unresolved = new Set(
     promptNodeIds.filter((nodeId) => !hybridLayout.has(nodeId))
   );
