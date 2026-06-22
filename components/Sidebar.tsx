@@ -298,7 +298,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <ActiveFilters onClearAll={onClearAllFilters} />
         </div>
 
-        <div className="px-4 py-3 border-b border-gray-700">
+        {!searchQuery.trim() && <div className="px-4 py-3 border-b border-gray-700">
           <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
           <div className="flex items-center">
           <select
@@ -324,9 +324,9 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
           </div>
-        </div>
+        </div>}
 
-        {sortOrder !== 'random' && (
+        {!searchQuery.trim() && sortOrder !== 'random' && (
           <div className="px-4 py-3 border-b border-gray-700">
             <label htmlFor="sidebar-group-by" className="block text-gray-400 text-xs font-medium mb-2">Group By</label>
             <select

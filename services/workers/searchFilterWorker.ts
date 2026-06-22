@@ -1,5 +1,14 @@
-import type { AdvancedFilters, ImageRating, InclusionFilterMode, TagMatchMode } from '../../types';
+import type {
+  AdvancedFilters,
+  ImageRating,
+  InclusionFilterMode,
+  SearchSortMode,
+  SearchSource,
+  StructuredSearchResult,
+  TagMatchMode,
+} from '../../types';
 import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../../utils/dateFilterUtils';
+import { buildStructuredSearchResult } from '../../utils/structuredSearch';
 
 type SearchWorkerImage = {
   id: string;
@@ -31,10 +40,17 @@ type SearchWorkerImage = {
   rating: ImageRating | null;
   tags: string[];
   autoTags: string[];
+  prompt: string;
+  negativePrompt: string;
+  notes: string;
+  collections: string[];
+  folder: string;
+  source: SearchSource;
 };
 
 type SearchWorkerCriteria = {
   searchQuery: string;
+  searchSortMode: SearchSortMode;
   selectedModels: string[];
   excludedModels: string[];
   selectedLoras: string[];
@@ -104,6 +120,7 @@ type WorkerResponse =
           samplerFacetCounts: Array<[string, number]>;
           schedulerFacetCounts: Array<[string, number]>;
         };
+        structuredSearch: StructuredSearchResult;
       };
     }
   | {
@@ -208,11 +225,6 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
   const selectedAutoTags = new Set(criteria.selectedAutoTags);
   const excludedAutoTags = new Set(criteria.excludedAutoTags);
   const sensitiveTags = new Set(criteria.safeMode.sensitiveTags);
-  const searchTerms = criteria.searchQuery
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean);
-
   let results = workerImages.filter((image) => {
     if (!visibleDirectoryIds.has(image.directoryId)) {
       return false;
@@ -292,21 +304,6 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
 
   if (excludedAutoTags.size > 0) {
     results = results.filter(image => !image.autoTags.some(tag => excludedAutoTags.has(tag)));
-  }
-
-  if (searchTerms.length > 0) {
-    results = results.filter((image) => {
-      const catalogMatch = searchTerms.every(term => image.catalogText.includes(term));
-      if (catalogMatch) {
-        return true;
-      }
-
-      if (!image.searchText) {
-        return false;
-      }
-
-      return searchTerms.every(term => image.searchText.includes(term));
-    });
   }
 
   if (selectedModels.size > 0) {
@@ -451,11 +448,36 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
     results = results.filter((image) => numericRangeMatch(image.vramPeakMb, advancedFilters.vramPeakMb));
   }
 
-  const sorted = [...results].sort((left, right) => compareImages(left, right, criteria.sortOrder, criteria.randomSeed));
+  const structuredSearch = buildStructuredSearchResult(
+    results.map((image) => ({
+      id: image.id,
+      name: image.name,
+      prompt: image.prompt,
+      negativePrompt: image.negativePrompt,
+      notes: image.notes,
+      tags: image.tags,
+      models: image.models,
+      loras: image.loraNames,
+      collections: image.collections,
+      folder: image.folder,
+      source: image.source,
+      lastModified: image.lastModified,
+    })),
+    criteria.searchQuery,
+    criteria.searchSortMode,
+  );
+  const matchedIds = new Set(
+    structuredSearch.sessions.flatMap((session) => session.matchedImageIds),
+  );
+  const matchedResults = criteria.searchQuery.trim()
+    ? results.filter((image) => matchedIds.has(image.id))
+    : results;
+  const sorted = [...matchedResults].sort((left, right) => compareImages(left, right, criteria.sortOrder, criteria.randomSeed));
 
   return {
     filteredIds: sorted.map(image => image.id),
     facets: collectFacets(sorted),
+    structuredSearch,
   };
 }
 

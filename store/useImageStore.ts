@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SearchSortMode, type SearchSource, type SelectedFiltersUpdate, type StructuredSearchResult, type TagMatchMode } from '../types';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -123,10 +123,17 @@ type SearchWorkerImage = {
     rating: ImageRating | null;
     tags: string[];
     autoTags: string[];
+    prompt: string;
+    negativePrompt: string;
+    notes: string;
+    collections: string[];
+    folder: string;
+    source: SearchSource;
 };
 
 type SearchWorkerCriteria = {
     searchQuery: string;
+    searchSortMode: SearchSortMode;
     selectedModels: string[];
     excludedModels: string[];
     selectedLoras: string[];
@@ -175,6 +182,21 @@ type SearchWorkerResultPayload = {
         samplerFacetCounts: Array<[string, number]>;
         schedulerFacetCounts: Array<[string, number]>;
     };
+    structuredSearch: StructuredSearchResult;
+};
+
+const EMPTY_STRUCTURED_SEARCH_RESULT: StructuredSearchResult = {
+    sessions: [],
+    facets: {
+        models: [],
+        loras: [],
+        collections: [],
+        dates: [],
+        sessions: [],
+    },
+    warnings: [],
+    matchedImageCount: 0,
+    totalSessionImageCount: 0,
 };
 
 const DEFAULT_LINEAGE_BUILD_STATE: LineageBuildState = {
@@ -693,7 +715,25 @@ const normalizeLoraName = (
     value: string | { name?: string; model_name?: string } | null | undefined,
 ): string | null => normalizeFacetValue(value);
 
-const toSearchWorkerImage = (image: IndexedImage): SearchWorkerImage => {
+const getCanonicalSearchSource = (image: IndexedImage): SearchSource => {
+    const generator = normalizeFacetValue(getImageGenerator(image)) ?? '';
+    if (!generator || generator === 'unknown') return 'unknown';
+    if (generator.includes('comfy')) return 'comfyui';
+    if (generator.includes('automatic1111') || generator.includes('automatic 1111') || generator === 'a1111') return 'a1111';
+    if (generator.includes('fooocus')) return 'fooocus';
+    if (generator.includes('forge')) return 'forge';
+    if (generator.includes('swarm')) return 'swarm';
+    if (generator.includes('draw things') || generator.includes('drawthings')) return 'drawthings';
+    if (generator.includes('invoke')) return 'invokeai';
+    if (generator.includes('midjourney') || generator.includes('niji')) return 'midjourney';
+    return 'other';
+};
+
+const toSearchWorkerImage = (
+    image: IndexedImage,
+    collections: string[] = [],
+    folder = '',
+): SearchWorkerImage => {
     const analytics = getImageAnalyticsSnapshot(image);
     const generationTimeMs = typeof analytics?.generation_time_ms === 'number' ? analytics.generation_time_ms : null;
     const stepsPerSecond = typeof analytics?.steps_per_second === 'number' ? analytics.steps_per_second : null;
@@ -742,6 +782,12 @@ const toSearchWorkerImage = (image: IndexedImage): SearchWorkerImage => {
         rating: image.rating ?? null,
         tags: (image.tags || []).map(tag => String(tag).toLowerCase()),
         autoTags: (image.autoTags || []).map(tag => String(tag).toLowerCase()),
+        prompt: image.prompt || image.metadata?.normalizedMetadata?.prompt || '',
+        negativePrompt: image.negativePrompt || image.metadata?.normalizedMetadata?.negativePrompt || '',
+        notes: image.metadata?.normalizedMetadata?.notes || '',
+        collections,
+        folder,
+        source: getCanonicalSearchSource(image),
     };
 };
 
@@ -792,6 +838,8 @@ interface ImageState {
 
   // Filter & Sort State
   searchQuery: string;
+  searchSortMode: SearchSortMode;
+  structuredSearchResult: StructuredSearchResult;
   availableModels: string[];
   availableLoras: string[];
   availableSamplers: string[];
@@ -901,6 +949,7 @@ interface ImageState {
 
   // Filter & Sort Actions
   setSearchQuery: (query: string) => void;
+  setSearchSortMode: (mode: SearchSortMode) => void;
   setFilterOptions: (options: Pick<FilterOptions, 'models' | 'loras' | 'samplers' | 'schedulers' | 'generators' | 'gpuDevices' | 'dimensions'>) => void;
   setSelectedFilters: (filters: SelectedFiltersUpdate) => void;
   setSortOrder: (order: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random') => void;
@@ -1041,6 +1090,8 @@ export const useImageStore = create<ImageState>((set, get) => {
     let searchWorker: Worker | null = null;
     let searchDatasetVersion = 0;
     let searchDatasetSourceImages: IndexedImage[] | null = null;
+    let searchDatasetSourceCollections: SmartCollection[] | null = null;
+    let searchDatasetSourceDirectories: Directory[] | null = null;
     let searchWorkerSyncedDatasetVersion = -1;
     let latestSearchCriteriaKey = '';
 
@@ -1064,13 +1115,21 @@ export const useImageStore = create<ImageState>((set, get) => {
     const invalidateSearchWorkerDataset = () => {
         searchDatasetVersion += 1;
         searchDatasetSourceImages = null;
+        searchDatasetSourceCollections = null;
+        searchDatasetSourceDirectories = null;
         searchWorkerSyncedDatasetVersion = -1;
     };
 
     const getSearchDatasetVersion = (state: ImageState) => {
-        if (searchDatasetSourceImages !== state.images) {
+        if (
+            searchDatasetSourceImages !== state.images ||
+            searchDatasetSourceCollections !== state.collections ||
+            searchDatasetSourceDirectories !== state.directories
+        ) {
             searchDatasetVersion += 1;
             searchDatasetSourceImages = state.images;
+            searchDatasetSourceCollections = state.collections;
+            searchDatasetSourceDirectories = state.directories;
             searchWorkerSyncedDatasetVersion = -1;
         }
 
@@ -1082,6 +1141,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         searchWorker = null;
         searchWorkerSyncedDatasetVersion = -1;
         searchDatasetSourceImages = null;
+        searchDatasetSourceCollections = null;
+        searchDatasetSourceDirectories = null;
     };
 
     const purgePendingDirectoryEntries = (directoryId: string) => {
@@ -1308,7 +1369,22 @@ export const useImageStore = create<ImageState>((set, get) => {
     };
 
     const buildSearchWorkerDataset = (state: ImageState): SearchWorkerImage[] => {
-        return state.images.map(toSearchWorkerImage);
+        const collectionNamesByImageId = new Map<string, string[]>();
+        for (const collection of state.collections) {
+            const imageIds = resolveSmartCollectionImageIds(collection, state.images);
+            for (const imageId of imageIds) {
+                const names = collectionNamesByImageId.get(imageId) ?? [];
+                names.push(collection.name);
+                collectionNamesByImageId.set(imageId, names);
+            }
+        }
+
+        const directoryPathById = new Map(state.directories.map((directory) => [directory.id, directory.path]));
+        return state.images.map((image) => {
+            const directoryPath = directoryPathById.get(image.directoryId || '') ?? image.directoryName ?? '';
+            const folder = getImageFolderPath(image, directoryPath);
+            return toSearchWorkerImage(image, collectionNamesByImageId.get(image.id) ?? [], folder);
+        });
     };
 
     const buildSearchWorkerCriteria = (state: ImageState): SearchWorkerCriteria => {
@@ -1316,6 +1392,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         return {
             searchQuery: state.searchQuery,
+            searchSortMode: state.searchSortMode,
             selectedModels: [...state.selectedModels],
             excludedModels: [...state.excludedModels],
             selectedLoras: [...state.selectedLoras],
@@ -1418,6 +1495,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 .map(id => imagesById.get(id))
                 .filter((image): image is IndexedImage => Boolean(image));
             const derivedFacets = toFacetStateFromWorker(payload.facets);
+            const structuredSearchResult = payload.structuredSearch ?? EMPTY_STRUCTURED_SEARCH_RESULT;
 
             set(state => {
                 if (payload.criteriaKey !== latestSearchCriteriaKey) {
@@ -1429,6 +1507,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     filteredImages,
                     selectionTotalImages: state.images.length,
                     selectionDirectoryCount: state.directories.length,
+                    structuredSearchResult,
                     ...derivedFacets,
                 };
             });
@@ -2546,6 +2625,12 @@ export const useImageStore = create<ImageState>((set, get) => {
         };
     };
 
+    const recomputeActiveStructuredSearch = () => {
+        const state = get();
+        if (state.searchQuery.trim()) {
+            runAsyncSearchRecompute(state);
+        }
+    };
 
     return {
         // Initial State
@@ -2583,6 +2668,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         focusedImageIndex: null,
         isStackingEnabled: false,
         searchQuery: '',
+        searchSortMode: 'relevance',
+        structuredSearchResult: EMPTY_STRUCTURED_SEARCH_RESULT,
         ...createEmptyFacetState(),
         selectedModels: [],
         excludedModels: [],
@@ -2721,6 +2808,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 saveSelectedFolders(Array.from(newSelected));
 
                 const newState = { ...state, excludedFolders: newExcluded, selectedFolders: newSelected };
+                if (newState.searchQuery.trim()) {
+                    runAsyncSearchRecompute(newState);
+                    return newState;
+                }
                 const resultState = { ...newState, ...filterAndSort(newState) };
                 const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
                 return { ...resultState, ...availableFilters };
@@ -2734,6 +2825,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 saveExcludedFolders(Array.from(newExcluded));
                 
                 const newState = { ...state, excludedFolders: newExcluded };
+                if (newState.searchQuery.trim()) {
+                    runAsyncSearchRecompute(newState);
+                    return newState;
+                }
                 const resultState = { ...newState, ...filterAndSort(newState) };
                 const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
                 return { ...resultState, ...availableFilters };
@@ -2759,6 +2854,13 @@ export const useImageStore = create<ImageState>((set, get) => {
                 }
 
                 const newState = { ...state, selectedFolders: selection };
+                if (newState.searchQuery.trim()) {
+                    runAsyncSearchRecompute(newState);
+                    saveSelectedFolders(Array.from(selection)).catch((error) => {
+                        console.error('Failed to persist folder selection state', error);
+                    });
+                    return newState;
+                }
                 const resultState = { ...newState, ...filterAndSort(newState) };
 
                 // Recalculate available filters based on the new filtered images
@@ -2779,6 +2881,13 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const selection = new Set<string>();
 
                 const newState = { ...state, selectedFolders: selection };
+                if (newState.searchQuery.trim()) {
+                    runAsyncSearchRecompute(newState);
+                    saveSelectedFolders([]).catch((error) => {
+                        console.error('Failed to persist folder selection state', error);
+                    });
+                    return newState;
+                }
                 const resultState = { ...newState, ...filterAndSort(newState) };
 
                 // Recalculate available filters based on the new filtered images
@@ -2804,6 +2913,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const newValue = !state.includeSubfolders;
                 localStorage.setItem('image-metahub-include-subfolders', String(newValue));
                 const newState = { ...state, includeSubfolders: newValue };
+                if (newState.searchQuery.trim()) {
+                    runAsyncSearchRecompute(newState);
+                    return newState;
+                }
                 return { ...newState, ...filterAndSort(newState) };
             });
         },
@@ -3428,7 +3541,30 @@ export const useImageStore = create<ImageState>((set, get) => {
                 searchQuery: query,
             };
 
+            if (!query.trim()) {
+                return {
+                    ...nextState,
+                    structuredSearchResult: EMPTY_STRUCTURED_SEARCH_RESULT,
+                    ...filterAndSort(nextState),
+                };
+            }
+
             runAsyncSearchRecompute(nextState);
+            return nextState;
+        }),
+
+        setSearchSortMode: (mode) => set(state => {
+            if (mode === state.searchSortMode) {
+                return state;
+            }
+
+            const nextState = {
+                ...state,
+                searchSortMode: mode,
+            };
+            if (nextState.searchQuery.trim()) {
+                runAsyncSearchRecompute(nextState);
+            }
             return nextState;
         }),
 
@@ -3442,8 +3578,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableDimensions: options.dimensions,
         }),
 
-        setSelectedFilters: (filters) => set(state => ({
-            ...filterAndSort({
+        setSelectedFilters: (filters) => set(state => {
+            const nextState = {
                 ...state,
                 selectedModels: filters.models ?? state.selectedModels,
                 excludedModels: filters.excludedModels ?? state.excludedModels,
@@ -3457,25 +3593,22 @@ export const useImageStore = create<ImageState>((set, get) => {
                 excludedGenerators: filters.excludedGenerators ?? state.excludedGenerators,
                 selectedGpuDevices: filters.gpuDevices ?? state.selectedGpuDevices,
                 excludedGpuDevices: filters.excludedGpuDevices ?? state.excludedGpuDevices,
-            }),
-            selectedModels: filters.models ?? state.selectedModels,
-            excludedModels: filters.excludedModels ?? state.excludedModels,
-            selectedLoras: filters.loras ?? state.selectedLoras,
-            excludedLoras: filters.excludedLoras ?? state.excludedLoras,
-            selectedSamplers: filters.samplers ?? state.selectedSamplers,
-            excludedSamplers: filters.excludedSamplers ?? state.excludedSamplers,
-            selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
-            excludedSchedulers: filters.excludedSchedulers ?? state.excludedSchedulers,
-            selectedGenerators: filters.generators ?? state.selectedGenerators,
-            excludedGenerators: filters.excludedGenerators ?? state.excludedGenerators,
-            selectedGpuDevices: filters.gpuDevices ?? state.selectedGpuDevices,
-            excludedGpuDevices: filters.excludedGpuDevices ?? state.excludedGpuDevices,
-        })),
+            };
+            if (nextState.searchQuery.trim()) {
+                runAsyncSearchRecompute(nextState);
+                return nextState;
+            }
+            return { ...nextState, ...filterAndSort(nextState) };
+        }),
 
-        setAdvancedFilters: (filters) => set(state => ({
-            ...filterAndSort({ ...state, advancedFilters: filters }),
-            advancedFilters: filters,
-        })),
+        setAdvancedFilters: (filters) => set(state => {
+            const nextState = { ...state, advancedFilters: filters };
+            if (nextState.searchQuery.trim()) {
+                runAsyncSearchRecompute(nextState);
+                return nextState;
+            }
+            return { ...nextState, ...filterAndSort(nextState) };
+        }),
 
         setSortOrder: (order) => set(state => ({ ...filterAndSort({ ...state, sortOrder: order }), sortOrder: order })),
         
@@ -3508,6 +3641,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     activeCollectionId,
                 };
             });
+            recomputeActiveStructuredSearch();
         },
         loadAutomationRules: async () => {
             const rules = await getAllAutomationRules();
@@ -3542,6 +3676,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     activeCollectionId: nextCollection.id,
                 };
             });
+            recomputeActiveStructuredSearch();
 
             return nextCollection;
         },
@@ -3647,6 +3782,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     state.images,
                 ),
             }));
+            recomputeActiveStructuredSearch();
 
             return nextCollection;
         },
@@ -3667,6 +3803,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     activeCollectionId,
                 };
             });
+            recomputeActiveStructuredSearch();
         },
         setActiveCollectionId: (collectionId) => set((state) => ({
             activeCollectionId: collectionId && state.collections.some((collection) => collection.id === collectionId)
@@ -3697,6 +3834,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             set((currentState) => ({
                 collections: syncCollectionCounts(persistedCollections, currentState.images),
             }));
+            recomputeActiveStructuredSearch();
         },
         addImagesToCollection: async (collectionId, imageIds) => {
             const collection = get().collections.find((entry) => entry.id === collectionId);
@@ -3711,6 +3849,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     state.images,
                 ),
             }));
+            recomputeActiveStructuredSearch();
             return nextCollection;
         },
         removeImagesFromCollection: async (collectionId, imageIds) => {
@@ -3726,6 +3865,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     state.images,
                 ),
             }));
+            recomputeActiveStructuredSearch();
             return nextCollection;
         },
         getCollectionById: (collectionId) => get().collections.find((collection) => collection.id === collectionId) ?? null,
@@ -4130,6 +4270,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 return { ...newState, ...filterAndSort(newState) };
             });
+            recomputeActiveStructuredSearch();
 
             if (queuedMetadataImports.length > 0) {
                 await get().importMetadataTags(queuedMetadataImports);
@@ -4163,6 +4304,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 return { ...newState, ...filterAndSort(newState) };
             });
+            recomputeActiveStructuredSearch();
 
             // Persist to IndexedDB (async, don't await)
             saveAnnotation(updatedAnnotation).catch(error => {
@@ -4204,6 +4346,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 return { ...newState, ...filterAndSort(newState) };
             });
+            recomputeActiveStructuredSearch();
 
             // Persist to IndexedDB
             bulkSaveAnnotations(updatedAnnotations).catch(error => {
@@ -4235,6 +4378,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 return { ...newState, ...filterAndSort(newState) };
             });
+            recomputeActiveStructuredSearch();
 
             saveAnnotation(updatedAnnotation).catch(error => {
                 console.error('Failed to save image rating:', error);
@@ -4273,6 +4417,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 return { ...newState, ...filterAndSort(newState) };
             });
+            recomputeActiveStructuredSearch();
 
             bulkSaveAnnotations(updatedAnnotations).catch(error => {
                 console.error('Failed to bulk save image ratings:', error);
@@ -4316,6 +4461,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 return { ...newState, ...filterAndSort(newState) };
             });
+            recomputeActiveStructuredSearch();
 
             persistRecentTags(nextRecentTags);
 
@@ -4725,21 +4871,37 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setSelectedTags: (tags) => set(state => {
             const newState = { ...state, selectedTags: tags };
+            if (newState.searchQuery.trim()) {
+                runAsyncSearchRecompute(newState);
+                return newState;
+            }
             return { ...newState, ...filterAndSort(newState) };
         }),
 
         setExcludedTags: (tags) => set(state => {
             const newState = { ...state, excludedTags: tags };
+            if (newState.searchQuery.trim()) {
+                runAsyncSearchRecompute(newState);
+                return newState;
+            }
             return { ...newState, ...filterAndSort(newState) };
         }),
 
         setSelectedTagsMatchMode: (mode) => set(state => {
             const newState = { ...state, selectedTagsMatchMode: mode };
+            if (newState.searchQuery.trim()) {
+                runAsyncSearchRecompute(newState);
+                return newState;
+            }
             return { ...newState, ...filterAndSort(newState) };
         }),
 
         setFavoriteFilterMode: (mode) => set(state => {
             const newState = { ...state, favoriteFilterMode: mode };
+            if (newState.searchQuery.trim()) {
+                runAsyncSearchRecompute(newState);
+                return newState;
+            }
             return { ...newState, ...filterAndSort(newState) };
         }),
 
@@ -4751,6 +4913,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 ...state,
                 selectedRatings: normalizedRatings,
             };
+            if (newState.searchQuery.trim()) {
+                runAsyncSearchRecompute(newState);
+                return newState;
+            }
             return { ...newState, ...filterAndSort(newState) };
         }),
 
@@ -4786,11 +4952,25 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         setSelectedAutoTags: (tags) => {
-            set(state => ({ ...filterAndSort({ ...state, selectedAutoTags: tags }), selectedAutoTags: tags }));
+            set(state => {
+                const newState = { ...state, selectedAutoTags: tags };
+                if (newState.searchQuery.trim()) {
+                    runAsyncSearchRecompute(newState);
+                    return newState;
+                }
+                return { ...newState, ...filterAndSort(newState) };
+            });
         },
 
         setExcludedAutoTags: (tags) => {
-            set(state => ({ ...filterAndSort({ ...state, excludedAutoTags: tags }), excludedAutoTags: tags }));
+            set(state => {
+                const newState = { ...state, excludedAutoTags: tags };
+                if (newState.searchQuery.trim()) {
+                    runAsyncSearchRecompute(newState);
+                    return newState;
+                }
+                return { ...newState, ...filterAndSort(newState) };
+            });
         },
 
         importMetadataTags: async (images) => {
@@ -4976,6 +5156,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             isAutomationRulesLoaded: false,
             activeCollectionId: null,
             searchQuery: '',
+            searchSortMode: 'relevance',
+            structuredSearchResult: EMPTY_STRUCTURED_SEARCH_RESULT,
             ...createEmptyFacetState(),
             selectedModels: [],
             excludedModels: [],

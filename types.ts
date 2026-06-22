@@ -800,6 +800,105 @@ export interface AdvancedFilters {
   vramPeakMb?: NumericRangeFilter;
 }
 
+export type SearchField =
+  | 'prompt'
+  | 'notes'
+  | 'tag'
+  | 'model'
+  | 'lora'
+  | 'collection'
+  | 'folder'
+  | 'source';
+
+export type SearchSource =
+  | 'comfyui'
+  | 'a1111'
+  | 'fooocus'
+  | 'forge'
+  | 'swarm'
+  | 'drawthings'
+  | 'invokeai'
+  | 'midjourney'
+  | 'other'
+  | 'unknown';
+
+export type SearchSortMode = 'relevance' | 'newest' | 'largest-batch';
+
+export interface SearchWarning {
+  code: 'unknown-field' | 'invalid-source' | 'invalid-date' | 'unsupported-parentheses';
+  message: string;
+  token: string;
+  suggestion?: string;
+}
+
+export interface ParsedSearchTerm {
+  value: string;
+  normalizedValue: string;
+  field?: SearchField;
+  phrase: boolean;
+  excluded: boolean;
+}
+
+export interface ParsedSearchGroup {
+  terms: ParsedSearchTerm[];
+}
+
+export interface ParsedSearchQuery {
+  raw: string;
+  groups: ParsedSearchGroup[];
+  after?: number;
+  before?: number;
+  warnings: SearchWarning[];
+}
+
+export interface SearchMatchReason {
+  field: SearchField | 'filename' | 'negativePrompt';
+  label: string;
+  value: string;
+  matchType: 'phrase' | 'exact' | 'prefix' | 'typo';
+  score: number;
+}
+
+export interface SearchImageResult {
+  imageId: string;
+  score: number;
+  reasons: SearchMatchReason[];
+}
+
+export interface SearchFacetItem {
+  value: string;
+  count: number;
+}
+
+export interface SearchFacetState {
+  models: SearchFacetItem[];
+  loras: SearchFacetItem[];
+  collections: SearchFacetItem[];
+  dates: SearchFacetItem[];
+  sessions: SearchFacetItem[];
+}
+
+export interface SearchSessionResult {
+  id: string;
+  title: string;
+  startTime: number;
+  endTime: number;
+  imageIds: string[];
+  matchedImageIds: string[];
+  imageResults: SearchImageResult[];
+  representativeImageId: string;
+  dominantModel?: string;
+  score: number;
+}
+
+export interface StructuredSearchResult {
+  sessions: SearchSessionResult[];
+  facets: SearchFacetState;
+  warnings: SearchWarning[];
+  matchedImageCount: number;
+  totalSessionImageCount: number;
+}
+
 export type SimilarSearchScope = 'current-view' | 'all-images' | 'same-folder';
 export type CheckpointMatchMode = 'ignore' | 'same' | 'different';
 

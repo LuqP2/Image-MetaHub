@@ -1,6 +1,7 @@
 import { IndexedImage } from '../types';
 import { formatLocalDateKey } from './dateFilterUtils';
 import { getImageAnalytics } from './imageMetadata';
+import { SESSION_GAP_MS } from './imageGrouping';
 
 export type PeriodPreset = '7days' | '30days' | '90days' | 'thisMonth' | 'all';
 
@@ -190,7 +191,6 @@ export function calculateAverageSessionGap(images: IndexedImage[]): number {
   const sorted = [...images].sort((a, b) => a.lastModified - b.lastModified);
 
   // Group images into sessions (images within 1 hour are same session)
-  const SESSION_GAP_MS = 60 * 60 * 1000; // 1 hour
   const sessionStarts: number[] = [];
   let currentSessionStart = sorted[0].lastModified;
   sessionStarts.push(currentSessionStart);
@@ -872,7 +872,6 @@ export interface AnalyticsExplorerData {
   };
 }
 
-const SESSION_GAP_MS = 60 * 60 * 1000;
 const RATING_VALUES = [1, 2, 3, 4, 5] as const;
 
 export const getImageGenerator = (image: IndexedImage): string => {

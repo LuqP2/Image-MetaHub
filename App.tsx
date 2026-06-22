@@ -40,6 +40,7 @@ import ComfyUIWorkspace from './components/ComfyUIWorkspace';
 import ImageEditorWorkspace from './components/ImageEditorWorkspace';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
+import StructuredSearchResults from './components/StructuredSearchResults';
 import BatchExportModal from './components/BatchExportModal';
 import CollectionFormModal, { CollectionFormValues } from './components/CollectionFormModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
@@ -262,6 +263,8 @@ export default function App() {
 
   // Filter state selectors
   const searchQuery = useImageStore((state) => state.searchQuery);
+  const searchSortMode = useImageStore((state) => state.searchSortMode);
+  const structuredSearchResult = useImageStore((state) => state.structuredSearchResult);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const excludedFolders = useImageStore((state) => state.excludedFolders);
   const addExcludedFolder = useImageStore((state) => state.addExcludedFolder);
@@ -310,6 +313,7 @@ export default function App() {
 
   // Action selectors
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
+  const setSearchSortMode = useImageStore((state) => state.setSearchSortMode);
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
   const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
   const setSelectedImage = useImageStore((state) => state.setSelectedImage);
@@ -2252,6 +2256,21 @@ export default function App() {
     handleImageSelection(image, event);
   }, [handleImageSelection, handleOpenImageModalInBackground]);
 
+  const handleStructuredSearchImageClick = useCallback((
+    image: IndexedImage,
+    event: React.MouseEvent,
+    sessionImages: IndexedImage[],
+  ) => {
+    setActiveImageScope(sessionImages);
+    handleGridImageClick(image, event);
+  }, [handleGridImageClick, setActiveImageScope]);
+
+  const handleAddStructuredQueryToken = useCallback((token: string) => {
+    const nextQuery = `${searchQuery.trim()} ${token}`.trim();
+    setSearchInputValue(nextQuery);
+    setSearchQuery(nextQuery);
+  }, [searchQuery, setSearchQuery]);
+
   const openBatchExportModal = useCallback((request: BatchExportRequestState | null = null) => {
     const isSingleImageExportRequest = (request?.imageIds?.length ?? 0) === 1;
 
@@ -3451,6 +3470,16 @@ export default function App() {
                     <div className="flex h-full items-center justify-center text-sm text-gray-500">
                       Loading folder...
                     </div>
+                  ) : searchQuery.trim() ? (
+                    <StructuredSearchResults
+                      result={structuredSearchResult}
+                      imagesById={imageLookup}
+                      selectedImages={safeSelectedImages}
+                      sortMode={searchSortMode}
+                      onSortModeChange={setSearchSortMode}
+                      onImageClick={handleStructuredSearchImageClick}
+                      onAddQueryToken={handleAddStructuredQueryToken}
+                    />
                   ) : displayImages.length === 0 ? (
                     <div className="flex h-full flex-col items-center justify-center p-8 text-center">
                       <div className="mb-4 rounded-full bg-gray-800 p-6 text-gray-500">
