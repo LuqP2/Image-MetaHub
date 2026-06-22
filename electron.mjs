@@ -4221,10 +4221,15 @@ function setupFileOperationHandlers() {
   // Handle show item in folder
   ipcMain.handle('show-item-in-folder', async (event, filePath) => {
     try {
-      // Allow opening any folder/file that the user has access to via the OS dialogs
-      // We removed the isPathAllowed check here because export destinations can be anywhere
-      
       const normalizedFilePath = path.normalize(filePath);
+
+      // --- SECURITY CHECK ---
+      if (!isAllowedOrInternal(normalizedFilePath) && !isApprovedWritePath(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to show item outside of allowed directories.');
+        return { success: false, error: 'Access denied: Cannot show items outside of the allowed directories.' };
+      }
+      // --- END SECURITY CHECK ---
+
       console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 
       // Verify the path exists before trying to open or show it
@@ -4262,6 +4267,12 @@ function setupFileOperationHandlers() {
   ipcMain.handle('open-cache-location', async (event, cachePath) => {
     try {
       const normalizedCachePath = path.normalize(cachePath);
+
+      if (!isInternalPath(normalizedCachePath)) {
+        console.error('SECURITY VIOLATION: Attempted to open cache location outside userData.');
+        return { success: false, error: 'Access denied: Cannot open cache location outside userData.' };
+      }
+
       const parentPath = path.dirname(normalizedCachePath);
       console.log('📂 Opening cache parent directory:', parentPath);
 
@@ -4429,6 +4440,13 @@ function setupFileOperationHandlers() {
       if (!dirPath) {
         return { success: false, error: 'No directory path provided' };
       }
+
+      // --- SECURITY CHECK ---
+      if (!isPathAllowed(dirPath)) {
+        console.error('SECURITY VIOLATION: Attempted to list files outside of allowed directories.');
+        return { success: false, error: 'Access denied: Cannot list files outside of the allowed directories.' };
+      }
+      // --- END SECURITY CHECK ---
 
       let imageFiles = [];
 
@@ -5120,7 +5138,15 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No destination directory provided.', exportedCount: 0, failedCount: 0 };
       }
 
-      await fs.mkdir(destDir, { recursive: true });
+      // --- SECURITY CHECK ---
+      const normalizedDestDir = path.normalize(destDir);
+      if (!isAllowedOrInternal(normalizedDestDir) && !isApprovedWritePath(normalizedDestDir)) {
+        console.error('SECURITY VIOLATION: Attempted to export to unapproved directory.');
+        return { success: false, error: 'Access denied: Cannot export to unapproved directories.', exportedCount: 0, failedCount: 0 };
+      }
+      // --- END SECURITY CHECK ---
+
+      await fs.mkdir(normalizedDestDir, { recursive: true });
       const usedNames = new Set();
       let exportedCount = 0;
       let failedCount = 0;
@@ -5179,7 +5205,7 @@ function setupFileOperationHandlers() {
             effectiveMetadata: file.effectiveMetadata,
           });
           const uniqueName = getUniqueName(artifact.fileName, usedNames);
-          const destPath = path.resolve(destDir, uniqueName);
+          const destPath = path.resolve(normalizedDestDir, uniqueName);
           await fs.writeFile(destPath, artifact.buffer);
           exportedCount += 1;
         } catch (error) {
@@ -5238,7 +5264,15 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No ZIP destination provided.', exportedCount: 0, failedCount: 0 };
       }
 
-      await fs.mkdir(path.dirname(destZipPath), { recursive: true });
+      // --- SECURITY CHECK ---
+      const normalizedDestZipPath = path.normalize(destZipPath);
+      if (!isAllowedOrInternal(normalizedDestZipPath) && !isApprovedWritePath(normalizedDestZipPath)) {
+        console.error('SECURITY VIOLATION: Attempted to export ZIP to unapproved directory.');
+        return { success: false, error: 'Access denied: Cannot export to unapproved directories.', exportedCount: 0, failedCount: 0 };
+      }
+      // --- END SECURITY CHECK ---
+
+      await fs.mkdir(path.dirname(normalizedDestZipPath), { recursive: true });
       const usedNames = new Set();
       let exportedCount = 0;
       let failedCount = 0;
@@ -5273,7 +5307,7 @@ function setupFileOperationHandlers() {
       };
       const isCanceled = () => progressId ? activeCanceledExportIds.has(progressId) : false;
 
-      const output = fsSync.createWriteStream(destZipPath);
+      const output = fsSync.createWriteStream(normalizedDestZipPath);
       const archive = archiver('zip', { zlib: { level: 9 } });
 
       const finalizePromise = new Promise((resolve, reject) => {
