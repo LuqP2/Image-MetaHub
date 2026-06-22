@@ -34,8 +34,6 @@ import { BaseMetadata, ComfyUIViewLoadFailure, ComfyUIViewState, Directory, Imag
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
-import { type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
-import ComfyUIWorkflowWorkspace from './ComfyUIWorkflowWorkspace';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useThumbnail } from '../hooks/useThumbnail';
@@ -677,7 +675,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const [viewState, setViewState] = useState<ComfyUIViewState>(DEFAULT_VIEW_STATE);
   const [loadFailure, setLoadFailure] = useState<ComfyUIViewLoadFailure | null>(null);
   const [connectionMessage, setConnectionMessage] = useState<string>('');
-  const [activeInspectorTab, setActiveInspectorTab] = useState<'image' | 'metadata' | 'workflow'>('image');
   const [workspacePreviewIndex, setWorkspacePreviewIndex] = useState<number | null>(null);
   const [assetContextMenu, setAssetContextMenu] = useState<WorkspaceAssetContextMenu>(null);
   const [inspectorContextMenu, setInspectorContextMenu] = useState<InspectorContextMenu>(null);
@@ -973,7 +970,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
     handledWorkflowLoadRequestIdRef.current = workflowLoadRequest.id;
     onWorkflowLoadRequestHandled?.(workflowLoadRequest.id);
-    setActiveInspectorTab('workflow');
     setConnectionMessage('Loading workflow in ComfyUI...');
     setLoadFailure(null);
 
@@ -1034,39 +1030,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     await generateWithComfyUI(image);
   };
 
-  const handleGenerateFromWorkspace = async (params: ComfyUIGenerationParams) => {
-    if (!image || !metadata) {
-      return;
-    }
-
-    const customMetadata: Partial<BaseMetadata> = {
-      prompt: params.prompt,
-      negativePrompt: params.negativePrompt,
-      cfg_scale: params.cfgScale,
-      steps: params.steps,
-      seed: params.randomSeed ? -1 : params.seed,
-      width: params.width,
-      height: params.height,
-      batch_size: params.numberOfImages,
-      model: params.model?.name || metadata.model,
-      ...(params.sampler ? { sampler: params.sampler } : {}),
-      ...(params.scheduler ? { scheduler: params.scheduler } : {}),
-    };
-
-    await generateWithComfyUI(image, {
-      customMetadata,
-      overrides: {
-        model: params.model || undefined,
-        loras: params.loras,
-      },
-      workflowMode: params.workflowMode,
-      sourceImagePolicy: params.sourceImagePolicy,
-      advancedPromptJson: params.advancedPromptJson,
-      advancedWorkflowJson: params.advancedWorkflowJson,
-      maskFile: params.maskFile,
-    });
-  };
-
   const beginPanelResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -1117,12 +1080,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     thumbRailResizeStateRef.current = null;
     void syncBounds();
   };
-
-  const inspectorTabs = [
-    { id: 'image' as const, label: 'Image', icon: ImageIcon },
-    { id: 'metadata' as const, label: 'Metadata', icon: Info },
-    { id: 'workflow' as const, label: 'Workflow', icon: Workflow },
-  ];
 
   const startImageFileDrag = useCallback((
     event: React.DragEvent<HTMLElement>,
@@ -1226,7 +1183,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
   const inspectWorkspaceImage = useCallback((nextImage: IndexedImage) => {
     onInspectImage?.(nextImage);
-    setActiveInspectorTab('metadata');
   }, [onInspectImage]);
 
   const openWorkspacePreview = useCallback((visibleIndex: number) => {
@@ -1375,7 +1331,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const openWorkflowInComfyUI = useCallback(async (contextImage: IndexedImage) => {
     setAssetContextMenu(null);
     inspectWorkspaceImage(contextImage);
-    setActiveInspectorTab('workflow');
     setConnectionMessage('Loading workflow in ComfyUI...');
     setLoadFailure(null);
 
@@ -1823,30 +1778,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-1 rounded-lg border border-gray-800 bg-gray-950/80 p-1">
-                {inspectorTabs.map((tab) => {
-                  const Icon = tab.icon;
-                  const isSelected = activeInspectorTab === tab.id;
-
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveInspectorTab(tab.id)}
-                      className={`inline-flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors ${
-                        isSelected
-                          ? 'bg-purple-500/20 text-purple-100'
-                          : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {activeInspectorTab === 'image' && (
-                <>
               <div className="overflow-hidden rounded-lg border border-gray-800 bg-gray-950">
                 {thumbnail?.thumbnailUrl ? (
                   <img
@@ -1895,8 +1826,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                   Open generation queue
                 </button>
               </div>
-                </>
-              )}
 
               {(copyStatus || generateStatus) && (
                 <div className={`rounded-md border px-3 py-2 text-xs ${
@@ -1914,8 +1843,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 </div>
               )}
 
-              {activeInspectorTab === 'metadata' && (
-                metadata ? (
+              {metadata ? (
                   <div className="space-y-3" onContextMenu={showInspectorSelectionContextMenu}>
                   <div className="grid grid-cols-2 gap-2">
                     <MetadataLine label="Model" value={metadata.model} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
@@ -1960,31 +1888,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                   <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-4 text-sm text-gray-400">
                     No normalized metadata is available for this image.
                   </div>
-                )
-              )}
-
-              {activeInspectorTab === 'workflow' && (
-                metadata ? (
-                <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3">
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Workflow controls
-                  </div>
-                  <ComfyUIWorkflowWorkspace
-                    image={image}
-                    directoryPath={directoryPath}
-                    onGenerate={handleGenerateFromWorkspace}
-                    isGenerating={isGenerating}
-                    status={generateStatus}
-                    defaultTab="parameters"
-                    viewportHeight={360}
-                    showCancelButton={false}
-                  />
-                </div>
-                ) : (
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-4 text-sm text-gray-400">
-                    Workflow controls need normalized generation metadata.
-                  </div>
-                )
               )}
             </div>
           )}
