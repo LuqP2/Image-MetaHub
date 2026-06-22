@@ -720,7 +720,7 @@ export function analyzeComfyWorkflow(source: IndexedImage | UnknownRecord, norma
       }
     }
 
-    if (classType === 'metahubsavenode' || classType === 'saveimage') {
+    if (classType === 'metahubsavenode' || classType === 'metahubsaveimage' || classType === 'saveimage') {
       saveNodeIds.push(nodeId);
     }
 

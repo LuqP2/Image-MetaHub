@@ -157,6 +157,36 @@ describe('ComfyUI workflow builder', () => {
     expect(analysis.saveNodeIds).toContain('7');
   });
 
+  it('recognizes the simple MetaHub save node without warning about injection', () => {
+    const prompt = {
+      ...rawPrompt,
+      '7': {
+        class_type: 'MetaHubSaveImage',
+        inputs: {
+          images: ['6', 0],
+        },
+      },
+    };
+    const image = createImage({
+      workflow: { nodes: [{ id: 7, type: 'MetaHubSaveImage', title: 'MetaHub Save Image' }] },
+      prompt,
+      normalizedMetadata: {
+        prompt: 'old positive',
+        model: 'base.safetensors',
+        width: 512,
+        height: 512,
+        steps: 20,
+      } as BaseMetadata,
+    });
+
+    const analysis = analyzeComfyWorkflow(image, image.metadata.normalizedMetadata as BaseMetadata);
+
+    expect(analysis.saveNodeIds).toContain('7');
+    expect(analysis.warnings).not.toContain(
+      'Workflow does not contain MetaHubSaveNode or SaveImage. A save node will be injected.'
+    );
+  });
+
   it('patches an original workflow and injects parent_image into extra_pnginfo', async () => {
     const image = createImage({
       workflow: { nodes: [{ id: 7, type: 'SaveImage', title: 'Save Image' }] },

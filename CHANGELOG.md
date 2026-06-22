@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.4] - [Unreleased]
+
+### Improved
+
+- **Filter Recovery**: Added a clearer empty state when filters return no images, with convenient Clear All actions beside active filters and in the results area.
+- **Accessibility and UI Feedback**: Improved visible keyboard focus across toolbar, search, rating, pagination, view, and queue controls, with smoother active-filter and rating interactions.
+- **Large Library Performance**: Reduced temporary allocations and repeated keyword processing in analytics, prompt similarity, and Smart Library clustering.
+- **ComfyUI Workflow Tools**: Simplified the Image Modal workflow experience around the embedded original workflow, combining parameters with the visual graph and adding a dedicated node list with editable parameters.
+- **ComfyUI Workflow Preview**: Enlarged the visual workflow canvas with an expandable view, opaque node cards, collision-aware positioning, draggable node arrangement, and a clear Restore Layout action.
+
+### Fixed
+
+- **Collections Grouping**: Fixed Group By inside open Collections so date, name, and generation-session grouping work in both grid and table views, including Jump To navigation.
+
 ## [0.17.3] - 2026-06-19
 
 ### Added
