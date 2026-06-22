@@ -40,7 +40,7 @@ import ComfyUIWorkspace from './components/ComfyUIWorkspace';
 import ImageEditorWorkspace from './components/ImageEditorWorkspace';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
-import StructuredSearchResults from './components/StructuredSearchResults';
+import StructuredSearchResults, { type SearchPresentationMode } from './components/StructuredSearchResults';
 import BatchExportModal from './components/BatchExportModal';
 import CollectionFormModal, { CollectionFormValues } from './components/CollectionFormModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
@@ -413,6 +413,12 @@ export default function App() {
   const [modelViewPage, setModelViewPage] = useState(1);
   const [pendingJumpGroupRequest, setPendingJumpGroupRequest] = useState<{ groupId: string; requestId: number } | null>(null);
   const [searchInputValue, setSearchInputValue] = useState(searchQuery);
+  const [searchPresentationMode, setSearchPresentationMode] = useState<SearchPresentationMode>('images');
+  const [activeSearchSessionScope, setActiveSearchSessionScope] = useState<{
+    sessionId: string;
+    mode: 'matches' | 'full';
+    imageIds: string[];
+  } | null>(null);
   const previousSearchQueryRef = useRef(searchQuery);
   const previousLibraryGridSignatureRef = useRef<string | null>(null);
   const previousCollectionsGridSignatureRef = useRef<string | null>(null);
@@ -1570,6 +1576,13 @@ export default function App() {
   }, [searchQuery]);
 
   useEffect(() => {
+    setActiveSearchSessionScope(null);
+    if (searchQuery.trim()) {
+      setSearchPresentationMode('images');
+    }
+  }, [searchQuery]);
+
+  useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       if (searchInputValue !== searchQuery) {
         startTransition(() => {
@@ -2256,20 +2269,31 @@ export default function App() {
     handleImageSelection(image, event);
   }, [handleImageSelection, handleOpenImageModalInBackground]);
 
-  const handleStructuredSearchImageClick = useCallback((
-    image: IndexedImage,
-    event: React.MouseEvent,
-    sessionImages: IndexedImage[],
-  ) => {
-    setActiveImageScope(sessionImages);
-    handleGridImageClick(image, event);
-  }, [handleGridImageClick, setActiveImageScope]);
-
   const handleAddStructuredQueryToken = useCallback((token: string) => {
     const nextQuery = `${searchQuery.trim()} ${token}`.trim();
     setSearchInputValue(nextQuery);
     setSearchQuery(nextQuery);
   }, [searchQuery, setSearchQuery]);
+
+  const handleOpenSearchSession = useCallback((
+    session: typeof structuredSearchResult.sessions[number],
+    mode: 'matches' | 'full',
+  ) => {
+    setActiveSearchSessionScope({
+      sessionId: session.id,
+      mode,
+      imageIds: mode === 'full' ? session.imageIds : session.matchedImageIds,
+    });
+    setSearchPresentationMode('images');
+    resetLibraryGridScrollPosition();
+    setCurrentPage(1);
+  }, [resetLibraryGridScrollPosition, structuredSearchResult.sessions]);
+
+  const handleClearSearchSessionScope = useCallback(() => {
+    setActiveSearchSessionScope(null);
+    resetLibraryGridScrollPosition();
+    setCurrentPage(1);
+  }, [resetLibraryGridScrollPosition]);
 
   const openBatchExportModal = useCallback((request: BatchExportRequestState | null = null) => {
     const isSingleImageExportRequest = (request?.imageIds?.length ?? 0) === 1;
@@ -2472,11 +2496,23 @@ export default function App() {
     return safeFilteredImages.filter((image) => filteredIds.has(image.id));
   }, [findSimilarGridFilter, safeFilteredImages]);
 
+  const searchSessionScopedImages = useMemo(() => {
+    if (!searchQuery.trim() || !activeSearchSessionScope) {
+      return null;
+    }
+
+    return activeSearchSessionScope.imageIds
+      .map((imageId) => imageLookup.get(imageId))
+      .filter((image): image is IndexedImage => Boolean(image));
+  }, [activeSearchSessionScope, imageLookup, searchQuery]);
+
   const displayImages =
     libraryView === 'collections'
       ? collectionFilteredImages
       : libraryView === 'node'
       ? nodeViewResultImages
+      : libraryView === 'library' && searchSessionScopedImages
+      ? searchSessionScopedImages
       : libraryView === 'library' && findSimilarFilteredImages
       ? findSimilarFilteredImages
       : safeFilteredImages;
@@ -2961,6 +2997,13 @@ export default function App() {
 
     setActiveImageScope(activeCollection ? collectionFilteredImages : null);
   }, [activeCollection, collectionFilteredImages, libraryView, setActiveImageScope]);
+
+  useEffect(() => {
+    if (libraryView !== 'library' || !searchQuery.trim()) {
+      return;
+    }
+    setActiveImageScope(searchSessionScopedImages);
+  }, [libraryView, searchQuery, searchSessionScopedImages, setActiveImageScope]);
 
   // --- Render Logic ---
   const paginatedImages = useMemo(
@@ -3471,15 +3514,73 @@ export default function App() {
                       Loading folder...
                     </div>
                   ) : searchQuery.trim() ? (
-                    <StructuredSearchResults
-                      result={structuredSearchResult}
-                      imagesById={imageLookup}
-                      selectedImages={safeSelectedImages}
-                      sortMode={searchSortMode}
-                      onSortModeChange={setSearchSortMode}
-                      onImageClick={handleStructuredSearchImageClick}
-                      onAddQueryToken={handleAddStructuredQueryToken}
-                    />
+                    <div className="flex h-full min-h-0 flex-col">
+                      <StructuredSearchResults
+                        result={structuredSearchResult}
+                        mode={searchPresentationMode}
+                        sortMode={searchSortMode}
+                        activeSessionScope={activeSearchSessionScope}
+                        onModeChange={(mode) => {
+                          setSearchPresentationMode(mode);
+                          if (mode === 'sessions') {
+                            setActiveSearchSessionScope(null);
+                          } else if (searchSortMode === 'largest-batch') {
+                            setSearchSortMode('relevance');
+                          }
+                        }}
+                        onSortModeChange={setSearchSortMode}
+                        onAddQueryToken={handleAddStructuredQueryToken}
+                        onOpenSession={handleOpenSearchSession}
+                        onClearSessionScope={handleClearSearchSessionScope}
+                      />
+                      {searchPresentationMode === 'images' && (
+                        <div className="min-h-0 flex-1">
+                          {displayImages.length === 0 ? (
+                            <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+                              <div className="mb-4 rounded-full bg-gray-800 p-6 text-gray-500">
+                                <Search size={48} strokeWidth={1.5} />
+                              </div>
+                              <h3 className="mb-2 text-xl font-semibold text-gray-200">No images match your search</h3>
+                              <p className="max-w-sm text-sm text-gray-400">
+                                Try a broader term or remove one of the active facets.
+                              </p>
+                            </div>
+                          ) : viewMode === 'grid' ? (
+                            <ImageGrid
+                              images={paginatedImages}
+                              onImageClick={handleGridImageClick}
+                              selectedImages={safeSelectedImages}
+                              currentPage={currentPage}
+                              totalPages={totalPages}
+                              onPageChange={setCurrentPage}
+                              onBatchExport={handleOpenBatchExport}
+                              onImageRenamed={handleImageRenamed}
+                              onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                              onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
+                              onOpenComfyUIWorkspace={(image) => openComfyUIWorkflowInWorkspace(image, displayImages)}
+                              groupBy="none"
+                              groupSortOrder={imageGroupingSortOrder}
+                              initialScrollTop={libraryGridScrollTopRef.current}
+                              onScrollPositionChange={handleLibraryGridScrollPositionChange}
+                              scrollResetKey={libraryGridSignature}
+                            />
+                          ) : (
+                            <ImageTable
+                              images={paginatedImages}
+                              onImageClick={handleGridImageClick}
+                              selectedImages={safeSelectedImages}
+                              onBatchExport={handleOpenBatchExport}
+                              onImageRenamed={handleImageRenamed}
+                              onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                              onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
+                              onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
+                              groupBy="none"
+                              groupSortOrder={imageGroupingSortOrder}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ) : displayImages.length === 0 ? (
                     <div className="flex h-full flex-col items-center justify-center p-8 text-center">
                       <div className="mb-4 rounded-full bg-gray-800 p-6 text-gray-500">

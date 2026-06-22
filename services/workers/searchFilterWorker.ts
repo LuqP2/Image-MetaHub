@@ -472,7 +472,21 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
   const matchedResults = criteria.searchQuery.trim()
     ? results.filter((image) => matchedIds.has(image.id))
     : results;
-  const sorted = [...matchedResults].sort((left, right) => compareImages(left, right, criteria.sortOrder, criteria.randomSeed));
+  const imageScoreById = new Map(
+    structuredSearch.sessions.flatMap((session) =>
+      session.imageResults.map((result) => [result.imageId, result.score] as const)
+    ),
+  );
+  const sorted = [...matchedResults].sort((left, right) => {
+    if (criteria.searchQuery.trim() && criteria.searchSortMode === 'relevance') {
+      const scoreDifference = (imageScoreById.get(right.id) ?? 0) - (imageScoreById.get(left.id) ?? 0);
+      if (scoreDifference !== 0) return scoreDifference;
+    }
+    if (criteria.searchQuery.trim() && criteria.searchSortMode === 'newest') {
+      return right.lastModified - left.lastModified || left.id.localeCompare(right.id);
+    }
+    return compareImages(left, right, criteria.sortOrder, criteria.randomSeed);
+  });
 
   return {
     filteredIds: sorted.map(image => image.id),

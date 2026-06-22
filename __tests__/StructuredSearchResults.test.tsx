@@ -2,23 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import StructuredSearchResults from '../components/StructuredSearchResults';
-import type { IndexedImage, StructuredSearchResult } from '../types';
-
-vi.mock('../hooks/useResolvedThumbnail', () => ({
-  useResolvedThumbnail: () => null,
-}));
-
-const image = (id: string): IndexedImage => ({
-  id,
-  name: `${id}.png`,
-  handle: {} as FileSystemFileHandle,
-  metadata: {},
-  metadataString: '',
-  lastModified: 1000,
-  models: [],
-  loras: [],
-  scheduler: '',
-});
+import type { StructuredSearchResult } from '../types';
 
 const result: StructuredSearchResult = {
   sessions: [{
@@ -56,23 +40,28 @@ const result: StructuredSearchResult = {
 };
 
 describe('StructuredSearchResults', () => {
-  it('shows session counts and expands the full batch with match highlighting', () => {
+  it('keeps images as a first-class mode and opens session scopes in the standard grid', () => {
+    const onOpenSession = vi.fn();
     render(
       <StructuredSearchResults
         result={result}
-        imagesById={new Map([['match', image('match')], ['context', image('context')]])}
-        selectedImages={new Set()}
+        mode="sessions"
         sortMode="relevance"
+        activeSessionScope={null}
+        onModeChange={vi.fn()}
         onSortModeChange={vi.fn()}
-        onImageClick={vi.fn()}
         onAddQueryToken={vi.fn()}
+        onOpenSession={onOpenSession}
+        onClearSessionScope={vi.fn()}
       />,
     );
 
-    expect(screen.getByText('1 matches of 2 images')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /view batch/i }));
-    expect(screen.getByText('Full session context; matched images are highlighted')).toBeTruthy();
-    expect(screen.getAllByText('Match')).toHaveLength(2);
+    expect(screen.getByText('1 matches · 2 images')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /open matches/i }));
+    expect(onOpenSession).toHaveBeenCalledWith(result.sessions[0], 'matches');
+    fireEvent.click(screen.getByRole('button', { name: /open full session/i }));
+    expect(onOpenSession).toHaveBeenCalledWith(result.sessions[0], 'full');
+    expect(screen.queryByText(/full session context/i)).toBeNull();
   });
 
   it('adds structured facet tokens', () => {
@@ -80,12 +69,14 @@ describe('StructuredSearchResults', () => {
     render(
       <StructuredSearchResults
         result={result}
-        imagesById={new Map([['match', image('match')], ['context', image('context')]])}
-        selectedImages={new Set()}
+        mode="images"
         sortMode="relevance"
+        activeSessionScope={null}
+        onModeChange={vi.fn()}
         onSortModeChange={vi.fn()}
-        onImageClick={vi.fn()}
         onAddQueryToken={onAddQueryToken}
+        onOpenSession={vi.fn()}
+        onClearSessionScope={vi.fn()}
       />,
     );
 
