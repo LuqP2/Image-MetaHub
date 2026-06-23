@@ -515,6 +515,7 @@ const WorkspaceImagePreviewModal: React.FC<{
           }
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
+            event.stopPropagation();
             handleMetadataPanelClick();
           }
         }}
