@@ -16,3 +16,6 @@
 ## 2024-05-25 - Optimizing Cohort Analytics
 **Learning:** Computing cohort aggregates using chained `.filter()` or `.reduce()` for each property (favorites, ratings, telemetry) creates multiple $O(N)$ passes and redundant intermediate arrays.
 **Action:** When calculating cohort statistics, consolidate all property aggregations into a single $O(N)$ `for` loop that updates local variables, significantly reducing array allocations and improving speed for large datasets.
+## 2024-05-25 - Avoid Spread Syntax in Min/Max Calculations
+**Learning:** Using `Math.min(...array.map())` and `Math.max(...array.map())` with large arrays causes two issues: First, the spread syntax pushes every array element onto the call stack, leading to a `RangeError: Maximum call stack size exceeded` crash for arrays larger than ~10,000 elements. Second, the `map` call allocates an unnecessary intermediate array, adding GC pressure.
+**Action:** Replace `Math.min(...array)` and `Math.max(...array)` with a standard $O(N)$ `for` loop that iterates over the collection and updates a local min/max tracker. This prevents stack overflows and removes intermediate array allocations.

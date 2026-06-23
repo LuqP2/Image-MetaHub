@@ -299,10 +299,23 @@ const scheduleEditedImageCacheUpsert = (
 };
 
 const boundsFromPoints = (points: Array<{ x: number; y: number }>): ImageEditorObject['bounds'] => {
-  const minX = Math.min(...points.map((point) => point.x));
-  const minY = Math.min(...points.map((point) => point.y));
-  const maxX = Math.max(...points.map((point) => point.x));
-  const maxY = Math.max(...points.map((point) => point.y));
+  if (points.length === 0) {
+    return { x: 0, y: 0, width: 1, height: 1 };
+  }
+
+  let minX = points[0].x;
+  let minY = points[0].y;
+  let maxX = points[0].x;
+  let maxY = points[0].y;
+
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i];
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+
   return {
     x: minX,
     y: minY,
@@ -1404,10 +1417,16 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     commitDocument((current) => {
       const objects = current.objects.map((object) => ({ ...object }));
       const target = objects.find((object) => object.id === selectedObject.id);
-      if (!target) return current;
-      const zValues = objects.map((object) => object.zIndex);
-      const min = Math.min(...zValues);
-      const max = Math.max(...zValues);
+      if (!target || objects.length === 0) return current;
+
+      let min = objects[0].zIndex;
+      let max = objects[0].zIndex;
+      for (let i = 1; i < objects.length; i++) {
+        const z = objects[i].zIndex;
+        if (z < min) min = z;
+        if (z > max) max = z;
+      }
+
       target.zIndex = direction === 'front'
         ? max + 1
         : direction === 'back'
