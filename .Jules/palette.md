@@ -4,3 +4,7 @@
 
 **Learning:** Keyboard shortcut hints for global actions (like `/` for search) are highly beneficial for power users but should be hidden on mobile viewports (`hidden sm:inline-flex`) where hardware shortcuts are typically unavailable.
 **Action:** Always include responsive visibility constraints for desktop-specific shortcut indicators.
+
+## 2026-06-23 - Keyboard Accessibility for Custom Buttons
+**Learning:** Custom interactive elements with `role="button"` and `tabIndex={0}` are reachable by keyboard navigation, but they do not automatically handle `Enter` or `Space` keystrokes like native `<button>` elements do.
+**Action:** When creating custom buttons using `<div>` or `<span>`, always remember to attach an `onKeyDown` listener that checks for `event.key === 'Enter' || event.key === ' '`, calls `event.preventDefault()` to stop page scrolling, and triggers the same click handler.

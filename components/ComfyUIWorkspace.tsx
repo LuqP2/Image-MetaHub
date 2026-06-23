@@ -509,6 +509,12 @@ const WorkspaceImagePreviewModal: React.FC<{
         }`}
         onMouseDown={(event) => event.stopPropagation()}
         onClick={handleMetadataPanelClick}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            handleMetadataPanelClick();
+          }
+        }}
         tabIndex={0}
         role="button"
         aria-label="Toggle metadata"
