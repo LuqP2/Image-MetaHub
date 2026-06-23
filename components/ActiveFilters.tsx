@@ -24,6 +24,14 @@ interface ActiveFiltersProps {
   onClearAll?: () => void;
 }
 
+const CHIP_ANIMATION = {
+  layout: true,
+  initial: { opacity: 0, scale: 0.8 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 0.8 },
+  transition: { duration: 0.15 }
+};
+
 const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
   const selectedModels = useImageStore((state) => state.selectedModels);
   const excludedModels = useImageStore((state) => state.excludedModels);
@@ -110,7 +118,7 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
       <div className="flex flex-wrap gap-2">
         <AnimatePresence mode="popLayout">
         {searchQuery && (
-          <motion.div layout initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} className={`${chipClass} border-gray-700 bg-gray-800/70 text-gray-200`}>
+          <motion.div key="filter-search" {...CHIP_ANIMATION} className={`${chipClass} border-gray-700 bg-gray-800/70 text-gray-200`}>
             <span className="opacity-70">Search</span>
             <span className="max-w-[180px] truncate">"{searchQuery}"</span>
             <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" title="Clear search filter" className="rounded p-0.5 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
@@ -120,132 +128,132 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         )}
 
         {favoriteFilterMode === 'include' && (
-          <div className={`${chipClass} border-yellow-700/50 bg-yellow-950/50 text-yellow-200`}>
+          <motion.div key="filter-fav-include" {...CHIP_ANIMATION} className={`${chipClass} border-yellow-700/50 bg-yellow-950/50 text-yellow-200`}>
             <Heart size={12} className="fill-current" />
             <span>Favorites only</span>
             <button onClick={() => setFavoriteFilterMode('neutral')} aria-label="Remove favorites only filter" title="Remove favorites only filter" className="rounded p-0.5 hover:bg-yellow-900/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {favoriteFilterMode === 'exclude' && (
-          <div className={`${chipClass} border-rose-700/50 bg-rose-950/50 text-rose-200`}>
+          <motion.div key="filter-fav-exclude" {...CHIP_ANIMATION} className={`${chipClass} border-rose-700/50 bg-rose-950/50 text-rose-200`}>
             <Heart size={12} />
             <span>Exclude favorites</span>
             <button onClick={() => setFavoriteFilterMode('neutral')} aria-label="Remove exclude favorites filter" title="Remove exclude favorites filter" className="rounded p-0.5 hover:bg-rose-900/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {selectedRatings.map((rating) => (
-          <div key={`rating-${rating}`} className={`${chipClass} border-gray-700 bg-gray-900/70 text-gray-200`}>
+          <motion.div key={`rating-${rating}`} {...CHIP_ANIMATION} className={`${chipClass} border-gray-700 bg-gray-900/70 text-gray-200`}>
             <RatingValueIcons value={rating} size={11} starClassName="fill-current" />
             <button onClick={() => setSelectedRatings(selectedRatings.filter((value) => value !== rating))} aria-label={`Remove rating ${rating} filter`} title={`Remove rating ${rating} filter`} className="rounded p-0.5 hover:bg-gray-800">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         ))}
 
         {advancedFilters?.hasVerifiedTelemetry && (
-          <div className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
+          <motion.div key="filter-verified" {...CHIP_ANIMATION} className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
             <CheckCircle size={12} />
             <span>Verified metrics</span>
             <button onClick={() => removeAdvancedFilter('hasVerifiedTelemetry')} aria-label="Remove verified metrics filter" title="Remove verified metrics filter" className="rounded p-0.5 hover:bg-emerald-900/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {advancedFilters?.telemetryState === 'present' && (
-          <div className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
+          <motion.div key="filter-telemetry-present" {...CHIP_ANIMATION} className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
             <CheckCircle size={12} />
             <span>Has telemetry</span>
             <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label="Remove has telemetry filter" title="Remove has telemetry filter" className="rounded p-0.5 hover:bg-cyan-900/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {advancedFilters?.telemetryState === 'missing' && (
-          <div className={`${chipClass} border-gray-700/50 bg-gray-900/70 text-gray-200`}>
+          <motion.div key="filter-telemetry-missing" {...CHIP_ANIMATION} className={`${chipClass} border-gray-700/50 bg-gray-900/70 text-gray-200`}>
             <CheckCircle size={12} />
             <span>Missing telemetry</span>
             <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label="Remove missing telemetry filter" title="Remove missing telemetry filter" className="rounded p-0.5 hover:bg-gray-800/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {advancedFilters?.dimension && (
-          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+          <motion.div key="filter-dimension" {...CHIP_ANIMATION} className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />
             <span>{advancedFilters.dimension}</span>
             <button onClick={() => removeAdvancedFilter('dimension')} aria-label="Remove dimension filter" title="Remove dimension filter" className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {advancedFilters?.steps && (
-          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+          <motion.div key="filter-steps" {...CHIP_ANIMATION} className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('Steps', advancedFilters.steps)}</span>
             <button onClick={() => removeAdvancedFilter('steps')} aria-label="Remove steps filter" title="Remove steps filter" className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {advancedFilters?.cfg && (
-          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+          <motion.div key="filter-cfg" {...CHIP_ANIMATION} className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('CFG', advancedFilters.cfg)}</span>
             <button onClick={() => removeAdvancedFilter('cfg')} aria-label="Remove CFG filter" title="Remove CFG filter" className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {advancedFilters?.date && (
-          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+          <motion.div key="filter-date" {...CHIP_ANIMATION} className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Calendar size={12} />
             <span>{advancedFilters.date.from || '...'} - {advancedFilters.date.to || '...'}</span>
             <button onClick={() => removeAdvancedFilter('date')} aria-label="Remove date filter" title="Remove date filter" className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {advancedFilters?.generationTimeMs && (
-          <div className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
+          <motion.div key="filter-gentime" {...CHIP_ANIMATION} className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('Gen time', advancedFilters.generationTimeMs, 'ms')}</span>
             <button onClick={() => removeAdvancedFilter('generationTimeMs')} aria-label="Remove generation time filter" title="Remove generation time filter" className="rounded p-0.5 hover:bg-emerald-900/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {advancedFilters?.stepsPerSecond && (
-          <div className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
+          <motion.div key="filter-speed" {...CHIP_ANIMATION} className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('Speed', advancedFilters.stepsPerSecond, ' it/s')}</span>
             <button onClick={() => removeAdvancedFilter('stepsPerSecond')} aria-label="Remove speed filter" title="Remove speed filter" className="rounded p-0.5 hover:bg-cyan-900/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {advancedFilters?.vramPeakMb && (
-          <div className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
+          <motion.div key="filter-vram" {...CHIP_ANIMATION} className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('VRAM', advancedFilters.vramPeakMb, ' MB')}</span>
             <button onClick={() => removeAdvancedFilter('vramPeakMb')} aria-label="Remove VRAM filter" title="Remove VRAM filter" className="rounded p-0.5 hover:bg-cyan-900/70">
               <X size={12} />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {selectedModels.map((value) => (
@@ -327,7 +335,7 @@ const toneClasses: Record<FacetChipProps['tone'], string> = {
 };
 
 const FacetChip: React.FC<FacetChipProps> = ({ label, value, tone, onRemove }) => (
-  <motion.div layout initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium ${toneClasses[tone]}`}>
+  <motion.div key={`${label}-${value}`} {...CHIP_ANIMATION} className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium ${toneClasses[tone]}`}>
     <span className="opacity-70">{label}</span>
     <span className="max-w-[180px] truncate">{value}</span>
     <button onClick={onRemove} aria-label={`Remove ${label} filter`} title={`Remove ${label} filter`} className="rounded p-0.5 hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
