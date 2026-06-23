@@ -536,27 +536,41 @@ export function calculatePerformanceAverages(images: IndexedImage[]): Performanc
   let speedCount = 0;
   let vramCount = 0;
   let timeCount = 0;
+  let imagesWithTelemetry = 0;
 
-  images.forEach((img) => {
+  // Optimization: Single-pass O(N) loop to calculate all performance metrics.
+  // Impact: Eliminates redundant O(N) traversal and intermediate array allocation from .filter().
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i];
     const analytics = getImageAnalytics(img);
 
     if (analytics) {
+      let hasAnyTelemetry = false;
+
       if (typeof analytics.steps_per_second === 'number' && analytics.steps_per_second > 0) {
         totalSpeed += analytics.steps_per_second;
         speedCount++;
+        hasAnyTelemetry = true;
       }
       if (typeof analytics.vram_peak_mb === 'number' && analytics.vram_peak_mb > 0) {
         totalVram += analytics.vram_peak_mb;
         vramCount++;
+        hasAnyTelemetry = true;
       }
       if (typeof analytics.generation_time_ms === 'number' && analytics.generation_time_ms > 0) {
         totalTime += analytics.generation_time_ms;
         timeCount++;
+        hasAnyTelemetry = true;
+      }
+      if (!hasAnyTelemetry && typeof analytics.gpu_device === 'string' && analytics.gpu_device.trim().length > 0) {
+        hasAnyTelemetry = true;
+      }
+
+      if (hasAnyTelemetry) {
+        imagesWithTelemetry++;
       }
     }
-  });
-
-  const imagesWithTelemetry = images.filter((image) => hasTelemetryData(image)).length;
+  }
 
   return {
     avgStepsPerSecond: speedCount > 0 ? totalSpeed / speedCount : 0,
@@ -581,11 +595,13 @@ export function calculatePerformanceByGPU(images: IndexedImage[]): GPUPerformanc
     timeCount: number;
   }>();
 
-  images.forEach((img) => {
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i];
     const analytics = getImageAnalytics(img);
 
     if (analytics?.gpu_device && typeof analytics.gpu_device === 'string') {
-      const stats = gpuStats.get(analytics.gpu_device) || {
+      const gpuName = analytics.gpu_device;
+      const stats = gpuStats.get(gpuName) || {
         totalTime: 0,
         totalSpeed: 0,
         totalVram: 0,
@@ -607,23 +623,24 @@ export function calculatePerformanceByGPU(images: IndexedImage[]): GPUPerformanc
         stats.vramCount++;
       }
 
-      gpuStats.set(analytics.gpu_device, stats);
+      gpuStats.set(gpuName, stats);
     }
-  });
+  }
 
-  return Array.from(gpuStats.entries())
-    .map(([gpu, stats]) => {
-      const count = Math.max(stats.speedCount, stats.vramCount, stats.timeCount);
-      return {
-        name: gpu,
-        shortName: truncateName(gpu, 25),
-        avgSpeed: stats.speedCount > 0 ? stats.totalSpeed / stats.speedCount : 0,
-        avgVram: stats.vramCount > 0 ? stats.totalVram / stats.vramCount / 1024 : 0, // Convert to GB
-        avgTime: stats.timeCount > 0 ? stats.totalTime / stats.timeCount / 1000 : 0, // Convert to seconds
-        count,
-      };
-    })
-    .sort((a, b) => b.count - a.count);
+  const result: GPUPerformanceStats[] = [];
+  for (const [gpu, stats] of gpuStats.entries()) {
+    const count = Math.max(stats.speedCount, stats.vramCount, stats.timeCount);
+    result.push({
+      name: gpu,
+      shortName: truncateName(gpu, 25),
+      avgSpeed: stats.speedCount > 0 ? stats.totalSpeed / stats.speedCount : 0,
+      avgVram: stats.vramCount > 0 ? stats.totalVram / stats.vramCount / 1024 : 0, // Convert to GB
+      avgTime: stats.timeCount > 0 ? stats.totalTime / stats.timeCount / 1000 : 0, // Convert to seconds
+      count,
+    });
+  }
+
+  return result.sort((a, b) => b.count - a.count);
 }
 
 /**
@@ -922,18 +939,19 @@ const collectFacetItems = (
 ): AnalyticsFacetItem[] => {
   const stats = new Map<string, { count: number; favorites: number; ratingTotal: number; ratingCount: number }>();
 
-  images.forEach((image) => {
+  for (let i = 0; i < images.length; i++) {
+    const image = images[i];
     const rawKeys = getKeys(image);
     const uniqueKeys = new Set<string>();
 
-    for (let i = 0; i < rawKeys.length; i++) {
-      const normalized = normalizeItemName(rawKeys[i]);
+    for (let j = 0; j < rawKeys.length; j++) {
+      const normalized = normalizeItemName(rawKeys[j]);
       if (normalized) {
         uniqueKeys.add(normalized);
       }
     }
 
-    uniqueKeys.forEach((key) => {
+    for (const key of uniqueKeys) {
       const entry = stats.get(key) || { count: 0, favorites: 0, ratingTotal: 0, ratingCount: 0 };
       entry.count += 1;
       if (image.isFavorite) {
@@ -944,13 +962,14 @@ const collectFacetItems = (
         entry.ratingCount += 1;
       }
       stats.set(key, entry);
-    });
-  });
+    }
+  }
 
   const totalImages = images.length || 1;
+  const result: AnalyticsFacetItem[] = [];
 
-  return Array.from(stats.entries())
-    .map(([key, value]) => ({
+  for (const [key, value] of stats.entries()) {
+    result.push({
       key,
       label: key,
       count: value.count,
@@ -959,7 +978,10 @@ const collectFacetItems = (
       keeperRate: value.count > 0 ? value.favorites / value.count : 0,
       averageRating: value.ratingCount > 0 ? value.ratingTotal / value.ratingCount : 0,
       ratingCount: value.ratingCount,
-    }))
+    });
+  }
+
+  return result
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
     .slice(0, limit);
 };
@@ -967,14 +989,17 @@ const collectFacetItems = (
 const buildTimelinePoints = (images: IndexedImage[]): AnalyticsTimelinePoint[] => {
   const counts = new Map<string, number>();
 
-  images.forEach((image) => {
-    const key = formatLocalDateKey(image.lastModified);
+  for (let i = 0; i < images.length; i++) {
+    const key = formatLocalDateKey(images[i].lastModified);
     counts.set(key, (counts.get(key) || 0) + 1);
-  });
+  }
 
-  return Array.from(counts.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([key, count]) => ({ key, label: key, count }));
+  const result: AnalyticsTimelinePoint[] = [];
+  for (const [key, count] of counts.entries()) {
+    result.push({ key, label: key, count });
+  }
+
+  return result.sort((a, b) => a.key.localeCompare(b.key));
 };
 
 const buildSessions = (images: IndexedImage[], limit = 8): AnalyticsSession[] => {
@@ -1323,8 +1348,10 @@ export const buildAnalyticsExplorerData = ({
       favoriteRate: totalImages > 0 ? favoritesCount / totalImages : 0,
       unratedCount,
       ratingDistribution,
-      keeperModels: collectFacetItems(scopeImages, (image) => image.models || [], 8),
-      keeperLoras: collectFacetItems(scopeImages, getImageLoraNames, 8),
+      // Optimization: Reuse pre-calculated facets to avoid redundant O(N) traversals.
+      // Impact: Saves two full library passes by leveraging already computed models and loras.
+      keeperModels: models.slice(0, 8),
+      keeperLoras: loras.slice(0, 8),
     },
   };
 
