@@ -7,6 +7,7 @@ import { A1111ApiClient } from '../services/a1111ApiClient';
 import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
 import { buildProLicenseUrl } from '../utils/creatorAttribution';
+import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
 
 type LibraryView = 'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor';
 
@@ -17,6 +18,7 @@ interface HeaderProps {
     onGeneratorSetupNeeded?: () => void;
     libraryView?: LibraryView;
     onLibraryViewChange?: (view: LibraryView) => void;
+    onOpenDroppedImageInComfyUI?: (imageId: string) => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -25,7 +27,8 @@ const Header: React.FC<HeaderProps> = ({
     onOpenLicense, 
     onGeneratorSetupNeeded,
     libraryView,
-    onLibraryViewChange
+    onLibraryViewChange,
+    onOpenDroppedImageInComfyUI,
 }) => {
   const {
     canUseAnalytics,
@@ -79,6 +82,7 @@ const Header: React.FC<HeaderProps> = ({
     [generatorLaunchCommand]
   );
   const [isLaunchingGenerator, setIsLaunchingGenerator] = useState(false);
+  const [isComfyUIDragTarget, setIsComfyUIDragTarget] = useState(false);
   const launchPollingDeadlineRef = useRef<number | null>(null);
   const relevantServerUrl =
     detectedGenerator.runtimeFamily === 'comfyui'
@@ -369,11 +373,52 @@ const Header: React.FC<HeaderProps> = ({
                 {viewTabs.map((tab) => {
                   const Icon = 'icon' in tab ? tab.icon : null;
                   const count = 'count' in tab ? tab.count : null;
+                  const isComfyUITab = tab.id === 'comfyui';
                   return (
                     <button
                       key={tab.id}
                       onClick={() => handleViewTabClick(tab.id)}
-                      className={`app-top-segment whitespace-nowrap ${libraryView === tab.id ? 'app-top-segment-active' : ''}`}
+                      onDragEnter={isComfyUITab ? (event) => {
+                        if (hasInternalImageDragType(event.dataTransfer)) {
+                          event.preventDefault();
+                          setIsComfyUIDragTarget(true);
+                        }
+                      } : undefined}
+                      onDragOver={isComfyUITab ? (event) => {
+                        if (hasInternalImageDragType(event.dataTransfer)) {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = 'copy';
+                        }
+                      } : undefined}
+                      onDragLeave={isComfyUITab ? (event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                          setIsComfyUIDragTarget(false);
+                        }
+                      } : undefined}
+                      onDrop={isComfyUITab ? (event) => {
+                        event.preventDefault();
+                        setIsComfyUIDragTarget(false);
+                        const imageId = getInternalImageDragId(event.dataTransfer);
+                        if (!imageId) {
+                          clearInternalImageDragData();
+                          return;
+                        }
+                        if (!canUseComfyUI) {
+                          showProModal('comfyui');
+                          clearInternalImageDragData();
+                          return;
+                        }
+                        onOpenDroppedImageInComfyUI?.(imageId);
+                        clearInternalImageDragData();
+                      } : undefined}
+                      className={`app-top-segment whitespace-nowrap ${
+                        libraryView === tab.id ? 'app-top-segment-active' : ''
+                      } ${
+                        isComfyUITab && isComfyUIDragTarget
+                          ? 'ring-2 ring-cyan-400 bg-cyan-500/25 text-cyan-100'
+                          : ''
+                      }`}
+                      title={isComfyUITab ? 'Open ComfyUI, or drop an image here to load its workflow' : undefined}
                     >
                       {Icon && <Icon size={14} />}
                       <span>{tab.label}</span>
