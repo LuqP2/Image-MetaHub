@@ -30,6 +30,7 @@ import type {
   BaseMetadata,
   ImageEditCropAspect,
   ImageEditorDocument,
+  ImageEditorMode,
   ImageEditorObject,
   ImageEditorObjectStyle,
   ImageEditorTool,
@@ -65,6 +66,7 @@ interface ImageEditorWorkspaceProps {
   image: IndexedImage;
   navigationImages?: IndexedImage[];
   directoryPath?: string;
+  initialMode?: ImageEditorMode;
   onBack: () => void;
   onOpenComfyUIWorkflow?: (image: IndexedImage) => void;
 }
@@ -633,12 +635,14 @@ const PixelatePreview: React.FC<{
 const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   image,
   directoryPath,
+  initialMode = 'edit',
   onBack,
   onOpenComfyUIWorkflow,
 }) => {
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [sourceReady, setSourceReady] = useState(false);
   const [documentState, setDocumentState] = useState<ImageEditorDocument | null>(null);
+  const [editorMode, setEditorMode] = useState<ImageEditorMode>(initialMode);
   const [activeTool, setActiveTool] = useState<ImageEditorTool>('select');
   const [activeStyle, setActiveStyle] = useState<ImageEditorObjectStyle>(DEFAULT_IMAGE_EDITOR_OBJECT_STYLE);
   const [history, setHistory] = useState<HistoryState>({ past: [], future: [] });
@@ -708,6 +712,10 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const selectedObject = normalizedDocument?.objects.find((object) => normalizedDocument.selectedObjectIds.includes(object.id)) || null;
   const canOverwrite = getFileExtension(image.name) === '.png';
   const displayWidth = Math.max(160, Math.round(1080 * zoom));
+
+  useEffect(() => {
+    setEditorMode(initialMode);
+  }, [image.id, initialMode]);
 
   useEffect(() => {
     if (!normalizedDocument) {
@@ -2219,9 +2227,12 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{image.name}</div>
+            <div className="truncate text-sm font-semibold">
+              {editorMode === 'generation-prep' ? 'Prepare for Generation' : image.name}
+            </div>
             <div className="text-xs text-gray-500">
               {activeOutputDimensions?.width || normalizedDocument.canvasDimensions.width}x{activeOutputDimensions?.height || normalizedDocument.canvasDimensions.height}
+              {editorMode === 'generation-prep' ? ` · ${image.name}` : ''}
               {hasChanges ? ' · Unsaved edits' : ' · Clean'}
             </div>
           </div>
