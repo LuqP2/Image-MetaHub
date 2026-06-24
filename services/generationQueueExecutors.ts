@@ -227,7 +227,11 @@ export async function executeComfyUIQueueJob(
     sourceImagePolicy: payload?.sourceImagePolicy,
     advancedPromptJson: payload?.advancedPromptJson,
     advancedWorkflowJson: payload?.advancedWorkflowJson,
+    preparedImageFile: payload?.preparedImageFile || null,
     maskFile: payload?.maskFile || null,
+    generationIntent: payload?.generationIntent,
+    denoise: payload?.denoise,
+    sourceImageReference: payload?.sourceImageReference,
   });
 
   const result = await client.queuePrompt(prepared.workflow);

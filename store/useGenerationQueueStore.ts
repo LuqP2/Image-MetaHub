@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { BaseMetadata } from '../types';
+import { BaseMetadata, GenerationPrepIntent, SourceImageReference } from '../types';
 import { WorkflowOverrides } from '../services/comfyUIApiClient';
 import { ComfyUISourceImagePolicy, ComfyUIWorkflowMode } from '../services/comfyUIWorkflowBuilder';
 
@@ -22,7 +22,11 @@ export type ComfyUIQueuePayload = {
   sourceImagePolicy?: ComfyUISourceImagePolicy;
   advancedPromptJson?: string;
   advancedWorkflowJson?: string;
+  preparedImageFile?: File | null;
   maskFile?: File | null;
+  generationIntent?: GenerationPrepIntent;
+  denoise?: number;
+  sourceImageReference?: SourceImageReference;
 };
 
 export type GenerationQueuePayload = A1111QueuePayload | ComfyUIQueuePayload;
