@@ -571,19 +571,34 @@ const SUPPORTED_MEDIA_EXTENSION_REGEX = new RegExp(
 );
 
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
+  const [copied, setCopied] = useState(false);
+
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
     return null;
   }
 
   const displayValue = Array.isArray(value) ? value.join(', ') : String(value);
 
+  const handleCopy = () => {
+    if (onCopy) {
+      onCopy(displayValue);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50 relative group">
       <div className="flex justify-between items-start">
         <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider">{label}</p>
         {onCopy && (
-            <button onClick={() => onCopy(displayValue)} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-white" title={`Copy ${label}`} aria-label={`Copy ${label}`}>
-                <Copy className="w-4 h-4" />
+            <button
+              onClick={handleCopy}
+              className={`transition-all duration-200 ${copied ? 'opacity-100 text-green-400' : 'opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white'}`}
+              title={copied ? 'Copied!' : `Copy ${label}`}
+              aria-label={copied ? 'Copied!' : `Copy ${label}`}
+            >
+                {copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
             </button>
         )}
       </div>

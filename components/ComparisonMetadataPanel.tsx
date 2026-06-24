@@ -1,5 +1,5 @@
-import React, { FC, useMemo } from 'react';
-import { ChevronDown, ChevronRight, Copy, AlertTriangle } from 'lucide-react';
+import React, { FC, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Copy, AlertTriangle, CheckCircle } from 'lucide-react';
 import { ComparisonMetadataPanelProps, BaseMetadata } from '../types';
 import { compareField, formatFieldValue, diffText, DiffToken } from '../utils/metadataComparison';
 
@@ -13,6 +13,7 @@ const MetadataField: FC<{
   isDiffMode?: boolean;
   field?: string;
 }> = ({ label, value, onCopy, multiline, otherValue, isDiffMode, field }) => {
+  const [copied, setCopied] = useState(false);
   // Check if value exists
   const hasValue = value !== undefined && value !== null && value !== '';
   const hasOtherValue = otherValue !== undefined && otherValue !== null && otherValue !== '';
@@ -82,17 +83,26 @@ const MetadataField: FC<{
     );
   };
 
+  const handleCopy = () => {
+    if (onCopy) {
+      onCopy();
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <div className={`p-2 rounded border ${highlightClass}`}>
       <div className="flex justify-between items-start">
         <p className="text-gray-400 text-xs uppercase tracking-wider">{label}</p>
         {onCopy && (
           <button
-            onClick={onCopy}
-            className="text-gray-400 hover:text-white transition-colors"
-            title={`Copy ${label}`}
+            onClick={handleCopy}
+            className={`transition-all duration-200 ${copied ? 'text-green-400' : 'text-gray-400 hover:text-white'}`}
+            title={copied ? 'Copied!' : `Copy ${label}`}
+            aria-label={copied ? 'Copied!' : `Copy ${label}`}
           >
-            <Copy className="w-3 h-3" />
+            {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
           </button>
         )}
       </div>
