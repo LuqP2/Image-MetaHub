@@ -10,7 +10,7 @@ import {
  * Parser version - increment when parser logic changes significantly
  * This ensures cache is invalidated when parsing rules change
  */
-export const PARSER_VERSION = 8; // v8: Add Image MetaHub creator attribution metadata
+export const PARSER_VERSION = 9; // v9: Preserve probed audio stream metadata on normalized video records
 
 // Simplified metadata structure for the JSON cache
 export interface CacheImageMetadata {

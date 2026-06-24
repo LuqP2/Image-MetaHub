@@ -20,6 +20,7 @@ export interface MediaDiagnosticsContext {
   fileName: string;
   surface: string;
   src?: string | null;
+  hasAudioTrack?: boolean;
   onAudioRendererError?: () => void;
 }
 
@@ -37,6 +38,14 @@ const getMediaErrorMessage = (error: MediaError | null): string | null => {
 
 export const isAudioRendererErrorMessage = (message?: string | null): boolean =>
   typeof message === 'string' && message.includes('AUDIO_RENDERER_ERROR');
+
+const isMacElectronRenderer = (): boolean => {
+  if (typeof window === 'undefined' || !window.electronAPI || typeof navigator === 'undefined') {
+    return false;
+  }
+
+  return /mac/i.test(navigator.platform || '') || /Mac OS X/i.test(navigator.userAgent || '');
+};
 
 export function useMediaDiagnostics(context: MediaDiagnosticsContext) {
   const logMediaEvent = useCallback(
@@ -58,11 +67,15 @@ export function useMediaDiagnostics(context: MediaDiagnosticsContext) {
         errorMessage,
       });
 
-      if (event.type === 'error' && isAudioRendererErrorMessage(errorMessage)) {
+      const shouldOfferMacAudioFallback = event.type === 'error'
+        && isMacElectronRenderer()
+        && (context.mediaKind === 'audio' || context.hasAudioTrack === true);
+
+      if (event.type === 'error' && (isAudioRendererErrorMessage(errorMessage) || shouldOfferMacAudioFallback)) {
         context.onAudioRendererError?.();
       }
     },
-    [context.fileName, context.mediaKind, context.onAudioRendererError, context.src, context.surface],
+    [context.fileName, context.hasAudioTrack, context.mediaKind, context.onAudioRendererError, context.src, context.surface],
   );
 
   return useMemo(

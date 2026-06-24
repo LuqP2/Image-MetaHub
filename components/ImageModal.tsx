@@ -630,7 +630,8 @@ const VideoPlayer: React.FC<{
   onEnded?: React.ReactEventHandler<HTMLVideoElement>;
   externalPath?: string | null;
   diagnostics?: Omit<MediaDiagnosticsContext, 'mediaKind' | 'src'>;
-}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying, onEnded, externalPath, diagnostics }) => {
+  hasAudioTrack?: boolean;
+}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying, onEnded, externalPath, diagnostics, hasAudioTrack = false }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [audioRendererFailed, setAudioRendererFailed] = useState(false);
@@ -648,6 +649,7 @@ const VideoPlayer: React.FC<{
     fileName: diagnostics?.fileName ?? '',
     surface: diagnostics?.surface ?? 'image-modal',
     src,
+    hasAudioTrack,
     onAudioRendererError: handleAudioRendererError,
   });
   
@@ -752,7 +754,7 @@ const VideoPlayer: React.FC<{
         <div>
           <p className="text-lg font-medium text-gray-100">Audio playback failed in Electron</p>
           <p className="mt-1 max-w-md text-sm text-gray-400">
-            The macOS audio service reported an audio renderer error.
+            The macOS audio service failed while initializing playback.
           </p>
         </div>
         <button
@@ -3405,6 +3407,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   poster={preferredThumbnailUrl ?? undefined}
                   externalPath={externalMediaPath}
                   diagnostics={{ fileName: image.name, surface: isSlideshowMode ? 'slideshow' : 'image-modal' }}
+                  hasAudioTrack={Boolean((image.metadata?.normalizedMetadata as any)?.audio)}
                   onContextMenu={handleContextMenu}
                   onLoadedMetadata={(event) => {
                     const duration = event.currentTarget.duration;

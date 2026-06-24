@@ -1695,6 +1695,13 @@ if (normalizedMetadata && isAudio) {
   normalizedMetadata.media_type = 'audio';
   normalizedMetadata.audio = normalizedMetadata.audio ?? audioInfo;
 }
+if (normalizedMetadata && isVideo) {
+  normalizedMetadata.width = normalizedMetadata.width || (videoInfo?.width ?? 0);
+  normalizedMetadata.height = normalizedMetadata.height || (videoInfo?.height ?? 0);
+  normalizedMetadata.media_type = 'video';
+  normalizedMetadata.video = normalizedMetadata.video ?? videoInfo;
+  normalizedMetadata.audio = normalizedMetadata.audio ?? audioInfo;
+}
 
 // ==============================================================================
 // FIM DA SUBSTITUIÇÃO - O código seguinte (Read actual image dimensions) 

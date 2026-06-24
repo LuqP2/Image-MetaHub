@@ -593,7 +593,9 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
   if (metadata && isVideo && videoInfo) {
     metadata.width = metadata.width || (videoInfo.width ?? 0);
     metadata.height = metadata.height || (videoInfo.height ?? 0);
+    metadata.media_type = 'video';
     metadata.video = metadata.video ?? videoInfo;
+    metadata.audio = metadata.audio ?? audioInfo;
   }
   if (metadata && isAudio) {
     metadata.width = metadata.width || 0;
@@ -611,6 +613,7 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
       scheduler: '',
       media_type: 'video',
       video: videoInfo,
+      audio: audioInfo,
     };
   }
   if (!metadata && isAudio) {

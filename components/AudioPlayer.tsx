@@ -37,6 +37,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
     fileName: diagnostics?.fileName ?? title,
     surface: diagnostics?.surface ?? 'audio-player',
     src,
+    hasAudioTrack: true,
     onAudioRendererError: handleAudioRendererError,
   });
 
@@ -68,7 +69,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
             Audio playback failed in Electron
           </p>
           <p className="mt-1 max-w-md text-xs text-gray-400">
-            The macOS audio service reported an audio renderer error.
+            The macOS audio service failed while initializing playback.
           </p>
         </div>
         <button
