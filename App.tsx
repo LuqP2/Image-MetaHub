@@ -3274,6 +3274,12 @@ export default function App() {
           onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
           libraryView={libraryView}
           onLibraryViewChange={setLibraryView}
+          onOpenDroppedImageInComfyUI={(imageId) => {
+            const image = imageLookup.get(imageId);
+            if (image) {
+              openComfyUIWorkflowInWorkspace(image, displayImages);
+            }
+          }}
         />
 
         <CollectionFormModal
