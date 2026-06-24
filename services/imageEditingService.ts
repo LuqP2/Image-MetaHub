@@ -1,5 +1,6 @@
 import type {
   BaseMetadata,
+  GenerationPrepIntent,
   ImageAdjustments,
   ImageEditCrop,
   ImageEditCropAspect,
@@ -10,10 +11,15 @@ import type {
   ImageEditRotation,
   ImageEditTransform,
   ImageEditorBackground,
+  ImageEditorBounds,
   ImageEditorDocument,
+  ImageEditorGenerationPrep,
+  ImageEditorMaskRegion,
+  ImageEditorMaskStroke,
   ImageEditorObject,
   ImageEditorObjectStyle,
   LoRAInfo,
+  SourceImageReference,
 } from '../types';
 
 export const DEFAULT_IMAGE_ADJUSTMENTS: ImageAdjustments = {
@@ -68,6 +74,9 @@ export const DEFAULT_IMAGE_EDITOR_BACKGROUND: ImageEditorBackground = {
   roundedCorner: 0,
   shadowRadius: 0,
 };
+
+export const DEFAULT_GENERATION_PREP_DENOISE = 0.65;
+const DEFAULT_GENERATION_PREP_BRUSH_SIZE = 64;
 
 const ADJUSTMENT_RANGES: Record<keyof ImageAdjustments, { min: number; max: number }> = {
   brightness: { min: 0, max: 200 },
@@ -424,6 +433,111 @@ export const normalizeImageEditorBounds = (
   };
 };
 
+const normalizeGenerationPrepIntent = (value: unknown): GenerationPrepIntent => (
+  value === 'img2img' || value === 'inpaint' || value === 'outpaint' ? value : 'img2img'
+);
+
+const normalizeImageEditorPoint = (
+  point: Partial<ImageEditorMaskStroke['points'][number]> | undefined,
+  canvasDimensions?: { width: number; height: number },
+) => ({
+  x: clampInteger(point?.x ?? 0, 0, canvasDimensions?.width || MAX_OUTPUT_DIMENSION, 0),
+  y: clampInteger(point?.y ?? 0, 0, canvasDimensions?.height || MAX_OUTPUT_DIMENSION, 0),
+});
+
+const normalizeGenerationPrepSourceBounds = (
+  bounds: Partial<ImageEditorBounds> | undefined,
+  canvasDimensions: { width: number; height: number },
+): ImageEditorBounds => {
+  const width = clampInteger(bounds?.width ?? canvasDimensions.width, 1, canvasDimensions.width, canvasDimensions.width);
+  const height = clampInteger(bounds?.height ?? canvasDimensions.height, 1, canvasDimensions.height, canvasDimensions.height);
+  return {
+    x: clampInteger(bounds?.x ?? 0, 0, Math.max(0, canvasDimensions.width - width), 0),
+    y: clampInteger(bounds?.y ?? 0, 0, Math.max(0, canvasDimensions.height - height), 0),
+    width,
+    height,
+  };
+};
+
+const normalizeGenerationPrepRegion = (
+  region: Partial<ImageEditorMaskRegion> | undefined,
+  canvasDimensions: { width: number; height: number },
+): ImageEditorMaskRegion | null => {
+  if (!region?.id) {
+    return null;
+  }
+  const bounds = normalizeImageEditorBounds(region, canvasDimensions);
+  return {
+    id: region.id,
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    source: region.source === 'manual' ? 'manual' : 'outpaint-expansion',
+  };
+};
+
+const normalizeGenerationPrepStroke = (
+  stroke: Partial<ImageEditorMaskStroke> | undefined,
+  canvasDimensions: { width: number; height: number },
+): ImageEditorMaskStroke | null => {
+  if (!stroke?.id || !Array.isArray(stroke.points) || stroke.points.length === 0) {
+    return null;
+  }
+  return {
+    id: stroke.id,
+    mode: stroke.mode === 'erase' ? 'erase' : 'paint',
+    brushSize: clampInteger(stroke.brushSize ?? DEFAULT_GENERATION_PREP_BRUSH_SIZE, 1, 512, DEFAULT_GENERATION_PREP_BRUSH_SIZE),
+    points: stroke.points.map((point) => normalizeImageEditorPoint(point, canvasDimensions)),
+  };
+};
+
+export const createDefaultGenerationPrep = (
+  canvasDimensions: { width: number; height: number },
+  intent: GenerationPrepIntent = 'img2img',
+): ImageEditorGenerationPrep => ({
+  intent,
+  maskVisible: true,
+  maskOpacity: 0.45,
+  maskInverted: false,
+  brushSize: DEFAULT_GENERATION_PREP_BRUSH_SIZE,
+  denoise: DEFAULT_GENERATION_PREP_DENOISE,
+  sourceBounds: {
+    x: 0,
+    y: 0,
+    width: Math.max(1, Math.round(canvasDimensions.width || 1)),
+    height: Math.max(1, Math.round(canvasDimensions.height || 1)),
+  },
+  maskRegions: [],
+  maskStrokes: [],
+});
+
+export const normalizeImageEditorGenerationPrep = (
+  prep: Partial<ImageEditorGenerationPrep> | undefined,
+  canvasDimensions: { width: number; height: number },
+): ImageEditorGenerationPrep => {
+  const defaults = createDefaultGenerationPrep(canvasDimensions, prep?.intent);
+  return {
+    intent: normalizeGenerationPrepIntent(prep?.intent),
+    maskVisible: prep?.maskVisible !== false,
+    maskOpacity: clampNumber(prep?.maskOpacity ?? defaults.maskOpacity, 0.05, 1, defaults.maskOpacity),
+    maskInverted: Boolean(prep?.maskInverted),
+    brushSize: clampInteger(prep?.brushSize ?? defaults.brushSize, 1, 512, defaults.brushSize),
+    denoise: clampNumber(prep?.denoise ?? defaults.denoise, 0, 1, defaults.denoise),
+    sourceBounds: normalizeGenerationPrepSourceBounds(prep?.sourceBounds || defaults.sourceBounds, canvasDimensions),
+    maskRegions: (prep?.maskRegions || [])
+      .map((region) => normalizeGenerationPrepRegion(region, canvasDimensions))
+      .filter((region): region is ImageEditorMaskRegion => Boolean(region)),
+    maskStrokes: (prep?.maskStrokes || [])
+      .map((stroke) => normalizeGenerationPrepStroke(stroke, canvasDimensions))
+      .filter((stroke): stroke is ImageEditorMaskStroke => Boolean(stroke)),
+  };
+};
+
+export const hasGenerationPrepMask = (prep: Partial<ImageEditorGenerationPrep> | undefined): boolean => (
+  Boolean(prep && ((prep.maskRegions?.length || 0) > 0 || (prep.maskStrokes?.length || 0) > 0))
+);
+
 export const normalizeImageEditorBackground = (
   background?: Partial<ImageEditorBackground>,
 ): ImageEditorBackground => ({
@@ -543,6 +657,9 @@ export const normalizeImageEditorDocument = (
     sourceDimensions,
     canvasDimensions,
     recipe,
+    generationPrep: document.generationPrep
+      ? normalizeImageEditorGenerationPrep(document.generationPrep, canvasDimensions)
+      : undefined,
     background: normalizeImageEditorBackground(document.background),
     objects,
     selectedObjectIds: (document.selectedObjectIds || []).filter((id) => objectIds.has(id)),
@@ -554,9 +671,21 @@ export const hasImageEditorDocumentChanges = (
 ): boolean => {
   const normalized = normalizeImageEditorDocument(document);
   const background = normalized.background;
+  const prep = normalized.generationPrep;
+  const hasPrepChanges = Boolean(prep && (
+    prep.intent !== 'img2img' ||
+    prep.maskInverted ||
+    prep.denoise !== DEFAULT_GENERATION_PREP_DENOISE ||
+    hasGenerationPrepMask(prep) ||
+    prep.sourceBounds.x !== 0 ||
+    prep.sourceBounds.y !== 0 ||
+    prep.sourceBounds.width !== normalized.canvasDimensions.width ||
+    prep.sourceBounds.height !== normalized.canvasDimensions.height
+  ));
   return (
     hasImageEditRecipeChanges(normalized.recipe, normalized.sourceDimensions) ||
     normalized.objects.length > 0 ||
+    hasPrepChanges ||
     background.kind !== DEFAULT_IMAGE_EDITOR_BACKGROUND.kind ||
     background.margin !== DEFAULT_IMAGE_EDITOR_BACKGROUND.margin ||
     background.padding !== DEFAULT_IMAGE_EDITOR_BACKGROUND.padding ||
@@ -728,6 +857,155 @@ export async function renderEditedImageToPngBytes(
     reader.readAsArrayBuffer(blob);
   });
   return new Uint8Array(buffer);
+}
+
+const blobToBytes = async (blob: Blob, errorMessage: string): Promise<Uint8Array> => {
+  if (typeof blob.arrayBuffer === 'function') {
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+
+  const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(reader.result);
+      } else {
+        reject(new Error(errorMessage));
+      }
+    };
+    reader.onerror = () => reject(reader.error || new Error(errorMessage));
+    reader.readAsArrayBuffer(blob);
+  });
+  return new Uint8Array(buffer);
+};
+
+const drawMaskStroke = (
+  context: CanvasRenderingContext2D,
+  stroke: ImageEditorMaskStroke,
+) => {
+  if (stroke.points.length === 0) {
+    return;
+  }
+
+  context.save();
+  context.globalCompositeOperation = stroke.mode === 'erase' ? 'destination-out' : 'source-over';
+  context.strokeStyle = 'white';
+  context.fillStyle = 'white';
+  context.lineWidth = stroke.brushSize;
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+
+  const firstPoint = stroke.points[0];
+  context.beginPath();
+  context.arc(firstPoint.x, firstPoint.y, stroke.brushSize / 2, 0, Math.PI * 2);
+  context.fill();
+
+  if (stroke.points.length > 1) {
+    context.beginPath();
+    context.moveTo(firstPoint.x, firstPoint.y);
+    for (let index = 1; index < stroke.points.length; index++) {
+      const point = stroke.points[index];
+      context.lineTo(point.x, point.y);
+    }
+    context.stroke();
+  }
+  context.restore();
+};
+
+const invertCanvas = (context: CanvasRenderingContext2D, width: number, height: number) => {
+  if (typeof context.getImageData !== 'function' || typeof context.putImageData !== 'function') {
+    return;
+  }
+  const imageData = context.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 255 - data[index];
+    data[index + 1] = 255 - data[index + 1];
+    data[index + 2] = 255 - data[index + 2];
+    data[index + 3] = 255;
+  }
+  context.putImageData(imageData, 0, 0);
+};
+
+export async function renderGenerationPrepImageToPngBlob(
+  sourceUrl: string,
+  editorDocument: Partial<ImageEditorDocument>,
+): Promise<Blob> {
+  const normalized = normalizeImageEditorDocument(editorDocument);
+  const prep = normalizeImageEditorGenerationPrep(normalized.generationPrep, normalized.canvasDimensions);
+  const baseBlob = await renderEditedImageToPngBlob(sourceUrl, normalized.recipe);
+  const baseImage = await loadImageFromBlob(baseBlob);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = normalized.canvasDimensions.width;
+  canvas.height = normalized.canvasDimensions.height;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Canvas rendering is not available in this browser.');
+  }
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(
+    baseImage,
+    prep.sourceBounds.x,
+    prep.sourceBounds.y,
+    prep.sourceBounds.width,
+    prep.sourceBounds.height,
+  );
+
+  return canvasToBlob(canvas);
+}
+
+export async function renderGenerationPrepImageToPngBytes(
+  sourceUrl: string,
+  editorDocument: Partial<ImageEditorDocument>,
+): Promise<Uint8Array> {
+  return blobToBytes(
+    await renderGenerationPrepImageToPngBlob(sourceUrl, editorDocument),
+    'Failed to read prepared PNG bytes.',
+  );
+}
+
+export async function renderGenerationPrepMaskToPngBlob(
+  editorDocument: Partial<ImageEditorDocument>,
+): Promise<Blob> {
+  const normalized = normalizeImageEditorDocument(editorDocument);
+  const prep = normalizeImageEditorGenerationPrep(normalized.generationPrep, normalized.canvasDimensions);
+  const canvas = document.createElement('canvas');
+  canvas.width = normalized.canvasDimensions.width;
+  canvas.height = normalized.canvasDimensions.height;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Canvas rendering is not available in this browser.');
+  }
+
+  context.fillStyle = 'black';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = 'white';
+  for (const region of prep.maskRegions) {
+    context.fillRect(region.x, region.y, region.width, region.height);
+  }
+  for (const stroke of prep.maskStrokes) {
+    drawMaskStroke(context, stroke);
+  }
+  if (prep.maskInverted) {
+    invertCanvas(context, canvas.width, canvas.height);
+  }
+
+  return canvasToBlob(canvas);
+}
+
+export async function renderGenerationPrepMaskToPngBytes(
+  editorDocument: Partial<ImageEditorDocument>,
+): Promise<Uint8Array> {
+  return blobToBytes(
+    await renderGenerationPrepMaskToPngBlob(editorDocument),
+    'Failed to read prepared mask PNG bytes.',
+  );
 }
 
 const loadImageFromBlob = (blob: Blob): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
@@ -1204,6 +1482,8 @@ const buildMetaHubEditPayload = (
     annotationCount?: number;
     background?: ImageEditorBackground;
     sourceImageId?: string;
+    sourceImage?: SourceImageReference;
+    generationPrep?: ImageEditorGenerationPrep;
   },
 ) => {
   const payloadWidth = Number.isFinite(outputDimensions?.width)
@@ -1227,7 +1507,11 @@ const buildMetaHubEditPayload = (
       annotation_count: editInfo?.annotationCount,
       background: editInfo?.background,
       source_image_id: editInfo?.sourceImageId,
+      generation_prep: editInfo?.generationPrep,
     },
+    generation_type: editInfo?.generationPrep?.intent,
+    denoise: editInfo?.generationPrep?.denoise,
+    parent_image: editInfo?.sourceImage,
     prompt: metadata.prompt || '',
     negativePrompt: metadata.negativePrompt || '',
     seed: Number.isFinite(metadata.seed) ? metadata.seed : undefined,
@@ -1312,6 +1596,8 @@ export const embedMetaHubMetadataInPngBytes = (
     annotationCount?: number;
     background?: ImageEditorBackground;
     sourceImageId?: string;
+    sourceImage?: SourceImageReference;
+    generationPrep?: ImageEditorGenerationPrep;
   },
 ): Uint8Array => {
   const preservedWorkflow = extractPreservedComfyWorkflow(rawMetadata);

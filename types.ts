@@ -224,6 +224,7 @@ export interface ImageEditorDocument {
   sourceDimensions: { width: number; height: number };
   canvasDimensions: { width: number; height: number };
   recipe: ImageEditRecipe;
+  generationPrep?: ImageEditorGenerationPrep;
   background: ImageEditorBackground;
   objects: ImageEditorObject[];
   selectedObjectIds: string[];
@@ -248,6 +249,39 @@ export interface ImageEditSaveResult {
   path?: string;
   image?: IndexedImage;
   error?: string;
+}
+
+export type ImageEditorMode = 'edit' | 'generation-prep';
+export type GenerationPrepIntent = 'img2img' | 'inpaint' | 'outpaint';
+export type ImageEditorMaskStrokeMode = 'paint' | 'erase';
+export type ImageEditorMaskRegionSource = 'outpaint-expansion' | 'manual';
+
+export interface ImageEditorMaskStroke {
+  id: string;
+  mode: ImageEditorMaskStrokeMode;
+  brushSize: number;
+  points: ImageEditorPoint[];
+}
+
+export interface ImageEditorMaskRegion {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  source: ImageEditorMaskRegionSource;
+}
+
+export interface ImageEditorGenerationPrep {
+  intent: GenerationPrepIntent;
+  maskVisible: boolean;
+  maskOpacity: number;
+  maskInverted: boolean;
+  brushSize: number;
+  denoise: number;
+  sourceBounds: ImageEditorBounds;
+  maskRegions: ImageEditorMaskRegion[];
+  maskStrokes: ImageEditorMaskStroke[];
 }
 
 export type IndexedImageTransferMode = 'copy' | 'move';
