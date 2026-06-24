@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  Brush,
   Circle,
   Copy,
   Crop,
   Download,
+  Eraser,
   Eye,
   FlipHorizontal,
   FlipVertical,
@@ -31,6 +33,8 @@ import type {
   ImageEditCropAspect,
   ImageEditorDocument,
   ImageEditorMode,
+  ImageEditorGenerationPrep,
+  GenerationPrepIntent,
   ImageEditorObject,
   ImageEditorObjectStyle,
   ImageEditorTool,
@@ -39,6 +43,7 @@ import type {
 import {
   CROP_ASPECTS,
   DEFAULT_IMAGE_EDITOR_OBJECT_STYLE,
+  createDefaultGenerationPrep,
   clampImageAdjustment,
   clampImageEditCropRect,
   clampImageEditEffect,
@@ -50,10 +55,15 @@ import {
   hasImageEditorDocumentChanges,
   normalizeImageEditRotation,
   normalizeImageEditRecipe,
+  normalizeImageEditorGenerationPrep,
   normalizeImageEditorDocument,
+  renderGenerationPrepImageToPngBlob,
+  renderGenerationPrepImageToPngBytes,
+  renderGenerationPrepMaskToPngBytes,
   renderImageEditorDocumentToPngBlob,
   renderImageEditorDocumentToPngBytes,
 } from '../services/imageEditingService';
+import { buildImageSourceReference } from '../services/comfyUIWorkflowBuilder';
 import { mediaSourceCache } from '../services/mediaSourceCache';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
 import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
@@ -124,6 +134,11 @@ const TOOL_DEFS: Array<{ id: ImageEditorTool; label: string; icon: React.ReactNo
   { id: 'pixelate', label: 'Pixelate', icon: <Shield className="h-4 w-4" /> },
 ];
 
+const GENERATION_PREP_TOOL_DEFS: Array<{ id: ImageEditorTool; label: string; icon: React.ReactNode }> = [
+  { id: 'mask-brush', label: 'Mask Brush', icon: <Brush className="h-4 w-4" /> },
+  { id: 'mask-eraser', label: 'Mask Eraser', icon: <Eraser className="h-4 w-4" /> },
+];
+
 const readPngDimensions = (bytes: Uint8Array): { width: number; height: number } | null => {
   const isPng = bytes.byteLength >= 24
     && bytes[0] === 0x89
@@ -170,12 +185,17 @@ const FONT_FAMILY_OPTIONS = [
   { label: 'Impact', value: 'Impact, sans-serif' },
 ];
 
-const isEnabledEditorTool = (tool: ImageEditorTool) => TOOL_DEFS.some((definition) => definition.id === tool);
+const isEnabledEditorTool = (tool: ImageEditorTool) => (
+  TOOL_DEFS.some((definition) => definition.id === tool) ||
+  GENERATION_PREP_TOOL_DEFS.some((definition) => definition.id === tool)
+);
 
 const TOOL_HINTS: Record<ImageEditorTool, string> = {
   select: 'Click an object to select it.',
   'color-picker': 'Click the image to pick a color for the active style.',
   crop: 'Drag a crop area. The crop is editable in the inspector.',
+  'mask-brush': 'Paint the mask area ComfyUI should change.',
+  'mask-eraser': 'Erase painted mask areas.',
   rectangle: 'Drag to create a rectangle annotation.',
   ellipse: 'Drag to create an ellipse annotation.',
   line: 'Drag to draw a line.',
@@ -205,7 +225,7 @@ const isEditableShortcutTarget = (target: EventTarget | null): boolean => {
 };
 
 const isAnnotationTool = (tool: ImageEditorTool): tool is ImageEditorObject['type'] => (
-  tool !== 'select' && tool !== 'color-picker' && tool !== 'crop'
+  tool !== 'select' && tool !== 'color-picker' && tool !== 'crop' && tool !== 'mask-brush' && tool !== 'mask-eraser'
 );
 
 const isResizableObjectType = (type: ImageEditorObject['type']) => type === 'rectangle' || type === 'ellipse';
@@ -214,6 +234,7 @@ const TOOL_SHORTCUTS: Partial<Record<string, ImageEditorTool>> = {
   v: 'select',
   i: 'color-picker',
   c: 'crop',
+  m: 'mask-brush',
   r: 'rectangle',
   e: 'ellipse',
   l: 'line',
@@ -689,6 +710,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       normalizedDocument?.background,
       normalizedDocument?.canvasDimensions.height,
       normalizedDocument?.canvasDimensions.width,
+      normalizedDocument?.generationPrep,
       normalizedDocument?.recipe,
       normalizedDocument?.sourceDimensions.height,
       normalizedDocument?.sourceDimensions.width,
@@ -701,6 +723,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       ? JSON.stringify({
         background: basePreviewDocument.background,
         canvasDimensions: basePreviewDocument.canvasDimensions,
+        generationPrep: basePreviewDocument.generationPrep,
         recipe: basePreviewDocument.recipe,
         sourceDimensions: basePreviewDocument.sourceDimensions,
         sourceImageId: basePreviewDocument.sourceImageId,
@@ -712,10 +735,38 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const selectedObject = normalizedDocument?.objects.find((object) => normalizedDocument.selectedObjectIds.includes(object.id)) || null;
   const canOverwrite = getFileExtension(image.name) === '.png';
   const displayWidth = Math.max(160, Math.round(1080 * zoom));
+  const visibleToolDefs = editorMode === 'generation-prep'
+    ? [TOOL_DEFS[0]!, ...GENERATION_PREP_TOOL_DEFS, TOOL_DEFS[1]!, TOOL_DEFS[2]!]
+    : TOOL_DEFS;
+  const generationPrep = normalizedDocument?.generationPrep
+    ? normalizeImageEditorGenerationPrep(normalizedDocument.generationPrep, normalizedDocument.canvasDimensions)
+    : null;
+  const hasPrepMask = Boolean(generationPrep && (generationPrep.maskRegions.length > 0 || generationPrep.maskStrokes.length > 0));
 
   useEffect(() => {
     setEditorMode(initialMode);
   }, [image.id, initialMode]);
+
+  useEffect(() => {
+    if (!documentState) {
+      return;
+    }
+    if (editorMode === 'generation-prep') {
+      setDocumentState((current) => current && !current.generationPrep
+        ? {
+          ...current,
+          generationPrep: createDefaultGenerationPrep(current.canvasDimensions),
+          selectedObjectIds: [],
+        }
+        : current);
+      if (activeTool !== 'mask-brush' && activeTool !== 'mask-eraser' && activeTool !== 'select' && activeTool !== 'color-picker' && activeTool !== 'crop') {
+        setActiveTool('mask-brush');
+      }
+      setInspectorTab('ai');
+    } else if (activeTool === 'mask-brush' || activeTool === 'mask-eraser') {
+      setActiveTool('select');
+    }
+  }, [activeTool, documentState, editorMode]);
 
   useEffect(() => {
     if (!normalizedDocument) {
@@ -849,7 +900,9 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     setIsRendering(true);
     const timeoutId = window.setTimeout(async () => {
       try {
-        const blob = await renderImageEditorDocumentToPngBlob(sourceUrl, basePreviewDocument);
+        const blob = editorMode === 'generation-prep'
+          ? await renderGenerationPrepImageToPngBlob(sourceUrl, basePreviewDocument)
+          : await renderImageEditorDocumentToPngBlob(sourceUrl, basePreviewDocument);
         if (canceled) return;
         const nextUrl = URL.createObjectURL(blob);
         setPreviewUrl((current) => {
@@ -871,7 +924,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       canceled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [basePreviewKey, sourceReady, sourceUrl]);
+  }, [basePreviewKey, editorMode, sourceReady, sourceUrl]);
 
   const ensureHydratedImage = useCallback(async () => {
     if (hydratedImage?.id === image.id) {
@@ -905,6 +958,25 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     return joined.success && joined.path ? joined.path : `${basename}-editor.png`;
   }, [directoryPath, image]);
 
+  const buildDefaultPreparedPath = useCallback(async () => {
+    const relativePath = getRelativeImagePath(image);
+    const { folderPath, fileName } = splitRelativePath(relativePath);
+    const dotIndex = fileName.lastIndexOf('.');
+    const basename = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+    const preparedRelativePath = folderPath ? `${folderPath}/${basename}-prep.png` : `${basename}-prep.png`;
+    if (!directoryPath || !window.electronAPI?.joinPaths) {
+      return `${basename}-prep.png`;
+    }
+    const joined = await window.electronAPI.joinPaths(directoryPath, preparedRelativePath);
+    return joined.success && joined.path ? joined.path : `${basename}-prep.png`;
+  }, [directoryPath, image]);
+
+  const buildMaskPathFromPreparedPath = (preparedPath: string): string => (
+    preparedPath.toLowerCase().endsWith('.png')
+      ? preparedPath.replace(/\.png$/i, '-mask.png')
+      : `${preparedPath}-mask.png`
+  );
+
   const renderExportBytes = useCallback(async () => {
     if (!sourceUrl || !normalizedDocument) {
       throw new Error('The editor source image is still loading.');
@@ -931,6 +1003,42 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       },
     );
   }, [ensureHydratedImage, normalizedDocument, sourceUrl]);
+
+  const renderPreparedExportBytes = useCallback(async () => {
+    if (!sourceUrl || !normalizedDocument) {
+      throw new Error('The editor source image is still loading.');
+    }
+    const prep = normalizeImageEditorGenerationPrep(normalizedDocument.generationPrep, normalizedDocument.canvasDimensions);
+    const bytes = await renderGenerationPrepImageToPngBytes(sourceUrl, {
+      ...normalizedDocument,
+      generationPrep: prep,
+    });
+    const sourceImage = await ensureHydratedImage();
+    const sourceMetadata = getUsableNormalizedMetadata(sourceImage);
+    const rawMetadata = sourceImage.metadata as Record<string, unknown> | undefined;
+    const outputDimensions = readPngDimensions(bytes) || normalizedDocument.canvasDimensions;
+    return embedMetaHubMetadataInPngBytes(
+      bytes,
+      sourceMetadata,
+      normalizedDocument.recipe,
+      rawMetadata,
+      outputDimensions,
+      {
+        tool: 'generation-prep-v1',
+        annotationCount: 0,
+        sourceImageId: normalizedDocument.sourceImageId,
+        sourceImage: buildImageSourceReference(sourceImage),
+        generationPrep: prep,
+      },
+    );
+  }, [ensureHydratedImage, normalizedDocument, sourceUrl]);
+
+  const renderPreparedMaskBytes = useCallback(async () => {
+    if (!normalizedDocument) {
+      throw new Error('The editor source image is still loading.');
+    }
+    return renderGenerationPrepMaskToPngBytes(normalizedDocument);
+  }, [normalizedDocument]);
 
   const saveToPath = useCallback(async (targetPath: string, mode: 'save_as' | 'overwrite') => {
     if (!window.electronAPI?.writeFile) {
@@ -1035,6 +1143,59 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     }
   }, [canOverwrite, directories, handleSaveAs, image, saveToPath, setError, setSuccess]);
 
+  const handleExportPreparedAssets = useCallback(async () => {
+    if (!window.electronAPI?.showSaveDialog || !window.electronAPI?.writeFile) {
+      setError('Prepared asset export is only available in the desktop app.');
+      return;
+    }
+    if (!normalizedDocument?.generationPrep) {
+      setError('Prepare for Generation is still initializing.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const defaultPath = await buildDefaultPreparedPath();
+      const saveResult = await window.electronAPI.showSaveDialog({
+        title: 'Export prepared image',
+        defaultPath,
+        filters: [{ name: 'PNG Image', extensions: ['png'] }],
+      });
+      if (saveResult.canceled || !saveResult.path) {
+        return;
+      }
+
+      const preparedBytes = await renderPreparedExportBytes();
+      const imageResult = await window.electronAPI.writeFile(saveResult.path, preparedBytes);
+      if (!imageResult.success) {
+        throw new Error(imageResult.error || 'Failed to write prepared image.');
+      }
+
+      if (hasPrepMask) {
+        const maskPath = buildMaskPathFromPreparedPath(saveResult.path);
+        const maskResult = await window.electronAPI.writeFile(maskPath, await renderPreparedMaskBytes());
+        if (!maskResult.success) {
+          throw new Error(maskResult.error || 'Prepared image was saved, but the mask could not be written.');
+        }
+        setSuccess('Exported prepared image and mask.');
+      } else {
+        setSuccess('Exported prepared image.');
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to export prepared assets.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    buildDefaultPreparedPath,
+    hasPrepMask,
+    normalizedDocument?.generationPrep,
+    renderPreparedExportBytes,
+    renderPreparedMaskBytes,
+    setError,
+    setSuccess,
+  ]);
+
   const handleCopy = useCallback(async () => {
     if (!sourceUrl || !normalizedDocument) return;
     try {
@@ -1109,6 +1270,59 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         )),
       };
     }, 'Edit recipe');
+  }, [commitDocument]);
+
+  const updateGenerationPrep = useCallback((updater: (prep: ImageEditorGenerationPrep, current: ImageEditorDocument) => ImageEditorGenerationPrep) => {
+    commitDocument((current) => {
+      const prep = normalizeImageEditorGenerationPrep(current.generationPrep, current.canvasDimensions);
+      return {
+        ...current,
+        generationPrep: updater(prep, current),
+      };
+    }, 'Generation prep');
+  }, [commitDocument]);
+
+  const setOutpaintPadding = useCallback((left: number, top: number, right: number, bottom: number) => {
+    commitDocument((current) => {
+      const normalizedRecipe = normalizeImageEditRecipe(current.recipe, current.sourceDimensions);
+      const baseDimensions = getImageEditOutputDimensions(normalizedRecipe, current.sourceDimensions);
+      const nextLeft = Math.max(0, Math.round(left) || 0);
+      const nextTop = Math.max(0, Math.round(top) || 0);
+      const nextRight = Math.max(0, Math.round(right) || 0);
+      const nextBottom = Math.max(0, Math.round(bottom) || 0);
+      const nextCanvasDimensions = {
+        width: baseDimensions.width + nextLeft + nextRight,
+        height: baseDimensions.height + nextTop + nextBottom,
+      };
+      const prep = normalizeImageEditorGenerationPrep(current.generationPrep, current.canvasDimensions);
+      const maskRegions = [
+        nextTop > 0 ? { id: 'outpaint-top', x: 0, y: 0, width: nextCanvasDimensions.width, height: nextTop, source: 'outpaint-expansion' as const } : null,
+        nextBottom > 0 ? { id: 'outpaint-bottom', x: 0, y: nextTop + baseDimensions.height, width: nextCanvasDimensions.width, height: nextBottom, source: 'outpaint-expansion' as const } : null,
+        nextLeft > 0 ? { id: 'outpaint-left', x: 0, y: nextTop, width: nextLeft, height: baseDimensions.height, source: 'outpaint-expansion' as const } : null,
+        nextRight > 0 ? { id: 'outpaint-right', x: nextLeft + baseDimensions.width, y: nextTop, width: nextRight, height: baseDimensions.height, source: 'outpaint-expansion' as const } : null,
+      ].filter((region): region is ImageEditorGenerationPrep['maskRegions'][number] => Boolean(region));
+
+      return {
+        ...current,
+        canvasDimensions: nextCanvasDimensions,
+        generationPrep: {
+          ...prep,
+          intent: maskRegions.length > 0 ? 'outpaint' : (prep.maskStrokes.length > 0 ? 'inpaint' : 'img2img'),
+          sourceBounds: {
+            x: nextLeft,
+            y: nextTop,
+            width: baseDimensions.width,
+            height: baseDimensions.height,
+          },
+          maskRegions,
+        },
+        objects: current.objects.map((object) => remapObjectToCanvasDimensions(
+          object,
+          current.canvasDimensions,
+          nextCanvasDimensions,
+        )),
+      };
+    }, 'Outpaint canvas');
   }, [commitDocument]);
 
   const updateSelectedObjectStyle = useCallback((style: Partial<ImageEditorObjectStyle>) => {
@@ -1237,6 +1451,16 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       return;
     }
 
+    if (editorMode === 'generation-prep' && (activeTool === 'mask-brush' || activeTool === 'mask-eraser')) {
+      setDragState({
+        tool: activeTool,
+        start: point,
+        current: point,
+        points: [point],
+      });
+      return;
+    }
+
     const selected = [...normalizedDocument.objects]
       .reverse()
       .find((object) => point.x >= object.bounds.x && point.x <= object.bounds.x + object.bounds.width && point.y >= object.bounds.y && point.y <= object.bounds.y + object.bounds.height);
@@ -1281,7 +1505,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       current: point,
       points: activeTool === 'freehand' ? [point] : undefined,
     });
-  }, [activeTool, commitDocument, displayWidth, editingTextObjectId, normalizedDocument, pickColorAtPoint, selectedObject]);
+  }, [activeTool, commitDocument, displayWidth, editingTextObjectId, editorMode, normalizedDocument, pickColorAtPoint, selectedObject]);
 
   const pointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const panState = panStateRef.current;
@@ -1385,6 +1609,34 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           },
         },
       }), 'Crop');
+      return;
+    }
+
+    if (completedDrag.tool === 'mask-brush' || completedDrag.tool === 'mask-eraser') {
+      const points = completedDrag.points?.length ? completedDrag.points : [completedDrag.start, completedDrag.current];
+      commitDocument((current) => {
+        const prep = normalizeImageEditorGenerationPrep(current.generationPrep, current.canvasDimensions);
+        const nextIntent: GenerationPrepIntent = prep.intent === 'outpaint'
+          ? 'outpaint'
+          : 'inpaint';
+        return {
+          ...current,
+          generationPrep: {
+            ...prep,
+            intent: nextIntent,
+            maskStrokes: [
+              ...prep.maskStrokes,
+              {
+                id: createObjectId(),
+                mode: completedDrag.tool === 'mask-eraser' ? 'erase' : 'paint',
+                brushSize: prep.brushSize,
+                points,
+              },
+            ],
+          },
+          selectedObjectIds: [],
+        };
+      }, completedDrag.tool === 'mask-eraser' ? 'Erase mask' : 'Paint mask');
       return;
     }
 
@@ -1704,6 +1956,14 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const activeOutputDimensions = normalizedDocument
     ? getImageEditOutputDimensions(normalizedDocument.recipe, normalizedDocument.sourceDimensions)
     : null;
+  const outpaintPadding = normalizedDocument && generationPrep
+    ? {
+      left: generationPrep.sourceBounds.x,
+      top: generationPrep.sourceBounds.y,
+      right: Math.max(0, normalizedDocument.canvasDimensions.width - generationPrep.sourceBounds.x - generationPrep.sourceBounds.width),
+      bottom: Math.max(0, normalizedDocument.canvasDimensions.height - generationPrep.sourceBounds.y - generationPrep.sourceBounds.height),
+    }
+    : { left: 0, top: 0, right: 0, bottom: 0 };
   const selectedCount = normalizedDocument?.selectedObjectIds.length || 0;
   const canvasDimensionsForOverlay = normalizedDocument?.canvasDimensions ?? { width: 1, height: 1 };
   const selectedDragOffset = dragState?.tool === 'select' && !dragState.resizeHandle && selectedObject && (dragState.movingObjectIds?.includes(selectedObject.id) || dragState.movingObjectId === selectedObject.id)
@@ -1857,8 +2117,119 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     );
   };
 
+  const renderGenerationPrepInspector = () => {
+    if (!normalizedDocument || !generationPrep || !activeOutputDimensions) {
+      return null;
+    }
+
+    const setPadding = (key: keyof typeof outpaintPadding, value: number) => {
+      setOutpaintPadding(
+        key === 'left' ? value : outpaintPadding.left,
+        key === 'top' ? value : outpaintPadding.top,
+        key === 'right' ? value : outpaintPadding.right,
+        key === 'bottom' ? value : outpaintPadding.bottom,
+      );
+    };
+
+    return (
+      <div className="space-y-4">
+        <section className="space-y-3 rounded-md border border-purple-500/20 bg-purple-500/10 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-purple-100">Generation Prep</h3>
+            <span className="rounded-full border border-purple-400/30 px-2 py-0.5 text-[11px] uppercase text-purple-200">
+              {generationPrep.intent}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {(['img2img', 'inpaint', 'outpaint'] as GenerationPrepIntent[]).map((intent) => (
+              <button
+                key={intent}
+                type="button"
+                onClick={() => updateGenerationPrep((prep) => ({ ...prep, intent }))}
+                className={`rounded-md px-2 py-1.5 text-xs font-medium ${
+                  generationPrep.intent === intent
+                    ? 'bg-purple-500/30 text-purple-50'
+                    : 'border border-gray-800 text-gray-300 hover:bg-gray-800'
+                }`}
+              >
+                {intent}
+              </button>
+            ))}
+          </div>
+          {renderSliderRow('Denoise', Math.round(generationPrep.denoise * 100), 0, 100, (value) => updateGenerationPrep((prep) => ({ ...prep, denoise: clamp(value, 0, 100) / 100 })), '%')}
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-gray-100">Mask</h3>
+          {renderSliderRow('Brush', generationPrep.brushSize, 1, 512, (value) => updateGenerationPrep((prep) => ({ ...prep, brushSize: clamp(Math.round(value) || 1, 1, 512) })), 'px')}
+          {renderSliderRow('Opacity', Math.round(generationPrep.maskOpacity * 100), 5, 100, (value) => updateGenerationPrep((prep) => ({ ...prep, maskOpacity: clamp(value, 5, 100) / 100 })), '%')}
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => updateGenerationPrep((prep) => ({ ...prep, maskVisible: !prep.maskVisible }))} className={`rounded-md border px-2 py-2 text-xs font-medium ${generationPrep.maskVisible ? 'border-purple-400/40 bg-purple-500/20 text-purple-100' : 'border-gray-700 text-gray-300 hover:bg-gray-800'}`}>
+              {generationPrep.maskVisible ? 'Hide Mask' : 'Show Mask'}
+            </button>
+            <button type="button" onClick={() => updateGenerationPrep((prep) => ({ ...prep, maskInverted: !prep.maskInverted }))} className={`rounded-md border px-2 py-2 text-xs font-medium ${generationPrep.maskInverted ? 'border-purple-400/40 bg-purple-500/20 text-purple-100' : 'border-gray-700 text-gray-300 hover:bg-gray-800'}`}>
+              Invert Mask
+            </button>
+            <button type="button" onClick={() => updateGenerationPrep((prep) => ({ ...prep, maskStrokes: [], intent: prep.maskRegions.length > 0 ? 'outpaint' : 'img2img' }))} disabled={generationPrep.maskStrokes.length === 0} className="rounded-md border border-gray-700 px-2 py-2 text-xs font-medium text-gray-300 hover:bg-gray-800 disabled:opacity-40">
+              Clear Paint
+            </button>
+            <button type="button" onClick={() => updateGenerationPrep((prep) => ({ ...prep, maskRegions: [], maskStrokes: [], intent: 'img2img' }))} disabled={!hasPrepMask} className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/20 disabled:opacity-40">
+              Clear Mask
+            </button>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-gray-100">Outpaint Canvas</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {(['left', 'right', 'top', 'bottom'] as const).map((key) => (
+              <label key={key} className="space-y-1 text-xs text-gray-400">
+                <span className="capitalize">{key}</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={outpaintPadding[key]}
+                  onChange={(event) => setPadding(key, Number(event.target.value))}
+                  className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100 outline-none focus:border-cyan-500"
+                />
+              </label>
+            ))}
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {[128, 256, 512].map((amount) => (
+              <button key={amount} type="button" onClick={() => setOutpaintPadding(amount, amount, amount, amount)} className="rounded-md border border-gray-700 px-2 py-1.5 text-xs text-gray-300 hover:bg-gray-800">
+                +{amount}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={() => setOutpaintPadding(0, 0, 0, 0)} disabled={!outpaintPadding.left && !outpaintPadding.top && !outpaintPadding.right && !outpaintPadding.bottom} className="w-full rounded-md border border-gray-700 px-2 py-2 text-xs font-medium text-gray-300 hover:bg-gray-800 disabled:opacity-40">
+            Reset Canvas
+          </button>
+          <p className="text-xs text-gray-500">
+            Source {activeOutputDimensions.width}x{activeOutputDimensions.height} · Output {normalizedDocument.canvasDimensions.width}x{normalizedDocument.canvasDimensions.height}
+          </p>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-gray-100">Export</h3>
+          <button type="button" onClick={() => void handleExportPreparedAssets()} disabled={isSaving} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500">
+            <Download className="h-4 w-4" />
+            Export Prepared Assets
+          </button>
+          <p className="text-xs text-gray-500">
+            Exports a prepared PNG{hasPrepMask ? ' plus a matching mask PNG.' : '. Paint or expand the canvas to create a mask.'}
+          </p>
+        </section>
+      </div>
+    );
+  };
+
   const renderInspectorContent = () => {
     if (!normalizedDocument) return null;
+
+    if (editorMode === 'generation-prep' && inspectorTab === 'ai') {
+      return renderGenerationPrepInspector();
+    }
 
     if (inspectorTab === 'edit') {
       return (
@@ -2254,20 +2625,29 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
             <Layers className="h-4 w-4" />
             Inspector
           </button>
-          <button type="button" onClick={handleSave} disabled={isSaving || !hasChanges} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-500 disabled:bg-gray-800 disabled:text-gray-500" title={canOverwrite ? 'Save' : 'Save As'}>
-            <Save className="h-4 w-4" />
-            Save
-          </button>
-          <button type="button" onClick={handleSaveAs} disabled={isSaving || !hasChanges} className="inline-flex items-center gap-1 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40">
-            <Download className="h-4 w-4" />
-            Save As
-          </button>
+          {editorMode === 'generation-prep' ? (
+            <button type="button" onClick={handleExportPreparedAssets} disabled={isSaving} className="inline-flex items-center gap-1 rounded-md bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500">
+              <Download className="h-4 w-4" />
+              Export
+            </button>
+          ) : (
+            <>
+              <button type="button" onClick={handleSave} disabled={isSaving || !hasChanges} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-500 disabled:bg-gray-800 disabled:text-gray-500" title={canOverwrite ? 'Save' : 'Save As'}>
+                <Save className="h-4 w-4" />
+                Save
+              </button>
+              <button type="button" onClick={handleSaveAs} disabled={isSaving || !hasChanges} className="inline-flex items-center gap-1 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40">
+                <Download className="h-4 w-4" />
+                Save As
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1">
         <div className="flex w-16 shrink-0 flex-col gap-1 border-r border-gray-800 bg-gray-900 p-2">
-          {TOOL_DEFS.map((tool) => (
+          {visibleToolDefs.map((tool) => (
             <button
               key={tool.id}
               type="button"
@@ -2310,6 +2690,77 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                 <img ref={previewImageRef} src={previewUrl} alt={image.name} className="block h-full w-full object-contain" draggable={false} />
               ) : (
                 <img ref={previewImageRef} src={sourceUrl} alt={image.name} className="block h-full w-full object-contain opacity-80" draggable={false} />
+              )}
+              {editorMode === 'generation-prep' && generationPrep && (
+                <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${normalizedDocument.canvasDimensions.width} ${normalizedDocument.canvasDimensions.height}`} preserveAspectRatio="none">
+                  <rect
+                    x={generationPrep.sourceBounds.x}
+                    y={generationPrep.sourceBounds.y}
+                    width={generationPrep.sourceBounds.width}
+                    height={generationPrep.sourceBounds.height}
+                    fill="none"
+                    stroke="rgba(34, 211, 238, 0.8)"
+                    strokeWidth={Math.max(2, normalizedDocument.canvasDimensions.width / Math.max(1, displayWidth))}
+                    strokeDasharray="10 8"
+                  />
+                  {generationPrep.maskVisible && (
+                    <g opacity={generationPrep.maskOpacity}>
+                      {generationPrep.maskRegions.map((region) => (
+                        <rect
+                          key={region.id}
+                          x={region.x}
+                          y={region.y}
+                          width={region.width}
+                          height={region.height}
+                          fill="rgb(216, 70, 239)"
+                        />
+                      ))}
+                      {generationPrep.maskStrokes.map((stroke) => (
+                        <g key={stroke.id}>
+                          {stroke.points.length === 1 ? (
+                            <circle
+                              cx={stroke.points[0].x}
+                              cy={stroke.points[0].y}
+                              r={stroke.brushSize / 2}
+                              fill={stroke.mode === 'erase' ? 'rgba(15, 23, 42, 0.9)' : 'rgb(216, 70, 239)'}
+                            />
+                          ) : (
+                            <polyline
+                              points={stroke.points.map((point) => `${point.x},${point.y}`).join(' ')}
+                              fill="none"
+                              stroke={stroke.mode === 'erase' ? 'rgba(15, 23, 42, 0.9)' : 'rgb(216, 70, 239)'}
+                              strokeWidth={stroke.brushSize}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          )}
+                        </g>
+                      ))}
+                      {dragState && (dragState.tool === 'mask-brush' || dragState.tool === 'mask-eraser') && (
+                        <g>
+                          {dragState.points && dragState.points.length > 1 && (
+                            <polyline
+                              points={dragState.points.map((point) => `${point.x},${point.y}`).join(' ')}
+                              fill="none"
+                              stroke={dragState.tool === 'mask-eraser' ? 'rgba(15, 23, 42, 0.9)' : 'rgb(216, 70, 239)'}
+                              strokeWidth={generationPrep.brushSize}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          )}
+                          <circle
+                            cx={dragState.current.x}
+                            cy={dragState.current.y}
+                            r={generationPrep.brushSize / 2}
+                            fill="none"
+                            stroke="rgba(255, 255, 255, 0.9)"
+                            strokeWidth={Math.max(1, normalizedDocument.canvasDimensions.width / Math.max(1, displayWidth))}
+                          />
+                        </g>
+                      )}
+                    </g>
+                  )}
+                </svg>
               )}
               {effectOverlayObjects.map((object) => {
                 const boundsStyle = toCanvasPercentBounds(object.bounds, normalizedDocument.canvasDimensions);
@@ -2717,7 +3168,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                     : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                 }`}
               >
-                {tab.label}
+                {editorMode === 'generation-prep' && tab.id === 'ai' ? 'Prep' : tab.label}
               </button>
             ))}
           </div>
