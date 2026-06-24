@@ -7,6 +7,7 @@ import {
   updatePromptNodeLiteralValue,
   type ComfyUIModelResource,
 } from '../services/comfyUIWorkflowBuilder';
+import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { buildVisualWorkflowGraph } from '../services/comfyUIVisualWorkflow';
 import { type BaseMetadata, type IndexedImage } from '../types';
 
@@ -244,6 +245,73 @@ describe('ComfyUI workflow builder', () => {
     expect(prepared.payload.prompt['1'].inputs.ckpt_name).toBe('override.safetensors');
     expect(prepared.payload.prompt['7'].class_type).toBe('MetaHubSaveNode');
     expect(prepared.payload.extra_data?.extra_pnginfo?.parent_image?.fileName).toBe('derived.png');
+  });
+
+  it('builds prepared inpaint workflows with uploaded image, mask, and lineage metadata', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/upload/image')) {
+        return new Response(JSON.stringify({ name: 'prepared-upload.png' }), { status: 200 });
+      }
+      if (url.endsWith('/upload/mask')) {
+        return new Response(JSON.stringify({ name: 'prepared-mask.png' }), { status: 200 });
+      }
+      return new Response('{}', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const image = createImage({
+      normalizedMetadata: {
+        prompt: 'paint the sky',
+        negativePrompt: 'blur',
+        model: 'base.safetensors',
+        width: 640,
+        height: 512,
+        steps: 24,
+        scheduler: 'normal',
+        sampler: 'euler',
+        cfg_scale: 6.5,
+        seed: 42,
+      } as BaseMetadata,
+    });
+    const client = new ComfyUIApiClient({ serverUrl: 'http://127.0.0.1:8188' });
+
+    try {
+      const prepared = await client.prepareWorkflow({
+        image,
+        metadata: image.metadata.normalizedMetadata as BaseMetadata,
+        workflowMode: 'prepared',
+        preparedImageFile: new File([new Uint8Array([1])], 'prepared.png', { type: 'image/png' }),
+        maskFile: new File([new Uint8Array([2])], 'mask.png', { type: 'image/png' }),
+        generationIntent: 'inpaint',
+        denoise: 0.72,
+        sourceImageReference: { fileName: 'source.png', relativePath: 'source.png', width: 640, height: 512 },
+      });
+
+      expect(prepared.modeUsed).toBe('prepared');
+      expect(prepared.workflow.prompt['5']).toMatchObject({ class_type: 'LoadImage', inputs: { image: 'prepared-upload.png' } });
+      expect(prepared.workflow.prompt['6']).toMatchObject({ class_type: 'LoadImageMask', inputs: { image: 'prepared-mask.png' } });
+      expect(prepared.workflow.prompt['7'].class_type).toBe('VAEEncodeForInpaint');
+      expect(prepared.workflow.prompt['8']).toMatchObject({
+        class_type: 'KSampler',
+        inputs: {
+          denoise: 0.72,
+          latent_image: ['7', 0],
+        },
+      });
+      expect(prepared.workflow.extra_data?.extra_pnginfo).toMatchObject({
+        parent_image: { fileName: 'source.png' },
+        generation_type: 'inpaint',
+        denoise: 0.72,
+        metahub_transform: {
+          type: 'generation-prep',
+          intent: 'inpaint',
+          has_mask: true,
+        },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('rewrites LoadImage nodes when selected_image policy uploads a replacement asset', async () => {
