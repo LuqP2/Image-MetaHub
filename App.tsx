@@ -59,7 +59,7 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './components/ComfyUIGenerateModal';
 import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
-import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria, type UpdateDownloadProgress, type UpdateNotificationPayload } from './types';
+import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria, type UpdateDownloadProgress, type UpdateNotificationPayload, type ImageEditorMode } from './types';
 import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
 import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
@@ -498,6 +498,7 @@ export default function App() {
   const [isComfyUIWorkspaceGenerating, setIsComfyUIWorkspaceGenerating] = useState(false);
   const [editorImageId, setEditorImageId] = useState<string | null>(null);
   const [editorNavigationImageIds, setEditorNavigationImageIds] = useState<string[] | null>(null);
+  const [editorInitialMode, setEditorInitialMode] = useState<ImageEditorMode>('edit');
   const [newImagesToast, setNewImagesToast] = useState<{ message: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [batchExportRequest, setBatchExportRequest] = useState<BatchExportRequestState | null>(null);
@@ -2282,7 +2283,7 @@ export default function App() {
     setLibraryView('comfyui');
   }, []);
 
-  const handleOpenImageEditor = useCallback((image: IndexedImage, navigationImages?: IndexedImage[]) => {
+  const handleOpenImageEditor = useCallback((image: IndexedImage, navigationImages?: IndexedImage[], mode: ImageEditorMode = 'edit') => {
     if (!canUseImageEditor) {
       showProModal('image_editor');
       return;
@@ -2293,6 +2294,7 @@ export default function App() {
       : [image.id];
     setEditorImageId(image.id);
     setEditorNavigationImageIds(navigationImageIds);
+    setEditorInitialMode(mode);
     suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
     setLibraryView('editor');
@@ -2302,8 +2304,9 @@ export default function App() {
     modalId: string,
     image: IndexedImage,
     navigationImages?: IndexedImage[],
+    mode: ImageEditorMode = 'edit',
   ) => {
-    handleOpenImageEditor(image, navigationImages);
+    handleOpenImageEditor(image, navigationImages, mode);
     setOpenImageModals((current) => current.filter((modal) => modal.modalId !== modalId));
     setActiveImageModalId((current) => (current === modalId ? null : current));
   }, [handleOpenImageEditor]);
@@ -3614,6 +3617,7 @@ export default function App() {
                       image={editorImage}
                       navigationImages={editorNavigationImages}
                       directoryPath={editorDirectoryPath}
+                      initialMode={editorInitialMode}
                       onBack={() => setLibraryView('library')}
                       onOpenComfyUIWorkflow={(image) => openComfyUIWorkflowInWorkspace(image, editorNavigationImages)}
                     />
@@ -3724,7 +3728,7 @@ export default function App() {
             onSlideshowStartAcknowledged={() => handleSlideshowStartAcknowledged(modal.modalId)}
             onFindSimilar={(image) => openFindSimilar(image, resolveModalNavigationImages(modal))}
             onOpenComfyUIWorkflow={(image) => handleOpenComfyUIWorkflowFromImageModal(modal.modalId, image, resolveModalNavigationImages(modal))}
-            onOpenImageEditor={(image) => handleOpenImageEditorFromImageModal(modal.modalId, image, resolveModalNavigationImages(modal))}
+            onOpenImageEditor={(image, mode) => handleOpenImageEditorFromImageModal(modal.modalId, image, resolveModalNavigationImages(modal), mode)}
           />
         ))}
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
-import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageEditRecipe } from '../types';
+import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageEditRecipe, type ImageEditorMode } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
@@ -233,7 +233,7 @@ interface ImageModalProps {
   onClose: () => void;
   onFindSimilar?: (image: IndexedImage) => void;
   onOpenComfyUIWorkflow?: (image: IndexedImage) => void;
-  onOpenImageEditor?: (image: IndexedImage) => void;
+  onOpenImageEditor?: (image: IndexedImage, mode?: ImageEditorMode) => void;
   onImageDeleted?: (imageId: string) => void;
   onImageRenamed?: (oldImageId: string, newImageId: string, newRelativePath: string) => void;
   currentIndex?: number;
@@ -3654,6 +3654,22 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     <ImageIcon className="h-4 w-4" />
                   </button>
                 )}
+                {canEditImage && onOpenImageEditor && (
+                  <button
+                    onClick={() => {
+                      if (!canUseImageEditor) {
+                        showProModal('image_editor');
+                        return;
+                      }
+                      onOpenImageEditor(liveImage, 'generation-prep');
+                    }}
+                    className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                    title={!canUseImageEditor && initialized ? 'Prepare for Generation (Pro Feature) - start trial' : 'Prepare for Generation'}
+                    aria-label={!canUseImageEditor && initialized ? 'Prepare for Generation (Pro Feature) - start trial' : 'Prepare for Generation'}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                  </button>
+                )}
                 {canEditImage && (
                   <button
                     onClick={() => {
@@ -3757,6 +3773,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 >
                   <ImageIcon className="h-4 w-4" />
                   Open Image Editor
+                  {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
+                </button>
+              )}
+
+              {onOpenImageEditor && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!canUseImageEditor) {
+                      showProModal('image_editor');
+                      return;
+                    }
+                    onOpenImageEditor(liveImage, 'generation-prep');
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-sm font-medium text-purple-100 transition-colors hover:border-purple-400/50 hover:bg-purple-500/20"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Prepare for Generation
                   {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
                 </button>
               )}
