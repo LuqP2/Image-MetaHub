@@ -3,6 +3,7 @@ import {
   DEFAULT_IMAGE_ADJUSTMENTS,
   DEFAULT_IMAGE_EDIT_RECIPE,
   createImageEditorDocument,
+  createDefaultGenerationPrep,
   buildImageAdjustmentFilter,
   clampImageAdjustment,
   clampImageEditCropRect,
@@ -13,6 +14,7 @@ import {
   hasImageAdjustments,
   normalizeImageAdjustments,
   normalizeImageEditorDocument,
+  normalizeImageEditorGenerationPrep,
   normalizeImageEditRecipe,
   normalizeImageEditRotation,
   renderAdjustedImageToPngBytes,
@@ -422,5 +424,63 @@ describe('imageEditingService', () => {
     expect(text).toContain('original prompt');
     expect(text).not.toContain('imagemetahub_data');
     expect(collectPngChunkTypes(output).filter((type) => type === 'tEXt')).toHaveLength(2);
+  });
+
+  it('normalizes generation prep state and embeds prep lineage metadata', () => {
+    const document = createImageEditorDocument({
+      imageId: 'dir::source.png',
+      name: 'source.png',
+      width: 320,
+      height: 240,
+    });
+    const prep = normalizeImageEditorGenerationPrep({
+      ...createDefaultGenerationPrep(document.canvasDimensions, 'outpaint'),
+      denoise: 2,
+      maskOpacity: 1.5,
+      brushSize: 999,
+      sourceBounds: { x: 64, y: 32, width: 320, height: 240 },
+      maskRegions: [{ id: 'expand-left', x: -10, y: 0, width: 64, height: 240, source: 'outpaint-expansion' }],
+      maskStrokes: [{
+        id: 'stroke-1',
+        mode: 'paint',
+        brushSize: 40,
+        points: [{ x: 20, y: 30 }, { x: 999, y: -5 }],
+      }],
+    }, { width: 384, height: 272 });
+
+    expect(prep.intent).toBe('outpaint');
+    expect(prep.denoise).toBe(1);
+    expect(prep.maskOpacity).toBe(1);
+    expect(prep.brushSize).toBe(512);
+    expect(prep.sourceBounds).toEqual({ x: 64, y: 32, width: 320, height: 240 });
+    expect(prep.maskRegions[0]).toMatchObject({ x: 0, y: 0, width: 64, height: 240 });
+    expect(prep.maskStrokes[0].points[1]).toEqual({ x: 384, y: 0 });
+
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x00,
+      0x49, 0x45, 0x4e, 0x44,
+      0xae, 0x42, 0x60, 0x82,
+    ]);
+    const output = embedMetaHubMetadataInPngBytes(
+      pngBytes,
+      { prompt: 'prep prompt', width: 320, height: 240 },
+      document.recipe,
+      undefined,
+      { width: 384, height: 272 },
+      {
+        tool: 'generation-prep-v1',
+        sourceImageId: document.sourceImageId,
+        sourceImage: { fileName: 'source.png', relativePath: 'source.png', width: 320, height: 240 },
+        generationPrep: prep,
+      },
+    );
+    const payload = JSON.parse(collectPngTextChunks(output).imagemetahub_data);
+
+    expect(payload.generation_type).toBe('outpaint');
+    expect(payload.denoise).toBe(1);
+    expect(payload.parent_image.fileName).toBe('source.png');
+    expect(payload.edit.generation_prep.intent).toBe('outpaint');
+    expect(payload.edit.generation_prep.maskRegions).toHaveLength(1);
   });
 });
