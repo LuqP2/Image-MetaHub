@@ -3,7 +3,7 @@
  * Handles communication with ComfyUI server, workflow generation, and WebSocket progress tracking
  */
 
-import { BaseMetadata, IndexedImage } from '../types';
+import { BaseMetadata, GenerationPrepIntent, IndexedImage, SourceImageReference } from '../types';
 import { handleComfyUIError } from '../utils/comfyUIErrorHandler';
 import {
   type ComfyUIExecutionPayload,
@@ -127,7 +127,11 @@ export interface PrepareWorkflowParams {
   overrides?: WorkflowOverrides;
   advancedPromptJson?: string;
   advancedWorkflowJson?: string;
+  preparedImageFile?: File | null;
   maskFile?: File | null;
+  generationIntent?: GenerationPrepIntent;
+  denoise?: number;
+  sourceImageReference?: SourceImageReference;
 }
 
 /**
@@ -569,11 +573,177 @@ export class ComfyUIApiClient {
     };
   }
 
+  private async buildPreparedWorkflow(params: PrepareWorkflowParams): Promise<{
+    workflow: ComfyUIExecutionPayload;
+    warnings: string[];
+  }> {
+    if (!params.preparedImageFile) {
+      throw new Error('Prepare for Generation needs a prepared image file.');
+    }
+
+    const metadata = params.metadata as ComfyWorkflowMetadata;
+    const intent: GenerationPrepIntent = params.generationIntent || (params.maskFile ? 'inpaint' : 'img2img');
+    const useMask = Boolean(params.maskFile && (intent === 'inpaint' || intent === 'outpaint'));
+    const uploadedImageName = await this.uploadAsset(params.preparedImageFile, 'image');
+    const uploadedMaskName = useMask && params.maskFile
+      ? await this.uploadAsset(params.maskFile, 'mask')
+      : null;
+
+    const cfgScale = metadata.cfgScale || params.metadata.cfg_scale || 7;
+    const modelName = params.overrides?.model?.name || params.metadata.model || 'sd_xl_base_1.0.safetensors';
+    const randomSeed = Math.floor(Math.random() * 1000000000);
+    const seedValue = typeof params.metadata.seed === 'number' ? params.metadata.seed : undefined;
+    const resolvedSeed = seedValue === undefined || !Number.isFinite(seedValue) || seedValue < 0
+      ? randomSeed
+      : seedValue;
+    const schedulerValue = params.metadata.scheduler || 'normal';
+    const denoise = typeof params.denoise === 'number' && Number.isFinite(params.denoise)
+      ? Math.min(1, Math.max(0, params.denoise))
+      : (typeof metadata.denoise === 'number' && Number.isFinite(metadata.denoise) ? Math.min(1, Math.max(0, metadata.denoise)) : 0.65);
+
+    const workflow: ComfyWorkflowGraph = {
+      "1": {
+        "class_type": "CheckpointLoaderSimple",
+        "inputs": {
+          "ckpt_name": modelName
+        }
+      },
+      "2": {
+        "class_type": "MetaHubTimerNode",
+        "inputs": {
+          "clip": ["1", 1]
+        }
+      },
+      "3": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "text": params.metadata.prompt || '',
+          "clip": ["2", 0]
+        }
+      },
+      "4": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "text": params.metadata.negativePrompt || '',
+          "clip": ["2", 0]
+        }
+      },
+      "5": {
+        "class_type": "LoadImage",
+        "inputs": {
+          "image": uploadedImageName
+        }
+      }
+    };
+
+    let latentNodeId = "6";
+    let nextNodeId = 7;
+    if (useMask && uploadedMaskName) {
+      workflow["6"] = {
+        "class_type": "LoadImageMask",
+        "inputs": {
+          "image": uploadedMaskName,
+          "channel": "red"
+        }
+      };
+      workflow["7"] = {
+        "class_type": "VAEEncodeForInpaint",
+        "inputs": {
+          "pixels": ["5", 0],
+          "vae": ["1", 2],
+          "mask": ["6", 0],
+          "grow_mask_by": 0
+        }
+      };
+      latentNodeId = "7";
+      nextNodeId = 8;
+    } else {
+      workflow["6"] = {
+        "class_type": "VAEEncode",
+        "inputs": {
+          "pixels": ["5", 0],
+          "vae": ["1", 2]
+        }
+      };
+    }
+
+    const samplerNodeId = String(nextNodeId++);
+    workflow[samplerNodeId] = {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": resolvedSeed,
+        "steps": params.metadata.steps || 20,
+        "cfg": cfgScale,
+        "sampler_name": params.metadata.sampler || "euler",
+        "scheduler": schedulerValue,
+        "denoise": denoise,
+        "model": ["1", 0],
+        "positive": ["3", 0],
+        "negative": ["4", 0],
+        "latent_image": [latentNodeId, 0]
+      }
+    };
+
+    const decodeNodeId = String(nextNodeId++);
+    workflow[decodeNodeId] = {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [samplerNodeId, 0],
+        "vae": ["1", 2]
+      }
+    };
+
+    const saveNodeId = String(nextNodeId);
+    workflow[saveNodeId] = {
+      "class_type": "MetaHubSaveNode",
+      "inputs": {
+        "images": [decodeNodeId, 0],
+        "filename_pattern": `MetaHub_${intent}_%date%_%time%_%counter%`,
+        "file_format": "PNG",
+        "generation_time_override": ["2", 4],
+        "notes": `Prepared ${intent} from Image MetaHub`,
+        "tags": `generation-prep, ${intent}, imagemetahub`
+      }
+    };
+
+    return {
+      workflow: {
+        prompt: workflow,
+        client_id: this.clientId,
+        extra_data: {
+          extra_pnginfo: {
+            workflow: {},
+            prompt: workflow,
+            parent_image: params.sourceImageReference || buildImageSourceReference(params.image),
+            generation_type: intent,
+            denoise,
+            metahub_transform: {
+              type: 'generation-prep',
+              intent,
+              has_mask: useMask,
+              source_generator: params.metadata.generator || null,
+            },
+          },
+        },
+      },
+      warnings: useMask ? [] : (intent === 'inpaint' || intent === 'outpaint' ? ['Prepared workflow intent requested a mask, but no mask file was provided. Used img2img encoding.'] : []),
+    };
+  }
+
   async prepareWorkflow(params: PrepareWorkflowParams): Promise<{
     workflow: ComfyUIExecutionPayload;
     modeUsed: ComfyUIWorkflowMode;
     warnings: string[];
   }> {
+    if (params.workflowMode === 'prepared') {
+      const prepared = await this.buildPreparedWorkflow(params);
+      return {
+        workflow: prepared.workflow,
+        modeUsed: 'prepared',
+        warnings: prepared.warnings,
+      };
+    }
+
     if (params.workflowMode === 'upscale') {
       const prepared = await this.buildUpscaleWorkflowFromImage(params.image, params.metadata, params.directoryPath);
       return {

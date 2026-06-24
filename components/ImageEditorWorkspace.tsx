@@ -64,6 +64,7 @@ import {
   renderImageEditorDocumentToPngBytes,
 } from '../services/imageEditingService';
 import { buildImageSourceReference } from '../services/comfyUIWorkflowBuilder';
+import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { mediaSourceCache } from '../services/mediaSourceCache';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
 import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
@@ -158,6 +159,10 @@ const readPngDimensions = (bytes: Uint8Array): { width: number; height: number }
   const height = view.getUint32(4, false);
   return width > 0 && height > 0 ? { width, height } : null;
 };
+
+const createPngFileFromBytes = (bytes: Uint8Array, fileName: string): File => (
+  new File([new Uint8Array(bytes)], fileName, { type: 'image/png' })
+);
 
 const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
   { id: 'edit', label: 'Edit' },
@@ -693,6 +698,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const setSuccess = useImageStore((state) => state.setSuccess);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const allImages = useImageStore((state) => state.images);
+  const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
 
   const normalizedDocument = useMemo(
     () => documentState ? normalizeImageEditorDocument(documentState) : null,
@@ -1190,6 +1196,61 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     buildDefaultPreparedPath,
     hasPrepMask,
     normalizedDocument?.generationPrep,
+    renderPreparedExportBytes,
+    renderPreparedMaskBytes,
+    setError,
+    setSuccess,
+  ]);
+
+  const handleSendPreparedToComfyUI = useCallback(async () => {
+    if (!normalizedDocument?.generationPrep) {
+      setError('Prepare for Generation is still initializing.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const relativePath = getRelativeImagePath(image);
+      const { fileName } = splitRelativePath(relativePath);
+      const dotIndex = fileName.lastIndexOf('.');
+      const basename = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+      const prep = normalizeImageEditorGenerationPrep(normalizedDocument.generationPrep, normalizedDocument.canvasDimensions);
+      const preparedBytes = await renderPreparedExportBytes();
+      const maskBytes = hasPrepMask ? await renderPreparedMaskBytes() : null;
+      const sourceImage = await ensureHydratedImage();
+      const sourceMetadata = getUsableNormalizedMetadata(sourceImage);
+
+      await generateWithComfyUI(sourceImage, {
+        workflowMode: 'prepared',
+        directoryPath,
+        preparedImageFile: createPngFileFromBytes(preparedBytes, `${basename}-prep.png`),
+        maskFile: maskBytes ? createPngFileFromBytes(maskBytes, `${basename}-mask.png`) : null,
+        generationIntent: prep.intent,
+        denoise: prep.denoise,
+        sourceImageReference: buildImageSourceReference(sourceImage),
+        customMetadata: {
+          ...(sourceMetadata || {}),
+          prompt: sourceMetadata?.prompt || image.prompt || 'Image MetaHub generation prep',
+          negativePrompt: sourceMetadata?.negativePrompt || image.negativePrompt || '',
+          width: normalizedDocument.canvasDimensions.width,
+          height: normalizedDocument.canvasDimensions.height,
+          denoise: prep.denoise,
+          generationType: prep.intent,
+        } as Partial<BaseMetadata>,
+      });
+      setSuccess('Prepared assets queued for ComfyUI.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to send prepared assets to ComfyUI.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    directoryPath,
+    ensureHydratedImage,
+    generateWithComfyUI,
+    hasPrepMask,
+    image,
+    normalizedDocument,
     renderPreparedExportBytes,
     renderPreparedMaskBytes,
     setError,
@@ -2215,6 +2276,10 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           <button type="button" onClick={() => void handleExportPreparedAssets()} disabled={isSaving} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500">
             <Download className="h-4 w-4" />
             Export Prepared Assets
+          </button>
+          <button type="button" onClick={() => void handleSendPreparedToComfyUI()} disabled={isSaving || isGeneratingComfyUI} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-purple-500/40 bg-purple-500/10 px-3 py-2 text-xs font-semibold text-purple-100 hover:bg-purple-500/20 disabled:opacity-40">
+            <Workflow className="h-4 w-4" />
+            Send to ComfyUI
           </button>
           <p className="text-xs text-gray-500">
             Exports a prepared PNG{hasPrepMask ? ' plus a matching mask PNG.' : '. Paint or expand the canvas to create a mask.'}

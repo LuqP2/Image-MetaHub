@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { IndexedImage, BaseMetadata } from '../types';
+import { IndexedImage, BaseMetadata, GenerationPrepIntent, SourceImageReference } from '../types';
 import { WorkflowOverrides } from '../services/comfyUIApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
@@ -30,7 +30,11 @@ export interface GenerateParams {
   sourceImagePolicy?: ComfyUISourceImagePolicy;
   advancedPromptJson?: string;
   advancedWorkflowJson?: string;
+  preparedImageFile?: File | null;
   maskFile?: File | null;
+  generationIntent?: GenerationPrepIntent;
+  denoise?: number;
+  sourceImageReference?: SourceImageReference;
 }
 
 export function useGenerateWithComfyUI() {
@@ -82,7 +86,11 @@ export function useGenerateWithComfyUI() {
           sourceImagePolicy: params?.sourceImagePolicy,
           advancedPromptJson: params?.advancedPromptJson,
           advancedWorkflowJson: params?.advancedWorkflowJson,
+          preparedImageFile: params?.preparedImageFile || null,
           maskFile: params?.maskFile || null,
+          generationIntent: params?.generationIntent,
+          denoise: params?.denoise,
+          sourceImageReference: params?.sourceImageReference,
         },
       });
       const { activeJobs } = useGenerationQueueStore.getState();
