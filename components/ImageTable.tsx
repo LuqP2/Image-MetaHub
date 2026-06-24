@@ -20,6 +20,7 @@ import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal
 import RenameImageModal from './RenameImageModal';
 import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import { groupImages, type ImageGroupByMode, type ImageGroupingSortOrder, type ImageGroupRenderItem } from '../utils/imageGrouping';
+import { clearInternalImageDragData, setInternalImageDragData } from '../utils/internalImageDrag';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -1020,6 +1021,12 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
         }
       }}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
+      onDragStart={(e) => {
+        setInternalImageDragData(e.dataTransfer, image.id);
+        e.dataTransfer.effectAllowed = 'copy';
+      }}
+      onDragEnd={clearInternalImageDragData}
+      draggable
       style={{ height: '64px', gridTemplateColumns }}
     >
       <div className="px-3 py-2">

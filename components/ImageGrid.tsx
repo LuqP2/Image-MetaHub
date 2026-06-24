@@ -51,6 +51,7 @@ import {
   recordPerformanceCounter,
   recordPerformanceDuration,
 } from '../utils/performanceDiagnostics';
+import { clearInternalImageDragData, setInternalImageDragData } from '../utils/internalImageDrag';
 
 // Module-level variable to track internal image drag state (survives native file drag)
 let _activeDragImageIds: string[] = [];
@@ -189,6 +190,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   const [showToast, setShowToast] = useState(false);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
+  const canDragImage = typeof window !== 'undefined';
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
   const audioDuration = formatAudioDuration((image.metadata as any)?.normalizedMetadata?.audio?.duration_seconds);
@@ -349,36 +351,21 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   };
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!canDragExternally) {
-      return;
-    }
-
-    const directoryPath = image.directoryId;
-    if (!directoryPath) {
-      return;
-    }
-
-    const [, relativeFromId] = image.id.split('::');
-    const relativePath = relativeFromId || image.name;
-
     suppressNextClickRef.current = true;
-    // Do NOT call e.preventDefault() — that kills HTML5 dragover/drop on page elements.
-    // Suppress the browser ghost image with a transparent pixel so the OS cursor
-    // from startFileDrag is the only visible indicator.
-    const transparentPixel = document.createElement('canvas');
-    transparentPixel.width = 1;
-    transparentPixel.height = 1;
-    e.dataTransfer.setDragImage(transparentPixel, 0, 0);
     const currentSelectedImages = useImageStore.getState().selectedImages;
     const imageIds = currentSelectedImages.has(image.id) ? Array.from(currentSelectedImages) : [image.id];
-    // Store in module-level variables so DirectoryList can consume internal drops.
     _activeDragImageIds = imageIds;
-    _activeExternalDragPayload = { directoryPath, relativePath };
+    setInternalImageDragData(e.dataTransfer, image.id, imageIds);
     _nativeDragStarted = false;
     e.dataTransfer.effectAllowed = 'copyMove';
-    try {
-      e.dataTransfer.setData('application/x-image-metahub-drag', JSON.stringify({ imageIds }));
-    } catch (_) { /* ignore in Electron native drag context */ }
+
+    if (canDragExternally && image.directoryId) {
+      const [, relativeFromId] = image.id.split('::');
+      const relativePath = relativeFromId || image.name;
+      _activeExternalDragPayload = { directoryPath: image.directoryId, relativePath };
+    } else {
+      _activeExternalDragPayload = null;
+    }
   };
 
   const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
@@ -408,6 +395,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       dragResetTimeoutRef.current = null;
       // Clear drag IDs if not consumed by a drop handler
       clearActiveDragImageIds();
+      clearInternalImageDragData();
       _activeExternalDragPayload = null;
       _nativeDragStarted = false;
     }, 100);
@@ -499,7 +487,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         onDragStart={handleDragStart}
         onDrag={handleDrag}
         onDragEnd={handleDragEnd}
-        draggable={canDragExternally}
+        draggable={canDragImage}
       >
         {/* Checkbox for selection - always visible on hover or when selected */}
         <button

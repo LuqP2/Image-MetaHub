@@ -24,6 +24,8 @@ vi.mock('../services/a1111ApiClient', () => ({
 vi.mock('../hooks/useFeatureAccess', () => ({
   useFeatureAccess: () => ({
     canUseAnalytics: true,
+    canUseComfyUI: true,
+    canUseImageEditor: true,
     showProModal: vi.fn(),
     isTrialActive: false,
     trialDaysRemaining: 0,
@@ -119,5 +121,38 @@ describe('Header launch generator', () => {
     fireEvent.click(screen.getByRole('button', { name: /collections/i }));
 
     expect(onLibraryViewChange).toHaveBeenCalledWith('collections');
+  });
+
+  it('opens a dragged grid or table image in the ComfyUI workspace', () => {
+    const onOpenDroppedImageInComfyUI = vi.fn();
+    const payload = JSON.stringify({
+      primaryImageId: 'directory::image.png',
+      imageIds: ['directory::image.png'],
+    });
+    const dataTransfer = {
+      types: ['application/x-image-metahub-drag'],
+      getData: vi.fn(() => payload),
+      dropEffect: 'none',
+    };
+
+    render(
+      <Header
+        onOpenSettings={() => {}}
+        onOpenAnalytics={() => {}}
+        onOpenLicense={() => {}}
+        libraryView="library"
+        onLibraryViewChange={() => {}}
+        onOpenDroppedImageInComfyUI={onOpenDroppedImageInComfyUI}
+      />
+    );
+
+    const comfyUIButton = screen.getByRole('button', { name: /^comfyui$/i });
+    fireEvent.dragEnter(comfyUIButton, { dataTransfer });
+    expect(comfyUIButton.className).toContain('ring-cyan-400');
+
+    fireEvent.drop(comfyUIButton, { dataTransfer });
+
+    expect(onOpenDroppedImageInComfyUI).toHaveBeenCalledWith('directory::image.png');
+    expect(comfyUIButton.className).not.toContain('ring-cyan-400');
   });
 });

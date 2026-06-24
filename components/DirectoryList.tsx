@@ -5,6 +5,7 @@ import { useImageStore } from '../store/useImageStore';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { getActiveDragImageIds, clearActiveDragImageIds } from './ImageGrid';
+import { INTERNAL_IMAGE_DRAG_TYPE } from '../utils/internalImageDrag';
 
 interface DirectoryListProps {
   directories: Directory[];
@@ -483,7 +484,7 @@ export default function DirectoryList({
 
     if (imageIds.length === 0) {
       try {
-        const data = e.dataTransfer.getData('application/x-image-metahub-drag');
+        const data = e.dataTransfer.getData(INTERNAL_IMAGE_DRAG_TYPE);
         if (data) {
           const payload = JSON.parse(data);
           imageIds = payload.imageIds || [];
