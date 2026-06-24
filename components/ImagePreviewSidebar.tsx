@@ -208,6 +208,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     fileName: activeImage?.name ?? '',
     surface: 'preview-sidebar',
     src: imageUrl,
+    hasAudioTrack: Boolean((activeImage?.metadata?.normalizedMetadata as any)?.audio),
     onAudioRendererError: () => setMediaRendererFailed(true),
   });
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
@@ -539,7 +540,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-100">Audio playback failed in Electron</p>
-                  <p className="mt-1 max-w-md text-xs text-gray-400">The macOS audio service reported an audio renderer error.</p>
+                  <p className="mt-1 max-w-md text-xs text-gray-400">The macOS audio service failed while initializing playback.</p>
                 </div>
                 <button
                   type="button"

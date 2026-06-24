@@ -38,6 +38,11 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const gpuMitigationEnabled = process.env.IMH_DISABLE_GPU === '1' || process.env.IMH_DISABLE_GPU === 'true';
 const mediaSafeModeEnabled = process.platform === 'darwin' && (process.env.IMH_MEDIA_SAFE_MODE === '1' || process.env.IMH_MEDIA_SAFE_MODE === 'true');
 const audioDiagnosticModeEnabled = process.platform === 'darwin' && (process.env.IMH_AUDIO_DIAGNOSTIC_MODE === '1' || process.env.IMH_AUDIO_DIAGNOSTIC_MODE === 'true');
+const macOSAudioMitigationOptOut = process.env.IMH_DISABLE_MACOS_AUDIO_MITIGATION === '1'
+  || process.env.IMH_DISABLE_MACOS_AUDIO_MITIGATION === 'true'
+  || process.env.IMH_ENABLE_OUT_OF_PROCESS_AUDIO === '1'
+  || process.env.IMH_ENABLE_OUT_OF_PROCESS_AUDIO === 'true';
+const macOSAudioMitigationEnabled = process.platform === 'darwin' && app.isPackaged && !macOSAudioMitigationOptOut;
 const enabledMediaCommandLineSwitches = [];
 const disabledChromiumFeatures = new Set();
 
@@ -61,6 +66,16 @@ if (audioDiagnosticModeEnabled) {
   console.warn('[Media] macOS audio diagnostic mode enabled via IMH_AUDIO_DIAGNOSTIC_MODE.');
 }
 
+if (macOSAudioMitigationEnabled) {
+  // macOS/Electron AudioServiceOutOfProcess appears to crash or fail after a
+  // cold system start for at least one user. Silent videos work, while MP3 and
+  // MP4 files with audio fail; disabling this path via diagnostics confirmed
+  // audio-bearing media playback works.
+  disabledChromiumFeatures.add('AudioServiceSandbox');
+  disabledChromiumFeatures.add('AudioServiceOutOfProcess');
+  console.warn('[Media] macOS packaged audio mitigation enabled. Set IMH_DISABLE_MACOS_AUDIO_MITIGATION=1 to opt out for debugging.');
+}
+
 if (disabledChromiumFeatures.size > 0) {
   const disableFeaturesValue = Array.from(disabledChromiumFeatures).join(',');
   app.commandLine.appendSwitch('disable-features', disableFeaturesValue);
@@ -71,7 +86,7 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 8; // v8: Add Image MetaHub creator attribution metadata
+const PARSER_VERSION = 9; // v9: Preserve probed audio stream metadata on normalized video records
 
 const logMainPerf = (event, details = {}) => {
   console.log('[main:perf]', { event, ...details });
@@ -1016,6 +1031,7 @@ function registerProcessDiagnostics() {
     kind: 'app-startup',
     logs: getDiagnosticsLogPaths(),
     gpuMitigationEnabled,
+    macOSAudioMitigationEnabled,
     mediaSafeModeEnabled,
     audioDiagnosticModeEnabled,
     mediaCommandLineSwitches: enabledMediaCommandLineSwitches,
