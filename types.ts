@@ -144,6 +144,8 @@ export type ImageEditorTool =
   | 'select'
   | 'color-picker'
   | 'crop'
+  | 'mask-brush'
+  | 'mask-eraser'
   | 'rectangle'
   | 'ellipse'
   | 'line'
