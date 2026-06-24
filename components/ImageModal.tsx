@@ -570,7 +570,7 @@ const SUPPORTED_MEDIA_EXTENSION_REGEX = new RegExp(
   'i'
 );
 
-const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
+const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void | Promise<void | boolean> }> = ({ label, value, isPrompt = false, onCopy }) => {
   const [copied, setCopied] = useState(false);
 
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -579,11 +579,13 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
 
   const displayValue = Array.isArray(value) ? value.join(', ') : String(value);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (onCopy) {
-      onCopy(displayValue);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      const result = await onCopy(displayValue);
+      if (result !== false) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
     }
   };
 
@@ -1825,27 +1827,34 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setModalWindow(createMaximizedModalWindow());
   }, [isWindowMaximized]);
 
-  const copyToClipboard = (text: string, type: string) => {
+  const copyToClipboard = async (text: string, type: string) => {
     if(!text) {
         alert(`No ${type} to copy.`);
-        return;
+        return false;
     }
-    navigator.clipboard.writeText(text).then(() => {
+    try {
+      await navigator.clipboard.writeText(text);
       const notification = document.createElement('div');
       notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
       notification.textContent = `${type} copied to clipboard!`;
       document.body.appendChild(notification);
-      setTimeout(() => document.body.removeChild(notification), 2000);
-    }).catch(err => {
+      setTimeout(() => {
+        if (document.body.contains(notification)) {
+          document.body.removeChild(notification);
+        }
+      }, 2000);
+      return true;
+    } catch (err) {
       console.error(`Failed to copy ${type}:`, err);
       alert(`Failed to copy ${type}.`);
-    });
+      return false;
+    }
   };
 
   const copyToClipboardElectron = async (text: string, type: string) => {
     if (!text) {
       alert(`No ${type} to copy.`);
-      return;
+      return false;
     }
 
     try {
@@ -1855,10 +1864,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
       notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
       notification.textContent = `${type} copied to clipboard!`;
       document.body.appendChild(notification);
-      setTimeout(() => document.body.removeChild(notification), 2000);
+      setTimeout(() => {
+        if (document.body.contains(notification)) {
+          document.body.removeChild(notification);
+        }
+      }, 2000);
+      return true;
     } catch (err) {
       console.error(`Failed to copy ${type}:`, err);
       alert(`Failed to copy ${type}.`);
+      return false;
     }
   };
 

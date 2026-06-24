@@ -89,7 +89,7 @@ const formatDurationSeconds = (seconds: number): string => {
   return `${minutes}m ${remainingSeconds}s`;
 };
 
-const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
+const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void | Promise<void | boolean> }> = ({ label, value, isPrompt = false, onCopy }) => {
   const [copied, setCopied] = useState(false);
 
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -98,11 +98,13 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
 
   const displayValue = Array.isArray(value) ? value.join(', ') : String(value);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (onCopy) {
-      onCopy(displayValue);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      const result = await onCopy(displayValue);
+      if (result !== false) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
     }
   };
 
@@ -421,11 +423,15 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     setIsBatchExportModalOpen(true);
   };
 
-  const copyToClipboard = (text: string, type: string) => {
-    if(!text) return;
-    navigator.clipboard.writeText(text).catch(err => {
+  const copyToClipboard = async (text: string, type: string) => {
+    if(!text) return false;
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
       console.error(`Failed to copy ${type}:`, err);
-    });
+      return false;
+    }
   };
 
   const hideContextMenu = () => {

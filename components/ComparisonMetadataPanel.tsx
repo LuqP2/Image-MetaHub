@@ -7,7 +7,7 @@ import { compareField, formatFieldValue, diffText, DiffToken } from '../utils/me
 const MetadataField: FC<{
   label: string;
   value: unknown;
-  onCopy?: () => void;
+  onCopy?: () => void | Promise<void | boolean>;
   multiline?: boolean;
   otherValue?: unknown;
   isDiffMode?: boolean;
@@ -83,11 +83,13 @@ const MetadataField: FC<{
     );
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (onCopy) {
-      onCopy();
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      const result = await onCopy();
+      if (result !== false) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
     }
   };
 
@@ -124,9 +126,10 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   const metadata = image.metadata?.normalizedMetadata;
   const isDiffMode = viewMode === 'diff';
 
-  const copyToClipboard = (value: string, label: string) => {
+  const copyToClipboard = async (value: string, label: string) => {
     if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(value).then(() => {
+      try {
+        await navigator.clipboard.writeText(value);
         // Show notification
         const notification = document.createElement('div');
         notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
@@ -137,9 +140,11 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
             document.body.removeChild(notification);
           }
         }, 2000);
-      }).catch(err => {
+        return true;
+      } catch (err) {
         console.error('Failed to copy to clipboard:', err);
-      });
+        return false;
+      }
     } else {
       // Fallback for older browsers
       const textArea = document.createElement('textarea');
@@ -151,12 +156,17 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
       textArea.focus();
       textArea.select();
       try {
-        document.execCommand('copy');
+        const success = document.execCommand('copy');
         textArea.remove();
-        alert(`${label} copied to clipboard!`);
+        if (success) {
+          alert(`${label} copied to clipboard!`);
+          return true;
+        }
+        return false;
       } catch (err) {
         console.error('Failed to copy:', err);
         textArea.remove();
+        return false;
       }
     }
   };
