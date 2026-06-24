@@ -1,5 +1,5 @@
-import React, { FC, useMemo } from 'react';
-import { ChevronDown, ChevronRight, Copy, AlertTriangle } from 'lucide-react';
+import React, { FC, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Copy, AlertTriangle, CheckCircle } from 'lucide-react';
 import { ComparisonMetadataPanelProps, BaseMetadata } from '../types';
 import { compareField, formatFieldValue, diffText, DiffToken } from '../utils/metadataComparison';
 
@@ -7,12 +7,13 @@ import { compareField, formatFieldValue, diffText, DiffToken } from '../utils/me
 const MetadataField: FC<{
   label: string;
   value: unknown;
-  onCopy?: () => void;
+  onCopy?: () => void | Promise<void | boolean>;
   multiline?: boolean;
   otherValue?: unknown;
   isDiffMode?: boolean;
   field?: string;
 }> = ({ label, value, onCopy, multiline, otherValue, isDiffMode, field }) => {
+  const [copied, setCopied] = useState(false);
   // Check if value exists
   const hasValue = value !== undefined && value !== null && value !== '';
   const hasOtherValue = otherValue !== undefined && otherValue !== null && otherValue !== '';
@@ -82,17 +83,28 @@ const MetadataField: FC<{
     );
   };
 
+  const handleCopy = async () => {
+    if (onCopy) {
+      const result = await onCopy();
+      if (result !== false) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    }
+  };
+
   return (
     <div className={`p-2 rounded border ${highlightClass}`}>
       <div className="flex justify-between items-start">
         <p className="text-gray-400 text-xs uppercase tracking-wider">{label}</p>
         {onCopy && (
           <button
-            onClick={onCopy}
-            className="text-gray-400 hover:text-white transition-colors"
-            title={`Copy ${label}`}
+            onClick={handleCopy}
+            className={`transition-all duration-200 ${copied ? 'text-green-400' : 'text-gray-400 hover:text-white'}`}
+            title={copied ? 'Copied!' : `Copy ${label}`}
+            aria-label={copied ? 'Copied!' : `Copy ${label}`}
           >
-            <Copy className="w-3 h-3" />
+            {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
           </button>
         )}
       </div>
@@ -114,9 +126,10 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   const metadata = image.metadata?.normalizedMetadata;
   const isDiffMode = viewMode === 'diff';
 
-  const copyToClipboard = (value: string, label: string) => {
+  const copyToClipboard = async (value: string, label: string) => {
     if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(value).then(() => {
+      try {
+        await navigator.clipboard.writeText(value);
         // Show notification
         const notification = document.createElement('div');
         notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
@@ -127,9 +140,11 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
             document.body.removeChild(notification);
           }
         }, 2000);
-      }).catch(err => {
+        return true;
+      } catch (err) {
         console.error('Failed to copy to clipboard:', err);
-      });
+        return false;
+      }
     } else {
       // Fallback for older browsers
       const textArea = document.createElement('textarea');
@@ -141,12 +156,17 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
       textArea.focus();
       textArea.select();
       try {
-        document.execCommand('copy');
+        const success = document.execCommand('copy');
         textArea.remove();
-        alert(`${label} copied to clipboard!`);
+        if (success) {
+          alert(`${label} copied to clipboard!`);
+          return true;
+        }
+        return false;
       } catch (err) {
         console.error('Failed to copy:', err);
         textArea.remove();
+        return false;
       }
     }
   };
