@@ -326,27 +326,33 @@ export function calculateTopItems(
  */
 export function analyzeCreationHabits(images: IndexedImage[]): CreationHabits {
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const weekdayCounts = new Map<number, number>();
-  const hourlyCounts = new Map<number, number>();
+  const weekdayCounts = new Uint32Array(7);
+  const hourlyCounts = new Uint32Array(24);
+  const date = new Date();
 
-  images.forEach((img) => {
-    const date = new Date(img.lastModified);
-    const weekday = date.getDay();
-    const hour = date.getHours();
+  // Optimization: Standard for loop and Date reuse to minimize allocations.
+  // Impact: Reduces GC pressure by avoiding N Date object creations and Map lookups.
+  for (let i = 0; i < images.length; i++) {
+    date.setTime(images[i].lastModified);
+    weekdayCounts[date.getDay()]++;
+    hourlyCounts[date.getHours()]++;
+  }
 
-    weekdayCounts.set(weekday, (weekdayCounts.get(weekday) || 0) + 1);
-    hourlyCounts.set(hour, (hourlyCounts.get(hour) || 0) + 1);
-  });
+  const weekdayDistribution = new Array(7);
+  for (let i = 0; i < 7; i++) {
+    weekdayDistribution[i] = {
+      day: weekdays[i],
+      count: weekdayCounts[i],
+    };
+  }
 
-  const weekdayDistribution = weekdays.map((day, index) => ({
-    day,
-    count: weekdayCounts.get(index) || 0,
-  }));
-
-  const hourlyDistribution = Array.from({ length: 24 }, (_, hour) => ({
-    hour,
-    count: hourlyCounts.get(hour) || 0,
-  }));
+  const hourlyDistribution = new Array(24);
+  for (let i = 0; i < 24; i++) {
+    hourlyDistribution[i] = {
+      hour: i,
+      count: hourlyCounts[i],
+    };
+  }
 
   return { weekdayDistribution, hourlyDistribution };
 }
@@ -1257,6 +1263,8 @@ export const buildAnalyticsExplorerData = ({
     });
   }
 
+  const habits = analyzeCreationHabits(scopeImages);
+
   const explorerData: AnalyticsExplorerData = {
     scopeMode,
     totalImages,
@@ -1290,8 +1298,8 @@ export const buildAnalyticsExplorerData = ({
     },
     time: {
       timeline: buildTimelinePoints(scopeImages),
-      weekday: analyzeCreationHabits(scopeImages).weekdayDistribution.map((entry) => ({ key: entry.day, label: entry.day, count: entry.count })),
-      hourly: analyzeCreationHabits(scopeImages).hourlyDistribution.map((entry) => ({ key: String(entry.hour), label: `${entry.hour}:00`, count: entry.count })),
+      weekday: habits.weekdayDistribution.map((entry) => ({ key: entry.day, label: entry.day, count: entry.count })),
+      hourly: habits.hourlyDistribution.map((entry) => ({ key: String(entry.hour), label: `${entry.hour}:00`, count: entry.count })),
       sessions: buildSessions(scopeImages),
     },
     performance: {
