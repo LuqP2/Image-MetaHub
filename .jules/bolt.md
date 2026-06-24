@@ -27,3 +27,7 @@
 ## 2025-01-24 - Efficient Temporal Analytics via Date Reuse and TypedArrays
 **Learning:** Performing temporal analysis on large datasets often involves thousands of ephemeral `Date` object allocations and `Map` lookups for fixed-range keys (e.g., hours of day, days of week).
 **Action:** Use a single `Date` object and update it via `.setTime(timestamp)` inside the loop to avoid GC pressure. For fixed-range categorical counts, replace `Map` with `Uint32Array` for faster lookups and reduced memory footprint. Additionally, ensure expensive analytics functions are called once and their results cached when needed multiple times in the same derivation block.
+
+## 2025-05-27 - Reducing GC Pressure via Object Reuse and Standard For Loops
+**Learning:** High-frequency analytics functions (e.g., timeline generation, facet collection) can trigger significant GC pressure by allocating thousands of ephemeral `Date` and `Set` objects inside (N)$ loops. Standard `for` loops also provide better performance than `.forEach()` by eliminating callback overhead and allowing for better JIT optimizations.
+**Action:** In performance-critical iteration blocks, initialize `Date` or `Set` objects outside the loop and reuse them inside using `.setTime()` or `.clear()` respectively. Prefer standard `for` loops over `.forEach()` in hot paths to minimize function call overhead and improve execution speed.
