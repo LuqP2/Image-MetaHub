@@ -31,3 +31,7 @@
 ## 2025-05-27 - Reducing GC Pressure via Object Reuse and Standard For Loops
 **Learning:** High-frequency analytics functions (e.g., timeline generation, facet collection) can trigger significant GC pressure by allocating thousands of ephemeral `Date` and `Set` objects inside (N)$ loops. Standard `for` loops also provide better performance than `.forEach()` by eliminating callback overhead and allowing for better JIT optimizations.
 **Action:** In performance-critical iteration blocks, initialize `Date` or `Set` objects outside the loop and reuse them inside using `.setTime()` or `.clear()` respectively. Prefer standard `for` loops over `.forEach()` in hot paths to minimize function call overhead and improve execution speed.
+
+## 2026-06-25 - Lifting Max Calculations from Render Loops
+**Learning:** Calculating distribution maximums (for scaling bar charts) inside a JSX `.map()` using `Math.max(...list.map())` creates an $O(N^2)$ bottleneck and high GC pressure due to redundant array allocations and traversals on every item.
+**Action:** Pre-calculate maximums once using a single $O(N)$ `for` loop inside `useMemo`. This ensures that rendering $N$ items only requires $O(N)$ total work to determine the scale, rather than $O(N^2)$, which is critical for large datasets like timeline or rating distributions.
