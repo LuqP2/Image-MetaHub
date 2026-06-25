@@ -7,7 +7,7 @@ import { type IndexedImage, type BaseMetadata, type Directory, ImageStack, Smart
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Square, Search,
+import { Heart, Info, Copy, CheckCircle, Folder, Download, Clipboard, Sparkles, GitCompare, Square, Search,
   Archive,
   ChevronRight,
   CheckSquare,
@@ -29,7 +29,6 @@ import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import { useImageComparison } from '../hooks/useImageComparison';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
-import Toast from './Toast';
 import { RATING_VALUES, RatingValueIcons, getRatingChipClasses, getRatingLabel } from './RatingStars';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
@@ -187,7 +186,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   const showFilenames = useSettingsStore((state) => state.showFilenames);
   const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
   const doubleClickToOpen = useSettingsStore((state) => state.doubleClickToOpen);
-  const [showToast, setShowToast] = useState(false);
+  const [copied, setCopied] = useState(false);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
   const canDragImage = typeof window !== 'undefined';
@@ -330,11 +329,16 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     setPreviewImage(image);
   };
 
-  const handleCopyClick = (e: React.MouseEvent) => {
+  const handleCopyClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (image.prompt) {
-      navigator.clipboard.writeText(image.prompt);
-      setShowToast(true);
+      try {
+        await navigator.clipboard.writeText(image.prompt);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy prompt:', err);
+      }
     }
   };
 
@@ -428,7 +432,6 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
 
   return (
     <div className="flex flex-col items-center" style={{ width: `${baseWidth}px` }}>
-      {showToast && <Toast message="Prompt copied to clipboard!" onDismiss={() => setShowToast(false)} />}
       <div
         ref={mergedRef}
         data-image-id={image.id}
@@ -548,11 +551,16 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         </button>
         <button
           onClick={handleCopyClick}
-          className="absolute top-2 right-11 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:opacity-100"
-          title="Copy Prompt"
+          className={`absolute top-2 right-11 z-10 p-1.5 rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:opacity-100 ${
+            copied
+              ? 'bg-green-600 text-white opacity-100'
+              : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-green-500'
+          }`}
+          title={copied ? 'Copied!' : 'Copy Prompt'}
+          aria-label={copied ? 'Copied!' : 'Copy Prompt'}
           disabled={!image.prompt}
         >
-          <Copy className="h-4 w-4" />
+          {copied ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
         </button>
 
         {hasThumbnailError ? (
