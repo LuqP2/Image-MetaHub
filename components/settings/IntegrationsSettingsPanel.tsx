@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Copy, ExternalLink, FolderOpen } from 'lucide-react';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { IntegrationCard } from './IntegrationCard';
 import { SettingRow } from './SettingRow';
@@ -24,13 +24,64 @@ export const IntegrationsSettingsPanel: React.FC = () => {
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
   const comfyUIQueueMonitoringEnabled = useSettingsStore((state) => state.comfyUIQueueMonitoringEnabled);
+  const comfyUIBridgeDirectory = useSettingsStore((state) => state.comfyUIBridgeDirectory);
   const setComfyUIEnabled = useSettingsStore((state) => state.setComfyUIEnabled);
   const setComfyUIServerUrl = useSettingsStore((state) => state.setComfyUIServerUrl);
   const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
   const setComfyUIQueueMonitoringEnabled = useSettingsStore((state) => state.setComfyUIQueueMonitoringEnabled);
+  const setComfyUIBridgeDirectory = useSettingsStore((state) => state.setComfyUIBridgeDirectory);
 
   const [isTestingA1111Connection, setIsTestingA1111Connection] = useState(false);
   const [isTestingComfyUIConnection, setIsTestingComfyUIConnection] = useState(false);
+  const [resolvedBridgeDirectory, setResolvedBridgeDirectory] = useState('');
+  const [bridgeDirectoryStatus, setBridgeDirectoryStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const resolveBridgeDirectory = async () => {
+      if (comfyUIBridgeDirectory.trim()) {
+        setResolvedBridgeDirectory(comfyUIBridgeDirectory.trim());
+        return;
+      }
+      const result = await window.electronAPI?.getComfyUIBridgeDefaultDirectory?.();
+      if (!cancelled) {
+        setResolvedBridgeDirectory(result?.success && result.path ? result.path : '~/ImageMetaHub/comfyui_bridge');
+      }
+    };
+    void resolveBridgeDirectory();
+    return () => {
+      cancelled = true;
+    };
+  }, [comfyUIBridgeDirectory]);
+
+  const handleCopyBridgeDirectory = async () => {
+    if (!resolvedBridgeDirectory) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(resolvedBridgeDirectory);
+      setBridgeDirectoryStatus('Bridge path copied.');
+    } catch (error) {
+      setBridgeDirectoryStatus('Could not copy bridge path.');
+    }
+  };
+
+  const handleChooseBridgeDirectory = async () => {
+    const result = await window.electronAPI?.showDirectoryDialog?.();
+    if (result?.success && result.path) {
+      setComfyUIBridgeDirectory(result.path);
+      setBridgeDirectoryStatus('Bridge folder updated.');
+    }
+  };
+
+  const handleOpenBridgeDirectory = async () => {
+    const result = await window.electronAPI?.openComfyUIBridgeDirectory?.(comfyUIBridgeDirectory);
+    if (result?.success) {
+      setBridgeDirectoryStatus('Bridge folder opened.');
+    } else {
+      setBridgeDirectoryStatus(result?.error || 'Could not open bridge folder.');
+    }
+  };
 
   const handleTestA1111Connection = async () => {
     if (!a1111ServerUrl) {
@@ -204,6 +255,67 @@ export const IntegrationsSettingsPanel: React.FC = () => {
               placeholder="http://127.0.0.1:8188"
               className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
             />
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-100" htmlFor="comfyui-bridge-directory">
+                ComfyUI Bridge folder
+              </label>
+              <p className="text-sm text-gray-400">
+                Blank uses the shared default path that MetaHub Input resolves automatically.
+              </p>
+            </div>
+            <input
+              id="comfyui-bridge-directory"
+              type="text"
+              value={comfyUIBridgeDirectory}
+              onChange={(event) => setComfyUIBridgeDirectory(event.target.value)}
+              placeholder={resolvedBridgeDirectory || '~/ImageMetaHub/comfyui_bridge'}
+              className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+            />
+            <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2 font-mono text-xs text-gray-300">
+              {resolvedBridgeDirectory || 'Resolving bridge path...'}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleCopyBridgeDirectory}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800"
+              >
+                <Copy size={14} />
+                Copy path
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenBridgeDirectory}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800"
+              >
+                <FolderOpen size={14} />
+                Open folder
+              </button>
+              <button
+                type="button"
+                onClick={handleChooseBridgeDirectory}
+                className="rounded-lg border border-gray-700 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800"
+              >
+                Choose folder
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setComfyUIBridgeDirectory('');
+                  setBridgeDirectoryStatus('Using default bridge folder.');
+                }}
+                disabled={!comfyUIBridgeDirectory}
+                className="rounded-lg border border-gray-700 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+              >
+                Reset
+              </button>
+            </div>
+            {bridgeDirectoryStatus && (
+              <p className="text-sm text-gray-400">{bridgeDirectoryStatus}</p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
