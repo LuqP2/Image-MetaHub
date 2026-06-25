@@ -179,7 +179,7 @@ Basic setup:
 
 ## ComfyUI Integration (Pro)
 
-With Pro enabled, Image MetaHub can generate through ComfyUI using either the original embedded workflow or a safe metadata rebuild.
+With Pro enabled, Image MetaHub can generate through ComfyUI using either the original embedded workflow or a safe metadata rebuild. For custom continuation workflows, the primary path is the local ComfyUI Bridge: prepare an image, mask, or outpaint canvas in the Image Editor, send the assets to disk, then read them inside ComfyUI with the companion `MetaHub Input` node.
 
 The ComfyUI Workspace adds a full working area around a running local ComfyUI instance: an embedded browser, selected-image context, library thumbnails, directory scoping, workflow/raw metadata tabs, copy/generate actions, and direct routes from the grid, table, toolbar, and image viewer. In the browser build, the same entry points open ComfyUI externally instead of embedding it.
 
@@ -196,6 +196,7 @@ The ComfyUI Workspace adds a full working area around a running local ComfyUI in
 
 * **Workflow-native mode** for executable embedded prompt graphs
 * **Simple rebuild mode** for metadata-only images
+* **ComfyUI Bridge** for prepared image/mask/outpaint assets used inside your own workflows
 * **Visual workflow inspector/editor** with pan/zoom and per-node field editing
 * **Embedded ComfyUI Workspace** for staying inside Image MetaHub while browsing source images and working in ComfyUI
 * **Model-family aware overrides** for checkpoints, UNETs, VAEs, CLIP loaders, and LoRAs when supported
@@ -206,7 +207,7 @@ The ComfyUI Workspace adds a full working area around a running local ComfyUI in
 **Setup:**
 
 1. Run ComfyUI locally, usually on `http://127.0.0.1:8188`.
-2. Install the MetaHub Save Node.
+2. Install the MetaHub Save Node, including the `MetaHub Input` node for bridge workflows.
 3. Configure the ComfyUI URL in settings.
 4. Optionally save a local launch command so the desktop header can start or reopen ComfyUI for you.
 5. Test the connection from the app and start generating.
