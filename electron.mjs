@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import crypto from 'crypto';
+import os from 'os';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
@@ -2533,6 +2534,119 @@ async function getFilesRecursively(directory, baseDirectory) {
 
 function setupFileOperationHandlers() {
   const approvedWriteRoots = new Set();
+  const resolveComfyUIBridgeDirectory = (bridgeDirectory) => {
+    const rawDirectory = typeof bridgeDirectory === 'string' ? bridgeDirectory.trim() : '';
+    if (!rawDirectory) {
+      return path.join(os.homedir(), 'ImageMetaHub', 'comfyui_bridge');
+    }
+    if (rawDirectory === '~') {
+      return os.homedir();
+    }
+    if (rawDirectory.startsWith(`~${path.sep}`) || rawDirectory.startsWith('~/') || rawDirectory.startsWith('~\\')) {
+      return path.resolve(os.homedir(), rawDirectory.slice(2));
+    }
+    return path.resolve(rawDirectory);
+  };
+  const normalizeBridgeSessionId = (sessionId) => {
+    const normalized = typeof sessionId === 'string' ? sessionId.trim() : '';
+    if (!normalized || !/^[A-Za-z0-9._-]+$/.test(normalized) || normalized.includes('/') || normalized.includes('\\')) {
+      throw new Error('Invalid ComfyUI Bridge session id.');
+    }
+    return normalized;
+  };
+  const bridgeDataToBuffer = (data) => {
+    if (!data) {
+      throw new Error('Missing bridge file data.');
+    }
+    if (Buffer.isBuffer(data)) {
+      return data;
+    }
+    if (data instanceof ArrayBuffer) {
+      return Buffer.from(new Uint8Array(data));
+    }
+    if (ArrayBuffer.isView(data)) {
+      return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+    }
+    if (Array.isArray(data)) {
+      return Buffer.from(data);
+    }
+    if (data?.type === 'Buffer' && Array.isArray(data.data)) {
+      return Buffer.from(data.data);
+    }
+    throw new Error('Unsupported bridge file data.');
+  };
+  const writeBridgeFileAtomic = async (filePath, data) => {
+    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    await fs.writeFile(tempPath, data);
+    await fs.rename(tempPath, filePath);
+  };
+  const removeBridgeFileIfExists = async (filePath) => {
+    try {
+      await fs.rm(filePath, { force: true });
+    } catch (error) {
+      if (error?.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  };
+  const writeBridgePayloadToDirectory = async (targetDirectory, payload, sessionId) => {
+    const imageBuffer = bridgeDataToBuffer(payload.imageBytes);
+    const maskBuffer = payload.maskBytes ? bridgeDataToBuffer(payload.maskBytes) : null;
+    const metadata = {
+      ...payload.metadata,
+      session_id: sessionId,
+      files: {
+        ...payload.metadata?.files,
+        image: {
+          ...payload.metadata?.files?.image,
+          name: 'image.png',
+        },
+        mask: {
+          ...payload.metadata?.files?.mask,
+          name: 'mask.png',
+          available: Boolean(maskBuffer),
+        },
+      },
+    };
+    const metadataBuffer = Buffer.from(JSON.stringify(metadata, null, 2), 'utf8');
+    await fs.mkdir(targetDirectory, { recursive: true });
+    await writeBridgeFileAtomic(path.join(targetDirectory, 'image.png'), imageBuffer);
+    if (maskBuffer) {
+      await writeBridgeFileAtomic(path.join(targetDirectory, 'mask.png'), maskBuffer);
+    } else {
+      await removeBridgeFileIfExists(path.join(targetDirectory, 'mask.png'));
+    }
+    await writeBridgeFileAtomic(path.join(targetDirectory, 'metadata.json'), metadataBuffer);
+  };
+  const updateBridgeIndex = async (bridgeDirectory, metadata, sessionId) => {
+    const indexPath = path.join(bridgeDirectory, 'index.json');
+    let previousIndex = null;
+    try {
+      previousIndex = JSON.parse(await fs.readFile(indexPath, 'utf8'));
+    } catch (error) {
+      previousIndex = null;
+    }
+    const existingSessions = Array.isArray(previousIndex?.sessions) ? previousIndex.sessions : [];
+    const nextEntry = {
+      session_id: sessionId,
+      prepared_at: metadata.prepared_at,
+      intent: metadata.intent,
+      width: metadata.canvas?.width ?? metadata.files?.image?.width ?? null,
+      height: metadata.canvas?.height ?? metadata.files?.image?.height ?? null,
+      has_mask: Boolean(metadata.files?.mask?.available),
+      source_name: metadata.source?.name ?? null,
+    };
+    const sessions = [
+      nextEntry,
+      ...existingSessions.filter((entry) => entry?.session_id !== sessionId),
+    ].slice(0, 25);
+    await writeBridgeFileAtomic(indexPath, Buffer.from(JSON.stringify({
+      schema_version: 1,
+      latest_session_id: sessionId,
+      updated_at: new Date().toISOString(),
+      sessions,
+    }, null, 2), 'utf8'));
+  };
   const registerApprovedWriteRoot = (targetPath) => {
     if (!targetPath) return;
     const normalizedTarget = normalizeAllowedPath(targetPath);
@@ -5109,6 +5223,58 @@ function setupFileOperationHandlers() {
     } catch (error) {
       console.error('Error writing file:', error);
       return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-comfyui-bridge-default-directory', async () => {
+    try {
+      return { success: true, path: resolveComfyUIBridgeDirectory('') };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to resolve ComfyUI Bridge directory.' };
+    }
+  });
+
+  ipcMain.handle('open-comfyui-bridge-directory', async (event, bridgeDirectory) => {
+    try {
+      const resolvedBridgeDirectory = resolveComfyUIBridgeDirectory(bridgeDirectory);
+      await fs.mkdir(resolvedBridgeDirectory, { recursive: true });
+      const openError = await shell.openPath(resolvedBridgeDirectory);
+      if (openError) {
+        return { success: false, path: resolvedBridgeDirectory, error: openError };
+      }
+      return { success: true, path: resolvedBridgeDirectory };
+    } catch (error) {
+      console.error('Error opening ComfyUI Bridge directory:', error);
+      return { success: false, error: error?.message || 'Failed to open ComfyUI Bridge directory.' };
+    }
+  });
+
+  ipcMain.handle('write-comfyui-bridge-payload', async (event, payload = {}) => {
+    try {
+      const sessionId = normalizeBridgeSessionId(payload.sessionId);
+      if (!payload.metadata || typeof payload.metadata !== 'object') {
+        return { success: false, error: 'Missing ComfyUI Bridge metadata.' };
+      }
+      const bridgeDirectory = resolveComfyUIBridgeDirectory(payload.bridgeDirectory);
+      const sessionsDirectory = path.join(bridgeDirectory, 'sessions');
+      const sessionDirectory = path.join(sessionsDirectory, sessionId);
+      const latestDirectory = path.join(bridgeDirectory, 'latest');
+
+      await fs.mkdir(sessionsDirectory, { recursive: true });
+      await writeBridgePayloadToDirectory(sessionDirectory, payload, sessionId);
+      await writeBridgePayloadToDirectory(latestDirectory, payload, sessionId);
+      await updateBridgeIndex(bridgeDirectory, payload.metadata, sessionId);
+
+      return {
+        success: true,
+        bridgeDirectory,
+        sessionDirectory,
+        latestDirectory,
+        sessionId,
+      };
+    } catch (error) {
+      console.error('Error writing ComfyUI Bridge payload:', error);
+      return { success: false, error: error?.message || 'Failed to write ComfyUI Bridge payload.' };
     }
   });
 

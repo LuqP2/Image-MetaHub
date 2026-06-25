@@ -50,10 +50,13 @@ describe('useSettingsStore persistence helpers', () => {
     useSettingsStore.getState().resetState();
 
     expect(useSettingsStore.getState().comfyUIQueueMonitoringEnabled).toBe(true);
+    expect(useSettingsStore.getState().comfyUIBridgeDirectory).toBe('');
 
     useSettingsStore.getState().setComfyUIQueueMonitoringEnabled(false);
+    useSettingsStore.getState().setComfyUIBridgeDirectory('D:/bridge');
 
     expect(useSettingsStore.getState().comfyUIQueueMonitoringEnabled).toBe(false);
+    expect(useSettingsStore.getState().comfyUIBridgeDirectory).toBe('D:/bridge');
   });
 
   it('does not notify subscribers when generator connection status is unchanged', () => {
