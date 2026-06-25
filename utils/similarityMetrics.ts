@@ -151,12 +151,11 @@ const STOP_WORDS = new Set([
   'art', 'illustration', '4k', '8k', '16k', 'uhd', 'hd',
 ]);
 
-export function tokenizeForSimilarity(text: string): Set<string> {
+export function tokenizeForSimilarity(text: string, isAlreadyNormalized = false): Set<string> {
   // Remove A1111 weight syntax: (term:1.2) or [term:0.8]
   const cleanedText = text.replace(/(?:\(|\[)\s*([^\])]+?)\s*:\s*[\d.]+\s*(?:\)|\])/g, '$1');
 
-  const tokens = cleanedText
-    .toLowerCase()
+  const tokens = (isAlreadyNormalized ? cleanedText : cleanedText.toLowerCase())
     // Split by whitespace AND commas (Danbooru-style: "1girl, blue hair, sitting")
     .split(/[\s,]+/)
     .map((token) => token.trim())
@@ -175,9 +174,12 @@ export function tokenizeForSimilarity(text: string): Set<string> {
  * Compares token overlap: |A ∩ B| / |A ∪ B|
  * Fast: O(n+m) where n,m are token counts
  */
-export function jaccardSimilarity(str1: string, str2: string): number {
-  const tokens1 = tokenizeForSimilarity(str1);
-  const tokens2 = tokenizeForSimilarity(str2);
+export function jaccardSimilarity(
+  str1: string | Set<string>,
+  str2: string | Set<string>
+): number {
+  const tokens1 = str1 instanceof Set ? str1 : tokenizeForSimilarity(str1);
+  const tokens2 = str2 instanceof Set ? str2 : tokenizeForSimilarity(str2);
 
   if (tokens1.size === 0 && tokens2.size === 0) return 1.0;
   if (tokens1.size === 0 || tokens2.size === 0) return 0.0;
@@ -204,9 +206,23 @@ export function jaccardSimilarity(str1: string, str2: string): number {
  * - Levenshtein: Catches typos and minor character variations
  * - Weighted average provides balanced approach
  */
-export function hybridSimilarity(str1: string, str2: string): number {
+export function hybridSimilarity(
+  str1: string | Set<string>,
+  str2: string | Set<string>,
+  rawStr1?: string,
+  rawStr2?: string
+): number {
   const jaccard = jaccardSimilarity(str1, str2);
-  const levenshtein = normalizedLevenshtein(str1, str2);
+
+  // Levenshtein requires the original strings. If Sets were passed, we need the raw strings.
+  const text1 = typeof str1 === 'string' ? str1 : rawStr1;
+  const text2 = typeof str2 === 'string' ? str2 : rawStr2;
+
+  if (text1 === undefined || text2 === undefined) {
+    return jaccard; // Fallback to Jaccard if strings are missing
+  }
+
+  const levenshtein = normalizedLevenshtein(text1, text2);
 
   return jaccard * 0.6 + levenshtein * 0.4;
 }
@@ -244,8 +260,8 @@ export function normalizePrompt(prompt: string): string {
  * Generate a hash for exact prompt matching (fast path)
  * Uses simple string hash (FNV-1a variant)
  */
-export function generatePromptHash(prompt: string): string {
-  const normalized = normalizePrompt(prompt);
+export function generatePromptHash(prompt: string, isAlreadyNormalized = false): string {
+  const normalized = isAlreadyNormalized ? prompt : normalizePrompt(prompt);
 
   let hash = 2166136261; // FNV offset basis
 
@@ -263,9 +279,13 @@ export function generatePromptHash(prompt: string): string {
  * Used for token bucketing optimization
  * Returns top N most meaningful tokens (nouns, adjectives, etc.)
  */
-export function extractKeywords(prompt: string, topN: number = 5): string[] {
-  const normalized = normalizePrompt(prompt);
-  const tokens = tokenizeForSimilarity(normalized);
+export function extractKeywords(
+  prompt: string,
+  topN: number = 5,
+  isAlreadyNormalized = false
+): string[] {
+  const normalized = isAlreadyNormalized ? prompt : normalizePrompt(prompt);
+  const tokens = tokenizeForSimilarity(normalized, isAlreadyNormalized);
   const keywords: string[] = [];
 
   // Optimization: Use a for...of loop with early break instead of chained array methods

@@ -31,3 +31,7 @@
 ## 2025-05-27 - Reducing GC Pressure via Object Reuse and Standard For Loops
 **Learning:** High-frequency analytics functions (e.g., timeline generation, facet collection) can trigger significant GC pressure by allocating thousands of ephemeral `Date` and `Set` objects inside (N)$ loops. Standard `for` loops also provide better performance than `.forEach()` by eliminating callback overhead and allowing for better JIT optimizations.
 **Action:** In performance-critical iteration blocks, initialize `Date` or `Set` objects outside the loop and reuse them inside using `.setTime()` or `.clear()` respectively. Prefer standard `for` loops over `.forEach()` in hot paths to minimize function call overhead and improve execution speed.
+
+## 2025-01-24 - Redundant Normalization and Tokenization in Clustering
+**Learning:** The clustering engine and similarity metrics previously performed redundant prompt normalization and tokenization in hot loops. For example, `addImageToClusters` would tokenize the same input prompt $ times when comparing against $ clusters, and Phase 1 of clustering would normalize the same string three times.
+**Action:** Update similarity utilities to accept an `isAlreadyNormalized` flag and pre-tokenized `Set<string>`. Refactor clustering logic to normalize and tokenize exactly once per prompt, passing the results through the comparison chain. This eliminates (N)$ redundant processing during incremental updates and significantly reduces regex overhead in batch clustering.
