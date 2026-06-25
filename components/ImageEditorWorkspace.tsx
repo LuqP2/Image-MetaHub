@@ -72,6 +72,12 @@ import { getFileExtension } from '../utils/mediaTypes.js';
 import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndexer';
 import cacheManager from '../services/cacheManager';
 import { useImageStore } from '../store/useImageStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import {
+  buildComfyUIBridgeWritePayload,
+  createComfyUIBridgeSessionId,
+  writeComfyUIBridgePayload,
+} from '../services/comfyUIBridgeService';
 
 interface ImageEditorWorkspaceProps {
   image: IndexedImage;
@@ -698,6 +704,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const setSuccess = useImageStore((state) => state.setSuccess);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const allImages = useImageStore((state) => state.images);
+  const comfyUIBridgeDirectory = useSettingsStore((state) => state.comfyUIBridgeDirectory);
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
 
   const normalizedDocument = useMemo(
@@ -1202,6 +1209,50 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     setSuccess,
   ]);
 
+  const handleSendPreparedToComfyUIBridge = useCallback(async () => {
+    if (!normalizedDocument?.generationPrep) {
+      setError('Prepare for Generation is still initializing.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const preparedBytes = await renderPreparedExportBytes();
+      const maskBytes = hasPrepMask ? await renderPreparedMaskBytes() : null;
+      const sourceImage = await ensureHydratedImage();
+      const payload = buildComfyUIBridgeWritePayload({
+        bridgeDirectory: comfyUIBridgeDirectory,
+        image: sourceImage,
+        editorDocument: normalizedDocument,
+        hasMask: Boolean(maskBytes),
+        sessionId: createComfyUIBridgeSessionId(),
+        imageBytes: preparedBytes,
+        maskBytes,
+        directoryPath,
+        sourceImageReference: buildImageSourceReference(sourceImage),
+      });
+      const result = await writeComfyUIBridgePayload(payload);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to write ComfyUI Bridge payload.');
+      }
+      setSuccess(`Sent to ComfyUI Bridge. Queue a workflow with MetaHub Input in ComfyUI.${result.bridgeDirectory ? ` Bridge: ${result.bridgeDirectory}` : ''}`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to send prepared assets to ComfyUI Bridge.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    comfyUIBridgeDirectory,
+    directoryPath,
+    ensureHydratedImage,
+    hasPrepMask,
+    normalizedDocument,
+    renderPreparedExportBytes,
+    renderPreparedMaskBytes,
+    setError,
+    setSuccess,
+  ]);
+
   const handleSendPreparedToComfyUI = useCallback(async () => {
     if (!normalizedDocument?.generationPrep) {
       setError('Prepare for Generation is still initializing.');
@@ -1238,9 +1289,9 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           generationType: prep.intent,
         } as Partial<BaseMetadata>,
       });
-      setSuccess('Prepared assets queued for ComfyUI.');
+      setSuccess('Quick ComfyUI workflow queued.');
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to send prepared assets to ComfyUI.');
+      setError(error instanceof Error ? error.message : 'Failed to run quick ComfyUI workflow.');
     } finally {
       setIsSaving(false);
     }
@@ -2273,16 +2324,20 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
 
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-gray-100">Export</h3>
-          <button type="button" onClick={() => void handleExportPreparedAssets()} disabled={isSaving} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500">
+          <button type="button" onClick={() => void handleSendPreparedToComfyUIBridge()} disabled={isSaving} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500">
+            <Workflow className="h-4 w-4" />
+            Send to ComfyUI Bridge
+          </button>
+          <button type="button" onClick={() => void handleExportPreparedAssets()} disabled={isSaving} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40">
             <Download className="h-4 w-4" />
             Export Prepared Assets
           </button>
           <button type="button" onClick={() => void handleSendPreparedToComfyUI()} disabled={isSaving || isGeneratingComfyUI} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-purple-500/40 bg-purple-500/10 px-3 py-2 text-xs font-semibold text-purple-100 hover:bg-purple-500/20 disabled:opacity-40">
             <Workflow className="h-4 w-4" />
-            Send to ComfyUI
+            Run Quick ComfyUI Workflow
           </button>
           <p className="text-xs text-gray-500">
-            Exports a prepared PNG{hasPrepMask ? ' plus a matching mask PNG.' : '. Paint or expand the canvas to create a mask.'}
+            Bridge writes image.png{hasPrepMask ? ' and mask.png' : ''} for your custom ComfyUI workflow. Quick Workflow queues a generated fallback graph.
           </p>
         </section>
       </div>
