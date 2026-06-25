@@ -142,6 +142,7 @@ interface SettingsState {
   comfyUIWorkspaceLastUrl: string;
   comfyUIWorkspacePanelWidth: number;
   comfyUIWorkspaceAutoOpenSelectedImage: boolean;
+  comfyUIBridgeDirectory: string;
   generatorLaunchCommand: string;
   generatorLaunchWorkingDirectory: string;
 
@@ -187,6 +188,7 @@ interface SettingsState {
   setComfyUIWorkspaceLastUrl: (url: string) => void;
   setComfyUIWorkspacePanelWidth: (width: number) => void;
   setComfyUIWorkspaceAutoOpenSelectedImage: (value: boolean) => void;
+  setComfyUIBridgeDirectory: (directory: string) => void;
   setGeneratorLaunchCommand: (command: string) => void;
   setGeneratorLaunchWorkingDirectory: (directory: string) => void;
   resetState: () => void;
@@ -246,6 +248,7 @@ export const useSettingsStore = create<SettingsState>()(
       comfyUIWorkspaceLastUrl: '',
       comfyUIWorkspacePanelWidth: 360,
       comfyUIWorkspaceAutoOpenSelectedImage: true,
+      comfyUIBridgeDirectory: '',
       generatorLaunchCommand: '',
       generatorLaunchWorkingDirectory: '',
 
@@ -335,6 +338,7 @@ export const useSettingsStore = create<SettingsState>()(
       setComfyUIWorkspaceLastUrl: (url) => set({ comfyUIWorkspaceLastUrl: url }),
       setComfyUIWorkspacePanelWidth: (width) => set({ comfyUIWorkspacePanelWidth: Math.min(Math.max(Math.round(width) || 360, 280), 560) }),
       setComfyUIWorkspaceAutoOpenSelectedImage: (value) => set({ comfyUIWorkspaceAutoOpenSelectedImage: !!value }),
+      setComfyUIBridgeDirectory: (directory) => set({ comfyUIBridgeDirectory: directory }),
       setGeneratorLaunchCommand: (command) => set({ generatorLaunchCommand: command }),
       setGeneratorLaunchWorkingDirectory: (directory) => set({ generatorLaunchWorkingDirectory: directory }),
 
@@ -380,6 +384,7 @@ export const useSettingsStore = create<SettingsState>()(
         comfyUIWorkspaceLastUrl: '',
         comfyUIWorkspacePanelWidth: 360,
         comfyUIWorkspaceAutoOpenSelectedImage: true,
+        comfyUIBridgeDirectory: '',
         generatorLaunchCommand: '',
         generatorLaunchWorkingDirectory: '',
       }),
@@ -513,6 +518,10 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.comfyUIWorkspaceAutoOpenSelectedImage !== 'boolean') {
           state.comfyUIWorkspaceAutoOpenSelectedImage = true;
+        }
+
+        if (state && typeof state.comfyUIBridgeDirectory !== 'string') {
+          state.comfyUIBridgeDirectory = '';
         }
 
         if (state && typeof state.generatorLaunchCommand !== 'string') {

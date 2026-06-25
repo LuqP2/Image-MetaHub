@@ -286,6 +286,78 @@ export interface ImageEditorGenerationPrep {
   maskStrokes: ImageEditorMaskStroke[];
 }
 
+export interface ComfyUIBridgeFileMetadata {
+  name: string;
+  width: number;
+  height: number;
+}
+
+export interface ComfyUIBridgeMaskMetadata extends ComfyUIBridgeFileMetadata {
+  available: boolean;
+}
+
+export interface ComfyUIBridgeMetadata {
+  schema_version: 1;
+  app: {
+    name: 'Image MetaHub';
+    bridge_version: 1;
+  };
+  session_id: string;
+  prepared_at: string;
+  intent: GenerationPrepIntent;
+  denoise: number;
+  files: {
+    image: ComfyUIBridgeFileMetadata;
+    mask: ComfyUIBridgeMaskMetadata;
+  };
+  source: {
+    path: string | null;
+    name: string;
+    id: string;
+    directory_id: string | null;
+    relative_path: string | null;
+  };
+  lineage: {
+    parent_image: SourceImageReference;
+  };
+  canvas: {
+    width: number;
+    height: number;
+    source_bounds: ImageEditorBounds;
+    expansion: {
+      left: number;
+      top: number;
+      right: number;
+      bottom: number;
+    };
+  };
+  editor: {
+    recipe: ImageEditRecipe;
+    generation_prep: {
+      mask_inverted: boolean;
+      mask_region_count: number;
+      mask_stroke_count: number;
+    };
+  };
+}
+
+export interface ComfyUIBridgeWritePayload {
+  bridgeDirectory?: string | null;
+  sessionId: string;
+  imageBytes: Uint8Array | ArrayBuffer | number[];
+  maskBytes?: Uint8Array | ArrayBuffer | number[] | null;
+  metadata: ComfyUIBridgeMetadata;
+}
+
+export interface ComfyUIBridgeWriteResult {
+  success: boolean;
+  bridgeDirectory?: string;
+  sessionDirectory?: string;
+  latestDirectory?: string;
+  sessionId?: string;
+  error?: string;
+}
+
 export type IndexedImageTransferMode = 'copy' | 'move';
 
 export interface IndexedImageTransferProgress {
@@ -436,6 +508,9 @@ export interface ElectronAPI {
   readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
+  getComfyUIBridgeDefaultDirectory: () => Promise<{ success: boolean; path?: string; error?: string }>;
+  writeComfyUIBridgePayload: (payload: ComfyUIBridgeWritePayload) => Promise<ComfyUIBridgeWriteResult>;
+  openComfyUIBridgeDirectory: (bridgeDirectory?: string | null) => Promise<{ success: boolean; path?: string; error?: string }>;
   exportBatchToFolder: (args: ExportBatchRequest & { destDir: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   exportBatchToZip: (args: ExportBatchRequest & { destZipPath: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   cancelBatchExport: (args: { exportId: string }) => Promise<{ success: boolean; error?: string }>;
