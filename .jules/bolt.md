@@ -31,3 +31,7 @@
 ## 2025-05-27 - Reducing GC Pressure via Object Reuse and Standard For Loops
 **Learning:** High-frequency analytics functions (e.g., timeline generation, facet collection) can trigger significant GC pressure by allocating thousands of ephemeral `Date` and `Set` objects inside (N)$ loops. Standard `for` loops also provide better performance than `.forEach()` by eliminating callback overhead and allowing for better JIT optimizations.
 **Action:** In performance-critical iteration blocks, initialize `Date` or `Set` objects outside the loop and reuse them inside using `.setTime()` or `.clear()` respectively. Prefer standard `for` loops over `.forEach()` in hot paths to minimize function call overhead and improve execution speed.
+
+## 2025-05-28 - Sorting and Slicing Before Mapping
+**Learning:** Performing expensive mapping operations (like dominant model calculation or localized date formatting) on an entire collection before slicing to a smaller subset is a significant performance anti-pattern. This is particularly impactful in analytics dashboards where many categories might exist but only the top $K$ are shown.
+**Action:** Always move `.sort()` and `.slice()` before expensive `.map()` calls when deriving UI-bound subsets from large datasets. Additionally, identify opportunities to perform a single $O(N \log N)$ sort at the beginning of a derivation block and reuse the sorted array for multiple consumers (e.g., latest items tray and session grouping) to eliminate redundant sorting overhead.
