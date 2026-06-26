@@ -161,8 +161,18 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 return (
                   <div
                     key={item}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isIncluded}
+                    aria-label={`Toggle ${item} filter`}
                     onClick={handleRowClick}
-                    className={`group flex items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors cursor-pointer ${
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleRowClick();
+                      }
+                    }}
+                    className={`group flex items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 ${
                       isIncluded
                         ? 'bg-emerald-500/10'
                         : isExcluded
