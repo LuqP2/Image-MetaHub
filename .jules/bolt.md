@@ -41,3 +41,11 @@
 ## 2026-06-25 - Lifting Max Calculations from Render Loops
 **Learning:** Calculating distribution maximums (for scaling bar charts) inside a JSX `.map()` using `Math.max(...list.map())` creates an $O(N^2)$ bottleneck and high GC pressure due to redundant array allocations and traversals on every item.
 **Action:** Pre-calculate maximums once using a single $O(N)$ `for` loop inside `useMemo`. This ensures that rendering $N$ items only requires $O(N)$ total work to determine the scale, rather than $O(N^2)$, which is critical for large datasets like timeline or rating distributions.
+
+## 2025-06-25 - Reusing Sorted Arrays in Analytics Generation
+**Learning:** Performing multiple $O(N \log N)$ sorts on the same dataset (e.g., for "latest samples" and "recent sessions") in a single derivation path is wasteful and increases CPU pressure.
+**Action:** In analytics or data-heavy views, perform a single canonical sort at the beginning of the processing block and reuse the sorted array for all downstream components. Use `.slice()` and `.reverse()` to extract different perspectives (e.g., oldest vs newest) from the same base sorted collection.
+
+## 2025-06-25 - Slicing Before Mapping in Large Collection Processing
+**Learning:** Performing expensive mapping (e.g., date formatting, facet collection) on an entire collection before slicing to a small limit is a significant source of wasted CPU cycles and GC pressure, especially when the number of items (like user sessions) can grow indefinitely.
+**Action:** Always reorder processing pipelines to perform filtering, reversing, and slicing *before* mapping to complex derived objects. This ensures that expensive transformations only occur for the items that will actually be displayed or consumed.

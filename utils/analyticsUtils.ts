@@ -1029,12 +1029,12 @@ const buildTimelinePoints = (images: IndexedImage[]): AnalyticsTimelinePoint[] =
   return result.sort((a, b) => a.key.localeCompare(b.key));
 };
 
-const buildSessions = (images: IndexedImage[], limit = 8): AnalyticsSession[] => {
+const buildSessions = (images: IndexedImage[], limit = 8, isSorted = false): AnalyticsSession[] => {
   if (images.length === 0) {
     return [];
   }
 
-  const sorted = [...images].sort((a, b) => a.lastModified - b.lastModified);
+  const sorted = isSorted ? images : [...images].sort((a, b) => a.lastModified - b.lastModified);
   const sessions: IndexedImage[][] = [];
   let currentSession: IndexedImage[] = [sorted[0]];
 
@@ -1053,14 +1053,18 @@ const buildSessions = (images: IndexedImage[], limit = 8): AnalyticsSession[] =>
 
   sessions.push(currentSession);
 
+  // Optimization: Reverse and slice before mapping to expensive derived objects
+  // Impact: Reduces CPU and memory usage for large image sets with many sessions
   return sessions
+    .reverse()
+    .slice(0, limit)
     .map((session, index) => {
       const start = session[0].lastModified;
       const end = session[session.length - 1].lastModified;
       const dominantModel = collectFacetItems(session, (image) => image.models || [], 1)[0]?.label;
 
       return {
-        id: `session-${index}-${start}`,
+        id: `session-${sessions.length - 1 - index}-${start}`,
         label: `${new Date(start).toLocaleDateString()} ${new Date(start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
         start,
         end,
@@ -1068,9 +1072,7 @@ const buildSessions = (images: IndexedImage[], limit = 8): AnalyticsSession[] =>
         imageIds: session.map((image) => image.id),
         dominantModel,
       };
-    })
-    .sort((a, b) => b.start - a.start)
-    .slice(0, limit);
+    });
 };
 
 const buildNumericBuckets = (
@@ -1286,6 +1288,10 @@ export const buildAnalyticsExplorerData = ({
 
   const habits = analyzeCreationHabits(scopeImages);
 
+  // Optimization: Sort once and reuse for samples and sessions
+  // Impact: Eliminates redundant O(N log N) sorts in the analytics generation path
+  const sorted = [...scopeImages].sort((a, b) => a.lastModified - b.lastModified);
+
   const explorerData: AnalyticsExplorerData = {
     scopeMode,
     totalImages,
@@ -1309,7 +1315,7 @@ export const buildAnalyticsExplorerData = ({
       scopeMode === 'context' ? 'current scope' : 'library',
       totalImages
     ),
-    samples: [...scopeImages].sort((a, b) => b.lastModified - a.lastModified).slice(0, 8),
+    samples: sorted.slice(-8).reverse(),
     resources: {
       generators,
       models,
@@ -1321,7 +1327,7 @@ export const buildAnalyticsExplorerData = ({
       timeline: buildTimelinePoints(scopeImages),
       weekday: habits.weekdayDistribution.map((entry) => ({ key: entry.day, label: entry.day, count: entry.count })),
       hourly: habits.hourlyDistribution.map((entry) => ({ key: String(entry.hour), label: `${entry.hour}:00`, count: entry.count })),
-      sessions: buildSessions(scopeImages),
+      sessions: buildSessions(sorted, 8, true),
     },
     performance: {
       averages,
