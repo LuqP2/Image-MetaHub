@@ -166,6 +166,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                     aria-pressed={isIncluded}
                     onClick={handleRowClick}
                     onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         handleRowClick();
