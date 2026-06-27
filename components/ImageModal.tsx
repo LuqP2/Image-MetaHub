@@ -957,6 +957,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showPerformance, setShowPerformance] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isRapidKeyboardNavigating, setIsRapidKeyboardNavigating] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [copiedRawMetadata, setCopiedRawMetadata] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'details' | 'workflow'>('details');
   const [sidebarWidth, setSidebarWidth] = useState(DETAILS_SIDEBAR_DEFAULT_WIDTH);
   const [sidebarHeight, setSidebarHeight] = useState(DETAILS_SIDEBAR_DEFAULT_HEIGHT);
@@ -1829,22 +1831,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setModalWindow(createMaximizedModalWindow());
   }, [isWindowMaximized]);
 
-  const copyToClipboard = async (text: string, type: string) => {
+  const copyToClipboard = async (text: string, type: string, silent = false) => {
     if(!text) {
         alert(`No ${type} to copy.`);
         return false;
     }
     try {
       await navigator.clipboard.writeText(text);
-      const notification = document.createElement('div');
-      notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-      notification.textContent = `${type} copied to clipboard!`;
-      document.body.appendChild(notification);
-      setTimeout(() => {
-        if (document.body.contains(notification)) {
-          document.body.removeChild(notification);
-        }
-      }, 2000);
+      if (!silent) {
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+        notification.textContent = `${type} copied to clipboard!`;
+        document.body.appendChild(notification);
+        setTimeout(() => {
+          if (document.body.contains(notification)) {
+            document.body.removeChild(notification);
+          }
+        }, 2000);
+      }
       return true;
     } catch (err) {
       console.error(`Failed to copy ${type}:`, err);
@@ -3997,8 +4001,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     setSelectedImage(targetImage);
                   }}
                 />
-                <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt')} />
-                <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', 'Negative Prompt')} />
+                <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt', true)} />
+                <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', 'Negative Prompt', true)} />
                 
                 {/* Shadow Resources List */}
                 {shadowMetadata?.resources && shadowMetadata.resources.length > 0 && (
@@ -4016,8 +4020,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 )}
 
                 <div className="grid grid-cols-2 gap-3">
-                  <MetadataItem label="Seed" value={effectiveMetadata?.seed} onCopy={() => copyToClipboard(String(effectiveMetadata?.seed || ''), 'Seed')} />
-                  <MetadataItem label="Model" value={effectiveMetadata?.model} onCopy={() => copyToClipboard(effectiveMetadata?.model || '', 'Model')} />
+                  <MetadataItem label="Seed" value={effectiveMetadata?.seed} onCopy={() => copyToClipboard(String(effectiveMetadata?.seed || ''), 'Seed', true)} />
+                  <MetadataItem label="Model" value={effectiveMetadata?.model} onCopy={() => copyToClipboard(effectiveMetadata?.model || '', 'Model', true)} />
                 </div>
               </div>
 
@@ -4035,7 +4039,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     {nMeta.generationType && (
                       <MetadataItem label="Generation Type" value={getGenerationTypeLabel(nMeta.generationType)} />
                     )}
-                    <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model")} />
+                    <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model", true)} />
                     {nMeta.generator && (
                       <MetadataItem label="Generator" value={nMeta.generator} />
                     )}
@@ -4051,7 +4055,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       {nMeta.clip_skip && nMeta.clip_skip > 1 && (
                         <MetadataItem label="Clip Skip" value={nMeta.clip_skip} />
                       )}
-                      <MetadataItem label="Seed" value={effectiveMetadata?.seed} onCopy={(v) => copyToClipboard(v, "Seed")} />
+                      <MetadataItem label="Seed" value={effectiveMetadata?.seed} onCopy={(v) => copyToClipboard(v, "Seed", true)} />
                       <MetadataItem label="Sampler" value={effectiveMetadata?.sampler} />
                       <MetadataItem label="Scheduler" value={effectiveMetadata?.scheduler} />
                       <MetadataItem label="Dimensions" value={effectiveMetadata?.width && effectiveMetadata?.height ? `${effectiveMetadata.width}x${effectiveMetadata.height}` : undefined} />
@@ -4180,18 +4184,46 @@ const ImageModal: React.FC<ImageModalProps> = ({
           )}
 
           <div className="grid grid-cols-2 gap-2 pt-2">
-            <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2">Copy Prompt</button>
-            <button onClick={async () => {
-              const metadataImage = await ensureFullRawMetadata();
-              copyToClipboard(JSON.stringify(metadataImage.metadata, null, 2), 'Raw Metadata');
-            }} className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2">Copy Raw Metadata</button>
-            <button onClick={async () => {
-              if (!directoryPath) {
-                alert('Cannot determine file location: directory path is missing.');
-                return;
-              }
-              await showInExplorer(`${directoryPath}/${image.name}`);
-            }} className="w-full justify-center bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-2">Show in Folder</button>
+            <button
+              onClick={async () => {
+                const success = await copyToClipboard(nMeta?.prompt || '', 'Prompt', true);
+                if (success) {
+                  setCopiedPrompt(true);
+                  setTimeout(() => setCopiedPrompt(false), 2000);
+                }
+              }}
+              className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2"
+            >
+              {copiedPrompt ? <CheckCircle className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedPrompt ? 'Copied!' : 'Copy Prompt'}
+            </button>
+            <button
+              onClick={async () => {
+                const metadataImage = await ensureFullRawMetadata();
+                const success = await copyToClipboard(JSON.stringify(metadataImage.metadata, null, 2), 'Raw Metadata', true);
+                if (success) {
+                  setCopiedRawMetadata(true);
+                  setTimeout(() => setCopiedRawMetadata(false), 2000);
+                }
+              }}
+              className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2"
+            >
+              {copiedRawMetadata ? <CheckCircle className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedRawMetadata ? 'Copied!' : 'Copy Raw Metadata'}
+            </button>
+            <button
+              onClick={async () => {
+                if (!directoryPath) {
+                  alert('Cannot determine file location: directory path is missing.');
+                  return;
+                }
+                await showInExplorer(`${directoryPath}/${image.name}`);
+              }}
+              className="w-full justify-center bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-2"
+            >
+              <Folder className="w-3.5 h-3.5" />
+              Show in Folder
+            </button>
             <button
               onClick={() => {
                 if (!canUseComparison) {

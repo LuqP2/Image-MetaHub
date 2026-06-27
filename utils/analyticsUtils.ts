@@ -229,9 +229,13 @@ export function generateTimelineComparison(
 
   const currentData = new Map<string, number>();
   const previousData = new Map<string, number>();
+  const date = new Date();
 
-  images.forEach((img) => {
-    const date = new Date(img.lastModified);
+  // Optimization: Standard for loop and Date reuse to minimize allocations.
+  // Impact: Reduces GC pressure by avoiding N Date object creations.
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i];
+    date.setTime(img.lastModified);
     let key: string;
 
     if (groupBy === 'day') {
@@ -249,7 +253,7 @@ export function generateTimelineComparison(
     } else if (img.lastModified >= previousPeriodStart) {
       previousData.set(key, (previousData.get(key) || 0) + 1);
     }
-  });
+  }
 
   // Merge and align periods
   const allKeys = new Set([...currentData.keys(), ...previousData.keys()]);
@@ -274,7 +278,9 @@ export function calculateTopItems(
 ): TopItemStats[] {
   const itemStats = new Map<string, { total: number; favorites: number; ratingTotal: number; ratingCount: number }>();
 
-  images.forEach((img) => {
+  // Optimization: Standard for loop to avoid callback overhead in hot paths.
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i];
     const isFavorite = img.isFavorite === true;
     const rating = img.rating;
 
@@ -292,7 +298,8 @@ export function calculateTopItems(
       }
     } else {
       const items = Array.isArray(img[field]) ? img[field] : [img[field]];
-      items.forEach((item) => {
+      for (let j = 0; j < items.length; j++) {
+        const item = items[j];
         const normalizedItem = normalizeItemName(item);
         if (normalizedItem) {
           const stats = itemStats.get(normalizedItem) || { total: 0, favorites: 0, ratingTotal: 0, ratingCount: 0 };
@@ -304,9 +311,9 @@ export function calculateTopItems(
           }
           itemStats.set(normalizedItem, stats);
         }
-      });
+      }
     }
-  });
+  }
 
   return Array.from(itemStats.entries())
     .map(([name, stats]) => ({
@@ -663,18 +670,23 @@ export function calculateGenerationTimeDistribution(images: IndexedImage[]): Gen
     { range: '> 2m', min: 120000, max: Infinity, count: 0 },
   ];
 
-  images.forEach((img) => {
+  // Optimization: Standard for loop to avoid callback overhead.
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i];
     const analytics = getImageAnalytics(img);
 
     if (analytics?.generation_time_ms && typeof analytics.generation_time_ms === 'number') {
-      const bucket = buckets.find(
-        (b) => analytics.generation_time_ms >= b.min && analytics.generation_time_ms < b.max
-      );
-      if (bucket) {
-        bucket.count++;
+      const genTime = analytics.generation_time_ms;
+      // Optimization: Efficient bucket find logic using standard for loop
+      for (let j = 0; j < buckets.length; j++) {
+        const b = buckets[j];
+        if (genTime >= b.min && genTime < b.max) {
+          b.count++;
+          break;
+        }
       }
     }
-  });
+  }
 
   return buckets.filter(b => b.count > 0);
 }
@@ -695,10 +707,14 @@ export function calculatePerformanceTimeline(
     timeCount: number;
   }>();
 
-  images.forEach((img) => {
-    if (!img.lastModified) return;
+  const date = new Date();
 
-    const date = new Date(img.lastModified);
+  // Optimization: Standard for loop and Date reuse to minimize allocations.
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i];
+    if (!img.lastModified) continue;
+
+    date.setTime(img.lastModified);
     let key: string;
 
     if (groupBy === 'day') {
@@ -737,7 +753,7 @@ export function calculatePerformanceTimeline(
 
       timelineMap.set(key, entry);
     }
-  });
+  }
 
   return Array.from(timelineMap.entries())
     .map(([date, stats]) => {
@@ -944,11 +960,13 @@ const collectFacetItems = (
   limit = 12
 ): AnalyticsFacetItem[] => {
   const stats = new Map<string, { count: number; favorites: number; ratingTotal: number; ratingCount: number }>();
+  const uniqueKeys = new Set<string>();
 
+  // Optimization: Standard for loop and Set reuse to minimize allocations in hot paths.
   for (let i = 0; i < images.length; i++) {
     const image = images[i];
     const rawKeys = getKeys(image);
-    const uniqueKeys = new Set<string>();
+    uniqueKeys.clear();
 
     for (let j = 0; j < rawKeys.length; j++) {
       const normalized = normalizeItemName(rawKeys[j]);
@@ -994,9 +1012,12 @@ const collectFacetItems = (
 
 const buildTimelinePoints = (images: IndexedImage[]): AnalyticsTimelinePoint[] => {
   const counts = new Map<string, number>();
+  const date = new Date();
 
+  // Optimization: Standard for loop and Date reuse to minimize allocations.
   for (let i = 0; i < images.length; i++) {
-    const key = formatLocalDateKey(images[i].lastModified);
+    date.setTime(images[i].lastModified);
+    const key = formatLocalDateKey(date);
     counts.set(key, (counts.get(key) || 0) + 1);
   }
 
