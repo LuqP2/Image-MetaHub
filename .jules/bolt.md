@@ -35,6 +35,3 @@
 ## 2025-05-28 - Sorting and Slicing Before Mapping
 **Learning:** Performing expensive mapping operations (like dominant model calculation or localized date formatting) on an entire collection before slicing to a smaller subset is a significant performance anti-pattern. This is particularly impactful in analytics dashboards where many categories might exist but only the top $K$ are shown.
 **Action:** Always move `.sort()` and `.slice()` before expensive `.map()` calls when deriving UI-bound subsets from large datasets. Additionally, identify opportunities to perform a single $O(N \log N)$ sort at the beginning of a derivation block and reuse the sorted array for multiple consumers (e.g., latest items tray and session grouping) to eliminate redundant sorting overhead.
-## 2026-06-25 - Lifting Max Calculations from Render Loops
-**Learning:** Calculating distribution maximums (for scaling bar charts) inside a JSX `.map()` using `Math.max(...list.map())` creates an $O(N^2)$ bottleneck and high GC pressure due to redundant array allocations and traversals on every item.
-**Action:** Pre-calculate maximums once using a single $O(N)$ `for` loop inside `useMemo`. This ensures that rendering $N$ items only requires $O(N)$ total work to determine the scale, rather than $O(N^2)$, which is critical for large datasets like timeline or rating distributions.

@@ -7,11 +7,11 @@ import { type IndexedImage, type BaseMetadata, type Directory, ImageStack, Smart
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Heart, Info, Copy, CheckCircle, Folder, Download, Clipboard, Sparkles, GitCompare, Square, Search,
+import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Square, Search,
   Archive,
   ChevronRight,
   CheckSquare,
-  CheckCircle,
+  CheckCircle2,
   Crown,
   EyeOff,
   Package,
@@ -564,7 +564,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           aria-label={copied ? 'Copied!' : 'Copy Prompt'}
           disabled={!image.prompt}
         >
-          {copied ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          {copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
         </button>
 
         {hasThumbnailError ? (

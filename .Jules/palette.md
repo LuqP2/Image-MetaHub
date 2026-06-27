@@ -16,9 +16,6 @@
 **Learning:** Asynchronous UI feedback for operations like `navigator.clipboard.writeText` must await the Promise resolution. Providing immediate visual confirmation (like a "Copied!" checkmark) without checking for success can mislead users if the operation fails due to permissions or browser restrictions.
 **Action:** Always await clipboard operations and use their success/failure to drive visual feedback states.
 
-## 2025-06-25 - Localized Metadata Feedback
-**Learning:** Replaying global "Toast" notifications for high-frequency actions like "Copy Prompt" on grid items can be intrusive. Transitioning the action button itself to a "Success" state (e.g., CheckCircle icon + green background) for 2000ms provides superior localized context and delight without cluttering the global notification stack.
-**Action:** Use localized button state changes for quick metadata actions instead of global toasts.
 ## 2025-06-25 - Localized Feedback for Frequent Actions
 **Learning:** For frequent, low-stakes actions like 'Copy to Clipboard', localized inline feedback (changing the button icon/color) is superior to global Toast notifications. It maintains the user's focus on the interaction point and reduces visual noise in the periphery.
 **Action:** Prefer localized button state changes over global toasts for actions performed repeatedly within a grid or list.
