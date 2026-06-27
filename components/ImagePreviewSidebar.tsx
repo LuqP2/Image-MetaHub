@@ -115,7 +115,7 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
         {onCopy && (
             <button
               onClick={handleCopy}
-              className={`transition-all duration-200 ${copied ? 'opacity-100 text-green-500 dark:text-green-400' : 'opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-900 dark:hover:text-gray-50'}`}
+              className={`transition-all duration-200 rounded focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-blue-500 outline-none ${copied ? 'opacity-100 text-green-500 dark:text-green-400' : 'opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-900 dark:hover:text-gray-50'}`}
               title={copied ? 'Copied!' : `Copy ${label}`}
               aria-label={copied ? 'Copied!' : `Copy ${label}`}
             >
@@ -642,8 +642,15 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 excludedTags={activeImage.tags ?? []}
                 suggestionLimit={tagSuggestionLimit}
                 placeholder="Add tag..."
-                inputClassName="w-full bg-white dark:bg-gray-700/50 text-gray-900 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
+                inputClassName="peer w-full bg-white dark:bg-gray-700/50 text-gray-900 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
                 dropdownClassName="absolute z-10 mt-1 max-h-32 w-full overflow-y-auto rounded-lg border border-gray-600 bg-gray-800 shadow-lg"
+                trailingContent={!tagInput && (
+                  <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 transition-opacity duration-200 peer-focus:opacity-0">
+                    <kbd className="hidden h-4 items-center rounded border border-gray-700/50 bg-gray-900/50 px-1 font-sans text-[9px] font-medium text-gray-500 sm:inline-flex">
+                      T
+                    </kbd>
+                  </div>
+                )}
                 optionClassName="w-full text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 flex justify-between items-center"
                 activeOptionClassName="bg-gray-700 text-white"
                 metaClassName="text-xs text-gray-500"
