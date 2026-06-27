@@ -1029,12 +1029,13 @@ const buildTimelinePoints = (images: IndexedImage[]): AnalyticsTimelinePoint[] =
   return result.sort((a, b) => a.key.localeCompare(b.key));
 };
 
-const buildSessions = (images: IndexedImage[], limit = 8): AnalyticsSession[] => {
+const buildSessions = (images: IndexedImage[], limit = 8, isSorted = false): AnalyticsSession[] => {
   if (images.length === 0) {
     return [];
   }
 
-  const sorted = [...images].sort((a, b) => a.lastModified - b.lastModified);
+  // Optimization: Use pre-sorted array if available to avoid O(N log N) overhead.
+  const sorted = isSorted ? images : [...images].sort((a, b) => a.lastModified - b.lastModified);
   const sessions: IndexedImage[][] = [];
   let currentSession: IndexedImage[] = [sorted[0]];
 
@@ -1053,7 +1054,11 @@ const buildSessions = (images: IndexedImage[], limit = 8): AnalyticsSession[] =>
 
   sessions.push(currentSession);
 
+  // Optimization: Sort and slice sessions BEFORE mapping to complex AnalyticsSession objects.
+  // Impact: Eliminates expensive dominant model calculation and date formatting for truncated sessions.
   return sessions
+    .sort((a, b) => b[0].lastModified - a[0].lastModified)
+    .slice(0, limit)
     .map((session, index) => {
       const start = session[0].lastModified;
       const end = session[session.length - 1].lastModified;
@@ -1069,8 +1074,6 @@ const buildSessions = (images: IndexedImage[], limit = 8): AnalyticsSession[] =>
         dominantModel,
       };
     })
-    .sort((a, b) => b.start - a.start)
-    .slice(0, limit);
 };
 
 const buildNumericBuckets = (
@@ -1205,6 +1208,10 @@ export const buildAnalyticsExplorerData = ({
   compare?: AnalyticsCompareConfig | null;
 }): AnalyticsExplorerData => {
   const totalImages = scopeImages.length;
+  // Optimization: Sort images once at the beginning to be reused by multiple consumers.
+  // Impact: Eliminates redundant O(N log N) sorting in buildSessions and samples derivation.
+  const scopeImagesSortedAsc = [...scopeImages].sort((a, b) => a.lastModified - b.lastModified);
+
   const averages = calculatePerformanceAverages(scopeImages);
 
   // Optimization: Pre-calculate resources and periodStats to avoid redundant passes
@@ -1309,7 +1316,7 @@ export const buildAnalyticsExplorerData = ({
       scopeMode === 'context' ? 'current scope' : 'library',
       totalImages
     ),
-    samples: [...scopeImages].sort((a, b) => b.lastModified - a.lastModified).slice(0, 8),
+    samples: scopeImagesSortedAsc.slice(-8).reverse(),
     resources: {
       generators,
       models,
@@ -1321,7 +1328,7 @@ export const buildAnalyticsExplorerData = ({
       timeline: buildTimelinePoints(scopeImages),
       weekday: habits.weekdayDistribution.map((entry) => ({ key: entry.day, label: entry.day, count: entry.count })),
       hourly: habits.hourlyDistribution.map((entry) => ({ key: String(entry.hour), label: `${entry.hour}:00`, count: entry.count })),
-      sessions: buildSessions(scopeImages),
+      sessions: buildSessions(scopeImagesSortedAsc, 8, true),
     },
     performance: {
       averages,
