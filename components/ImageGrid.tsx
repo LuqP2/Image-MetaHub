@@ -11,6 +11,7 @@ import { Heart, Info, Copy, CheckCircle, Folder, Download, Clipboard, Sparkles, 
   Archive,
   ChevronRight,
   CheckSquare,
+  CheckCircle,
   Crown,
   EyeOff,
   Package,
@@ -501,6 +502,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
               : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-blue-500/80'
           }`}
           title={isSelected ? 'Deselect image' : 'Select image'}
+          aria-label={isSelected ? 'Deselect image' : 'Select image'}
         >
           {isSelected ? (
             <CheckSquare className="h-5 w-5" />
@@ -534,6 +536,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           onClick={handlePreviewClick}
           className="absolute top-11 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:opacity-100"
           title="Show details"
+          aria-label="Show details"
         >
           <Info className="h-4 w-4" />
         </button>
@@ -546,6 +549,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
               : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-rose-500'
           }`}
           title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          aria-label={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
         >
           <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
         </button>
