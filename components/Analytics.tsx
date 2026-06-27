@@ -320,7 +320,12 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
   };
 
   const numericSection = (title: string, buckets: AnalyticsNumericBucket[], kind: NumericFacetKind) => {
-    const maxCount = Math.max(...buckets.map((bucket) => bucket.count), 1);
+    // Optimization: Calculate max count in a single O(N) pass to avoid spread syntax overhead and extra allocations.
+    let maxCount = 1;
+    for (let i = 0; i < buckets.length; i++) {
+      if (buckets[i].count > maxCount) maxCount = buckets[i].count;
+    }
+
     return (
       <section className={`${card} p-4`}>
         <div className="mb-4"><h3 className="text-lg font-semibold text-gray-100">{title}</h3></div>

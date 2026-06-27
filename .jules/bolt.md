@@ -31,3 +31,10 @@
 ## 2025-05-27 - Reducing GC Pressure via Object Reuse and Standard For Loops
 **Learning:** High-frequency analytics functions (e.g., timeline generation, facet collection) can trigger significant GC pressure by allocating thousands of ephemeral `Date` and `Set` objects inside (N)$ loops. Standard `for` loops also provide better performance than `.forEach()` by eliminating callback overhead and allowing for better JIT optimizations.
 **Action:** In performance-critical iteration blocks, initialize `Date` or `Set` objects outside the loop and reuse them inside using `.setTime()` or `.clear()` respectively. Prefer standard `for` loops over `.forEach()` in hot paths to minimize function call overhead and improve execution speed.
+
+## 2025-05-28 - Consolidating Filter and Facet Passes in Search Workers
+**Learning:** Performing dataset filtering via chained `.filter()` calls followed by a separate $O(N)$ pass for facet collection creates significant GC pressure and redundant CPU cycles. Each `.filter()` call allocates a new array, and the subsequent facet collection traverses the filtered results again.
+**Action:** In search or filtering workers, consolidate all matching logic and facet accumulation into a single `for` loop traversal. Use early `continue` statements to skip non-matching items and update facet counters/sets directly for matching items. This reduces the work from $K \cdot O(N) + O(M)$ to a single $O(N)$ pass, where $K$ is the number of filters and $M$ is the result size.
+## 2026-06-25 - Lifting Max Calculations from Render Loops
+**Learning:** Calculating distribution maximums (for scaling bar charts) inside a JSX `.map()` using `Math.max(...list.map())` creates an $O(N^2)$ bottleneck and high GC pressure due to redundant array allocations and traversals on every item.
+**Action:** Pre-calculate maximums once using a single $O(N)$ `for` loop inside `useMemo`. This ensures that rendering $N$ items only requires $O(N)$ total work to determine the scale, rather than $O(N^2)$, which is critical for large datasets like timeline or rating distributions.
