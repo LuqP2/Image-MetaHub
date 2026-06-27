@@ -664,7 +664,7 @@ export async function addImageToClusters(
   // Try similarity match
   for (const cluster of existingClusters) {
     // Optimization: Use pre-calculated tokens and pre-normalized string to avoid O(N) re-tokenization.
-    const similarity = hybridSimilarity(tokens, cluster.basePrompt, normalized, cluster.basePrompt);
+    const similarity = hybridSimilarity(tokens, cluster.basePrompt, normalized);
     if (similarity >= threshold) {
       return { clusterId: cluster.id, isNewCluster: false };
     }

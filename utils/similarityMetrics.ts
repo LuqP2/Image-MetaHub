@@ -206,6 +206,24 @@ export function jaccardSimilarity(
  * - Levenshtein: Catches typos and minor character variations
  * - Weighted average provides balanced approach
  */
+export function hybridSimilarity(str1: string, str2: string): number;
+export function hybridSimilarity(
+  str1: Set<string>,
+  str2: string,
+  rawStr1: string
+): number;
+export function hybridSimilarity(
+  str1: string,
+  str2: Set<string>,
+  rawStr1: undefined,
+  rawStr2: string
+): number;
+export function hybridSimilarity(
+  str1: Set<string>,
+  str2: Set<string>,
+  rawStr1: string,
+  rawStr2: string
+): number;
 export function hybridSimilarity(
   str1: string | Set<string>,
   str2: string | Set<string>,
@@ -219,7 +237,7 @@ export function hybridSimilarity(
   const text2 = typeof str2 === 'string' ? str2 : rawStr2;
 
   if (text1 === undefined || text2 === undefined) {
-    return jaccard; // Fallback to Jaccard if strings are missing
+    return jaccard; // Fallback to Jaccard if strings are missing (should be prevented by overloads)
   }
 
   const levenshtein = normalizedLevenshtein(text1, text2);
