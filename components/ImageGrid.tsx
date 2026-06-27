@@ -7,7 +7,7 @@ import { type IndexedImage, type BaseMetadata, type Directory, ImageStack, Smart
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Square, Search,
+import { Heart, Info, Copy, CheckCircle, Folder, Download, Clipboard, Sparkles, GitCompare, Square, Search,
   Archive,
   ChevronRight,
   CheckSquare,
