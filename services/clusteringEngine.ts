@@ -72,13 +72,18 @@ export async function generateClusters(
   } = options;
 
   // Convert to lightweight representation if needed
-  const lightweightImages = images
-    .filter((img) => img.prompt && img.prompt.trim().length > 0)
-    .map((img) => ({
-      id: img.id,
-      prompt: img.prompt!,
-      lastModified: img.lastModified,
-    }));
+  // Optimization: Single-pass O(N) loop to filter and map images, avoiding intermediate array allocation.
+  const lightweightImages: LightweightImage[] = [];
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i];
+    if (img.prompt && img.prompt.trim().length > 0) {
+      lightweightImages.push({
+        id: img.id,
+        prompt: img.prompt!,
+        lastModified: img.lastModified,
+      });
+    }
+  }
 
   console.log(`Clustering ${lightweightImages.length} images with threshold ${threshold}`);
 
@@ -162,15 +167,17 @@ function performExactMatching(
   const clusters = new Map<string, ClusterBuilder>();
 
   for (const image of images) {
+    // Optimization: Normalize the prompt once and reuse it for hashing, keyword extraction, and tokenization.
+    // Impact: Reduces normalizePrompt (regex-heavy) calls by ~66% in this phase.
     const normalized = normalizePrompt(image.prompt);
-    const hash = generatePromptHash(image.prompt);
+    const hash = generatePromptHash(normalized, true);
 
     if (!clusters.has(hash)) {
-      const keywords = extractKeywords(normalized, 10);
+      const keywords = extractKeywords(normalized, 10, true);
       clusters.set(hash, {
         promptHash: hash,
         basePrompt: normalized,
-        tokens: tokenizeForSimilarity(normalized),
+        tokens: tokenizeForSimilarity(normalized, true),
         keywords,
         keywordSet: new Set(keywords),
         imageIds: [],
@@ -641,8 +648,9 @@ export async function addImageToClusters(
     return { clusterId, isNewCluster: true };
   }
 
+  // Optimization: Normalize and tokenize the incoming prompt once to avoid redundant O(N) processing.
   const normalized = normalizePrompt(image.prompt);
-  const hash = generatePromptHash(image.prompt);
+  const hash = generatePromptHash(normalized, true);
 
   // Try exact match first
   const exactMatch = existingClusters.find((c) => c.promptHash === hash);
@@ -650,9 +658,13 @@ export async function addImageToClusters(
     return { clusterId: exactMatch.id, isNewCluster: false };
   }
 
+  // Pre-tokenize for the similarity loop
+  const tokens = tokenizeForSimilarity(normalized, true);
+
   // Try similarity match
   for (const cluster of existingClusters) {
-    const similarity = hybridSimilarity(normalized, cluster.basePrompt);
+    // Optimization: Use pre-calculated tokens and pre-normalized string to avoid O(N) re-tokenization.
+    const similarity = hybridSimilarity(tokens, cluster.basePrompt, normalized);
     if (similarity >= threshold) {
       return { clusterId: cluster.id, isNewCluster: false };
     }

@@ -1065,7 +1065,7 @@ const buildSessions = (images: IndexedImage[], limit = 8, isSorted = false): Ana
       const dominantModel = collectFacetItems(session, (image) => image.models || [], 1)[0]?.label;
 
       return {
-        id: `session-${index}-${start}`,
+        id: `session-${sessions.length - 1 - index}-${start}`,
         label: `${new Date(start).toLocaleDateString()} ${new Date(start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
         start,
         end,
@@ -1293,6 +1293,10 @@ export const buildAnalyticsExplorerData = ({
   }
 
   const habits = analyzeCreationHabits(scopeImages);
+
+  // Optimization: Sort once and reuse for samples and sessions
+  // Impact: Eliminates redundant O(N log N) sorts in the analytics generation path
+  const sorted = [...scopeImages].sort((a, b) => a.lastModified - b.lastModified);
 
   const explorerData: AnalyticsExplorerData = {
     scopeMode,

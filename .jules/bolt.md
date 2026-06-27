@@ -35,3 +35,20 @@
 ## 2025-05-28 - Sorting and Slicing Before Mapping
 **Learning:** Performing expensive mapping operations (like dominant model calculation or localized date formatting) on an entire collection before slicing to a smaller subset is a significant performance anti-pattern. This is particularly impactful in analytics dashboards where many categories might exist but only the top $K$ are shown.
 **Action:** Always move `.sort()` and `.slice()` before expensive `.map()` calls when deriving UI-bound subsets from large datasets. Additionally, identify opportunities to perform a single $O(N \log N)$ sort at the beginning of a derivation block and reuse the sorted array for multiple consumers (e.g., latest items tray and session grouping) to eliminate redundant sorting overhead.
+## 2025-01-24 - Redundant Normalization and Tokenization in Clustering
+**Learning:** The clustering engine and similarity metrics previously performed redundant prompt normalization and tokenization in hot loops. For example, `addImageToClusters` would tokenize the same input prompt $ times when comparing against $ clusters, and Phase 1 of clustering would normalize the same string three times.
+**Action:** Update similarity utilities to accept an `isAlreadyNormalized` flag and pre-tokenized `Set<string>`. Refactor clustering logic to normalize and tokenize exactly once per prompt, passing the results through the comparison chain. This eliminates (N)$ redundant processing during incremental updates and significantly reduces regex overhead in batch clustering.
+## 2025-05-28 - Consolidating Filter and Facet Passes in Search Workers
+**Learning:** Performing dataset filtering via chained `.filter()` calls followed by a separate $O(N)$ pass for facet collection creates significant GC pressure and redundant CPU cycles. Each `.filter()` call allocates a new array, and the subsequent facet collection traverses the filtered results again.
+**Action:** In search or filtering workers, consolidate all matching logic and facet accumulation into a single `for` loop traversal. Use early `continue` statements to skip non-matching items and update facet counters/sets directly for matching items. This reduces the work from $K \cdot O(N) + O(M)$ to a single $O(N)$ pass, where $K$ is the number of filters and $M$ is the result size.
+## 2026-06-25 - Lifting Max Calculations from Render Loops
+**Learning:** Calculating distribution maximums (for scaling bar charts) inside a JSX `.map()` using `Math.max(...list.map())` creates an $O(N^2)$ bottleneck and high GC pressure due to redundant array allocations and traversals on every item.
+**Action:** Pre-calculate maximums once using a single $O(N)$ `for` loop inside `useMemo`. This ensures that rendering $N$ items only requires $O(N)$ total work to determine the scale, rather than $O(N^2)$, which is critical for large datasets like timeline or rating distributions.
+
+## 2025-06-25 - Reusing Sorted Arrays in Analytics Generation
+**Learning:** Performing multiple $O(N \log N)$ sorts on the same dataset (e.g., for "latest samples" and "recent sessions") in a single derivation path is wasteful and increases CPU pressure.
+**Action:** In analytics or data-heavy views, perform a single canonical sort at the beginning of the processing block and reuse the sorted array for all downstream components. Use `.slice()` and `.reverse()` to extract different perspectives (e.g., oldest vs newest) from the same base sorted collection.
+
+## 2025-06-25 - Slicing Before Mapping in Large Collection Processing
+**Learning:** Performing expensive mapping (e.g., date formatting, facet collection) on an entire collection before slicing to a small limit is a significant source of wasted CPU cycles and GC pressure, especially when the number of items (like user sessions) can grow indefinitely.
+**Action:** Always reorder processing pipelines to perform filtering, reversing, and slicing *before* mapping to complex derived objects. This ensures that expensive transformations only occur for the items that will actually be displayed or consumed.

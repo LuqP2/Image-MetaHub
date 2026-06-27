@@ -11,7 +11,6 @@ import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, S
   Archive,
   ChevronRight,
   CheckSquare,
-  CheckCircle2,
   Crown,
   EyeOff,
   Package,
@@ -350,7 +349,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     toggleFavorite(image.id);
   };
 
-  const handleCheckboxClick = (e: React.MouseEvent) => {
+  const handleboxClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     toggleImageSelection(image.id);
   };
@@ -493,9 +492,9 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         onDragEnd={handleDragEnd}
         draggable={canDragImage}
       >
-        {/* Checkbox for selection - always visible on hover or when selected */}
+        {/* box for selection - always visible on hover or when selected */}
         <button
-          onClick={handleCheckboxClick}
+          onClick={handleboxClick}
           className={`absolute top-2 left-2 z-20 p-1 rounded transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 ${
             isSelected
               ? 'bg-blue-500 text-white opacity-100'
