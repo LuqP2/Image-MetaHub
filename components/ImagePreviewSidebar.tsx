@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, FC } from 'react';
+import { motion } from 'framer-motion';
 import { AlertTriangle, Clipboard, Sparkles, ChevronDown, ChevronRight, Heart, X, Zap, CheckCircle, ArrowUp, Copy, Search, Pencil, Download, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type BaseMetadata, type IndexedImage, type LoRAInfo } from '../types';
@@ -109,13 +110,13 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
   };
 
   return (
-    <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md border border-gray-200 dark:border-gray-700/50 relative group">
+    <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md border border-gray-200 dark:border-gray-700/50 relative group hover:bg-gray-100 dark:hover:bg-gray-800/80 transition-colors">
       <div className="flex justify-between items-start">
         <p className="font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">{label}</p>
         {onCopy && (
             <button
               onClick={handleCopy}
-              className={`transition-all duration-200 ${copied ? 'opacity-100 text-green-500 dark:text-green-400' : 'opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-900 dark:hover:text-gray-50'}`}
+              className={`transition-all duration-200 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none rounded-sm ${copied ? 'opacity-100 text-green-500 dark:text-green-400' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-gray-400 hover:text-gray-900 dark:hover:text-gray-50'}`}
               title={copied ? 'Copied!' : `Copy ${label}`}
               aria-label={copied ? 'Copied!' : `Copy ${label}`}
             >
@@ -613,9 +614,10 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
           {/* Favorite, Rating, and Tags */}
           <div className="space-y-3">
             <div className="flex w-fit items-center gap-2 rounded-lg border border-gray-200 bg-white/70 px-2 py-1.5 dark:border-gray-700/60 dark:bg-gray-950/30">
-              <button
+              <motion.button
                 onClick={handleToggleFavorite}
-                className={`p-1 rounded transition-all ${
+                whileTap={{ scale: 0.9 }}
+                className={`p-1 rounded transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${
                   activeImage.isFavorite
                     ? 'text-rose-400 hover:text-rose-300'
                     : 'text-gray-500 hover:text-rose-400'
@@ -624,7 +626,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 aria-label={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
               >
                 <Heart className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
-              </button>
+              </motion.button>
               <div className="h-5 w-px bg-gray-300/80 dark:bg-gray-700/70" />
               <RatingStars rating={activeImage.rating ?? null} onChange={handleSetRating} size={16} />
             </div>
@@ -731,31 +733,34 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               </div>
               <div className="flex items-center gap-1.5">
                 {shadowMetadata && (
-                  <button
+                  <motion.button
                     onClick={() => setShowOriginal((current) => !current)}
-                    className={`p-1.5 rounded-md transition-colors ${showOriginal ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'}`}
+                    whileTap={{ scale: 0.95 }}
+                    className={`p-1.5 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${showOriginal ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'}`}
                     title={showOriginal ? 'Show edited metadata' : 'Show original metadata'}
                     aria-label={showOriginal ? 'Show edited metadata' : 'Show original metadata'}
                   >
                     {showOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
+                  </motion.button>
                 )}
-                <button
+                <motion.button
                   onClick={() => setIsMetadataEditorOpen(true)}
-                  className="p-1.5 rounded-md transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                  whileTap={{ scale: 0.95 }}
+                  className="p-1.5 rounded-md transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   title="Edit metadata overrides"
                   aria-label="Edit metadata overrides"
                 >
                   <Pencil size={14} />
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                   onClick={openBatchExport}
-                  className="p-1.5 rounded-md transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                  whileTap={{ scale: 0.95 }}
+                  className="p-1.5 rounded-md transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
                   aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
                 >
                   <Download size={14} />
-                </button>
+                </motion.button>
               </div>
             </div>
             <div className="space-y-3">

@@ -3,6 +3,7 @@ import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollecti
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
+import { motion } from 'framer-motion';
 import { AlertTriangle, Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -590,13 +591,13 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
   };
 
   return (
-    <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50 relative group">
+    <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50 relative group hover:bg-gray-800/80 transition-colors">
       <div className="flex justify-between items-start">
         <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider">{label}</p>
         {onCopy && (
             <button
               onClick={handleCopy}
-              className={`transition-all duration-200 ${copied ? 'opacity-100 text-green-400' : 'opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white'}`}
+              className={`transition-all duration-200 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none rounded-sm ${copied ? 'opacity-100 text-green-400' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-gray-400 hover:text-white'}`}
               title={copied ? 'Copied!' : `Copy ${label}`}
               aria-label={copied ? 'Copied!' : `Copy ${label}`}
             >
@@ -3806,17 +3807,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
             {/* Favorite, Rating, and Tags */}
             <div className="space-y-3">
               <div className="flex w-fit items-center gap-2 rounded-lg border border-gray-700/60 bg-gray-950/30 px-2 py-1.5">
-                <button
+                <motion.button
                   onClick={handleToggleFavorite}
-                  className={`p-1 rounded transition-all ${
+                  whileTap={{ scale: 0.9 }}
+                  className={`p-1 rounded transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${
                     currentIsFavorite
                       ? 'text-rose-400 hover:text-rose-300'
                       : 'text-gray-500 hover:text-rose-400'
                   }`}
                   title={currentIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  aria-label={currentIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
                 >
                   <Heart className={`w-5 h-5 ${currentIsFavorite ? 'fill-current' : ''}`} />
-                </button>
+                </motion.button>
                 <div className="h-5 w-px bg-gray-700/70" />
                 <RatingStars rating={currentRating} onChange={handleSetRating} size={16} />
               </div>
@@ -4403,43 +4406,48 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <div className="flex gap-2">
                 {shadowMetadata && (
                   <>
-                    <button
+                    <motion.button
                       onClick={() => setShowOriginal(!showOriginal)}
-                      className={`p-1.5 rounded-md transition-colors ${showOriginal ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                      whileTap={{ scale: 0.95 }}
+                      className={`p-1.5 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${showOriginal ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
                       title={showOriginal ? "Back to Edited" : "See Original"}
+                      aria-label={showOriginal ? "Back to Edited" : "See Original"}
                     >
                       {showOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
-                     <button
+                    </motion.button>
+                     <motion.button
                       onClick={() => {
                         if (confirm('Are you sure you want to delete all edited metadata and revert to the original?')) {
                           deleteShadowMetadata();
                         }
                       }}
-                      className="p-1.5 bg-gray-800 hover:bg-red-900/50 rounded-md transition-colors text-gray-400 hover:text-red-400"
+                      whileTap={{ scale: 0.95 }}
+                      className="p-1.5 bg-gray-800 hover:bg-red-900/50 rounded-md transition-colors text-gray-400 hover:text-red-400 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                       title="Revert to Original (Delete Edits)"
                       aria-label="Revert to Original (Delete Edits)"
                     >
                       <Trash2 size={14} />
-                    </button>
+                    </motion.button>
                   </>
                 )}
-                <button
+                <motion.button
                   onClick={() => setIsMetadataEditorOpen(true)}
-                  className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white"
+                  whileTap={{ scale: 0.95 }}
+                  className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   title="Edit Metadata (Shadow)"
                   aria-label="Edit Metadata (Shadow)"
                 >
                   <Pencil size={14} />
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                   onClick={openBatchExport}
-                  className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white"
+                  whileTap={{ scale: 0.95 }}
+                  className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
                   aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
                 >
                   <Download size={14} />
-                </button>
+                </motion.button>
                 <button
                   onClick={() => {
                     const nextShowRawMetadata = !showRawMetadata;

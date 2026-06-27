@@ -22,3 +22,7 @@
 ## 2025-06-25 - Localized Feedback for Frequent Actions
 **Learning:** For frequent, low-stakes actions like 'Copy to Clipboard', localized inline feedback (changing the button icon/color) is superior to global Toast notifications. It maintains the user's focus on the interaction point and reduces visual noise in the periphery.
 **Action:** Prefer localized button state changes over global toasts for actions performed repeatedly within a grid or list.
+
+## 2026-06-27 - Enhancing Hidden Interactive Elements
+**Learning:** Buttons that only appear on hover (e.g., metadata copy buttons) are inaccessible to keyboard users. Using `group-focus-within:opacity-100` or `focus-visible` is critical to reveal these elements during navigation.
+**Action:** Always pair `group-hover` visibility with `focus-within` or `focus-visible` states and provide a clear focus ring for keyboard users.
