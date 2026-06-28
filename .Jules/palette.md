@@ -26,3 +26,7 @@
 ## 2026-06-27 - Enhancing Hidden Interactive Elements
 **Learning:** Buttons that only appear on hover (e.g., metadata copy buttons) are inaccessible to keyboard users. Using `group-focus-within:opacity-100` or `focus-visible` is critical to reveal these elements during navigation.
 **Action:** Always pair `group-hover` visibility with `focus-within` or `focus-visible` states and provide a clear focus ring for keyboard users.
+
+## 2025-07-24 - Preventing Event Bubbling in Keyboard Handlers
+**Learning:** In custom interactive elements (like list rows) that contain nested native buttons, keyboard event handlers on the parent can double-trigger or conflict with child actions due to event bubbling. Using `if (e.target !== e.currentTarget) return;` in the parent's `onKeyDown` handler ensures that keyboard interactions only trigger when the parent itself is the specific target.
+**Action:** Always use target guards in keyboard handlers for parent elements that contain other interactive children.
