@@ -1010,25 +1010,6 @@ const collectFacetItems = (
     .slice(0, limit);
 };
 
-const buildTimelinePoints = (images: IndexedImage[]): AnalyticsTimelinePoint[] => {
-  const counts = new Map<string, number>();
-  const date = new Date();
-
-  // Optimization: Standard for loop and Date reuse to minimize allocations.
-  for (let i = 0; i < images.length; i++) {
-    date.setTime(images[i].lastModified);
-    const key = formatLocalDateKey(date);
-    counts.set(key, (counts.get(key) || 0) + 1);
-  }
-
-  const result: AnalyticsTimelinePoint[] = [];
-  for (const [key, count] of counts.entries()) {
-    result.push({ key, label: key, count });
-  }
-
-  return result.sort((a, b) => a.key.localeCompare(b.key));
-};
-
 const buildSessions = (images: IndexedImage[], limit = 8, isSorted = false): AnalyticsSession[] => {
   if (images.length === 0) {
     return [];
@@ -1075,50 +1056,6 @@ const buildSessions = (images: IndexedImage[], limit = 8, isSorted = false): Ana
     });
 };
 
-const buildNumericBuckets = (
-  images: IndexedImage[],
-  labelFactory: (entry: { min?: number; max?: number }) => string,
-  selector: (image: IndexedImage) => number | null,
-  ranges: Array<{ key: string; min?: number; max?: number }>
-): AnalyticsNumericBucket[] => {
-  // Optimization: Consolidate multiple filter passes into a single O(N) pass.
-  // Impact: Reduces full array traversals from K (number of ranges) to 1.
-  const counts = new Array(ranges.length).fill(0);
-
-  for (let i = 0; i < images.length; i++) {
-    const value = selector(images[i]);
-    if (value === null) {
-      continue;
-    }
-
-    for (let j = 0; j < ranges.length; j++) {
-      const range = ranges[j];
-      if (
-        (range.min === undefined || value >= range.min) &&
-        (range.max === undefined || value < range.max)
-      ) {
-        counts[j]++;
-      }
-    }
-  }
-
-  const buckets: AnalyticsNumericBucket[] = [];
-  for (let j = 0; j < ranges.length; j++) {
-    const count = counts[j];
-    if (count > 0) {
-      const range = ranges[j];
-      buckets.push({
-        key: range.key,
-        label: labelFactory(range),
-        count,
-        min: range.min,
-        max: range.max,
-      });
-    }
-  }
-
-  return buckets;
-};
 
 const buildCompareCohort = (
   images: IndexedImage[],
@@ -1207,188 +1144,277 @@ export const buildAnalyticsExplorerData = ({
   compare?: AnalyticsCompareConfig | null;
 }): AnalyticsExplorerData => {
   const totalImages = scopeImages.length;
-  const averages = calculatePerformanceAverages(scopeImages);
 
-  // Optimization: Pre-calculate resources and periodStats to avoid redundant passes
-  // and multiple calls to expensive statistic functions.
-  const generators = collectFacetItems(scopeImages, (image) => [getImageGenerator(image)], 10);
-  const models = collectFacetItems(scopeImages, (image) => image.models || [], 12);
-  const loras = collectFacetItems(scopeImages, getImageLoraNames, 12);
-  const samplers = collectFacetItems(scopeImages, (image) => image.sampler ? [image.sampler] : [], 12);
-  const schedulers = collectFacetItems(scopeImages, (image) => image.scheduler ? [image.scheduler] : [], 12);
+  // Initializing state for consolidated single-pass O(N) traversal.
+  // Optimization: Consolidating ~13 redundant O(N) passes into a single traversal.
+  // Impact: Dramatically reduces CPU cycles and GC pressure for large datasets.
+  const modelsStats = new Map<string, { count: number; favorites: number; ratingTotal: number; ratingCount: number }>();
+  const lorasStats = new Map<string, { count: number; favorites: number; ratingTotal: number; ratingCount: number }>();
+  const generatorsStats = new Map<string, { count: number; favorites: number; ratingTotal: number; ratingCount: number }>();
+  const samplersStats = new Map<string, { count: number; favorites: number; ratingTotal: number; ratingCount: number }>();
+  const schedulersStats = new Map<string, { count: number; favorites: number; ratingTotal: number; ratingCount: number }>();
 
-  const dominantModel = models[0]?.label;
-  const dominantGenerator = generators[0]?.label;
-  const periodStats = calculatePeriodStats(allImages, 30);
+  const gpuStats = new Map<string, { totalTime: number; totalSpeed: number; totalVram: number; speedCount: number; vramCount: number; timeCount: number }>();
+  const timelineCounts = new Map<string, number>();
 
-  // Optimization: Consolidate curation metrics calculation into a single pass.
-  // Impact: Reduces O(N) array traversals from ~13 passes to 1, minimizing heap allocations and GC pressure.
+  const weekdayCounts = new Uint32Array(7);
+  const hourlyCounts = new Uint32Array(24);
+
+  let totalSpeed = 0;
+  let totalVram = 0;
+  let totalTime = 0;
+  let speedCount = 0;
+  let vramCount = 0;
+  let timeCount = 0;
+  let imagesWithTelemetry = 0;
+
   let favoritesCount = 0;
   let unratedCount = 0;
   let unratedFavoritesCount = 0;
   const ratingStats = new Map<number, { count: number; favorites: number }>();
-
   for (let i = 0; i < RATING_VALUES.length; i++) {
     ratingStats.set(RATING_VALUES[i], { count: 0, favorites: 0 });
   }
+
+  const genTimeRanges = [
+    { key: 'lt1000', min: 0, max: 1000 },
+    { key: '1k-5k', min: 1000, max: 5000 },
+    { key: '5k-15k', min: 5000, max: 15000 },
+    { key: '15k-60k', min: 15000, max: 60000 },
+    { key: 'gte60k', min: 60000, max: Infinity },
+  ];
+  const genTimeBucketCounts = new Uint32Array(genTimeRanges.length);
+
+  const speedRanges = [
+    { key: 'lt2', min: 0, max: 2 },
+    { key: '2-5', min: 2, max: 5 },
+    { key: '5-10', min: 5, max: 10 },
+    { key: '10-20', min: 10, max: 20 },
+    { key: 'gte20', min: 20, max: Infinity },
+  ];
+  const speedBucketCounts = new Uint32Array(speedRanges.length);
+
+  const vramRanges = [
+    { key: 'lt2048', min: 0, max: 2048 },
+    { key: '2048-4096', min: 2048, max: 4096 },
+    { key: '4096-8192', min: 4096, max: 8192 },
+    { key: '8192-12288', min: 8192, max: 12288 },
+    { key: 'gte12288', min: 12288, max: Infinity },
+  ];
+  const vramBucketCounts = new Uint32Array(vramRanges.length);
+
+  const date = new Date();
+  const uniqueItems = new Set<string>();
+
+  const updateStats = (
+    map: Map<string, { count: number; favorites: number; ratingTotal: number; ratingCount: number }>,
+    rawKeys: string[],
+    isFavorite: boolean,
+    rating: number | null | undefined,
+  ) => {
+    uniqueItems.clear();
+    for (let j = 0; j < rawKeys.length; j++) {
+      const normalized = normalizeItemName(rawKeys[j]);
+      if (normalized) uniqueItems.add(normalized);
+    }
+    for (const key of uniqueItems) {
+      const entry = map.get(key) || { count: 0, favorites: 0, ratingTotal: 0, ratingCount: 0 };
+      entry.count++;
+      if (isFavorite) entry.favorites++;
+      if (typeof rating === 'number') {
+        entry.ratingTotal += rating;
+        entry.ratingCount++;
+      }
+      map.set(key, entry);
+    }
+  };
 
   for (let i = 0; i < scopeImages.length; i++) {
     const image = scopeImages[i];
     const isFavorite = image.isFavorite === true;
     const rating = image.rating;
+    const lastModified = image.lastModified;
 
-    if (isFavorite) {
-      favoritesCount++;
-    }
-
+    // Curation Metrics
+    if (isFavorite) favoritesCount++;
     if (typeof rating === 'number' && ratingStats.has(rating)) {
       const stats = ratingStats.get(rating)!;
       stats.count++;
-      if (isFavorite) {
-        stats.favorites++;
-      }
+      if (isFavorite) stats.favorites++;
     } else {
       unratedCount++;
-      if (isFavorite) {
-        unratedFavoritesCount++;
-      }
+      if (isFavorite) unratedFavoritesCount++;
     }
+
+    // Temporal Habits & Timeline
+    date.setTime(lastModified);
+    weekdayCounts[date.getDay()]++;
+    hourlyCounts[date.getHours()]++;
+    const timelineKey = formatLocalDateKey(date);
+    timelineCounts.set(timelineKey, (timelineCounts.get(timelineKey) || 0) + 1);
+
+    // Performance Metrics
+    const analytics = getImageAnalytics(image);
+    if (analytics) {
+      let hasAnyTelemetry = false;
+
+      if (typeof analytics.steps_per_second === 'number' && analytics.steps_per_second > 0) {
+        const val = analytics.steps_per_second;
+        totalSpeed += val;
+        speedCount++;
+        hasAnyTelemetry = true;
+        for (let j = 0; j < speedRanges.length; j++) {
+          if (val >= speedRanges[j].min && val < speedRanges[j].max) {
+            speedBucketCounts[j]++;
+            break;
+          }
+        }
+      }
+      if (typeof analytics.vram_peak_mb === 'number' && analytics.vram_peak_mb > 0) {
+        const val = analytics.vram_peak_mb;
+        totalVram += val;
+        vramCount++;
+        hasAnyTelemetry = true;
+        for (let j = 0; j < vramRanges.length; j++) {
+          if (val >= vramRanges[j].min && val < vramRanges[j].max) {
+            vramBucketCounts[j]++;
+            break;
+          }
+        }
+      }
+      if (typeof analytics.generation_time_ms === 'number' && analytics.generation_time_ms > 0) {
+        const val = analytics.generation_time_ms;
+        totalTime += val;
+        timeCount++;
+        hasAnyTelemetry = true;
+        for (let j = 0; j < genTimeRanges.length; j++) {
+          if (val >= genTimeRanges[j].min && val < genTimeRanges[j].max) {
+            genTimeBucketCounts[j]++;
+            break;
+          }
+        }
+      }
+      if (typeof analytics.gpu_device === 'string' && analytics.gpu_device.trim().length > 0) {
+        const gpuName = analytics.gpu_device;
+        hasAnyTelemetry = true;
+        const gStats = gpuStats.get(gpuName) || { totalTime: 0, totalSpeed: 0, totalVram: 0, speedCount: 0, vramCount: 0, timeCount: 0 };
+        if (typeof analytics.generation_time_ms === 'number' && analytics.generation_time_ms > 0) {
+          gStats.totalTime += analytics.generation_time_ms;
+          gStats.timeCount++;
+        }
+        if (typeof analytics.steps_per_second === 'number' && analytics.steps_per_second > 0) {
+          gStats.totalSpeed += analytics.steps_per_second;
+          gStats.speedCount++;
+        }
+        if (typeof analytics.vram_peak_mb === 'number' && analytics.vram_peak_mb > 0) {
+          gStats.totalVram += analytics.vram_peak_mb;
+          gStats.vramCount++;
+        }
+        gpuStats.set(gpuName, gStats);
+      }
+
+      if (hasAnyTelemetry) imagesWithTelemetry++;
+    }
+
+    // Resources (Facets)
+    updateStats(modelsStats, image.models || [], isFavorite, rating);
+    updateStats(lorasStats, getImageLoraNames(image), isFavorite, rating);
+    updateStats(generatorsStats, [getImageGenerator(image)], isFavorite, rating);
+    updateStats(samplersStats, image.sampler ? [image.sampler] : [], isFavorite, rating);
+    updateStats(schedulersStats, image.scheduler ? [image.scheduler] : [], isFavorite, rating);
   }
+
+  // Post-processing aggregated data
+  const periodStats = calculatePeriodStats(allImages, 30);
+  const averages: PerformanceAverages = {
+    avgStepsPerSecond: speedCount > 0 ? totalSpeed / speedCount : 0,
+    avgVramPeak: vramCount > 0 ? totalVram / vramCount : 0,
+    avgGenerationTime: timeCount > 0 ? totalTime / timeCount : 0,
+    imagesWithTelemetry,
+    totalImages,
+    telemetryPercentage: totalImages > 0 ? (imagesWithTelemetry / totalImages) * 100 : 0,
+  };
+
+  const finalizeFacets = (statsMap: typeof modelsStats, limit = 12) => {
+    const result: AnalyticsFacetItem[] = [];
+    for (const [key, value] of statsMap.entries()) {
+      result.push({
+        key,
+        label: key,
+        count: value.count,
+        share: totalImages > 0 ? value.count / totalImages : 0,
+        favorites: value.favorites,
+        keeperRate: value.count > 0 ? value.favorites / value.count : 0,
+        averageRating: value.ratingCount > 0 ? value.ratingTotal / value.ratingCount : 0,
+        ratingCount: value.ratingCount,
+      });
+    }
+    return result.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, limit);
+  };
+
+  const generators = finalizeFacets(generatorsStats, 10);
+  const models = finalizeFacets(modelsStats, 12);
+  const loras = finalizeFacets(lorasStats, 12);
+  const samplers = finalizeFacets(samplersStats, 12);
+  const schedulers = finalizeFacets(schedulersStats, 12);
 
   const ratingDistribution: AnalyticsFacetItem[] = [];
   for (let i = 0; i < RATING_VALUES.length; i++) {
-    const rating = RATING_VALUES[i];
-    const stats = ratingStats.get(rating)!;
+    const r = RATING_VALUES[i];
+    const stats = ratingStats.get(r)!;
     if (stats.count > 0) {
-      ratingDistribution.push({
-        key: String(rating),
-        label: `${rating}★`,
-        count: stats.count,
-        share: totalImages > 0 ? stats.count / totalImages : 0,
-        favorites: stats.favorites,
-        keeperRate: stats.count > 0 ? stats.favorites / stats.count : 0,
-        averageRating: rating,
-        ratingCount: stats.count,
-      });
+      ratingDistribution.push({ key: String(r), label: `${r}★`, count: stats.count, share: totalImages > 0 ? stats.count / totalImages : 0, favorites: stats.favorites, keeperRate: stats.count > 0 ? stats.favorites / stats.count : 0, averageRating: r, ratingCount: stats.count });
     }
   }
-
   if (unratedCount > 0) {
-    ratingDistribution.push({
-      key: 'unrated',
-      label: 'Unrated',
-      count: unratedCount,
-      share: totalImages > 0 ? unratedCount / totalImages : 0,
-      favorites: unratedFavoritesCount,
-      keeperRate: unratedCount > 0 ? unratedFavoritesCount / unratedCount : 0,
-      averageRating: 0,
-      ratingCount: 0,
-    });
+    ratingDistribution.push({ key: 'unrated', label: 'Unrated', count: unratedCount, share: totalImages > 0 ? unratedCount / totalImages : 0, favorites: unratedFavoritesCount, keeperRate: unratedCount > 0 ? unratedFavoritesCount / unratedCount : 0, averageRating: 0, ratingCount: 0 });
   }
 
-  const habits = analyzeCreationHabits(scopeImages);
+  const byGPU: GPUPerformanceStats[] = [];
+  for (const [gpu, stats] of gpuStats.entries()) {
+    const count = Math.max(stats.speedCount, stats.vramCount, stats.timeCount);
+    byGPU.push({ name: gpu, shortName: truncateName(gpu, 25), avgSpeed: stats.speedCount > 0 ? stats.totalSpeed / stats.speedCount : 0, avgVram: stats.vramCount > 0 ? stats.totalVram / stats.vramCount / 1024 : 0, avgTime: stats.timeCount > 0 ? stats.totalTime / stats.timeCount / 1000 : 0, count });
+  }
+  byGPU.sort((a, b) => b.count - a.count);
 
-  // Optimization: Sort once and reuse for samples and sessions
-  // Impact: Eliminates redundant O(N log N) sorts in the analytics generation path
-  const sorted = [...scopeImages].sort((a, b) => a.lastModified - b.lastModified);
-
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const explorerData: AnalyticsExplorerData = {
     scopeMode,
     totalImages,
     allImagesCount: allImages.length,
-    dominantModel,
-    dominantGenerator,
+    dominantModel: models[0]?.label,
+    dominantGenerator: generators[0]?.label,
     telemetryCoverage: averages.telemetryPercentage / 100,
     periodStats,
-    insights: generateInsights(
-      allImages,
-      periodStats,
-      models.slice(0, 5).map(m => ({
-        name: m.label,
-        total: m.count,
-        favorites: m.favorites,
-        keeperRate: m.keeperRate,
-        averageRating: m.averageRating,
-        ratingCount: m.ratingCount,
-      })),
-      undefined,
-      scopeMode === 'context' ? 'current scope' : 'library',
-      totalImages
-    ),
-    samples: sorted.slice(-8).reverse(),
-    resources: {
-      generators,
-      models,
-      loras,
-      samplers,
-      schedulers,
-    },
+    insights: generateInsights(allImages, periodStats, models.slice(0, 5).map(m => ({ name: m.label, total: m.count, favorites: m.favorites, keeperRate: m.keeperRate, averageRating: m.averageRating, ratingCount: m.ratingCount })), undefined, scopeMode === 'context' ? 'current scope' : 'library', totalImages),
+    samples: [], // Populated below
+    resources: { generators, models, loras, samplers, schedulers },
     time: {
-      timeline: buildTimelinePoints(scopeImages),
-      weekday: habits.weekdayDistribution.map((entry) => ({ key: entry.day, label: entry.day, count: entry.count })),
-      hourly: habits.hourlyDistribution.map((entry) => ({ key: String(entry.hour), label: `${entry.hour}:00`, count: entry.count })),
-      sessions: buildSessions(sorted, 8, true),
+      timeline: Array.from(timelineCounts.entries()).map(([key, count]) => ({ key, label: key, count })).sort((a, b) => a.key.localeCompare(b.key)),
+      weekday: weekdays.map((day, i) => ({ key: day, label: day, count: weekdayCounts[i] })),
+      hourly: Array.from({ length: 24 }).map((_, i) => ({ key: String(i), label: `${i}:00`, count: hourlyCounts[i] })),
+      sessions: [], // Populated below
     },
     performance: {
       averages,
-      byGPU: calculatePerformanceByGPU(scopeImages),
-      generationTime: buildNumericBuckets(
-        scopeImages,
-        ({ min, max }) => min === undefined ? `< ${max}ms` : max === undefined ? `>= ${min}ms` : `${min}-${max}ms`,
-        (image) => {
-          const value = getImageAnalytics(image)?.generation_time_ms;
-          return typeof value === 'number' ? value : null;
-        },
-        [
-          { key: 'lt1000', max: 1000 },
-          { key: '1k-5k', min: 1000, max: 5000 },
-          { key: '5k-15k', min: 5000, max: 15000 },
-          { key: '15k-60k', min: 15000, max: 60000 },
-          { key: 'gte60k', min: 60000 },
-        ]
-      ),
-      speed: buildNumericBuckets(
-        scopeImages,
-        ({ min, max }) => min === undefined ? `< ${max} it/s` : max === undefined ? `>= ${min} it/s` : `${min}-${max} it/s`,
-        (image) => {
-          const value = getImageAnalytics(image)?.steps_per_second;
-          return typeof value === 'number' ? value : null;
-        },
-        [
-          { key: 'lt2', max: 2 },
-          { key: '2-5', min: 2, max: 5 },
-          { key: '5-10', min: 5, max: 10 },
-          { key: '10-20', min: 10, max: 20 },
-          { key: 'gte20', min: 20 },
-        ]
-      ),
-      vram: buildNumericBuckets(
-        scopeImages,
-        ({ min, max }) => min === undefined ? `< ${max} MB` : max === undefined ? `>= ${min} MB` : `${min}-${max} MB`,
-        (image) => {
-          const value = getImageAnalytics(image)?.vram_peak_mb;
-          return typeof value === 'number' ? value : null;
-        },
-        [
-          { key: 'lt2048', max: 2048 },
-          { key: '2048-4096', min: 2048, max: 4096 },
-          { key: '4096-8192', min: 4096, max: 8192 },
-          { key: '8192-12288', min: 8192, max: 12288 },
-          { key: 'gte12288', min: 12288 },
-        ]
-      ),
+      byGPU,
+      generationTime: genTimeRanges.map((r, i) => ({ key: r.key, label: r.min === 0 ? `< ${r.max}ms` : r.max === Infinity ? `>= ${r.min}ms` : `${r.min}-${r.max}ms`, count: genTimeBucketCounts[i], min: r.min, max: r.max })).filter(b => b.count > 0),
+      speed: speedRanges.map((r, i) => ({ key: r.key, label: r.min === 0 ? `< ${r.max} it/s` : r.max === Infinity ? `>= ${r.min} it/s` : `${r.min}-${r.max} it/s`, count: speedBucketCounts[i], min: r.min, max: r.max })).filter(b => b.count > 0),
+      vram: vramRanges.map((r, i) => ({ key: r.key, label: r.min === 0 ? `< ${r.max} MB` : r.max === Infinity ? `>= ${r.min} MB` : `${r.min}-${r.max} MB`, count: vramBucketCounts[i], min: r.min, max: r.max })).filter(b => b.count > 0),
     },
     curation: {
       favoritesCount,
       favoriteRate: totalImages > 0 ? favoritesCount / totalImages : 0,
       unratedCount,
       ratingDistribution,
-      // Optimization: Reuse pre-calculated facets to avoid redundant O(N) traversals.
-      // Impact: Saves two full library passes by leveraging already computed models and loras.
       keeperModels: models.slice(0, 8),
       keeperLoras: loras.slice(0, 8),
     },
   };
+
+  const sorted = [...scopeImages].sort((a, b) => a.lastModified - b.lastModified);
+  explorerData.samples = sorted.slice(-8).reverse();
+  explorerData.time.sessions = buildSessions(sorted, 8, true);
 
   if (compare) {
     explorerData.compare = {
