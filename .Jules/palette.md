@@ -26,3 +26,7 @@
 ## 2026-06-27 - Enhancing Hidden Interactive Elements
 **Learning:** Buttons that only appear on hover (e.g., metadata copy buttons) are inaccessible to keyboard users. Using `group-focus-within:opacity-100` or `focus-visible` is critical to reveal these elements during navigation.
 **Action:** Always pair `group-hover` visibility with `focus-within` or `focus-visible` states and provide a clear focus ring for keyboard users.
+
+## 2026-07-24 - Keyboard Accessibility for Complex Interactive Rows
+**Learning:** When making complex interactive rows (like facets) accessible, adding `role="button"` and `tabIndex={0}` is only the first step. To prevent nested action buttons from double-triggering the parent's toggle logic when activated via keyboard, a target guard (`if (e.target !== e.currentTarget) return;`) is essential in the parent's `onKeyDown` handler.
+**Action:** Always implement event target validation in keyboard handlers for interactive containers that house independent sub-actions.

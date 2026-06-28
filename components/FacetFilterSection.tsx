@@ -161,8 +161,18 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 return (
                   <div
                     key={item}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isIncluded || isExcluded}
                     onClick={handleRowClick}
-                    className={`group flex items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors cursor-pointer ${
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleRowClick();
+                      }
+                    }}
+                    className={`group flex items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 outline-none ${
                       isIncluded
                         ? 'bg-emerald-500/10'
                         : isExcluded
@@ -191,7 +201,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                           e.stopPropagation();
                           onIncludeToggle(item);
                         }}
-                        className={`flex items-center justify-center p-1 rounded transition-colors ${
+                        className={`flex items-center justify-center p-1 rounded transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 outline-none ${
                           isIncluded
                             ? 'bg-emerald-500/20 text-emerald-400'
                             : 'text-gray-500 hover:bg-emerald-500/15 hover:text-emerald-400'
@@ -207,7 +217,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                           e.stopPropagation();
                           onExcludeToggle(item);
                         }}
-                        className={`flex items-center justify-center p-1 rounded transition-colors ${
+                        className={`flex items-center justify-center p-1 rounded transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 outline-none ${
                           isExcluded
                             ? 'bg-rose-500/20 text-rose-400'
                             : 'text-gray-500 hover:bg-rose-500/15 hover:text-rose-400'
