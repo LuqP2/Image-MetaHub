@@ -49,8 +49,13 @@ const formatTimeLabel = (timestamp: number): string =>
 const getDominantModel = (images: IndexedImage[]): string | undefined => {
   const counts = new Map<string, number>();
 
-  for (const image of images) {
-    for (const model of image.models ?? []) {
+  for (let i = 0; i < images.length; i++) {
+    const image = images[i];
+    const models = image.models;
+    if (!models) continue;
+
+    for (let j = 0; j < models.length; j++) {
+      const model = models[j];
       const normalized = typeof model === 'string' ? model.trim() : '';
       if (!normalized) {
         continue;
@@ -59,8 +64,25 @@ const getDominantModel = (images: IndexedImage[]): string | undefined => {
     }
   }
 
-  return Array.from(counts.entries())
-    .sort((left, right) => right[1] - left[1] || collator.compare(left[0], right[0]))[0]?.[0];
+  let dominant: string | undefined;
+  let maxCount = -1;
+
+  for (const entry of counts.entries()) {
+    const model = entry[0];
+    const count = entry[1];
+
+    if (count > maxCount) {
+      maxCount = count;
+      dominant = model;
+    } else if (count === maxCount && dominant !== undefined) {
+      // Tie-breaker: use the same logic as sort (collator.compare)
+      if (collator.compare(model, dominant) < 0) {
+        dominant = model;
+      }
+    }
+  }
+
+  return dominant;
 };
 
 const makeGroup = (
@@ -69,13 +91,14 @@ const makeGroup = (
   images: IndexedImage[],
   subtitle?: string,
   extra?: Pick<ImageGroup, 'dateKey' | 'startTime' | 'endTime'>,
+  overrideThumbnailId?: string,
 ): ImageGroup => ({
   id,
   label,
   subtitle,
   count: images.length,
   startImageId: images[0]?.id ?? '',
-  thumbnailImageId: images.reduce<IndexedImage | null>(
+  thumbnailImageId: overrideThumbnailId ?? images.reduce<IndexedImage | null>(
     (latest, image) => latest === null || image.lastModified > latest.lastModified ? image : latest,
     null,
   )?.id,
@@ -84,34 +107,52 @@ const makeGroup = (
 
 const flattenGroups = (
   groupedEntries: Array<{ group: ImageGroup; images: IndexedImage[] }>,
-): GroupedImagesResult => ({
-  groups: groupedEntries.map((entry) => entry.group),
-  items: groupedEntries.flatMap((entry) => [
-    { type: 'group-header' as const, group: entry.group },
-    ...entry.images.map((image) => ({ type: 'image' as const, image })),
-  ]),
-});
+): GroupedImagesResult => {
+  const groups: ImageGroup[] = [];
+  const items: ImageGroupRenderItem[] = [];
+
+  for (let i = 0; i < groupedEntries.length; i++) {
+    const entry = groupedEntries[i];
+    groups.push(entry.group);
+
+    items.push({ type: 'group-header' as const, group: entry.group });
+
+    const groupImages = entry.images;
+    for (let j = 0; j < groupImages.length; j++) {
+      items.push({ type: 'image' as const, image: groupImages[j] });
+    }
+  }
+
+  return { groups, items };
+};
 
 const groupByDate = (images: IndexedImage[]): GroupedImagesResult => {
   const entries = new Map<string, IndexedImage[]>();
 
-  for (const image of images) {
+  for (let i = 0; i < images.length; i++) {
+    const image = images[i];
     const key = formatLocalDateKey(image.lastModified);
-    const bucket = entries.get(key) ?? [];
-    bucket.push(image);
-    entries.set(key, bucket);
+    const bucket = entries.get(key);
+    if (bucket) {
+      bucket.push(image);
+    } else {
+      entries.set(key, [image]);
+    }
   }
 
-  return flattenGroups(
-    Array.from(entries.entries()).map(([key, groupImages]) => ({
+  const groupedEntries: Array<{ group: ImageGroup; images: IndexedImage[] }> = [];
+  for (const [key, groupImages] of entries.entries()) {
+    groupedEntries.push({
       group: makeGroup(`date-${key}`, formatDateLabel(groupImages[0].lastModified), groupImages, undefined, {
         dateKey: key,
         startTime: groupImages[0].lastModified,
         endTime: groupImages[groupImages.length - 1].lastModified,
       }),
       images: groupImages,
-    })),
-  );
+    });
+  }
+
+  return flattenGroups(groupedEntries);
 };
 
 const getNameGroupKey = (name: string): string => {
@@ -122,19 +163,26 @@ const getNameGroupKey = (name: string): string => {
 const groupByName = (images: IndexedImage[]): GroupedImagesResult => {
   const entries = new Map<string, IndexedImage[]>();
 
-  for (const image of images) {
+  for (let i = 0; i < images.length; i++) {
+    const image = images[i];
     const key = getNameGroupKey(image.name);
-    const bucket = entries.get(key) ?? [];
-    bucket.push(image);
-    entries.set(key, bucket);
+    const bucket = entries.get(key);
+    if (bucket) {
+      bucket.push(image);
+    } else {
+      entries.set(key, [image]);
+    }
   }
 
-  return flattenGroups(
-    Array.from(entries.entries()).map(([key, groupImages]) => ({
+  const groupedEntries: Array<{ group: ImageGroup; images: IndexedImage[] }> = [];
+  for (const [key, groupImages] of entries.entries()) {
+    groupedEntries.push({
       group: makeGroup(`name-${key}`, key, groupImages),
       images: groupImages,
-    })),
-  );
+    });
+  }
+
+  return flattenGroups(groupedEntries);
 };
 
 const getSessionSortDirection = (sortOrder?: ImageGroupingSortOrder): 'asc' | 'desc' =>
@@ -169,32 +217,38 @@ const groupBySession = (images: IndexedImage[], options: ImageGroupingOptions = 
     ? [...sessions].reverse()
     : sessions;
 
-  return flattenGroups(
-    orderedSessions.map((session) => {
-      const chronologicalStart = session[0];
-      const chronologicalEnd = session[session.length - 1];
-      const start = chronologicalStart.lastModified;
-      const end = chronologicalEnd.lastModified;
-      const dominantModel = getDominantModel(session);
-      const label = `${formatDateLabel(start)} ${formatTimeLabel(start)}-${formatTimeLabel(end)}`;
-      const subtitle = dominantModel ? `Dominant model: ${dominantModel}` : undefined;
-      const orderedSessionImages = sessionDirection === 'desc'
-        ? [...session].reverse()
-        : session;
+  const groupedEntries: Array<{ group: ImageGroup; images: IndexedImage[] }> = [];
+  for (let i = 0; i < orderedSessions.length; i++) {
+    const session = orderedSessions[i];
+    const chronologicalStart = session[0];
+    const chronologicalEnd = session[session.length - 1];
+    const start = chronologicalStart.lastModified;
+    const end = chronologicalEnd.lastModified;
+    const dominantModel = getDominantModel(session);
+    const label = `${formatDateLabel(start)} ${formatTimeLabel(start)}-${formatTimeLabel(end)}`;
+    const subtitle = dominantModel ? `Dominant model: ${dominantModel}` : undefined;
+    const orderedSessionImages = sessionDirection === 'desc'
+      ? [...session].reverse()
+      : session;
 
-      return {
-        group: {
-          ...makeGroup(`session-${start}-${chronologicalStart.id}`, label, orderedSessionImages, subtitle, {
-            dateKey: formatLocalDateKey(start),
-            startTime: start,
-            endTime: end,
-          }),
-          thumbnailImageId: chronologicalEnd.id,
+    groupedEntries.push({
+      group: makeGroup(
+        `session-${start}-${chronologicalStart.id}`,
+        label,
+        orderedSessionImages,
+        subtitle,
+        {
+          dateKey: formatLocalDateKey(start),
+          startTime: start,
+          endTime: end,
         },
-        images: orderedSessionImages,
-      };
-    }),
-  );
+        chronologicalEnd.id,
+      ),
+      images: orderedSessionImages,
+    });
+  }
+
+  return flattenGroups(groupedEntries);
 };
 
 export const groupImages = (
