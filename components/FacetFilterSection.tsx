@@ -160,22 +160,9 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 };
 
                 return (
-                  <motion.div
+                  <div
                     key={item}
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={isIncluded}
-                    aria-label={`${isIncluded ? 'Remove' : 'Include'} ${item} (${counts?.get(item) ?? 0} items)`}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleRowClick}
-                    onKeyDown={(e) => {
-                      if (e.target !== e.currentTarget) return;
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        handleRowClick();
-                      }
-                    }}
-                    className={`group flex items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 ${
+                    className={`group flex items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors ${
                       isIncluded
                         ? 'bg-emerald-500/10'
                         : isExcluded
@@ -183,7 +170,19 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                           : 'hover:bg-gray-800/40'
                     }`}
                   >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <motion.button
+                      type="button"
+                      aria-pressed={isIncluded}
+                      aria-label={`${isIncluded ? 'Remove' : 'Include'} ${item} (${counts?.get(item) ?? 0} items)`}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleRowClick}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.stopPropagation();
+                        }
+                      }}
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                    >
                       <div
                         className={`text-sm leading-tight truncate ${
                           isIncluded ? 'text-emerald-300' : isExcluded ? 'text-rose-300 line-through opacity-70' : 'text-gray-300'
@@ -195,7 +194,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                       <div className="text-[10px] text-gray-500 whitespace-nowrap">
                         {counts?.get(item) ?? 0}
                       </div>
-                    </div>
+                    </motion.button>
 
                     <div className={`flex items-center gap-0.5 ${isIncluded || isExcluded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'} transition-opacity`}>
                       <button
@@ -203,6 +202,11 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           onIncludeToggle(item);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.stopPropagation();
+                          }
                         }}
                         className={`flex items-center justify-center p-1 rounded transition-colors ${
                           isIncluded
@@ -220,6 +224,11 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                           e.stopPropagation();
                           onExcludeToggle(item);
                         }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.stopPropagation();
+                          }
+                        }}
                         className={`flex items-center justify-center p-1 rounded transition-colors ${
                           isExcluded
                             ? 'bg-rose-500/20 text-rose-400'
@@ -231,7 +240,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                         <Minus className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                  </motion.div>
+                  </div>
                 );
               })
             )}
