@@ -26,3 +26,7 @@
 ## 2026-06-27 - Enhancing Hidden Interactive Elements
 **Learning:** Buttons that only appear on hover (e.g., metadata copy buttons) are inaccessible to keyboard users. Using `group-focus-within:opacity-100` or `focus-visible` is critical to reveal these elements during navigation.
 **Action:** Always pair `group-hover` visibility with `focus-within` or `focus-visible` states and provide a clear focus ring for keyboard users.
+
+## 2025-06-28 - Keyboard Parity for Interactive List Items
+**Learning:** Facet filters and list items often use `div` elements for layout flexibility, but they must implement `role="button"`, `tabIndex={0}`, and `onKeyDown` handlers to be accessible. Adding `framer-motion`'s `whileTap` provides the tactile feedback users expect from native interactive elements.
+**Action:** When converting static list items to interactive ones, ensure full keyboard parity and use micro-interactions (like subtle scaling) to signal interactivity.
