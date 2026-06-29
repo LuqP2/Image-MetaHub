@@ -53,3 +53,7 @@
 ## 2025-06-30 - Optimizing Stacking Loops via Inlining and State Caching
 **Learning:** Generating "keys" via string concatenation (e.g., `pos + "|" + neg`) for every item in an (N)$ loop to find consecutive matches (stacking) creates unnecessary GC pressure. Accessing the "first item" of the current stack in every iteration also adds redundant property access.
 **Action:** Inline the extraction of comparison fields and cache the "current stack" criteria in local variables. This avoids (N)$ string allocations and reduces the loop body to simple primitive comparisons, which is significantly faster for large collections.
+
+## 2025-05-29 - Efficient Path Processing and Sort Specialization in Search Workers
+**Learning:** Performing path normalization and joining via array methods (`split`, `filter`, `join`) or regex inside an \(O(N)\) filtering loop for large datasets creates significant CPU overhead and memory pressure. Similarly, executing complex branch logic (e.g., `if (sortOrder === 'asc') ...`) inside a sort comparator adds unnecessary overhead during the \(O(N \log N)\) sorting phase.
+**Action:** Use faster string operations like `lastIndexOf` and `slice` for path manipulation, and pre-normalize base paths outside the loop. For sorting, pre-select the appropriate comparator function based on the sort order once, and pass that specialized function to `.sort()`, eliminating redundant evaluations and ensuring a tighter execution loop.

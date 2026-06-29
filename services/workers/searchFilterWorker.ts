@@ -120,27 +120,33 @@ let workerImages: SearchWorkerImage[] = [];
 
 const normalizePath = (path: string): string => path.replace(/\\/g, '/');
 
-const joinPath = (base: string, relative: string) => {
+const joinPath = (base: string, relative: string, isBaseAlreadyNormalized = false) => {
   if (!relative) {
-    return normalizePath(base);
+    return isBaseAlreadyNormalized ? base : normalizePath(base);
   }
 
-  const normalizedBase = normalizePath(base);
-  const normalizedRelative = relative
-    .split(/[/\\]/)
-    .filter(Boolean)
-    .join('/');
+  const normalizedBase = isBaseAlreadyNormalized ? base : normalizePath(base);
+  // Optimization: use a faster path normalization that avoids regex/split/filter/join if possible
+  const normalizedRelative = relative.replace(/\\/g, '/');
 
-  return normalizedBase ? `${normalizedBase}/${normalizedRelative}` : normalizedRelative;
+  if (!normalizedBase) return normalizedRelative;
+  if (normalizedBase.endsWith('/')) return `${normalizedBase}${normalizedRelative}`;
+  return `${normalizedBase}/${normalizedRelative}`;
 };
 
-const getFolderPath = (image: SearchWorkerImage, parentDirectory: string) => {
-  const segments = image.relativePath.split(/[/\\]/).filter(Boolean);
-  if (segments.length <= 1) {
-    return normalizePath(parentDirectory);
+const getFolderPath = (image: SearchWorkerImage, parentDirectory: string, isParentAlreadyNormalized = false) => {
+  const path = image.relativePath;
+  // Find the last separator to get the directory portion
+  const lastSlash = path.lastIndexOf('/');
+  const lastBackslash = path.lastIndexOf('\\');
+  const lastIndex = Math.max(lastSlash, lastBackslash);
+
+  if (lastIndex <= 0) {
+    return isParentAlreadyNormalized ? parentDirectory : normalizePath(parentDirectory);
   }
 
-  return joinPath(parentDirectory, segments.slice(0, -1).join('/'));
+  // Optimization: Use slice instead of split/filter/slice/join for O(1) string extraction
+  return joinPath(parentDirectory, path.slice(0, lastIndex), isParentAlreadyNormalized);
 };
 
 const caseInsensitiveSort = (a: string, b: string) =>
@@ -229,6 +235,10 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
 
   const results: SearchWorkerImage[] = [];
 
+  // Optimization: Pre-determine if folder filters are active to avoid O(N) path calculations
+  const hasFolderFilters = excludedFolders.length > 0 || hasSelectedFolders;
+  const dimensionCache = new Map<string, string>();
+
   // Facet collection variables
   const modelsFacet = new Set<string>();
   const lorasFacet = new Set<string>();
@@ -251,33 +261,37 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
     if (!parentPath) continue;
 
     // 2. Folder Filters
-    const folderPath = getFolderPath(image, parentPath);
-    let isFolderExcluded = false;
-    for (let j = 0; j < excludedFolders.length; j++) {
-      const excludedFolder = excludedFolders[j];
-      if (
-        folderPath === excludedFolder ||
-        folderPath.startsWith(`${excludedFolder}/`)
-      ) {
-        isFolderExcluded = true;
-        break;
-      }
-    }
-    if (isFolderExcluded) continue;
+    if (hasFolderFilters) {
+      // Optimization: Use pre-normalized parentPath (from directoryPathMap) to speed up joining
+      const folderPath = getFolderPath(image, parentPath, true);
 
-    if (hasSelectedFolders) {
-      let isMatch = false;
-      for (let j = 0; j < selectedFolders.length; j++) {
-        const selectedFolder = selectedFolders[j];
+      let isFolderExcluded = false;
+      for (let j = 0; j < excludedFolders.length; j++) {
+        const excludedFolder = excludedFolders[j];
         if (
-          folderPath === selectedFolder ||
-          (criteria.includeSubfolders && folderPath.startsWith(`${selectedFolder}/`))
+          folderPath === excludedFolder ||
+          folderPath.startsWith(`${excludedFolder}/`)
         ) {
-          isMatch = true;
+          isFolderExcluded = true;
           break;
         }
       }
-      if (!isMatch) continue;
+      if (isFolderExcluded) continue;
+
+      if (hasSelectedFolders) {
+        let isMatch = false;
+        for (let j = 0; j < selectedFolders.length; j++) {
+          const selectedFolder = selectedFolders[j];
+          if (
+            folderPath === selectedFolder ||
+            (criteria.includeSubfolders && folderPath.startsWith(`${selectedFolder}/`))
+          ) {
+            isMatch = true;
+            break;
+          }
+        }
+        if (!isMatch) continue;
+      }
     }
 
     // 3. Favorite Filter
@@ -431,7 +445,15 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
     if (excludedGpuDevices.size > 0 && image.gpuDevice !== null && excludedGpuDevices.has(image.gpuDevice)) continue;
 
     // 11. Advanced Filters
-    if (filterDimension && image.dimensions.replace(/\s+/g, '') !== filterDimension) continue;
+    if (filterDimension) {
+      // Optimization: use cache for normalized dimensions to avoid O(N) regex
+      let normalizedDimensions = dimensionCache.get(image.dimensions);
+      if (normalizedDimensions === undefined) {
+        normalizedDimensions = image.dimensions.replace(/\s+/g, '');
+        dimensionCache.set(image.dimensions, normalizedDimensions);
+      }
+      if (normalizedDimensions !== filterDimension) continue;
+    }
     if (advancedFilters.steps && !numericRangeMatch(image.steps, advancedFilters.steps)) continue;
     if (advancedFilters.cfg && !numericRangeMatch(image.cfgScale, advancedFilters.cfg)) continue;
     if (dateFrom !== null && image.lastModified < dateFrom) continue;
@@ -479,7 +501,41 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
   }
 
   // Final sorting
-  results.sort((left, right) => compareImages(left, right, criteria.sortOrder, criteria.randomSeed));
+  // Optimization: Pre-select comparator function once to avoid O(N log N) branch evaluations
+  const sortOrder = criteria.sortOrder;
+  const randomSeed = criteria.randomSeed;
+
+  const compareById = (a: SearchWorkerImage, b: SearchWorkerImage) => a.id.localeCompare(b.id);
+  const compareByNameAsc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
+    const nameComparison = (a.name || '').localeCompare(b.name || '');
+    return nameComparison !== 0 ? nameComparison : compareById(a, b);
+  };
+  const compareByNameDesc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
+    const nameComparison = (b.name || '').localeCompare(a.name || '');
+    return nameComparison !== 0 ? nameComparison : compareById(a, b);
+  };
+  const compareByDateAsc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
+    const dateComparison = a.lastModified - b.lastModified;
+    return dateComparison !== 0 ? dateComparison : compareByNameAsc(a, b);
+  };
+  const compareByDateDesc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
+    const dateComparison = b.lastModified - a.lastModified;
+    return dateComparison !== 0 ? dateComparison : compareByNameAsc(a, b);
+  };
+  const compareRandom = (a: SearchWorkerImage, b: SearchWorkerImage) => {
+    const hashA = stringHash(`${a.id}${randomSeed}`);
+    const hashB = stringHash(`${b.id}${randomSeed}`);
+    return hashA !== hashB ? hashA - hashB : a.id.localeCompare(b.id);
+  };
+
+  let comparator = compareById;
+  if (sortOrder === 'asc') comparator = compareByNameAsc;
+  else if (sortOrder === 'desc') comparator = compareByNameDesc;
+  else if (sortOrder === 'date-asc') comparator = compareByDateAsc;
+  else if (sortOrder === 'date-desc') comparator = compareByDateDesc;
+  else if (sortOrder === 'random') comparator = compareRandom;
+
+  results.sort(comparator);
 
   return {
     filteredIds: results.map(img => img.id),
@@ -519,42 +575,6 @@ function numericRangeMatch(
   return true;
 }
 
-function compareImages(
-  left: SearchWorkerImage,
-  right: SearchWorkerImage,
-  sortOrder: SearchWorkerCriteria['sortOrder'],
-  randomSeed: number
-): number {
-  const compareById = (a: SearchWorkerImage, b: SearchWorkerImage) => a.id.localeCompare(b.id);
-  const compareByNameAsc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
-    const nameComparison = (a.name || '').localeCompare(b.name || '');
-    return nameComparison !== 0 ? nameComparison : compareById(a, b);
-  };
-  const compareByNameDesc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
-    const nameComparison = (b.name || '').localeCompare(a.name || '');
-    return nameComparison !== 0 ? nameComparison : compareById(a, b);
-  };
-  const compareByDateAsc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
-    const dateComparison = a.lastModified - b.lastModified;
-    return dateComparison !== 0 ? dateComparison : compareByNameAsc(a, b);
-  };
-  const compareByDateDesc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
-    const dateComparison = b.lastModified - a.lastModified;
-    return dateComparison !== 0 ? dateComparison : compareByNameAsc(a, b);
-  };
-  const compareRandom = (a: SearchWorkerImage, b: SearchWorkerImage) => {
-    const hashA = stringHash(`${a.id}${randomSeed}`);
-    const hashB = stringHash(`${b.id}${randomSeed}`);
-    return hashA !== hashB ? hashA - hashB : a.id.localeCompare(b.id);
-  };
-
-  if (sortOrder === 'asc') return compareByNameAsc(left, right);
-  if (sortOrder === 'desc') return compareByNameDesc(left, right);
-  if (sortOrder === 'date-asc') return compareByDateAsc(left, right);
-  if (sortOrder === 'date-desc') return compareByDateDesc(left, right);
-  if (sortOrder === 'random') return compareRandom(left, right);
-  return compareById(left, right);
-}
 
 function postComplete(
   criteriaKey: string,
