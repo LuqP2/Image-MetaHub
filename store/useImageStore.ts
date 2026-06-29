@@ -1241,7 +1241,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                     scheduleFilterRecompute();
                 }
 
-                const derivedFacets = recalculateAvailableFilters(nextFilteredImages);
+                const derivedFacets = recalculateAvailableFilters(getLibraryScopedImages({
+                    ...state,
+                    images: merged,
+                }));
 
                 return {
                     ...state,
@@ -1359,20 +1362,6 @@ export const useImageStore = create<ImageState>((set, get) => {
         criteria: buildSearchWorkerCriteria(state),
     });
 
-    const toFacetStateFromWorker = (payload: SearchWorkerResultPayload['facets']): DerivedFacetState => ({
-        availableModels: payload.availableModels,
-        availableLoras: payload.availableLoras,
-        availableSamplers: payload.availableSamplers,
-        availableSchedulers: payload.availableSchedulers,
-        availableGenerators: payload.availableGenerators,
-        availableGpuDevices: payload.availableGpuDevices,
-        availableDimensions: payload.availableDimensions,
-        modelFacetCounts: new Map(payload.modelFacetCounts),
-        loraFacetCounts: new Map(payload.loraFacetCounts),
-        samplerFacetCounts: new Map(payload.samplerFacetCounts),
-        schedulerFacetCounts: new Map(payload.schedulerFacetCounts),
-    });
-
     const ensureSearchWorker = () => {
         if (searchWorker) {
             return searchWorker;
@@ -1417,7 +1406,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const filteredImages = payload.filteredIds
                 .map(id => imagesById.get(id))
                 .filter((image): image is IndexedImage => Boolean(image));
-            const derivedFacets = toFacetStateFromWorker(payload.facets);
+            const derivedFacets = recalculateAvailableFilters(getLibraryScopedImages(currentState));
 
             set(state => {
                 if (payload.criteriaKey !== latestSearchCriteriaKey) {
@@ -1906,6 +1895,110 @@ export const useImageStore = create<ImageState>((set, get) => {
         };
     };
 
+    const getHiddenSensitiveTagSet = () => {
+        const { sensitiveTags, blurSensitiveImages, enableSafeMode } = useSettingsStore.getState();
+        const normalizedSensitiveTags = (sensitiveTags ?? [])
+            .map(tag => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
+            .filter(Boolean);
+
+        if (!enableSafeMode || blurSensitiveImages || normalizedSensitiveTags.length === 0) {
+            return null;
+        }
+
+        return new Set(normalizedSensitiveTags);
+    };
+
+    const isVisibleWithSafeMode = (image: IndexedImage, sensitiveTagSet: Set<string> | null) => {
+        if (!sensitiveTagSet || !image.tags || image.tags.length === 0) {
+            return true;
+        }
+
+        return !image.tags.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+    };
+
+    const getLibraryScopedImages = (state: ImageState) => {
+        const {
+            images,
+            directories,
+            selectedFolders,
+            excludedFolders,
+            includeSubfolders,
+        } = state;
+
+        const visibleDirectoryIds = new Set<string>();
+        for (const dir of directories) {
+            if (dir.visible ?? true) {
+                visibleDirectoryIds.add(dir.id);
+            }
+        }
+
+        const directoryPathMap = new Map<string, string>();
+        directories.forEach(dir => {
+            const normalized = normalizePath(dir.path);
+            directoryPathMap.set(dir.id, normalized);
+        });
+
+        const normalizedExcludedFolders: string[] = [];
+        if (excludedFolders && excludedFolders.size > 0) {
+            for (const folder of excludedFolders) {
+                normalizedExcludedFolders.push(normalizePath(folder));
+            }
+        }
+
+        const normalizedSelectedFolders: string[] = [];
+        if (selectedFolders && selectedFolders.size > 0) {
+            for (const folder of selectedFolders) {
+                normalizedSelectedFolders.push(normalizePath(folder));
+            }
+        }
+        const hasSelectedFolders = normalizedSelectedFolders.length > 0;
+        const selectedFoldersSet = new Set(normalizedSelectedFolders);
+        const sensitiveTagSet = getHiddenSensitiveTagSet();
+
+        return images.filter((img) => {
+            if (!visibleDirectoryIds.has(img.directoryId || '')) {
+                return false;
+            }
+
+            const parentPath = directoryPathMap.get(img.directoryId || '');
+            if (!parentPath) {
+                return false;
+            }
+
+            const folderPath = normalizePath(getImageFolderPath(img, parentPath));
+
+            if (normalizedExcludedFolders.length > 0) {
+                for (let i = 0; i < normalizedExcludedFolders.length; i++) {
+                    const normalizedExcluded = normalizedExcludedFolders[i];
+                    if (folderPath === normalizedExcluded ||
+                        folderPath.startsWith(normalizedExcluded + '/') ||
+                        folderPath.startsWith(normalizedExcluded + '\\')) {
+                        return false;
+                    }
+                }
+            }
+
+            if (!hasSelectedFolders) {
+                return isVisibleWithSafeMode(img, sensitiveTagSet);
+            }
+
+            if (selectedFoldersSet.has(folderPath)) {
+                return isVisibleWithSafeMode(img, sensitiveTagSet);
+            }
+
+            if (includeSubfolders) {
+                for (let i = 0; i < normalizedSelectedFolders.length; i++) {
+                    const normalizedSelected = normalizedSelectedFolders[i];
+                    if (folderPath.startsWith(normalizedSelected + '/') || folderPath.startsWith(normalizedSelected + '\\')) {
+                        return isVisibleWithSafeMode(img, sensitiveTagSet);
+                    }
+                }
+            }
+
+            return false;
+        });
+    };
+
     // --- Helper function to apply annotations to images ---
     const applyAnnotationsToImages = (images: IndexedImage[], annotations: Map<string, ImageAnnotations>): IndexedImage[] => {
         let hasChanges = false;
@@ -2004,94 +2097,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedGpuDevices,
             sortOrder,
             advancedFilters,
-            directories,
-            selectedFolders,
-            excludedFolders,
-            includeSubfolders,
         } = state;
 
-        // Optimization: Use a single loop instead of .filter().map() to avoid intermediate array allocation
-        // Impact: Reduces garbage collection overhead during frequent state derivation calls
-        const visibleDirectoryIds = new Set<string>();
-        for (const dir of directories) {
-            if (dir.visible ?? true) {
-                visibleDirectoryIds.add(dir.id);
-            }
-        }
-
-        const directoryPathMap = new Map<string, string>();
-        directories.forEach(dir => {
-            const normalized = normalizePath(dir.path);
-            directoryPathMap.set(dir.id, normalized);
-        });
-
-        // Optimization: Pre-normalize folder paths for selection and exclusion to avoid redundant O(N * E) path operations.
-        // Impact: Eliminates expensive string normalization inside the filter loop, significantly improving responsiveness for large libraries.
-        const normalizedExcludedFolders: string[] = [];
-        if (excludedFolders && excludedFolders.size > 0) {
-            for (const folder of excludedFolders) {
-                normalizedExcludedFolders.push(normalizePath(folder));
-            }
-        }
-
-        const normalizedSelectedFolders: string[] = [];
-        if (selectedFolders && selectedFolders.size > 0) {
-            for (const folder of selectedFolders) {
-                normalizedSelectedFolders.push(normalizePath(folder));
-            }
-        }
-        const hasSelectedFolders = normalizedSelectedFolders.length > 0;
-        const selectedFoldersSet = new Set(normalizedSelectedFolders);
-
-        // Filter images based on folder selection and exclusion
-        const selectionFiltered = images.filter((img) => {
-            if (!visibleDirectoryIds.has(img.directoryId || '')) {
-                return false;
-            }
-
-            const parentPath = directoryPathMap.get(img.directoryId || '');
-            if (!parentPath) {
-                return false;
-            }
-
-            const folderPath = normalizePath(getImageFolderPath(img, parentPath));
-
-            // EXCLUSION CHECK: If folder is excluded, hide image
-            if (normalizedExcludedFolders.length > 0) {
-                for (let i = 0; i < normalizedExcludedFolders.length; i++) {
-                    const normalizedExcluded = normalizedExcludedFolders[i];
-                    // Check if folderPath IS the excluded folder or IS A CHILD of the excluded folder
-                    if (folderPath === normalizedExcluded ||
-                        folderPath.startsWith(normalizedExcluded + '/') ||
-                        folderPath.startsWith(normalizedExcluded + '\\')) {
-                        return false;
-                    }
-                }
-            }
-
-            // If no folders are selected, show all images from visible directories (unless excluded)
-            if (!hasSelectedFolders) {
-                return true;
-            }
-
-            // Direct matching - check if folder is explicitly selected
-            if (selectedFoldersSet.has(folderPath)) {
-                return true;
-            }
-
-            // If includeSubfolders is enabled, check if any parent folder is selected
-            if (includeSubfolders) {
-                for (let i = 0; i < normalizedSelectedFolders.length; i++) {
-                    const normalizedSelected = normalizedSelectedFolders[i];
-                    // Check if folderPath is a subfolder of selectedFolder
-                    if (folderPath.startsWith(normalizedSelected + '/') || folderPath.startsWith(normalizedSelected + '\\')) {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        });
+        const selectionFiltered = getLibraryScopedImages(state);
         closePhase('folderSelection');
 
         let results = selectionFiltered;
@@ -2109,17 +2117,9 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
 
         // Step 3: Sensitive tags filter (safe mode)
-        const { sensitiveTags, blurSensitiveImages, enableSafeMode } = useSettingsStore.getState();
-        const normalizedSensitiveTags = (sensitiveTags ?? [])
-            .map(tag => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
-            .filter(Boolean);
-        const sensitiveTagSet = new Set(normalizedSensitiveTags);
-        const shouldFilterSensitive = enableSafeMode && !blurSensitiveImages && sensitiveTagSet.size > 0;
-        if (shouldFilterSensitive) {
-            results = results.filter(img => {
-                if (!img.tags || img.tags.length === 0) return true;
-                return !img.tags.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
-            });
+        const sensitiveTagSet = getHiddenSensitiveTagSet();
+        if (sensitiveTagSet) {
+            results = results.filter(img => isVisibleWithSafeMode(img, sensitiveTagSet));
         }
 
         // Step 4: Tags filter
@@ -2542,7 +2542,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             filteredImages: sorted,
             selectionTotalImages: totalInScope,
             selectionDirectoryCount,
-            ...recalculateAvailableFilters(sorted),
+            ...recalculateAvailableFilters(selectionFiltered),
         };
     };
 
@@ -2699,9 +2699,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                         isFolderSelectionLoaded: true
                     };
                     
-                    const resultState = { ...newState, ...filterAndSort(newState) };
-                    const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
-                    return { ...resultState, ...availableFilters };
+                    return { ...newState, ...filterAndSort(newState) };
                 });
             });
         },
@@ -2721,9 +2719,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 saveSelectedFolders(Array.from(newSelected));
 
                 const newState = { ...state, excludedFolders: newExcluded, selectedFolders: newSelected };
-                const resultState = { ...newState, ...filterAndSort(newState) };
-                const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
-                return { ...resultState, ...availableFilters };
+                return { ...newState, ...filterAndSort(newState) };
             });
         },
 
@@ -2734,9 +2730,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 saveExcludedFolders(Array.from(newExcluded));
                 
                 const newState = { ...state, excludedFolders: newExcluded };
-                const resultState = { ...newState, ...filterAndSort(newState) };
-                const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
-                return { ...resultState, ...availableFilters };
+                return { ...newState, ...filterAndSort(newState) };
             });
         },
 
@@ -2759,11 +2753,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 }
 
                 const newState = { ...state, selectedFolders: selection };
-                const resultState = { ...newState, ...filterAndSort(newState) };
-
-                // Recalculate available filters based on the new filtered images
-                const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
-                const finalState = { ...resultState, ...availableFilters };
+                const finalState = { ...newState, ...filterAndSort(newState) };
 
                 // Persist to IndexedDB
                 saveSelectedFolders(Array.from(selection)).catch((error) => {
@@ -2779,11 +2769,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const selection = new Set<string>();
 
                 const newState = { ...state, selectedFolders: selection };
-                const resultState = { ...newState, ...filterAndSort(newState) };
-
-                // Recalculate available filters based on the new filtered images
-                const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
-                const finalState = { ...resultState, ...availableFilters };
+                const finalState = { ...newState, ...filterAndSort(newState) };
 
                 // Persist to IndexedDB
                 saveSelectedFolders([]).catch((error) => {

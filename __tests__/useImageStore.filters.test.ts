@@ -254,6 +254,45 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
   });
 
+  it('keeps checkpoint facets scoped to the library instead of the filtered grid', () => {
+    useImageStore.getState().setSelectedFilters({
+      models: ['modelA'],
+    });
+
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'c.png']);
+    expect(useImageStore.getState().availableModels).toEqual(['modelA', 'modelB']);
+    expect(useImageStore.getState().modelFacetCounts.get('modelA')).toBe(2);
+    expect(useImageStore.getState().modelFacetCounts.get('modelB')).toBe(1);
+  });
+
+  it('excludes hidden safe-mode images from checkpoint facets', () => {
+    const sensitiveImage = createImage({
+      id: 'dir-1::sensitive.png',
+      name: 'sensitive.png',
+      tags: ['private'],
+      models: ['sensitiveModel'],
+      loras: ['sensitiveLora'],
+      sampler: 'sensitiveSampler',
+      scheduler: 'sensitiveScheduler',
+    });
+
+    useSettingsStore.setState({
+      enableSafeMode: true,
+      blurSensitiveImages: false,
+      sensitiveTags: ['private'],
+    });
+    useImageStore.setState({
+      images: [...useImageStore.getState().images, sensitiveImage],
+    });
+    useImageStore.getState().filterAndSortImages();
+
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).not.toContain('sensitive.png');
+    expect(useImageStore.getState().availableModels).not.toContain('sensitiveModel');
+    expect(useImageStore.getState().availableLoras).not.toContain('sensitiveLora');
+    expect(useImageStore.getState().availableSamplers).not.toContain('sensitiveSampler');
+    expect(useImageStore.getState().availableSchedulers).not.toContain('sensitiveScheduler');
+  });
+
   it('searches prompt, model, lora, scheduler, and workflow node terms through the compact worker corpus', async () => {
     const searchable = createImage({
       id: 'dir-1::searchable.png',
