@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, Minus, Plus, Search, X } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface FacetFilterSectionProps {
   title: string;
@@ -159,10 +160,22 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 };
 
                 return (
-                  <div
+                  <motion.div
                     key={item}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isIncluded}
+                    aria-label={`${isIncluded ? 'Remove' : 'Include'} ${item} (${counts?.get(item) ?? 0} items)`}
+                    whileTap={{ scale: 0.98 }}
                     onClick={handleRowClick}
-                    className={`group flex items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors cursor-pointer ${
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleRowClick();
+                      }
+                    }}
+                    className={`group flex items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 ${
                       isIncluded
                         ? 'bg-emerald-500/10'
                         : isExcluded
@@ -218,7 +231,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                         <Minus className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })
             )}
