@@ -18,24 +18,22 @@ export const useImageStacking = (
     const result: (IndexedImage | ImageStack)[] = [];
     let currentStack: IndexedImage[] = [];
 
-    const getPromptKey = (image: IndexedImage) => {
-      // Use efficient key generation
-      // We need to handle potential undefined metadata values
-      const pos = image.metadata?.normalizedMetadata?.prompt || image.metadata?.positive_prompt || '';
-      const neg = image.metadata?.normalizedMetadata?.negativePrompt || image.metadata?.negative_prompt || '';
-      return `${pos}|${neg}`;
-    };
+    // Local variables to cache current stack prompt state
+    let currentStackPos = '';
+    let currentStackNeg = '';
 
     for (let i = 0; i < images.length; i++) {
       const currentImage = images[i];
       
+      // Inline prompt extraction
+      const pos = currentImage.metadata?.normalizedMetadata?.prompt || currentImage.metadata?.positive_prompt || '';
+      const neg = currentImage.metadata?.normalizedMetadata?.negativePrompt || currentImage.metadata?.negative_prompt || '';
+
       // If we have a current stack, check if current image belongs to it
       if (currentStack.length > 0) {
-        const firstInStack = currentStack[0];
-        const key1 = getPromptKey(firstInStack);
-        const key2 = getPromptKey(currentImage);
-
-        if (key1 === key2 && key1 !== '|') { // Ensure we don't stack empty prompts aggressively
+        // Compare directly to cached stack prompt components
+        // Logic: key1 !== '|' ensures we don't stack empty prompts aggressively
+        if (pos === currentStackPos && neg === currentStackNeg && (pos !== '' || neg !== '')) {
           currentStack.push(currentImage);
         } else {
           // Stack broken, push current stack to result
@@ -49,12 +47,16 @@ export const useImageStacking = (
               count: currentStack.length
             });
           }
-          // Start new stack with current image
+          // Start new stack with current image and update cache
           currentStack = [currentImage];
+          currentStackPos = pos;
+          currentStackNeg = neg;
         }
       } else {
-        // Start new stack
+        // Start first stack and update cache
         currentStack = [currentImage];
+        currentStackPos = pos;
+        currentStackNeg = neg;
       }
     }
 

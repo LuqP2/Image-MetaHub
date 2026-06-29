@@ -49,3 +49,7 @@
 ## 2025-06-25 - Slicing Before Mapping in Large Collection Processing
 **Learning:** Performing expensive mapping (e.g., date formatting, facet collection) on an entire collection before slicing to a small limit is a significant source of wasted CPU cycles and GC pressure, especially when the number of items (like user sessions) can grow indefinitely.
 **Action:** Always reorder processing pipelines to perform filtering, reversing, and slicing *before* mapping to complex derived objects. This ensures that expensive transformations only occur for the items that will actually be displayed or consumed.
+
+## 2025-06-30 - Optimizing Stacking Loops via Inlining and State Caching
+**Learning:** Generating "keys" via string concatenation (e.g., `pos + "|" + neg`) for every item in an (N)$ loop to find consecutive matches (stacking) creates unnecessary GC pressure. Accessing the "first item" of the current stack in every iteration also adds redundant property access.
+**Action:** Inline the extraction of comparison fields and cache the "current stack" criteria in local variables. This avoids (N)$ string allocations and reduces the loop body to simple primitive comparisons, which is significantly faster for large collections.
