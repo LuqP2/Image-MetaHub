@@ -1,5 +1,6 @@
 import React from 'react';
 import { Check } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { SettingRow } from './SettingRow';
 import { SettingsPanel } from './SettingsPanel';
@@ -26,11 +27,13 @@ export const AppearanceSettingsPanel: React.FC = () => {
       <SettingsSectionCard title="Theme">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {themeOptions.map((option) => (
-            <button
+            <motion.button
               key={option.id}
               type="button"
+              whileTap={{ scale: 0.98 }}
               onClick={() => setTheme(option.id)}
-              className={`rounded-xl border-2 p-4 text-left transition-colors ${
+              aria-pressed={theme === option.id}
+              className={`rounded-xl border-2 p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 ${
                 theme === option.id
                   ? 'border-blue-500 bg-blue-500/10'
                   : 'border-gray-700 bg-gray-950/60 hover:border-gray-600 hover:bg-gray-900'
@@ -49,7 +52,7 @@ export const AppearanceSettingsPanel: React.FC = () => {
                   />
                 ))}
               </div>
-            </button>
+            </motion.button>
           ))}
         </div>
       </SettingsSectionCard>
