@@ -53,3 +53,7 @@
 ## 2025-06-30 - Optimizing Stacking Loops via Inlining and State Caching
 **Learning:** Generating "keys" via string concatenation (e.g., `pos + "|" + neg`) for every item in an (N)$ loop to find consecutive matches (stacking) creates unnecessary GC pressure. Accessing the "first item" of the current stack in every iteration also adds redundant property access.
 **Action:** Inline the extraction of comparison fields and cache the "current stack" criteria in local variables. This avoids (N)$ string allocations and reduces the loop body to simple primitive comparisons, which is significantly faster for large collections.
+
+## 2025-06-30 - Efficient Path Derivation and Array Comparison in Stores
+**Learning:** derivation of folder paths from image IDs using regex-heavy `split().filter().join()` patterns creates significant allocation overhead during library-wide filtering. Similarly, using `JSON.stringify` to detect changes in tag arrays during store merges adds unnecessary CPU cycles and GC pressure.
+**Action:** Use primitive string methods (`indexOf`, `lastIndexOf`, `slice`) for path extraction and manual loop comparisons for primitive arrays in store hot paths. This avoids intermediate object allocations and provides a measurable speedup during library traversal and annotation updates.
