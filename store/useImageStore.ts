@@ -528,21 +528,21 @@ const normalizePath = (path: string) => {
 };
 
 const getImageFolderPath = (image: IndexedImage, directoryPath: string): string => {
-    const normalizedDirectory = normalizePath(directoryPath);
-    const idParts = image.id.split('::');
-    if (idParts.length !== 2) {
-        return normalizedDirectory;
+    const id = image.id;
+    const sepIndex = id.indexOf('::');
+    if (sepIndex === -1) {
+        return normalizePath(directoryPath);
     }
 
-    const relativePath = idParts[1];
-    const segments = relativePath.split(/[/\\]/).filter(Boolean);
-    if (segments.length <= 1) {
-        return normalizedDirectory;
+    const relativePath = id.slice(sepIndex + 2);
+    const lastSlashIndex = Math.max(relativePath.lastIndexOf('/'), relativePath.lastIndexOf('\\'));
+
+    if (lastSlashIndex === -1) {
+        return normalizePath(directoryPath);
     }
 
-    const folderSegments = segments.slice(0, -1);
-    const folderRelativePath = folderSegments.join('/');
-    return joinPath(normalizedDirectory, folderRelativePath);
+    const folderRelativePath = relativePath.slice(0, lastSlashIndex);
+    return joinPath(directoryPath, folderRelativePath);
 };
 
 const joinPath = (base: string, relative: string) => {
@@ -1954,6 +1954,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         const hasSelectedFolders = normalizedSelectedFolders.length > 0;
         const selectedFoldersSet = new Set(normalizedSelectedFolders);
         const sensitiveTagSet = getHiddenSensitiveTagSet();
+        const hasExcludedFolders = normalizedExcludedFolders.length > 0;
 
         return images.filter((img) => {
             if (!visibleDirectoryIds.has(img.directoryId || '')) {
@@ -1965,9 +1966,14 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return false;
             }
 
-            const folderPath = normalizePath(getImageFolderPath(img, parentPath));
+            // Short-circuit: if no folder filters are active, skip path calculations
+            if (!hasExcludedFolders && !hasSelectedFolders) {
+                return isVisibleWithSafeMode(img, sensitiveTagSet);
+            }
 
-            if (normalizedExcludedFolders.length > 0) {
+            const folderPath = getImageFolderPath(img, parentPath);
+
+            if (hasExcludedFolders) {
                 for (let i = 0; i < normalizedExcludedFolders.length; i++) {
                     const normalizedExcluded = normalizedExcludedFolders[i];
                     if (folderPath === normalizedExcluded ||
