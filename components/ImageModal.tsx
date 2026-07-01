@@ -595,14 +595,15 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
       <div className="flex justify-between items-start">
         <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider">{label}</p>
         {onCopy && (
-            <button
+            <motion.button
               onClick={handleCopy}
+              whileTap={{ scale: 0.85 }}
               className={`transition-all duration-200 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none rounded-sm ${copied ? 'opacity-100 text-green-400' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-gray-400 hover:text-white'}`}
               title={copied ? 'Copied!' : `Copy ${label}`}
               aria-label={copied ? 'Copied!' : `Copy ${label}`}
             >
                 {copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            </button>
+            </motion.button>
         )}
       </div>
       {isPrompt ? (
@@ -3950,12 +3951,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div className="space-y-4">
           {/* MetaHub Save Node Notes - Only if present */}
           {nMeta?.notes && (
-            <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700/50">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold text-purple-600 dark:text-purple-300 uppercase tracking-wider">Notes (MetaHub Save Node)</span>
-              </div>
-              <pre className="text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-white dark:bg-gray-800/50 p-2 rounded border border-gray-200 dark:border-gray-700/50">{nMeta.notes}</pre>
-            </div>
+            <MetadataItem
+              label="Notes (MetaHub Save Node)"
+              value={nMeta.notes}
+              isPrompt
+              onCopy={() => copyToClipboard(nMeta.notes || '', 'Notes', true)}
+            />
           )}
 
           {nMeta ? (
@@ -3996,13 +3997,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
               {/* Details Section - Collapsible */}
               <div>
-                <button 
+                <motion.button
                   onClick={() => setShowDetails(!showDetails)} 
+                  whileTap={{ scale: 0.99 }}
                   className="text-gray-600 dark:text-gray-300 text-sm w-full text-left py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between hover:text-gray-900 dark:hover:text-white transition-colors"
                 >
                   <span className="font-semibold">Generation Details</span>
                   {showDetails ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
+                </motion.button>
                 {showDetails && (
                   <div className="space-y-3 mt-3">
                     {nMeta.generationType && (
@@ -4019,15 +4021,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <MetadataItem label="LoRAs" value={effectiveMetadata.loras.map(formatLoRA).join(', ')} />
                     )}
                     <div className="grid grid-cols-2 gap-2">
-                      <MetadataItem label="Steps" value={effectiveMetadata?.steps} />
-                      <MetadataItem label="CFG Scale" value={effectiveMetadata?.cfg_scale} />
+                      <MetadataItem label="Steps" value={effectiveMetadata?.steps} onCopy={(v) => copyToClipboard(v, "Steps", true)} />
+                      <MetadataItem label="CFG Scale" value={effectiveMetadata?.cfg_scale} onCopy={(v) => copyToClipboard(v, "CFG Scale", true)} />
                       {nMeta.clip_skip && nMeta.clip_skip > 1 && (
                         <MetadataItem label="Clip Skip" value={nMeta.clip_skip} />
                       )}
                       <MetadataItem label="Seed" value={effectiveMetadata?.seed} onCopy={(v) => copyToClipboard(v, "Seed", true)} />
-                      <MetadataItem label="Sampler" value={effectiveMetadata?.sampler} />
-                      <MetadataItem label="Scheduler" value={effectiveMetadata?.scheduler} />
-                      <MetadataItem label="Dimensions" value={effectiveMetadata?.width && effectiveMetadata?.height ? `${effectiveMetadata.width}x${effectiveMetadata.height}` : undefined} />
+                      <MetadataItem label="Sampler" value={effectiveMetadata?.sampler} onCopy={(v) => copyToClipboard(v, "Sampler", true)} />
+                      <MetadataItem label="Scheduler" value={effectiveMetadata?.scheduler} onCopy={(v) => copyToClipboard(v, "Scheduler", true)} />
+                      <MetadataItem label="Dimensions" value={effectiveMetadata?.width && effectiveMetadata?.height ? `${effectiveMetadata.width}x${effectiveMetadata.height}` : undefined} onCopy={(v) => copyToClipboard(v, "Dimensions", true)} />
                       {(nMeta as any).denoise != null && (nMeta as any).denoise < 1 && (
                         <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
                       )}
@@ -4088,8 +4090,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
               {/* Performance Section - Collapsible */}
               {nMeta && nMeta._analytics && (
                 <div>
-                  <button
+                  <motion.button
                     onClick={() => setShowPerformance(!showPerformance)}
+                    whileTap={{ scale: 0.99 }}
                     className="text-gray-600 dark:text-gray-300 text-sm w-full text-left py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between hover:text-gray-900 dark:hover:text-white transition-colors"
                   >
                     <span className="font-semibold flex items-center gap-2">
@@ -4097,7 +4100,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       Performance
                     </span>
                     {showPerformance ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  </button>
+                  </motion.button>
 
                   {showPerformance && (
                     <div className="space-y-3 mt-3">
@@ -4153,7 +4156,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           )}
 
           <div className="grid grid-cols-2 gap-2 pt-2">
-            <button
+            <motion.button
               onClick={async () => {
                 const success = await copyToClipboard(nMeta?.prompt || '', 'Prompt', true);
                 if (success) {
@@ -4161,12 +4164,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   setTimeout(() => setCopiedPrompt(false), 2000);
                 }
               }}
+              whileTap={{ scale: 0.97 }}
               className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2"
             >
               {copiedPrompt ? <CheckCircle className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
               {copiedPrompt ? 'Copied!' : 'Copy Prompt'}
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               onClick={async () => {
                 const metadataImage = await ensureFullRawMetadata();
                 const success = await copyToClipboard(JSON.stringify(metadataImage.metadata, null, 2), 'Raw Metadata', true);
@@ -4175,12 +4179,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   setTimeout(() => setCopiedRawMetadata(false), 2000);
                 }
               }}
+              whileTap={{ scale: 0.97 }}
               className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2"
             >
               {copiedRawMetadata ? <CheckCircle className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
               {copiedRawMetadata ? 'Copied!' : 'Copy Raw Metadata'}
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               onClick={async () => {
                 if (!directoryPath) {
                   alert('Cannot determine file location: directory path is missing.');
@@ -4188,12 +4193,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 }
                 await showInExplorer(`${directoryPath}/${image.name}`);
               }}
+              whileTap={{ scale: 0.97 }}
               className="w-full justify-center bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-2"
             >
               <Folder className="w-3.5 h-3.5" />
               Show in Folder
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               onClick={() => {
                 if (!canUseComparison) {
                   showProModal('comparison');
@@ -4204,6 +4210,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClose(); // Close ImageModal, ComparisonModal will auto-open
                 }
               }}
+              whileTap={{ scale: 0.97 }}
               disabled={canUseComparison && comparisonCount >= 4}
               className="w-full justify-center bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
               title={!canUseComparison ? "Comparison (Pro Feature)" : comparisonCount >= 4 ? "Comparison queue full" : "Add to comparison"}
@@ -4211,16 +4218,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <GitCompare className="w-3 h-3" />
               Add to Compare {canUseComparison && comparisonCount > 0 && `(${comparisonCount}/4)`}
               {!canUseComparison && initialized && <ProBadge size="sm" />}
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               onClick={() => onFindSimilar?.(image)}
+              whileTap={{ scale: 0.97 }}
               disabled={!canFindSimilar}
               className="w-full justify-center bg-teal-50 hover:bg-teal-100 dark:bg-teal-500/10 dark:hover:bg-teal-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
               title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
             >
               <Search className="w-3 h-3" />
               Find similar...
-            </button>
+            </motion.button>
           </div>
 
           {/* A1111 Integration - Separate Buttons with Visual Hierarchy */}
