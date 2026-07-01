@@ -30,3 +30,6 @@
 ## 2025-06-28 - Keyboard Parity for Interactive List Items
 **Learning:** Facet filters and list items often use `div` elements for layout flexibility, but they must implement `role="button"`, `tabIndex={0}`, and `onKeyDown` handlers to be accessible. Adding `framer-motion`'s `whileTap` provides the tactile feedback users expect from native interactive elements.
 **Action:** When converting static list items to interactive ones, ensure full keyboard parity and use micro-interactions (like subtle scaling) to signal interactivity.
+## 2025-07-01 - Localized Feedback for Success States
+**Learning:** High-frequency toolbar actions benefit from localized visual feedback (e.g., icon/label transformation) within the user's focal point. This reduces reliance on global toast notifications, though toasts should be retained as an aria-live backup for accessibility.
+**Action:** Use a local state (e.g., `copied`) with a 2000ms timeout to toggle button UI (CheckCircle icon, green text/bg) alongside `showNotification` for core actions like clipboard operations.

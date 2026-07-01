@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import {
   Copy,
+  CheckCircle,
   Folder,
   Download,
   Heart,
@@ -217,6 +219,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onClearAllFilters,
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [isCollectionActionsOpen, setIsCollectionActionsOpen] = useState(false);
   const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
   const [isJumpMenuOpen, setIsJumpMenuOpen] = useState(false);
@@ -296,6 +299,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     if (!firstSelectedImage) return;
     const result = await copyImageToClipboard(firstSelectedImage);
     if (result.success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
       showNotification('Image copied to clipboard!');
     } else {
       showNotification(`Failed to copy: ${result.error}`, 'error');
@@ -605,16 +610,19 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 </Tooltip>
 
                 {/* Copy to Clipboard */}
-                <Tooltip label="Copy to Clipboard">
-                  <button
+                <Tooltip label={copied ? 'Copied!' : 'Copy to Clipboard'}>
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
                     onClick={handleCopyToClipboard}
-                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    title="Copy to Clipboard"
-                    aria-label="Copy to Clipboard"
+                    className={`p-1.5 rounded transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                      copied ? 'text-green-400 bg-green-500/10' : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                    }`}
+                    title={copied ? 'Copied!' : 'Copy to Clipboard'}
+                    aria-label={copied ? 'Copied!' : 'Copy to Clipboard'}
                     disabled={selectedCount !== 1}
                   >
-                    <Copy className="w-4 h-4" />
-                  </button>
+                    {copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </motion.button>
                 </Tooltip>
 
                 {/* Show in Folder */}
