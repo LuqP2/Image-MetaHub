@@ -128,10 +128,13 @@ const flattenGroups = (
 
 const groupByDate = (images: IndexedImage[]): GroupedImagesResult => {
   const entries = new Map<string, IndexedImage[]>();
+  const date = new Date();
 
   for (let i = 0; i < images.length; i++) {
     const image = images[i];
-    const key = formatLocalDateKey(image.lastModified);
+    // Optimization: Reuse a single Date object to avoid O(N) allocations in the grouping loop.
+    date.setTime(image.lastModified);
+    const key = formatLocalDateKey(date);
     const bucket = entries.get(key);
     if (bucket) {
       bucket.push(image);
@@ -157,7 +160,8 @@ const groupByDate = (images: IndexedImage[]): GroupedImagesResult => {
 
 const getNameGroupKey = (name: string): string => {
   const first = name.trim().charAt(0).toUpperCase();
-  return /^[A-Z]$/.test(first) ? first : '#';
+  // Optimization: Direct character range check is significantly faster than regex in hot loops.
+  return first >= 'A' && first <= 'Z' ? first : '#';
 };
 
 const groupByName = (images: IndexedImage[]): GroupedImagesResult => {
