@@ -34,3 +34,7 @@
 ## 2025-06-28 - Keyboard Parity for Interactive List Items
 **Learning:** Facet filters and list items often use `div` elements for layout flexibility, but they must implement `role="button"`, `tabIndex={0}`, and `onKeyDown` handlers to be accessible. Adding `framer-motion`'s `whileTap` provides the tactile feedback users expect from native interactive elements.
 **Action:** When converting static list items to interactive ones, ensure full keyboard parity and use micro-interactions (like subtle scaling) to signal interactivity.
+
+## 2026-07-02 - Refined Tactile Feedback for Desktop Controls
+**Learning:** While 0.85 scale is suitable for very small/nested icons, a more conservative 0.9 scale is better for prominent header and window controls on desktop. It provides clear physical feedback without feeling overly "squishy." Additionally, always pair these interactions with clear focus indicators (e.g., `focus-visible:ring-2`) to maintain accessibility standards when modifying custom interactive elements.
+**Action:** Use 0.9 scale for primary modal/window controls and ensure focus-visible rings are present.
