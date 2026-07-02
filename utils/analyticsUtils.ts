@@ -1,5 +1,5 @@
 import { IndexedImage } from '../types';
-import { formatLocalDateKey } from './dateFilterUtils';
+import { DATE_PADDING, formatLocalDateKey, formatLocalMonthKey } from './dateFilterUtils';
 import { getImageAnalytics } from './imageMetadata';
 
 export type PeriodPreset = '7days' | '30days' | '90days' | 'thisMonth' | 'all';
@@ -239,13 +239,14 @@ export function generateTimelineComparison(
     let key: string;
 
     if (groupBy === 'day') {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      key = formatLocalDateKey(date);
     } else if (groupBy === 'week') {
       const weekNum = getWeekNumber(date);
-      key = `${date.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+      // Optimization: Using pre-allocated DATE_PADDING for week number formatting.
+      key = `${date.getFullYear()}-W${DATE_PADDING[weekNum] || String(weekNum).padStart(2, '0')}`;
     } else {
       // month
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      key = formatLocalMonthKey(date);
     }
 
     if (img.lastModified >= currentPeriodStart) {
@@ -718,12 +719,13 @@ export function calculatePerformanceTimeline(
     let key: string;
 
     if (groupBy === 'day') {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      key = formatLocalDateKey(date);
     } else if (groupBy === 'week') {
       const weekNum = getWeekNumber(date);
-      key = `${date.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+      // Optimization: Using pre-allocated DATE_PADDING for week number formatting.
+      key = `${date.getFullYear()}-W${DATE_PADDING[weekNum] || String(weekNum).padStart(2, '0')}`;
     } else {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      key = formatLocalMonthKey(date);
     }
 
     const analytics = getImageAnalytics(img);

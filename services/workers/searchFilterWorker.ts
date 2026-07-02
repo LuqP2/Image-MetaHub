@@ -118,6 +118,8 @@ type CompletePayload = Extract<WorkerResponse, { type: 'complete' }>['payload'];
 let datasetVersion = -1;
 let workerImages: SearchWorkerImage[] = [];
 
+const collator = new Intl.Collator(undefined, { sensitivity: 'accent' });
+
 const normalizePath = (path: string): string => path.replace(/\\/g, '/');
 
 const joinPath = (base: string, relative: string) => {
@@ -126,25 +128,30 @@ const joinPath = (base: string, relative: string) => {
   }
 
   const normalizedBase = normalizePath(base);
-  const normalizedRelative = relative
-    .split(/[/\\]/)
-    .filter(Boolean)
-    .join('/');
+  const normalizedRelative = relative.replace(/\\/g, '/').replace(/^\/+/, '');
 
-  return normalizedBase ? `${normalizedBase}/${normalizedRelative}` : normalizedRelative;
+  if (!normalizedBase) {
+    return normalizedRelative;
+  }
+
+  return normalizedBase.endsWith('/')
+    ? `${normalizedBase}${normalizedRelative}`
+    : `${normalizedBase}/${normalizedRelative}`;
 };
 
 const getFolderPath = (image: SearchWorkerImage, parentDirectory: string) => {
-  const segments = image.relativePath.split(/[/\\]/).filter(Boolean);
-  if (segments.length <= 1) {
+  const relativePath = image.relativePath;
+  const lastSlash = Math.max(relativePath.lastIndexOf('/'), relativePath.lastIndexOf('\\'));
+
+  if (lastSlash <= 0) {
     return normalizePath(parentDirectory);
   }
 
-  return joinPath(parentDirectory, segments.slice(0, -1).join('/'));
+  return joinPath(parentDirectory, relativePath.slice(0, lastSlash));
 };
 
 const caseInsensitiveSort = (a: string, b: string) =>
-  a.localeCompare(b, undefined, { sensitivity: 'accent' });
+  collator.compare(a, b);
 
 const stringHash = (str: string) => {
   let hash = 0;
@@ -154,6 +161,35 @@ const stringHash = (str: string) => {
     hash &= hash;
   }
   return hash;
+};
+
+const compareById = (a: SearchWorkerImage, b: SearchWorkerImage) =>
+  collator.compare(a.id, b.id);
+
+const compareByNameAsc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
+  const nameComparison = collator.compare(a.name || '', b.name || '');
+  return nameComparison !== 0 ? nameComparison : compareById(a, b);
+};
+
+const compareByNameDesc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
+  const nameComparison = collator.compare(b.name || '', a.name || '');
+  return nameComparison !== 0 ? nameComparison : compareById(a, b);
+};
+
+const compareByDateAsc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
+  const dateComparison = a.lastModified - b.lastModified;
+  return dateComparison !== 0 ? dateComparison : compareByNameAsc(a, b);
+};
+
+const compareByDateDesc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
+  const dateComparison = b.lastModified - a.lastModified;
+  return dateComparison !== 0 ? dateComparison : compareByNameAsc(a, b);
+};
+
+const compareRandom = (a: SearchWorkerImage, b: SearchWorkerImage, randomHashes: Map<string, number>) => {
+  const hashA = randomHashes.get(a.id) ?? 0;
+  const hashB = randomHashes.get(b.id) ?? 0;
+  return hashA !== hashB ? hashA - hashB : compareById(a, b);
 };
 
 self.onmessage = (event: MessageEvent<WorkerMessage>) => {
@@ -251,33 +287,35 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
     if (!parentPath) continue;
 
     // 2. Folder Filters
-    const folderPath = getFolderPath(image, parentPath);
-    let isFolderExcluded = false;
-    for (let j = 0; j < excludedFolders.length; j++) {
-      const excludedFolder = excludedFolders[j];
-      if (
-        folderPath === excludedFolder ||
-        folderPath.startsWith(`${excludedFolder}/`)
-      ) {
-        isFolderExcluded = true;
-        break;
-      }
-    }
-    if (isFolderExcluded) continue;
-
-    if (hasSelectedFolders) {
-      let isMatch = false;
-      for (let j = 0; j < selectedFolders.length; j++) {
-        const selectedFolder = selectedFolders[j];
+    if (excludedFolders.length > 0 || hasSelectedFolders) {
+      const folderPath = getFolderPath(image, parentPath);
+      let isFolderExcluded = false;
+      for (let j = 0; j < excludedFolders.length; j++) {
+        const excludedFolder = excludedFolders[j];
         if (
-          folderPath === selectedFolder ||
-          (criteria.includeSubfolders && folderPath.startsWith(`${selectedFolder}/`))
+          folderPath === excludedFolder ||
+          folderPath.startsWith(`${excludedFolder}/`)
         ) {
-          isMatch = true;
+          isFolderExcluded = true;
           break;
         }
       }
-      if (!isMatch) continue;
+      if (isFolderExcluded) continue;
+
+      if (hasSelectedFolders) {
+        let isMatch = false;
+        for (let j = 0; j < selectedFolders.length; j++) {
+          const selectedFolder = selectedFolders[j];
+          if (
+            folderPath === selectedFolder ||
+            (criteria.includeSubfolders && folderPath.startsWith(`${selectedFolder}/`))
+          ) {
+            isMatch = true;
+            break;
+          }
+        }
+        if (!isMatch) continue;
+      }
     }
 
     // 3. Favorite Filter
@@ -479,7 +517,22 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
   }
 
   // Final sorting
-  results.sort((left, right) => compareImages(left, right, criteria.sortOrder, criteria.randomSeed));
+  if (criteria.sortOrder === 'random') {
+    const randomHashes = new Map<string, number>();
+    for (let i = 0; i < results.length; i++) {
+      const img = results[i];
+      randomHashes.set(img.id, stringHash(`${img.id}${criteria.randomSeed}`));
+    }
+    results.sort((left, right) => compareRandom(left, right, randomHashes));
+  } else {
+    const comparator =
+      criteria.sortOrder === 'asc' ? compareByNameAsc :
+      criteria.sortOrder === 'desc' ? compareByNameDesc :
+      criteria.sortOrder === 'date-asc' ? compareByDateAsc :
+      criteria.sortOrder === 'date-desc' ? compareByDateDesc :
+      compareById;
+    results.sort(comparator);
+  }
 
   return {
     filteredIds: results.map(img => img.id),
@@ -519,42 +572,6 @@ function numericRangeMatch(
   return true;
 }
 
-function compareImages(
-  left: SearchWorkerImage,
-  right: SearchWorkerImage,
-  sortOrder: SearchWorkerCriteria['sortOrder'],
-  randomSeed: number
-): number {
-  const compareById = (a: SearchWorkerImage, b: SearchWorkerImage) => a.id.localeCompare(b.id);
-  const compareByNameAsc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
-    const nameComparison = (a.name || '').localeCompare(b.name || '');
-    return nameComparison !== 0 ? nameComparison : compareById(a, b);
-  };
-  const compareByNameDesc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
-    const nameComparison = (b.name || '').localeCompare(a.name || '');
-    return nameComparison !== 0 ? nameComparison : compareById(a, b);
-  };
-  const compareByDateAsc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
-    const dateComparison = a.lastModified - b.lastModified;
-    return dateComparison !== 0 ? dateComparison : compareByNameAsc(a, b);
-  };
-  const compareByDateDesc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
-    const dateComparison = b.lastModified - a.lastModified;
-    return dateComparison !== 0 ? dateComparison : compareByNameAsc(a, b);
-  };
-  const compareRandom = (a: SearchWorkerImage, b: SearchWorkerImage) => {
-    const hashA = stringHash(`${a.id}${randomSeed}`);
-    const hashB = stringHash(`${b.id}${randomSeed}`);
-    return hashA !== hashB ? hashA - hashB : a.id.localeCompare(b.id);
-  };
-
-  if (sortOrder === 'asc') return compareByNameAsc(left, right);
-  if (sortOrder === 'desc') return compareByNameDesc(left, right);
-  if (sortOrder === 'date-asc') return compareByDateAsc(left, right);
-  if (sortOrder === 'date-desc') return compareByDateDesc(left, right);
-  if (sortOrder === 'random') return compareRandom(left, right);
-  return compareById(left, right);
-}
 
 function postComplete(
   criteriaKey: string,
