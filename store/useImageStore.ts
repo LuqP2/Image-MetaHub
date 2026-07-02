@@ -528,13 +528,7 @@ const normalizePath = (path: string) => {
 };
 
 const getImageFolderPath = (image: IndexedImage, directoryPath: string): string => {
-    const id = image.id;
-    const sepIndex = id.indexOf('::');
-    if (sepIndex === -1) {
-        return normalizePath(directoryPath);
-    }
-
-    const relativePath = id.slice(sepIndex + 2);
+    const relativePath = getRelativeImagePath(image);
     const lastSlashIndex = Math.max(relativePath.lastIndexOf('/'), relativePath.lastIndexOf('\\'));
 
     if (lastSlashIndex === -1) {
@@ -563,7 +557,15 @@ const joinPath = (base: string, relative: string) => {
 
 const getRelativeImagePath = (image: IndexedImage): string => {
     if (!image?.id) return image?.name ?? '';
-    const [, relative = ''] = image.id.split('::');
+    if (image.directoryId) {
+        const prefix = `${image.directoryId}::`;
+        if (image.id.startsWith(prefix)) {
+            return image.id.slice(prefix.length) || image.name;
+        }
+    }
+
+    const sepIndex = image.id.lastIndexOf('::');
+    const relative = sepIndex === -1 ? '' : image.id.slice(sepIndex + 2);
     return relative || image.name;
 };
 
