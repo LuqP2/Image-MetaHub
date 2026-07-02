@@ -216,6 +216,36 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png', 'i.png']);
   });
 
+  it('keeps root folder selection working when the directory id contains the id separator', () => {
+    const separatorDirectory: Directory = {
+      ...directory,
+      id: '/tmp/a::b/c',
+      path: '/tmp/a::b/c',
+    };
+    const rootImage = createImage({
+      id: `${separatorDirectory.id}::root.png`,
+      directoryId: separatorDirectory.id,
+      name: 'root.png',
+    });
+    const nestedImage = createImage({
+      id: `${separatorDirectory.id}::nested/child.png`,
+      directoryId: separatorDirectory.id,
+      name: 'child.png',
+    });
+
+    useImageStore.setState({
+      directories: [separatorDirectory],
+      images: [rootImage, nestedImage],
+      filteredImages: [rootImage, nestedImage],
+      selectedFolders: new Set([separatorDirectory.path]),
+      includeSubfolders: false,
+    });
+
+    useImageStore.getState().filterAndSortImages();
+
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['root.png']);
+  });
+
   it('supports include and exclude for tags and auto-tags', () => {
     useImageStore.getState().setSelectedTags(['portrait']);
     useImageStore.getState().setExcludedTags(['warm']);
