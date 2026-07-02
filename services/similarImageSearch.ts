@@ -1,5 +1,4 @@
 import type {
-  CheckpointMatchMode,
   IndexedImage,
   SimilarSearchCriteria,
   SimilarSearchResult,
@@ -64,19 +63,26 @@ export const DEFAULT_SIMILAR_SEARCH_CRITERIA: SimilarSearchCriteria = {
 };
 
 const getRelativeImagePath = (image: IndexedImage): string => {
-  const [, relativePath = ''] = image.id.split('::');
-  return relativePath || image.name || '';
+  const separatorIndex = image.id.indexOf('::');
+  if (separatorIndex === -1) {
+    return image.name || '';
+  }
+  return image.id.slice(separatorIndex + 2) || image.name || '';
 };
 
 const getRelativeFolderPath = (image: IndexedImage): string => {
-  const normalizedPath = getRelativeImagePath(image).replace(/\\/g, '/');
-  const segments = normalizedPath.split('/').filter(Boolean);
-  if (segments.length <= 1) {
+  const relativePath = getRelativeImagePath(image);
+  const lastSlash = Math.max(relativePath.lastIndexOf('/'), relativePath.lastIndexOf('\\'));
+
+  if (lastSlash <= 0) {
     return '';
   }
 
-  return segments.slice(0, -1).join('/');
+  return relativePath.slice(0, lastSlash);
 };
+
+const getFolderKey = (image: IndexedImage): string =>
+  `${image.directoryId || ''}::${getRelativeFolderPath(image)}`;
 
 const toLowerCaseKey = (value: string | null | undefined): string | null => {
   if (!value) {
@@ -251,8 +257,8 @@ export const resolveSimilarSearchCandidates = ({
   }
 
   if (scope === 'same-folder') {
-    const sourceFolderKey = getSimilarSearchSourceDetails(sourceImage).folderKey;
-    return allImages.filter((image) => getSimilarSearchSourceDetails(image).folderKey === sourceFolderKey);
+    const sourceFolderKey = getFolderKey(sourceImage);
+    return allImages.filter((image) => getFolderKey(image) === sourceFolderKey);
   }
 
   return currentViewImages && currentViewImages.length > 0 ? currentViewImages : allImages;
@@ -414,6 +420,11 @@ export const findSimilarImages = ({
 
   for (const image of candidates) {
     if (image.id === sourceImage.id) {
+      continue;
+    }
+
+    // Optimization: Early exit for seed mismatch to avoid expensive metadata extraction
+    if (effectiveCriteria.seed && image.seed !== source.seed) {
       continue;
     }
 
