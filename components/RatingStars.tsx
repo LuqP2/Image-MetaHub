@@ -101,7 +101,7 @@ const RatingStars: React.FC<RatingStarsProps> = ({
             type="button"
             disabled={!isInteractive}
             whileHover={isInteractive ? { scale: 1.1 } : {}}
-            whileTap={isInteractive ? { scale: 0.95 } : {}}
+            whileTap={isInteractive ? { scale: 0.85 } : {}}
             onMouseEnter={() => {
               if (isInteractive) {
                 setHoverRating(value);

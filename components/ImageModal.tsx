@@ -3309,51 +3309,56 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <button
+              <motion.button
                 onClick={handleDelete}
                 onPointerDown={(event) => event.stopPropagation()}
+                whileTap={{ scale: 0.9 }}
                 disabled={isIndexing}
                 className="rounded-lg border border-red-500/30 bg-red-500/10 p-1.5 text-red-400 transition-colors hover:border-red-500/50 hover:bg-red-500/15 hover:text-red-300 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
                 title={isIndexing ? 'Cannot delete during indexing' : 'Delete image'}
                 aria-label={isIndexing ? 'Cannot delete during indexing' : 'Delete image'}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={() => setIsRenaming(true)}
                 onPointerDown={(event) => event.stopPropagation()}
+                whileTap={{ scale: 0.9 }}
                 disabled={isIndexing}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-orange-300 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
                 title={isIndexing ? 'Cannot rename during indexing' : 'Rename image'}
                 aria-label={isIndexing ? 'Cannot rename during indexing' : 'Rename image'}
               >
                 <Pencil className="w-3.5 h-3.5" />
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={() => void handleMinimizeWithAnimation()}
                 onPointerDown={(event) => event.stopPropagation()}
+                whileTap={{ scale: 0.9 }}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 title="Minimize window"
               >
                 <Minus className="w-3.5 h-3.5" />
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={toggleWindowMaximize}
                 onPointerDown={(event) => event.stopPropagation()}
+                whileTap={{ scale: 0.9 }}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
               >
                 {isWindowMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={onClose}
                 onPointerDown={(event) => event.stopPropagation()}
+                whileTap={{ scale: 0.9 }}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 aria-label="Close image"
                 title="Close (Esc)"
               >
                 <X className="w-3.5 h-3.5" />
-              </button>
+              </motion.button>
             </div>
           </div>
         )}
@@ -4076,12 +4081,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <MetadataItem label="Project" value={(nMeta as any)._metahub_pro.project_name} />
                     )}
                     {shadowMetadata?.notes && (
-                      <div className="col-span-2 pt-2 border-t border-gray-700/50 mt-2">
-                         <h4 className="text-xs text-gray-500 uppercase tracking-wider mb-1">Workflow Notes</h4>
-                         <div className="text-sm text-gray-300 whitespace-pre-wrap font-mono bg-gray-900/50 p-2 rounded border border-gray-800">
-                           {shadowMetadata.notes}
-                         </div>
-                      </div>
+                      <MetadataItem
+                        label="Workflow Notes"
+                        value={shadowMetadata.notes}
+                        isPrompt
+                        onCopy={() => copyToClipboard(shadowMetadata.notes || '', 'Notes', true)}
+                      />
                     )}
                   </div>
                 )}
@@ -4416,7 +4421,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   <>
                     <motion.button
                       onClick={() => setShowOriginal(!showOriginal)}
-                      whileTap={{ scale: 0.95 }}
+                      whileTap={{ scale: 0.9 }}
                       className={`p-1.5 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${showOriginal ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
                       title={showOriginal ? "Back to Edited" : "See Original"}
                       aria-label={showOriginal ? "Back to Edited" : "See Original"}
@@ -4429,7 +4434,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                           deleteShadowMetadata();
                         }
                       }}
-                      whileTap={{ scale: 0.95 }}
+                      whileTap={{ scale: 0.9 }}
                       className="p-1.5 bg-gray-800 hover:bg-red-900/50 rounded-md transition-colors text-gray-400 hover:text-red-400 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                       title="Revert to Original (Delete Edits)"
                       aria-label="Revert to Original (Delete Edits)"
@@ -4440,7 +4445,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 )}
                 <motion.button
                   onClick={() => setIsMetadataEditorOpen(true)}
-                  whileTap={{ scale: 0.95 }}
+                  whileTap={{ scale: 0.9 }}
                   className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   title="Edit Metadata (Shadow)"
                   aria-label="Edit Metadata (Shadow)"
@@ -4449,7 +4454,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </motion.button>
                 <motion.button
                   onClick={openBatchExport}
-                  whileTap={{ scale: 0.95 }}
+                  whileTap={{ scale: 0.9 }}
                   className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
                   aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
