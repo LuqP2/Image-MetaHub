@@ -616,7 +616,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
             <div className="flex w-fit items-center gap-2 rounded-lg border border-gray-200 bg-white/70 px-2 py-1.5 dark:border-gray-700/60 dark:bg-gray-950/30">
               <motion.button
                 onClick={handleToggleFavorite}
-                whileTap={{ scale: 0.9 }}
+                whileTap={{ scale: 0.85 }}
                 className={`p-1 rounded transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${
                   activeImage.isFavorite
                     ? 'text-rose-400 hover:text-rose-300'
@@ -735,7 +735,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 {shadowMetadata && (
                   <motion.button
                     onClick={() => setShowOriginal((current) => !current)}
-                    whileTap={{ scale: 0.95 }}
+                    whileTap={{ scale: 0.85 }}
                     className={`p-1.5 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${showOriginal ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'}`}
                     title={showOriginal ? 'Show edited metadata' : 'Show original metadata'}
                     aria-label={showOriginal ? 'Show edited metadata' : 'Show original metadata'}
@@ -745,7 +745,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 )}
                 <motion.button
                   onClick={() => setIsMetadataEditorOpen(true)}
-                  whileTap={{ scale: 0.95 }}
+                  whileTap={{ scale: 0.85 }}
                   className="p-1.5 rounded-md transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   title="Edit metadata overrides"
                   aria-label="Edit metadata overrides"
@@ -754,7 +754,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 </motion.button>
                 <motion.button
                   onClick={openBatchExport}
-                  whileTap={{ scale: 0.95 }}
+                  whileTap={{ scale: 0.85 }}
                   className="p-1.5 rounded-md transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
                   aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
