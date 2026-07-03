@@ -163,8 +163,13 @@ const stringHash = (str: string) => {
   return hash;
 };
 
-const compareById = (a: SearchWorkerImage, b: SearchWorkerImage) =>
-  collator.compare(a.id, b.id);
+// Optimization: use direct string comparison for ID-based tie-breakers.
+// Impact: avoids expensive collator overhead in hot sorting paths.
+const compareById = (a: SearchWorkerImage, b: SearchWorkerImage) => {
+  if (a.id < b.id) return -1;
+  if (a.id > b.id) return 1;
+  return 0;
+};
 
 const compareByNameAsc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
   const nameComparison = collator.compare(a.name || '', b.name || '');
@@ -224,6 +229,10 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
     directoryPathMap.set(dir.id, normalizePath(dir.path));
   }
 
+  // Optimization: Cache resolved folder paths to avoid redundant string operations and joinPath calls.
+  // Impact: Reduces CPU usage and GC pressure in folder-heavy datasets.
+  const folderPathCache = new Map<string, string>();
+
   const excludedFolders = criteria.excludedFolders.map(normalizePath);
   const selectedFolders = criteria.selectedFolders.map(normalizePath);
   const hasSelectedFolders = selectedFolders.length > 0;
@@ -266,10 +275,8 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
   const results: SearchWorkerImage[] = [];
 
   // Facet collection variables
-  const modelsFacet = new Set<string>();
-  const lorasFacet = new Set<string>();
-  const samplersFacet = new Set<string>();
-  const schedulersFacet = new Set<string>();
+  // Optimization: derive available facets directly from Map keys instead of maintaining redundant Sets.
+  // Impact: Reduces O(N) allocations and memory footprint during loop.
   const generatorsFacet = new Set<string>();
   const gpuDevicesFacet = new Set<string>();
   const dimensionsFacet = new Set<string>();
@@ -281,142 +288,52 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
   for (let i = 0; i < workerImages.length; i++) {
     const image = workerImages[i];
 
+    // PHASE 1: Fast primitive and set-based checks (Fail-fast)
+    // -------------------------------------------------------------------------
+
     // 1. Basic Directory and Visibility check
     if (!visibleDirectoryIds.has(image.directoryId)) continue;
     const parentPath = directoryPathMap.get(image.directoryId);
     if (!parentPath) continue;
 
-    // 2. Folder Filters
-    if (excludedFolders.length > 0 || hasSelectedFolders) {
-      const folderPath = getFolderPath(image, parentPath);
-      let isFolderExcluded = false;
-      for (let j = 0; j < excludedFolders.length; j++) {
-        const excludedFolder = excludedFolders[j];
-        if (
-          folderPath === excludedFolder ||
-          folderPath.startsWith(`${excludedFolder}/`)
-        ) {
-          isFolderExcluded = true;
-          break;
-        }
-      }
-      if (isFolderExcluded) continue;
-
-      if (hasSelectedFolders) {
-        let isMatch = false;
-        for (let j = 0; j < selectedFolders.length; j++) {
-          const selectedFolder = selectedFolders[j];
-          if (
-            folderPath === selectedFolder ||
-            (criteria.includeSubfolders && folderPath.startsWith(`${selectedFolder}/`))
-          ) {
-            isMatch = true;
-            break;
-          }
-        }
-        if (!isMatch) continue;
-      }
-    }
-
-    // 3. Favorite Filter
+    // 2. Favorite Filter
     if (criteria.favoriteFilterMode === 'include' && image.isFavorite !== true) continue;
     if (criteria.favoriteFilterMode === 'exclude' && image.isFavorite === true) continue;
 
-    // 4. Rating Filter
+    // 3. Rating Filter
     if (selectedRatings.size > 0 && (image.rating === null || !selectedRatings.has(image.rating))) continue;
 
-    // 5. Sensitive Filter
-    if (shouldFilterSensitive) {
-      let hasSensitiveTag = false;
-      for (let j = 0; j < image.tags.length; j++) {
-        if (sensitiveTags.has(image.tags[j])) {
-          hasSensitiveTag = true;
-          break;
-        }
-      }
-      if (hasSensitiveTag) continue;
+    // 4. Parameters (Sampler, Scheduler, Generator, GPU)
+    if (selectedSamplers.size > 0 && (!image.sampler || !selectedSamplers.has(image.sampler))) continue;
+    if (excludedSamplers.size > 0 && image.sampler && excludedSamplers.has(image.sampler)) continue;
+    if (selectedSchedulers.size > 0 && !selectedSchedulers.has(image.scheduler)) continue;
+    if (excludedSchedulers.size > 0 && excludedSchedulers.has(image.scheduler)) continue;
+    if (selectedGenerators.size > 0 && !selectedGenerators.has(image.generator)) continue;
+    if (excludedGenerators.size > 0 && excludedGenerators.has(image.generator)) continue;
+    if (selectedGpuDevices.size > 0 && (image.gpuDevice === null || !selectedGpuDevices.has(image.gpuDevice))) continue;
+    if (excludedGpuDevices.size > 0 && image.gpuDevice !== null && excludedGpuDevices.has(image.gpuDevice)) continue;
+
+    // 5. Advanced Filters (Primitives)
+    if (dateFrom !== null && image.lastModified < dateFrom) continue;
+    if (dateTo !== null && image.lastModified >= dateTo) continue;
+    if (mediaTypes && !mediaTypes.has(image.mediaType)) continue;
+    if (advancedFilters.telemetryState === 'present' && !image.hasTelemetry) continue;
+    if (advancedFilters.telemetryState === 'missing' && image.hasTelemetry) continue;
+    if (advancedFilters.hasVerifiedTelemetry === true && !image.hasVerifiedTelemetry) continue;
+    if (advancedFilters.steps && !numericRangeMatch(image.steps, advancedFilters.steps)) continue;
+    if (advancedFilters.cfg && !numericRangeMatch(image.cfgScale, advancedFilters.cfg)) continue;
+    if (advancedFilters.generationTimeMs && !numericRangeMatch(image.generationTimeMs, advancedFilters.generationTimeMs)) continue;
+    if (advancedFilters.stepsPerSecond && !numericRangeMatch(image.stepsPerSecond, advancedFilters.stepsPerSecond)) continue;
+    if (advancedFilters.vramPeakMb && !numericRangeMatch(image.vramPeakMb, advancedFilters.vramPeakMb)) continue;
+    if (generationModes) {
+      const type = image.generationType || (image.mediaType !== 'video' && image.mediaType !== 'audio' ? 'txt2img' : null);
+      if (!type || !generationModes.has(type as 'txt2img' | 'img2img')) continue;
     }
 
-    // 6. Tags Filter
-    if (selectedTags.size > 0) {
-      if (image.tags.length === 0) continue;
-      if (criteria.selectedTagsMatchMode === 'all') {
-        let allMatch = true;
-        for (const tag of selectedTags) {
-          if (!image.tags.includes(tag)) {
-            allMatch = false;
-            break;
-          }
-        }
-        if (!allMatch) continue;
-      } else {
-        let someMatch = false;
-        for (let j = 0; j < image.tags.length; j++) {
-          if (selectedTags.has(image.tags[j])) {
-            someMatch = true;
-            break;
-          }
-        }
-        if (!someMatch) continue;
-      }
-    }
-    if (excludedTags.size > 0) {
-      let hasExcludedTag = false;
-      for (let j = 0; j < image.tags.length; j++) {
-        if (excludedTags.has(image.tags[j])) {
-          hasExcludedTag = true;
-          break;
-        }
-      }
-      if (hasExcludedTag) continue;
-    }
+    // PHASE 2: Set lookups and tag/parameter loops
+    // -------------------------------------------------------------------------
 
-    // 7. Auto-Tags Filter
-    if (selectedAutoTags.size > 0) {
-      let someAutoMatch = false;
-      for (let j = 0; j < image.autoTags.length; j++) {
-        if (selectedAutoTags.has(image.autoTags[j])) {
-          someAutoMatch = true;
-          break;
-        }
-      }
-      if (!someAutoMatch) continue;
-    }
-    if (excludedAutoTags.size > 0) {
-      let hasExcludedAutoTag = false;
-      for (let j = 0; j < image.autoTags.length; j++) {
-        if (excludedAutoTags.has(image.autoTags[j])) {
-          hasExcludedAutoTag = true;
-          break;
-        }
-      }
-      if (hasExcludedAutoTag) continue;
-    }
-
-    // 8. Search Query
-    if (searchTerms.length > 0) {
-      let catalogMatch = true;
-      for (let j = 0; j < searchTerms.length; j++) {
-        if (!image.catalogText.includes(searchTerms[j])) {
-          catalogMatch = false;
-          break;
-        }
-      }
-
-      if (!catalogMatch) {
-        if (!image.searchText) continue;
-        let searchMatch = true;
-        for (let j = 0; j < searchTerms.length; j++) {
-          if (!image.searchText.includes(searchTerms[j])) {
-            searchMatch = false;
-            break;
-          }
-        }
-        if (!searchMatch) continue;
-      }
-    }
-
-    // 9. Resource Filters (Models, Loras)
+    // 6. Resource Filters (Models, Loras)
     if (selectedModels.size > 0) {
       let someModelMatch = false;
       for (let j = 0; j < image.models.length; j++) {
@@ -458,36 +375,144 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
       if (hasExcludedLora) continue;
     }
 
-    // 10. Parameters (Sampler, Scheduler, Generator, GPU)
-    if (selectedSamplers.size > 0 && (!image.sampler || !selectedSamplers.has(image.sampler))) continue;
-    if (excludedSamplers.size > 0 && image.sampler && excludedSamplers.has(image.sampler)) continue;
-    if (selectedSchedulers.size > 0 && !selectedSchedulers.has(image.scheduler)) continue;
-    if (excludedSchedulers.size > 0 && excludedSchedulers.has(image.scheduler)) continue;
-    if (selectedGenerators.size > 0 && !selectedGenerators.has(image.generator)) continue;
-    if (excludedGenerators.size > 0 && excludedGenerators.has(image.generator)) continue;
-    if (selectedGpuDevices.size > 0 && (image.gpuDevice === null || !selectedGpuDevices.has(image.gpuDevice))) continue;
-    if (excludedGpuDevices.size > 0 && image.gpuDevice !== null && excludedGpuDevices.has(image.gpuDevice)) continue;
-
-    // 11. Advanced Filters
-    if (filterDimension && image.dimensions.replace(/\s+/g, '') !== filterDimension) continue;
-    if (advancedFilters.steps && !numericRangeMatch(image.steps, advancedFilters.steps)) continue;
-    if (advancedFilters.cfg && !numericRangeMatch(image.cfgScale, advancedFilters.cfg)) continue;
-    if (dateFrom !== null && image.lastModified < dateFrom) continue;
-    if (dateTo !== null && image.lastModified >= dateTo) continue;
-
-    if (generationModes) {
-      const type = image.generationType || (image.mediaType !== 'video' && image.mediaType !== 'audio' ? 'txt2img' : null);
-      if (!type || !generationModes.has(type as 'txt2img' | 'img2img')) continue;
+    // 7. Tags Filter
+    if (selectedTags.size > 0) {
+      if (image.tags.length === 0) continue;
+      if (criteria.selectedTagsMatchMode === 'all') {
+        let allMatch = true;
+        for (const tag of selectedTags) {
+          if (!image.tags.includes(tag)) {
+            allMatch = false;
+            break;
+          }
+        }
+        if (!allMatch) continue;
+      } else {
+        let someMatch = false;
+        for (let j = 0; j < image.tags.length; j++) {
+          if (selectedTags.has(image.tags[j])) {
+            someMatch = true;
+            break;
+          }
+        }
+        if (!someMatch) continue;
+      }
     }
-    if (mediaTypes && !mediaTypes.has(image.mediaType)) continue;
+    if (excludedTags.size > 0) {
+      let hasExcludedTag = false;
+      for (let j = 0; j < image.tags.length; j++) {
+        if (excludedTags.has(image.tags[j])) {
+          hasExcludedTag = true;
+          break;
+        }
+      }
+      if (hasExcludedTag) continue;
+    }
 
-    if (advancedFilters.telemetryState === 'present' && !image.hasTelemetry) continue;
-    if (advancedFilters.telemetryState === 'missing' && image.hasTelemetry) continue;
-    if (advancedFilters.hasVerifiedTelemetry === true && !image.hasVerifiedTelemetry) continue;
+    // 8. Auto-Tags Filter
+    if (selectedAutoTags.size > 0) {
+      let someAutoMatch = false;
+      for (let j = 0; j < image.autoTags.length; j++) {
+        if (selectedAutoTags.has(image.autoTags[j])) {
+          someAutoMatch = true;
+          break;
+        }
+      }
+      if (!someAutoMatch) continue;
+    }
+    if (excludedAutoTags.size > 0) {
+      let hasExcludedAutoTag = false;
+      for (let j = 0; j < image.autoTags.length; j++) {
+        if (excludedAutoTags.has(image.autoTags[j])) {
+          hasExcludedAutoTag = true;
+          break;
+        }
+      }
+      if (hasExcludedAutoTag) continue;
+    }
 
-    if (advancedFilters.generationTimeMs && !numericRangeMatch(image.generationTimeMs, advancedFilters.generationTimeMs)) continue;
-    if (advancedFilters.stepsPerSecond && !numericRangeMatch(image.stepsPerSecond, advancedFilters.stepsPerSecond)) continue;
-    if (advancedFilters.vramPeakMb && !numericRangeMatch(image.vramPeakMb, advancedFilters.vramPeakMb)) continue;
+    // 9. Sensitive Filter
+    if (shouldFilterSensitive) {
+      let hasSensitiveTag = false;
+      for (let j = 0; j < image.tags.length; j++) {
+        if (sensitiveTags.has(image.tags[j])) {
+          hasSensitiveTag = true;
+          break;
+        }
+      }
+      if (hasSensitiveTag) continue;
+    }
+
+    // PHASE 3: Expensive operations (String searching, Path resolution)
+    // -------------------------------------------------------------------------
+
+    // 10. Folder Filters
+    if (excludedFolders.length > 0 || hasSelectedFolders) {
+      const relativePath = image.relativePath;
+      const lastSlash = Math.max(relativePath.lastIndexOf('/'), relativePath.lastIndexOf('\\'));
+      const folderRelativePath = lastSlash > 0 ? relativePath.slice(0, lastSlash) : '';
+      const cacheKey = `${image.directoryId}:${folderRelativePath}`;
+
+      let folderPath = folderPathCache.get(cacheKey);
+      if (folderPath === undefined) {
+        folderPath = getFolderPath(image, parentPath);
+        folderPathCache.set(cacheKey, folderPath);
+      }
+
+      let isFolderExcluded = false;
+      for (let j = 0; j < excludedFolders.length; j++) {
+        const excludedFolder = excludedFolders[j];
+        if (
+          folderPath === excludedFolder ||
+          folderPath.startsWith(`${excludedFolder}/`)
+        ) {
+          isFolderExcluded = true;
+          break;
+        }
+      }
+      if (isFolderExcluded) continue;
+
+      if (hasSelectedFolders) {
+        let isMatch = false;
+        for (let j = 0; j < selectedFolders.length; j++) {
+          const selectedFolder = selectedFolders[j];
+          if (
+            folderPath === selectedFolder ||
+            (criteria.includeSubfolders && folderPath.startsWith(`${selectedFolder}/`))
+          ) {
+            isMatch = true;
+            break;
+          }
+        }
+        if (!isMatch) continue;
+      }
+    }
+
+    // 11. Search Query
+    if (searchTerms.length > 0) {
+      let catalogMatch = true;
+      for (let j = 0; j < searchTerms.length; j++) {
+        if (!image.catalogText.includes(searchTerms[j])) {
+          catalogMatch = false;
+          break;
+        }
+      }
+
+      if (!catalogMatch) {
+        if (!image.searchText) continue;
+        let searchMatch = true;
+        for (let j = 0; j < searchTerms.length; j++) {
+          if (!image.searchText.includes(searchTerms[j])) {
+            searchMatch = false;
+            break;
+          }
+        }
+        if (!searchMatch) continue;
+      }
+    }
+
+    // 12. Advanced Filters (Expensive)
+    if (filterDimension && image.dimensions.replace(/\s+/g, '') !== filterDimension) continue;
 
     // PASS ALL FILTERS
     results.push(image);
@@ -495,20 +520,16 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
     // Update Facets
     for (let j = 0; j < image.models.length; j++) {
       const model = image.models[j];
-      modelsFacet.add(model);
       modelFacetCounts.set(model, (modelFacetCounts.get(model) ?? 0) + 1);
     }
     for (let j = 0; j < image.loraNames.length; j++) {
       const lora = image.loraNames[j];
-      lorasFacet.add(lora);
       loraFacetCounts.set(lora, (loraFacetCounts.get(lora) ?? 0) + 1);
     }
     if (image.sampler) {
-      samplersFacet.add(image.sampler);
       samplerFacetCounts.set(image.sampler, (samplerFacetCounts.get(image.sampler) ?? 0) + 1);
     }
     if (image.scheduler) {
-      schedulersFacet.add(image.scheduler);
       schedulerFacetCounts.set(image.scheduler, (schedulerFacetCounts.get(image.scheduler) ?? 0) + 1);
     }
     generatorsFacet.add(image.generator);
@@ -537,10 +558,10 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
   return {
     filteredIds: results.map(img => img.id),
     facets: {
-      availableModels: Array.from(modelsFacet).sort(caseInsensitiveSort),
-      availableLoras: Array.from(lorasFacet).sort(caseInsensitiveSort),
-      availableSamplers: Array.from(samplersFacet).sort(caseInsensitiveSort),
-      availableSchedulers: Array.from(schedulersFacet).sort(caseInsensitiveSort),
+      availableModels: Array.from(modelFacetCounts.keys()).sort(caseInsensitiveSort),
+      availableLoras: Array.from(loraFacetCounts.keys()).sort(caseInsensitiveSort),
+      availableSamplers: Array.from(samplerFacetCounts.keys()).sort(caseInsensitiveSort),
+      availableSchedulers: Array.from(schedulerFacetCounts.keys()).sort(caseInsensitiveSort),
       availableGenerators: Array.from(generatorsFacet).sort(caseInsensitiveSort),
       availableGpuDevices: Array.from(gpuDevicesFacet).sort(caseInsensitiveSort),
       availableDimensions: Array.from(dimensionsFacet).sort((a, b) => {
