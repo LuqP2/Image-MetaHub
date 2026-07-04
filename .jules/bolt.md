@@ -57,3 +57,7 @@
 ## 2026-07-01 - Efficient Path Resolution in Hot Loops
 **Learning:** Path manipulation using array-based approaches (`split`, `filter`, `join`) inside hot loops (like filtering thousands of images) creates significant garbage collection pressure due to numerous intermediate array and string allocations.
 **Action:** Use direct string methods (`indexOf`, `lastIndexOf`, `slice`) for path resolution and directory extraction. Combined with short-circuiting expensive path calculations when no relevant filters are active, this can improve library-wide filtering performance by ~7x-8x in path-heavy paths.
+
+## 2025-07-02 - Caching Folder Filtering Decisions in Scoped Library Iteration
+**Learning:** In applications with deep directory structures and multiple folder selection/exclusion rules, evaluating visibility for every image individually in an O(N) loop creates an (N \cdot K)$ bottleneck (where K is the number of active filters). Thousands of images in the same directory were triggering identical, expensive path joining and prefix-matching logic.
+**Action:** Implement a lightweight local Map cache inside library scoping functions, keyed by a combination of directory ID and sub-path. This ensures that the expensive (K)$ filter check and path resolution occur only once per unique folder, reducing the effective complexity of the pass towards (N)$.

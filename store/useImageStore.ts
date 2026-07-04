@@ -543,19 +543,10 @@ const remapThumbnailEntries = (
 
 const normalizePath = (path: string) => {
     if (!path) return '';
-    return path.replace(/\\/g, '/').replace(/[\\/]+$/, '');
-};
-
-const getImageFolderPath = (image: IndexedImage, directoryPath: string): string => {
-    const relativePath = getRelativeImagePath(image);
-    const lastSlashIndex = Math.max(relativePath.lastIndexOf('/'), relativePath.lastIndexOf('\\'));
-
-    if (lastSlashIndex === -1) {
-        return normalizePath(directoryPath);
-    }
-
-    const folderRelativePath = relativePath.slice(0, lastSlashIndex);
-    return joinPath(directoryPath, folderRelativePath);
+    // Optimization: Single pass to replace backslashes.
+    // Conditional trailing slash removal avoids redundant regex execution.
+    const normalized = path.replace(/\\/g, '/');
+    return normalized.endsWith('/') ? normalized.replace(/\/+$/, '') : normalized;
 };
 
 const joinPath = (base: string, relative: string) => {
@@ -564,10 +555,9 @@ const joinPath = (base: string, relative: string) => {
     }
     const separator = '/';
     const normalizedBase = normalizePath(base);
-    const normalizedRelative = relative
-        .split(/[/\\]/)
-        .filter(segment => segment.length > 0)
-        .join(separator);
+    // Optimization: Direct string manipulation instead of split/filter/join.
+    // Reduces garbage collection pressure by avoiding multiple intermediate array and string allocations.
+    const normalizedRelative = relative.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
     if (!normalizedBase) {
         return normalizedRelative;
     }
@@ -1970,7 +1960,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             return true;
         }
 
-        return !image.tags.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+        // Optimization: Image tags are already normalized to lowercase during indexing/annotation.
+        // Impact: Eliminates O(N * T) string allocations during library-wide filtering (T = average tags per image).
+        return !image.tags.some(tag => sensitiveTagSet.has(tag));
     };
 
     const getLibraryScopedImages = (state: ImageState) => {
@@ -2014,6 +2006,10 @@ export const useImageStore = create<ImageState>((set, get) => {
         const sensitiveTagSet = getHiddenSensitiveTagSet();
         const hasExcludedFolders = normalizedExcludedFolders.length > 0;
 
+        // Optimization: Cache folder filtering decisions to avoid redundant $O(K)$ loop checks and path joining.
+        // Impact: Reduces complexity from $O(N \cdot K)$ to $O(N + F \cdot K)$, where $F$ is the number of unique folders.
+        const folderAllowedCache = new Map<string, boolean>();
+
         return images.filter((img) => {
             if (!visibleDirectoryIds.has(img.directoryId || '')) {
                 return false;
@@ -2029,37 +2025,53 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return isVisibleWithSafeMode(img, sensitiveTagSet);
             }
 
-            const folderPath = getImageFolderPath(img, parentPath);
+            const relativeImagePath = getRelativeImagePath(img);
+            const lastSlashIndex = Math.max(relativeImagePath.lastIndexOf('/'), relativeImagePath.lastIndexOf('\\'));
+            const subPath = lastSlashIndex === -1 ? '' : relativeImagePath.slice(0, lastSlashIndex);
 
-            if (hasExcludedFolders) {
-                for (let i = 0; i < normalizedExcludedFolders.length; i++) {
-                    const normalizedExcluded = normalizedExcludedFolders[i];
-                    if (folderPath === normalizedExcluded ||
-                        folderPath.startsWith(normalizedExcluded + '/') ||
-                        folderPath.startsWith(normalizedExcluded + '\\')) {
-                        return false;
+            const cacheKey = `${img.directoryId}::${subPath}`;
+            let isAllowed = folderAllowedCache.get(cacheKey);
+
+            if (isAllowed === undefined) {
+                const folderPath = lastSlashIndex === -1
+                    ? parentPath
+                    : joinPath(parentPath, subPath);
+
+                isAllowed = true;
+                if (hasExcludedFolders) {
+                    for (let i = 0; i < normalizedExcludedFolders.length; i++) {
+                        const normalizedExcluded = normalizedExcludedFolders[i];
+                        if (folderPath === normalizedExcluded ||
+                            folderPath.startsWith(normalizedExcluded + '/') ||
+                            folderPath.startsWith(normalizedExcluded + '\\')) {
+                            isAllowed = false;
+                            break;
+                        }
                     }
                 }
-            }
 
-            if (!hasSelectedFolders) {
-                return isVisibleWithSafeMode(img, sensitiveTagSet);
-            }
-
-            if (selectedFoldersSet.has(folderPath)) {
-                return isVisibleWithSafeMode(img, sensitiveTagSet);
-            }
-
-            if (includeSubfolders) {
-                for (let i = 0; i < normalizedSelectedFolders.length; i++) {
-                    const normalizedSelected = normalizedSelectedFolders[i];
-                    if (folderPath.startsWith(normalizedSelected + '/') || folderPath.startsWith(normalizedSelected + '\\')) {
-                        return isVisibleWithSafeMode(img, sensitiveTagSet);
+                if (isAllowed && hasSelectedFolders) {
+                    isAllowed = false;
+                    if (selectedFoldersSet.has(folderPath)) {
+                        isAllowed = true;
+                    } else if (includeSubfolders) {
+                        for (let i = 0; i < normalizedSelectedFolders.length; i++) {
+                            const normalizedSelected = normalizedSelectedFolders[i];
+                            if (folderPath.startsWith(normalizedSelected + '/') || folderPath.startsWith(normalizedSelected + '\\')) {
+                                isAllowed = true;
+                                break;
+                            }
+                        }
                     }
                 }
+                folderAllowedCache.set(cacheKey, isAllowed);
             }
 
-            return false;
+            if (!isAllowed) {
+                return false;
+            }
+
+            return isVisibleWithSafeMode(img, sensitiveTagSet);
         });
     };
 
