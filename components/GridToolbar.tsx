@@ -17,8 +17,10 @@ import {
   Workflow,
   Image as ImageIcon,
   X,
-  Search
+  Search,
+  CheckCircle
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
@@ -217,6 +219,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onClearAllFilters,
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [isCollectionActionsOpen, setIsCollectionActionsOpen] = useState(false);
   const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
   const [isJumpMenuOpen, setIsJumpMenuOpen] = useState(false);
@@ -296,7 +299,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     if (!firstSelectedImage) return;
     const result = await copyImageToClipboard(firstSelectedImage);
     if (result.success) {
-      showNotification('Image copied to clipboard!');
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } else {
       showNotification(`Failed to copy: ${result.error}`, 'error');
     }
@@ -573,15 +577,15 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
         <div className="flex items-center gap-1 flex-1 min-w-0">
             {slideshowImageCount > 0 && (
               <>
-                <Tooltip label={`Start slideshow from ${slideshowSourceLabel}`}>
-                  <button
+                <Tooltip label={`Start slideshow from ${slideshowSourceLabel} (${slideshowImageCount} item${slideshowImageCount === 1 ? '' : 's'})`}>
+                  <motion.button
                     onClick={onStartSlideshow}
+                    whileTap={{ scale: 0.85 }}
                     className="p-1.5 text-gray-400 hover:text-blue-300 hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    title={`Start slideshow from ${slideshowSourceLabel} (${slideshowImageCount} item${slideshowImageCount === 1 ? '' : 's'})`}
                     aria-label="Start slideshow"
                   >
                     <Play className="w-4 h-4" />
-                  </button>
+                  </motion.button>
                 </Tooltip>
                 {(selectedCount > 0 || hasActiveFilters || canUseFilteredCollectionActions) && (
                   <div className="w-px h-4 bg-gray-700 mx-1" />
@@ -594,97 +598,99 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <span className="text-[11px] text-gray-400 mr-2 whitespace-nowrap">{selectedCount} selected</span>
 
                 <Tooltip label="Clear selection">
-                  <button
+                  <motion.button
                     onClick={clearImageSelection}
+                    whileTap={{ scale: 0.85 }}
                     className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    title="Clear selection"
                     aria-label="Clear selection"
                   >
                     <X className="w-4 h-4" />
-                  </button>
+                  </motion.button>
                 </Tooltip>
 
                 {/* Copy to Clipboard */}
-                <Tooltip label="Copy to Clipboard">
-                  <button
+                <Tooltip label={copied ? 'Copied!' : 'Copy to Clipboard'}>
+                  <motion.button
                     onClick={handleCopyToClipboard}
-                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    title="Copy to Clipboard"
-                    aria-label="Copy to Clipboard"
+                    whileTap={{ scale: 0.85 }}
+                    className={`p-1.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                      copied ? 'text-green-400' : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                    }`}
+                    aria-label={copied ? 'Copied!' : 'Copy to Clipboard'}
                     disabled={selectedCount !== 1}
                   >
-                    <Copy className="w-4 h-4" />
-                  </button>
+                    {copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </motion.button>
                 </Tooltip>
 
                 {/* Show in Folder */}
                 <Tooltip label="Show in Folder">
-                  <button
+                  <motion.button
                     onClick={handleShowInFolder}
+                    whileTap={{ scale: 0.85 }}
                     className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    title="Show in Folder"
                     aria-label="Show in Folder"
                     disabled={selectedCount !== 1}
                   >
                     <Folder className="w-4 h-4" />
-                  </button>
+                  </motion.button>
                 </Tooltip>
 
                 {/* Export */}
                 <Tooltip label={selectedCount > 1 ? 'Export selected images' : 'Export'}>
-                  <button
+                  <motion.button
                     onClick={handleExport}
+                    whileTap={{ scale: 0.85 }}
                     className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    title={selectedCount > 1 ? 'Export selected images' : 'Export'}
                     aria-label={selectedCount > 1 ? 'Export selected images' : 'Export'}
                     disabled={selectedCount === 0}
                   >
                     <Download className="w-4 h-4" />
-                  </button>
+                  </motion.button>
                 </Tooltip>
 
                 {/* Favorites */}
                 <Tooltip label={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}>
-                  <button
+                  <motion.button
                     onClick={handleToggleFavorites}
+                    whileTap={{ scale: 0.85 }}
                     className={`p-1.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       allFavorites
                         ? 'text-rose-400 hover:text-rose-300 hover:bg-gray-700'
                         : 'text-gray-400 hover:text-rose-400 hover:bg-gray-700'
                     }`}
-                    title={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}
                     aria-label={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}
                   >
                     <Heart className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
-                  </button>
+                  </motion.button>
                 </Tooltip>
 
                 <Tooltip label={selectedCount === 1 ? 'Reparse metadata' : `Reparse selected (${selectedCount})`}>
-                  <button
+                  <motion.button
                     onClick={handleReparseSelected}
+                    whileTap={{ scale: 0.85 }}
                     className={`p-1.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       isReparsing
                         ? 'text-cyan-300 bg-cyan-500/10 cursor-wait'
                         : 'text-gray-400 hover:text-cyan-300 hover:bg-gray-700'
                     }`}
-                    title={selectedCount === 1 ? 'Reparse metadata' : `Reparse selected (${selectedCount})`}
                     aria-label={selectedCount === 1 ? 'Reparse metadata' : `Reparse selected (${selectedCount})`}
                     disabled={selectedCount === 0 || isReparsing}
                   >
                     <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
-                  </button>
+                  </motion.button>
                 </Tooltip>
 
                  {/* Tagging */}
                  <Tooltip label="Add/Remove Tags">
-                   <button
+                   <motion.button
                     onClick={handleTagClick}
+                    whileTap={{ scale: 0.85 }}
                     className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    title="Add/Remove Tags"
                     aria-label="Add/Remove Tags"
                   >
                     <Tag className="w-4 h-4" />
-                  </button>
+                  </motion.button>
                 </Tooltip>
   
                 {/* Divider */}
@@ -692,51 +698,51 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
 
                 {/* Compare */}
                 <Tooltip label={canOpenSelectedImageEditor && !canUseImageEditor ? 'Image Editor (Pro Feature) - start trial' : editImageTooltip}>
-                  <button
+                  <motion.button
                     onClick={handleOpenImageEditor}
+                    whileTap={canOpenSelectedImageEditor ? { scale: 0.85 } : undefined}
                     className={`p-1.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       canOpenSelectedImageEditor
                         ? 'text-gray-400 hover:text-cyan-300 hover:bg-gray-700'
                         : 'text-gray-600 cursor-not-allowed'
                     }`}
-                    title={canOpenSelectedImageEditor && !canUseImageEditor ? 'Image Editor (Pro Feature) - start trial' : editImageTooltip}
                     aria-label="Edit image"
                     disabled={!canOpenSelectedImageEditor}
                   >
                     <ImageIcon className="w-4 h-4" />
                     {canOpenSelectedImageEditor && !canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
-                  </button>
+                  </motion.button>
                 </Tooltip>
 
                 <Tooltip label={selectedCount >= 2 && selectedCount <= 4 ? `Compare ${selectedCount} Images` : 'Select between 2 and 4 images to compare'}>
-                  <button
+                  <motion.button
                     onClick={handleCompare}
+                    whileTap={selectedCount >= 2 && selectedCount <= 4 ? { scale: 0.85 } : undefined}
                     className={`p-1.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       selectedCount >= 2 && selectedCount <= 4
                         ? 'text-gray-400 hover:text-purple-400 hover:bg-gray-700'
                         : 'text-gray-600 cursor-not-allowed'
                     }`}
-                    title={selectedCount >= 2 && selectedCount <= 4 ? `Compare ${selectedCount} Images` : 'Select between 2 and 4 images to compare'}
                     aria-label={selectedCount >= 2 && selectedCount <= 4 ? `Compare ${selectedCount} Images` : 'Select between 2 and 4 images to compare'}
                     disabled={selectedCount < 2 || selectedCount > 4}
                   >
                     <GitCompare className="w-4 h-4" />
-                  </button>
+                  </motion.button>
                 </Tooltip>
 
                 {/* Generate Dropdown */}
                 <div className="relative" ref={dropdownRef}>
                   <Tooltip label="Generate">
-                    <button
+                    <motion.button
                       onClick={() => setGenerateDropdownOpen(!generateDropdownOpen)}
+                      whileTap={selectedCount === 1 ? { scale: 0.85 } : undefined}
                       className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                      title="Generate"
                       aria-label="Generate"
                       disabled={selectedCount !== 1}
                     >
                       <Sparkles className="w-4 h-4" />
                       <ChevronDown className="w-3 h-3" />
-                    </button>
+                    </motion.button>
                   </Tooltip>
                   {generateDropdownOpen && selectedCount === 1 && (
                     <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[160px] z-50">
@@ -770,14 +776,14 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
 
                 {/* Delete */}
                 <Tooltip label="Delete Selected">
-                  <button
+                  <motion.button
                     onClick={onDeleteSelected}
+                    whileTap={{ scale: 0.85 }}
                     className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    title="Delete Selected"
                     aria-label="Delete Selected"
                   >
                     <Trash2 className="w-4 h-4" />
-                  </button>
+                  </motion.button>
                 </Tooltip>
                 
                 {hasActiveFilters && <div className="w-px h-6 bg-gray-600 mx-2 flex-shrink-0" />}
@@ -789,14 +795,14 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 {selectedCount > 0 && <div className="w-px h-4 bg-gray-700 mx-1" />}
                 <div className="relative" ref={collectionActionsRef}>
                   <Tooltip label={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}>
-                    <button
+                    <motion.button
                       onClick={() => setIsCollectionActionsOpen((open) => !open)}
+                      whileTap={{ scale: 0.85 }}
                       className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                      title={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}
                       aria-label="Collection actions"
                     >
                       <Plus className="w-4 h-4" />
-                    </button>
+                    </motion.button>
                   </Tooltip>
 
                   {isCollectionActionsOpen && (
@@ -860,7 +866,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 )}
                 <div className="relative" ref={jumpMenuRef}>
                   <Tooltip label="Jump to group">
-                    <button
+                    <motion.button
                       onClick={() => {
                         if (isJumpMenuOpen) {
                           closeJumpMenu();
@@ -868,13 +874,13 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                         }
                         setIsJumpMenuOpen(true);
                       }}
+                      whileTap={{ scale: 0.85 }}
                       className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                      title="Jump to group"
                       aria-label="Jump to group"
                     >
                       <Search className="w-4 h-4" />
                       <ChevronDown className="w-3 h-3" />
-                    </button>
+                    </motion.button>
                   </Tooltip>
 
                   {isJumpMenuOpen && (
