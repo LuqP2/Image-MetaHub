@@ -139,15 +139,32 @@ const joinPath = (base: string, relative: string) => {
     : `${normalizedBase}/${normalizedRelative}`;
 };
 
-const getFolderPath = (image: SearchWorkerImage, parentDirectory: string) => {
+/**
+ * Resolves the absolute folder path for an image.
+ * Optimization: Uses a local cache and direct string methods to avoid O(N) string manipulation and normalization
+ * in hot filtering loops, significantly reducing CPU cycles and garbage collection pressure.
+ */
+const getFolderPath = (
+  image: SearchWorkerImage,
+  parentDirectory: string,
+  cache: Map<string, string>,
+) => {
   const relativePath = image.relativePath;
-  const lastSlash = Math.max(relativePath.lastIndexOf('/'), relativePath.lastIndexOf('\\'));
+  const lastIndex = Math.max(relativePath.lastIndexOf('/'), relativePath.lastIndexOf('\\'));
 
-  if (lastSlash <= 0) {
-    return normalizePath(parentDirectory);
+  if (lastIndex <= 0) {
+    return parentDirectory;
   }
 
-  return joinPath(parentDirectory, relativePath.slice(0, lastSlash));
+  const subPath = relativePath.slice(0, lastIndex);
+  const cacheKey = `${image.directoryId}::${subPath}`;
+  let cached = cache.get(cacheKey);
+  if (cached === undefined) {
+    // joinPath handles normalization internally
+    cached = joinPath(parentDirectory, subPath);
+    cache.set(cacheKey, cached);
+  }
+  return cached;
 };
 
 const caseInsensitiveSort = (a: string, b: string) =>
@@ -264,6 +281,7 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
     sensitiveTags.size > 0;
 
   const results: SearchWorkerImage[] = [];
+  const folderPathCache = new Map<string, string>();
 
   // Facet collection variables
   const modelsFacet = new Set<string>();
@@ -288,7 +306,7 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
 
     // 2. Folder Filters
     if (excludedFolders.length > 0 || hasSelectedFolders) {
-      const folderPath = getFolderPath(image, parentPath);
+      const folderPath = getFolderPath(image, parentPath, folderPathCache);
       let isFolderExcluded = false;
       for (let j = 0; j < excludedFolders.length; j++) {
         const excludedFolder = excludedFolders[j];
