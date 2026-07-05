@@ -3,6 +3,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { motion } from 'framer-motion';
 import { type IndexedImage, type BaseMetadata, type Directory, ImageStack, SmartCollection } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -493,8 +494,9 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         draggable={canDragImage}
       >
         {/* box for selection - always visible on hover or when selected */}
-        <button
+        <motion.button
           onClick={handleboxClick}
+          whileTap={{ scale: 0.85 }}
           className={`absolute top-2 left-2 z-20 p-1 rounded transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 ${
             isSelected
               ? 'bg-blue-500 text-white opacity-100'
@@ -508,7 +510,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           ) : (
             <Square className="h-5 w-5" />
           )}
-        </button>
+        </motion.button>
 
         {/* Deduplication: Best badge */}
         {isMarkedBest && (
@@ -531,17 +533,19 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
             Compare #1
           </div>
         )}
-        <button
+        <motion.button
           onClick={handlePreviewClick}
+          whileTap={{ scale: 0.85 }}
           className="absolute top-11 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:opacity-100"
           title="Show details"
           aria-label="Show details"
         >
           <Info className="h-4 w-4" />
-        </button>
+        </motion.button>
 
-        <button
+        <motion.button
           onClick={handleFavoriteClick}
+          whileTap={{ scale: 0.85 }}
           className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-rose-500 focus:opacity-100 ${
             image.isFavorite
               ? 'bg-rose-500/85 text-white opacity-100 hover:bg-rose-600'
@@ -551,9 +555,10 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           aria-label={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
         >
           <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
-        </button>
-        <button
+        </motion.button>
+        <motion.button
           onClick={handleCopyClick}
+          whileTap={{ scale: 0.85 }}
           className={`absolute top-2 right-11 z-10 p-1.5 rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:opacity-100 ${
             copied
               ? 'bg-green-600 text-white opacity-100'
@@ -564,7 +569,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           disabled={!image.prompt}
         >
           {copied ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-        </button>
+        </motion.button>
 
         {hasThumbnailError ? (
           <div className="w-full h-full flex items-center justify-center bg-gray-900">
