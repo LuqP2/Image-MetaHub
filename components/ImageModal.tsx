@@ -2250,8 +2250,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    const [, relativeFromId] = image.id.split('::');
-    const relativePath = relativeFromId || image.name;
+    const relativePath = getRelativeImagePath(image);
 
     e.preventDefault();
     if (e.dataTransfer) {

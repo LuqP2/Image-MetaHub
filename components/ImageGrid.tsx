@@ -40,6 +40,7 @@ import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
+import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
 import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import { groupImages, type ImageGroup, type ImageGroupByMode, type ImageGroupingSortOrder } from '../utils/imageGrouping';
 import {
@@ -92,10 +93,6 @@ const isTypingTarget = (target: EventTarget | null): boolean => {
   return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 };
 
-const getRelativeImagePath = (image: IndexedImage): string => {
-  const [, relativePath = ''] = image.id.split('::');
-  return relativePath || image.name;
-};
 
 const joinDisplayPath = (basePath: string, relativePath: string): string => {
   const normalizedBase = (basePath || '').replace(/[/\\]+$/, '');
@@ -364,8 +361,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     e.dataTransfer.effectAllowed = 'copyMove';
 
     if (canDragExternally && image.directoryId) {
-      const [, relativeFromId] = image.id.split('::');
-      const relativePath = relativeFromId || image.name;
+      const relativePath = getRelativeImagePath(image);
       _activeExternalDragPayload = { directoryPath: image.directoryId, relativePath };
     } else {
       _activeExternalDragPayload = null;

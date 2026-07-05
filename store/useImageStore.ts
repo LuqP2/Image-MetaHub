@@ -33,6 +33,7 @@ import {
     type AutomationRulePreview,
 } from '../services/automationRuleEngine';
 import { normalizeFacetValue, sanitizeIndexedImageFacets } from '../utils/facetNormalization';
+import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
 import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../utils/dateFilterUtils';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { getImageGenerator, getImageGpuDevice, hasTelemetryData } from '../utils/analyticsUtils';
@@ -574,19 +575,6 @@ const joinPath = (base: string, relative: string) => {
     return `${normalizedBase}${separator}${normalizedRelative}`;
 };
 
-const getRelativeImagePath = (image: IndexedImage): string => {
-    if (!image?.id) return image?.name ?? '';
-    if (image.directoryId) {
-        const prefix = `${image.directoryId}::`;
-        if (image.id.startsWith(prefix)) {
-            return image.id.slice(prefix.length) || image.name;
-        }
-    }
-
-    const sepIndex = image.id.lastIndexOf('::');
-    const relative = sepIndex === -1 ? '' : image.id.slice(sepIndex + 2);
-    return relative || image.name;
-};
 
 const buildCatalogSearchText = (image: IndexedImage): string => {
     const relativePath = getRelativeImagePath(image).replace(/\\/g, '/').toLowerCase();
@@ -3251,7 +3239,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     return state;
                 }
 
-                const nextFileName = normalizedRelativePath.split('/').pop() || normalizedRelativePath;
+                const { fileName: nextFileName } = splitRelativePath(normalizedRelativePath);
                 const nextImage: IndexedImage = {
                     ...sourceImage,
                     id: nextImageId,

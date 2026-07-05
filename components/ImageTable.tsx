@@ -18,6 +18,7 @@ import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import RenameImageModal from './RenameImageModal';
+import { getRelativeImagePath } from '../utils/imagePaths';
 import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import { groupImages, type ImageGroupByMode, type ImageGroupingSortOrder, type ImageGroupRenderItem } from '../utils/imageGrouping';
 import { clearInternalImageDragData, setInternalImageDragData } from '../utils/internalImageDrag';
@@ -41,10 +42,6 @@ interface ImageTableProps {
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
 type SortDirection = 'asc' | 'desc' | null;
 
-const getRelativeImagePath = (image: IndexedImage): string => {
-  const [, relativePath = ''] = image.id.split('::');
-  return relativePath || image.name;
-};
 
 const formatAudioDuration = (seconds?: number | null): string | null => {
   if (seconds == null || !Number.isFinite(seconds)) {
