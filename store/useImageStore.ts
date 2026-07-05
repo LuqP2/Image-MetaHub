@@ -177,6 +177,10 @@ type SearchWorkerResultPayload = {
     };
 };
 
+// Global collators to avoid redundant allocations and high overhead of localeCompare in hot loops.
+const baseCollator = new Intl.Collator(undefined, { sensitivity: 'base' });
+const accentCollator = new Intl.Collator(undefined, { sensitivity: 'accent' });
+
 const DEFAULT_LINEAGE_BUILD_STATE: LineageBuildState = {
     status: 'idle',
     processed: 0,
@@ -277,6 +281,21 @@ const replaceRecentTag = (currentTags: string[], sourceTag: string, targetTag: s
     return Array.from(new Set(mapped));
 };
 
+/**
+ * Compares two tag arrays for equality without allocating intermediate strings.
+ * Optimization: Replaces JSON.stringify() in hot loops to reduce GC pressure.
+ */
+const areTagsEqual = (a: string[] | null | undefined, b: string[] | null | undefined): boolean => {
+    if (a === b) return true;
+    const arrA = a || [];
+    const arrB = b || [];
+    if (arrA.length !== arrB.length) return false;
+    for (let i = 0; i < arrA.length; i++) {
+        if (arrA[i] !== arrB[i]) return false;
+    }
+    return true;
+};
+
 const normalizeTagName = (tag: string) => tag.trim().toLowerCase();
 const pendingMetadataTagImportMap = new Map<string, IndexedImage>();
 
@@ -374,7 +393,7 @@ const sortCollections = (collections: SmartCollection[]): SmartCollection[] =>
             return sortDelta;
         }
 
-        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        return baseCollator.compare(a.name, b.name);
     });
 
 const getNextCollectionSortIndex = (collections: SmartCollection[]): number =>
@@ -599,8 +618,19 @@ const buildCompactSearchText = (image: IndexedImage): string => {
     pushValue(image.prompt);
     pushValue(image.negativePrompt);
 
-    image.models?.forEach(model => pushValue(normalizeFacetValue(model)));
-    image.loras?.forEach(lora => pushValue(normalizeLoraName(typeof lora === 'string' ? lora : lora)));
+    const models = image.models;
+    if (models) {
+        for (let i = 0; i < models.length; i++) {
+            pushValue(normalizeFacetValue(models[i]));
+        }
+    }
+
+    const loras = image.loras;
+    if (loras) {
+        for (let i = 0; i < loras.length; i++) {
+            pushValue(normalizeLoraName(loras[i]));
+        }
+    }
 
     pushValue(normalizeFacetValue(image.sampler));
     pushValue(normalizeFacetValue(image.scheduler));
@@ -618,9 +648,26 @@ const buildCompactSearchText = (image: IndexedImage): string => {
         pushValue(image.cfgScale);
     }
 
-    image.tags?.forEach(tag => pushValue(tag));
-    image.autoTags?.forEach(tag => pushValue(tag));
-    image.workflowNodes?.forEach(nodeType => pushValue(nodeType));
+    const tags = image.tags;
+    if (tags) {
+        for (let i = 0; i < tags.length; i++) {
+            pushValue(tags[i]);
+        }
+    }
+
+    const autoTags = image.autoTags;
+    if (autoTags) {
+        for (let i = 0; i < autoTags.length; i++) {
+            pushValue(autoTags[i]);
+        }
+    }
+
+    const workflowNodes = image.workflowNodes;
+    if (workflowNodes) {
+        for (let i = 0; i < workflowNodes.length; i++) {
+            pushValue(workflowNodes[i]);
+        }
+    }
 
     pushValue(getImageGpuDevice(image));
 
@@ -1558,12 +1605,13 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
 
             annotationsToPersist = result.updatedAnnotations;
-            rule.actions.addTags.forEach((tag) => {
-                const normalized = normalizeTagName(tag);
+            const addTags = rule.actions.addTags;
+            for (let i = 0; i < addTags.length; i++) {
+                const normalized = normalizeTagName(addTags[i]);
                 if (normalized) {
                     tagCatalogUpdates.add(normalized);
                 }
-            });
+            }
 
             const collectionAddMap = result.collectionImageAdds;
             collectionsToPersist = [];
@@ -1840,21 +1888,28 @@ export const useImageStore = create<ImageState>((set, get) => {
         const samplerFacetCounts = new Map<string, number>();
         const schedulerFacetCounts = new Map<string, number>();
 
-        for (const image of visibleImages) {
-            image.models?.forEach(model => {
-                const normalized = normalizeFacetValue(model);
-                if (normalized) {
-                    models.add(normalized);
-                    modelFacetCounts.set(normalized, (modelFacetCounts.get(normalized) ?? 0) + 1);
+        for (let i = 0; i < visibleImages.length; i++) {
+            const image = visibleImages[i];
+            const imageModels = image.models;
+            if (imageModels) {
+                for (let j = 0; j < imageModels.length; j++) {
+                    const normalized = normalizeFacetValue(imageModels[j]);
+                    if (normalized) {
+                        models.add(normalized);
+                        modelFacetCounts.set(normalized, (modelFacetCounts.get(normalized) ?? 0) + 1);
+                    }
                 }
-            });
-            image.loras?.forEach(lora => {
-                const normalized = normalizeFacetValue(lora);
-                if (normalized) {
-                    loras.add(normalized);
-                    loraFacetCounts.set(normalized, (loraFacetCounts.get(normalized) ?? 0) + 1);
+            }
+            const imageLoras = image.loras;
+            if (imageLoras) {
+                for (let j = 0; j < imageLoras.length; j++) {
+                    const normalized = normalizeFacetValue(imageLoras[j]);
+                    if (normalized) {
+                        loras.add(normalized);
+                        loraFacetCounts.set(normalized, (loraFacetCounts.get(normalized) ?? 0) + 1);
+                    }
                 }
-            });
+            }
             const sampler = normalizeFacetValue(image.sampler);
             if (sampler) {
                 samplers.add(sampler);
@@ -1874,7 +1929,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         // Case-insensitive alphabetical comparator
         const caseInsensitiveSort = (a: string, b: string) => {
-            return a.localeCompare(b, undefined, { sensitivity: 'accent' });
+            return accentCollator.compare(a, b);
         };
 
         return {
@@ -1935,10 +1990,11 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
 
         const directoryPathMap = new Map<string, string>();
-        directories.forEach(dir => {
+        for (let i = 0; i < directories.length; i++) {
+            const dir = directories[i];
             const normalized = normalizePath(dir.path);
             directoryPathMap.set(dir.id, normalized);
-        });
+        }
 
         const normalizedExcludedFolders: string[] = [];
         if (excludedFolders && excludedFolders.size > 0) {
@@ -2015,7 +2071,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (annotation) {
                 // Check if annotation values are different from current image values
                 const isFavoriteChanged = img.isFavorite !== annotation.isFavorite;
-                const tagsChanged = JSON.stringify(img.tags || []) !== JSON.stringify(annotation.tags);
+                const tagsChanged = !areTagsEqual(img.tags, annotation.tags);
                 const ratingChanged = img.rating !== annotation.rating;
 
                 if (isFavoriteChanged || tagsChanged || ratingChanged) {
@@ -2459,16 +2515,16 @@ export const useImageStore = create<ImageState>((set, get) => {
         const totalInScope = images.length; // Total absoluto de imagens indexadas
         const selectionDirectoryCount = state.directories.length;
 
-        const compareById = (a: IndexedImage, b: IndexedImage) => a.id.localeCompare(b.id);
+        const compareById = (a: IndexedImage, b: IndexedImage) => accentCollator.compare(a.id, b.id);
         const compareByNameAsc = (a: IndexedImage, b: IndexedImage) => {
-            const nameComparison = (a.name || '').localeCompare(b.name || '');
+            const nameComparison = accentCollator.compare(a.name || '', b.name || '');
             if (nameComparison !== 0) {
                 return nameComparison;
             }
             return compareById(a, b);
         };
         const compareByNameDesc = (a: IndexedImage, b: IndexedImage) => {
-            const nameComparison = (b.name || '').localeCompare(a.name || '');
+            const nameComparison = accentCollator.compare(b.name || '', a.name || '');
             if (nameComparison !== 0) {
                 return nameComparison;
             }
@@ -2516,7 +2572,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (hashA !== hashB) {
                 return hashA - hashB;
             }
-            return a.id.localeCompare(b.id);
+            return accentCollator.compare(a.id, b.id);
         };
 
         const sorted = [...results].sort((a, b) => {
@@ -4763,13 +4819,16 @@ export const useImageStore = create<ImageState>((set, get) => {
             // Count frequency of each auto-tag
             const tagFrequency = new Map<string, number>();
 
-            images.forEach(img => {
-                if (img.autoTags && img.autoTags.length > 0) {
-                    img.autoTags.forEach(tag => {
+            for (let i = 0; i < images.length; i++) {
+                const img = images[i];
+                const imageAutoTags = img.autoTags;
+                if (imageAutoTags && imageAutoTags.length > 0) {
+                    for (let j = 0; j < imageAutoTags.length; j++) {
+                        const tag = imageAutoTags[j];
                         tagFrequency.set(tag, (tagFrequency.get(tag) || 0) + 1);
-                    });
+                    }
                 }
-            });
+            }
 
             // Convert to TagInfo array and sort by frequency
             const autoTags: TagInfo[] = Array.from(tagFrequency.entries())
