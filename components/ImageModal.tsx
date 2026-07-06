@@ -3311,7 +3311,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div className="flex items-center gap-2">
               <motion.button
                 onClick={handleDelete}
-                whileTap={{ scale: 0.9 }}
+                whileTap={{ scale: 0.85 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 disabled={isIndexing}
                 className="rounded-lg border border-red-500/30 bg-red-500/10 p-1.5 text-red-400 transition-colors hover:border-red-500/50 hover:bg-red-500/15 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
@@ -3322,7 +3322,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </motion.button>
               <motion.button
                 onClick={() => setIsRenaming(true)}
-                whileTap={{ scale: 0.9 }}
+                whileTap={{ scale: 0.85 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 disabled={isIndexing}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-orange-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
@@ -3333,7 +3333,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </motion.button>
               <motion.button
                 onClick={() => void handleMinimizeWithAnimation()}
-                whileTap={{ scale: 0.9 }}
+                whileTap={{ scale: 0.85 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 title="Minimize window"
@@ -3342,7 +3342,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </motion.button>
               <motion.button
                 onClick={toggleWindowMaximize}
-                whileTap={{ scale: 0.9 }}
+                whileTap={{ scale: 0.85 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
@@ -3351,7 +3351,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </motion.button>
               <motion.button
                 onClick={onClose}
-                whileTap={{ scale: 0.9 }}
+                whileTap={{ scale: 0.85 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 aria-label="Close image"
@@ -3553,45 +3553,49 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
           {!isPlayableMedia && (
             <div data-no-window-drag="true" className={`absolute bottom-4 left-4 z-30 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
-              <button
+              <motion.button
                 onClick={handleZoomIn}
+                whileTap={{ scale: 0.85 }}
                 disabled={zoom >= maxViewerZoom}
-                className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                className="rounded p-2 text-white/90 transition-all hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-30"
                 title={zoom >= maxViewerZoom ? 'Zoom In (Maximum reached)' : 'Zoom In'}
                 aria-label={zoom >= maxViewerZoom ? 'Zoom In (Maximum reached)' : 'Zoom In'}
               >
                 <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-              </button>
+              </motion.button>
               <div className="min-w-10 text-center font-mono text-xs text-white/80">{zoomLabel}</div>
-              <button
+              <motion.button
                 onClick={handleZoomOut}
+                whileTap={{ scale: 0.85 }}
                 disabled={zoom <= minViewerZoom}
-                className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                className="rounded p-2 text-white/90 transition-all hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-30"
                 title={zoom <= minViewerZoom ? 'Zoom Out (Minimum reached)' : 'Zoom Out'}
                 aria-label={zoom <= minViewerZoom ? 'Zoom Out (Minimum reached)' : 'Zoom Out'}
               >
                 <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                 </svg>
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={handleActualSize}
-                className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isActualSizeZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
+                whileTap={{ scale: 0.85 }}
+                className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${isActualSizeZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
                 title={isActualSizeZoom ? 'Actual Size (Current)' : 'Actual Size'}
                 aria-label={isActualSizeZoom ? 'Actual Size (Current)' : 'Actual Size'}
               >
                 1:1
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={handleFitToScreen}
-                className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isFitZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
+                whileTap={{ scale: 0.85 }}
+                className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${isFitZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
                 title={isFitZoom ? 'Fit to Screen (Current)' : 'Fit to Screen'}
                 aria-label={isFitZoom ? 'Fit to Screen (Current)' : 'Fit to Screen'}
               >
                 Fit
-              </button>
+              </motion.button>
             </div>
           )}
 
@@ -3627,26 +3631,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div data-no-window-drag="true" className={`absolute top-4 right-4 z-30 flex items-end gap-2 transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
             {isFullscreen ? (
               <div className="flex flex-row items-center gap-2">
-                <button
+                <motion.button
                   onClick={toggleFullscreen}
-                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
+                  whileTap={{ scale: 0.85 }}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   title={`Exit fullscreen (${toggleFullscreenKeybinding})`}
                 >
                   <Minimize2 className="h-4 w-4" />
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                   onClick={onClose}
-                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
+                  whileTap={{ scale: 0.85 }}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   aria-label="Close image"
                   title="Close (Esc)"
                 >
                   <X className="w-4 h-4" />
-                </button>
+                </motion.button>
               </div>
             ) : (
               <div className="flex flex-row items-center gap-2">
                 {canEditImage && onOpenImageEditor && (
-                  <button
+                  <motion.button
                     onClick={() => {
                       if (!canUseImageEditor) {
                         showProModal('image_editor');
@@ -3654,14 +3660,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       }
                       onOpenImageEditor(liveImage);
                     }}
-                    className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                    whileTap={{ scale: 0.85 }}
+                    className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature) - start trial' : 'Open Image Editor'}
                   >
                     <ImageIcon className="h-4 w-4" />
-                  </button>
+                  </motion.button>
                 )}
                 {canEditImage && (
-                  <button
+                  <motion.button
                     onClick={() => {
                       if (!canUseImageEditor) {
                         showProModal('image_editor');
@@ -3671,7 +3678,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       setIsSidebarCollapsed(false);
                       setSidebarTab('details');
                     }}
-                    className={`rounded-full border p-2 text-white/90 backdrop-blur-sm transition-colors ${
+                    whileTap={{ scale: 0.85 }}
+                    className={`rounded-full border p-2 text-white/90 backdrop-blur-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       isAdjustmentPanelOpen
                         ? 'border-cyan-400/40 bg-cyan-500/25'
                         : 'border-white/10 bg-black/35 hover:bg-black/55'
@@ -3680,32 +3688,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     aria-label={!canUseImageEditor && initialized ? 'Image adjustments (Pro Feature) - start trial' : isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
                   >
                     <SlidersHorizontal className="h-4 w-4" />
-                  </button>
+                  </motion.button>
                 )}
-                <button
+                <motion.button
                   onClick={() => setDetailsPlacement((current) => current === 'right' ? 'bottom' : 'right')}
-                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                  whileTap={{ scale: 0.85 }}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   title={showSidebarOnRight ? 'Show details on bottom' : 'Show details on right'}
                   aria-label={showSidebarOnRight ? 'Show details on bottom' : 'Show details on right'}
                 >
                   {showSidebarOnRight ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                   onClick={() => setIsSidebarCollapsed((current) => !current)}
-                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                  whileTap={{ scale: 0.85 }}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
                   aria-label={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
                 >
                   {showSidebar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                   onClick={toggleFullscreen}
-                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                  whileTap={{ scale: 0.85 }}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   title={`Fullscreen (${toggleFullscreenKeybinding})`}
                   aria-label={`Fullscreen (${toggleFullscreenKeybinding})`}
                 >
                   <Maximize2 className="h-4 w-4" />
-                </button>
+                </motion.button>
               </div>
             )}
           </div>
@@ -4421,20 +4432,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   <>
                     <motion.button
                       onClick={() => setShowOriginal(!showOriginal)}
-                      whileTap={{ scale: 0.95 }}
+                      whileTap={{ scale: 0.85 }}
                       className={`p-1.5 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${showOriginal ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
                       title={showOriginal ? "Back to Edited" : "See Original"}
                       aria-label={showOriginal ? "Back to Edited" : "See Original"}
                     >
                       {showOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
                     </motion.button>
-                     <motion.button
+                    <motion.button
                       onClick={() => {
                         if (confirm('Are you sure you want to delete all edited metadata and revert to the original?')) {
                           deleteShadowMetadata();
                         }
                       }}
-                      whileTap={{ scale: 0.95 }}
+                      whileTap={{ scale: 0.85 }}
                       className="p-1.5 bg-gray-800 hover:bg-red-900/50 rounded-md transition-colors text-gray-400 hover:text-red-400 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                       title="Revert to Original (Delete Edits)"
                       aria-label="Revert to Original (Delete Edits)"
@@ -4445,7 +4456,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 )}
                 <motion.button
                   onClick={() => setIsMetadataEditorOpen(true)}
-                  whileTap={{ scale: 0.95 }}
+                  whileTap={{ scale: 0.85 }}
                   className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   title="Edit Metadata (Shadow)"
                   aria-label="Edit Metadata (Shadow)"
@@ -4454,7 +4465,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </motion.button>
                 <motion.button
                   onClick={openBatchExport}
-                  whileTap={{ scale: 0.95 }}
+                  whileTap={{ scale: 0.85 }}
                   className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
                   aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
