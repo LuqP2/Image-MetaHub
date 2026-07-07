@@ -3311,10 +3311,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div className="flex items-center gap-2">
               <motion.button
                 onClick={handleDelete}
+                whileTap={{ scale: 0.9 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 whileTap={{ scale: 0.9 }}
                 disabled={isIndexing}
-                className="rounded-lg border border-red-500/30 bg-red-500/10 p-1.5 text-red-400 transition-colors hover:border-red-500/50 hover:bg-red-500/15 hover:text-red-300 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
+                className="rounded-lg border border-red-500/30 bg-red-500/10 p-1.5 text-red-400 transition-colors hover:border-red-500/50 hover:bg-red-500/15 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
                 title={isIndexing ? 'Cannot delete during indexing' : 'Delete image'}
                 aria-label={isIndexing ? 'Cannot delete during indexing' : 'Delete image'}
               >
@@ -3322,10 +3323,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </motion.button>
               <motion.button
                 onClick={() => setIsRenaming(true)}
+                whileTap={{ scale: 0.9 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 whileTap={{ scale: 0.9 }}
                 disabled={isIndexing}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-orange-300 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-orange-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
                 title={isIndexing ? 'Cannot rename during indexing' : 'Rename image'}
                 aria-label={isIndexing ? 'Cannot rename during indexing' : 'Rename image'}
               >
@@ -3333,27 +3335,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </motion.button>
               <motion.button
                 onClick={() => void handleMinimizeWithAnimation()}
-                onPointerDown={(event) => event.stopPropagation()}
                 whileTap={{ scale: 0.9 }}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 title="Minimize window"
               >
                 <Minus className="w-3.5 h-3.5" />
               </motion.button>
               <motion.button
                 onClick={toggleWindowMaximize}
-                onPointerDown={(event) => event.stopPropagation()}
                 whileTap={{ scale: 0.9 }}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
               >
                 {isWindowMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
               </motion.button>
               <motion.button
                 onClick={onClose}
-                onPointerDown={(event) => event.stopPropagation()}
                 whileTap={{ scale: 0.9 }}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 aria-label="Close image"
                 title="Close (Esc)"
               >
