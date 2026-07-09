@@ -1,7 +1,6 @@
 # Image MetaHub
 
 [![Get Pro](https://img.shields.io/badge/Get%20Pro-Gumroad-4b8bbe)](https://imagemetahub.com/getpro)
-[![Support on Ko-fi](https://img.shields.io/badge/Support-Ko%E2%80%91fi-ff5f5f)](https://ko-fi.com/lucaspierri)
 
 Local-first browser, search tool, and metadata hub for AI-generated images and videos.
 
