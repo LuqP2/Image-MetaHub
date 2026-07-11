@@ -453,7 +453,19 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string, absolutePath?:
 }
 
 // Main parsing function for PNG files
-async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
+//
+// `truncationInfo`, when provided, is populated with `truncated: true` if the chunk
+// walk had to stop early because a chunk's declared length ran past the end of the
+// buffer we were given — i.e. `buffer` is a partial ("head read") slice of a larger
+// file, not the whole PNG. This is distinct from a clean stop at IEND or from hitting
+// the `maxChunks` early-exit optimization, both of which are NOT truncation and leave
+// `truncated` as `false`. Callers use this to decide whether it's safe to trust a
+// "no relevant metadata found" (or incomplete) result, or whether they need to re-read
+// the full file to get chunks (e.g. a large ComfyUI `workflow` chunk) that were cut off.
+export async function parsePNGMetadata(
+  buffer: ArrayBuffer,
+  truncationInfo?: { truncated: boolean }
+): Promise<ImageMetadata | null> {
   const view = new DataView(buffer);
   let offset = 8;
   const decoder = new TextDecoder();
@@ -466,11 +478,29 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
 
   while (offset < view.byteLength && foundChunks < maxChunks) {
     if (offset + 8 > view.byteLength) {
+      // Not enough bytes left even for a chunk header. If this buffer is a partial
+      // head-read of a larger file, there could be more (unread) chunks beyond this
+      // point — flag it so the caller can decide to re-read the full file.
+      if (truncationInfo) truncationInfo.truncated = true;
       break;
     }
     const length = view.getUint32(offset, false);
     const type = view.getUint32(offset + 4, false);
     if (offset + 12 + length > view.byteLength) {
+      // This chunk's declared length extends past the end of our buffer, so it
+      // was never inspected. Only treat this as *metadata* truncation when the
+      // chunk is one that can carry the metadata we extract (tEXt/iTXt/eXIf).
+      // A truncated IDAT (image pixel data) or other ancillary chunk does not
+      // mean we lost metadata, and flagging it would force a needless full-file
+      // re-read on nearly every PNG (IDAT is large and usually follows the text
+      // chunks), defeating the head-read optimization. If metadata genuinely
+      // lives beyond a huge truncated IDAT, no relevant chunk will have been
+      // found and the caller's "no metadata" fallback still triggers a re-read.
+      const isMetadataChunk =
+        type === PNG_CHUNK_TYPE_tEXt ||
+        type === PNG_CHUNK_TYPE_iTXt ||
+        type === PNG_CHUNK_TYPE_eXIf;
+      if (truncationInfo && isMetadataChunk) truncationInfo.truncated = true;
       break;
     }
     
@@ -1384,6 +1414,12 @@ async function processSingleFileOptimized(
     let sidecarJson: EasyDiffusionJson | null = null;
     let bufferForDimensions: ArrayBuffer | undefined;
     let fileSizeValue: number | undefined = fileEntry.size;
+    // Set to true if parsePNGMetadata had to stop scanning chunks early because a
+    // chunk overran the buffer we gave it. Threaded through to the returned
+    // IndexedImage (`_metadataTruncated`) so the Phase B enrichment loop can tell
+    // "genuinely no metadata" apart from "metadata chunk was cut off mid-file" and
+    // decide whether a full-file re-read is needed.
+    const pngTruncationInfo = { truncated: false };
     const inferredType = fileEntry.type ?? inferMimeTypeFromName(fileEntry.handle.name);
     const isVideo = isVideoFileName(fileEntry.handle.name) || inferredType.startsWith('video/');
     const isAudio = isAudioFileName(fileEntry.handle.name) || inferredType.startsWith('audio/');
@@ -1400,7 +1436,7 @@ async function processSingleFileOptimized(
       const view = new DataView(fileData);
       const detectedType = detectImageType(view);
       if (detectedType === 'png') {
-        rawMetadata = await parsePNGMetadata(fileData);
+        rawMetadata = await parsePNGMetadata(fileData, pngTruncationInfo);
       } else if (detectedType === 'jpeg') {
         rawMetadata = await parseJPEGMetadata(fileData);
       } else if (detectedType === 'webp') {
@@ -1430,7 +1466,7 @@ async function processSingleFileOptimized(
       const view = new DataView(fileData);
       const detectedType = detectImageType(view);
       if (detectedType === 'png') {
-        rawMetadata = await parsePNGMetadata(fileData);
+        rawMetadata = await parsePNGMetadata(fileData, pngTruncationInfo);
       } else if (detectedType === 'jpeg') {
         rawMetadata = await parseJPEGMetadata(fileData);
       } else if (detectedType === 'webp') {
@@ -1765,6 +1801,7 @@ if (normalizedMetadata && isVideo) {
       workflowNodes,
       fileSize: normalizedFileSize,
       fileType: normalizedFileType,
+      _metadataTruncated: pngTruncationInfo.truncated,
     } as IndexedImage;
   } catch (error) {
     console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
@@ -2939,13 +2976,24 @@ export async function processFiles(
       if (!fileSize || fileSize <= buffer.byteLength) {
         return false;
       }
+      const fileType = entry.source.type ?? inferMimeTypeFromName(entry.source.handle.name);
+      if (fileType !== 'image/png') {
+        return false;
+      }
+      // Explicit signal: the head-read buffer cut a chunk off mid-file (e.g. a large
+      // ComfyUI `workflow`/`prompt` chunk). Whatever `enriched` we got from the partial
+      // buffer may look non-empty (another, smaller chunk may have parsed fine) but is
+      // still incomplete/wrong, so we must always re-read the full file in that case —
+      // regardless of whether metadata happens to be present.
+      if (enriched?._metadataTruncated) {
+        return true;
+      }
       const hasMetadata = Boolean(enriched?.metadataString) ||
         (enriched?.metadata && Object.keys(enriched.metadata).length > 0);
       if (hasMetadata) {
         return false;
       }
-      const fileType = entry.source.type ?? inferMimeTypeFromName(entry.source.handle.name);
-      return fileType === 'image/png';
+      return true;
     };
 
     const shouldCheckTailForMetaHub = (
@@ -3066,6 +3114,13 @@ export async function processFiles(
             : undefined;
           const enriched = await processSingleFileOptimized(entry.source, directoryId, buffer, profile);
           if (shouldFallbackToFullRead(entry, buffer, enriched)) {
+            // Keep the partial head-read result as a floor. The full-read fallback
+            // overwrites this on success, but when the full read is skipped —
+            // e.g. the file is over FULL_READ_FALLBACK_MAX_FILE_BYTES — we still
+            // apply whatever metadata the head parse recovered (such as a small
+            // `prompt`/`parameters` chunk before a truncated `workflow` chunk)
+            // instead of dropping the image to catalog-only.
+            resultsById.set(entry.image.id, { enriched, profile });
             fallbackEntries.push(entry);
             return null;
           }
@@ -3232,6 +3287,15 @@ export async function processFiles(
           if (missingEntries.has(entry.image.id)) {
             if (!blockedFromGenericFallback.has(entry.image.id)) {
               await iterator(entry);
+            } else {
+              // Blocked from the full-read fallback (server reported the file/batch
+              // too large). We can't re-read, but a partial head-read floor may have
+              // been recorded before the fallback was attempted — apply it instead of
+              // dropping the image to catalog-only.
+              const result = resultsById.get(entry.image.id);
+              if (result) {
+                await applyMergedEntry(entry, result.enriched, result.profile, queue.length);
+              }
             }
             continue;
           }
