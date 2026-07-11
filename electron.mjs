@@ -4355,6 +4355,85 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // Create a new subfolder under an already-indexed root/subfolder. Used by the
+  // "Create New Folder" action in the Move/Copy To panel. Validation mirrors
+  // utils/folderName.ts; kept inline here because the main process cannot import
+  // the renderer TS helper.
+  ipcMain.handle('create-subfolder', async (event, { parentPath, folderName } = {}) => {
+    try {
+      if (typeof parentPath !== 'string' || typeof folderName !== 'string') {
+        return { success: false, error: 'Invalid arguments.' };
+      }
+
+      if (!isPathAllowed(parentPath)) {
+        console.error('SECURITY VIOLATION: Attempted to create a folder outside of allowed directories.');
+        return { success: false, error: 'Access denied: Cannot create folders outside of the allowed directories.' };
+      }
+
+      const name = folderName.trim();
+      const RESERVED = new Set([
+        'con', 'prn', 'aux', 'nul',
+        'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
+        'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9',
+      ]);
+      const illegal = new RegExp('[<>:"/\\\\|?*\\x00-\\x1f]');
+      if (
+        !name ||
+        name === '.' ||
+        name === '..' ||
+        illegal.test(name) ||
+        /[. ]$/.test(name) ||
+        RESERVED.has(name.toLowerCase()) ||
+        name.length > 255
+      ) {
+        return { success: false, error: 'Invalid folder name.' };
+      }
+
+      const normalizedParent = path.normalize(parentPath);
+
+      // Verify the parent exists and is a directory.
+      try {
+        const stats = await fs.stat(normalizedParent);
+        if (!stats.isDirectory()) {
+          return { success: false, error: 'Parent path is not a directory.' };
+        }
+      } catch {
+        return { success: false, error: 'Parent folder does not exist.' };
+      }
+
+      const targetPath = path.join(normalizedParent, name);
+
+      // Defense in depth: the resolved target must stay directly inside the parent.
+      const relative = path.relative(normalizedParent, targetPath);
+      if (relative !== name || relative.startsWith('..') || path.isAbsolute(relative)) {
+        return { success: false, error: 'Invalid folder name.' };
+      }
+
+      // Refuse to reuse an existing folder so the user gets clear feedback.
+      try {
+        await fs.access(targetPath);
+        return { success: false, error: 'A folder with that name already exists.' };
+      } catch {
+        // Does not exist — good, proceed.
+      }
+
+      await fs.mkdir(targetPath);
+
+      let realPath = targetPath;
+      try {
+        realPath = await fs.realpath(targetPath);
+      } catch {
+        realPath = targetPath;
+      }
+
+      console.log('📁 Created subfolder:', targetPath);
+      return { success: true, folder: { name, path: targetPath, realPath } };
+    } catch (error) {
+      console.error('❌ Error creating subfolder:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Handle manual update check
   ipcMain.handle('check-for-updates', async () => {
     if (!autoUpdater) {

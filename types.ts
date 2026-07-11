@@ -389,6 +389,7 @@ export interface ElectronAPI {
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   openCacheLocation: (cachePath: string) => Promise<{ success: boolean; error?: string }>;
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string; realPath?: string }[]; error?: string }>;
+  createSubfolder: (parentPath: string, folderName: string) => Promise<{ success: boolean; folder?: { name: string; path: string; realPath?: string }; error?: string }>;
   listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
     success: boolean;
     files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number; contentModifiedMs?: number }[];

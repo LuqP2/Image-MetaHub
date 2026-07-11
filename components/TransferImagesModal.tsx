@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowRightLeft, Copy, Folder, MoveRight, X } from 'lucide-react';
+import { ArrowRightLeft, Copy, Folder, FolderPlus, MoveRight, X } from 'lucide-react';
 import type { Directory, IndexedImage, IndexedImageTransferMode, IndexedImageTransferProgress } from '../types';
+import { validateFolderName } from '../utils/folderName';
 
 export type TransferDestination = Directory & {
   rootDirectoryPath: string;
@@ -59,6 +60,10 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   const [subfolderOptions, setSubfolderOptions] = useState<DestinationOption[]>([]);
   const [isLoadingSubfolders, setIsLoadingSubfolders] = useState(false);
   const [subfolderLoadError, setSubfolderLoadError] = useState<string | null>(null);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [createFolderError, setCreateFolderError] = useState<string | null>(null);
+  const [isSubmittingNewFolder, setIsSubmittingNewFolder] = useState(false);
 
   const imageCount = images.length;
   const firstImage = images[0];
@@ -102,6 +107,10 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
       setSubfolderOptions([]);
       setIsLoadingSubfolders(false);
       setSubfolderLoadError(null);
+      setIsCreatingFolder(false);
+      setNewFolderName('');
+      setCreateFolderError(null);
+      setIsSubmittingNewFolder(false);
       return;
     }
 
@@ -193,6 +202,57 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
           : selectedOption.rootDirectory.name,
       }
     : null;
+  const canCreateFolder = Boolean(selectedOption) && typeof window !== 'undefined' && Boolean(window.electronAPI?.createSubfolder);
+
+  const handleCreateFolder = async () => {
+    const parentOption = selectedOption;
+    if (!parentOption) {
+      return;
+    }
+
+    const validation = validateFolderName(newFolderName);
+    if (!validation.ok || !validation.value) {
+      setCreateFolderError(validation.error ?? 'Invalid folder name.');
+      return;
+    }
+
+    const api = typeof window !== 'undefined' ? window.electronAPI : undefined;
+    if (!api?.createSubfolder) {
+      setCreateFolderError('Creating folders is not supported in this environment.');
+      return;
+    }
+
+    setIsSubmittingNewFolder(true);
+    setCreateFolderError(null);
+    try {
+      const result = await api.createSubfolder(parentOption.path, validation.value);
+      if (!result.success || !result.folder) {
+        setCreateFolderError(result.error ?? 'Could not create the folder.');
+        return;
+      }
+
+      const relativePath = getRelativePath(parentOption.rootDirectory.path, result.folder.path);
+      const newOption: DestinationOption = {
+        id: `${parentOption.rootDirectory.id}::${relativePath}`,
+        rootDirectory: parentOption.rootDirectory,
+        name: result.folder.name,
+        path: result.folder.path,
+        realPath: result.folder.realPath,
+        relativePath,
+        depth: parentOption.depth + 1,
+      };
+
+      setSubfolderOptions((prev) => (
+        prev.some((option) => option.id === newOption.id) ? prev : [...prev, newOption]
+      ));
+      setSelectedDirectoryId(newOption.id);
+      setNewFolderName('');
+      setIsCreatingFolder(false);
+    } finally {
+      setIsSubmittingNewFolder(false);
+    }
+  };
+
   const actionIcon = mode === 'move' ? <MoveRight className="w-5 h-5 text-amber-300" /> : <Copy className="w-5 h-5 text-blue-300" />;
 
   const progressPercent = progress && progress.total > 0
@@ -254,7 +314,63 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm text-gray-300">Destination folder</label>
+            <div className="flex items-center justify-between">
+              <label className="text-sm text-gray-300">Destination folder</label>
+              {canCreateFolder && !isCreatingFolder && (
+                <button
+                  type="button"
+                  onClick={() => { setIsCreatingFolder(true); setCreateFolderError(null); }}
+                  disabled={isSubmitting}
+                  className="flex items-center gap-1.5 text-xs text-blue-300 hover:text-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <FolderPlus className="w-4 h-4" />
+                  New folder
+                </button>
+              )}
+            </div>
+
+            {isCreatingFolder && (
+              <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-3 space-y-2">
+                <p className="text-xs text-gray-400 truncate">
+                  New folder inside: <span className="text-gray-300">{selectedOption ? (selectedOption.relativePath ? `${selectedOption.rootDirectory.name}/${selectedOption.relativePath}` : selectedOption.rootDirectory.name) : ''}</span>
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newFolderName}
+                    onChange={(e) => { setNewFolderName(e.target.value); if (createFolderError) setCreateFolderError(null); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); void handleCreateFolder(); }
+                      if (e.key === 'Escape') { e.preventDefault(); setIsCreatingFolder(false); setNewFolderName(''); setCreateFolderError(null); }
+                    }}
+                    placeholder="Folder name"
+                    disabled={isSubmittingNewFolder}
+                    className="flex-1 rounded-md border border-gray-600 bg-gray-900 px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none disabled:opacity-60"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleCreateFolder()}
+                    disabled={isSubmittingNewFolder || newFolderName.trim().length === 0}
+                    className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isSubmittingNewFolder ? 'Creating...' : 'Create'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); setCreateFolderError(null); }}
+                    disabled={isSubmittingNewFolder}
+                    className="px-3 py-1.5 rounded-md border border-gray-600 bg-gray-800 text-gray-200 text-sm hover:bg-gray-700 disabled:opacity-60 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {createFolderError && (
+                  <p className="text-xs text-red-300">{createFolderError}</p>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {destinationOptions.map((directory) => (
                 <button

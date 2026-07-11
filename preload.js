@@ -191,6 +191,7 @@ const electronAPI = {
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
   openCacheLocation: (cachePath) => ipcRenderer.invoke('open-cache-location', cachePath),
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
+  createSubfolder: (parentPath, folderName) => ipcRenderer.invoke('create-subfolder', { parentPath, folderName }),
   listDirectoryFiles: (args) => ipcRenderer.invoke('list-directory-files', args),
   resolveMediaUrl: (filePath) => ipcRenderer.invoke('resolve-media-url', filePath),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
