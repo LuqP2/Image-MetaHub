@@ -244,11 +244,19 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
         return;
       }
 
-      const relativePath = getRelativePath(parentOption.rootDirectory.path, result.folder.path);
+      // Derive the relative path textually from the selected parent rather than
+      // from the backend's returned path. The IPC resolves the parent's realpath
+      // before creating, so result.folder.path may be a different (symlink target
+      // or case-normalized) string that is not a textual child of the root — which
+      // would make getRelativePath return '' and mis-record the move under the root.
+      const createdName = result.folder.name;
+      const relativePath = parentOption.relativePath
+        ? `${parentOption.relativePath}/${createdName}`
+        : createdName;
       const newOption: DestinationOption = {
         id: `${parentOption.rootDirectory.id}::${relativePath}`,
         rootDirectory: parentOption.rootDirectory,
-        name: result.folder.name,
+        name: createdName,
         path: result.folder.path,
         realPath: result.folder.realPath,
         relativePath,

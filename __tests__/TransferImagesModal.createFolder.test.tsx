@@ -99,6 +99,27 @@ describe('TransferImagesModal — Create New Folder', () => {
     expect(screen.getByText('Keepers')).toBeTruthy();
   });
 
+  it('derives the relative path from the selected parent even if the backend returns a resolved (symlink) path', async () => {
+    // Simulate the IPC resolving the parent's realpath: the returned folder.path
+    // is NOT a textual child of the root directory. The new option must still get
+    // a correct, non-empty relative path derived from the selected parent.
+    createSubfolder.mockResolvedValueOnce({
+      success: true,
+      folder: { name: 'Keepers', path: '/mnt/real-target/Keepers', realPath: '/mnt/real-target/Keepers' },
+    });
+
+    render(<TransferImagesModal {...baseProps} />);
+    await screen.findByText('Renders');
+
+    fireEvent.click(screen.getByText('New folder'));
+    fireEvent.change(screen.getByPlaceholderText('Folder name'), { target: { value: 'Keepers' } });
+    fireEvent.click(screen.getByText('Create'));
+
+    // The row renders its relativePath as the label; it must be 'Keepers', not empty.
+    const label = await screen.findByText('Keepers');
+    expect(label).toBeTruthy();
+  });
+
   it('surfaces a backend error (e.g. duplicate folder)', async () => {
     createSubfolder.mockResolvedValueOnce({ success: false, error: 'A folder with that name already exists.' });
     render(<TransferImagesModal {...baseProps} />);
