@@ -487,9 +487,20 @@ export async function parsePNGMetadata(
     const length = view.getUint32(offset, false);
     const type = view.getUint32(offset + 4, false);
     if (offset + 12 + length > view.byteLength) {
-      // This chunk's declared length extends past the end of our buffer. Same
-      // reasoning as above: this chunk (and anything after it) was never inspected.
-      if (truncationInfo) truncationInfo.truncated = true;
+      // This chunk's declared length extends past the end of our buffer, so it
+      // was never inspected. Only treat this as *metadata* truncation when the
+      // chunk is one that can carry the metadata we extract (tEXt/iTXt/eXIf).
+      // A truncated IDAT (image pixel data) or other ancillary chunk does not
+      // mean we lost metadata, and flagging it would force a needless full-file
+      // re-read on nearly every PNG (IDAT is large and usually follows the text
+      // chunks), defeating the head-read optimization. If metadata genuinely
+      // lives beyond a huge truncated IDAT, no relevant chunk will have been
+      // found and the caller's "no metadata" fallback still triggers a re-read.
+      const isMetadataChunk =
+        type === PNG_CHUNK_TYPE_tEXt ||
+        type === PNG_CHUNK_TYPE_iTXt ||
+        type === PNG_CHUNK_TYPE_eXIf;
+      if (truncationInfo && isMetadataChunk) truncationInfo.truncated = true;
       break;
     }
     

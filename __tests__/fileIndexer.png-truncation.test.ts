@@ -54,6 +54,20 @@ function buildLargeComfyWorkflowJson(approxBytes: number): string {
   });
 }
 
+/** A large IDAT (image pixel data) chunk — not metadata, just bulk bytes. */
+function buildIdatChunk(approxBytes: number): number[] {
+  const size = Math.max(0, approxBytes);
+  const lengthBytes = [
+    (size >>> 24) & 0xff,
+    (size >>> 16) & 0xff,
+    (size >>> 8) & 0xff,
+    size & 0xff,
+  ];
+  const typeBytes = Array.from(Buffer.from('IDAT', 'latin1'));
+  const data = new Array(size).fill(0x7a);
+  return [...lengthBytes, ...typeBytes, ...data, 0, 0, 0, 0];
+}
+
 function buildPng(chunks: number[][]): ArrayBuffer {
   const bytes = [...PNG_SIGNATURE, ...buildIhdrChunk(), ...chunks.flat(), ...buildIendChunk()];
   return new Uint8Array(bytes).buffer;
@@ -112,5 +126,27 @@ describe('parsePNGMetadata head-read truncation handling (issue #448)', () => {
 
     expect(truncationInfo.truncated).toBe(false);
     expect(result == null).toBe(true);
+  });
+
+  it('does NOT flag truncated when only a trailing IDAT (image data) is cut off', async () => {
+    // Metadata chunk parses fully; a large IDAT chunk follows and overruns the
+    // head-read buffer. Since IDAT carries no metadata, truncation must stay false
+    // so the head-read optimization is not defeated (regression guard for the
+    // Codex review on #464).
+    const promptChunk = buildTextChunk('prompt', buildComfyPromptJson());
+    const idatChunk = buildIdatChunk(80 * 1024);
+    const fullBuffer = buildPng([promptChunk, idatChunk]);
+
+    const HEAD_READ_MAX_BYTES = 64 * 1024;
+    const truncatedBuffer = fullBuffer.slice(0, Math.min(HEAD_READ_MAX_BYTES, fullBuffer.byteLength));
+    expect(truncatedBuffer.byteLength).toBeLessThan(fullBuffer.byteLength);
+
+    const truncationInfo = { truncated: false };
+    const result = await parsePNGMetadata(truncatedBuffer, truncationInfo);
+
+    // The prompt metadata was found; the cut-off IDAT must not be treated as
+    // metadata truncation.
+    expect(truncationInfo.truncated).toBe(false);
+    expect(result && 'prompt' in result).toBe(true);
   });
 });
