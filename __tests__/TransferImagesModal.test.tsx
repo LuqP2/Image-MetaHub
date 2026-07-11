@@ -43,6 +43,8 @@ describe('TransferImagesModal', () => {
     await waitFor(() => {
       expect(screen.getByText('Nested')).toBeTruthy();
     });
-    expect(screen.getByText('/Output/Nested')).toBeTruthy();
+    // Each folder row exposes its full path as a title (tooltip) rather than as
+    // inline text, so assert the nested folder is rendered with the right path.
+    expect(screen.getByTitle('/Output/Nested')).toBeTruthy();
   });
 });
