@@ -2423,6 +2423,41 @@ const isPathAllowed = (filePath) => {
   return Array.from(allowedDirectoryPaths).some((allowedPath) => isSameOrChildPath(normalizedFilePath, allowedPath));
 };
 
+// Symlink-aware containment check for write operations (e.g. creating a folder).
+// isPathAllowed compares textual paths, which is correct for reads but has two
+// blind spots when writing: a symlinked subfolder inside the library can point
+// OUTSIDE it, and an indexed root can itself be a symlink/alias (common on macOS,
+// or when the library lives on an external disk) whose real target is not in the
+// textual allowlist. Resolving both sides and comparing the *real* paths handles
+// both: it permits a legitimately symlinked root while still rejecting a symlink
+// that escapes the library's real tree. Falls back to the textual check if a
+// realpath cannot be resolved.
+const isResolvedPathWithinAllowed = async (candidatePath) => {
+  if (allowedDirectoryPaths.size === 0 || !candidatePath) return false;
+
+  let realCandidate;
+  try {
+    realCandidate = await fs.realpath(candidatePath);
+  } catch {
+    return isPathAllowed(candidatePath);
+  }
+  const normalizedCandidate = normalizeAllowedPath(realCandidate);
+
+  for (const allowedPath of allowedDirectoryPaths) {
+    let realAllowed = allowedPath;
+    try {
+      realAllowed = await fs.realpath(allowedPath);
+    } catch {
+      // Allowed root no longer resolvable; skip it.
+      continue;
+    }
+    if (isSameOrChildPath(normalizedCandidate, normalizeAllowedPath(realAllowed))) {
+      return true;
+    }
+  }
+  return false;
+};
+
 // Helper function for recursive file search
 async function mapWithConcurrency(items, concurrency, mapper) {
   const results = [];
@@ -4403,24 +4438,22 @@ function setupFileOperationHandlers() {
       }
 
       // The parent may be a symlink/alias (list-subfolders surfaces those as
-      // selectable destinations). isPathAllowed only checks the textual path, so
-      // resolve the real parent and re-validate before writing — otherwise a
-      // symlink could redirect the new folder outside the allowed library.
-      let realParent = normalizedParent;
-      try {
-        realParent = await fs.realpath(normalizedParent);
-      } catch {
-        realParent = normalizedParent;
-      }
-      if (!isPathAllowed(realParent)) {
+      // selectable destinations, and an indexed root can itself be a symlink).
+      // Validate by comparing the resolved parent against the resolved allowed
+      // roots: this rejects a symlink that escapes the library's real tree while
+      // still permitting a legitimately symlinked root whose target is not in the
+      // textual allowlist.
+      if (!(await isResolvedPathWithinAllowed(normalizedParent))) {
         console.error('SECURITY VIOLATION: Resolved parent folder is outside allowed directories.');
         return { success: false, error: 'Access denied: Cannot create folders outside of the allowed directories.' };
       }
 
-      const targetPath = path.join(realParent, name);
+      // Create under the parent as the user selected it (symlink-preserving, like
+      // list-subfolders); the OS follows the link to the real target.
+      const targetPath = path.join(normalizedParent, name);
 
-      // Defense in depth: the resolved target must stay directly inside the parent.
-      const relative = path.relative(realParent, targetPath);
+      // Defense in depth: the target must stay directly inside the parent.
+      const relative = path.relative(normalizedParent, targetPath);
       if (relative !== name || relative.startsWith('..') || path.isAbsolute(relative)) {
         return { success: false, error: 'Invalid folder name.' };
       }
