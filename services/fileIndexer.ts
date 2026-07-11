@@ -3287,6 +3287,15 @@ export async function processFiles(
           if (missingEntries.has(entry.image.id)) {
             if (!blockedFromGenericFallback.has(entry.image.id)) {
               await iterator(entry);
+            } else {
+              // Blocked from the full-read fallback (server reported the file/batch
+              // too large). We can't re-read, but a partial head-read floor may have
+              // been recorded before the fallback was attempted — apply it instead of
+              // dropping the image to catalog-only.
+              const result = resultsById.get(entry.image.id);
+              if (result) {
+                await applyMergedEntry(entry, result.enriched, result.profile, queue.length);
+              }
             }
             continue;
           }
