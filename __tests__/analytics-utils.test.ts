@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAnalyticsExplorerData, calculateTopItems, truncateName } from '../utils/analyticsUtils';
+import { buildAnalyticsExplorerData, calculateTopItems, getUniquePeriodCount, truncateName } from '../utils/analyticsUtils';
 import { type IndexedImage } from '../types';
 
 const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
@@ -99,5 +99,29 @@ describe('analyticsUtils', () => {
     // Ensure 2 and 3 star ratings are NOT in distribution (count 0)
     expect(dist.find(d => d.key === '2')).toBeUndefined();
     expect(dist.find(d => d.key === '3')).toBeUndefined();
+  });
+
+  describe('getUniquePeriodCount', () => {
+    it('correctly counts unique models in a period', () => {
+      const now = Date.now();
+      const images: IndexedImage[] = [
+        createImage({ id: '1', models: ['Model A', 'Model B'], lastModified: now }),
+        createImage({ id: '2', models: ['Model A'], lastModified: now }),
+        createImage({ id: '3', models: ['Model C'], lastModified: now - 60 * 24 * 60 * 60 * 1000 }), // Outside 30 days
+      ];
+
+      expect(getUniquePeriodCount(images, 'models', 30)).toBe(2); // Model A, Model B
+    });
+
+    it('correctly counts unique loras in a period', () => {
+      const now = Date.now();
+      const images: IndexedImage[] = [
+        createImage({ id: '1', loras: ['Lora A', 'Lora B'], lastModified: now }),
+        createImage({ id: '2', loras: [{ name: 'Lora A' } as any], lastModified: now }),
+        createImage({ id: '3', loras: ['Lora C'], lastModified: now }),
+      ];
+
+      expect(getUniquePeriodCount(images, 'loras', 30)).toBe(3); // Lora A, Lora B, Lora C
+    });
   });
 });

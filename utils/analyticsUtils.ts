@@ -167,15 +167,24 @@ export function getUniquePeriodCount(
   const periodStart = now - daysBack * 24 * 60 * 60 * 1000;
 
   const uniqueItems = new Set<string>();
-  images
-    .filter((img) => img.lastModified >= periodStart)
-    .forEach((img) => {
-      const items = Array.isArray(img[field]) ? img[field] : [img[field]];
-      items.forEach((item) => {
-        const normalizedItem = normalizeItemName(item);
+
+  // Optimization: Single-pass O(N) loop to avoid intermediate array allocations and GC pressure.
+  // Impact: Improves performance for large libraries by eliminating .filter() and .forEach() overhead.
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i];
+    if (img.lastModified >= periodStart) {
+      const items = img[field];
+      if (Array.isArray(items)) {
+        for (let j = 0; j < items.length; j++) {
+          const normalizedItem = normalizeItemName(items[j]);
+          if (normalizedItem) uniqueItems.add(normalizedItem);
+        }
+      } else {
+        const normalizedItem = normalizeItemName(items);
         if (normalizedItem) uniqueItems.add(normalizedItem);
-      });
-    });
+      }
+    }
+  }
 
   return uniqueItems.size;
 }
