@@ -71,6 +71,34 @@ describe('TransferImagesModal — Create New Folder', () => {
     expect(createSubfolder).not.toHaveBeenCalled();
   });
 
+  it('keeps a created folder when a slow subfolder scan resolves afterwards', async () => {
+    let resolveList: (value: unknown) => void = () => {};
+    const listPromise = new Promise((resolve) => { resolveList = resolve; });
+    (window as any).electronAPI = {
+      listSubfolders: vi.fn().mockReturnValue(listPromise),
+      createSubfolder: vi.fn().mockResolvedValue({
+        success: true,
+        folder: { name: 'Keepers', path: '/root/Renders/Keepers', realPath: '/root/Renders/Keepers' },
+      }),
+    };
+
+    render(<TransferImagesModal {...baseProps} />);
+    // Root option is available immediately, before the (still pending) scan.
+    await screen.findByText('Renders');
+
+    fireEvent.click(screen.getByText('New folder'));
+    fireEvent.change(screen.getByPlaceholderText('Folder name'), { target: { value: 'Keepers' } });
+    fireEvent.click(screen.getByText('Create'));
+    await screen.findByText('Keepers');
+
+    // The slow scan now finishes with an older set that does not include the new folder.
+    resolveList({ success: true, subfolders: [{ name: 'Old', path: '/root/Renders/Old', realPath: '/root/Renders/Old' }] });
+    await screen.findByText('Old');
+
+    // The just-created folder must survive the scan replacing subfolderOptions.
+    expect(screen.getByText('Keepers')).toBeTruthy();
+  });
+
   it('surfaces a backend error (e.g. duplicate folder)', async () => {
     createSubfolder.mockResolvedValueOnce({ success: false, error: 'A folder with that name already exists.' });
     render(<TransferImagesModal {...baseProps} />);

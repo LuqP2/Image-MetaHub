@@ -4402,10 +4402,25 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'Parent folder does not exist.' };
       }
 
-      const targetPath = path.join(normalizedParent, name);
+      // The parent may be a symlink/alias (list-subfolders surfaces those as
+      // selectable destinations). isPathAllowed only checks the textual path, so
+      // resolve the real parent and re-validate before writing — otherwise a
+      // symlink could redirect the new folder outside the allowed library.
+      let realParent = normalizedParent;
+      try {
+        realParent = await fs.realpath(normalizedParent);
+      } catch {
+        realParent = normalizedParent;
+      }
+      if (!isPathAllowed(realParent)) {
+        console.error('SECURITY VIOLATION: Resolved parent folder is outside allowed directories.');
+        return { success: false, error: 'Access denied: Cannot create folders outside of the allowed directories.' };
+      }
+
+      const targetPath = path.join(realParent, name);
 
       // Defense in depth: the resolved target must stay directly inside the parent.
-      const relative = path.relative(normalizedParent, targetPath);
+      const relative = path.relative(realParent, targetPath);
       if (relative !== name || relative.startsWith('..') || path.isAbsolute(relative)) {
         return { success: false, error: 'Invalid folder name.' };
       }

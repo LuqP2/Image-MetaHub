@@ -58,6 +58,10 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
 }) => {
   const [selectedDirectoryId, setSelectedDirectoryId] = useState<string>('');
   const [subfolderOptions, setSubfolderOptions] = useState<DestinationOption[]>([]);
+  // Folders created via "New folder" during this session. Kept separate from the
+  // scanned subfolderOptions so an in-flight loadSubfolders() cannot overwrite
+  // and lose a just-created destination.
+  const [createdFolderOptions, setCreatedFolderOptions] = useState<DestinationOption[]>([]);
   const [isLoadingSubfolders, setIsLoadingSubfolders] = useState(false);
   const [subfolderLoadError, setSubfolderLoadError] = useState<string | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -84,12 +88,20 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
       depth: 0,
     }));
 
-    return [...rootOptions, ...subfolderOptions].sort((a, b) => {
+    // Dedupe by id so a created folder that a later scan also returns appears once.
+    const byId = new Map<string, DestinationOption>();
+    for (const option of [...rootOptions, ...subfolderOptions, ...createdFolderOptions]) {
+      if (!byId.has(option.id)) {
+        byId.set(option.id, option);
+      }
+    }
+
+    return [...byId.values()].sort((a, b) => {
       const rootCompare = a.rootDirectory.name.localeCompare(b.rootDirectory.name);
       if (rootCompare !== 0) return rootCompare;
       return a.relativePath.localeCompare(b.relativePath);
     });
-  }, [sortedDirectories, subfolderOptions]);
+  }, [sortedDirectories, subfolderOptions, createdFolderOptions]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -105,6 +117,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   useEffect(() => {
     if (!isOpen) {
       setSubfolderOptions([]);
+      setCreatedFolderOptions([]);
       setIsLoadingSubfolders(false);
       setSubfolderLoadError(null);
       setIsCreatingFolder(false);
@@ -242,7 +255,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
         depth: parentOption.depth + 1,
       };
 
-      setSubfolderOptions((prev) => (
+      setCreatedFolderOptions((prev) => (
         prev.some((option) => option.id === newOption.id) ? prev : [...prev, newOption]
       ));
       setSelectedDirectoryId(newOption.id);
