@@ -9,15 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
-- **Filter Recovery**: Added a clearer empty state when filters return no images, with convenient Clear All actions beside active filters and in the results area.
-- **Accessibility and UI Feedback**: Improved visible keyboard focus across toolbar, search, rating, pagination, view, and queue controls, with smoother active-filter and rating interactions.
-- **Large Library Performance**: Reduced temporary allocations and repeated keyword processing in analytics, prompt similarity, and Smart Library clustering.
-- **ComfyUI Workflow Tools**: Simplified the Image Modal workflow experience around the embedded original workflow, combining parameters with the visual graph and adding a dedicated node list with editable parameters.
+- **Create New Folder in Move/Copy**: Added a "Create New Folder" option to the Move/Copy To panel, with folder-tree navigation for picking or creating the destination.
+- **ComfyUI Workspace Drag & Drop**: Added drag-and-drop for bringing images into the ComfyUI workspace.
+- **ComfyUI Workflow Tools**: Simplified the Image Modal workflow experience around the embedded original workflow, combining parameters with the visual graph, adding a dedicated node list with editable parameters, and a metadata-only workflow option.
 - **ComfyUI Workflow Preview**: Enlarged the visual workflow canvas with an expandable view, opaque node cards, collision-aware positioning, draggable node arrangement, and a clear Restore Layout action.
+- **Filter Recovery**: Added a clearer empty state when filters return no images, with convenient Clear All actions beside active filters and in the results area.
+- **Accessibility and UI Feedback**: Improved visible keyboard focus and tactile feedback across toolbar, search, modal, facet filter, rating, pagination, view, and queue controls, added copy-confirmation feedback in the Image Modal and Image Card, a keyboard shortcut hint in the search bar, and keyboard access for the ComfyUI metadata toggle.
+- **Large Library Performance**: Reduced temporary allocations and repeated processing across analytics, prompt similarity, Smart Library clustering, the search/filter worker, image grouping and stacking, path filtering, and the image store.
 
 ### Fixed
 
 - **Collections Grouping**: Fixed Group By inside open Collections so date, name, and generation-session grouping work in both grid and table views, including Jump To navigation.
+- **ComfyUI Metadata Truncation**: Fixed metadata loss for large embedded ComfyUI workflows in PNG files by re-reading the full file when a head-read truncates metadata chunks.
+- **Checkpoint Facets**: Fixed checkpoint facets so they stay scoped to the current library.
+- **Folder Filters**: Fixed folder filters so they derive correctly from the selected directory prefix.
+- **macOS Audio Playback**: Fixed macOS audio playback mitigation for embedded media.
 
 ## [0.17.3] - 2026-06-19
 
