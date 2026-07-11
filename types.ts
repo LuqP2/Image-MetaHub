@@ -967,6 +967,13 @@ export interface IndexedImage {
   clusterPosition?: number;      // Position within cluster (0 = cover image)
   autoTags?: string[];           // Auto-generated tags from TF-IDF
   autoTagsGeneratedAt?: number;  // Timestamp of tag generation
+
+  // Internal indexing-pipeline signal only. Set when the embedded metadata was parsed
+  // from a partial ("head read") buffer and the PNG chunk walk had to stop before
+  // reaching IEND because a chunk extended past the bytes we had in memory. Never
+  // persisted to the on-disk cache (see mapIndexedImageToCache) — used only to decide
+  // whether Phase B enrichment should fall back to reading the whole file.
+  _metadataTruncated?: boolean;
 }
 
 /**
