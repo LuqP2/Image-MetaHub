@@ -3114,6 +3114,13 @@ export async function processFiles(
             : undefined;
           const enriched = await processSingleFileOptimized(entry.source, directoryId, buffer, profile);
           if (shouldFallbackToFullRead(entry, buffer, enriched)) {
+            // Keep the partial head-read result as a floor. The full-read fallback
+            // overwrites this on success, but when the full read is skipped —
+            // e.g. the file is over FULL_READ_FALLBACK_MAX_FILE_BYTES — we still
+            // apply whatever metadata the head parse recovered (such as a small
+            // `prompt`/`parameters` chunk before a truncated `workflow` chunk)
+            // instead of dropping the image to catalog-only.
+            resultsById.set(entry.image.id, { enriched, profile });
             fallbackEntries.push(entry);
             return null;
           }
