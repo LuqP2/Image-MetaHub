@@ -52,6 +52,12 @@ import {
   recordPerformanceDuration,
 } from '../utils/performanceDiagnostics';
 import { clearInternalImageDragData, setInternalImageDragData } from '../utils/internalImageDrag';
+import { isMacPlatform } from '../utils/platform';
+
+// macOS ignores Electron's startDrag() unless it is invoked synchronously from the
+// dragstart handler, so native external drag has to be kicked off differently there
+// than on Windows (see handleDragStart / handleDrag).
+const IS_MAC_RENDERER = isMacPlatform();
 
 // Module-level variable to track internal image drag state (survives native file drag)
 let _activeDragImageIds: string[] = [];
@@ -370,6 +376,23 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       _activeExternalDragPayload = { directoryPath: image.directoryId, relativePath };
     } else {
       _activeExternalDragPayload = null;
+    }
+
+    // macOS: Electron's startDrag() only takes effect when called synchronously from
+    // dragstart. The Windows path (handleDrag) defers it until the cursor leaves the
+    // window, but macOS ignores a mid-drag startDrag — which is why dropping a card onto
+    // ComfyUI/Finder stopped working (#466). Hand the drag off to the OS now so the real
+    // file is dragged. This makes the drag OS-level, so the internal move-to-folder DnD is
+    // unavailable on macOS (right-click → Move/Copy still works).
+    if (IS_MAC_RENDERER && _activeExternalDragPayload && window.electronAPI?.startFileDrag) {
+      _nativeDragStarted = true;
+      e.preventDefault();
+      window.electronAPI.startFileDrag(_activeExternalDragPayload);
+      // The drag is now an OS-level native file drag; the in-app dragend won't fire and
+      // internal move-to-folder DnD doesn't apply on macOS. Clear the internal drag
+      // markers so the sidebar/header don't render as in-app drop targets.
+      clearActiveDragImageIds();
+      clearInternalImageDragData();
     }
   };
 
