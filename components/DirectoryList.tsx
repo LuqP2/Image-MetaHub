@@ -42,6 +42,11 @@ interface VisibleDirectoryNode {
   rootDirectory: Directory;
 }
 
+// Case-insensitive, natural ("2" before "10") ordering for folder names, matching how
+// Finder / Windows Explorer sort. Fixes the macOS folder tree listing raw APFS order,
+// where "A" sorted before "a" (#466).
+const folderNameCollator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+
 const normalizePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
 const toForwardSlashes = (path: string) => normalizePath(path);
 const makeNodeKey = (rootId: string, relativePath: string) => `${rootId}::${relativePath === '' ? '.' : relativePath}`;
@@ -315,11 +320,13 @@ export default function DirectoryList({
         const result = await (window as any).electronAPI.listSubfolders(nodePath);
 
         if (result.success) {
-          const subfolders: SubfolderNode[] = (result.subfolders || []).map((subfolder: { name: string; path: string }) => ({
-            name: subfolder.name,
-            path: subfolder.path,
-            relativePath: getRelativePath(rootDirectory.path, subfolder.path)
-          }));
+          const subfolders: SubfolderNode[] = (result.subfolders || [])
+            .map((subfolder: { name: string; path: string }) => ({
+              name: subfolder.name,
+              path: subfolder.path,
+              relativePath: getRelativePath(rootDirectory.path, subfolder.path)
+            }))
+            .sort((a: SubfolderNode, b: SubfolderNode) => folderNameCollator.compare(a.name, b.name));
 
           setSubfolderCache(prev => {
             const next = new Map(prev);
