@@ -12,10 +12,67 @@
  */
 
 import * as extractors from './extractors';
-import type {
-  NodeDefinition,
-  ParserNode,
-} from './types';
+import { NodeDefinition, ParserNode, ComfyNodeDataType, ComfyTraversableParam, ParamMappingRule, InputDefinition, OutputDefinition, PassThroughRule, NodeBehavior, ConditionalRoutingRule, WorkflowFacts } from './types';
+
+function resolveFirstTextInput(
+  node: ParserNode,
+  state: any,
+  graph: any,
+  traverse: any,
+  inputNames: string[]
+): string | null {
+  for (const inputName of inputNames) {
+    const input = node.inputs?.[inputName];
+    if (Array.isArray(input)) {
+      const resolved = traverse(input, state, graph, []);
+      if (resolved !== null && resolved !== undefined && String(resolved).trim()) {
+        return String(resolved);
+      }
+    } else if (typeof input === 'string' && input.trim()) {
+      return input;
+    }
+  }
+
+  return null;
+}
+
+function extractRgthreePowerLoras(node: ParserNode): string[] {
+  const loras: string[] = [];
+  const addLora = (value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return;
+    }
+
+    const entry = value as Record<string, unknown>;
+    if (entry.on === false) {
+      return;
+    }
+
+    const name = typeof entry.lora === 'string'
+      ? entry.lora
+      : typeof entry.lora_name === 'string'
+        ? entry.lora_name
+        : typeof entry.name === 'string'
+          ? entry.name
+          : null;
+
+    if (name && name !== 'None') {
+      loras.push(name);
+    }
+  };
+
+  for (const [key, value] of Object.entries(node.inputs || {})) {
+    if (/^lora_\d+$/i.test(key)) {
+      addLora(value);
+    }
+  }
+
+  for (const value of node.widgets_values || []) {
+    addLora(value);
+  }
+
+  return loras;
+}
 
 function parseJsonSafely(value: unknown): any {
   if (typeof value !== 'string' || !value.trim()) {
@@ -274,6 +331,70 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     },
     widget_order: ['text']
   },
+  'StylePromptEncoder2 //ZImagePowerNodes': {
+    category: 'CONDITIONING',
+    roles: ['SOURCE'],
+    inputs: {
+      clip: { type: 'CLIP' },
+      customization: { type: 'STRING' },
+      text: { type: 'STRING' },
+    },
+    outputs: {
+      CONDITIONING: { type: 'CONDITIONING' },
+      STRING: { type: 'STRING' },
+    },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          const textInput = node.inputs?.text;
+          if (Array.isArray(textInput)) {
+            return traverse(textInput as any, { ...state, targetParam: 'prompt' }, graph, []);
+          }
+          if (typeof textInput === 'string' && textInput.trim()) {
+            return textInput;
+          }
+          return node.widgets_values?.[3] || null;
+        },
+      },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: () => '',
+      },
+    },
+    widget_order: ['style', 'gallery', 'spacer', 'text'],
+  },
+  CLIPTextEncodeSDXL: {
+    category: 'CONDITIONING',
+    roles: ['SOURCE'],
+    inputs: {
+      clip: { type: 'CLIP' },
+      text_g: { type: 'STRING' },
+      text_l: { type: 'STRING' },
+    },
+    outputs: { CONDITIONING: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          return resolveFirstTextInput(node, { ...state, targetParam: 'prompt' }, graph, traverse, ['text_g', 'text_l'])
+            || node.widgets_values?.[6]
+            || node.widgets_values?.[7]
+            || null;
+        }
+      },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          return resolveFirstTextInput(node, { ...state, targetParam: 'negativePrompt' }, graph, traverse, ['text_g', 'text_l'])
+            || node.widgets_values?.[6]
+            || node.widgets_values?.[7]
+            || null;
+        }
+      }
+    },
+    widget_order: ['width', 'height', 'crop_w', 'crop_h', 'target_width', 'target_height', 'text_g', 'text_l']
+  },
   'smZ CLIPTextEncode': {
     category: 'LOADING', roles: ['SOURCE'],
     inputs: { clip: { type: 'CLIP' }, text: { type: 'STRING' } }, outputs: { CONDITIONING: { type: 'CONDITIONING' } },
@@ -343,6 +464,60 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }],
     widget_order: ['lora_name', 'strength_model']
   },
+  'Power Lora Loader (rgthree)': {
+    category: 'LOADING',
+    roles: ['TRANSFORM'],
+    inputs: { model: { type: 'MODEL' }, clip: { type: 'CLIP' } },
+    outputs: { MODEL: { type: 'MODEL' }, CLIP: { type: 'CLIP' } },
+    param_mapping: {
+      lora: {
+        source: 'custom_extractor',
+        extractor: extractRgthreePowerLoras,
+        accumulate: true,
+      },
+      model: { source: 'trace', input: 'model' },
+    },
+    pass_through_rules: [
+      { from_input: 'model', to_output: 'MODEL' },
+      { from_input: 'clip', to_output: 'CLIP' },
+    ],
+    widget_order: ['__unknown__', 'header', 'lora_1', 'lora_2', 'add_lora']
+  },
+  'Lora Loader (LoraManager)': {
+    category: 'LOADING',
+    roles: ['TRANSFORM'],
+    inputs: { model: { type: 'MODEL' }, clip: { type: 'CLIP' }, text: { type: 'STRING' } },
+    outputs: { MODEL: { type: 'MODEL' }, CLIP: { type: 'CLIP' }, trigger_words: { type: 'STRING' }, loaded_loras: { type: 'STRING' } },
+    param_mapping: {
+      lora: {
+        source: 'custom_extractor',
+        extractor: (node: ParserNode) => {
+          const rawLoras = node.inputs?.loras?.__value__ ?? node.widgets_values?.[2];
+          if (Array.isArray(rawLoras)) {
+            return rawLoras
+              .filter((lora: any) => {
+                if (typeof lora === 'string') {
+                  return lora.trim().length > 0;
+                }
+                return lora && lora.active !== false && (lora.name || lora.lora_name);
+              })
+              .map((lora: any) => typeof lora === 'string' ? lora : lora.name || lora.lora_name);
+          }
+
+          const text = typeof node.inputs?.text === 'string' ? node.inputs.text : '';
+          return text ? extractors.extractLorasFromText(text) : [];
+        },
+        accumulate: true,
+      },
+      model: { source: 'trace', input: 'model' },
+      prompt: { source: 'input', key: 'text' },
+    },
+    pass_through_rules: [
+      { from_input: 'model', to_output: 'MODEL' },
+      { from_input: 'clip', to_output: 'CLIP' },
+    ],
+    widget_order: ['__lm_autocomplete_meta_text', 'text', 'loras']
+  },
   'LoRA Stacker': {
     category: 'LOADING', roles: ['TRANSFORM'],
     inputs: {}, outputs: { '*': { type: 'ANY' } },
@@ -370,6 +545,22 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     inputs: { '*': { type: 'ANY' } }, outputs: { '*': { type: 'ANY' } },
     pass_through_rules: [{ from_input: '*', to_output: '*' }],
   },
+  'Any Switch (rgthree)': {
+    category: 'ROUTING', roles: ['PASS_THROUGH'],
+    inputs: { '*': { type: 'ANY' } }, outputs: { '*': { type: 'ANY' } },
+    pass_through_rules: [{ from_input: '*', to_output: '*' }],
+  },
+  'TriggerWord Toggle (LoraManager)': {
+    category: 'ROUTING',
+    roles: ['PASS_THROUGH'],
+    inputs: { trigger_words: { type: 'STRING' } },
+    outputs: { filtered_trigger_words: { type: 'STRING' } },
+    param_mapping: {
+      prompt: { source: 'trace', input: 'trigger_words' },
+    },
+    pass_through_rules: [{ from_input: 'trigger_words', to_output: 'filtered_trigger_words' }],
+    widget_order: ['group_mode', 'default_active', 'allow_strength_adjustment', 'toggle_trigger_words', 'orinalMessage']
+  },
   ImpactSwitch: {
     category: 'ROUTING', roles: ['ROUTING'],
     inputs: { select: { type: 'INT' }, input1: { type: 'ANY' }, input2: { type: 'ANY' } },
@@ -396,7 +587,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
 
   // Common ComfyUI nodes that might appear in workflows
   SaveImage: {
-    category: 'IO', roles: ['SINK'],
+    category: 'IO', roles: ['SINK', 'PASS_THROUGH'],
     inputs: { images: { type: 'IMAGE' } }, 
     outputs: {},
     param_mapping: {},  // No direct params, but traverse inputs
@@ -404,7 +595,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
   },
 
   PreviewImage: {
-    category: 'IO', roles: ['SINK'],
+    category: 'IO', roles: ['SINK', 'PASS_THROUGH'],
     inputs: { images: { type: 'IMAGE' } }, outputs: {},
   },
 
@@ -474,6 +665,14 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     category: 'UTILS', roles: ['SOURCE'],
     inputs: { seed: { type: 'INT' } }, outputs: { INT: { type: 'INT' } },
     param_mapping: { seed: { source: 'input', key: 'seed' }, },
+  },
+  SeedGenerator: {
+    category: 'UTILS',
+    roles: ['SOURCE'],
+    inputs: { seed: { type: 'INT' } },
+    outputs: { seed: { type: 'INT' }, 'seed+1': { type: 'INT' } },
+    param_mapping: { seed: { source: 'input', key: 'seed' } },
+    widget_order: ['seed', 'control_after_generate']
   },
   'Seed (rgthree)': {
     category: 'UTILS',
@@ -747,6 +946,102 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     widget_order: ['mean_pool', 'return_tokens']
   },
 
+  'easy positive': {
+    category: 'UTILS',
+    roles: ['SOURCE'],
+    inputs: { positive: { type: 'STRING' } },
+    outputs: { positive: { type: 'STRING' } },
+    param_mapping: {
+      prompt: { source: 'input', key: 'positive' },
+    },
+    widget_order: ['positive']
+  },
+
+  'easy stylesSelector': {
+    category: 'UTILS',
+    roles: ['PASS_THROUGH'],
+    inputs: { positive: { type: 'STRING' }, negative: { type: 'STRING' } },
+    outputs: { positive: { type: 'STRING' }, negative: { type: 'STRING' } },
+    param_mapping: {
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: { source: 'trace', input: 'negative' },
+    },
+    pass_through_rules: [
+      { from_input: 'positive', to_output: 'positive' },
+      { from_input: 'negative', to_output: 'negative' },
+    ],
+    widget_order: ['styles', 'select_styles']
+  },
+
+  JoinStrings: {
+    category: 'UTILS',
+    roles: ['TRANSFORM'],
+    inputs: { string1: { type: 'STRING' }, string2: { type: 'STRING' }, string3: { type: 'STRING' }, string4: { type: 'STRING' } },
+    outputs: { STRING: { type: 'STRING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverseFromLink) => {
+          const delimiter = typeof node.widgets_values?.[0] === 'string'
+            ? node.widgets_values[0]
+            : (typeof node.inputs?.delimiter === 'string' ? node.inputs.delimiter : ' ');
+          return extractors.concatTextExtractor(
+            {
+              ...node,
+              inputs: {
+                ...node.inputs,
+                __joinstrings_delimiter: delimiter,
+              },
+            },
+            state,
+            graph,
+            traverseFromLink,
+            ['string1', 'string2', 'string3', 'string4'],
+            '__joinstrings_delimiter'
+          );
+        }
+      },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverseFromLink) => {
+          const delimiter = typeof node.widgets_values?.[0] === 'string'
+            ? node.widgets_values[0]
+            : (typeof node.inputs?.delimiter === 'string' ? node.inputs.delimiter : ' ');
+          return extractors.concatTextExtractor(
+            {
+              ...node,
+              inputs: {
+                ...node.inputs,
+                __joinstrings_delimiter: delimiter,
+              },
+            },
+            state,
+            graph,
+            traverseFromLink,
+            ['string1', 'string2', 'string3', 'string4'],
+            '__joinstrings_delimiter'
+          );
+        }
+      },
+    },
+    widget_order: ['delimiter']
+  },
+
+  ConditioningZeroOut: {
+    category: 'CONDITIONING',
+    roles: ['TRANSFORM'],
+    inputs: { conditioning: { type: 'CONDITIONING' } },
+    outputs: { CONDITIONING: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: { source: 'trace', input: 'conditioning' },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: () => '',
+      },
+    },
+    pass_through_rules: [{ from_input: 'conditioning', to_output: 'CONDITIONING' }]
+  },
+
   ScaledFP8HybridUNetLoader: {
     category: 'LOADING',
     roles: ['SOURCE'],
@@ -792,6 +1087,40 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       height: { source: 'input', key: 'height' },
     },
     widget_order: ['width', 'height', 'batch_size'],
+  },
+
+  'SDXL Empty Latent Image (rgthree)': {
+    category: 'LOADING',
+    roles: ['SOURCE'],
+    inputs: {},
+    outputs: {
+      LATENT: { type: 'LATENT' },
+      CLIP_WIDTH: { type: 'INT' },
+      CLIP_HEIGHT: { type: 'INT' },
+    },
+    param_mapping: {
+      width: {
+        source: 'custom_extractor',
+        extractor: (node: ParserNode) => {
+          const value = typeof node.inputs?.dimensions === 'string'
+            ? node.inputs.dimensions
+            : node.widgets_values?.[0];
+          const match = typeof value === 'string' ? value.match(/(\d+)\s*x\s*(\d+)/i) : null;
+          return match ? Number(match[1]) : null;
+        }
+      },
+      height: {
+        source: 'custom_extractor',
+        extractor: (node: ParserNode) => {
+          const value = typeof node.inputs?.dimensions === 'string'
+            ? node.inputs.dimensions
+            : node.widgets_values?.[0];
+          const match = typeof value === 'string' ? value.match(/(\d+)\s*x\s*(\d+)/i) : null;
+          return match ? Number(match[2]) : null;
+        }
+      }
+    },
+    widget_order: ['dimensions', 'clip_scale', 'batch_size']
   },
 
   EmptySD3LatentImage: {
@@ -1159,12 +1488,25 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
 ImpactWildcardProcessor: {
   category: 'UTILS',
   roles: ['SOURCE'],
-  inputs: {},
+  inputs: { populated_text: { type: 'STRING' }, wildcard_text: { type: 'STRING' } },
   outputs: { STRING: { type: 'STRING' } },
   param_mapping: {
     prompt: {
       source: 'custom_extractor',
-      extractor: (node: ParserNode) => {
+      extractor: (node: ParserNode, state, graph, traverseFromLink) => {
+        const linkedTextInputs = [node.inputs?.populated_text, node.inputs?.wildcard_text];
+        for (const linkedTextInput of linkedTextInputs) {
+          if (Array.isArray(linkedTextInput) && linkedTextInput.length === 2) {
+            const tracedText = traverseFromLink(linkedTextInput as any, state, graph, []);
+            if (tracedText !== null && tracedText !== undefined) {
+              const cleanedTracedText = extractors.cleanWildcardText(String(tracedText));
+              if (cleanedTracedText) {
+                return cleanedTracedText;
+              }
+            }
+          }
+        }
+
         const text = extractors.getWildcardOrPopulatedText(node);
         return extractors.cleanWildcardText(text);
       }
@@ -1435,6 +1777,16 @@ PerturbedAttention: {
   pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
 },
 
+PathchSageAttentionKJ: {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: { model: { type: 'MODEL' } },
+  outputs: { MODEL: { type: 'MODEL' } },
+  param_mapping: {},
+  pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }],
+  widget_order: ['sage_attention', 'allow_compile']
+},
+
 TiledDiffusion: {
   category: 'TRANSFORM',
   roles: ['PASS_THROUGH'],
@@ -1572,11 +1924,105 @@ PrimitiveNode: {
     '*': { type: 'ANY' }
   },
   param_mapping: {
+    prompt: { source: 'widget', key: 'value' },
+    negativePrompt: { source: 'widget', key: 'value' },
     seed: { source: 'widget', key: 'value' },
     steps: { source: 'widget', key: 'value' },
     cfg: { source: 'widget', key: 'value' },
     denoise: { source: 'widget', key: 'value' }
   },
   widget_order: ['value', 'control_after_generate']
-}
+},
+
+  KSamplerAdvanced: {
+    category: 'SAMPLING', roles: ['SINK'],
+    inputs: {
+      model: { type: 'MODEL' },
+      positive: { type: 'CONDITIONING' },
+      negative: { type: 'CONDITIONING' },
+      latent_image: { type: 'LATENT' }
+    },
+    outputs: { LATENT: { type: 'LATENT' } },
+    param_mapping: {
+      seed: { source: 'widget', key: 'noise_seed' },
+      steps: { source: 'widget', key: 'steps' },
+      cfg: { source: 'widget', key: 'cfg' },
+      sampler_name: { source: 'widget', key: 'sampler_name' },
+      scheduler: { source: 'widget', key: 'scheduler' },
+      model: { source: 'trace', input: 'model' },
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: { source: 'trace', input: 'negative' },
+      denoise: { source: 'custom_extractor', extractor: extractors.calculateDenoise }
+    },
+    widget_order: ['add_noise', 'noise_seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'start_at_step', 'end_at_step', 'return_with_leftover_noise']
+  },
+  VHS_VideoCombine: {
+    category: 'IO', roles: ['SINK'],
+    inputs: { images: { type: 'IMAGE' } },
+    outputs: {},
+    param_mapping: {},
+    widget_order: ['frame_rate', 'loop_count', 'filename_prefix', 'format', 'pix_fmt', 'crf', 'save_metadata', 'trim_to_audio', 'pingpong', 'save_output']
+  },
+  WanImageToVideo: {
+    category: 'TRANSFORM',
+    roles: ['TRANSFORM', 'PASS_THROUGH'],
+    inputs: {
+      width: { type: 'INT' },
+      height: { type: 'INT' },
+      length: { type: 'INT' },
+      batch_size: { type: 'INT' },
+      positive: { type: 'CONDITIONING' },
+      negative: { type: 'CONDITIONING' },
+      vae: { type: 'VAE' },
+      start_image: { type: 'IMAGE' }
+    },
+    outputs: {
+      positive: { type: 'CONDITIONING' },
+      negative: { type: 'CONDITIONING' },
+      latent: { type: 'LATENT' }
+    },
+    param_mapping: {
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: { source: 'trace', input: 'negative' },
+      width: { source: 'widget', key: 'width' },
+      height: { source: 'widget', key: 'height' },
+      vae: { source: 'trace', input: 'vae' },
+    },
+    widget_order: ['width', 'height', 'length', 'batch_size']
+  },
+  Int: {
+    category: 'UTILS', roles: ['TRANSFORM'],
+    inputs: { Number: { type: 'INT' } },
+    outputs: { INT: { type: 'INT' } },
+    param_mapping: {
+      steps: { source: 'widget', key: 'Number' },
+      seed: { source: 'widget', key: 'Number' },
+      width: { source: 'widget', key: 'Number' },
+      height: { source: 'widget', key: 'Number' }
+    },
+    widget_order: ['Number']
+  },
+  PrimitiveInt: {
+    category: 'UTILS', roles: ['TRANSFORM'],
+    inputs: { value: { type: 'INT' } },
+    outputs: { INT: { type: 'INT' } },
+    param_mapping: {
+      steps: { source: 'widget', key: 'value' },
+      seed: { source: 'widget', key: 'value' },
+      width: { source: 'widget', key: 'value' },
+      height: { source: 'widget', key: 'value' }
+    },
+    widget_order: ['value']
+  },
+  PrimitiveFloat: {
+    category: 'UTILS', roles: ['TRANSFORM'],
+    inputs: { value: { type: 'FLOAT' } },
+    outputs: { FLOAT: { type: 'FLOAT' } },
+    param_mapping: {
+      cfg: { source: 'widget', key: 'value' },
+      denoise: { source: 'widget', key: 'value' }
+    },
+    widget_order: ['value']
+  }
 };
+

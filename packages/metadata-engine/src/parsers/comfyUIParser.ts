@@ -1,7 +1,6 @@
-import { resolveAll } from './comfyui/traversalEngine';
+import { resolveAll, resolveFacts } from './comfyui/traversalEngine';
 import { NodeRegistry } from './comfyui/nodeRegistry';
-import type { ParserNode } from './comfyui/types';
-import { cleanPrompt, cleanLoraName } from '../utils/promptCleaner';
+import type { ParserNode, WorkflowFacts, GenerationType, ImageLineage, SourceImageReference } from './comfyui/types';
 
 // Lazy-loaded zlib for Node.js environment
 let zlibPromise: Promise<any> | null = null;
@@ -29,11 +28,22 @@ interface ParseResult {
   warnings: string[];
 }
 
+const MAX_COMFY_PAYLOAD_CHARS = 4 * 1024 * 1024;
+const MAX_COMFY_BASE64_CHARS = 2 * 1024 * 1024;
+const MAX_COMFY_COMPRESSED_BYTES = 1024 * 1024;
+const MAX_COMFY_DECOMPRESSED_BYTES = 16 * 1024 * 1024;
+const MAX_COMFY_REGEX_SCAN_CHARS = 512 * 1024;
+
 /**
  * Tenta parsear payload do ComfyUI com múltiplas estratégias de descompressão e fallback
  */
 async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
   const warnings: string[] = [];
+
+  if (raw.length > MAX_COMFY_PAYLOAD_CHARS) {
+    warnings.push('Payload too large to parse safely');
+    return null;
+  }
   
   // 1. Try direct JSON
   try {
@@ -45,9 +55,13 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
   
   // 2. Base64 decode
   try {
-    const decoded = Buffer.from(raw, 'base64').toString('utf8');
-    const parsed = JSON.parse(decoded);
-    return { data: parsed, detectionMethod: 'base64', warnings };
+    if (raw.length > MAX_COMFY_BASE64_CHARS) {
+      warnings.push('Base64 payload too large to decode safely');
+    } else {
+      const decoded = Buffer.from(raw, 'base64').toString('utf8');
+      const parsed = JSON.parse(decoded);
+      return { data: parsed, detectionMethod: 'base64', warnings };
+    }
   } catch (e) {
     warnings.push('Base64 decode failed');
   }
@@ -58,8 +72,12 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
     try {
       // Detect zlib magic bytes (\x78\x9c)
       const buffer = Buffer.from(raw, 'base64');
-      if (buffer[0] === 0x78 && buffer[1] === 0x9c) {
-        const inflated = zlib.inflateSync(buffer);
+      if (buffer.length > MAX_COMFY_COMPRESSED_BYTES) {
+        warnings.push('Compressed payload too large to inflate safely');
+      } else if (buffer.length >= 2 && buffer[0] === 0x78 && buffer[1] === 0x9c) {
+        const inflated = zlib.inflateSync(buffer, {
+          maxOutputLength: MAX_COMFY_DECOMPRESSED_BYTES,
+        });
         const parsed = JSON.parse(inflated.toString('utf8'));
         return { data: parsed, detectionMethod: 'compressed', warnings };
       }
@@ -70,11 +88,15 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
   
   // 4. Regex fallback - find large JSON blocks
   try {
-    const match = raw.match(/\{[\s\S]{200,}\}/);
-    if (match) {
-      const parsed = JSON.parse(match[0]);
-      warnings.push('Used regex fallback to find JSON block');
-      return { data: parsed, detectionMethod: 'regex', warnings };
+    if (raw.length > MAX_COMFY_REGEX_SCAN_CHARS) {
+      warnings.push('Skipped regex fallback for oversized payload');
+    } else {
+      const match = raw.match(/\{[\s\S]{200,}\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        warnings.push('Used regex fallback to find JSON block');
+        return { data: parsed, detectionMethod: 'regex', warnings };
+      }
     }
   } catch (e) {
     warnings.push('Regex JSON fallback failed');
@@ -87,20 +109,23 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
  * Detecção agressiva de payload ComfyUI em chunks PNG
  */
 function detectComfyPayload(chunks: string[]): { payload: string; method: string } | null {
-  const combinedText = chunks.join('\n').toLowerCase();
+  const rawPayload = chunks.join('\n');
+  const combinedText = rawPayload.toLowerCase();
   
   // Procura por strings indicativas do ComfyUI
   const comfyIndicators = ['comfyui', 'workflow', 'nodes', 'comfy', 'class_type'];
   const hasComfyIndicator = comfyIndicators.some(indicator => combinedText.includes(indicator));
   
   if (hasComfyIndicator) {
-    return { payload: chunks.join('\n'), method: 'keyword' };
+    return { payload: rawPayload, method: 'keyword' };
   }
   
   // Regex para detectar blocos JSON grandes (>200 caracteres)
-  const largeJsonMatch = chunks.join('\n').match(/\{[\s\S]{200,}\}/);
-  if (largeJsonMatch) {
-    return { payload: largeJsonMatch[0], method: 'regex_large_json' };
+  if (rawPayload.length <= MAX_COMFY_REGEX_SCAN_CHARS) {
+    const largeJsonMatch = rawPayload.match(/\{[\s\S]{200,}\}/);
+    if (largeJsonMatch) {
+      return { payload: largeJsonMatch[0], method: 'regex_large_json' };
+    }
   }
   
   return null;
@@ -145,6 +170,24 @@ function extractParamsWithRegex(text: string): Partial<Record<string, any>> {
 
 function normalizePromptWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function firstNonBlankString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function firstNonNullish<T>(...values: Array<T | null | undefined>): T | undefined {
+  for (const value of values) {
+    if (value !== null && value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -265,6 +308,48 @@ function extractAdvancedModifiers(graph: Graph): {
   const controlnets: any[] = [];
   const loras: any[] = [];
   const vaes: any[] = [];
+  const loraKeys = new Set<string>();
+
+  const addLora = (name: unknown, weight?: unknown) => {
+    if (typeof name !== 'string' || !name.trim() || name === 'None' || name === 'unknown') {
+      return;
+    }
+
+    const numericWeight = typeof weight === 'number' ? weight : undefined;
+    const resolvedWeight = numericWeight ?? 1.0;
+    const key = `${name}::${resolvedWeight}`;
+    if (loraKeys.has(key)) {
+      return;
+    }
+
+    loraKeys.add(key);
+    loras.push({ name, weight: resolvedWeight });
+  };
+
+  const addRgthreePowerLoras = (node: ParserNode) => {
+    const addEntry = (value: unknown) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return;
+      }
+
+      const entry = value as Record<string, unknown>;
+      if (entry.on === false) {
+        return;
+      }
+
+      addLora(entry.lora || entry.lora_name || entry.name, entry.strength || entry.strength_model || entry.weight);
+    };
+
+    for (const [key, value] of Object.entries(node.inputs || {})) {
+      if (/^lora_\d+$/i.test(key)) {
+        addEntry(value);
+      }
+    }
+
+    for (const value of node.widgets_values || []) {
+      addEntry(value);
+    }
+  };
   
   for (const nodeId in graph) {
     const node = graph[nodeId];
@@ -302,10 +387,13 @@ function extractAdvancedModifiers(graph: Graph): {
     
     // LoRA detection
     if (classType.includes('lora')) {
-      const name = node.inputs?.lora_name || node.widgets_values?.[0] || 'unknown';
-      const weight = node.inputs?.strength_model || node.inputs?.weight || node.widgets_values?.[1] || 1.0;
-      
-      loras.push({ name, weight });
+      if (node.class_type === 'Power Lora Loader (rgthree)') {
+        addRgthreePowerLoras(node);
+      } else {
+        const name = node.inputs?.lora_name || node.widgets_values?.[0] || 'unknown';
+        const weight = node.inputs?.strength_model || node.inputs?.weight || node.widgets_values?.[1] || 1.0;
+        addLora(name, weight);
+      }
     }
     
     // VAE detection
@@ -357,13 +445,148 @@ function extractComfyVersion(workflow: any, prompt: any): string | null {
   }
   
   // Try regex on combined text
-  const text = JSON.stringify(workflow) + JSON.stringify(prompt);
+  const workflowText = JSON.stringify(workflow) ?? '';
+  const promptText = JSON.stringify(prompt) ?? '';
+  const text = `${workflowText}${promptText}`;
   const versionMatch = text.match(/"version"\s*:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?/);
   if (versionMatch) {
     return versionMatch[1];
   }
   
   return null;
+}
+
+function getConnectionNodeId(value: any): string | null {
+  if (!Array.isArray(value) || value.length < 2) {
+    return null;
+  }
+
+  return String(value[0]);
+}
+
+function extractSourceReferenceFromNode(node: ParserNode): SourceImageReference | null {
+  const imageValue = node.inputs?.image ?? node.inputs?.file ?? node.widgets_values?.[0];
+  if (typeof imageValue !== 'string' || !imageValue.trim()) {
+    return null;
+  }
+
+  const normalized = imageValue.trim().replace(/\s+\[(input|output|temp)\]$/i, '').replace(/\\/g, '/');
+  const segments = normalized.split('/').filter(Boolean);
+  return {
+    fileName: segments[segments.length - 1] || normalized,
+    relativePath: normalized,
+    nodeId: node.id,
+    nodeType: node.class_type,
+  };
+}
+
+function detectComfyLineageFromGraph(
+  graph: Graph,
+  terminalNode: ParserNode | null,
+  denoise: number | null | undefined
+): { generationType?: Exclude<GenerationType, 'txt2img'>; lineage?: ImageLineage } {
+  if (!terminalNode) {
+    return {};
+  }
+
+  const samplerNode = terminalNode.class_type?.toLowerCase().includes('sampler')
+    ? terminalNode
+    : null;
+  if (!samplerNode) {
+    return {};
+  }
+
+  const latentInput =
+    samplerNode.inputs?.latent_image ??
+    samplerNode.inputs?.latent ??
+    samplerNode.inputs?.samples;
+  const startNodeId = getConnectionNodeId(latentInput);
+  if (!startNodeId) {
+    return {};
+  }
+
+  const queue = [startNodeId];
+  const visited = new Set<string>();
+  let sourceReference: SourceImageReference | null = null;
+  let hasLoadImage = false;
+  let hasMaskInput = false;
+  let hasInpaintMarkers = false;
+  let hasOutpaintMarkers = false;
+  let queueIndex = 0;
+
+  while (queueIndex < queue.length) {
+    const nodeId = queue[queueIndex++]!;
+    if (visited.has(nodeId)) {
+      continue;
+    }
+    visited.add(nodeId);
+
+    const node = graph[nodeId];
+    if (!node?.class_type) {
+      continue;
+    }
+
+    const classType = node.class_type.toLowerCase();
+    const normalizedClassType = classType.replace(/\s+/g, '');
+
+    if (normalizedClassType === 'loadimage') {
+      hasLoadImage = true;
+      sourceReference ||= extractSourceReferenceFromNode(node);
+    }
+
+    if (normalizedClassType === 'loadimagemask') {
+      hasMaskInput = true;
+    }
+
+    if (
+      normalizedClassType.includes('outpaint') ||
+      normalizedClassType.includes('padforoutpaint') ||
+      normalizedClassType.includes('imagepadforoutpaint')
+    ) {
+      hasOutpaintMarkers = true;
+    }
+
+    if (
+      normalizedClassType.includes('inpaint') ||
+      normalizedClassType === 'setlatentnoisemask' ||
+      normalizedClassType === 'vaeencodeforinpaint'
+    ) {
+      hasInpaintMarkers = true;
+    }
+
+    for (const inputValue of Object.values(node.inputs || {})) {
+      const upstreamNodeId = getConnectionNodeId(inputValue);
+      if (upstreamNodeId && !visited.has(upstreamNodeId)) {
+        queue.push(upstreamNodeId);
+      }
+    }
+  }
+
+  if (!hasLoadImage && !hasMaskInput) {
+    return {};
+  }
+
+  const generationType: Exclude<GenerationType, 'txt2img'> | undefined =
+    hasOutpaintMarkers
+      ? 'outpaint'
+      : hasInpaintMarkers
+        ? 'inpaint'
+        : hasLoadImage
+          ? 'img2img'
+          : undefined;
+
+  if (!generationType) {
+    return {};
+  }
+
+  return {
+    generationType,
+    lineage: {
+      detection: 'inferred',
+      denoiseStrength: denoise ?? null,
+      sourceImage: sourceReference ?? undefined,
+    },
+  };
 }
 
 /**
@@ -373,7 +596,10 @@ function createNodeMap(workflow: any, prompt: any): Graph {
     const graph: Graph = {};
 
     // Add/overlay from prompt (execution data: class_type, inputs)
-    for (const [id, pNode] of Object.entries(prompt || {})) {
+    // Optimization: use for...in instead of Object.entries to avoid intermediate array allocation
+    // Impact: reduces O(N) memory allocation and GC overhead during workflow graph traversal
+    for (const id in prompt || {}) {
+        const pNode = (prompt as any)[id];
         graph[id] = {
             id,
             class_type: (pNode as any).class_type,
@@ -408,11 +634,10 @@ function createNodeMap(workflow: any, prompt: any): Graph {
         }
     }
 
-    // Overlay UI metadata from ComfyUI subgraph definitions onto executed prompt nodes.
+    // Overlay UI metadata from ComfyUI subgraph definitions onto prompt nodes.
     // Prompt APIs can reference internal subgraph nodes with ids like "98:17";
     // those nodes often carry execution inputs while the widget values only exist
-    // in workflow.definitions.subgraphs. Do not create definition-only nodes here:
-    // unexecuted internal samplers must not become terminal candidates.
+    // in workflow.definitions.subgraphs.
     const subgraphs = workflow?.definitions?.subgraphs;
     if (subgraphs && workflow?.nodes) {
         const subgraphEntries: Array<[string, any]> = Array.isArray(subgraphs)
@@ -448,10 +673,10 @@ function createNodeMap(workflow: any, prompt: any): Graph {
 
                 graph[id] = {
                     id,
-                    class_type: existingNode.class_type || childNode.type,
-                    inputs: existingNode.inputs || {},
-                    widgets_values: childNode.widgets_values || existingNode.widgets_values || [],
-                    mode: parentIsMuted ? parentMode : childNode.mode ?? existingNode.mode ?? 0,
+                    class_type: existingNode?.class_type || childNode.type,
+                    inputs: existingNode?.inputs || {},
+                    widgets_values: childNode.widgets_values || existingNode?.widgets_values || [],
+                    mode: parentIsMuted ? parentMode : childNode.mode ?? existingNode?.mode ?? 0,
                 };
             }
         }
@@ -530,6 +755,7 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   // Check if terminal node was found
   if (!terminalNode) {
     telemetry.warnings.push('No terminal node found');
+    return { _telemetry: telemetry };
   }
 
   // Note: width/height are NOT extracted from workflow, they're read from actual image dimensions
@@ -539,25 +765,12 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
     params: ['prompt', 'negativePrompt', 'seed', 'steps', 'cfg', 'model', 'sampler_name', 'scheduler', 'lora', 'vae', 'denoise']
   });
 
-  // Apply prompt and LoRA cleaning using utility functions
-  const normalizedMetadata = {
-    prompt: cleanPrompt(results.prompt),
-    negativePrompt: cleanPrompt(results.negativePrompt),
-    loras: Array.isArray(results.lora)
-      ? results.lora.map(cleanLoraName).filter(l => l && l !== 'None')
-      : [],
-    // ... outros campos
-  };
-
-  // Merge normalized data back into results
-  Object.assign(results, normalizedMetadata);
-
-  // Post-processing: deduplicate arrays and clean up prompts
+  // Post-processing: deduplicate arrays BEFORE cleaning prompts
   if (results.lora && Array.isArray(results.lora)) {
     // Remove duplicates while preserving order of first appearance
     results.lora = Array.from(new Set(results.lora));
   }
-  
+
   // Fix duplicated prompts - check if prompt contains repeated segments
   if (results.prompt && typeof results.prompt === 'string') {
     const trimmedPrompt = results.prompt.trim();
@@ -617,7 +830,14 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
     // Merge with existing lora array from resolveAll
     const existingLoras = results.lora || [];
     results.loras = modifiers.loras; // Detailed lora info
-    results.lora = Array.from(new Set([...existingLoras, ...modifiers.loras.map(l => l.name)])); // Backward compatibility
+    const loraNameSet = new Set<string>();
+    for (let i = 0; i < existingLoras.length; i++) {
+      loraNameSet.add(existingLoras[i]);
+    }
+    for (let i = 0; i < modifiers.loras.length; i++) {
+      loraNameSet.add(modifiers.loras[i].name);
+    }
+    results.lora = Array.from(loraNameSet); // Backward compatibility
   }
   if (modifiers.vaes.length > 0) {
     results.vaes = modifiers.vaes;
@@ -634,16 +854,190 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   if (comfyVersion) {
     results.comfyui_version = comfyVersion;
   }
-  
+
+  const comfyLineage = detectComfyLineageFromGraph(graph, terminalNode, results.denoise);
+  if (comfyLineage.generationType) {
+    results.generationType = comfyLineage.generationType;
+    results.lineage = comfyLineage.lineage;
+  }
 
   results.generator = 'ComfyUI';
-  
+
   return { ...results, _telemetry: telemetry };
+}
+
+/**
+ * Resolve structured workflow facts for ComfyUI graphs.
+ * Uses the same graph construction as resolvePromptFromGraph.
+ */
+export function resolveWorkflowFactsFromGraph(
+  workflow: any,
+  prompt: any
+): WorkflowFacts | null {
+  try {
+    let parsedWorkflow = workflow;
+    let parsedPrompt = prompt;
+
+    if (typeof parsedWorkflow === 'string') {
+      parsedWorkflow = JSON.parse(parsedWorkflow);
+    }
+    if (typeof parsedPrompt === 'string') {
+      parsedPrompt = JSON.parse(parsedPrompt);
+    }
+
+    if (!parsedWorkflow && !parsedPrompt) {
+      return null;
+    }
+
+    const graph = createNodeMap(parsedWorkflow, parsedPrompt);
+    const terminalNode = findTerminalNode(graph);
+    if (!terminalNode) {
+      return null;
+    }
+
+    return resolveFacts({ startNode: terminalNode, graph });
+  } catch (error) {
+    console.warn('[ComfyUI Parser] Failed to resolve workflow facts:', error);
+    return null;
+  }
+}
+
+/**
+ * Extract metadata from MetaHub Save Node chunk (imagemetahub_data)
+ * This chunk contains pre-extracted metadata, eliminating the need for graph traversal
+ */
+function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
+  try {
+    // Check if rawData is an object with imagemetahub_data field
+    if (typeof rawData === 'object' && rawData !== null && rawData.imagemetahub_data) {
+      const metahubData = rawData.imagemetahub_data;
+
+      // Support both the native MetaHub Save Node payload and Image MetaHub's
+      // normalized export payload written during Save As / strip workflows.
+      if (metahubData.generator === 'ComfyUI' || metahubData.generator === 'Image MetaHub') {
+        // Extract tags from imh_pro.user_tags (comma-separated string)
+        const userTags = metahubData.imh_pro?.user_tags
+          ? metahubData.imh_pro.user_tags.split(',').map((tag: string) => tag.trim()).filter((tag: string) => tag)
+          : [];
+
+        // Extract notes from imh_pro.notes
+        const userNotes = metahubData.imh_pro?.notes || '';
+
+        const explicitGenerationType = typeof metahubData.generation_type === 'string'
+          ? metahubData.generation_type as Exclude<GenerationType, 'txt2img'>
+          : undefined;
+        const explicitParentImage = metahubData.parent_image && typeof metahubData.parent_image === 'object'
+          ? metahubData.parent_image as SourceImageReference
+          : undefined;
+        const explicitSourceImage = metahubData.source_image && typeof metahubData.source_image === 'object'
+          ? metahubData.source_image as SourceImageReference
+          : undefined;
+        const hasExplicitLineage = Boolean(explicitGenerationType && (explicitParentImage || explicitSourceImage));
+        const workflowGraph = !hasExplicitLineage && metahubData.workflow && typeof metahubData.workflow === 'object'
+          ? metahubData.workflow
+          : undefined;
+        const promptGraph = !hasExplicitLineage && metahubData.prompt_api && typeof metahubData.prompt_api === 'object'
+          ? metahubData.prompt_api
+          : !hasExplicitLineage && metahubData.prompt && typeof metahubData.prompt === 'object'
+            ? metahubData.prompt
+            : undefined;
+        const graph = workflowGraph || promptGraph
+          ? createNodeMap(workflowGraph, promptGraph)
+          : null;
+        const graphMetadata = graph
+          ? resolvePromptFromGraph(workflowGraph, promptGraph)
+          : {};
+        const inferredLineage = graph
+          ? detectComfyLineageFromGraph(graph, findTerminalNode(graph), metahubData.denoise)
+          : {};
+        const generationType = explicitGenerationType || inferredLineage.generationType;
+        const lineage = generationType
+          ? {
+              detection: explicitGenerationType ? 'explicit' : (inferredLineage.lineage?.detection || 'inferred'),
+              denoiseStrength: metahubData.denoise ?? inferredLineage.lineage?.denoiseStrength ?? null,
+              maskBlur: metahubData.mask_blur ?? inferredLineage.lineage?.maskBlur ?? null,
+              maskedContent: metahubData.masked_content ?? inferredLineage.lineage?.maskedContent ?? null,
+              resizeMode: metahubData.resize_mode ?? inferredLineage.lineage?.resizeMode ?? null,
+              sourceImage: explicitParentImage || explicitSourceImage || inferredLineage.lineage?.sourceImage,
+              workflowSourceImage: explicitParentImage && explicitSourceImage
+                ? explicitSourceImage
+                : undefined,
+            }
+          : undefined;
+        const seedSource = metahubData.metadata_sources?.seed;
+        const seedIsExplicit = seedSource === 'detected' || seedSource === 'manual_override' || metahubData.metadata_status === 'complete';
+        const seed = firstNonNullish(
+          metahubData.seed === 0 && !seedIsExplicit && graphMetadata.seed !== undefined ? graphMetadata.seed : metahubData.seed,
+          graphMetadata.seed
+        );
+
+        const embeddedLoras = Array.isArray(metahubData.loras)
+          ? metahubData.loras.filter((lora: any) =>
+              typeof lora === 'string'
+              || (lora && typeof lora === 'object' && typeof lora.name === 'string' && lora.name.trim())
+            )
+          : [];
+
+        // Map MetaHub chunk fields to expected format
+        return {
+          prompt: firstNonBlankString(metahubData.prompt, graphMetadata.prompt) || '',
+          negativePrompt: firstNonBlankString(metahubData.negativePrompt, graphMetadata.negativePrompt) || '',
+          seed,
+          steps: firstNonNullish(metahubData.steps, graphMetadata.steps),
+          cfg: firstNonNullish(metahubData.cfg, graphMetadata.cfg),
+          sampler_name: firstNonBlankString(metahubData.sampler_name, graphMetadata.sampler_name) || '',
+          scheduler: firstNonBlankString(metahubData.scheduler, graphMetadata.scheduler) || '',
+          model: firstNonBlankString(metahubData.model, graphMetadata.model) || '',
+          model_hash: metahubData.model_hash,
+          vae: firstNonBlankString(metahubData.vae, graphMetadata.vae) || '',
+          denoise: firstNonNullish(metahubData.denoise, graphMetadata.denoise),
+          width: metahubData.width,
+          height: metahubData.height,
+          loras: embeddedLoras.length > 0 ? embeddedLoras : (graphMetadata.loras || []),
+          lora: embeddedLoras.length > 0
+            ? embeddedLoras.map((l: any) => typeof l === 'string' ? l : l.name)
+            : graphMetadata.lora || [], // Backward compatibility
+          tags: userTags,
+          notes: userNotes,
+          generator: metahubData.generator === 'ComfyUI' ? 'ComfyUI' : 'Image MetaHub',
+          generationType,
+          lineage,
+          _detection_method: 'metahub_chunk',
+          _metahub_pro: metahubData.imh_pro || null,
+          imh_attribution: metahubData.imh_attribution || null,
+          _analytics: metahubData.analytics || null,
+          _metadata_status: metahubData.metadata_status || null,
+          _metadata_sources: metahubData.metadata_sources || null,
+        };
+      }
+    }
+
+    // Try parsing from string if rawData is a JSON string containing imagemetahub_data
+    if (typeof rawData === 'string') {
+      try {
+        const parsed = JSON.parse(rawData);
+        if (parsed.imagemetahub_data) {
+          return extractFromMetaHubChunk(parsed);
+        }
+      } catch {
+        // Not a JSON string, continue
+      }
+    }
+  } catch (error) {
+    console.warn('[ComfyUI Parser] Failed to extract from MetaHub chunk:', error);
+  }
+
+  return null;
 }
 
 /**
  * Enhanced parsing with aggressive payload detection and decompression
  * This is the new entry point that should be used for robust ComfyUI parsing
+ *
+ * Priority:
+ * 1. MetaHub Save Node chunk (imagemetahub_data) - fastest, no graph traversal needed
+ * 2. Graph traversal (workflow + prompt) - fallback for standard ComfyUI exports
+ * 3. Regex extraction - last resort for corrupted/partial data
  */
 export async function parseComfyUIMetadataEnhanced(rawData: any): Promise<Record<string, any>> {
   const telemetry = {
@@ -652,7 +1046,14 @@ export async function parseComfyUIMetadataEnhanced(rawData: any): Promise<Record
   };
 
   try {
-    // If already an object, try to parse it directly
+    // PRIORITY 1: Try MetaHub Save Node chunk first (fastest path)
+    const metahubData = extractFromMetaHubChunk(rawData);
+    if (metahubData) {
+      telemetry.detection_method = 'metahub_chunk';
+      return { ...metahubData, _parse_telemetry: telemetry };
+    }
+
+    // PRIORITY 2: If already an object, try to parse it directly via graph traversal
     if (typeof rawData === 'object' && rawData !== null) {
       const workflow = rawData.workflow;
       const prompt = rawData.prompt;

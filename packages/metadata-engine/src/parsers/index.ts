@@ -11,7 +11,7 @@ import { parseFireflyMetadata } from './fireflyParser';
 import { parseDreamStudioMetadata } from './dreamStudioParser';
 import { parseDrawThingsMetadata } from './drawThingsParser';
 import { parseFooocusMetadata } from './fooocusParser';
-import { resolvePromptFromGraph } from './comfyUIParser';
+import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './comfyUIParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -39,7 +39,7 @@ function isComfyPromptOnlyGraph(metadata: Record<string, any>): boolean {
 }
 
 interface ParserModule {
-    parse: (metadata: any, fileBuffer?: ArrayBuffer) => BaseMetadata | null;
+    parse: (metadata: any, fileBuffer?: ArrayBuffer) => BaseMetadata | null | Promise<BaseMetadata | null>;
     generator: string;
 }
 
@@ -80,6 +80,47 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     // InvokeAI (embedded JSON fields)
     if (isInvokeAIMetadata(metadata) || 'invokeai_metadata' in metadata) {
         return { parse: (data: InvokeAIMetadata) => parseInvokeAIMetadata(data), generator: 'InvokeAI' };
+    }
+
+    // MetaHub Save Node detection (PRIORITY: before generic ComfyUI)
+    // Check for imagemetahub_data chunk (iTXt format from MetaHub Save Node)
+    if ('imagemetahub_data' in metadata) {
+        const metaHubGenerator = typeof (metadata as Record<string, any>).imagemetahub_data?.generator === 'string'
+            ? (metadata as Record<string, any>).imagemetahub_data.generator
+            : 'Image MetaHub';
+        const parserGenerator = metaHubGenerator === 'ComfyUI' ? 'ComfyUI' : 'Image MetaHub';
+        return {
+            parse: async (data: ComfyUIMetadata) => {
+                const result = await parseComfyUIMetadataEnhanced(data);
+                return {
+                    prompt: result.prompt || '',
+                    negativePrompt: result.negativePrompt || '',
+                    model: result.model || '',
+                    models: result.model ? [result.model] : [],
+                    width: result.width || 0,
+                    height: result.height || 0,
+                    seed: result.seed,
+                    steps: result.steps || 0,
+                    cfg_scale: result.cfg,
+                    scheduler: result.scheduler || '',
+                    sampler: result.sampler_name || '',
+                    vae: result.vae || result.vaes?.[0]?.name,
+                    loras: result.loras || [],
+                    denoise: result.denoise,
+                    generationType: result.generationType,
+                    lineage: result.lineage,
+                    tags: result.tags || [],
+                    notes: result.notes || '',
+                    imh_attribution: result.imh_attribution || null,
+                    _analytics: result._analytics || null,
+                    _metahub_pro: result._metahub_pro || null,
+                    _metadata_status: result._metadata_status || null,
+                    _metadata_sources: result._metadata_sources || null,
+                    _detection_method: result._detection_method,
+                } as BaseMetadata;
+            },
+            generator: parserGenerator
+        };
     }
 
     // ComfyUI detection (case-insensitive, accepts stringified prompt/workflow)
@@ -148,12 +189,9 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
         console.log(`   - Contains 'Module 1: ae': ${!!metadata.parameters.match(/Module\s*1:\s*ae/i)}`);
         return { parse: (data: FooocusMetadata) => parseFooocusMetadata(data), generator: 'Fooocus' };
     }
-    if ('parameters' in metadata && typeof metadata.parameters === 'string') {
-        return { parse: (data: Automatic1111Metadata) => parseA1111Metadata(data.parameters), generator: 'Automatic1111' };
-    }
-    if ('parameters' in metadata && 
-        typeof metadata.parameters === 'string' && 
-        (metadata.parameters.includes('DreamStudio') || 
+    if ('parameters' in metadata &&
+        typeof metadata.parameters === 'string' &&
+        (metadata.parameters.includes('DreamStudio') ||
          metadata.parameters.includes('Stability AI') ||
          (metadata.parameters.includes('Prompt:') && 
           metadata.parameters.includes('Negative prompt:') && 
@@ -201,36 +239,48 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
         return { parse: (data: Automatic1111Metadata) => parseA1111Metadata(data.parameters), generator: 'Automatic1111' };
     }
 
+    // Niji before Midjourney: a "--niji" flag is Niji-specific, but Midjourney's
+    // own check below doesn't need to (and shouldn't) also match on it.
     if ('parameters' in metadata &&
         typeof metadata.parameters === 'string' &&
-        (metadata.parameters.includes('Midjourney') ||
-         /\s--v\s|\s--ar\s|\s--niji|\s--q\s|\s--s\s|\s--c\s|\s--iw\s/.test(metadata.parameters))) {
-        return { parse: (data: MidjourneyMetadata) => parseMidjourneyMetadata(data.parameters), generator: 'Midjourney' };
-    }
-    if ('parameters' in metadata && 
-        typeof metadata.parameters === 'string' && 
         metadata.parameters.includes('--niji')) {
         return { parse: (data: NijiMetadata) => parseNijiMetadata(data.parameters), generator: 'Niji' };
     }
     if ('parameters' in metadata &&
         typeof metadata.parameters === 'string' &&
+        (metadata.parameters.includes('Midjourney') ||
+         /\s--v\s|\s--ar\s|\s--q\s|\s--s\s|\s--c\s|\s--iw\s/.test(metadata.parameters))) {
+        return { parse: (data: MidjourneyMetadata) => parseMidjourneyMetadata(data.parameters), generator: 'Midjourney' };
+    }
+    // Forge requires an explicit Forge/Gradio/version marker, not just the
+    // generic Steps+Sampler+Model hash combo — that combo alone is standard
+    // A1111 output and would otherwise swallow every A1111 image.
+    if ('parameters' in metadata &&
+        typeof metadata.parameters === 'string' &&
         (metadata.parameters.includes('Forge') ||
          metadata.parameters.includes('Gradio') ||
-         /Version:\s*f\d+\./i.test(metadata.parameters) ||
-         (metadata.parameters.includes('Steps:') &&
-          metadata.parameters.includes('Sampler:') &&
-          metadata.parameters.includes('Model hash:')))) {
+         /Version:\s*f\d+\./i.test(metadata.parameters)) &&
+        metadata.parameters.includes('Steps:') &&
+        metadata.parameters.includes('Sampler:') &&
+        metadata.parameters.includes('Model hash:')) {
         return { parse: (data: ForgeMetadata) => parseForgeMetadata(data), generator: 'Forge' };
     }
-    
+
+    // Generic fallback: any other 'parameters' string that didn't match a more
+    // specific format above. Must stay last — it would otherwise shadow every
+    // check below it, since it has no distinguishing condition of its own.
+    if ('parameters' in metadata && typeof metadata.parameters === 'string') {
+        return { parse: (data: Automatic1111Metadata) => parseA1111Metadata(data.parameters), generator: 'Automatic1111' };
+    }
+
     console.log('❌ No parser found for metadata');
     return null;
 }
 
-export function parseImageMetadata(metadata: ImageMetadata, fileBuffer?: ArrayBuffer): BaseMetadata | null {
+export async function parseImageMetadata(metadata: ImageMetadata, fileBuffer?: ArrayBuffer): Promise<BaseMetadata | null> {
     const parser = getMetadataParser(metadata);
     if (parser) {
-        const result = parser.parse(metadata, fileBuffer);
+        const result = await parser.parse(metadata, fileBuffer);
         if (result) {
             result.generator = parser.generator;
         }
