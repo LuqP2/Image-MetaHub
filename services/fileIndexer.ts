@@ -894,7 +894,10 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
   }
 }
 
-async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
+export async function parseWebPMetadata(
+  buffer: ArrayBuffer,
+  truncationInfo?: { truncated: boolean }
+): Promise<ImageMetadata | null> {
   try {
     // WebP stores EXIF in an 'EXIF' chunk within the RIFF container
     // We need to extract the EXIF chunk first, then parse it with exifr
@@ -961,6 +964,12 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       if (chunkType === 'EXIF') {
         // Found EXIF chunk!
         const exifStart = offset + 8; // Skip chunk header (type + size)
+        // If the declared chunk runs past the (possibly head-read) buffer, the metadata
+        // was cut off mid-file. Signal truncation so Phase B forces a full-file re-read
+        // instead of caching a partial/garbled parse of a large workflow (#448).
+        if (truncationInfo && exifStart + chunkSize > view.byteLength) {
+          truncationInfo.truncated = true;
+        }
         const rawExifData = buffer.slice(exifStart, exifStart + chunkSize);
         const rawBytes = new Uint8Array(rawExifData);
         const tiffHeaderOffset = findExifTiffHeaderOffset(rawBytes);
@@ -1419,7 +1428,7 @@ async function processSingleFileOptimized(
     // IndexedImage (`_metadataTruncated`) so the Phase B enrichment loop can tell
     // "genuinely no metadata" apart from "metadata chunk was cut off mid-file" and
     // decide whether a full-file re-read is needed.
-    const pngTruncationInfo = { truncated: false };
+    const metadataTruncationInfo = { truncated: false };
     const inferredType = fileEntry.type ?? inferMimeTypeFromName(fileEntry.handle.name);
     const isVideo = isVideoFileName(fileEntry.handle.name) || inferredType.startsWith('video/');
     const isAudio = isAudioFileName(fileEntry.handle.name) || inferredType.startsWith('audio/');
@@ -1436,11 +1445,11 @@ async function processSingleFileOptimized(
       const view = new DataView(fileData);
       const detectedType = detectImageType(view);
       if (detectedType === 'png') {
-        rawMetadata = await parsePNGMetadata(fileData, pngTruncationInfo);
+        rawMetadata = await parsePNGMetadata(fileData, metadataTruncationInfo);
       } else if (detectedType === 'jpeg') {
         rawMetadata = await parseJPEGMetadata(fileData);
       } else if (detectedType === 'webp') {
-        rawMetadata = await parseWebPMetadata(fileData);
+        rawMetadata = await parseWebPMetadata(fileData, metadataTruncationInfo);
       } else {
         rawMetadata = null;
       }
@@ -1466,11 +1475,11 @@ async function processSingleFileOptimized(
       const view = new DataView(fileData);
       const detectedType = detectImageType(view);
       if (detectedType === 'png') {
-        rawMetadata = await parsePNGMetadata(fileData, pngTruncationInfo);
+        rawMetadata = await parsePNGMetadata(fileData, metadataTruncationInfo);
       } else if (detectedType === 'jpeg') {
         rawMetadata = await parseJPEGMetadata(fileData);
       } else if (detectedType === 'webp') {
-        rawMetadata = await parseWebPMetadata(fileData);
+        rawMetadata = await parseWebPMetadata(fileData, metadataTruncationInfo);
       } else {
         rawMetadata = null;
       }
@@ -1801,7 +1810,7 @@ if (normalizedMetadata && isVideo) {
       workflowNodes,
       fileSize: normalizedFileSize,
       fileType: normalizedFileType,
-      _metadataTruncated: pngTruncationInfo.truncated,
+      _metadataTruncated: metadataTruncationInfo.truncated,
     } as IndexedImage;
   } catch (error) {
     console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
@@ -2977,7 +2986,9 @@ export async function processFiles(
         return false;
       }
       const fileType = entry.source.type ?? inferMimeTypeFromName(entry.source.handle.name);
-      if (fileType !== 'image/png') {
+      // PNG and WebP both store metadata in container chunks that a 64 KB head-read can
+      // cut off mid-file (WebP EXIF/XMP lives in RIFF chunks). Both need the full re-read.
+      if (fileType !== 'image/png' && fileType !== 'image/webp') {
         return false;
       }
       // Explicit signal: the head-read buffer cut a chunk off mid-file (e.g. a large
@@ -3236,7 +3247,15 @@ export async function processFiles(
             if (fullReadResult.success && Array.isArray(fullReadResult.files)) {
               for (const file of fullReadResult.files) {
                 if (!file.success || !file.data) {
-                  if (file.errorType === 'FILE_TOO_LARGE' || file.errorType === 'BATCH_BYTE_LIMIT') {
+                  // FILE_TOO_LARGE is a hard per-file cap: the file cannot be read via
+                  // the batch IPC at all, so block it and keep the partial head floor.
+                  // BATCH_BYTE_LIMIT is different — it only means this file didn't fit the
+                  // batch's rolling byte budget. The file is individually under the cap,
+                  // and which files overflow the budget is non-deterministic across scans
+                  // (fallback order comes from the concurrent head-parse). Leaving it
+                  // blocked cached a truncated parse for large ComfyUI workflows (#448).
+                  // Keep it unblocked so the per-file full-read fallback below re-reads it.
+                  if (file.errorType === 'FILE_TOO_LARGE') {
                     const imageId = fallbackPathToImageId.get(file.path);
                     if (imageId) {
                       blockedFromGenericFallback.add(imageId);
