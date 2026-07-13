@@ -19,6 +19,7 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "build:browser": "esbuild src/browser/index.ts --bundle --format=esm --outfile=dist/browser/metadata-engine.browser.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
@@ -52,6 +53,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "esbuild": "^0.24.0",
     "typescript": "^5.2.2",
     "tsup": "^8.0.0",
     "vitest": "^1.0.0"

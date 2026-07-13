@@ -339,7 +339,7 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
       errors.push(`Failed to parse workflow/prompt JSON: ${err?.message ?? 'unknown error'}`);
     }
 
-    metadata = normalizeMetadata(rawMetadata, arrayBuffer);
+    metadata = await normalizeMetadata(rawMetadata, arrayBuffer);
   }
 
   const dimensions = extractDimensionsFromBuffer(arrayBuffer);

@@ -6,6 +6,22 @@
 
 import { ParserNode } from './types';
 
+function coerceTextValue(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  if (value && typeof value === 'object' && !Array.isArray(value) && 'value' in value) {
+    return coerceTextValue((value as { value?: unknown }).value);
+  }
+
+  return null;
+}
+
 /**
  * Concatenates multiple text inputs into a single string.
  * Used by nodes like ttN concat, JWStringConcat.
@@ -149,8 +165,76 @@ export function extractLorasFromStack(
  * Prioritizes populated_text (result after wildcard) over wildcard_text (template).
  */
 export function getWildcardOrPopulatedText(node: ParserNode): string {
-  const populated = node.inputs?.populated_text || node.widgets_values?.[1];
-  const wildcard = node.inputs?.wildcard_text || node.widgets_values?.[0];
+  const populated =
+    coerceTextValue(node.inputs?.populated_text) ??
+    coerceTextValue(node.widgets_values?.[1]);
+  const wildcard =
+    coerceTextValue(node.inputs?.wildcard_text) ??
+    coerceTextValue(node.widgets_values?.[0]);
 
   return (populated || wildcard || '').trim();
+}
+
+/**
+ * Calculates denoise for KSamplerAdvanced based on steps, start_at_step and end_at_step.
+ * Formula: (min(end_at, steps) - start_at) / steps
+ */
+export function calculateDenoise(
+  node: ParserNode,
+  state: any,
+  graph: any,
+  traverseFromLink: any
+): number | null {
+  // Helpers
+  const getWidget = (index: number) => node.widgets_values?.[index];
+
+  // Get Steps (Index 2)
+  let steps = typeof getWidget(2) === 'number' ? getWidget(2) : null;
+  // If not widget, try input (using 'steps' param traversal)
+  if (steps === null && node.inputs?.steps) {
+      if (Array.isArray(node.inputs.steps)) {
+        // Reuse state but ensure param is steps
+        const result = traverseFromLink(node.inputs.steps, { ...state, targetParam: 'steps', expectedType: 'INT' }, graph, []);
+        if (result) steps = Number(result);
+      } else {
+          steps = Number(node.inputs.steps);
+      }
+  }
+
+  // Get StartAt (Index 6)
+  let startAt = typeof getWidget(6) === 'number' ? getWidget(6) : 0;
+  // If linked, try to resolving using 'steps' mapping as proxy for generic INT since PrimitiveInt usually maps steps
+  if (node.inputs?.start_at_step) {
+      if (Array.isArray(node.inputs.start_at_step)) {
+          const result = traverseFromLink(node.inputs.start_at_step, { ...state, targetParam: 'steps', expectedType: 'INT' }, graph, []);
+           if (result !== null) startAt = Number(result);
+      } else {
+          startAt = Number(node.inputs.start_at_step);
+      }
+  }
+
+  // Get EndAt (Index 7)
+  let endAt = typeof getWidget(7) === 'number' ? getWidget(7) : 10000;
+  if (node.inputs?.end_at_step) {
+      if (Array.isArray(node.inputs.end_at_step)) {
+          const result = traverseFromLink(node.inputs.end_at_step, { ...state, targetParam: 'steps', expectedType: 'INT' }, graph, []);
+           if (result !== null) endAt = Number(result);
+      } else {
+          endAt = Number(node.inputs.end_at_step);
+      }
+  }
+
+  if (steps && steps > 0 && startAt !== null && endAt !== null) {
+      const effectiveEnd = Math.min(endAt, steps);
+      const effectiveStart = Math.max(startAt, 0);
+      let denoise = (effectiveEnd - effectiveStart) / steps;
+
+      // Clamp between 0 and 1
+      denoise = Math.max(0, Math.min(1, denoise));
+
+      // precision clean up (e.g. 0.300000004 -> 0.3)
+      return Math.round(denoise * 1000) / 1000;
+  }
+
+  return null;
 }
