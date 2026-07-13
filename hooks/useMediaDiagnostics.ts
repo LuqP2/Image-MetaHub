@@ -1,4 +1,5 @@
 import { type SyntheticEvent, useCallback, useMemo } from 'react';
+import { isMacPlatform } from '../utils/platform';
 
 export const MEDIA_DIAGNOSTIC_EVENTS = [
   'loadstart',
@@ -40,11 +41,11 @@ export const isAudioRendererErrorMessage = (message?: string | null): boolean =>
   typeof message === 'string' && message.includes('AUDIO_RENDERER_ERROR');
 
 const isMacElectronRenderer = (): boolean => {
-  if (typeof window === 'undefined' || !window.electronAPI || typeof navigator === 'undefined') {
+  if (typeof window === 'undefined' || !window.electronAPI) {
     return false;
   }
 
-  return /mac/i.test(navigator.platform || '') || /Mac OS X/i.test(navigator.userAgent || '');
+  return isMacPlatform();
 };
 
 export function useMediaDiagnostics(context: MediaDiagnosticsContext) {

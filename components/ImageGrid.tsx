@@ -52,12 +52,12 @@ import {
   recordPerformanceDuration,
 } from '../utils/performanceDiagnostics';
 import { clearInternalImageDragData, setInternalImageDragData } from '../utils/internalImageDrag';
+import { isMacPlatform } from '../utils/platform';
 
 // macOS ignores Electron's startDrag() unless it is invoked synchronously from the
 // dragstart handler, so native external drag has to be kicked off differently there
 // than on Windows (see handleDragStart / handleDrag).
-const IS_MAC_RENDERER = typeof navigator !== 'undefined' &&
-  (/mac/i.test(navigator.platform || '') || /Mac OS X/i.test(navigator.userAgent || ''));
+const IS_MAC_RENDERER = isMacPlatform();
 
 // Module-level variable to track internal image drag state (survives native file drag)
 let _activeDragImageIds: string[] = [];
