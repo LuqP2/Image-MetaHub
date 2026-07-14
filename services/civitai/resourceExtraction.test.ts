@@ -53,6 +53,34 @@ describe('extractResourceRefs', () => {
     ]);
   });
 
+  it('extracts the checkpoint hash from a MetaHub Save Node chunk', () => {
+    // MetaHub-saved images keep only `imagemetahub_data`; the `parameters`
+    // chunk (with the LoRA hash) is dropped by the indexer.
+    const raw = {
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        model: 'intorealism_zitV70.safetensors',
+        model_hash: '62ef7640ab',
+        loras: [{ name: 'Z-Detail-Slider.safetensors', weight: 0.5325 }],
+      },
+    };
+    expect(extractResourceRefs(raw)).toEqual([
+      { type: 'checkpoint', name: 'intorealism_zitV70.safetensors', hash: '62ef7640ab' },
+    ]);
+  });
+
+  it('extracts MetaHub LoRA hashes when present on the lora entry', () => {
+    const raw = {
+      imagemetahub_data: {
+        model: 'ckpt',
+        model_hash: 'aaaa1111bbbb',
+        loras: [{ name: 'MyLora', hash: 'cccc2222dddd' }],
+      },
+    };
+    const refs = extractResourceRefs(raw);
+    expect(refs).toContainEqual({ type: 'lora', name: 'MyLora', hash: 'cccc2222dddd' });
+  });
+
   it('falls back to `Model hash:` when there is no richer source', () => {
     const params = 'a prompt\nSteps: 20, Model hash: ABCDEF1234, Model: myCheckpoint';
     expect(extractResourceRefs({ parameters: params })).toEqual([
