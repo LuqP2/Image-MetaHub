@@ -379,6 +379,16 @@ export interface ThumbnailGenerateToCacheRequest extends ThumbnailCacheCandidate
   quality?: number;
 }
 
+export type CivitaiLookupResult =
+  | { status: 'found'; modelId: number; versionId: number }
+  | { status: 'notFound' }
+  | { status: 'unavailable' };
+
+export interface CivitaiLookupQuery {
+  hash?: string;
+  versionId?: number;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -426,6 +436,7 @@ export interface ElectronAPI {
   skipUpdateVersion: (version: string) => Promise<{ success: boolean; error?: string }>;
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
+  civitaiLookup: (query: CivitaiLookupQuery) => Promise<CivitaiLookupResult>;
   openPath: (filePath: string) => Promise<{ success: boolean; error?: string; errorType?: string }>;
   comfyUIViewOpen: (payload: { url: string; bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
   comfyUIViewShow: (payload?: { bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;

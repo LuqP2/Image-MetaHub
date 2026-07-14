@@ -17,6 +17,8 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import ComfyUIWorkflowWorkspace from './ComfyUIWorkflowWorkspace';
 import ProBadge from './ProBadge';
+import { CivitaiResourceLink } from './CivitaiResourceLink';
+import { extractResourceRefs, normalizeResourceName, type ResourceRef } from '../services/civitai/resourceExtraction';
 import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -571,7 +573,7 @@ const SUPPORTED_MEDIA_EXTENSION_REGEX = new RegExp(
   'i'
 );
 
-const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void | Promise<void | boolean> }> = ({ label, value, isPrompt = false, onCopy }) => {
+const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void | Promise<void | boolean>; renderValue?: (displayValue: string) => React.ReactNode }> = ({ label, value, isPrompt = false, onCopy, renderValue }) => {
   const [copied, setCopied] = useState(false);
 
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -609,7 +611,7 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
       {isPrompt ? (
         <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm mt-1">{displayValue}</pre>
       ) : (
-        <p className="text-gray-200 break-words font-mono text-sm mt-1">{displayValue}</p>
+        <p className="text-gray-200 break-words font-mono text-sm mt-1">{renderValue ? renderValue(displayValue) : displayValue}</p>
       )}
     </div>
   );
@@ -1276,6 +1278,30 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   }, [directoryPath, hydratedRawMetadataImage, liveImage]);
 
+  // Checkpoint/LoRA references for on-demand Civitai links. Extraction is
+  // local-only (reads the raw metadata); the network lookup happens on click.
+  // Runtime metadata is compacted for large payloads (the params string, where
+  // hashes live, is stripped), so hydrate on demand before extracting.
+  const [resourceRefs, setResourceRefs] = useState<ResourceRef[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const immediate = extractResourceRefs(rawMetadataImage?.metadata);
+    if (immediate.length > 0) {
+      setResourceRefs(immediate);
+      return;
+    }
+    if (hasCompactedRuntimeMetadata(liveImage)) {
+      ensureFullRawMetadata().then((full) => {
+        if (!cancelled) setResourceRefs(extractResourceRefs(full.metadata));
+      });
+    } else {
+      setResourceRefs([]);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [liveImage.id, rawMetadataImage, ensureFullRawMetadata]);
+
   useEffect(() => {
     setImageEditRecipe(DEFAULT_IMAGE_EDIT_RECIPE);
     setImageEditorTab('adjust');
@@ -1712,6 +1738,22 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const nMeta: BaseMetadata | undefined = getUsableNormalizedMetadata(liveImage);
   const canFindSimilar = Boolean(nMeta?.prompt) && Boolean(onFindSimilar);
   const effectiveMetadata = buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal);
+
+  // The single checkpoint reference (if any) links the "Model" value.
+  const checkpointRef = useMemo(
+    () => resourceRefs.find((ref) => ref.type === 'checkpoint'),
+    [resourceRefs],
+  );
+  // LoRA refs keyed by normalized name so a displayed LoRA can be matched to its
+  // reference; unmatched LoRAs simply render as plain text.
+  const loraRefByName = useMemo(() => {
+    const map = new Map<string, ResourceRef>();
+    for (const ref of resourceRefs) {
+      if (ref.type === 'lora') map.set(normalizeResourceName(ref.name), ref);
+    }
+    return map;
+  }, [resourceRefs]);
+
   const generationImage = useMemo<IndexedImage>(() => (
     effectiveMetadata
       ? {
@@ -3996,7 +4038,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
                 <div className="grid grid-cols-2 gap-3">
                   <MetadataItem label="Seed" value={effectiveMetadata?.seed} onCopy={() => copyToClipboard(String(effectiveMetadata?.seed || ''), 'Seed', true)} />
-                  <MetadataItem label="Model" value={effectiveMetadata?.model} onCopy={() => copyToClipboard(effectiveMetadata?.model || '', 'Model', true)} />
+                  <MetadataItem
+                    label="Model"
+                    value={effectiveMetadata?.model}
+                    onCopy={() => copyToClipboard(effectiveMetadata?.model || '', 'Model', true)}
+                    renderValue={checkpointRef
+                      ? (value) => <CivitaiResourceLink resource={checkpointRef}>{value}</CivitaiResourceLink>
+                      : undefined}
+                  />
                 </div>
               </div>
 
@@ -4015,7 +4064,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     {nMeta.generationType && (
                       <MetadataItem label="Generation Type" value={getGenerationTypeLabel(nMeta.generationType)} />
                     )}
-                    <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model", true)} />
+                    <MetadataItem
+                      label="Model"
+                      value={nMeta.model}
+                      onCopy={(v) => copyToClipboard(v, "Model", true)}
+                      renderValue={checkpointRef
+                        ? (value) => <CivitaiResourceLink resource={checkpointRef}>{value}</CivitaiResourceLink>
+                        : undefined}
+                    />
                     {nMeta.generator && (
                       <MetadataItem label="Generator" value={nMeta.generator} />
                     )}
@@ -4023,7 +4079,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <MetadataItem label="VAE" value={(nMeta as any).vae || (nMeta as any).vaes?.[0]?.name} />
                     )}
                     {effectiveMetadata?.loras && effectiveMetadata.loras.length > 0 && (
-                      <MetadataItem label="LoRAs" value={effectiveMetadata.loras.map(formatLoRA).join(', ')} />
+                      <MetadataItem
+                        label="LoRAs"
+                        value={effectiveMetadata.loras.map(formatLoRA).join(', ')}
+                        renderValue={loraRefByName.size > 0
+                          ? () => effectiveMetadata.loras.map((lora, index) => {
+                              const display = formatLoRA(lora);
+                              const rawName = typeof lora === 'string' ? lora : (lora.name || lora.model_name || display);
+                              const ref = loraRefByName.get(normalizeResourceName(rawName));
+                              return (
+                                <React.Fragment key={index}>
+                                  {index > 0 && ', '}
+                                  {ref ? <CivitaiResourceLink resource={ref}>{display}</CivitaiResourceLink> : display}
+                                </React.Fragment>
+                              );
+                            })
+                          : undefined}
+                      />
                     )}
                     <div className="grid grid-cols-2 gap-2">
                       <MetadataItem label="Steps" value={effectiveMetadata?.steps} onCopy={(v) => copyToClipboard(v, "Steps", true)} />

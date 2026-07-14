@@ -23,6 +23,11 @@ export interface ElectronAPI {
   skipUpdateVersion: (version: string) => Promise<{ success: boolean; error?: string }>;
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
+  civitaiLookup: (query: { hash?: string; versionId?: number }) => Promise<
+    | { status: 'found'; modelId: number; versionId: number }
+    | { status: 'notFound' }
+    | { status: 'unavailable' }
+  >;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
