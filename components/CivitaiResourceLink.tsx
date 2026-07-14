@@ -43,7 +43,6 @@ export const CivitaiResourceLink: FC<CivitaiResourceLinkProps> = ({ resource, ch
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refIdentity]);
 
   const open = (target: string) => {
