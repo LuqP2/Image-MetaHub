@@ -179,6 +179,29 @@ function extractInvokeAI(rawMetadata: unknown, state: ExtractionState): void {
 }
 
 /**
+ * MetaHub Save Node JSON (`imagemetahub_data`). For MetaHub-saved images the
+ * indexer keeps only this chunk and drops the A1111 `parameters` string, so the
+ * checkpoint hash must come from here: `{ model, model_hash, loras: [...] }`.
+ */
+function extractMetaHubData(rawMetadata: unknown, state: ExtractionState): void {
+  if (!rawMetadata || typeof rawMetadata !== 'object') return;
+  const data = (rawMetadata as Record<string, unknown>).imagemetahub_data;
+  if (!data || typeof data !== 'object') return;
+  const d = data as Record<string, unknown>;
+
+  const modelHash = normalizeHash(d.model_hash);
+  if (modelHash) addCheckpoint(state, { name: typeof d.model === 'string' ? d.model : 'Model', hash: modelHash });
+
+  if (Array.isArray(d.loras)) {
+    for (const entry of d.loras) {
+      const lora = entry as Record<string, unknown> | undefined;
+      const hash = normalizeHash(lora?.hash ?? lora?.model_hash);
+      if (hash) addLora(state, typeof lora?.name === 'string' ? lora.name : 'LoRA', { hash });
+    }
+  }
+}
+
+/**
  * Extract all checkpoint + LoRA references from raw metadata, deduped.
  * Returns [] when the format carries nothing linkable.
  */
@@ -198,6 +221,7 @@ export function extractResourceRefs(rawMetadata: unknown): ResourceRef[] {
     extractCheckpointHashFallback(params, state);
   }
   extractInvokeAI(rawMetadata, state);
+  extractMetaHubData(rawMetadata, state);
 
   return state.out;
 }
