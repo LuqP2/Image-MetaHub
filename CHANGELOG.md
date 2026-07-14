@@ -9,15 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Civitai Links**: Added clickable Model and LoRA links in the Image Modal that resolve to their Civitai page on click, including support for MetaHub Save Node (ComfyUI) images. A new Privacy setting lets users disable Civitai lookups.
+- **Civitai Links**: Model and LoRA hashes in the Image Modal are now clickable and open the matching Civitai page. The lookup happens only when you click — a single request to Civitai's public API, with the result cached locally so each hash is only ever looked up once. Works with A1111, Forge, SD.Next and Fooocus images, plus ComfyUI images saved with the MetaHub Save Node. Can be fully disabled under Settings → Privacy. Indexing and browsing remain 100% offline, as always.
 
 ### Fixed
 
-- **Generator Detection Priority**: Fixed metadata parser dispatch order so DreamStudio, Draw Things, Midjourney, Niji, and Forge images were no longer misclassified or swallowed by the generic Automatic1111 catch-all.
-- **MetaHub Save Node Tags/Notes**: Fixed tags and notes being dropped from normalized metadata for MetaHub Save Node images.
-- **Large Library Metadata Re-reads**: Fixed inconsistent metadata re-reads for files that overflowed the batch read budget, and added WebP truncation detection so head-read-truncated WebP metadata is re-read like PNG.
-- **Folder Tree Sorting**: Fixed subfolder sorting in the folder tree to be case-insensitive and natural, matching Finder/Windows Explorer instead of raw filesystem order.
-- **macOS External File Drag**: Fixed dragging grid cards onto ComfyUI or into Finder on macOS, which previously produced a text clipping instead of the real file.
+- **Generator Detection Priority**: Reordered metadata parser dispatch so DreamStudio, Draw Things, Midjourney, Niji and Forge images are correctly identified instead of being swallowed by the generic Automatic1111 catch-all.
+- **MetaHub Save Node Tags/Notes**: Tags and notes from MetaHub Save Node images are no longer dropped during metadata normalization.
+- **Large Library Metadata Re-reads**: Files that overflowed the batch read budget are now re-read consistently, and truncated WebP metadata is detected and re-read the same way PNG already was.
+- **Folder Tree Sorting**: Subfolders now sort case-insensitively and naturally (matching Finder/Windows Explorer) instead of raw filesystem order.
+- **macOS External File Drag**: Dragging grid cards onto ComfyUI or into Finder on macOS now transfers the actual file instead of a text clipping.
 
 ## [0.17.4] - 2026-07-11
 
