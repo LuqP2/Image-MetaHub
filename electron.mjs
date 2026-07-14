@@ -3192,6 +3192,55 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // On-demand Civitai lookup for a model/LoRA reference, keyed by hash or by
+  // Civitai model version id. This is the ONLY outbound network request the app
+  // makes for this feature, and it fires only when the user clicks a model/LoRA
+  // in the image modal — never during indexing. Routing it through the main
+  // process avoids CORS and keeps it auditable/local-first.
+  ipcMain.handle('civitai-lookup', async (event, query) => {
+    try {
+      const hash = typeof query?.hash === 'string' ? query.hash.trim() : '';
+      const versionId = typeof query?.versionId === 'number' ? query.versionId : null;
+
+      let endpoint;
+      if (hash && /^[0-9a-f]{8,64}$/i.test(hash)) {
+        endpoint = `https://civitai.com/api/v1/model-versions/by-hash/${encodeURIComponent(hash)}`;
+      } else if (versionId && Number.isFinite(versionId)) {
+        endpoint = `https://civitai.com/api/v1/model-versions/${encodeURIComponent(String(versionId))}`;
+      } else {
+        return { status: 'notFound' };
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      let response;
+      try {
+        response = await fetch(endpoint, { signal: controller.signal, headers: { Accept: 'application/json' } });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (response.status === 404) {
+        return { status: 'notFound' };
+      }
+      // Rate limit / server hiccups / anything non-OK: transient, do not cache.
+      if (!response.ok) {
+        return { status: 'unavailable' };
+      }
+
+      const data = await response.json();
+      const modelId = data?.modelId;
+      const resolvedVersionId = data?.id;
+      if (typeof modelId !== 'number' || typeof resolvedVersionId !== 'number') {
+        return { status: 'notFound' };
+      }
+      return { status: 'found', modelId, versionId: resolvedVersionId };
+    } catch (error) {
+      // Network failure / abort — transient, let the renderer offer a retry.
+      return { status: 'unavailable' };
+    }
+  });
+
   ipcMain.handle('open-path', async (event, filePath) => {
     try {
       if (!filePath) {

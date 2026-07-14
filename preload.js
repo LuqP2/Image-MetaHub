@@ -217,6 +217,7 @@ const electronAPI = {
   skipUpdateVersion: (version) => ipcRenderer.invoke('skip-version', version),
   launchGenerator: (payload) => ipcRenderer.invoke('launch-generator', payload),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+  civitaiLookup: (query) => ipcRenderer.invoke('civitai-lookup', query),
   openPath: (filePath) => ipcRenderer.invoke('open-path', filePath),
   comfyUIViewOpen: (payload) => ipcRenderer.invoke('comfy-view-open', payload),
   comfyUIViewShow: (payload) => ipcRenderer.invoke('comfy-view-show', payload),

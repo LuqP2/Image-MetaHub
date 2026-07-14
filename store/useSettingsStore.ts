@@ -121,6 +121,7 @@ interface SettingsState {
   sensitiveTags: string[];
   blurSensitiveImages: boolean;
   enableSafeMode: boolean;
+  civitaiLookupEnabled: boolean;
   enableAnimations: boolean;
   performanceDiagnosticsEnabled: boolean;
   slideshowIntervalSeconds: number;
@@ -171,6 +172,7 @@ interface SettingsState {
   setSensitiveTags: (tags: string[]) => void;
   setBlurSensitiveImages: (value: boolean) => void;
   setEnableSafeMode: (value: boolean) => void;
+  setCivitaiLookupEnabled: (value: boolean) => void;
   setEnableAnimations: (value: boolean) => void;
   setPerformanceDiagnosticsEnabled: (value: boolean) => void;
   setSlideshowIntervalSeconds: (value: number) => void;
@@ -225,6 +227,7 @@ export const useSettingsStore = create<SettingsState>()(
       sensitiveTags: ['nsfw', 'private', 'hidden'],
       blurSensitiveImages: true,
       enableSafeMode: true,
+      civitaiLookupEnabled: true,
       enableAnimations: true,
       performanceDiagnosticsEnabled: false,
       slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
@@ -287,6 +290,7 @@ export const useSettingsStore = create<SettingsState>()(
       },
       setBlurSensitiveImages: (value) => set({ blurSensitiveImages: !!value }),
       setEnableSafeMode: (value) => set({ enableSafeMode: !!value }),
+      setCivitaiLookupEnabled: (value) => set({ civitaiLookupEnabled: !!value }),
       setEnableAnimations: (value) => set({ enableAnimations: !!value }),
       setPerformanceDiagnosticsEnabled: (value) => set({ performanceDiagnosticsEnabled: !!value }),
       setSlideshowIntervalSeconds: (value) =>
@@ -363,6 +367,7 @@ export const useSettingsStore = create<SettingsState>()(
         sensitiveTags: ['nsfw', 'private', 'hidden'],
         blurSensitiveImages: true,
         enableSafeMode: true,
+        civitaiLookupEnabled: true,
         enableAnimations: true,
         performanceDiagnosticsEnabled: false,
         slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
@@ -455,6 +460,10 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.enableSafeMode !== 'boolean') {
           state.enableSafeMode = true;
+        }
+
+        if (state && typeof state.civitaiLookupEnabled !== 'boolean') {
+          state.civitaiLookupEnabled = true;
         }
 
         if (state && typeof state.enableAnimations !== 'boolean') {

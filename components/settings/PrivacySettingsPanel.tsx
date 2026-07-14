@@ -10,6 +10,8 @@ export const PrivacySettingsPanel: React.FC = () => {
   const setSensitiveTags = useSettingsStore((state) => state.setSensitiveTags);
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
   const setBlurSensitiveImages = useSettingsStore((state) => state.setBlurSensitiveImages);
+  const civitaiLookupEnabled = useSettingsStore((state) => state.civitaiLookupEnabled);
+  const setCivitaiLookupEnabled = useSettingsStore((state) => state.setCivitaiLookupEnabled);
   const [sensitiveTagsInput, setSensitiveTagsInput] = useState('');
 
   useEffect(() => {
@@ -47,6 +49,14 @@ export const PrivacySettingsPanel: React.FC = () => {
           label="Blur instead of hide"
           description="Keep matches visible with blur, instead of removing them from the grid."
           control={<SettingSwitch checked={blurSensitiveImages} onChange={setBlurSensitiveImages} />}
+        />
+      </SettingsSectionCard>
+
+      <SettingsSectionCard title="Online lookups">
+        <SettingRow
+          label="Civitai links"
+          description="Let the model and LoRA names link to Civitai. The lookup only runs when you click one — it makes a single request to civitai.com and caches the result locally. Nothing is sent during indexing."
+          control={<SettingSwitch checked={civitaiLookupEnabled} onChange={setCivitaiLookupEnabled} />}
         />
       </SettingsSectionCard>
     </SettingsPanel>
