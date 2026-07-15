@@ -21,9 +21,17 @@ describe('parseA1111Metadata', () => {
     const params = 'A beautiful landscape\nNegative prompt: ugly, blurry\nSteps: 20, Sampler: Euler a, CFG scale: 7, Seed: 12345';
     const result = parseA1111Metadata(params);
     expect(result?.steps).toBe(20);
-    expect(result?.scheduler).toBe('Euler a');
+    expect(result?.sampler).toBe('Euler a');
+    expect(result?.scheduler).toBeUndefined();
     expect(result?.cfg_scale).toBe(7);
     expect(result?.seed).toBe(12345);
+  });
+
+  it('should parse Sampler and Schedule type into separate fields', () => {
+    const params = 'A beautiful landscape\nSteps: 25, Sampler: Euler a, Schedule type: Simple, CFG scale: 5, Seed: 3036648173';
+    const result = parseA1111Metadata(params);
+    expect(result?.sampler).toBe('Euler a');
+    expect(result?.scheduler).toBe('Simple');
   });
 
   it('should handle missing negative prompt', () => {

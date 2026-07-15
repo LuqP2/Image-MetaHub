@@ -147,11 +147,11 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
   if (stepsMatch) result.steps = parseInt(stepsMatch[1], 10);
 
   const samplerMatch = parameters.match(/Sampler: ([^,]+)/);
-  if (samplerMatch) result.scheduler = samplerMatch[1].trim();
+  if (samplerMatch) result.sampler = samplerMatch[1].trim();
 
   // Suporte para "Schedule type:" (usado em builds modernas)
   const scheduleTypeMatch = parameters.match(/Schedule type: ([^,]+)/);
-  if (scheduleTypeMatch && !result.scheduler) {
+  if (scheduleTypeMatch) {
     result.scheduler = scheduleTypeMatch[1].trim();
   }
 
