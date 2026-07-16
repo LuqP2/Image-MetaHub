@@ -859,6 +859,169 @@ class CacheManager {
     }
   }
 
+  /**
+   * Patches specific images in an existing cache without rewriting the whole
+   * directory cache. `applyChunkedCacheDelta` reads and re-serializes every
+   * entry, so a single-image "Reparse Metadata" ends up scaling with the whole
+   * library. Here we only touch the chunk(s) that actually hold the reparsed
+   * images, so the cost is proportional to the number of reparsed images, not
+   * the folder size (#448 follow-up).
+   *
+   * Only updates entries that already exist in the cache (which reparse targets
+   * always do, since they come from the indexed/cached library). Returns true if
+   * at least one cache variant was updated.
+   */
+  async patchCachedImages(
+    directoryPath: string,
+    directoryName: string,
+    images: IndexedImage[],
+    scanSubfolders: boolean
+  ): Promise<boolean> {
+    if (!this.isElectron || !images || images.length === 0) return false;
+
+    const sanitizedUpdates = sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true });
+    const updatesById = new Map<string, CacheImageMetadata>();
+    for (const image of sanitizedUpdates) {
+      updatesById.set(image.id, image);
+    }
+    if (updatesById.size === 0) return false;
+
+    let patchedAny = false;
+    const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
+    for (const mode of candidateModes) {
+      const cacheId = `${directoryPath}-${mode ? 'recursive' : 'flat'}`;
+      const patched = await this.runChunkedCacheDeltaLocked(cacheId, () =>
+        this.patchCacheVariant(cacheId, directoryPath, directoryName, updatesById, mode)
+      );
+      patchedAny = patchedAny || patched;
+    }
+
+    return patchedAny;
+  }
+
+  private async patchCacheVariant(
+    cacheId: string,
+    directoryPath: string,
+    directoryName: string,
+    updatesById: Map<string, CacheImageMetadata>,
+    scanSubfolders: boolean
+  ): Promise<boolean> {
+    const start = performance.now();
+    const summary = await this.getCacheSummary(directoryPath, scanSubfolders);
+    if (!summary) {
+      return false;
+    }
+
+    const remaining = new Set(updatesById.keys());
+
+    // Small caches keep their metadata inline in the main record; there are no
+    // chunk files to patch, so rewrite the (small) inline blob directly.
+    if (Array.isArray(summary.metadata) && summary.metadata.length > 0) {
+      let changed = false;
+      const metadata = summary.metadata.map((entry) => {
+        const update = updatesById.get(entry.id);
+        if (!update) return entry;
+        changed = true;
+        remaining.delete(entry.id);
+        return update;
+      });
+
+      if (!changed) return false;
+
+      const result = await window.electronAPI.cacheData({
+        cacheId,
+        data: {
+          id: summary.id,
+          directoryPath,
+          directoryName: summary.directoryName ?? directoryName,
+          lastScan: Date.now(),
+          imageCount: metadata.length,
+          metadata,
+          parserVersion: PARSER_VERSION,
+        },
+      });
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to patch inline cache');
+      }
+      logCachePerf('patch-cached-images:inline', {
+        cacheId,
+        patched: updatesById.size - remaining.size,
+        records: metadata.length,
+        durationMs: toFixedMs(performance.now() - start),
+      });
+      return true;
+    }
+
+    // Chunked cache: only read/rewrite the chunk(s) that actually contain a
+    // target id, and stop as soon as every reparsed image has been located.
+    const chunkCount = summary.chunkCount ?? 0;
+    let readChunks = 0;
+    let rewrittenChunks = 0;
+
+    for (let chunkIndex = 0; chunkIndex < chunkCount && remaining.size > 0; chunkIndex += 1) {
+      const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex });
+      readChunks += 1;
+      if (!chunkResult.success || !Array.isArray(chunkResult.data)) {
+        throw new Error(chunkResult.error || `Failed to read cache chunk ${chunkIndex}`);
+      }
+
+      const entries = chunkResult.data as CacheImageMetadata[];
+      let chunkChanged = false;
+      for (let i = 0; i < entries.length; i += 1) {
+        const update = updatesById.get(entries[i].id);
+        if (update) {
+          entries[i] = update;
+          remaining.delete(update.id);
+          chunkChanged = true;
+        }
+      }
+
+      if (chunkChanged) {
+        const writeResult = await window.electronAPI.writeCacheChunk({
+          cacheId,
+          chunkIndex,
+          data: entries,
+        });
+        if (!writeResult.success) {
+          throw new Error(writeResult.error || `Failed to write cache chunk ${chunkIndex}`);
+        }
+        rewrittenChunks += 1;
+      }
+    }
+
+    if (rewrittenChunks === 0) {
+      return false;
+    }
+
+    // Refresh the main record's lastScan. sourceCacheId is omitted so the handler
+    // only rewrites the (small) record and leaves the untouched chunks in place.
+    const finalizeResult = await window.electronAPI.finalizeCacheWrite({
+      cacheId,
+      record: {
+        id: summary.id,
+        directoryPath,
+        directoryName: summary.directoryName ?? directoryName,
+        lastScan: Date.now(),
+        imageCount: summary.imageCount,
+        chunkCount,
+        parserVersion: PARSER_VERSION,
+      },
+    });
+    if (!finalizeResult.success) {
+      throw new Error(finalizeResult.error || 'Failed to finalize cache patch');
+    }
+
+    logCachePerf('patch-cached-images:chunked', {
+      cacheId,
+      patched: updatesById.size - remaining.size,
+      readChunks,
+      rewrittenChunks,
+      chunkCount,
+      durationMs: toFixedMs(performance.now() - start),
+    });
+    return true;
+  }
+
   async removeCachedImages(
     directoryPath: string,
     directoryName: string,
