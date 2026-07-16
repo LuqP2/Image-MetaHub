@@ -122,6 +122,8 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   className,
   compareLabel,
   isHighlighted = false,
+  registerScrollRef,
+  onContentScroll,
 }) => {
   const metadata = image.metadata?.normalizedMetadata;
   const isDiffMode = viewMode === 'diff';
@@ -209,7 +211,10 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
 
       {/* Metadata Content */}
       {isExpanded && (
-        <div className="p-3 space-y-3 max-h-[300px] overflow-y-auto border-t border-gray-700/50">
+        <div
+          ref={registerScrollRef}
+          onScroll={onContentScroll ? (event) => onContentScroll(event.currentTarget.scrollTop) : undefined}
+          className="p-3 space-y-3 max-h-[300px] overflow-y-auto border-t border-gray-700/50">
           {/* Prompt */}
           {(metadata.prompt || (isDiffMode && otherImageMetadata?.prompt)) && (
             <MetadataField

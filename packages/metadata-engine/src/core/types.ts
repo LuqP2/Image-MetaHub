@@ -650,4 +650,6 @@ export interface ComparisonMetadataPanelProps {
   otherImageMetadata?: BaseMetadata | null;
   className?: string;
   compareLabel?: string;
+  registerScrollRef?: (element: HTMLDivElement | null) => void;
+  onContentScroll?: (scrollTop: number) => void;
 }

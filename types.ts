@@ -1109,6 +1109,8 @@ export interface ComparisonMetadataPanelProps {
   className?: string;
   compareLabel?: string;
   isHighlighted?: boolean;
+  registerScrollRef?: (element: HTMLDivElement | null) => void;
+  onContentScroll?: (scrollTop: number) => void;
 }
 
 // ===== Smart Clustering & Auto-Tagging Types =====
