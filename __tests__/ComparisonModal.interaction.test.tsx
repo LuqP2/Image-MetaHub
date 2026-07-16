@@ -53,17 +53,25 @@ vi.mock('../components/ComparisonMetadataPanel', () => ({
     image,
     isExpanded,
     isHighlighted,
+    viewMode,
+    onToggleExpanded,
   }: {
     image: IndexedImage;
     isExpanded: boolean;
     isHighlighted?: boolean;
+    viewMode?: 'standard' | 'diff';
+    onToggleExpanded?: () => void;
   }) => (
     <div
       data-testid={`metadata-${image.id}`}
       data-expanded={isExpanded ? 'true' : 'false'}
       data-highlighted={isHighlighted ? 'true' : 'false'}
+      data-view-mode={viewMode}
     >
       {image.name}
+      <button type="button" aria-label={`Toggle ${image.id}`} onClick={() => onToggleExpanded?.()}>
+        Toggle
+      </button>
     </div>
   ),
 }));
@@ -111,6 +119,49 @@ describe('ComparisonModal interactions', () => {
 
     fireEvent.mouseLeave(screen.getByTestId('pane-img-2'));
     expect(screen.getByTestId('metadata-img-2').getAttribute('data-highlighted')).toBe('false');
+  });
+
+  it('expands every metadata panel together from a single toggle click', () => {
+    const first = createImage('img-1', 'first prompt');
+    const second = createImage('img-2', 'second prompt');
+
+    useImageStore.setState({
+      comparisonImages: [first, second],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+    } as any);
+
+    render(<ComparisonModal isOpen onClose={vi.fn()} />);
+
+    expect(screen.getByTestId('metadata-img-1').getAttribute('data-expanded')).toBe('false');
+    expect(screen.getByTestId('metadata-img-2').getAttribute('data-expanded')).toBe('false');
+
+    // Clicking a single panel's toggle should reveal all panels at once.
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle img-1' }));
+
+    expect(screen.getByTestId('metadata-img-1').getAttribute('data-expanded')).toBe('true');
+    expect(screen.getByTestId('metadata-img-2').getAttribute('data-expanded')).toBe('true');
+  });
+
+  it('defaults the metadata view to diff and toggles back to standard', () => {
+    const first = createImage('img-1', 'first prompt');
+    const second = createImage('img-2', 'second prompt');
+
+    useImageStore.setState({
+      comparisonImages: [first, second],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+    } as any);
+
+    render(<ComparisonModal isOpen onClose={vi.fn()} />);
+
+    expect(screen.getByTestId('metadata-img-1').getAttribute('data-view-mode')).toBe('diff');
+
+    const toggle = screen.getByRole('switch');
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+
+    fireEvent.click(toggle);
+
+    expect(screen.getByTestId('metadata-img-1').getAttribute('data-view-mode')).toBe('standard');
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
   });
 
   it('enables advanced two-image modes and shows visual delta controls', () => {

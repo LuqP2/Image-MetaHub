@@ -73,6 +73,10 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDraggingHandle, setIsDraggingHandle] = useState(false);
   const isAdvancedMode = ADVANCED_MODES.has(mode);
+  // Flicker renders its own single-image layer (see renderAdvancedLayer) rather than
+  // stacking both base images, but it must not trigger the heavy visual analysis that
+  // the ADVANCED_MODES pipeline performs.
+  const usesCustomLayer = isAdvancedMode || mode === 'flicker';
 
   useEffect(() => {
     if (!transformRef.current || !transformRef.current.state) return;
@@ -480,7 +484,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                   </div>
                 )}
 
-                {!isAdvancedMode && rightUrl && (
+                {!usesCustomLayer && rightUrl && (
                   <img
                     src={rightUrl}
                     alt={rightImage.name}
@@ -489,7 +493,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                   />
                 )}
 
-                {!isAdvancedMode && leftUrl && (
+                {!usesCustomLayer && leftUrl && (
                   <img
                     src={leftUrl}
                     alt={leftImage.name}
@@ -498,7 +502,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                   />
                 )}
 
-                {isAdvancedMode && renderAdvancedLayer()}
+                {usesCustomLayer && renderAdvancedLayer()}
 
                 {ready && mode === 'slider' && (
                   <>

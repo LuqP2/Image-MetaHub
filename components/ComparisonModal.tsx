@@ -1,4 +1,4 @@
-import React, { useState, useEffect, FC, useMemo } from 'react';
+import React, { useState, useEffect, FC, useMemo, useRef } from 'react';
 import { X, Repeat, ArrowLeft } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { BaseMetadata, ComparisonAdvancedSettings, ComparisonLayoutMode, ComparisonModalProps, IndexedImage, ZoomState, ComparisonViewMode } from '../types';
@@ -30,10 +30,10 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
 
   const [syncEnabled, setSyncEnabled] = useState(true);
   const [sharedZoom, setSharedZoom] = useState<ZoomState>({ zoom: 1, x: 0, y: 0 });
-  const [expandedMetadataIndexes, setExpandedMetadataIndexes] = useState<Set<number>>(() => new Set());
+  const [isMetadataExpanded, setIsMetadataExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<ComparisonViewMode>('side-by-side');
   const [layoutMode, setLayoutMode] = useState<ComparisonLayoutMode>('strip');
-  const [metadataViewMode, setMetadataViewMode] = useState<'standard' | 'diff'>('standard');
+  const [metadataViewMode, setMetadataViewMode] = useState<'standard' | 'diff'>('diff');
   const [activeMetadataIndex, setActiveMetadataIndex] = useState<number | null>(null);
   const [visualMetrics, setVisualMetrics] = useState<VisualComparisonMetrics | null>(null);
   const [highlightDeltaRegion, setHighlightDeltaRegion] = useState(false);
@@ -46,6 +46,9 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
     loupeZoom: 2,
     showLabels: true,
   });
+
+  const metadataScrollRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const isSyncingMetadataScroll = useRef(false);
 
   const imageCount = comparisonImages.length;
   const supportsOverlayModes = imageCount === 2;
@@ -98,20 +101,34 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const toggleMetadataPanel = (index: number) => {
-    setExpandedMetadataIndexes((current) => {
-      const next = new Set(current);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
+  const toggleMetadataPanel = () => {
+    setIsMetadataExpanded((current) => !current);
+  };
+
+  const registerMetadataScrollRef = (index: number) => (element: HTMLDivElement | null) => {
+    if (element) {
+      metadataScrollRefs.current.set(index, element);
+    } else {
+      metadataScrollRefs.current.delete(index);
+    }
+  };
+
+  const handleMetadataScroll = (index: number, scrollTop: number) => {
+    if (isSyncingMetadataScroll.current) return;
+    isSyncingMetadataScroll.current = true;
+    metadataScrollRefs.current.forEach((element, refIndex) => {
+      if (refIndex !== index && element.scrollTop !== scrollTop) {
+        element.scrollTop = scrollTop;
       }
-      return next;
+    });
+    // Release the lock after the synced scrolls have dispatched their events.
+    window.requestAnimationFrame(() => {
+      isSyncingMetadataScroll.current = false;
     });
   };
 
   useEffect(() => {
-    setExpandedMetadataIndexes(new Set());
+    setIsMetadataExpanded(false);
     setActiveMetadataIndex(null);
     setVisualMetrics(null);
     setHighlightDeltaRegion(false);
@@ -523,30 +540,27 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
             )}
           </div>
 
-          <div className="inline-flex bg-gray-900/60 border border-gray-700/70 rounded-lg overflow-hidden">
-            <button
-              onClick={() => setMetadataViewMode('standard')}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-700/40 ${
-                metadataViewMode === 'standard'
-                  ? 'bg-blue-600 text-white border-blue-500/60'
-                  : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
+          <button
+            type="button"
+            role="switch"
+            aria-checked={metadataViewMode === 'diff'}
+            onClick={() => setMetadataViewMode((current) => (current === 'diff' ? 'standard' : 'diff'))}
+            className="group inline-flex items-center gap-2 text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors"
+            title={metadataViewMode === 'diff' ? 'Highlighting differences — click to show standard view' : 'Showing standard view — click to highlight differences'}
+          >
+            <span className={metadataViewMode === 'diff' ? 'text-gray-200' : ''}>Diff</span>
+            <span
+              className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                metadataViewMode === 'diff' ? 'bg-blue-600' : 'bg-gray-600/70'
               }`}
-              title="Show all metadata in standard format"
             >
-              Standard View
-            </button>
-            <button
-              onClick={() => setMetadataViewMode('diff')}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                metadataViewMode === 'diff'
-                  ? 'bg-blue-600 text-white border-blue-500/60'
-                  : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
-              }`}
-              title="Highlight differences between metadata"
-            >
-              Diff View
-            </button>
-          </div>
+              <span
+                className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                  metadataViewMode === 'diff' ? 'translate-x-3.5' : 'translate-x-0.5'
+                }`}
+              />
+            </span>
+          </button>
         </div>
 
         <div className={`grid gap-4 max-w-7xl mx-auto ${imageCount > 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2'}`}>
@@ -558,13 +572,15 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
               <ComparisonMetadataPanel
                 key={image.id}
                 image={image}
-                isExpanded={expandedMetadataIndexes.has(index)}
-                onToggleExpanded={() => toggleMetadataPanel(index)}
+                isExpanded={isMetadataExpanded}
+                onToggleExpanded={toggleMetadataPanel}
                 viewMode={metadataViewMode}
                 otherImageMetadata={otherImageMetadata}
                 className={isOddLastGridItem ? 'md:col-span-2' : ''}
                 compareLabel={index === 0 ? 'Reference' : metadataViewMode === 'diff' ? 'vs Image 1' : undefined}
                 isHighlighted={activeMetadataIndex === index}
+                registerScrollRef={registerMetadataScrollRef(index)}
+                onContentScroll={(scrollTop) => handleMetadataScroll(index, scrollTop)}
               />
             );
           })}
