@@ -1120,6 +1120,9 @@ export interface ComparisonMetadataPanelProps {
  */
 export type ImageScopeType = 'model' | 'cluster' | 'collection';
 
+/** The active dimension of the Explore surface (unifies Model View / Smart Library / Collections). */
+export type ExploreDimension = 'models' | 'clusters' | 'collections';
+
 /**
  * A navigation scope: a single drill-in target (a model, cluster, or collection)
  * that constrains the Library grid to the images belonging to it. Exclusive

@@ -32,6 +32,7 @@ import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
+import ExploreWorkspace from './components/ExploreWorkspace';
 import NodeView from './components/NodeView';
 import FindSimilarModal from './components/FindSimilarModal';
 import ModelPromptPickerModal from './components/ModelPromptPickerModal';
@@ -248,6 +249,7 @@ export default function App() {
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
   const activeImageScope = useImageStore((state) => state.activeImageScope);
   const validateActiveImageScope = useImageStore((state) => state.validateActiveImageScope);
+  const setExploreDimension = useImageStore((state) => state.setExploreDimension);
   const collections = useImageStore((state) => state.collections);
   const activeCollectionId = useImageStore((state) => state.activeCollectionId);
 
@@ -482,7 +484,7 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'explore' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor'>('library');
   const [nodeViewVisibleImages, setNodeViewVisibleImages] = useState<IndexedImage[]>([]);
   const [nodeViewResultImages, setNodeViewResultImages] = useState<IndexedImage[]>([]);
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
@@ -687,6 +689,10 @@ export default function App() {
     setIsHotkeyHelpOpen,
     isSettingsModalOpen,
     setIsSettingsModalOpen,
+    onNavigateToExplore: (dimension) => {
+      setExploreDimension(dimension);
+      setLibraryView('explore');
+    },
   });
 
   // --- License/Trial Hook ---
@@ -3530,6 +3536,13 @@ export default function App() {
                           jumpToGroupRequest={pendingJumpGroupRequest}
                         />
                   )
+                ) : libraryView === 'explore' ? (
+                  <ExploreWorkspace
+                    onNavigateToLibrary={() => {
+                      resetLibraryGridScrollPosition();
+                      setLibraryView('library');
+                    }}
+                  />
                 ) : libraryView === 'model' ? (
                   <ModelView
                     isQueueOpen={isQueueOpen}
@@ -3538,9 +3551,11 @@ export default function App() {
                     onPageChange={setModelViewPage}
                     activeModelName={selectedModels.length === 1 ? selectedModels[0] : null}
                     onModelSelect={(modelName) => {
+                      // Drill-in sets the model as the active scope (a descriptor) and navigates to
+                      // the Library grid — the same behavior as the Explore surface (plan Fase C).
                       resetLibraryGridScrollPosition();
                       setModelViewPage(1);
-                      setSelectedFilters({ models: [modelName] });
+                      setActiveImageScope({ type: 'model', id: modelName, label: modelName });
                       setLibraryView('library');
                     }}
                     onFindMatchingPrompts={openModelPromptPicker}

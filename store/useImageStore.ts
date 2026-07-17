@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode, type ImageScope } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode, type ImageScope, type ExploreDimension } from '../types';
 import { resolveScopeImageIds, filterImagesByScope, getScopeToastMessage } from '../utils/imageScope';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
@@ -824,6 +824,7 @@ interface ImageState {
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
   activeImageScope: ImageScope | null;
+  exploreDimension: ExploreDimension;
   collections: SmartCollection[];
   automationRules: AutomationRule[];
   isAutomationRulesLoaded: boolean;
@@ -963,6 +964,7 @@ interface ImageState {
   setPreviewImage: (image: IndexedImage | null) => void;
   setSelectedImage: (image: IndexedImage | null) => void;
   setActiveImageScope: (scope: ImageScope | null) => void;
+  setExploreDimension: (dimension: ExploreDimension) => void;
   /** Clears the active scope (with a toast) when its target no longer exists. */
   validateActiveImageScope: () => void;
   /** filteredImages intersected with the active scope (or filteredImages when no scope). */
@@ -2645,6 +2647,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         clipboard: null,
         selectedImages: new Set(),
         activeImageScope: null,
+        exploreDimension: 'models',
         collections: [],
         automationRules: [],
         isAutomationRulesLoaded: false,
@@ -3546,6 +3549,9 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),
+        setExploreDimension: (dimension) => set((state) => (
+            state.exploreDimension === dimension ? state : { exploreDimension: dimension }
+        )),
         setActiveImageScope: (scope) => set((state) => {
             const current = state.activeImageScope;
             if (current === scope) {
@@ -5053,6 +5059,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedImage: null,
             selectedImages: new Set(),
             activeImageScope: null,
+            exploreDimension: 'models',
             collections: [],
             automationRules: [],
             isAutomationRulesLoaded: false,

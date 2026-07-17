@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon } from 'lucide-react';
+import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon, Compass } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -9,7 +9,7 @@ import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch
 import { buildProLicenseUrl } from '../utils/creatorAttribution';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
 
-type LibraryView = 'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor';
+type LibraryView = 'library' | 'explore' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor';
 
 interface HeaderProps {
     onOpenSettings: () => void;
@@ -331,6 +331,7 @@ const Header: React.FC<HeaderProps> = ({
   const viewTabs = useMemo(
     () => [
       { id: 'library' as const, label: 'Library' },
+      { id: 'explore' as const, label: 'Explore', icon: Compass },
       { id: 'smart' as const, label: 'Smart Library', count: clustersCount > 0 ? clustersCount : null },
       { id: 'model' as const, label: 'Model View' },
       { id: 'node' as const, label: 'Node View' },
