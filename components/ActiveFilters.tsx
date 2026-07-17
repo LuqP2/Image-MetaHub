@@ -1,9 +1,21 @@
 import React from 'react';
-import { Calendar, CheckCircle, Heart, Settings, X } from 'lucide-react';
+import { Box, Calendar, CheckCircle, FolderOpen, Heart, Layers, Settings, X, type LucideIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
-import type { AdvancedFilters, NumericRangeFilter } from '../types';
+import type { AdvancedFilters, ImageScope, NumericRangeFilter } from '../types';
 import { RatingValueIcons } from './RatingStars';
+
+const SCOPE_ICONS: Record<ImageScope['type'], LucideIcon> = {
+  model: Box,
+  cluster: Layers,
+  collection: FolderOpen,
+};
+
+const SCOPE_LABELS: Record<ImageScope['type'], string> = {
+  model: 'Model',
+  cluster: 'Cluster',
+  collection: 'Collection',
+};
 
 const formatRangeLabel = (label: string, range?: NumericRangeFilter, suffix = '') => {
   if (!range) {
@@ -54,6 +66,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
   const selectedRatings = useImageStore((state) => state.selectedRatings);
   const advancedFilters = useImageStore((state) => state.advancedFilters);
+  const activeImageScope = useImageStore((state) => state.activeImageScope);
+  const setActiveImageScope = useImageStore((state) => state.setActiveImageScope);
 
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
   const setSelectedTags = useImageStore((state) => state.setSelectedTags);
@@ -66,6 +80,7 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
   const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
 
   const hasActiveFilters =
+    activeImageScope !== null ||
     selectedModels.length > 0 ||
     excludedModels.length > 0 ||
     selectedLoras.length > 0 ||
@@ -117,6 +132,29 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
       </div>
       <div className="flex flex-wrap gap-2">
         <AnimatePresence mode="popLayout">
+        {activeImageScope && (() => {
+          const ScopeIcon = SCOPE_ICONS[activeImageScope.type];
+          return (
+            <motion.div
+              key="active-scope"
+              {...CHIP_ANIMATION}
+              className="inline-flex items-center gap-1.5 rounded-md border border-indigo-500/60 bg-indigo-600/30 px-2 py-1 text-[11px] font-semibold text-indigo-100 shadow-[0_0_0_1px_rgba(99,102,241,0.25)]"
+            >
+              <ScopeIcon size={12} className="text-indigo-300" />
+              <span className="uppercase tracking-wide opacity-70">{SCOPE_LABELS[activeImageScope.type]}</span>
+              <span className="max-w-[180px] truncate">{activeImageScope.label}</span>
+              <button
+                onClick={() => setActiveImageScope(null)}
+                aria-label="Clear scope"
+                title="Clear scope"
+                className="rounded p-0.5 hover:bg-indigo-500/40 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+              >
+                <X size={12} />
+              </button>
+            </motion.div>
+          );
+        })()}
+
         {searchQuery && (
           <motion.div key="filter-search" {...CHIP_ANIMATION} className={`${chipClass} border-gray-700 bg-gray-800/70 text-gray-200`}>
             <span className="opacity-70">Search</span>

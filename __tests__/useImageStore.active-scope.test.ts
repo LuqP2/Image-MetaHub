@@ -10,14 +10,14 @@ const directory: Directory = {
   visible: true,
 };
 
-const createImage = (name: string): IndexedImage => ({
+const createImage = (name: string, models: string[] = []): IndexedImage => ({
   id: `dir-1::${name}`,
   name,
   handle: {} as FileSystemFileHandle,
   metadata: {} as any,
   metadataString: '',
   lastModified: 1,
-  models: [],
+  models,
   loras: [],
   sampler: '',
   scheduler: '',
@@ -25,9 +25,11 @@ const createImage = (name: string): IndexedImage => ({
 });
 
 describe('useImageStore active image scope', () => {
-  const first = createImage('first.png');
-  const second = createImage('second.png');
-  const third = createImage('third.png');
+  // The scope is a descriptor ({ type, id, label }) that resolves to the set of images it
+  // targets and is intersected with filteredImages. Here a model scope targets second + third.
+  const first = createImage('first.png', ['base']);
+  const second = createImage('second.png', ['scoped']);
+  const third = createImage('third.png', ['scoped']);
 
   beforeEach(() => {
     useImageStore.getState().resetState();
@@ -35,11 +37,18 @@ describe('useImageStore active image scope', () => {
       directories: [directory],
       images: [first, second, third],
       filteredImages: [first, second, third],
-      activeImageScope: [second, third],
+      activeImageScope: { type: 'model', id: 'scoped', label: 'scoped' },
       selectedImages: new Set(),
       selectedImage: second,
       clusterNavigationContext: null,
     });
+  });
+
+  it('resolves the scoped filtered images from the descriptor', () => {
+    expect(useImageStore.getState().getScopedFilteredImages().map((image) => image.id)).toEqual([
+      second.id,
+      third.id,
+    ]);
   });
 
   it('selects all images from the active scope', () => {
@@ -56,5 +65,14 @@ describe('useImageStore active image scope', () => {
 
     useImageStore.getState().handleNavigatePrevious();
     expect(useImageStore.getState().selectedImage?.id).toBe(second.id);
+  });
+
+  it('auto-clears the scope with a toast when the target no longer exists', () => {
+    useImageStore.setState({
+      activeImageScope: { type: 'collection', id: 'missing-collection', label: 'Gone' },
+    });
+    useImageStore.getState().validateActiveImageScope();
+    expect(useImageStore.getState().activeImageScope).toBeNull();
+    expect(useImageStore.getState().success).toBe('Scope removed: the collection no longer exists');
   });
 });

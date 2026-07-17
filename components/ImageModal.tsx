@@ -1151,9 +1151,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }), [currentTags, recentTagChipLimit, recentTags]);
   const createdAtLabel = useMemo(() => new Date(image.lastModified).toLocaleString(), [image.lastModified]);
   const exportScopeImages = useMemo(() => {
+    const scopedImages = useImageStore.getState().getScopedFilteredImages();
     const candidateScopes = [
       clusterNavigationContext,
-      activeImageScope,
+      scopedImages,
       filteredImages,
     ].filter((scope): scope is IndexedImage[] => Array.isArray(scope) && scope.length > 0);
 

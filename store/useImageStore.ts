@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode, type ImageScope } from '../types';
+import { resolveScopeImageIds, filterImagesByScope, getScopeToastMessage } from '../utils/imageScope';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -822,7 +823,7 @@ interface ImageState {
   transferProgress: IndexedImageTransferProgress | null;
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
-  activeImageScope: IndexedImage[] | null;
+  activeImageScope: ImageScope | null;
   collections: SmartCollection[];
   automationRules: AutomationRule[];
   isAutomationRulesLoaded: boolean;
@@ -961,7 +962,11 @@ interface ImageState {
   // Selection Actions
   setPreviewImage: (image: IndexedImage | null) => void;
   setSelectedImage: (image: IndexedImage | null) => void;
-  setActiveImageScope: (images: IndexedImage[] | null) => void;
+  setActiveImageScope: (scope: ImageScope | null) => void;
+  /** Clears the active scope (with a toast) when its target no longer exists. */
+  validateActiveImageScope: () => void;
+  /** filteredImages intersected with the active scope (or filteredImages when no scope). */
+  getScopedFilteredImages: () => IndexedImage[];
   loadCollections: () => Promise<void>;
   loadAutomationRules: () => Promise<void>;
   createCollection: (collection: Omit<SmartCollection, 'id' | 'imageCount' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<SmartCollection>;
@@ -3311,7 +3316,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                     thumbnailEntries: remapThumbnailEntries(state.thumbnailEntries, imageId, nextImageId),
                     selectedImage: replaceImage(state.selectedImage),
                     previewImage: replaceImage(state.previewImage),
-                    activeImageScope: remapImageListReference(state.activeImageScope, imageId, nextImage),
+                    // activeImageScope is a descriptor (model/cluster/collection id), not image
+                    // references, so renames never invalidate it — cluster/collection membership
+                    // is remapped via remappedClusters / syncedCollections above.
                     clusterNavigationContext: remapImageListReference(state.clusterNavigationContext, imageId, nextImage),
                     comparisonImages: state.comparisonImages.map(image => image.id === imageId ? nextImage : image),
                     lineageBuildState: markLineageBuildStateDirty(state.lineageBuildState),
@@ -3539,12 +3546,31 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),
-        setActiveImageScope: (images) => set((state) => {
-            if (state.activeImageScope === images) {
+        setActiveImageScope: (scope) => set((state) => {
+            const current = state.activeImageScope;
+            if (current === scope) {
                 return state;
             }
-            return { activeImageScope: images };
+            if (current && scope && current.type === scope.type && current.id === scope.id && current.label === scope.label) {
+                return state;
+            }
+            return { activeImageScope: scope };
         }),
+        validateActiveImageScope: () => set((state) => {
+            const scope = state.activeImageScope;
+            if (!scope) {
+                return state;
+            }
+            const resolved = resolveScopeImageIds(scope, state);
+            if (resolved && !resolved.valid) {
+                return { activeImageScope: null, success: getScopeToastMessage(scope), error: null };
+            }
+            return state;
+        }),
+        getScopedFilteredImages: () => {
+            const state = get();
+            return filterImagesByScope(state.filteredImages, resolveScopeImageIds(state.activeImageScope, state));
+        },
         loadCollections: async () => {
             const persistedCollections = await getAllSmartCollections();
             set((state) => {
@@ -4948,7 +4974,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         selectAllImages: () => set(state => {
-            const selectionScope = state.activeImageScope ?? state.filteredImages;
+            const resolvedScope = resolveScopeImageIds(state.activeImageScope, state);
+            const selectionScope = filterImagesByScope(state.filteredImages, resolvedScope);
             // Performance optimization: Avoid intermediate array allocation
             const allImageIds = new Set<string>();
             for (let i = 0; i < selectionScope.length; i++) {
@@ -4972,7 +4999,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             const state = get();
             if (!state.selectedImage) return;
 
-            const imagesToNavigate = state.clusterNavigationContext || state.activeImageScope || state.filteredImages;
+            const scopedImages = filterImagesByScope(state.filteredImages, resolveScopeImageIds(state.activeImageScope, state));
+            const imagesToNavigate = state.clusterNavigationContext || scopedImages;
             const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
 
             if (currentIndex < imagesToNavigate.length - 1) {
@@ -4985,7 +5013,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             const state = get();
             if (!state.selectedImage) return;
 
-            const imagesToNavigate = state.clusterNavigationContext || state.activeImageScope || state.filteredImages;
+            const scopedImages = filterImagesByScope(state.filteredImages, resolveScopeImageIds(state.activeImageScope, state));
+            const imagesToNavigate = state.clusterNavigationContext || scopedImages;
             const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
 
             if (currentIndex > 0) {

@@ -3,6 +3,7 @@ import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { IndexedImage } from '../types';
 import { FileOperations } from '../services/fileOperations';
+import { resolveScopeImageIds, filterImagesByScope } from '../utils/imageScope';
 
 let isDeletingSelectedImages = false;
 
@@ -24,8 +25,14 @@ export function useImageSelection() {
             previewImage,
             selectedImage,
             selectedImages,
+            images,
+            clusters,
+            collections,
         } = useImageStore.getState();
-        const selectionScope = activeImageScope ?? filteredImages;
+        const selectionScope = filterImagesByScope(
+            filteredImages,
+            resolveScopeImageIds(activeImageScope, { images, clusters, collections }),
+        );
 
         // Update focused index
         const clickedIndex = selectionScope.findIndex(img => img.id === image.id);

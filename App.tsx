@@ -65,6 +65,7 @@ import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
 import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload } from './utils/watcherRemovalUtils';
 import { groupImages, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
+import { resolveScopeImageIds } from './utils/imageScope';
 import { findLatestCreatorAttributionToken } from './utils/creatorAttribution';
 import { indexImageFileAtPath } from './services/fileIndexer';
 import {
@@ -243,8 +244,10 @@ export default function App() {
   const selectedImage = useImageStore((state) => state.selectedImage);
   const previewImage = useImageStore((state) => state.previewImage);
   const clustersCount = useImageStore((state) => state.clusters.length);
+  const clusters = useImageStore((state) => state.clusters);
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
   const activeImageScope = useImageStore((state) => state.activeImageScope);
+  const validateActiveImageScope = useImageStore((state) => state.validateActiveImageScope);
   const collections = useImageStore((state) => state.collections);
   const activeCollectionId = useImageStore((state) => state.activeCollectionId);
 
@@ -610,11 +613,15 @@ export default function App() {
     })
   ), []);
 
+  // Scope is a persistent, view-independent drill-in (it renders as a fixed chip in
+  // ActiveFilters), so it is no longer cleared on view changes. Instead, when the scope's
+  // target vanishes (deleted collection, regenerated cluster, missing model after re-index),
+  // it is auto-cleared with a toast. See useImageStore.validateActiveImageScope / D9.
   useEffect(() => {
-    if (libraryView !== 'node' && libraryView !== 'collections' && activeImageScope !== null) {
-      setActiveImageScope(null);
+    if (activeImageScope !== null) {
+      validateActiveImageScope();
     }
-  }, [activeImageScope, libraryView, setActiveImageScope]);
+  }, [activeImageScope, clusters, collections, safeImages, validateActiveImageScope]);
 
   useEffect(() => {
     if (libraryView !== 'node' && nodeViewResultImages.length > 0) {
@@ -2438,10 +2445,11 @@ export default function App() {
 
   const handleNodeViewResultImagesChange = useCallback(
     (images: IndexedImage[]) => {
+      // Node View drives the grid via nodeViewResultImages; it is not a scope type
+      // (nodes become a multi-select OR filter in a later phase — see plan D5/Fase E).
       setNodeViewResultImages(images);
-      setActiveImageScope(images);
     },
-    [setActiveImageScope],
+    [],
   );
 
   const findSimilarFilteredImages = useMemo(() => {
@@ -2453,11 +2461,21 @@ export default function App() {
     return safeFilteredImages.filter((image) => filteredIds.has(image.id));
   }, [findSimilarGridFilter, safeFilteredImages]);
 
+  // Resolve the active scope (model/cluster/collection) to the set of image IDs it targets.
+  const scopedImageIds = useMemo(() => {
+    const resolved = resolveScopeImageIds(activeImageScope, { images: safeImages, clusters, collections });
+    return resolved ? resolved.ids : null;
+  }, [activeImageScope, safeImages, clusters, collections]);
+
   const displayImages =
+    // Collections/Node still own their in-view display during coexistence (removed in later phases).
     libraryView === 'collections'
       ? collectionFilteredImages
       : libraryView === 'node'
       ? nodeViewResultImages
+      // The scope filters the Library grid: safeFilteredImages ∩ scopedImageIds. Filters remain cumulative.
+      : activeImageScope && scopedImageIds
+      ? safeFilteredImages.filter((image) => scopedImageIds.has(image.id))
       : libraryView === 'library' && findSimilarFilteredImages
       ? findSimilarFilteredImages
       : safeFilteredImages;
@@ -2940,8 +2958,12 @@ export default function App() {
       return;
     }
 
-    setActiveImageScope(activeCollection ? collectionFilteredImages : null);
-  }, [activeCollection, collectionFilteredImages, libraryView, setActiveImageScope]);
+    // Selecting a collection sets it as the active scope (a descriptor), which persists as a
+    // fixed chip even after leaving the Collections view — the drill-in becomes the scope.
+    setActiveImageScope(
+      activeCollection ? { type: 'collection', id: activeCollection.id, label: activeCollection.name } : null,
+    );
+  }, [activeCollection, libraryView, setActiveImageScope]);
 
   // --- Render Logic ---
   const paginatedImages = useMemo(
