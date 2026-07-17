@@ -84,10 +84,8 @@ describe('Sidebar layout', () => {
     // Reorganized into Navigate / Filter categories.
     expect(screen.getByText('Navigate')).toBeTruthy();
     expect(screen.getByText('Filter')).toBeTruthy();
-    expect(screen.getByText('Collections')).toBeTruthy();
-    expect(screen.getByText('Clusters')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /rules/i })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /rules/i }));
-    expect(screen.getByRole('dialog', { name: /automation rules/i })).toBeTruthy();
+    // Collection/cluster actions moved to the Explore surface; the sidebar is folders + filters only.
+    expect(screen.queryByText('Clusters')).toBeNull();
+    expect(screen.queryByRole('button', { name: /rules/i })).toBeNull();
   });
 });

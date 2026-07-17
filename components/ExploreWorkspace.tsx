@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { Box, FolderOpen, Layers, Lock, Sparkles, Tag } from 'lucide-react';
+import { Box, FolderOpen, Layers, Lock, Pencil, Sparkles, Tag, Trash2 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
-import type { ExploreDimension, IndexedImage } from '../types';
+import type { ExploreDimension, IndexedImage, SmartCollection } from '../types';
 import { limitClustersForAccess } from '../utils/smartLibraryClusterState';
 import ScopeCard from './ScopeCard';
 import CollectionFormModal, { type CollectionFormValues } from './CollectionFormModal';
+import AutomationRulesModal from './AutomationRulesModal';
+import { buildCollectionSettingsUpdate } from './CollectionsWorkspace';
 
 const DEFAULT_SIMILARITY_THRESHOLD = 0.88;
 const GRID_CLASS = 'grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5';
@@ -38,11 +40,15 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
   const startAutoTagging = useImageStore((state) => state.startAutoTagging);
   const getResolvedCollectionImages = useImageStore((state) => state.getResolvedCollectionImages);
   const createCollection = useImageStore((state) => state.createCollection);
+  const updateCollection = useImageStore((state) => state.updateCollection);
+  const deleteCollectionById = useImageStore((state) => state.deleteCollectionById);
 
   const scanSubfolders = useSettingsStore((state) => state.scanSubfolders);
   const { canUseFullClustering, showProModal } = useFeatureAccess();
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingCollection, setEditingCollection] = useState<SmartCollection | null>(null);
+  const [automationRuleCollection, setAutomationRuleCollection] = useState<SmartCollection | null>(null);
 
   const primaryPath = directories[0]?.path ?? '';
   const hasDirectories = directories.length > 0;
@@ -124,7 +130,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
   };
 
   const handleCreateCollection = async (values: CollectionFormValues) => {
-    await createCollection({
+    const collection = await createCollection({
       kind: 'manual',
       name: values.name,
       description: values.description || undefined,
@@ -139,6 +145,31 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
       query: undefined,
     });
     setIsCreateModalOpen(false);
+    // Offer to configure automation rules for the freshly created collection.
+    if (values.configureAutomationRules) {
+      setAutomationRuleCollection(collection);
+    }
+  };
+
+  const handleSaveCollection = async (values: CollectionFormValues) => {
+    if (!editingCollection) {
+      return;
+    }
+    await updateCollection(
+      editingCollection.id,
+      buildCollectionSettingsUpdate({ collection: editingCollection, values, images }),
+    );
+    setEditingCollection(null);
+  };
+
+  const handleDeleteCollection = async (collection: SmartCollection) => {
+    const confirmed = window.confirm(
+      `Delete the collection "${collection.name}"? This does not delete the underlying images.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    await deleteCollectionById(collection.id);
   };
 
   return (
@@ -334,15 +365,61 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                     ) : undefined
                   }
                   subtitle={
-                    collection.description?.trim() ? (
-                      <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-xs text-gray-400">
-                        {collection.description}
-                      </p>
-                    ) : (
-                      <p className="mt-1 min-h-[2.5rem] text-xs text-gray-500">
-                        {count} image{count !== 1 ? 's' : ''}
-                      </p>
-                    )
+                    <>
+                      {collection.description?.trim() ? (
+                        <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-xs text-gray-400">
+                          {collection.description}
+                        </p>
+                      ) : (
+                        <p className="mt-1 min-h-[2.5rem] text-xs text-gray-500">
+                          {count} image{count !== 1 ? 's' : ''}
+                        </p>
+                      )}
+                      <div className="mt-2 flex items-center gap-1">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Edit collection ${collection.name}`}
+                          title="Edit collection"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setEditingCollection(collection);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setEditingCollection(collection);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-gray-400 transition-colors hover:bg-gray-700/60 hover:text-gray-100"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </div>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Delete collection ${collection.name}`}
+                          title="Delete collection"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDeleteCollection(collection);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              void handleDeleteCollection(collection);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-gray-400 transition-colors hover:bg-rose-900/40 hover:text-rose-200"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </div>
+                      </div>
+                    </>
                   }
                 />
               ))}
@@ -363,6 +440,31 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
         }}
         onClose={() => setIsCreateModalOpen(false)}
         onSubmit={handleCreateCollection}
+        showAutomationRulesOption
+      />
+
+      <CollectionFormModal
+        isOpen={editingCollection !== null}
+        title="Collection settings"
+        submitLabel="Save changes"
+        initialValues={{
+          name: editingCollection?.name ?? '',
+          description: editingCollection?.description ?? '',
+          sourceTag: editingCollection?.sourceTag ?? '',
+          autoUpdate: editingCollection?.autoUpdate ?? false,
+          includeTargetImages: false,
+        }}
+        onClose={() => setEditingCollection(null)}
+        onSubmit={handleSaveCollection}
+        showSourceTag
+        showAutoUpdate
+      />
+
+      <AutomationRulesModal
+        isOpen={automationRuleCollection !== null}
+        onClose={() => setAutomationRuleCollection(null)}
+        initialCollectionId={automationRuleCollection?.id ?? null}
+        initialRuleName={automationRuleCollection ? `Add to ${automationRuleCollection.name}` : undefined}
       />
     </div>
   );
