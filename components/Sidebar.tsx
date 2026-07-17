@@ -17,6 +17,33 @@ const SidebarCategoryHeading: React.FC<{ children: React.ReactNode }> = ({ child
     <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{children}</span>
   </div>
 );
+
+/** Collapsible sidebar section matching the Folders / Generation Parameters headers. */
+const SidebarCollapsibleSection: React.FC<{
+  title: string;
+  badge?: React.ReactNode;
+  defaultExpanded?: boolean;
+  children: React.ReactNode;
+}> = ({ title, badge, defaultExpanded = true, children }) => {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  return (
+    <div className="border-t border-gray-800/60">
+      <button
+        type="button"
+        onClick={() => setIsExpanded((prev) => !prev)}
+        className="flex w-full items-center justify-between p-4 transition-colors hover:bg-gray-700/50"
+        aria-expanded={isExpanded}
+      >
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-gray-300">{title}</span>
+          {badge}
+        </div>
+        <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+      </button>
+      {isExpanded && <div className="px-3 pb-3">{children}</div>}
+    </div>
+  );
+};
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
 import { createProfilerOnRender } from '../utils/performanceDiagnostics';
 
@@ -393,8 +420,14 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         {/* Collections */}
-        <div className="px-3 py-3 border-t border-gray-800/60">
-          <span className="mb-2 block text-[11px] font-medium uppercase tracking-wide text-gray-500">Collections</span>
+        <SidebarCollapsibleSection
+          title="Collections"
+          badge={activeAutomationRuleCount > 0 ? (
+            <span className="rounded-full border border-blue-700/50 bg-blue-950 px-1.5 py-0.5 text-[10px] leading-none text-blue-200">
+              {activeAutomationRuleCount}
+            </span>
+          ) : undefined}
+        >
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -408,23 +441,17 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => setIsAutomationRulesOpen(true)}
-              className="relative flex items-center justify-center gap-1 rounded bg-gray-700/40 px-2 py-1.5 text-sm text-gray-300 transition-all duration-200 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20"
+              className="flex items-center justify-center gap-1 rounded bg-gray-700/40 px-2 py-1.5 text-sm text-gray-300 transition-all duration-200 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20"
               title="Automation rules"
             >
               <SlidersHorizontal size={14} />
               <span>Rules</span>
-              {activeAutomationRuleCount > 0 && (
-                <span className="absolute -right-1 -top-1 rounded-full border border-blue-700/50 bg-blue-950 px-1.5 py-0.5 text-[10px] leading-none text-blue-200">
-                  {activeAutomationRuleCount}
-                </span>
-              )}
             </button>
           </div>
-        </div>
+        </SidebarCollapsibleSection>
 
         {/* Clusters */}
-        <div className="px-3 py-3 border-t border-gray-800/60">
-          <span className="mb-2 block text-[11px] font-medium uppercase tracking-wide text-gray-500">Clusters</span>
+        <SidebarCollapsibleSection title="Clusters">
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -447,7 +474,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <span>{isAutoTagging ? 'Tagging…' : 'Auto-Tag'}</span>
             </button>
           </div>
-        </div>
+        </SidebarCollapsibleSection>
 
         {/* ==== FILTER ==== */}
         <SidebarCategoryHeading>Filter</SidebarCategoryHeading>
