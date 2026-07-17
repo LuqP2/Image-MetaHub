@@ -8,6 +8,7 @@ import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
 import { buildProLicenseUrl } from '../utils/creatorAttribution';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
+import type { ExploreDimension } from '../types';
 
 type LibraryView = 'library' | 'explore' | 'smart' | 'model' | 'collections' | 'comfyui' | 'editor';
 
@@ -18,6 +19,7 @@ interface HeaderProps {
     onGeneratorSetupNeeded?: () => void;
     libraryView?: LibraryView;
     onLibraryViewChange?: (view: LibraryView) => void;
+    onNavigateExplore?: (dimension: ExploreDimension) => void;
     onOpenDroppedImageInComfyUI?: (imageId: string) => void;
 }
 
@@ -28,6 +30,7 @@ const Header: React.FC<HeaderProps> = ({
     onGeneratorSetupNeeded,
     libraryView,
     onLibraryViewChange,
+    onNavigateExplore,
     onOpenDroppedImageInComfyUI,
 }) => {
   const {
@@ -328,17 +331,27 @@ const Header: React.FC<HeaderProps> = ({
   })();
 
   const analyticsBadgeClass = canUseAnalytics ? 'text-gray-500' : 'text-amber-400';
+  const classicMode = useSettingsStore((state) => state.classicMode);
   const viewTabs = useMemo(
     () => [
       { id: 'library' as const, label: 'Library' },
       { id: 'explore' as const, label: 'Explore', icon: Compass },
-      { id: 'smart' as const, label: 'Smart Library', count: clustersCount > 0 ? clustersCount : null },
-      { id: 'model' as const, label: 'Model View' },
-      { id: 'collections' as const, label: 'Collections' },
       { id: 'editor' as const, label: 'Image Editor', icon: ImageIcon },
       { id: 'comfyui' as const, label: 'ComfyUI', icon: Workflow },
     ],
-    [clustersCount]
+    []
+  );
+  // Classic mode: legacy labels as pure deep-links into Explore (no separate surfaces).
+  const classicTabs = useMemo(
+    () => (classicMode
+      ? [
+          { key: 'smart', label: 'Smart Library', count: clustersCount > 0 ? clustersCount : null, run: () => onNavigateExplore?.('clusters') },
+          { key: 'model', label: 'Model View', count: null, run: () => onNavigateExplore?.('models') },
+          { key: 'collections', label: 'Collections', count: null, run: () => onNavigateExplore?.('collections') },
+          { key: 'node', label: 'Node View', count: null, run: () => onLibraryViewChange?.('library') },
+        ]
+      : []),
+    [classicMode, clustersCount, onLibraryViewChange, onNavigateExplore]
   );
   const utilityButtonClassName = 'app-top-icon-button';
   const handleViewTabClick = useCallback((view: LibraryView) => {
@@ -372,7 +385,6 @@ const Header: React.FC<HeaderProps> = ({
               <div className="app-top-segmented w-max">
                 {viewTabs.map((tab) => {
                   const Icon = 'icon' in tab ? tab.icon : null;
-                  const count = 'count' in tab ? tab.count : null;
                   const isComfyUITab = tab.id === 'comfyui';
                   return (
                     <button
@@ -422,18 +434,24 @@ const Header: React.FC<HeaderProps> = ({
                     >
                       {Icon && <Icon size={14} />}
                       <span>{tab.label}</span>
-                      {count ? (
-                        <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
-                          libraryView === tab.id
-                            ? 'border-white/20 bg-black/20 text-white/90'
-                            : 'border-gray-700/80 bg-gray-950/80 text-gray-500'
-                        }`}>
-                          {count}
-                        </span>
-                      ) : null}
                     </button>
                   );
                 })}
+                {classicTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={tab.run}
+                    className="app-top-segment whitespace-nowrap"
+                    title={`${tab.label} (opens Explore)`}
+                  >
+                    <span>{tab.label}</span>
+                    {tab.count ? (
+                      <span className="rounded-full border border-gray-700/80 bg-gray-950/80 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500">
+                        {tab.count}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
               </div>
             </div>
           )}

@@ -129,6 +129,9 @@ interface SettingsState {
   enableSafeMode: boolean;
   civitaiLookupEnabled: boolean;
   enableAnimations: boolean;
+  /** Classic mode: show the legacy tabs (Model View / Smart Library / Collections / Node View)
+   *  as deep-links into the unified Explore surface. Off by default. */
+  classicMode: boolean;
   performanceDiagnosticsEnabled: boolean;
   slideshowIntervalSeconds: number;
   slideshowShowFilename: boolean;
@@ -180,6 +183,7 @@ interface SettingsState {
   setEnableSafeMode: (value: boolean) => void;
   setCivitaiLookupEnabled: (value: boolean) => void;
   setEnableAnimations: (value: boolean) => void;
+  setClassicMode: (value: boolean) => void;
   setPerformanceDiagnosticsEnabled: (value: boolean) => void;
   setSlideshowIntervalSeconds: (value: number) => void;
   setSlideshowShowFilename: (value: boolean) => void;
@@ -235,6 +239,7 @@ export const useSettingsStore = create<SettingsState>()(
       enableSafeMode: true,
       civitaiLookupEnabled: true,
       enableAnimations: true,
+      classicMode: false,
       performanceDiagnosticsEnabled: false,
       slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
       slideshowShowFilename: true,
@@ -298,6 +303,7 @@ export const useSettingsStore = create<SettingsState>()(
       setEnableSafeMode: (value) => set({ enableSafeMode: !!value }),
       setCivitaiLookupEnabled: (value) => set({ civitaiLookupEnabled: !!value }),
       setEnableAnimations: (value) => set({ enableAnimations: !!value }),
+      setClassicMode: (value) => set({ classicMode: !!value }),
       setPerformanceDiagnosticsEnabled: (value) => set({ performanceDiagnosticsEnabled: !!value }),
       setSlideshowIntervalSeconds: (value) =>
         set({ slideshowIntervalSeconds: sanitizeSlideshowIntervalSeconds(value) }),
@@ -375,6 +381,7 @@ export const useSettingsStore = create<SettingsState>()(
         enableSafeMode: true,
         civitaiLookupEnabled: true,
         enableAnimations: true,
+        classicMode: false,
         performanceDiagnosticsEnabled: false,
         slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
         slideshowShowFilename: true,

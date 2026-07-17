@@ -3325,6 +3325,10 @@ export default function App() {
           onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
           libraryView={libraryView}
           onLibraryViewChange={setLibraryView}
+          onNavigateExplore={(dimension) => {
+            setExploreDimension(dimension);
+            setLibraryView('explore');
+          }}
           onOpenDroppedImageInComfyUI={(imageId) => {
             const image = imageLookup.get(imageId);
             if (image) {
