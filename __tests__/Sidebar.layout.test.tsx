@@ -77,6 +77,11 @@ describe('Sidebar layout', () => {
     expect(screen.getByText('Folder content')).toBeTruthy();
     // Sort Order / Group By moved to the grid Footer; they no longer live in the Sidebar.
     expect(screen.queryByText('Sort Order')).toBeNull();
+    // Reorganized into Navigate / Filter categories.
+    expect(screen.getByText('Navigate')).toBeTruthy();
+    expect(screen.getByText('Filter')).toBeTruthy();
+    expect(screen.getByText('Collections')).toBeTruthy();
+    expect(screen.getByText('Clusters')).toBeTruthy();
     expect(screen.getByRole('button', { name: /rules/i })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /rules/i }));
     expect(screen.getByRole('dialog', { name: /automation rules/i })).toBeTruthy();

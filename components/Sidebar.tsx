@@ -1,13 +1,22 @@
 
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronLeft, Plus, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronLeft, FolderPlus, Plus, Sparkles, SlidersHorizontal, Tag } from 'lucide-react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
 import AutomationRulesModal from './AutomationRulesModal';
+import CollectionFormModal, { type CollectionFormValues } from './CollectionFormModal';
 import { useImageStore } from '../store/useImageStore';
+
+const DEFAULT_SIMILARITY_THRESHOLD = 0.88;
+
+const SidebarCategoryHeading: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="px-4 pt-4 pb-1">
+    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{children}</span>
+  </div>
+);
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
 import { createProfilerOnRender } from '../utils/performanceDiagnostics';
 
@@ -80,6 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [isGenerationParametersExpanded, setIsGenerationParametersExpanded] = useState(true);
   const [isAutomationRulesOpen, setIsAutomationRulesOpen] = useState(false);
+  const [isCreateCollectionOpen, setIsCreateCollectionOpen] = useState(false);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
@@ -99,7 +109,45 @@ const Sidebar: React.FC<SidebarProps> = ({
   const schedulerFacetCounts = useImageStore((state) => state.schedulerFacetCounts);
   const automationRules = useImageStore((state) => state.automationRules);
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
+  const directories = useImageStore((state) => state.directories);
+  const isClustering = useImageStore((state) => state.isClustering);
+  const isAutoTagging = useImageStore((state) => state.isAutoTagging);
+  const startClustering = useImageStore((state) => state.startClustering);
+  const startAutoTagging = useImageStore((state) => state.startAutoTagging);
+  const createCollection = useImageStore((state) => state.createCollection);
+  const collections = useImageStore((state) => state.collections);
   const sidebarProfilerOnRender = useMemo(() => createProfilerOnRender('Sidebar'), []);
+
+  const primaryPath = directories[0]?.path ?? '';
+  const hasDirectories = directories.length > 0;
+
+  const handleGenerateClusters = () => {
+    if (!hasDirectories || isClustering) return;
+    startClustering(primaryPath, scanSubfolders, DEFAULT_SIMILARITY_THRESHOLD);
+  };
+
+  const handleGenerateAutoTags = () => {
+    if (!hasDirectories || isAutoTagging) return;
+    startAutoTagging(primaryPath, scanSubfolders);
+  };
+
+  const handleCreateCollection = async (values: CollectionFormValues) => {
+    await createCollection({
+      kind: 'manual',
+      name: values.name,
+      description: values.description || undefined,
+      sortIndex: collections.length,
+      imageIds: [],
+      snapshotImageIds: [],
+      coverImageId: null,
+      autoUpdate: false,
+      sourceTag: null,
+      thumbnailId: undefined,
+      type: 'custom',
+      query: undefined,
+    });
+    setIsCreateCollectionOpen(false);
+  };
 
   const toggleExplicitFacet = (
     value: string,
@@ -288,23 +336,53 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
 
-        <div className="px-3 py-2 border-b border-gray-700">
-          <div className={`grid gap-2 ${onAddFolder ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            {onAddFolder && (
-              <button
-                onClick={onAddFolder}
-                disabled={isIndexing}
-                className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
-                  isIndexing
-                    ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
-                    : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
-                }`}
-                title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
-              >
-                <Plus size={14} />
-                <span>Add Folder</span>
-              </button>
-            )}
+        {/* ==== NAVIGATE ==== */}
+        <SidebarCategoryHeading>Navigate</SidebarCategoryHeading>
+
+        {/* Folders (Add Folder lives with the folder list) */}
+        {onAddFolder && (
+          <div className="px-3 pb-2">
+            <button
+              onClick={onAddFolder}
+              disabled={isIndexing}
+              className={`flex w-full items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
+                isIndexing
+                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
+              }`}
+              title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
+            >
+              <Plus size={14} />
+              <span>Add Folder</span>
+            </button>
+          </div>
+        )}
+
+        {children && React.isValidElement(children) ? (
+          React.cloneElement(children as React.ReactElement<any>, {
+            isIndexing,
+            scanSubfolders,
+            excludedFolders,
+            onExcludeFolder,
+            onIncludeFolder
+          })
+        ) : (
+          children
+        )}
+
+        {/* Collections */}
+        <div className="px-3 py-3 border-t border-gray-800/60">
+          <span className="mb-2 block text-[11px] font-medium uppercase tracking-wide text-gray-500">Collections</span>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCreateCollectionOpen(true)}
+              className="flex items-center justify-center gap-1 rounded bg-gray-700/40 px-2 py-1.5 text-sm text-gray-300 transition-all duration-200 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20"
+              title="Create a new collection"
+            >
+              <FolderPlus size={14} />
+              <span>New</span>
+            </button>
             <button
               type="button"
               onClick={() => setIsAutomationRulesOpen(true)}
@@ -322,17 +400,35 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {children && React.isValidElement(children) ? (
-          React.cloneElement(children as React.ReactElement<any>, {
-            isIndexing,
-            scanSubfolders,
-            excludedFolders,
-            onExcludeFolder,
-            onIncludeFolder
-          })
-        ) : (
-          children
-        )}
+        {/* Clusters */}
+        <div className="px-3 py-3 border-t border-gray-800/60">
+          <span className="mb-2 block text-[11px] font-medium uppercase tracking-wide text-gray-500">Clusters</span>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handleGenerateClusters}
+              disabled={!hasDirectories || isClustering}
+              className="flex items-center justify-center gap-1 rounded bg-gray-700/40 px-2 py-1.5 text-sm text-gray-300 transition-all duration-200 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Generate clusters from prompts"
+            >
+              <Sparkles size={14} />
+              <span>{isClustering ? 'Clustering…' : 'Generate'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerateAutoTags}
+              disabled={!hasDirectories || isAutoTagging}
+              className="flex items-center justify-center gap-1 rounded bg-gray-700/40 px-2 py-1.5 text-sm text-gray-300 transition-all duration-200 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Generate auto-tags"
+            >
+              <Tag size={14} />
+              <span>{isAutoTagging ? 'Tagging…' : 'Auto-Tag'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ==== FILTER ==== */}
+        <SidebarCategoryHeading>Filter</SidebarCategoryHeading>
 
         <TagsAndFavorites />
 
@@ -389,6 +485,14 @@ const Sidebar: React.FC<SidebarProps> = ({
       )}
     </div>
     <AutomationRulesModal isOpen={isAutomationRulesOpen} onClose={() => setIsAutomationRulesOpen(false)} />
+    <CollectionFormModal
+      isOpen={isCreateCollectionOpen}
+      title="New collection"
+      submitLabel="Create"
+      initialValues={{ name: '', description: '', sourceTag: '', autoUpdate: false, includeTargetImages: false }}
+      onClose={() => setIsCreateCollectionOpen(false)}
+      onSubmit={handleCreateCollection}
+    />
     </>
     </React.Profiler>
   );
