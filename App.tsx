@@ -30,8 +30,6 @@ import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
-import SmartLibrary from './components/SmartLibrary';
-import { ModelView } from './components/ModelView';
 import ExploreWorkspace from './components/ExploreWorkspace';
 import { buildWorkflowNodeCatalog, filterImagesByWorkflowNodes } from './services/comfyUIWorkflowNodes';
 import FindSimilarModal from './components/FindSimilarModal';
@@ -413,7 +411,6 @@ export default function App() {
 
   // --- Local UI State ---
   const [currentPage, setCurrentPage] = useState(1);
-  const [modelViewPage, setModelViewPage] = useState(1);
   const [pendingJumpGroupRequest, setPendingJumpGroupRequest] = useState<{ groupId: string; requestId: number } | null>(null);
   const [searchInputValue, setSearchInputValue] = useState(searchQuery);
   const previousSearchQueryRef = useRef(searchQuery);
@@ -486,7 +483,7 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'explore' | 'smart' | 'model' | 'collections' | 'comfyui' | 'editor'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'explore' | 'collections' | 'comfyui' | 'editor'>('library');
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -1438,6 +1435,14 @@ export default function App() {
           } catch (error) {
             console.warn('Failed to persist last viewed changelog version:', error);
           }
+        }
+
+        // One-time navigation-change onboarding, shown only to users updating from a
+        // previous version (not on a fresh install).
+        if (currentLastViewed) {
+          setSuccess(
+            'Navigation updated: Explore now unifies Model View, Smart Library and Collections, and drill-ins appear as a scope chip. Prefer the old tabs? Turn on Classic mode in Settings.',
+          );
         }
       }
     };
@@ -2799,7 +2804,7 @@ export default function App() {
     openFindSimilar(group.sourceImage, safeImages);
   }, [openFindSimilar, safeImages]);
 
-  const canSaveCurrentFilteredAsCollection = libraryView !== 'smart' && displayImages.length > 0;
+  const canSaveCurrentFilteredAsCollection = displayImages.length > 0;
   const comfyUIWorkspaceImage = useMemo(() => {
     if (comfyUIWorkspaceImageId) {
       return imageLookup.get(comfyUIWorkspaceImageId) ?? null;
@@ -3572,23 +3577,6 @@ export default function App() {
                       setLibraryView('library');
                     }}
                   />
-                ) : libraryView === 'model' ? (
-                  <ModelView
-                    isQueueOpen={isQueueOpen}
-                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
-                    page={modelViewPage}
-                    onPageChange={setModelViewPage}
-                    activeModelName={selectedModels.length === 1 ? selectedModels[0] : null}
-                    onModelSelect={(modelName) => {
-                      // Drill-in sets the model as the active scope (a descriptor) and navigates to
-                      // the Library grid — the same behavior as the Explore surface (plan Fase C).
-                      resetLibraryGridScrollPosition();
-                      setModelViewPage(1);
-                      setActiveImageScope({ type: 'model', id: modelName, label: modelName });
-                      setLibraryView('library');
-                    }}
-                    onFindMatchingPrompts={openModelPromptPicker}
-                  />
                 ) : libraryView === 'collections' ? (
                   <CollectionsWorkspace
                     filteredImages={collectionFilteredImages}
@@ -3704,16 +3692,7 @@ export default function App() {
                       </div>
                     </div>
                   )
-                ) : (
-                  <SmartLibrary
-                    isQueueOpen={isQueueOpen}
-                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
-                    onBatchExport={handleOpenBatchExport}
-                    onOpenImageInBackground={(image, navigationImages) => {
-                      handleOpenImageModalInBackground(image, navigationImages, 'cluster');
-                    }}
-                  />
-                )}
+                ) : null}
               </div>
 
               {(libraryView === 'library' || libraryView === 'comfyui' || libraryView === 'editor' || (libraryView === 'collections' && Boolean(activeCollection))) && (

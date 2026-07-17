@@ -10,7 +10,7 @@ import { buildProLicenseUrl } from '../utils/creatorAttribution';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
 import type { ExploreDimension } from '../types';
 
-type LibraryView = 'library' | 'explore' | 'smart' | 'model' | 'collections' | 'comfyui' | 'editor';
+type LibraryView = 'library' | 'explore' | 'collections' | 'comfyui' | 'editor';
 
 interface HeaderProps {
     onOpenSettings: () => void;
@@ -71,10 +71,6 @@ const Header: React.FC<HeaderProps> = ({
   // Store hooks for Smart Library Actions
   const directories = useImageStore((state) => state.directories);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
-  const isClustering = useImageStore((state) => state.isClustering);
-  const isAutoTagging = useImageStore((state) => state.isAutoTagging);
-  const startClustering = useImageStore((state) => state.startClustering);
-  const startAutoTagging = useImageStore((state) => state.startAutoTagging);
 
   const primaryPath = directories[0]?.path ?? '';
   const hasDirectories = directories.length > 0;
@@ -101,15 +97,6 @@ const Header: React.FC<HeaderProps> = ({
       ? a1111LastConnectionStatus
       : 'unknown';
 
-  const handleGenerateClusters = () => {
-    if (!primaryPath) return;
-    startClustering(primaryPath, scanSubfolders, DEFAULT_SIMILARITY_THRESHOLD);
-  };
-
-  const handleGenerateAutoTags = () => {
-    if (!primaryPath) return;
-    startAutoTagging(primaryPath, scanSubfolders);
-  };
 
   const checkGeneratorStatus = useCallback(async () => {
     if (!hasRelevantServerUrl || detectedGenerator.runtimeFamily === 'none') {
@@ -484,31 +471,6 @@ const Header: React.FC<HeaderProps> = ({
             </>
           )}
 
-          {libraryView === 'smart' && (
-            <>
-              <span className="app-top-divider shrink-0" />
-              <div className="app-top-segmented animate-in fade-in shrink-0 duration-300">
-                <button
-                  onClick={handleGenerateClusters}
-                  disabled={!hasDirectories || isClustering}
-                  className={`app-top-segment ${isClustering ? 'text-accent cursor-wait hover:text-accent' : ''} ${!hasDirectories ? 'cursor-not-allowed opacity-50' : ''}`}
-                  title="Generate clusters"
-                >
-                  <Layers size={14} className={isClustering ? 'animate-pulse' : ''} />
-                  <span>Cluster</span>
-                </button>
-                <button
-                  onClick={handleGenerateAutoTags}
-                  disabled={!hasDirectories || isAutoTagging}
-                  className={`app-top-segment ${isAutoTagging ? 'text-accent cursor-wait hover:text-accent' : ''} ${!hasDirectories ? 'cursor-not-allowed opacity-50' : ''}`}
-                  title="Generate auto-tags"
-                >
-                  <Sparkles size={14} className={isAutoTagging ? 'animate-pulse' : ''} />
-                  <span>Auto-Tag</span>
-                </button>
-              </div>
-            </>
-          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
