@@ -875,6 +875,8 @@ interface ImageState {
   availableTags: TagInfo[];
   availableAutoTags: TagInfo[]; // Top auto-tags by frequency
   recentTags: string[];
+  /** ComfyUI workflow-node filter (OR): keep images whose workflowNodes include any selected node. */
+  selectedNodes: string[];
   selectedTags: string[];
   excludedTags: string[];
   selectedTagsMatchMode: TagMatchMode;
@@ -1037,6 +1039,7 @@ interface ImageState {
   clearTag: (tag: string) => Promise<void>;
   deleteTag: (tag: string) => Promise<void>;
   purgeTag: (tag: string) => Promise<void>;
+  setSelectedNodes: (nodes: string[]) => void;
   setSelectedTags: (tags: string[]) => void;
   setExcludedTags: (tags: string[]) => void;
   setSelectedTagsMatchMode: (mode: TagMatchMode) => void;
@@ -1360,6 +1363,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         if (state.selectedSchedulers?.length || state.excludedSchedulers?.length) return true;
         if (state.selectedGenerators?.length || state.excludedGenerators?.length) return true;
         if (state.selectedGpuDevices?.length || state.excludedGpuDevices?.length) return true;
+        if (state.selectedNodes?.length) return true;
         if (state.advancedFilters && Object.keys(state.advancedFilters).length > 0) return true;
         if (state.selectedFolders && state.selectedFolders.size > 0) return true;
         if (state.directories.some(dir => dir.visible === false)) return true;
@@ -2682,6 +2686,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         availableTags: [],
         availableAutoTags: [],
         recentTags: loadRecentTags(),
+        selectedNodes: [],
         selectedTags: [],
         excludedTags: [],
         selectedTagsMatchMode: 'any',
@@ -4807,6 +4812,12 @@ export const useImageStore = create<ImageState>((set, get) => {
             await get().refreshAvailableTags();
         },
 
+        // Node filtering is applied as a post-filter in App (like activeImageScope), so this
+        // is a plain setter — it does not run filterAndSort.
+        setSelectedNodes: (nodes) => set(state => (
+            state.selectedNodes === nodes ? state : { selectedNodes: nodes }
+        )),
+
         setSelectedTags: (tags) => set(state => {
             const newState = { ...state, selectedTags: tags };
             return { ...newState, ...filterAndSort(newState) };
@@ -5094,6 +5105,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableTags: [],
             availableAutoTags: [],
             recentTags: loadRecentTags(),
+            selectedNodes: [],
             selectedTags: [],
             excludedTags: [],
             selectedTagsMatchMode: 'any',

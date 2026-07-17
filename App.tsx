@@ -33,7 +33,7 @@ import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
 import ExploreWorkspace from './components/ExploreWorkspace';
-import NodeView from './components/NodeView';
+import { buildWorkflowNodeCatalog, filterImagesByWorkflowNodes } from './services/comfyUIWorkflowNodes';
 import FindSimilarModal from './components/FindSimilarModal';
 import ModelPromptPickerModal from './components/ModelPromptPickerModal';
 import CollectionsWorkspace from './components/CollectionsWorkspace';
@@ -250,6 +250,8 @@ export default function App() {
   const activeImageScope = useImageStore((state) => state.activeImageScope);
   const validateActiveImageScope = useImageStore((state) => state.validateActiveImageScope);
   const setExploreDimension = useImageStore((state) => state.setExploreDimension);
+  const selectedNodes = useImageStore((state) => state.selectedNodes);
+  const setSelectedNodes = useImageStore((state) => state.setSelectedNodes);
   const collections = useImageStore((state) => state.collections);
   const activeCollectionId = useImageStore((state) => state.activeCollectionId);
 
@@ -484,9 +486,7 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'explore' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor'>('library');
-  const [nodeViewVisibleImages, setNodeViewVisibleImages] = useState<IndexedImage[]>([]);
-  const [nodeViewResultImages, setNodeViewResultImages] = useState<IndexedImage[]>([]);
+  const [libraryView, setLibraryView] = useState<'library' | 'explore' | 'smart' | 'model' | 'collections' | 'comfyui' | 'editor'>('library');
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -572,6 +572,7 @@ export default function App() {
     setFavoriteFilterMode('neutral');
     setSelectedRatings([]);
     setAdvancedFilters({});
+    setSelectedNodes([]);
   }, [
     setAdvancedFilters,
     setExcludedAutoTags,
@@ -584,6 +585,7 @@ export default function App() {
     setSelectedFilters,
     setSelectedRatings,
     setSelectedTags,
+    setSelectedNodes,
   ]);
 
   const handleSearchChange = useCallback((query: string) => {
@@ -625,11 +627,6 @@ export default function App() {
     }
   }, [activeImageScope, clusters, collections, safeImages, validateActiveImageScope]);
 
-  useEffect(() => {
-    if (libraryView !== 'node' && nodeViewResultImages.length > 0) {
-      setNodeViewResultImages([]);
-    }
-  }, [libraryView, nodeViewResultImages.length]);
   const hasLeftSidebar = hasDirectories && libraryView !== 'comfyui' && libraryView !== 'editor';
   const hasRightSidebar = Boolean(isQueueOpen || (previewImage && libraryView !== 'comfyui' && libraryView !== 'editor'));
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
@@ -2449,15 +2446,6 @@ export default function App() {
     return dirSet.size;
   }, [collectionFilteredImages]);
 
-  const handleNodeViewResultImagesChange = useCallback(
-    (images: IndexedImage[]) => {
-      // Node View drives the grid via nodeViewResultImages; it is not a scope type
-      // (nodes become a multi-select OR filter in a later phase — see plan D5/Fase E).
-      setNodeViewResultImages(images);
-    },
-    [],
-  );
-
   const findSimilarFilteredImages = useMemo(() => {
     if (!findSimilarGridFilter) {
       return null;
@@ -2467,6 +2455,22 @@ export default function App() {
     return safeFilteredImages.filter((image) => filteredIds.has(image.id));
   }, [findSimilarGridFilter, safeFilteredImages]);
 
+  // ComfyUI workflow-node filter (OR), applied as a post-filter on the filtered library.
+  const nodeFilteredImages = useMemo(
+    () => (selectedNodes.length > 0 ? filterImagesByWorkflowNodes(safeFilteredImages, selectedNodes) : safeFilteredImages),
+    [safeFilteredImages, selectedNodes],
+  );
+
+  const availableNodeCatalog = useMemo(() => buildWorkflowNodeCatalog(safeImages), [safeImages]);
+  const availableNodes = useMemo(() => availableNodeCatalog.map((node) => node.name), [availableNodeCatalog]);
+  const nodeFacetCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const node of availableNodeCatalog) {
+      map.set(node.name, node.count);
+    }
+    return map;
+  }, [availableNodeCatalog]);
+
   // Resolve the active scope (model/cluster/collection) to the set of image IDs it targets.
   const scopedImageIds = useMemo(() => {
     const resolved = resolveScopeImageIds(activeImageScope, { images: safeImages, clusters, collections });
@@ -2474,17 +2478,15 @@ export default function App() {
   }, [activeImageScope, safeImages, clusters, collections]);
 
   const displayImages =
-    // Collections/Node still own their in-view display during coexistence (removed in later phases).
+    // Collections still owns its in-view display during coexistence (removed in a later phase).
     libraryView === 'collections'
       ? collectionFilteredImages
-      : libraryView === 'node'
-      ? nodeViewResultImages
-      // The scope filters the Library grid: safeFilteredImages ∩ scopedImageIds. Filters remain cumulative.
+      // The scope filters the Library grid: (node-filtered) ∩ scopedImageIds. Filters remain cumulative.
       : activeImageScope && scopedImageIds
-      ? safeFilteredImages.filter((image) => scopedImageIds.has(image.id))
+      ? nodeFilteredImages.filter((image) => scopedImageIds.has(image.id))
       : libraryView === 'library' && findSimilarFilteredImages
       ? findSimilarFilteredImages
-      : safeFilteredImages;
+      : nodeFilteredImages;
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
 
   const libraryGridSignature = useMemo(() => {
@@ -3231,14 +3233,18 @@ export default function App() {
           availableLoras={availableLoras}
           availableSamplers={availableSamplers}
           availableSchedulers={availableSchedulers}
+          availableNodes={availableNodes}
+          nodeFacetCounts={nodeFacetCounts}
           selectedModels={selectedModels}
           selectedLoras={selectedLoras}
           selectedSamplers={selectedSamplers}
           selectedSchedulers={selectedSchedulers}
+          selectedNodes={selectedNodes}
           onModelChange={(models) => setSelectedFilters({ models })}
           onLoraChange={(loras) => setSelectedFilters({ loras })}
           onSamplerChange={(samplers) => setSelectedFilters({ samplers })}
           onSchedulerChange={(schedulers) => setSelectedFilters({ schedulers })}
+          onNodeChange={setSelectedNodes}
           onClearAllFilters={handleClearAllFilters}
           advancedFilters={advancedFilters}
           onAdvancedFiltersChange={setAdvancedFilters}
@@ -3429,10 +3435,10 @@ export default function App() {
                     }}
                   />
                 )}
-                {(libraryView === 'library' || libraryView === 'node' || (libraryView === 'collections' && Boolean(activeCollection))) && (
+                {(libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                   <GridToolbar
                     selectedImages={safeSelectedImages}
-                    images={libraryView === 'node' ? nodeViewVisibleImages : imagesForGrid}
+                    images={imagesForGrid}
                     directories={safeDirectories}
                     onCreateCollectionFromFiltered={
                       canSaveCurrentFilteredAsCollection
@@ -3626,17 +3632,6 @@ export default function App() {
                       />
                     )}
                   </CollectionsWorkspace>
-                ) : libraryView === 'node' ? (
-                  <NodeView
-                    images={safeFilteredImages}
-                    selectedImages={safeSelectedImages}
-                    onImageClick={handleImageSelection}
-                    onBatchExport={handleOpenBatchExport}
-                    isQueueOpen={isQueueOpen}
-                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
-                    onVisibleImagesChange={setNodeViewVisibleImages}
-                    onResultImagesChange={handleNodeViewResultImagesChange}
-                  />
                 ) : libraryView === 'comfyui' ? (
                   <ComfyUIWorkspace
                     image={comfyUIWorkspaceImage}

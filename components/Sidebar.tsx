@@ -27,15 +27,19 @@ interface SidebarProps {
   availableLoras: string[];
   availableSamplers: string[];
   availableSchedulers: string[];
+  availableNodes: string[];
+  nodeFacetCounts: Map<string, number>;
   availableDimensions: string[];
   selectedModels: string[];
   selectedLoras: string[];
   selectedSamplers: string[];
   selectedSchedulers: string[];
+  selectedNodes: string[];
   onModelChange: (models: string[]) => void;
   onLoraChange: (loras: string[]) => void;
   onSamplerChange: (samplers: string[]) => void;
   onSchedulerChange: (schedulers: string[]) => void;
+  onNodeChange: (nodes: string[]) => void;
   onClearAllFilters: () => void;
   advancedFilters: AdvancedFilterState;
   onAdvancedFiltersChange: (filters: AdvancedFilterState) => void;
@@ -63,11 +67,15 @@ const Sidebar: React.FC<SidebarProps> = ({
   availableLoras,
   availableSamplers,
   availableSchedulers,
+  availableNodes,
+  nodeFacetCounts,
   availableDimensions,
   selectedModels,
   selectedLoras,
   selectedSamplers,
   selectedSchedulers,
+  selectedNodes,
+  onNodeChange,
   onClearAllFilters,
   advancedFilters,
   onAdvancedFiltersChange,
@@ -214,6 +222,19 @@ const Sidebar: React.FC<SidebarProps> = ({
       onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedSchedulers, excludedSchedulers, 'exclude', { selected: 'schedulers', excluded: 'excludedSchedulers' }),
       onClear: () => setSelectedFilters({ schedulers: [], excludedSchedulers: [] }),
     },
+    {
+      // ComfyUI workflow nodes: include-only, OR semantics (replaces the old Node View).
+      title: 'ComfyUI Nodes',
+      items: availableNodes,
+      selectedValues: selectedNodes,
+      excludedValues: [] as string[],
+      counts: nodeFacetCounts,
+      onIncludeToggle: (value: string) => onNodeChange(
+        selectedNodes.includes(value) ? selectedNodes.filter((node) => node !== value) : [...selectedNodes, value]
+      ),
+      onExcludeToggle: () => {},
+      onClear: () => onNodeChange([]),
+    },
   ].filter((facet) =>
     facet.items.length > 0 || facet.selectedValues.length > 0 || facet.excludedValues.length > 0
   );
@@ -236,6 +257,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     excludedTags.length > 0 ||
     selectedAutoTags.length > 0 ||
     excludedAutoTags.length > 0 ||
+    selectedNodes.length > 0 ||
     favoriteFilterMode !== 'neutral' ||
     selectedRatings.length > 0 ||
     Object.keys(advancedFilters || {}).length > 0;
@@ -457,6 +479,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     onIncludeToggle={facet.onIncludeToggle}
                     onExcludeToggle={facet.onExcludeToggle}
                     onClear={facet.onClear}
+                    hideExclude={facet.title === 'ComfyUI Nodes'}
                   />
                 ))}
               </div>

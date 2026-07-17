@@ -9,7 +9,7 @@ import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch
 import { buildProLicenseUrl } from '../utils/creatorAttribution';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
 
-type LibraryView = 'library' | 'explore' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor';
+type LibraryView = 'library' | 'explore' | 'smart' | 'model' | 'collections' | 'comfyui' | 'editor';
 
 interface HeaderProps {
     onOpenSettings: () => void;
@@ -334,7 +334,6 @@ const Header: React.FC<HeaderProps> = ({
       { id: 'explore' as const, label: 'Explore', icon: Compass },
       { id: 'smart' as const, label: 'Smart Library', count: clustersCount > 0 ? clustersCount : null },
       { id: 'model' as const, label: 'Model View' },
-      { id: 'node' as const, label: 'Node View' },
       { id: 'collections' as const, label: 'Collections' },
       { id: 'editor' as const, label: 'Image Editor', icon: ImageIcon },
       { id: 'comfyui' as const, label: 'ComfyUI', icon: Workflow },
@@ -439,7 +438,7 @@ const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {(libraryView === 'library' || libraryView === 'node') && (
+          {libraryView === 'library' && (
             <>
               <span className="app-top-divider shrink-0" />
               <button

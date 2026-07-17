@@ -68,6 +68,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
   const advancedFilters = useImageStore((state) => state.advancedFilters);
   const activeImageScope = useImageStore((state) => state.activeImageScope);
   const setActiveImageScope = useImageStore((state) => state.setActiveImageScope);
+  const selectedNodes = useImageStore((state) => state.selectedNodes);
+  const setSelectedNodes = useImageStore((state) => state.setSelectedNodes);
 
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
   const setSelectedTags = useImageStore((state) => state.setSelectedTags);
@@ -81,6 +83,7 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
 
   const hasActiveFilters =
     activeImageScope !== null ||
+    selectedNodes.length > 0 ||
     selectedModels.length > 0 ||
     excludedModels.length > 0 ||
     selectedLoras.length > 0 ||
@@ -293,6 +296,10 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
             </button>
           </motion.div>
         )}
+
+        {selectedNodes.map((value) => (
+          <FacetChip key={`node-${value}`} label="Node" value={value} tone="teal" onRemove={() => setSelectedNodes(selectedNodes.filter((item) => item !== value))} />
+        ))}
 
         {selectedModels.map((value) => (
           <FacetChip key={`checkpoint-${value}`} label="Checkpoint" value={value} tone="blue" onRemove={() => setSelectedFilters({ models: selectedModels.filter((item) => item !== value) })} />

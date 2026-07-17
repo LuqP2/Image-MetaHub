@@ -44,15 +44,19 @@ describe('Sidebar layout', () => {
         availableLoras={[]}
         availableSamplers={[]}
         availableSchedulers={[]}
+        availableNodes={[]}
+        nodeFacetCounts={new Map()}
         availableDimensions={[]}
         selectedModels={[]}
         selectedLoras={[]}
         selectedSamplers={[]}
         selectedSchedulers={[]}
+        selectedNodes={[]}
         onModelChange={() => {}}
         onLoraChange={() => {}}
         onSamplerChange={() => {}}
         onSchedulerChange={() => {}}
+        onNodeChange={() => {}}
         onClearAllFilters={() => {}}
         advancedFilters={{}}
         onAdvancedFiltersChange={() => {}}
