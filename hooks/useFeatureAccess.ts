@@ -12,6 +12,16 @@ const isDevelopmentBuild =
   (typeof import.meta !== 'undefined' && Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV)) ||
   (typeof process !== 'undefined' && process.env.NODE_ENV === 'development');
 
+/**
+ * Dev-only Pro unlock via `localStorage.IMH_DEV_LICENSE = 'pro'`. Exported so non-React code
+ * (e.g. the clustering action in useImageStore) can honor the same override the hook does —
+ * otherwise the UI unlocks but the underlying work still applies the free-tier limit.
+ */
+export const isDevProLicenseOverride = (): boolean =>
+  isDevelopmentBuild &&
+  typeof window !== 'undefined' &&
+  localStorage.getItem('IMH_DEV_LICENSE') === 'pro';
+
 type ProModalState = {
   proModalOpen: boolean;
   proModalFeature: ProFeature;
@@ -56,9 +66,7 @@ export const useFeatureAccess = () => {
   const closeProModal = useProModalStore((state) => state.closeProModal);
 
   // Dev override: localStorage flag to bypass all checks
-  const devOverride = isDevelopmentBuild &&
-                     typeof window !== 'undefined' &&
-                     localStorage.getItem('IMH_DEV_LICENSE') === 'pro';
+  const devOverride = isDevProLicenseOverride();
 
   const isInitialized = licenseStore.initialized;
   const hasProLicense = isInitialized && (licenseStore.licenseStatus === 'pro' || licenseStore.licenseStatus === 'lifetime');

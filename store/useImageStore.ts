@@ -41,7 +41,7 @@ import { resolveMediaType } from '../utils/mediaTypes.js';
 import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
-import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
+import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT, isDevProLicenseOverride } from '../hooks/useFeatureAccess';
 import { buildClusterSourceSignature } from '../utils/smartLibraryClusterState';
 import {
     type LineageBuildState,
@@ -3854,9 +3854,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                 existingWorker.terminate();
             }
 
-            // Get clustering limits from license store directly (can't use hooks in Zustand actions)
+            // Get clustering limits from license store directly (can't use hooks in Zustand actions).
+            // Honor the dev Pro override too, so console-unlocked Pro reaches the generation path
+            // and not just the UI (matches useFeatureAccess).
             const licenseStore = useLicenseStore.getState();
-            const isPro = licenseStore.licenseStatus === 'pro' || licenseStore.licenseStatus === 'lifetime';
+            const isPro = isDevProLicenseOverride() || licenseStore.licenseStatus === 'pro' || licenseStore.licenseStatus === 'lifetime';
             const isTrialActive = licenseStore.licenseStatus === 'trial';
 
             // Filter images with prompts
