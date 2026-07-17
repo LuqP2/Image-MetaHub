@@ -65,7 +65,7 @@ import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, res
 import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
 import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload } from './utils/watcherRemovalUtils';
-import { groupImages, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
+import { groupImages, isEntityGroupBy, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
 import { resolveScopeImageIds } from './utils/imageScope';
 import { findLatestCreatorAttributionToken } from './utils/creatorAttribution';
 import { indexImageFileAtPath } from './services/fileIndexer';
@@ -2985,18 +2985,40 @@ export default function App() {
     libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection));
   const effectiveImageGroupBy = canGroupCurrentImages && sortOrder !== 'random' ? groupBy : 'none';
   const imageGroupingSortOrder = sortOrder as ImageGroupingSortOrder;
+
+  // Group By model/cluster sections over the WHOLE filtered set (not the current page), so
+  // sections are never split across pages (D8). Pagination is suspended in that mode.
+  const isSectionedByEntity = isEntityGroupBy(effectiveImageGroupBy);
+  const imagesForGrid = isSectionedByEntity ? displayImages : paginatedImages;
+
+  const clusterByImageId = useMemo(() => {
+    if (effectiveImageGroupBy !== 'cluster') {
+      return undefined;
+    }
+    const map = new Map<string, { id: string; label: string }>();
+    for (const cluster of clusters) {
+      const label = cluster.basePrompt || 'Untitled cluster';
+      for (const id of cluster.imageIds) {
+        if (!map.has(id)) {
+          map.set(id, { id: cluster.id, label });
+        }
+      }
+    }
+    return map;
+  }, [effectiveImageGroupBy, clusters]);
+
   const currentImageGroups = useMemo<ImageGroup[]>(
     () => effectiveImageGroupBy === 'none'
       ? []
-      : groupImages(paginatedImages, effectiveImageGroupBy, { sortOrder: imageGroupingSortOrder }).groups,
-    [effectiveImageGroupBy, imageGroupingSortOrder, paginatedImages]
+      : groupImages(imagesForGrid, effectiveImageGroupBy, { sortOrder: imageGroupingSortOrder, clusterByImageId }).groups,
+    [effectiveImageGroupBy, imageGroupingSortOrder, imagesForGrid, clusterByImageId]
   );
 
   useEffect(() => {
     setPendingJumpGroupRequest(null);
   }, [currentPage, effectiveImageGroupBy, viewMode]);
 
-  const totalPages = itemsPerPage === -1
+  const totalPages = isSectionedByEntity || itemsPerPage === -1
     ? 1
     : Math.ceil(displayImages.length / itemsPerPage);
   const openImageModalEntries = useMemo(() => {
@@ -3233,11 +3255,6 @@ export default function App() {
           excludedFolders={excludedFolders}
           onExcludeFolder={addExcludedFolder}
           onIncludeFolder={removeExcludedFolder}
-          sortOrder={sortOrder}
-          onSortOrderChange={imageStoreSetSortOrder}
-          onReshuffle={reshuffle}
-          groupBy={sortOrder === 'random' ? 'none' : groupBy}
-          onGroupByChange={setGroupBy}
         >
           <DirectoryList
             directories={safeDirectories}
@@ -3415,7 +3432,7 @@ export default function App() {
                 {(libraryView === 'library' || libraryView === 'node' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                   <GridToolbar
                     selectedImages={safeSelectedImages}
-                    images={libraryView === 'node' ? nodeViewVisibleImages : paginatedImages}
+                    images={libraryView === 'node' ? nodeViewVisibleImages : imagesForGrid}
                     directories={safeDirectories}
                     onCreateCollectionFromFiltered={
                       canSaveCurrentFilteredAsCollection
@@ -3503,7 +3520,7 @@ export default function App() {
                     </div>
                   ) : viewMode === 'grid' ? (
                         <ImageGrid
-                          images={paginatedImages}
+                          images={imagesForGrid}
                           onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           currentPage={currentPage}
@@ -3516,6 +3533,7 @@ export default function App() {
                           onOpenComfyUIWorkspace={(image) => openComfyUIWorkflowInWorkspace(image, displayImages)}
                           groupBy={effectiveImageGroupBy}
                           groupSortOrder={imageGroupingSortOrder}
+                          clusterByImageId={clusterByImageId}
                           jumpToGroupRequest={pendingJumpGroupRequest}
                           initialScrollTop={libraryGridScrollTopRef.current}
                           onScrollPositionChange={handleLibraryGridScrollPositionChange}
@@ -3523,7 +3541,7 @@ export default function App() {
                         />
                       ) : (
                         <ImageTable
-                          images={paginatedImages}
+                          images={imagesForGrid}
                           onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           onBatchExport={handleOpenBatchExport}
@@ -3533,6 +3551,7 @@ export default function App() {
                           onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                           groupBy={effectiveImageGroupBy}
                           groupSortOrder={imageGroupingSortOrder}
+                          clusterByImageId={clusterByImageId}
                           jumpToGroupRequest={pendingJumpGroupRequest}
                         />
                   )
@@ -3567,7 +3586,7 @@ export default function App() {
                   >
                     {viewMode === 'grid' ? (
                       <ImageGrid
-                        images={paginatedImages}
+                        images={imagesForGrid}
                         onImageClick={handleGridImageClick}
                         selectedImages={safeSelectedImages}
                         currentPage={currentPage}
@@ -3582,6 +3601,7 @@ export default function App() {
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         groupBy={effectiveImageGroupBy}
                         groupSortOrder={imageGroupingSortOrder}
+                        clusterByImageId={clusterByImageId}
                         jumpToGroupRequest={pendingJumpGroupRequest}
                         initialScrollTop={collectionsGridScrollTopRef.current}
                         onScrollPositionChange={handleCollectionsGridScrollPositionChange}
@@ -3589,7 +3609,7 @@ export default function App() {
                       />
                     ) : (
                       <ImageTable
-                        images={paginatedImages}
+                        images={imagesForGrid}
                         onImageClick={handleGridImageClick}
                         selectedImages={safeSelectedImages}
                         onBatchExport={handleOpenBatchExport}
@@ -3601,6 +3621,7 @@ export default function App() {
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         groupBy={effectiveImageGroupBy}
                         groupSortOrder={imageGroupingSortOrder}
+                        clusterByImageId={clusterByImageId}
                         jumpToGroupRequest={pendingJumpGroupRequest}
                       />
                     )}
@@ -3727,6 +3748,13 @@ export default function App() {
                     handleActivateImageModal(modalId);
                   }}
                   onWindowClose={handleCloseImageModalFromFooter}
+                  showSortControls={canGroupCurrentImages}
+                  sortOrder={sortOrder}
+                  onSortOrderChange={imageStoreSetSortOrder}
+                  onReshuffle={reshuffle}
+                  groupBy={sortOrder === 'random' ? 'none' : groupBy}
+                  onGroupByChange={setGroupBy}
+                  hidePageSize={isSectionedByEntity}
                 />
               )}
             </>

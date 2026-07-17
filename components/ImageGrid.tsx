@@ -1069,6 +1069,7 @@ interface ImageGridProps {
   markedArchivedIds?: Set<string>;  // IDs of images marked for archive
   groupBy?: ImageGroupByMode;
   groupSortOrder?: ImageGroupingSortOrder;
+  clusterByImageId?: Map<string, { id: string; label: string }>;
   jumpToGroupRequest?: { groupId: string; requestId: number } | null;
   initialScrollTop?: number;
   onScrollPositionChange?: (scrollTop: number) => void;
@@ -1097,6 +1098,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   markedArchivedIds,
   groupBy = 'none',
   groupSortOrder = 'date-desc',
+  clusterByImageId,
   jumpToGroupRequest = null,
   initialScrollTop = 0,
   onScrollPositionChange,
@@ -1113,8 +1115,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const { stackedItems } = useImageStacking(images, isStackingEnabled);
   const effectiveGroupBy = !isStackingEnabled ? groupBy : 'none';
   const groupedImages = useMemo(
-    () => groupImages(images, effectiveGroupBy, { sortOrder: groupSortOrder }),
-    [effectiveGroupBy, groupSortOrder, images]
+    () => groupImages(images, effectiveGroupBy, { sortOrder: groupSortOrder, clusterByImageId }),
+    [effectiveGroupBy, groupSortOrder, images, clusterByImageId]
   );
   const itemsToRender: GridRenderItem[] = useMemo(() => {
     if (isStackingEnabled) {

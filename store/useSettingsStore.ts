@@ -63,7 +63,12 @@ const electronStorage: StateStorage = {
 };
 
 import { Keymap } from '../types';
-import type { ImageGroupByMode } from '../utils/imageGrouping';
+import type { ImageGroupByMode, ImageGroupingSortOrder } from '../utils/imageGrouping';
+
+const VALID_SORT_ORDERS: ImageGroupingSortOrder[] = ['asc', 'desc', 'date-asc', 'date-desc', 'random'];
+const isValidSortOrder = (value: unknown): value is ImageGroupingSortOrder =>
+  typeof value === 'string' && (VALID_SORT_ORDERS as string[]).includes(value);
+const VALID_GROUP_BY: ImageGroupByMode[] = ['none', 'date', 'name', 'session', 'model', 'cluster'];
 
 const detectDefaultIndexingConcurrency = (): number => {
   if (typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number') {
@@ -96,8 +101,9 @@ export const sanitizeSlideshowIntervalSeconds = (value: number): number => {
 
 // Define the state shape
 interface SettingsState {
-  // App settings
-  sortOrder: 'asc' | 'desc';
+  // App settings. Unified with useImageStore.sortOrder (the single writer); this copy is
+  // persistence-only. Kept as the full union so the two never drift.
+  sortOrder: ImageGroupingSortOrder;
   itemsPerPage: number;
   scanSubfolders: boolean;
   imageSize: number;
@@ -147,7 +153,7 @@ interface SettingsState {
   generatorLaunchWorkingDirectory: string;
 
   // Actions
-  setSortOrder: (order: 'asc' | 'desc') => void;
+  setSortOrder: (order: ImageGroupingSortOrder) => void;
   setItemsPerPage: (count: number) => void;
   toggleScanSubfolders: () => void;
   setImageSize: (size: number) => void;
@@ -418,13 +424,13 @@ export const useSettingsStore = create<SettingsState>()(
           state.showFilenames = false;
         }
 
-        if (
-          state &&
-          state.groupBy !== 'none' &&
-          state.groupBy !== 'date' &&
-          state.groupBy !== 'name' &&
-          state.groupBy !== 'session'
-        ) {
+        // Keep a persisted-but-valid sortOrder; only reset corrupted/unknown values so we
+        // never destroy a user's preference (D7).
+        if (state && !isValidSortOrder(state.sortOrder)) {
+          state.sortOrder = 'date-desc';
+        }
+
+        if (state && !VALID_GROUP_BY.includes(state.groupBy)) {
           state.groupBy = 'none';
         }
 

@@ -69,15 +69,14 @@ describe('Sidebar layout', () => {
         excludedFolders={new Set<string>()}
         onExcludeFolder={() => {}}
         onIncludeFolder={() => {}}
-        sortOrder="date-desc"
-        onSortOrderChange={() => {}}
       >
         <FolderPane />
       </Sidebar>,
     );
 
     expect(screen.getByText('Folder content')).toBeTruthy();
-    expect(screen.getByText('Sort Order')).toBeTruthy();
+    // Sort Order / Group By moved to the grid Footer; they no longer live in the Sidebar.
+    expect(screen.queryByText('Sort Order')).toBeNull();
     expect(screen.getByRole('button', { name: /rules/i })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /rules/i }));
     expect(screen.getByRole('dialog', { name: /automation rules/i })).toBeTruthy();
