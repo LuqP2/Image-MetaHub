@@ -81,10 +81,7 @@ describe('Sidebar layout', () => {
     expect(screen.getByText('Folder content')).toBeTruthy();
     // Sort Order / Group By moved to the grid Footer; they no longer live in the Sidebar.
     expect(screen.queryByText('Sort Order')).toBeNull();
-    // Reorganized into Navigate / Filter categories.
-    expect(screen.getByText('Navigate')).toBeTruthy();
-    expect(screen.getByText('Filter')).toBeTruthy();
-    // Collection/cluster actions moved to the Explore surface; the sidebar is folders + filters only.
+    // The sidebar is folders + filters only; collection/cluster/rules actions moved to Explore / the Header Tools menu.
     expect(screen.queryByText('Clusters')).toBeNull();
     expect(screen.queryByRole('button', { name: /rules/i })).toBeNull();
   });

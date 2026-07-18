@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon, Compass } from 'lucide-react';
+import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon, Compass, Wand2, Tag, SlidersHorizontal } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -8,6 +8,7 @@ import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
 import { buildProLicenseUrl } from '../utils/creatorAttribution';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
+import AutomationRulesModal from './AutomationRulesModal';
 import type { ExploreDimension } from '../types';
 
 type LibraryView = 'library' | 'explore' | 'collections' | 'comfyui' | 'editor';
@@ -71,10 +72,34 @@ const Header: React.FC<HeaderProps> = ({
   // Store hooks for Smart Library Actions
   const directories = useImageStore((state) => state.directories);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
+  const startAutoTagging = useImageStore((state) => state.startAutoTagging);
+  const isAutoTagging = useImageStore((state) => state.isAutoTagging);
+  const autoTaggingProgress = useImageStore((state) => state.autoTaggingProgress);
+
+  const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
+  const [isAutomationRulesOpen, setIsAutomationRulesOpen] = useState(false);
+  const toolsMenuRef = useRef<HTMLDivElement | null>(null);
 
   const primaryPath = directories[0]?.path ?? '';
   const hasDirectories = directories.length > 0;
   const DEFAULT_SIMILARITY_THRESHOLD = 0.88;
+
+  const handleAutoTagLibrary = () => {
+    setIsToolsMenuOpen(false);
+    if (!hasDirectories || isAutoTagging) return;
+    startAutoTagging(primaryPath, scanSubfolders);
+  };
+
+  useEffect(() => {
+    if (!isToolsMenuOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(event.target as Node)) {
+        setIsToolsMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [isToolsMenuOpen]);
   const hasLaunchCommand = generatorLaunchCommand.trim().length > 0;
   const detectedGenerator = useMemo(
     () => detectGeneratorFromLaunchCommand(generatorLaunchCommand),
@@ -505,6 +530,45 @@ const Header: React.FC<HeaderProps> = ({
             >
               {enableSafeMode ? <Eye size={16} /> : <EyeOff size={16} />}
             </button>
+            <div className="relative" ref={toolsMenuRef}>
+              <button
+                onClick={() => setIsToolsMenuOpen((prev) => !prev)}
+                className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent ${isAutoTagging ? 'text-accent' : ''}`}
+                title="Library tools (automation rules, auto-tag)"
+                aria-label="Library tools"
+                aria-haspopup="menu"
+                aria-expanded={isToolsMenuOpen}
+              >
+                <Wand2 size={16} className={isAutoTagging ? 'animate-pulse' : ''} />
+              </button>
+              {isToolsMenuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-lg border border-gray-700 bg-gray-900 shadow-xl shadow-black/40"
+                >
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setIsToolsMenuOpen(false);
+                      setIsAutomationRulesOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800"
+                  >
+                    <SlidersHorizontal size={15} className="text-gray-400" />
+                    <span>Automation rules…</span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={handleAutoTagLibrary}
+                    disabled={!hasDirectories || isAutoTagging}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Tag size={15} className="text-gray-400" />
+                    <span>{isAutoTagging ? 'Auto-tagging…' : 'Auto-tag library'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
             <a
               href="https://github.com/LuqP2/Image-MetaHub/issues/new"
               target="_blank"
@@ -540,6 +604,23 @@ const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Library-wide auto-tag progress (runs from the Tools menu, applies to the whole library). */}
+      {isAutoTagging && (
+        <div className="absolute inset-x-0 bottom-0 h-0.5 bg-gray-800/80">
+          <div
+            className={`h-full bg-accent transition-all duration-200 ${autoTaggingProgress && autoTaggingProgress.total > 0 ? '' : 'animate-pulse'}`}
+            style={{
+              width:
+                autoTaggingProgress && autoTaggingProgress.total > 0
+                  ? `${Math.min(100, Math.round((autoTaggingProgress.current / autoTaggingProgress.total) * 100))}%`
+                  : '100%',
+            }}
+          />
+        </div>
+      )}
+
+      <AutomationRulesModal isOpen={isAutomationRulesOpen} onClose={() => setIsAutomationRulesOpen(false)} />
     </header>
   );
 };

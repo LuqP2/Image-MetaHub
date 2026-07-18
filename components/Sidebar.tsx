@@ -7,12 +7,6 @@ import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
-
-const SidebarCategoryHeading: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="px-4 pt-4 pb-1">
-    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{children}</span>
-  </div>
-);
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
 import { createProfilerOnRender } from '../utils/performanceDiagnostics';
 
@@ -312,9 +306,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
 
-        {/* ==== NAVIGATE ==== */}
-        <SidebarCategoryHeading>Navigate</SidebarCategoryHeading>
-
         {/* Folders (Add Folder lives with the folder list) */}
         {onAddFolder && (
           <div className="px-3 pb-2">
@@ -345,9 +336,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         ) : (
           children
         )}
-
-        {/* ==== FILTER ==== */}
-        <SidebarCategoryHeading>Filter</SidebarCategoryHeading>
 
         <TagsAndFavorites />
 

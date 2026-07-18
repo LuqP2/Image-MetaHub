@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Box, FolderOpen, Layers, Lock, Pencil, Sparkles, Tag, Trash2 } from 'lucide-react';
+import { Box, FolderOpen, Layers, Lock, Pencil, Sparkles, Trash2 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -31,13 +31,12 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
   const directories = useImageStore((state) => state.directories);
   const clusteringMetadata = useImageStore((state) => state.clusteringMetadata);
   const isClustering = useImageStore((state) => state.isClustering);
-  const isAutoTagging = useImageStore((state) => state.isAutoTagging);
+  const clusteringProgress = useImageStore((state) => state.clusteringProgress);
   const activeImageScope = useImageStore((state) => state.activeImageScope);
   const exploreDimension = useImageStore((state) => state.exploreDimension);
   const setExploreDimension = useImageStore((state) => state.setExploreDimension);
   const setActiveImageScope = useImageStore((state) => state.setActiveImageScope);
   const startClustering = useImageStore((state) => state.startClustering);
-  const startAutoTagging = useImageStore((state) => state.startAutoTagging);
   const getResolvedCollectionImages = useImageStore((state) => state.getResolvedCollectionImages);
   const createCollection = useImageStore((state) => state.createCollection);
   const updateCollection = useImageStore((state) => state.updateCollection);
@@ -124,11 +123,6 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
     startClustering(primaryPath, scanSubfolders, DEFAULT_SIMILARITY_THRESHOLD);
   };
 
-  const handleGenerateAutoTags = () => {
-    if (!hasDirectories || isAutoTagging) return;
-    startAutoTagging(primaryPath, scanSubfolders);
-  };
-
   const handleCreateCollection = async (values: CollectionFormValues) => {
     const collection = await createCollection({
       kind: 'manual',
@@ -196,26 +190,15 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
         </div>
 
         {exploreDimension === 'clusters' && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleGenerateClusters}
-              disabled={!hasDirectories || isClustering}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Sparkles className="h-4 w-4" />
-              {isClustering ? 'Clustering…' : 'Generate clusters'}
-            </button>
-            <button
-              type="button"
-              onClick={handleGenerateAutoTags}
-              disabled={!hasDirectories || isAutoTagging}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Tag className="h-4 w-4" />
-              {isAutoTagging ? 'Tagging…' : 'Auto-Tag'}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleGenerateClusters}
+            disabled={!hasDirectories || isClustering}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Sparkles className="h-4 w-4" />
+            {isClustering ? 'Clustering…' : 'Generate clusters'}
+          </button>
         )}
 
         {exploreDimension === 'collections' && (
@@ -260,8 +243,17 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
             </div>
           ))}
 
+        {exploreDimension === 'clusters' && isClustering && (
+          <ProgressBar
+            label={clusteringProgress?.message ?? 'Clustering…'}
+            current={clusteringProgress?.current ?? 0}
+            total={clusteringProgress?.total ?? 0}
+          />
+        )}
+
         {exploreDimension === 'clusters' &&
           (clusterEntries.length === 0 ? (
+            isClustering ? null : (
             <EmptyState
               icon={Layers}
               title="No clusters yet"
@@ -278,6 +270,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                 </button>
               }
             />
+            )
           ) : (
             <div className={GRID_CLASS}>
               {clusterEntries.map(({ cluster, images: clusterImages, isLocked }) => {
@@ -466,6 +459,26 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
         initialCollectionId={automationRuleCollection?.id ?? null}
         initialRuleName={automationRuleCollection ? `Add to ${automationRuleCollection.name}` : undefined}
       />
+    </div>
+  );
+};
+
+const ProgressBar: React.FC<{ label: string; current: number; total: number }> = ({ label, current, total }) => {
+  const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+  return (
+    <div className="mb-4 rounded-xl border border-gray-800 bg-gray-900/60 p-4">
+      <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+        <span className="truncate text-gray-200">{label}</span>
+        <span className="shrink-0 text-xs text-gray-500">
+          {total > 0 ? `${current}/${total} (${pct}%)` : '…'}
+        </span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-800">
+        <div
+          className={`h-full bg-blue-500 transition-all duration-200 ${total > 0 ? '' : 'animate-pulse'}`}
+          style={{ width: total > 0 ? `${pct}%` : '100%' }}
+        />
+      </div>
     </div>
   );
 };
