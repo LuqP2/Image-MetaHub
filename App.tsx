@@ -4,6 +4,7 @@ import { useSettingsStore } from './store/useSettingsStore';
 import { useLicenseStore } from './store/useLicenseStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
+import { useClusterCacheRestore } from './hooks/useClusterCacheRestore';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useFeatureAccess } from './hooks/useFeatureAccess';
 import { Directory } from './types';
@@ -30,9 +31,8 @@ import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
-import SmartLibrary from './components/SmartLibrary';
-import { ModelView } from './components/ModelView';
-import NodeView from './components/NodeView';
+import ExploreWorkspace from './components/ExploreWorkspace';
+import { buildWorkflowNodeCatalog, filterImagesByWorkflowNodes } from './services/comfyUIWorkflowNodes';
 import FindSimilarModal from './components/FindSimilarModal';
 import ModelPromptPickerModal from './components/ModelPromptPickerModal';
 import CollectionsWorkspace from './components/CollectionsWorkspace';
@@ -59,12 +59,14 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './components/ComfyUIGenerateModal';
 import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
-import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria, type UpdateDownloadProgress, type UpdateNotificationPayload } from './types';
+import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria, type UpdateDownloadProgress, type UpdateNotificationPayload, type ExploreDimension } from './types';
 import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
 import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
 import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload } from './utils/watcherRemovalUtils';
-import { groupImages, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
+import { groupImages, isEntityGroupBy, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
+import { limitClustersForAccess } from './utils/smartLibraryClusterState';
+import { resolveScopeImageIds } from './utils/imageScope';
 import { findLatestCreatorAttributionToken } from './utils/creatorAttribution';
 import { indexImageFileAtPath } from './services/fileIndexer';
 import {
@@ -228,6 +230,7 @@ export default function App() {
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages } = useImageSelection();
+  useClusterCacheRestore();
   const { generateWithA1111, isGenerating: isGeneratingA1111 } = useGenerateWithA1111();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
 
@@ -243,8 +246,13 @@ export default function App() {
   const selectedImage = useImageStore((state) => state.selectedImage);
   const previewImage = useImageStore((state) => state.previewImage);
   const clustersCount = useImageStore((state) => state.clusters.length);
+  const clusters = useImageStore((state) => state.clusters);
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
   const activeImageScope = useImageStore((state) => state.activeImageScope);
+  const validateActiveImageScope = useImageStore((state) => state.validateActiveImageScope);
+  const setExploreDimension = useImageStore((state) => state.setExploreDimension);
+  const selectedNodes = useImageStore((state) => state.selectedNodes);
+  const setSelectedNodes = useImageStore((state) => state.setSelectedNodes);
   const collections = useImageStore((state) => state.collections);
   const activeCollectionId = useImageStore((state) => state.activeCollectionId);
 
@@ -346,7 +354,17 @@ export default function App() {
   const safeImages = useMemo(() => Array.isArray(images) ? images : [], [images]);
   const safeFilteredImages = useMemo(() => Array.isArray(filteredImages) ? filteredImages : [], [filteredImages]);
   const safeClusterNavigationContext = useMemo(() => Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [], [clusterNavigationContext]);
-  const safeActiveImageScope = useMemo(() => Array.isArray(activeImageScope) ? activeImageScope : null, [activeImageScope]);
+  // activeImageScope is a descriptor now; resolve it to the displayed scoped image set
+  // (filtered ∩ node filter ∩ scope) so modal Next/Previous stays within the drill-in.
+  const safeActiveImageScope = useMemo(() => {
+    if (!activeImageScope) return null;
+    const resolved = resolveScopeImageIds(activeImageScope, { images: safeImages, clusters, collections });
+    if (!resolved) return null;
+    const base = selectedNodes.length > 0
+      ? filterImagesByWorkflowNodes(safeFilteredImages, selectedNodes)
+      : safeFilteredImages;
+    return base.filter((image) => resolved.ids.has(image.id));
+  }, [activeImageScope, safeImages, clusters, collections, safeFilteredImages, selectedNodes]);
   const safeCollections = useMemo(() => Array.isArray(collections) ? collections : [], [collections]);
   const safeDirectories = useMemo(() => Array.isArray(directories) ? directories : [], [directories]);
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
@@ -390,6 +408,7 @@ export default function App() {
     setGroupBy,
     theme,
     setLastViewedVersion,
+    setHasSeenExploreOnboarding,
     globalAutoWatch,
     generatorLaunchCommand,
     comfyUIWorkspaceAutoOpenSelectedImage,
@@ -406,7 +425,6 @@ export default function App() {
 
   // --- Local UI State ---
   const [currentPage, setCurrentPage] = useState(1);
-  const [modelViewPage, setModelViewPage] = useState(1);
   const [pendingJumpGroupRequest, setPendingJumpGroupRequest] = useState<{ groupId: string; requestId: number } | null>(null);
   const [searchInputValue, setSearchInputValue] = useState(searchQuery);
   const previousSearchQueryRef = useRef(searchQuery);
@@ -479,9 +497,7 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor'>('library');
-  const [nodeViewVisibleImages, setNodeViewVisibleImages] = useState<IndexedImage[]>([]);
-  const [nodeViewResultImages, setNodeViewResultImages] = useState<IndexedImage[]>([]);
+  const [libraryView, setLibraryView] = useState<'library' | 'explore' | 'collections' | 'comfyui' | 'editor'>('library');
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -567,6 +583,8 @@ export default function App() {
     setFavoriteFilterMode('neutral');
     setSelectedRatings([]);
     setAdvancedFilters({});
+    setSelectedNodes([]);
+    setActiveImageScope(null);
   }, [
     setAdvancedFilters,
     setExcludedAutoTags,
@@ -579,6 +597,8 @@ export default function App() {
     setSelectedFilters,
     setSelectedRatings,
     setSelectedTags,
+    setSelectedNodes,
+    setActiveImageScope,
   ]);
 
   const handleSearchChange = useCallback((query: string) => {
@@ -610,17 +630,16 @@ export default function App() {
     })
   ), []);
 
+  // Scope is a persistent, view-independent drill-in (it renders as a fixed chip in
+  // ActiveFilters), so it is no longer cleared on view changes. Instead, when the scope's
+  // target vanishes (deleted collection, regenerated cluster, missing model after re-index),
+  // it is auto-cleared with a toast. See useImageStore.validateActiveImageScope / D9.
   useEffect(() => {
-    if (libraryView !== 'node' && libraryView !== 'collections' && activeImageScope !== null) {
-      setActiveImageScope(null);
+    if (activeImageScope !== null) {
+      validateActiveImageScope();
     }
-  }, [activeImageScope, libraryView, setActiveImageScope]);
+  }, [activeImageScope, clusters, collections, safeImages, validateActiveImageScope]);
 
-  useEffect(() => {
-    if (libraryView !== 'node' && nodeViewResultImages.length > 0) {
-      setNodeViewResultImages([]);
-    }
-  }, [libraryView, nodeViewResultImages.length]);
   const hasLeftSidebar = hasDirectories && libraryView !== 'comfyui' && libraryView !== 'editor';
   const hasRightSidebar = Boolean(isQueueOpen || (previewImage && libraryView !== 'comfyui' && libraryView !== 'editor'));
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
@@ -680,6 +699,10 @@ export default function App() {
     setIsHotkeyHelpOpen,
     isSettingsModalOpen,
     setIsSettingsModalOpen,
+    onNavigateToExplore: (dimension) => {
+      setExploreDimension(dimension);
+      setLibraryView('explore');
+    },
   });
 
   // --- License/Trial Hook ---
@@ -696,6 +719,7 @@ export default function App() {
     canUseAnalytics,
     canUseBatchExport,
     canUseImageEditor,
+    canUseFullClustering,
     showProModal,
     startTrial,
   } = useFeatureAccess();
@@ -1428,6 +1452,16 @@ export default function App() {
           } catch (error) {
             console.warn('Failed to persist last viewed changelog version:', error);
           }
+        }
+
+        // Navigation-change onboarding: shown once ever to users updating from a previous
+        // version (not on a fresh install), gated by a dedicated flag so it never repeats on
+        // subsequent version bumps.
+        if (currentLastViewed && !useSettingsStore.getState().hasSeenExploreOnboarding) {
+          setHasSeenExploreOnboarding(true);
+          setSuccess(
+            'Navigation updated: Explore now unifies Model View, Smart Library and Collections, and drill-ins appear as a scope chip. Prefer the old tabs? Turn on Classic mode in Settings.',
+          );
         }
       }
     };
@@ -2436,31 +2470,54 @@ export default function App() {
     return dirSet.size;
   }, [collectionFilteredImages]);
 
-  const handleNodeViewResultImagesChange = useCallback(
-    (images: IndexedImage[]) => {
-      setNodeViewResultImages(images);
-      setActiveImageScope(images);
-    },
-    [setActiveImageScope],
+  const findSimilarIdSet = useMemo(
+    () => (findSimilarGridFilter ? new Set(findSimilarGridFilter.imageIds) : null),
+    [findSimilarGridFilter],
   );
 
-  const findSimilarFilteredImages = useMemo(() => {
-    if (!findSimilarGridFilter) {
-      return null;
+  // ComfyUI workflow-node filter (OR), applied as a post-filter on the filtered library.
+  const nodeFilteredImages = useMemo(
+    () => (selectedNodes.length > 0 ? filterImagesByWorkflowNodes(safeFilteredImages, selectedNodes) : safeFilteredImages),
+    [safeFilteredImages, selectedNodes],
+  );
+
+  const availableNodeCatalog = useMemo(() => buildWorkflowNodeCatalog(safeImages), [safeImages]);
+  const availableNodes = useMemo(() => availableNodeCatalog.map((node) => node.name), [availableNodeCatalog]);
+  const nodeFacetCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const node of availableNodeCatalog) {
+      map.set(node.name, node.count);
     }
+    return map;
+  }, [availableNodeCatalog]);
 
-    const filteredIds = new Set(findSimilarGridFilter.imageIds);
-    return safeFilteredImages.filter((image) => filteredIds.has(image.id));
-  }, [findSimilarGridFilter, safeFilteredImages]);
+  // Resolve the active scope (model/cluster/collection) to the set of image IDs it targets.
+  const scopedImageIds = useMemo(() => {
+    const resolved = resolveScopeImageIds(activeImageScope, { images: safeImages, clusters, collections });
+    return resolved ? resolved.ids : null;
+  }, [activeImageScope, safeImages, clusters, collections]);
 
-  const displayImages =
-    libraryView === 'collections'
-      ? collectionFilteredImages
-      : libraryView === 'node'
-      ? nodeViewResultImages
-      : libraryView === 'library' && findSimilarFilteredImages
-      ? findSimilarFilteredImages
-      : safeFilteredImages;
+  // Displayed base: node filter, then scope. Find Similar layers on top so it always applies
+  // within an active scope instead of replacing it. Filters remain cumulative.
+  const scopedBaseImages = useMemo(
+    () => (activeImageScope && scopedImageIds
+      ? nodeFilteredImages.filter((image) => scopedImageIds.has(image.id))
+      : nodeFilteredImages),
+    [activeImageScope, scopedImageIds, nodeFilteredImages],
+  );
+
+  // Memoized so the grid (and paginatedImages / libraryGridSignature / currentImageGroups) get a
+  // stable array identity and don't re-render on every unrelated App render while a scope is active.
+  const displayImages = useMemo(
+    () =>
+      // Collections still owns its in-view display during coexistence (removed in a later phase).
+      libraryView === 'collections'
+        ? collectionFilteredImages
+        : libraryView === 'library' && findSimilarIdSet
+        ? scopedBaseImages.filter((image) => findSimilarIdSet.has(image.id))
+        : scopedBaseImages,
+    [libraryView, collectionFilteredImages, findSimilarIdSet, scopedBaseImages],
+  );
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
 
   const libraryGridSignature = useMemo(() => {
@@ -2773,7 +2830,7 @@ export default function App() {
     openFindSimilar(group.sourceImage, safeImages);
   }, [openFindSimilar, safeImages]);
 
-  const canSaveCurrentFilteredAsCollection = libraryView !== 'smart' && displayImages.length > 0;
+  const canSaveCurrentFilteredAsCollection = displayImages.length > 0;
   const comfyUIWorkspaceImage = useMemo(() => {
     if (comfyUIWorkspaceImageId) {
       return imageLookup.get(comfyUIWorkspaceImageId) ?? null;
@@ -2940,8 +2997,12 @@ export default function App() {
       return;
     }
 
-    setActiveImageScope(activeCollection ? collectionFilteredImages : null);
-  }, [activeCollection, collectionFilteredImages, libraryView, setActiveImageScope]);
+    // Selecting a collection sets it as the active scope (a descriptor), which persists as a
+    // fixed chip even after leaving the Collections view — the drill-in becomes the scope.
+    setActiveImageScope(
+      activeCollection ? { type: 'collection', id: activeCollection.id, label: activeCollection.name } : null,
+    );
+  }, [activeCollection, libraryView, setActiveImageScope]);
 
   // --- Render Logic ---
   const paginatedImages = useMemo(
@@ -2957,18 +3018,43 @@ export default function App() {
     libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection));
   const effectiveImageGroupBy = canGroupCurrentImages && sortOrder !== 'random' ? groupBy : 'none';
   const imageGroupingSortOrder = sortOrder as ImageGroupingSortOrder;
+
+  // Group By model/cluster sections over the WHOLE filtered set (not the current page), so
+  // sections are never split across pages (D8). Pagination is suspended in that mode.
+  const isSectionedByEntity = isEntityGroupBy(effectiveImageGroupBy);
+  const imagesForGrid = isSectionedByEntity ? displayImages : paginatedImages;
+
+  const clusterByImageId = useMemo(() => {
+    if (effectiveImageGroupBy !== 'cluster') {
+      return undefined;
+    }
+    // Respect the free-tier cluster gating (same as Explore): locked-cluster images fall through
+    // to "No cluster" instead of exposing the organization the Pro lock hides.
+    const accessibleClusters = limitClustersForAccess(clusters, safeImages, canUseFullClustering);
+    const map = new Map<string, { id: string; label: string }>();
+    for (const cluster of accessibleClusters) {
+      const label = cluster.basePrompt || 'Untitled cluster';
+      for (const id of cluster.imageIds) {
+        if (!map.has(id)) {
+          map.set(id, { id: cluster.id, label });
+        }
+      }
+    }
+    return map;
+  }, [effectiveImageGroupBy, clusters, safeImages, canUseFullClustering]);
+
   const currentImageGroups = useMemo<ImageGroup[]>(
     () => effectiveImageGroupBy === 'none'
       ? []
-      : groupImages(paginatedImages, effectiveImageGroupBy, { sortOrder: imageGroupingSortOrder }).groups,
-    [effectiveImageGroupBy, imageGroupingSortOrder, paginatedImages]
+      : groupImages(imagesForGrid, effectiveImageGroupBy, { sortOrder: imageGroupingSortOrder, clusterByImageId }).groups,
+    [effectiveImageGroupBy, imageGroupingSortOrder, imagesForGrid, clusterByImageId]
   );
 
   useEffect(() => {
     setPendingJumpGroupRequest(null);
   }, [currentPage, effectiveImageGroupBy, viewMode]);
 
-  const totalPages = itemsPerPage === -1
+  const totalPages = isSectionedByEntity || itemsPerPage === -1
     ? 1
     : Math.ceil(displayImages.length / itemsPerPage);
   const openImageModalEntries = useMemo(() => {
@@ -3181,14 +3267,18 @@ export default function App() {
           availableLoras={availableLoras}
           availableSamplers={availableSamplers}
           availableSchedulers={availableSchedulers}
+          availableNodes={availableNodes}
+          nodeFacetCounts={nodeFacetCounts}
           selectedModels={selectedModels}
           selectedLoras={selectedLoras}
           selectedSamplers={selectedSamplers}
           selectedSchedulers={selectedSchedulers}
+          selectedNodes={selectedNodes}
           onModelChange={(models) => setSelectedFilters({ models })}
           onLoraChange={(loras) => setSelectedFilters({ loras })}
           onSamplerChange={(samplers) => setSelectedFilters({ samplers })}
           onSchedulerChange={(schedulers) => setSelectedFilters({ schedulers })}
+          onNodeChange={setSelectedNodes}
           onClearAllFilters={handleClearAllFilters}
           advancedFilters={advancedFilters}
           onAdvancedFiltersChange={setAdvancedFilters}
@@ -3205,11 +3295,6 @@ export default function App() {
           excludedFolders={excludedFolders}
           onExcludeFolder={addExcludedFolder}
           onIncludeFolder={removeExcludedFolder}
-          sortOrder={sortOrder}
-          onSortOrderChange={imageStoreSetSortOrder}
-          onReshuffle={reshuffle}
-          groupBy={sortOrder === 'random' ? 'none' : groupBy}
-          onGroupByChange={setGroupBy}
         >
           <DirectoryList
             directories={safeDirectories}
@@ -3269,11 +3354,14 @@ export default function App() {
       >
         <Header
           onOpenSettings={() => handleOpenSettings()}
-          onOpenAnalytics={() => setIsAnalyticsOpen(true)}
           onOpenLicense={handleOpenLicenseSettings}
           onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
           libraryView={libraryView}
           onLibraryViewChange={setLibraryView}
+          onNavigateExplore={(dimension) => {
+            setExploreDimension(dimension);
+            setLibraryView('explore');
+          }}
           onOpenDroppedImageInComfyUI={(imageId) => {
             const image = imageLookup.get(imageId);
             if (image) {
@@ -3384,10 +3472,10 @@ export default function App() {
                     }}
                   />
                 )}
-                {(libraryView === 'library' || libraryView === 'node' || (libraryView === 'collections' && Boolean(activeCollection))) && (
+                {(libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                   <GridToolbar
                     selectedImages={safeSelectedImages}
-                    images={libraryView === 'node' ? nodeViewVisibleImages : paginatedImages}
+                    images={imagesForGrid}
                     directories={safeDirectories}
                     onCreateCollectionFromFiltered={
                       canSaveCurrentFilteredAsCollection
@@ -3423,6 +3511,32 @@ export default function App() {
                     groupBy={effectiveImageGroupBy}
                     onJumpToGroup={(groupId) => setPendingJumpGroupRequest({ groupId, requestId: Date.now() })}
                     onClearAllFilters={handleClearAllFilters}
+                    onExitScope={
+                      activeImageScope
+                        ? () => {
+                            const dimension: ExploreDimension =
+                              activeImageScope.type === 'cluster'
+                                ? 'clusters'
+                                : activeImageScope.type === 'model'
+                                ? 'models'
+                                : 'collections';
+                            setActiveImageScope(null);
+                            setExploreDimension(dimension);
+                            resetLibraryGridScrollPosition();
+                            setLibraryView('explore');
+                          }
+                        : undefined
+                    }
+                    scopeReturnLabel={
+                      activeImageScope
+                        ? activeImageScope.type === 'cluster'
+                          ? 'Clusters'
+                          : activeImageScope.type === 'model'
+                          ? 'Models'
+                          : 'Collections'
+                        : undefined
+                    }
+                    onOpenAnalytics={() => setIsAnalyticsOpen(true)}
                   />
                 )}
 
@@ -3475,7 +3589,7 @@ export default function App() {
                     </div>
                   ) : viewMode === 'grid' ? (
                         <ImageGrid
-                          images={paginatedImages}
+                          images={imagesForGrid}
                           onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           currentPage={currentPage}
@@ -3488,6 +3602,7 @@ export default function App() {
                           onOpenComfyUIWorkspace={(image) => openComfyUIWorkflowInWorkspace(image, displayImages)}
                           groupBy={effectiveImageGroupBy}
                           groupSortOrder={imageGroupingSortOrder}
+                          clusterByImageId={clusterByImageId}
                           jumpToGroupRequest={pendingJumpGroupRequest}
                           initialScrollTop={libraryGridScrollTopRef.current}
                           onScrollPositionChange={handleLibraryGridScrollPositionChange}
@@ -3495,7 +3610,7 @@ export default function App() {
                         />
                       ) : (
                         <ImageTable
-                          images={paginatedImages}
+                          images={imagesForGrid}
                           onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           onBatchExport={handleOpenBatchExport}
@@ -3505,20 +3620,14 @@ export default function App() {
                           onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                           groupBy={effectiveImageGroupBy}
                           groupSortOrder={imageGroupingSortOrder}
+                          clusterByImageId={clusterByImageId}
                           jumpToGroupRequest={pendingJumpGroupRequest}
                         />
                   )
-                ) : libraryView === 'model' ? (
-                  <ModelView
-                    isQueueOpen={isQueueOpen}
-                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
-                    page={modelViewPage}
-                    onPageChange={setModelViewPage}
-                    activeModelName={selectedModels.length === 1 ? selectedModels[0] : null}
-                    onModelSelect={(modelName) => {
+                ) : libraryView === 'explore' ? (
+                  <ExploreWorkspace
+                    onNavigateToLibrary={() => {
                       resetLibraryGridScrollPosition();
-                      setModelViewPage(1);
-                      setSelectedFilters({ models: [modelName] });
                       setLibraryView('library');
                     }}
                     onFindMatchingPrompts={openModelPromptPicker}
@@ -3530,7 +3639,7 @@ export default function App() {
                   >
                     {viewMode === 'grid' ? (
                       <ImageGrid
-                        images={paginatedImages}
+                        images={imagesForGrid}
                         onImageClick={handleGridImageClick}
                         selectedImages={safeSelectedImages}
                         currentPage={currentPage}
@@ -3545,6 +3654,7 @@ export default function App() {
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         groupBy={effectiveImageGroupBy}
                         groupSortOrder={imageGroupingSortOrder}
+                        clusterByImageId={clusterByImageId}
                         jumpToGroupRequest={pendingJumpGroupRequest}
                         initialScrollTop={collectionsGridScrollTopRef.current}
                         onScrollPositionChange={handleCollectionsGridScrollPositionChange}
@@ -3552,7 +3662,7 @@ export default function App() {
                       />
                     ) : (
                       <ImageTable
-                        images={paginatedImages}
+                        images={imagesForGrid}
                         onImageClick={handleGridImageClick}
                         selectedImages={safeSelectedImages}
                         onBatchExport={handleOpenBatchExport}
@@ -3564,21 +3674,11 @@ export default function App() {
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         groupBy={effectiveImageGroupBy}
                         groupSortOrder={imageGroupingSortOrder}
+                        clusterByImageId={clusterByImageId}
                         jumpToGroupRequest={pendingJumpGroupRequest}
                       />
                     )}
                   </CollectionsWorkspace>
-                ) : libraryView === 'node' ? (
-                  <NodeView
-                    images={safeFilteredImages}
-                    selectedImages={safeSelectedImages}
-                    onImageClick={handleImageSelection}
-                    onBatchExport={handleOpenBatchExport}
-                    isQueueOpen={isQueueOpen}
-                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
-                    onVisibleImagesChange={setNodeViewVisibleImages}
-                    onResultImagesChange={handleNodeViewResultImagesChange}
-                  />
                 ) : libraryView === 'comfyui' ? (
                   <ComfyUIWorkspace
                     image={comfyUIWorkspaceImage}
@@ -3647,16 +3747,7 @@ export default function App() {
                       </div>
                     </div>
                   )
-                ) : (
-                  <SmartLibrary
-                    isQueueOpen={isQueueOpen}
-                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
-                    onBatchExport={handleOpenBatchExport}
-                    onOpenImageInBackground={(image, navigationImages) => {
-                      handleOpenImageModalInBackground(image, navigationImages, 'cluster');
-                    }}
-                  />
-                )}
+                ) : null}
               </div>
 
               {(libraryView === 'library' || libraryView === 'comfyui' || libraryView === 'editor' || (libraryView === 'collections' && Boolean(activeCollection))) && (
@@ -3690,6 +3781,13 @@ export default function App() {
                     handleActivateImageModal(modalId);
                   }}
                   onWindowClose={handleCloseImageModalFromFooter}
+                  showSortControls={canGroupCurrentImages}
+                  sortOrder={sortOrder}
+                  onSortOrderChange={imageStoreSetSortOrder}
+                  onReshuffle={reshuffle}
+                  groupBy={sortOrder === 'random' ? 'none' : groupBy}
+                  onGroupByChange={setGroupBy}
+                  hidePageSize={isSectionedByEntity}
                 />
               )}
             </>

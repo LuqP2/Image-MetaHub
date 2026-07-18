@@ -1112,6 +1112,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const allImages = useImageStore((state) => state.images);
   const selectedImages = useImageStore((state) => state.selectedImages);
   const activeImageScope = useImageStore((state) => state.activeImageScope);
+  const selectedNodes = useImageStore((state) => state.selectedNodes);
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
 
   const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
@@ -1151,9 +1152,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }), [currentTags, recentTagChipLimit, recentTags]);
   const createdAtLabel = useMemo(() => new Date(image.lastModified).toLocaleString(), [image.lastModified]);
   const exportScopeImages = useMemo(() => {
+    const scopedImages = useImageStore.getState().getScopedFilteredImages();
     const candidateScopes = [
       clusterNavigationContext,
-      activeImageScope,
+      scopedImages,
       filteredImages,
     ].filter((scope): scope is IndexedImage[] => Array.isArray(scope) && scope.length > 0);
 
@@ -1164,7 +1166,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     return [liveImage];
-  }, [activeImageScope, clusterNavigationContext, filteredImages, liveImage]);
+  }, [activeImageScope, selectedNodes, clusterNavigationContext, filteredImages, liveImage]);
   const exportSelectionIds = useMemo(() => {
     if (selectedImages.has(liveImage.id)) {
       return new Set(selectedImages);

@@ -9,10 +9,8 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { Heart, Info, Copy, CheckCircle, Folder, Download, Clipboard, Sparkles, GitCompare, Square, Search,
-  Archive,
   ChevronRight,
   CheckSquare,
-  Crown,
   EyeOff,
   Package,
   Play,
@@ -86,8 +84,6 @@ interface ImageCardProps {
   baseWidth: number;
   isComparisonFirst?: boolean;
   cardRef?: (el: HTMLDivElement | null) => void;
-  isMarkedBest?: boolean;       // For deduplication: marked as best to keep
-  isMarkedArchived?: boolean;   // For deduplication: marked for archive
   isBlurred?: boolean;
 }
 
@@ -176,7 +172,7 @@ const getWarmupWindowImageKey = (images: IndexedImage[]): string =>
 
 const visibleGridThumbnailFlows = new Map<string, string>();
 
-const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, onRenameComplete, isRenaming = false, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
+const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, onRenameComplete, isRenaming = false, baseWidth, isComparisonFirst, cardRef, isBlurred }) => {
   const [renameValue, setRenameValue] = useState('');
   const [isSubmittingRename, setIsSubmittingRename] = useState(false);
   const thumbnail = useResolvedThumbnail(image);
@@ -535,22 +531,6 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           )}
         </motion.button>
 
-        {/* Deduplication: Best badge */}
-        {isMarkedBest && (
-          <div className="absolute top-2 left-11 z-20 px-2 py-1 bg-yellow-500/90 rounded-lg text-white text-xs font-bold shadow-lg flex items-center gap-1">
-            <Crown className="h-3.5 w-3.5" />
-            Best
-          </div>
-        )}
-
-        {/* Deduplication: Archived badge */}
-        {isMarkedArchived && (
-          <div className="absolute top-2 left-11 z-20 px-2 py-1 bg-gray-600/90 rounded-lg text-white text-xs font-bold shadow-lg flex items-center gap-1">
-            <Archive className="h-3.5 w-3.5" />
-            Archive
-          </div>
-        )}
-
         {isComparisonFirst && (
           <div className="absolute top-2 left-11 z-20 px-2 py-1 bg-purple-600 rounded-lg text-white text-xs font-bold shadow-lg">
             Compare #1
@@ -774,8 +754,6 @@ interface CellData {
   renamingImageId: string | null;
   comparisonFirstImageId?: string;
   createCardRef: (id: string) => (node: HTMLDivElement | null) => void;
-  markedBestIds?: Set<string>;
-  markedArchivedIds?: Set<string>;
   enableSafeMode?: boolean;
   sensitiveTagSet?: Set<string>;
   blurSensitiveImages?: boolean;
@@ -917,8 +895,6 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     renamingImageId,
     comparisonFirstImageId,
     createCardRef,
-    markedBestIds,
-    markedArchivedIds,
     enableSafeMode,
     sensitiveTagSet,
     blurSensitiveImages,
@@ -995,8 +971,6 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               baseWidth={imageSize}
               isComparisonFirst={false}
               cardRef={createCardRef(item.coverImage.id)}
-              isMarkedBest={markedBestIds?.has(item.coverImage.id)}
-              isMarkedArchived={markedArchivedIds?.has(item.coverImage.id)}
               isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
             />
 
@@ -1042,8 +1016,6 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
         baseWidth={imageSize}
         isComparisonFirst={comparisonFirstImageId === image.id}
         cardRef={createCardRef(image.id)}
-        isMarkedBest={markedBestIds?.has(image.id)}
-        isMarkedArchived={markedArchivedIds?.has(image.id)}
         isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
       />
     </div>
@@ -1065,10 +1037,9 @@ interface ImageGridProps {
   onFindSimilar?: (image: IndexedImage) => void;
   onOpenImageEditor?: (image: IndexedImage) => void;
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
-  markedBestIds?: Set<string>;      // IDs of images marked as best
-  markedArchivedIds?: Set<string>;  // IDs of images marked for archive
   groupBy?: ImageGroupByMode;
   groupSortOrder?: ImageGroupingSortOrder;
+  clusterByImageId?: Map<string, { id: string; label: string }>;
   jumpToGroupRequest?: { groupId: string; requestId: number } | null;
   initialScrollTop?: number;
   onScrollPositionChange?: (scrollTop: number) => void;
@@ -1093,10 +1064,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   onFindSimilar,
   onOpenImageEditor,
   onOpenComfyUIWorkspace,
-  markedBestIds,
-  markedArchivedIds,
   groupBy = 'none',
   groupSortOrder = 'date-desc',
+  clusterByImageId,
   jumpToGroupRequest = null,
   initialScrollTop = 0,
   onScrollPositionChange,
@@ -1113,8 +1083,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const { stackedItems } = useImageStacking(images, isStackingEnabled);
   const effectiveGroupBy = !isStackingEnabled ? groupBy : 'none';
   const groupedImages = useMemo(
-    () => groupImages(images, effectiveGroupBy, { sortOrder: groupSortOrder }),
-    [effectiveGroupBy, groupSortOrder, images]
+    () => groupImages(images, effectiveGroupBy, { sortOrder: groupSortOrder, clusterByImageId }),
+    [effectiveGroupBy, groupSortOrder, images, clusterByImageId]
   );
   const itemsToRender: GridRenderItem[] = useMemo(() => {
     if (isStackingEnabled) {
@@ -2099,24 +2069,42 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       setPreviewImage(images[targetImageIndex]);
     }
 
-    const virtualItems = expandGroupedItemsForColumns(itemsToRender, Math.max(1, columnCountRef.current));
-    const renderedIndex = virtualItems.findIndex((item) => !isImageRenderItem(item) && item.type === 'group-header' && item.group.id === jumpToGroupRequest.groupId);
-    if (renderedIndex < 0) {
-      return;
-    }
-
-    if (isInfinite) {
+    // Defer the scroll until after the focus/preview state commits and the grid
+    // re-lays out. Running it synchronously here scrolls against a pre-commit
+    // layout (the focus ring / preview sidebar can shift the grid), which made
+    // the very first jump land in the wrong place — it only worked on the second
+    // click once the layout was already settled. A double rAF waits for paint.
+    let firstFrame = 0;
+    let secondFrame = 0;
+    const performScroll = () => {
       const columnCount = Math.max(1, columnCountRef.current);
-      virtualGridRef.current?.scrollToItem({
-        rowIndex: Math.floor(renderedIndex / columnCount),
-        columnIndex: 0,
-        align: 'start',
-      });
-      return;
-    }
+      const virtualItems = expandGroupedItemsForColumns(itemsToRender, columnCount);
+      const renderedIndex = virtualItems.findIndex((item) => !isImageRenderItem(item) && item.type === 'group-header' && item.group.id === jumpToGroupRequest.groupId);
+      if (renderedIndex < 0) {
+        return;
+      }
 
-    const header = gridScopeRef.current?.querySelector<HTMLElement>(`[data-group-id="${CSS.escape(jumpToGroupRequest.groupId)}"]`);
-    header?.scrollIntoView({ block: 'start', inline: 'nearest' });
+      if (isInfinite) {
+        virtualGridRef.current?.scrollToItem({
+          rowIndex: Math.floor(renderedIndex / columnCount),
+          columnIndex: 0,
+          align: 'start',
+        });
+        return;
+      }
+
+      const header = gridScopeRef.current?.querySelector<HTMLElement>(`[data-group-id="${CSS.escape(jumpToGroupRequest.groupId)}"]`);
+      header?.scrollIntoView({ block: 'start', inline: 'nearest' });
+    };
+
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(performScroll);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
   }, [effectiveGroupBy, groupedImages.groups, images, isInfinite, itemsToRender, jumpToGroupRequest, setFocusedImageIndex, setPreviewImage]);
 
   // Add global mouseup listener to handle selection end even outside the grid
@@ -2757,8 +2745,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     renamingImageId,
                     comparisonFirstImageId: queuedComparisonFirstImageId,
                     createCardRef,
-                    markedBestIds,
-                    markedArchivedIds,
                     enableSafeMode,
                     sensitiveTagSet,
                     blurSensitiveImages,
@@ -2997,8 +2983,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 baseWidth={imageSize}
                                 isComparisonFirst={false}
                                 cardRef={createCardRef(item.coverImage.id)}
-                                isMarkedBest={markedBestIds?.has(item.coverImage.id)}
-                                isMarkedArchived={markedArchivedIds?.has(item.coverImage.id)}
                                 isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
                             />
                             {/* Low prominence Stack Badge */}
@@ -3034,8 +3018,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 baseWidth={imageSize}
                 isComparisonFirst={queuedComparisonFirstImageId === image.id}
                 cardRef={createCardRef(image.id)}
-                isMarkedBest={markedBestIds?.has(image.id)}
-                isMarkedArchived={markedArchivedIds?.has(image.id)}
                 isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
               />
             );

@@ -94,7 +94,7 @@ describe('renameImageRecord', () => {
     useImageStore.setState({
       images: [image, sibling],
       filteredImages: [image, sibling],
-      activeImageScope: [image, sibling],
+      activeImageScope: { type: 'cluster', id: 'cluster-1', label: 'Cluster' },
       clusterNavigationContext: [image, sibling],
       clusters: [
         createCluster({
@@ -117,7 +117,8 @@ describe('renameImageRecord', () => {
     expect(state.clusters[0].imageIds).toEqual(['dir-1::new.png', 'dir-1::sibling.png']);
     expect(state.clusters[0].coverImageId).toBe('dir-1::new.png');
     expect(Array.from(state.clusteringMetadata?.lockedImageIds ?? [])).toEqual(['dir-1::new.png']);
-    expect(state.activeImageScope?.map((entry) => entry.id)).toEqual(['dir-1::new.png', 'dir-1::sibling.png']);
+    // activeImageScope is a descriptor (cluster/model/collection id), so a rename leaves it untouched.
+    expect(state.activeImageScope).toEqual({ type: 'cluster', id: 'cluster-1', label: 'Cluster' });
     expect(state.clusterNavigationContext?.map((entry) => entry.id)).toEqual(['dir-1::new.png', 'dir-1::sibling.png']);
   });
 

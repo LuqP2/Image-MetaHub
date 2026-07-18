@@ -192,7 +192,8 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
     nextAnnotations.set(nextImageId, { ...annotation, imageId: nextImageId });
   });
   const nextFilteredImages = remapImageList(store.filteredImages) ?? [];
-  const nextActiveImageScope = remapImageList(store.activeImageScope);
+  // activeImageScope is a descriptor (model/cluster/collection id), not image references,
+  // so a path remap leaves it untouched.
   const nextClusterNavigationContext = remapImageList(store.clusterNavigationContext);
   const nextComparisonImages = remapImageList(store.comparisonImages) ?? [];
 
@@ -202,7 +203,6 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
     filteredImages: nextFilteredImages,
     selectedImage: remapImage(store.selectedImage),
     previewImage: remapImage(store.previewImage),
-    activeImageScope: nextActiveImageScope,
     clusterNavigationContext: nextClusterNavigationContext,
     comparisonImages: nextComparisonImages,
     selectedImages: nextSelectedImages,

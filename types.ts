@@ -1118,6 +1118,22 @@ export interface ComparisonMetadataPanelProps {
 /**
  * Image cluster - groups images with similar prompts
  */
+export type ImageScopeType = 'model' | 'cluster' | 'collection';
+
+/** The active dimension of the Explore surface (unifies Model View / Smart Library / Collections). */
+export type ExploreDimension = 'models' | 'clusters' | 'collections';
+
+/**
+ * A navigation scope: a single drill-in target (a model, cluster, or collection)
+ * that constrains the Library grid to the images belonging to it. Exclusive
+ * (one at a time); cumulative filters continue to apply within the scope.
+ */
+export interface ImageScope {
+  type: ImageScopeType;
+  id: string;
+  label: string;
+}
+
 export interface ImageCluster {
   id: string;                      // Hash-based cluster ID
   promptHash: string;              // Hash of the base prompt

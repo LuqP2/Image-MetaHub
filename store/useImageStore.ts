@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode, type ImageScope, type ExploreDimension } from '../types';
+import { resolveScopeImageIds, filterImagesByScope, getScopeToastMessage } from '../utils/imageScope';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -40,8 +41,9 @@ import { resolveMediaType } from '../utils/mediaTypes.js';
 import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
-import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
+import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT, isDevProLicenseOverride } from '../hooks/useFeatureAccess';
 import { buildClusterSourceSignature } from '../utils/smartLibraryClusterState';
+import { filterImagesByWorkflowNodes } from '../services/comfyUIWorkflowNodes';
 import {
     type LineageBuildState,
     type LineageDirectorySignature,
@@ -63,6 +65,23 @@ import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
 
 const RECENT_TAGS_STORAGE_KEY = 'image-metahub-recent-tags';
 const MAX_RECENT_TAGS = MAX_RECENT_TAG_HISTORY;
+
+// The set of images the user actually sees: filteredImages narrowed by the ComfyUI-node
+// filter (OR, when active) and then by the active scope. Keeps select-all and prev/next
+// navigation aligned with the grid (App.displayImages), so they never touch hidden images.
+const resolveDisplayedImages = (state: {
+  filteredImages: IndexedImage[];
+  selectedNodes: string[];
+  activeImageScope: ImageScope | null;
+  images: IndexedImage[];
+  clusters: ImageCluster[];
+  collections: SmartCollection[];
+}): IndexedImage[] => {
+  const nodeFiltered = state.selectedNodes.length > 0
+    ? filterImagesByWorkflowNodes(state.filteredImages, state.selectedNodes)
+    : state.filteredImages;
+  return filterImagesByScope(nodeFiltered, resolveScopeImageIds(state.activeImageScope, state));
+};
 
 type ThumbnailEntryState = {
     lastModified: number;
@@ -822,7 +841,8 @@ interface ImageState {
   transferProgress: IndexedImageTransferProgress | null;
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
-  activeImageScope: IndexedImage[] | null;
+  activeImageScope: ImageScope | null;
+  exploreDimension: ExploreDimension;
   collections: SmartCollection[];
   automationRules: AutomationRule[];
   isAutomationRulesLoaded: boolean;
@@ -873,6 +893,8 @@ interface ImageState {
   availableTags: TagInfo[];
   availableAutoTags: TagInfo[]; // Top auto-tags by frequency
   recentTags: string[];
+  /** ComfyUI workflow-node filter (OR): keep images whose workflowNodes include any selected node. */
+  selectedNodes: string[];
   selectedTags: string[];
   excludedTags: string[];
   selectedTagsMatchMode: TagMatchMode;
@@ -961,7 +983,12 @@ interface ImageState {
   // Selection Actions
   setPreviewImage: (image: IndexedImage | null) => void;
   setSelectedImage: (image: IndexedImage | null) => void;
-  setActiveImageScope: (images: IndexedImage[] | null) => void;
+  setActiveImageScope: (scope: ImageScope | null) => void;
+  setExploreDimension: (dimension: ExploreDimension) => void;
+  /** Clears the active scope (with a toast) when its target no longer exists. */
+  validateActiveImageScope: () => void;
+  /** filteredImages intersected with the active scope (or filteredImages when no scope). */
+  getScopedFilteredImages: () => IndexedImage[];
   loadCollections: () => Promise<void>;
   loadAutomationRules: () => Promise<void>;
   createCollection: (collection: Omit<SmartCollection, 'id' | 'imageCount' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<SmartCollection>;
@@ -1030,6 +1057,7 @@ interface ImageState {
   clearTag: (tag: string) => Promise<void>;
   deleteTag: (tag: string) => Promise<void>;
   purgeTag: (tag: string) => Promise<void>;
+  setSelectedNodes: (nodes: string[]) => void;
   setSelectedTags: (tags: string[]) => void;
   setExcludedTags: (tags: string[]) => void;
   setSelectedTagsMatchMode: (mode: TagMatchMode) => void;
@@ -1353,6 +1381,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         if (state.selectedSchedulers?.length || state.excludedSchedulers?.length) return true;
         if (state.selectedGenerators?.length || state.excludedGenerators?.length) return true;
         if (state.selectedGpuDevices?.length || state.excludedGpuDevices?.length) return true;
+        if (state.selectedNodes?.length) return true;
         if (state.advancedFilters && Object.keys(state.advancedFilters).length > 0) return true;
         if (state.selectedFolders && state.selectedFolders.size > 0) return true;
         if (state.directories.some(dir => dir.visible === false)) return true;
@@ -2640,6 +2669,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         clipboard: null,
         selectedImages: new Set(),
         activeImageScope: null,
+        exploreDimension: 'models',
         collections: [],
         automationRules: [],
         isAutomationRulesLoaded: false,
@@ -2674,6 +2704,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         availableTags: [],
         availableAutoTags: [],
         recentTags: loadRecentTags(),
+        selectedNodes: [],
         selectedTags: [],
         excludedTags: [],
         selectedTagsMatchMode: 'any',
@@ -3311,7 +3342,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                     thumbnailEntries: remapThumbnailEntries(state.thumbnailEntries, imageId, nextImageId),
                     selectedImage: replaceImage(state.selectedImage),
                     previewImage: replaceImage(state.previewImage),
-                    activeImageScope: remapImageListReference(state.activeImageScope, imageId, nextImage),
+                    // activeImageScope is a descriptor (model/cluster/collection id), not image
+                    // references, so renames never invalidate it — cluster/collection membership
+                    // is remapped via remappedClusters / syncedCollections above.
                     clusterNavigationContext: remapImageListReference(state.clusterNavigationContext, imageId, nextImage),
                     comparisonImages: state.comparisonImages.map(image => image.id === imageId ? nextImage : image),
                     lineageBuildState: markLineageBuildStateDirty(state.lineageBuildState),
@@ -3539,12 +3572,31 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),
-        setActiveImageScope: (images) => set((state) => {
-            if (state.activeImageScope === images) {
+        setExploreDimension: (dimension) => set((state) => (
+            state.exploreDimension === dimension ? state : { exploreDimension: dimension }
+        )),
+        setActiveImageScope: (scope) => set((state) => {
+            const current = state.activeImageScope;
+            if (current === scope) {
                 return state;
             }
-            return { activeImageScope: images };
+            if (current && scope && current.type === scope.type && current.id === scope.id && current.label === scope.label) {
+                return state;
+            }
+            return { activeImageScope: scope };
         }),
+        validateActiveImageScope: () => set((state) => {
+            const scope = state.activeImageScope;
+            if (!scope) {
+                return state;
+            }
+            const resolved = resolveScopeImageIds(scope, state);
+            if (resolved && !resolved.valid) {
+                return { activeImageScope: null, success: getScopeToastMessage(scope), error: null };
+            }
+            return state;
+        }),
+        getScopedFilteredImages: () => resolveDisplayedImages(get()),
         loadCollections: async () => {
             const persistedCollections = await getAllSmartCollections();
             set((state) => {
@@ -3822,9 +3874,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                 existingWorker.terminate();
             }
 
-            // Get clustering limits from license store directly (can't use hooks in Zustand actions)
+            // Get clustering limits from license store directly (can't use hooks in Zustand actions).
+            // Honor the dev Pro override too, so console-unlocked Pro reaches the generation path
+            // and not just the UI (matches useFeatureAccess).
             const licenseStore = useLicenseStore.getState();
-            const isPro = licenseStore.licenseStatus === 'pro' || licenseStore.licenseStatus === 'lifetime';
+            const isPro = isDevProLicenseOverride() || licenseStore.licenseStatus === 'pro' || licenseStore.licenseStatus === 'lifetime';
             const isTrialActive = licenseStore.licenseStatus === 'trial';
 
             // Filter images with prompts
@@ -4773,6 +4827,12 @@ export const useImageStore = create<ImageState>((set, get) => {
             await get().refreshAvailableTags();
         },
 
+        // Node filtering is applied as a post-filter in App (like activeImageScope), so this
+        // is a plain setter — it does not run filterAndSort.
+        setSelectedNodes: (nodes) => set(state => (
+            state.selectedNodes === nodes ? state : { selectedNodes: nodes }
+        )),
+
         setSelectedTags: (tags) => set(state => {
             const newState = { ...state, selectedTags: tags };
             return { ...newState, ...filterAndSort(newState) };
@@ -4948,7 +5008,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         selectAllImages: () => set(state => {
-            const selectionScope = state.activeImageScope ?? state.filteredImages;
+            const selectionScope = resolveDisplayedImages(state);
             // Performance optimization: Avoid intermediate array allocation
             const allImageIds = new Set<string>();
             for (let i = 0; i < selectionScope.length; i++) {
@@ -4972,7 +5032,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             const state = get();
             if (!state.selectedImage) return;
 
-            const imagesToNavigate = state.clusterNavigationContext || state.activeImageScope || state.filteredImages;
+            const scopedImages = resolveDisplayedImages(state);
+            const imagesToNavigate = state.clusterNavigationContext || scopedImages;
             const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
 
             if (currentIndex < imagesToNavigate.length - 1) {
@@ -4985,7 +5046,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             const state = get();
             if (!state.selectedImage) return;
 
-            const imagesToNavigate = state.clusterNavigationContext || state.activeImageScope || state.filteredImages;
+            const scopedImages = resolveDisplayedImages(state);
+            const imagesToNavigate = state.clusterNavigationContext || scopedImages;
             const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
 
             if (currentIndex > 0) {
@@ -5024,6 +5086,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedImage: null,
             selectedImages: new Set(),
             activeImageScope: null,
+            exploreDimension: 'models',
             collections: [],
             automationRules: [],
             isAutomationRulesLoaded: false,
@@ -5056,6 +5119,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableTags: [],
             availableAutoTags: [],
             recentTags: loadRecentTags(),
+            selectedNodes: [],
             selectedTags: [],
             excludedTags: [],
             selectedTagsMatchMode: 'any',

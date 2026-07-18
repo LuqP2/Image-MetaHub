@@ -44,15 +44,19 @@ describe('Sidebar layout', () => {
         availableLoras={[]}
         availableSamplers={[]}
         availableSchedulers={[]}
+        availableNodes={[]}
+        nodeFacetCounts={new Map()}
         availableDimensions={[]}
         selectedModels={[]}
         selectedLoras={[]}
         selectedSamplers={[]}
         selectedSchedulers={[]}
+        selectedNodes={[]}
         onModelChange={() => {}}
         onLoraChange={() => {}}
         onSamplerChange={() => {}}
         onSchedulerChange={() => {}}
+        onNodeChange={() => {}}
         onClearAllFilters={() => {}}
         advancedFilters={{}}
         onAdvancedFiltersChange={() => {}}
@@ -69,17 +73,16 @@ describe('Sidebar layout', () => {
         excludedFolders={new Set<string>()}
         onExcludeFolder={() => {}}
         onIncludeFolder={() => {}}
-        sortOrder="date-desc"
-        onSortOrderChange={() => {}}
       >
         <FolderPane />
       </Sidebar>,
     );
 
     expect(screen.getByText('Folder content')).toBeTruthy();
-    expect(screen.getByText('Sort Order')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /rules/i })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /rules/i }));
-    expect(screen.getByRole('dialog', { name: /automation rules/i })).toBeTruthy();
+    // Sort Order / Group By moved to the grid Footer; they no longer live in the Sidebar.
+    expect(screen.queryByText('Sort Order')).toBeNull();
+    // The sidebar is folders + filters only; collection/cluster/rules actions moved to Explore / the Header Tools menu.
+    expect(screen.queryByText('Clusters')).toBeNull();
+    expect(screen.queryByRole('button', { name: /rules/i })).toBeNull();
   });
 });

@@ -20,6 +20,8 @@ export const AppearanceSettingsPanel: React.FC = () => {
   const setTheme = useSettingsStore((state) => state.setTheme);
   const enableAnimations = useSettingsStore((state) => state.enableAnimations);
   const setEnableAnimations = useSettingsStore((state) => state.setEnableAnimations);
+  const classicMode = useSettingsStore((state) => state.classicMode);
+  const setClassicMode = useSettingsStore((state) => state.setClassicMode);
 
   return (
     <SettingsPanel title="Appearance" description="Choose the app theme and motion preferences.">
@@ -59,6 +61,14 @@ export const AppearanceSettingsPanel: React.FC = () => {
           label="Enable animations"
           description="Use small interface animations, including modal minimize and restore."
           control={<SettingSwitch checked={enableAnimations} onChange={setEnableAnimations} />}
+        />
+      </SettingsSectionCard>
+
+      <SettingsSectionCard title="Navigation">
+        <SettingRow
+          label="Classic mode"
+          description="Show the old Model View, Smart Library, Collections and Node View tabs. They open the unified Explore surface — no separate screens."
+          control={<SettingSwitch checked={classicMode} onChange={setClassicMode} />}
         />
       </SettingsSectionCard>
     </SettingsPanel>
