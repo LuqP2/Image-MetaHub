@@ -43,6 +43,7 @@ import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
 import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT, isDevProLicenseOverride } from '../hooks/useFeatureAccess';
 import { buildClusterSourceSignature } from '../utils/smartLibraryClusterState';
+import { filterImagesByWorkflowNodes } from '../services/comfyUIWorkflowNodes';
 import {
     type LineageBuildState,
     type LineageDirectorySignature,
@@ -64,6 +65,23 @@ import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
 
 const RECENT_TAGS_STORAGE_KEY = 'image-metahub-recent-tags';
 const MAX_RECENT_TAGS = MAX_RECENT_TAG_HISTORY;
+
+// The set of images the user actually sees: filteredImages narrowed by the ComfyUI-node
+// filter (OR, when active) and then by the active scope. Keeps select-all and prev/next
+// navigation aligned with the grid (App.displayImages), so they never touch hidden images.
+const resolveDisplayedImages = (state: {
+  filteredImages: IndexedImage[];
+  selectedNodes: string[];
+  activeImageScope: ImageScope | null;
+  images: IndexedImage[];
+  clusters: ImageCluster[];
+  collections: SmartCollection[];
+}): IndexedImage[] => {
+  const nodeFiltered = state.selectedNodes.length > 0
+    ? filterImagesByWorkflowNodes(state.filteredImages, state.selectedNodes)
+    : state.filteredImages;
+  return filterImagesByScope(nodeFiltered, resolveScopeImageIds(state.activeImageScope, state));
+};
 
 type ThumbnailEntryState = {
     lastModified: number;
@@ -3578,10 +3596,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             return state;
         }),
-        getScopedFilteredImages: () => {
-            const state = get();
-            return filterImagesByScope(state.filteredImages, resolveScopeImageIds(state.activeImageScope, state));
-        },
+        getScopedFilteredImages: () => resolveDisplayedImages(get()),
         loadCollections: async () => {
             const persistedCollections = await getAllSmartCollections();
             set((state) => {
@@ -4993,8 +5008,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         selectAllImages: () => set(state => {
-            const resolvedScope = resolveScopeImageIds(state.activeImageScope, state);
-            const selectionScope = filterImagesByScope(state.filteredImages, resolvedScope);
+            const selectionScope = resolveDisplayedImages(state);
             // Performance optimization: Avoid intermediate array allocation
             const allImageIds = new Set<string>();
             for (let i = 0; i < selectionScope.length; i++) {
@@ -5018,7 +5032,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const state = get();
             if (!state.selectedImage) return;
 
-            const scopedImages = filterImagesByScope(state.filteredImages, resolveScopeImageIds(state.activeImageScope, state));
+            const scopedImages = resolveDisplayedImages(state);
             const imagesToNavigate = state.clusterNavigationContext || scopedImages;
             const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
 
@@ -5032,7 +5046,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const state = get();
             if (!state.selectedImage) return;
 
-            const scopedImages = filterImagesByScope(state.filteredImages, resolveScopeImageIds(state.activeImageScope, state));
+            const scopedImages = resolveDisplayedImages(state);
             const imagesToNavigate = state.clusterNavigationContext || scopedImages;
             const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
 

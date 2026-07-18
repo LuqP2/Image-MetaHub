@@ -51,4 +51,18 @@ describe('useImageStore selectedNodes', () => {
     const result = filterImagesByWorkflowNodes(images, []).map((image) => image.id);
     expect(result).toEqual([ksampler.id, vae.id, both.id]);
   });
+
+  it('getScopedFilteredImages narrows the displayed set by the active node filter', () => {
+    useImageStore.getState().setSelectedNodes(['KSampler']);
+    expect(useImageStore.getState().getScopedFilteredImages().map((image) => image.id)).toEqual([
+      ksampler.id,
+      both.id,
+    ]);
+  });
+
+  it('select-all only selects node-filtered images, never hidden ones', () => {
+    useImageStore.getState().setSelectedNodes(['VAEDecode']);
+    useImageStore.getState().selectAllImages();
+    expect([...useImageStore.getState().selectedImages].sort()).toEqual([both.id, vae.id].sort());
+  });
 });

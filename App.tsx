@@ -351,7 +351,17 @@ export default function App() {
   const safeImages = useMemo(() => Array.isArray(images) ? images : [], [images]);
   const safeFilteredImages = useMemo(() => Array.isArray(filteredImages) ? filteredImages : [], [filteredImages]);
   const safeClusterNavigationContext = useMemo(() => Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [], [clusterNavigationContext]);
-  const safeActiveImageScope = useMemo(() => Array.isArray(activeImageScope) ? activeImageScope : null, [activeImageScope]);
+  // activeImageScope is a descriptor now; resolve it to the displayed scoped image set
+  // (filtered ∩ node filter ∩ scope) so modal Next/Previous stays within the drill-in.
+  const safeActiveImageScope = useMemo(() => {
+    if (!activeImageScope) return null;
+    const resolved = resolveScopeImageIds(activeImageScope, { images: safeImages, clusters, collections });
+    if (!resolved) return null;
+    const base = selectedNodes.length > 0
+      ? filterImagesByWorkflowNodes(safeFilteredImages, selectedNodes)
+      : safeFilteredImages;
+    return base.filter((image) => resolved.ids.has(image.id));
+  }, [activeImageScope, safeImages, clusters, collections, safeFilteredImages, selectedNodes]);
   const safeCollections = useMemo(() => Array.isArray(collections) ? collections : [], [collections]);
   const safeDirectories = useMemo(() => Array.isArray(directories) ? directories : [], [directories]);
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
@@ -570,6 +580,7 @@ export default function App() {
     setSelectedRatings([]);
     setAdvancedFilters({});
     setSelectedNodes([]);
+    setActiveImageScope(null);
   }, [
     setAdvancedFilters,
     setExcludedAutoTags,
@@ -583,6 +594,7 @@ export default function App() {
     setSelectedRatings,
     setSelectedTags,
     setSelectedNodes,
+    setActiveImageScope,
   ]);
 
   const handleSearchChange = useCallback((query: string) => {
