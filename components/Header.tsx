@@ -82,7 +82,6 @@ const Header: React.FC<HeaderProps> = ({
 
   const primaryPath = directories[0]?.path ?? '';
   const hasDirectories = directories.length > 0;
-  const DEFAULT_SIMILARITY_THRESHOLD = 0.88;
 
   const handleAutoTagLibrary = () => {
     setIsToolsMenuOpen(false);
@@ -359,7 +358,7 @@ const Header: React.FC<HeaderProps> = ({
       ? [
           { key: 'smart', label: 'Smart Library', count: clustersCount > 0 ? clustersCount : null, run: () => onNavigateExplore?.('clusters') },
           { key: 'model', label: 'Model View', count: null, run: () => onNavigateExplore?.('models') },
-          { key: 'collections', label: 'Collections', count: null, run: () => onNavigateExplore?.('collections') },
+          { key: 'collections', label: 'Collections', count: null, run: () => onLibraryViewChange?.('collections') },
           { key: 'node', label: 'Node View', count: null, run: () => onLibraryViewChange?.('library') },
         ]
       : []),

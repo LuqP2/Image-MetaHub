@@ -65,6 +65,7 @@ import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
 import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload } from './utils/watcherRemovalUtils';
 import { groupImages, isEntityGroupBy, type ImageGroup, type ImageGroupingSortOrder } from './utils/imageGrouping';
+import { limitClustersForAccess } from './utils/smartLibraryClusterState';
 import { resolveScopeImageIds } from './utils/imageScope';
 import { findLatestCreatorAttributionToken } from './utils/creatorAttribution';
 import { indexImageFileAtPath } from './services/fileIndexer';
@@ -407,6 +408,7 @@ export default function App() {
     setGroupBy,
     theme,
     setLastViewedVersion,
+    setHasSeenExploreOnboarding,
     globalAutoWatch,
     generatorLaunchCommand,
     comfyUIWorkspaceAutoOpenSelectedImage,
@@ -717,6 +719,7 @@ export default function App() {
     canUseAnalytics,
     canUseBatchExport,
     canUseImageEditor,
+    canUseFullClustering,
     showProModal,
     startTrial,
   } = useFeatureAccess();
@@ -1451,9 +1454,11 @@ export default function App() {
           }
         }
 
-        // One-time navigation-change onboarding, shown only to users updating from a
-        // previous version (not on a fresh install).
-        if (currentLastViewed) {
+        // Navigation-change onboarding: shown once ever to users updating from a previous
+        // version (not on a fresh install), gated by a dedicated flag so it never repeats on
+        // subsequent version bumps.
+        if (currentLastViewed && !useSettingsStore.getState().hasSeenExploreOnboarding) {
+          setHasSeenExploreOnboarding(true);
           setSuccess(
             'Navigation updated: Explore now unifies Model View, Smart Library and Collections, and drill-ins appear as a scope chip. Prefer the old tabs? Turn on Classic mode in Settings.',
           );
@@ -2501,13 +2506,18 @@ export default function App() {
     [activeImageScope, scopedImageIds, nodeFilteredImages],
   );
 
-  const displayImages =
-    // Collections still owns its in-view display during coexistence (removed in a later phase).
-    libraryView === 'collections'
-      ? collectionFilteredImages
-      : libraryView === 'library' && findSimilarIdSet
-      ? scopedBaseImages.filter((image) => findSimilarIdSet.has(image.id))
-      : scopedBaseImages;
+  // Memoized so the grid (and paginatedImages / libraryGridSignature / currentImageGroups) get a
+  // stable array identity and don't re-render on every unrelated App render while a scope is active.
+  const displayImages = useMemo(
+    () =>
+      // Collections still owns its in-view display during coexistence (removed in a later phase).
+      libraryView === 'collections'
+        ? collectionFilteredImages
+        : libraryView === 'library' && findSimilarIdSet
+        ? scopedBaseImages.filter((image) => findSimilarIdSet.has(image.id))
+        : scopedBaseImages,
+    [libraryView, collectionFilteredImages, findSimilarIdSet, scopedBaseImages],
+  );
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
 
   const libraryGridSignature = useMemo(() => {
@@ -3018,8 +3028,11 @@ export default function App() {
     if (effectiveImageGroupBy !== 'cluster') {
       return undefined;
     }
+    // Respect the free-tier cluster gating (same as Explore): locked-cluster images fall through
+    // to "No cluster" instead of exposing the organization the Pro lock hides.
+    const accessibleClusters = limitClustersForAccess(clusters, safeImages, canUseFullClustering);
     const map = new Map<string, { id: string; label: string }>();
-    for (const cluster of clusters) {
+    for (const cluster of accessibleClusters) {
       const label = cluster.basePrompt || 'Untitled cluster';
       for (const id of cluster.imageIds) {
         if (!map.has(id)) {
@@ -3028,7 +3041,7 @@ export default function App() {
       }
     }
     return map;
-  }, [effectiveImageGroupBy, clusters]);
+  }, [effectiveImageGroupBy, clusters, safeImages, canUseFullClustering]);
 
   const currentImageGroups = useMemo<ImageGroup[]>(
     () => effectiveImageGroupBy === 'none'
@@ -3592,6 +3605,7 @@ export default function App() {
                       resetLibraryGridScrollPosition();
                       setLibraryView('library');
                     }}
+                    onFindMatchingPrompts={openModelPromptPicker}
                   />
                 ) : libraryView === 'collections' ? (
                   <CollectionsWorkspace

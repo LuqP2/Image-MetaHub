@@ -132,6 +132,8 @@ interface SettingsState {
   /** Classic mode: show the legacy tabs (Model View / Smart Library / Collections / Node View)
    *  as deep-links into the unified Explore surface. Off by default. */
   classicMode: boolean;
+  /** One-time flag so the Explore navigation-change onboarding toast shows only once, ever. */
+  hasSeenExploreOnboarding: boolean;
   performanceDiagnosticsEnabled: boolean;
   slideshowIntervalSeconds: number;
   slideshowShowFilename: boolean;
@@ -184,6 +186,7 @@ interface SettingsState {
   setCivitaiLookupEnabled: (value: boolean) => void;
   setEnableAnimations: (value: boolean) => void;
   setClassicMode: (value: boolean) => void;
+  setHasSeenExploreOnboarding: (value: boolean) => void;
   setPerformanceDiagnosticsEnabled: (value: boolean) => void;
   setSlideshowIntervalSeconds: (value: number) => void;
   setSlideshowShowFilename: (value: boolean) => void;
@@ -240,6 +243,7 @@ export const useSettingsStore = create<SettingsState>()(
       civitaiLookupEnabled: true,
       enableAnimations: true,
       classicMode: false,
+      hasSeenExploreOnboarding: false,
       performanceDiagnosticsEnabled: false,
       slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
       slideshowShowFilename: true,
@@ -304,6 +308,7 @@ export const useSettingsStore = create<SettingsState>()(
       setCivitaiLookupEnabled: (value) => set({ civitaiLookupEnabled: !!value }),
       setEnableAnimations: (value) => set({ enableAnimations: !!value }),
       setClassicMode: (value) => set({ classicMode: !!value }),
+      setHasSeenExploreOnboarding: (value) => set({ hasSeenExploreOnboarding: !!value }),
       setPerformanceDiagnosticsEnabled: (value) => set({ performanceDiagnosticsEnabled: !!value }),
       setSlideshowIntervalSeconds: (value) =>
         set({ slideshowIntervalSeconds: sanitizeSlideshowIntervalSeconds(value) }),
@@ -382,6 +387,7 @@ export const useSettingsStore = create<SettingsState>()(
         civitaiLookupEnabled: true,
         enableAnimations: true,
         classicMode: false,
+        hasSeenExploreOnboarding: false,
         performanceDiagnosticsEnabled: false,
         slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
         slideshowShowFilename: true,

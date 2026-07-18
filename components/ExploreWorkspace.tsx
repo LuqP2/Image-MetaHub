@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, FolderOpen, Layers, Lock, Pencil, Sparkles, Trash2 } from 'lucide-react';
+import { Box, FolderOpen, Layers, Lock, Pencil, Search, Sparkles, Trash2 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -16,6 +16,8 @@ const GRID_CLASS = 'grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid
 interface ExploreWorkspaceProps {
   /** Navigate to the Library grid after a card sets the active scope. */
   onNavigateToLibrary: () => void;
+  /** Opens the model→prompt-overlap picker (the "Match prompts" action on model cards). */
+  onFindMatchingPrompts?: (modelName: string) => void;
 }
 
 const DIMENSIONS: { id: ExploreDimension; label: string; icon: typeof Box }[] = [
@@ -24,7 +26,7 @@ const DIMENSIONS: { id: ExploreDimension; label: string; icon: typeof Box }[] = 
   { id: 'collections', label: 'Collections', icon: FolderOpen },
 ];
 
-const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary }) => {
+const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary, onFindMatchingPrompts }) => {
   const images = useImageStore((state) => state.images);
   const clusters = useImageStore((state) => state.clusters);
   const collections = useImageStore((state) => state.collections);
@@ -261,6 +263,31 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                   title={entry.name}
                   isActive={activeImageScope?.type === 'model' && activeImageScope.id === entry.name}
                   onClick={() => scopeToLibrary({ type: 'model', id: entry.name, label: entry.name })}
+                  secondaryAction={
+                    onFindMatchingPrompts ? (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onFindMatchingPrompts(entry.name);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onFindMatchingPrompts(entry.name);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/40 bg-black/70 px-2.5 py-1 text-[11px] font-semibold text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-cyan-500/20"
+                        title={`Find matching prompts for ${entry.name}`}
+                        aria-label={`Find matching prompts for ${entry.name}`}
+                      >
+                        <Search className="h-3.5 w-3.5" />
+                        Match prompts
+                      </div>
+                    ) : undefined
+                  }
                   subtitle={
                     <p className="mt-1 text-xs text-gray-400">
                       {entry.count} image{entry.count !== 1 ? 's' : ''}

@@ -76,8 +76,9 @@ describe('Header classic mode', () => {
     fireEvent.click(screen.getByRole('button', { name: /model view/i }));
     expect(onNavigateExplore).toHaveBeenCalledWith('models');
 
+    // Collections still has a real workspace, so its Classic tab opens that view directly.
     fireEvent.click(screen.getByRole('button', { name: /^collections$/i }));
-    expect(onNavigateExplore).toHaveBeenCalledWith('collections');
+    expect(onLibraryViewChange).toHaveBeenCalledWith('collections');
 
     // Node View opens the Library (its filter lives in the sidebar), not a separate surface.
     fireEvent.click(screen.getByRole('button', { name: /node view/i }));
