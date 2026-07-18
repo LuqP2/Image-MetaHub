@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Box, FolderOpen, Layers, Lock, Pencil, Sparkles, Trash2 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -29,6 +29,9 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
   const clusters = useImageStore((state) => state.clusters);
   const collections = useImageStore((state) => state.collections);
   const directories = useImageStore((state) => state.directories);
+  // Scan mode: use the same source the loader / clustering / cache-restore use (useImageStore),
+  // not useSettingsStore, so the cluster cache saves and restores under the same key.
+  const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const clusteringMetadata = useImageStore((state) => state.clusteringMetadata);
   const isClustering = useImageStore((state) => state.isClustering);
   const clusteringProgress = useImageStore((state) => state.clusteringProgress);
@@ -42,12 +45,21 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
   const updateCollection = useImageStore((state) => state.updateCollection);
   const deleteCollectionById = useImageStore((state) => state.deleteCollectionById);
 
-  const scanSubfolders = useSettingsStore((state) => state.scanSubfolders);
+  const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
   const { canUseFullClustering, showProModal } = useFeatureAccess();
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState<SmartCollection | null>(null);
   const [automationRuleCollection, setAutomationRuleCollection] = useState<SmartCollection | null>(null);
+  const [page, setPage] = useState(1);
+
+  // Reset paging when the dimension changes so a deep page from one dimension doesn't leak.
+  useEffect(() => {
+    setPage(1);
+  }, [exploreDimension]);
+
+  const paginate = <T,>(items: T[]): T[] =>
+    itemsPerPage === -1 ? items : items.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
   const primaryPath = directories[0]?.path ?? '';
   const hasDirectories = directories.length > 0;
@@ -166,6 +178,22 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
     await deleteCollectionById(collection.id);
   };
 
+  // Pagination keeps large libraries from mounting thousands of cards (and their thumbnail/scrub
+  // hooks) at once — matches the old Smart Library behavior.
+  const activeEntriesCount =
+    exploreDimension === 'models'
+      ? modelEntries.length
+      : exploreDimension === 'clusters'
+      ? clusterEntries.length
+      : collectionEntries.length;
+  const totalPages = itemsPerPage === -1 ? 1 : Math.max(1, Math.ceil(activeEntriesCount / itemsPerPage));
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Dimension selector */}
@@ -223,7 +251,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
             />
           ) : (
             <div className={GRID_CLASS}>
-              {modelEntries.map((entry) => (
+              {paginate(modelEntries).map((entry) => (
                 <ScopeCard
                   key={entry.name}
                   images={entry.images}
@@ -273,7 +301,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
             )
           ) : (
             <div className={GRID_CLASS}>
-              {clusterEntries.map(({ cluster, images: clusterImages, isLocked }) => {
+              {paginate(clusterEntries).map(({ cluster, images: clusterImages, isLocked }) => {
                 const label = cluster.basePrompt || 'Untitled stack';
                 return (
                   <ScopeCard
@@ -337,7 +365,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
             />
           ) : (
             <div className={GRID_CLASS}>
-              {collectionEntries.map(({ collection, images: previewImages, count }) => (
+              {paginate(collectionEntries).map(({ collection, images: previewImages, count }) => (
                 <ScopeCard
                   key={collection.id}
                   images={previewImages}
@@ -419,6 +447,30 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
             </div>
           ))}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 border-t border-gray-800 px-6 py-3 text-sm">
+          <button
+            type="button"
+            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            disabled={page <= 1}
+            className="rounded-lg border border-gray-700 px-3 py-1.5 font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="text-gray-400">
+            Page <span className="font-semibold text-gray-200">{page}</span> of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={page >= totalPages}
+            className="rounded-lg border border-gray-700 px-3 py-1.5 font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       <CollectionFormModal
         isOpen={isCreateModalOpen}
