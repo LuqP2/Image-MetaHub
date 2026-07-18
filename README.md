@@ -17,7 +17,7 @@ It started as a local browser for InvokeAI outputs and has since grown into a br
 * Local-first browsing with no mandatory account, no cloud sync, and no outbound telemetry
 * Fast indexing and thumbnail caching for large libraries
 * Metadata parsing for Automatic1111, ComfyUI, InvokeAI, SD.Next, Forge, SwarmUI, Fooocus, Draw Things, Midjourney/Niji, Firefly, DreamStudio, DALL-E, and more
-* Support for PNG, JPG, JPEG, WEBP, GIF, MP4, WEBM, MKV, MOV, and AVI
+* Support for PNG, JPG, JPEG, WEBP, AVIF, GIF, MP4, WEBM, MKV, MOV, and AVI
 * Faceted sidebar filters with explicit include/exclude actions for checkpoints, LoRAs, samplers, schedulers, ratings, generation modes, media types, and verified telemetry
 * Dedicated Node View for browsing embedded ComfyUI workflow node types
 * Embedded ComfyUI Workspace with a live ComfyUI browser, library thumbnails, workflow metadata, and quick generation actions
@@ -122,15 +122,21 @@ Image MetaHub reads metadata from:
 * Adobe Firefly
 * DreamStudio
 * DALL-E
-* Other tools that embed generation parameters into PNG/JPEG/WebP metadata or sidecar payloads
+* Other tools that embed generation parameters into PNG/JPEG/WebP/AVIF metadata or sidecar payloads
 
 Supported media types:
 
-* **Images**: PNG, JPG, JPEG, WEBP, GIF
+* **Images**: PNG, JPG, JPEG, WEBP, AVIF, GIF
 * **Video**: MP4, WEBM, MKV, MOV, AVI
 * **Audio**: MP3, WAV, FLAC, OGG, OGA, M4A, AAC, OPUS, AIFF, AIF, WMA
 
 For video and audio metadata, Image MetaHub uses container metadata plus `ffprobe` when available to extract duration, codec, frame count, resolution, sample rate, channels, and bit rate. Audio files can be indexed even when a codec is not playable by Chromium/Electron on the current system.
+
+### AVIF metadata
+
+Image MetaHub reads ComfyUI prompt and workflow documents from standard AVIF XMP items, including files produced by the proposed ComfyUI AVIF saver and frontend loader. It also reads the older EXIF convention and legacy PixelMeta `imagemetahub_data` payloads.
+
+New Image MetaHub AVIF exports are intentionally compact. Prompt and workflow data remain in their established ComfyUI XMP fields; the Image MetaHub namespace stores only app-specific fields such as tags, notes, attribution, analytics, lineage, and source generator. When a legacy nested prompt conflicts with a standalone XMP prompt, the standalone document wins and the viewer shows a metadata-conflict badge.
 
 ### MetaHub Save Node
 

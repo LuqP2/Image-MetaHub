@@ -155,6 +155,7 @@ It reads:
 
 * PNG `tEXt` / `iTXt`
 * JPEG/WEBP EXIF/XMP/comment payloads
+* AVIF XMP item extents and legacy AVIF EXIF workflow fields
 * sidecar-style embedded JSON where applicable
 * video/audio container metadata and `ffprobe` output for supported media formats
 
@@ -167,6 +168,8 @@ The output is then normalized by `services/parsers/metadataParserFactory.ts`, wh
 * `services/parsers/sdNextParser.ts`
 * `services/parsers/drawThingsParser.ts`
 * `services/parsers/videoMetaHubParser.ts`
+
+AVIF container behavior is isolated in `utils/avifMetadata.mjs`. The module resolves ISO-BMFF item locations, joins split metadata extents, delegates raw XMP/EXIF parsing to `exifr`, and reports disagreements between standalone and legacy nested workflow documents. `utils/imageMetaHubAvifExtension.mjs` owns the compact Image MetaHub extension schema. AVIF rewrites reuse the existing XMP extent when the compact payload fits, or append a new payload and repoint the item location when it does not, without decoding or re-encoding AV1 pixels. Files without exactly one writable standard XMP item are rejected instead of being rewritten unsafely.
 
 ### ComfyUI Parser
 

@@ -29,6 +29,8 @@ import {
   isComfyUIViewUrlAllowed,
   normalizeComfyUIViewUrl,
 } from './utils/comfyUIViewSecurity.mjs';
+import { rewriteAvifMetadata, stripAvifMetadata } from './utils/avifMetadata.mjs';
+import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,7 +88,7 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 9; // v9: Preserve probed audio stream metadata on normalized video records
+const PARSER_VERSION = 10; // v10: Parse AVIF XMP/EXIF metadata and compact Image MetaHub extensions
 
 const logMainPerf = (event, details = {}) => {
   console.log('[main:perf]', { event, ...details });
@@ -2652,7 +2654,7 @@ function setupFileOperationHandlers() {
   };
 
   const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  const PNG_EXPORTABLE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+  const METADATA_REWRITE_SUPPORTED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif']);
   const PNG_METADATA_CHUNKS = new Set(['tEXt', 'iTXt', 'zTXt', 'eXIf', 'tIME']);
   const WEBP_METADATA_CHUNKS = new Set(['EXIF', 'XMP ']);
   const WEBP_VP8X_EXIF_FLAG = 0x08;
@@ -2938,7 +2940,11 @@ function setupFileOperationHandlers() {
       return stripMetadataFromWebpBuffer(buffer);
     }
 
-    throw new Error('This file format can only be exported with metadata preserved in v1.');
+    if (sourceExtension === '.avif') {
+      return Buffer.from(stripAvifMetadata(buffer));
+    }
+
+    throw new Error('This file format can only be exported with metadata preserved.');
   };
 
   const toLoraPayload = (loras) => {
@@ -3070,8 +3076,8 @@ function setupFileOperationHandlers() {
     }
 
     const sourceExtension = path.extname(relativePath).toLowerCase();
-    if (!PNG_EXPORTABLE_EXTENSIONS.has(sourceExtension)) {
-      throw new Error('This file format can only be exported with metadata preserved in v1.');
+    if (!METADATA_REWRITE_SUPPORTED_EXTENSIONS.has(sourceExtension)) {
+      throw new Error('This file format can only be exported with metadata preserved.');
     }
 
     if (metadataPolicy === 'strip' && targetFormat === 'original') {
@@ -3079,6 +3085,18 @@ function setupFileOperationHandlers() {
       return {
         buffer: stripMetadataFromImageBuffer(sourceBuffer, sourceExtension),
         fileName: path.basename(relativePath),
+      };
+    }
+
+    if (metadataPolicy === 'metahub_standard' && sourceExtension === '.avif') {
+      if (!effectiveMetadata) {
+        throw new Error('Edited metadata is required for MetaHub export.');
+      }
+      const sourceBuffer = await fs.readFile(sourcePath);
+      const extension = buildImageMetaHubAvifExtension(effectiveMetadata);
+      return {
+        buffer: Buffer.from(rewriteAvifMetadata(sourceBuffer, { extension })),
+        fileName: `${path.parse(relativePath).name}.avif`,
       };
     }
 
@@ -5495,10 +5513,9 @@ function setupFileOperationHandlers() {
             continue;
           }
 
-          const uniqueName = getUniqueName(path.basename(file.relativePath), usedNames);
-          
           // For preserved files, stream directly from disk to avoid buffering entire file in memory
           if (metadataPolicy === 'preserve') {
+            const uniqueName = getUniqueName(path.basename(file.relativePath), usedNames);
             archive.file(sourcePath, { name: uniqueName });
           } else {
             // For rewritten artifacts (strip, metahub_standard), process through createExportArtifact
@@ -5509,6 +5526,7 @@ function setupFileOperationHandlers() {
               targetFormat,
               effectiveMetadata: file.effectiveMetadata,
             });
+            const uniqueName = getUniqueName(artifact.fileName, usedNames);
             archive.append(artifact.buffer, { name: uniqueName });
           }
           exportedCount += 1;

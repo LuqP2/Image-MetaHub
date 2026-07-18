@@ -75,6 +75,7 @@ interface ParserModule {
 }
 
 export function getMetadataParser(metadata: ImageMetadata): ParserModule | null {
+    const rawMetadata = metadata as UnknownRecord;
     // Check for DALL-E C2PA/EXIF metadata first (most specific)
     if ('c2pa_manifest' in metadata || 
         ('exif_data' in metadata && typeof metadata.exif_data === 'object') ||
@@ -109,7 +110,7 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     }
 
     // InvokeAI (embedded JSON fields)
-    if (isInvokeAIMetadata(metadata) || 'invokeai_metadata' in metadata) {
+    if (rawMetadata._carrierFormat !== 'avif' && (isInvokeAIMetadata(metadata) || 'invokeai_metadata' in metadata)) {
         return { parse: (data: InvokeAIMetadata) => parseInvokeAIMetadata(data), generator: 'InvokeAI' };
     }
 
@@ -156,7 +157,6 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     }
 
     // MetaHub Save Video detection (video metadata stored in container comment)
-    const rawMetadata = metadata as UnknownRecord;
     if ('videometahub_data' in metadata || rawMetadata.media_type === 'video') {
         return {
             parse: (data: VideoMetadata) => {

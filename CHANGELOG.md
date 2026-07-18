@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **First-Class AVIF Metadata**: Added AVIF discovery, Chromium-backed previews and thumbnails, dimensions, ComfyUI XMP prompt/workflow parsing, legacy AVIF EXIF and PixelMeta compatibility, CLI parsing, bounded full-file fallback for late XMP, metadata stripping, and metadata-preserving AVIF export.
+
+### Improved
+
+- **Compact AVIF Exports**: Image MetaHub now leaves prompt and workflow documents in their standard ComfyUI XMP fields and writes only tags, notes, attribution, analytics, lineage, and source generator in its private AVIF extension. Conflicting legacy copies are surfaced without overriding the standalone XMP value.
+
 ## [0.17.5] - 2026-07-13
 
 ### Added

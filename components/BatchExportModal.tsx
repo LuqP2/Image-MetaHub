@@ -24,7 +24,7 @@ interface BatchExportModalProps {
 type BatchSource = 'selected' | 'filtered';
 type BatchOutput = 'folder' | 'zip';
 
-const PNG_REWRITE_SUPPORTED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+const METADATA_REWRITE_SUPPORTED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif']);
 
 const getScopeFromSelection = (source: BatchSource, count: number) => {
   if (source === 'selected') {
@@ -136,7 +136,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   const unsupportedRewriteCount = useMemo(() => (
     imagesToExport.filter((image) => {
       const ext = image.name.includes('.') ? image.name.slice(image.name.lastIndexOf('.')).toLowerCase() : '';
-      return !PNG_REWRITE_SUPPORTED_EXTENSIONS.has(ext);
+      return !METADATA_REWRITE_SUPPORTED_EXTENSIONS.has(ext);
     }).length
   ), [imagesToExport]);
   const progressPercent = progress && progress.total > 0
@@ -490,12 +490,12 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             )}
             {metadataPolicy !== 'preserve' && (
               <span className="block text-xs text-amber-300/90 mt-1">
-                Metadata stripping keeps the original format for PNG, JPEG, and WebP when possible. MetaHub metadata export still saves PNG copies for compatibility.
+                Metadata stripping keeps PNG, JPEG, WebP, and AVIF in their original format. MetaHub export keeps AVIF as AVIF with compact XMP; other supported formats are saved as PNG copies.
               </span>
             )}
             {metadataPolicy !== 'preserve' && unsupportedRewriteCount > 0 && (
               <span className="block text-xs text-amber-300/90 mt-1">
-                {unsupportedRewriteCount} file{unsupportedRewriteCount === 1 ? '' : 's'} in this export can only be preserved in v1 and may fail if rewritten.
+                {unsupportedRewriteCount} file{unsupportedRewriteCount === 1 ? '' : 's'} in this export can only be preserved and may fail if rewritten.
               </span>
             )}
             {isExporting && progress && (
