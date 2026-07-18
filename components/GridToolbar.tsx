@@ -17,7 +17,12 @@ import {
   Workflow,
   Image as ImageIcon,
   X,
-  Search
+  Search,
+  ArrowLeft,
+  Wand2,
+  SlidersHorizontal,
+  BarChart3,
+  Crown
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -27,6 +32,7 @@ import { SmartCollection, type IndexedImage } from '../types';
 
 import ActiveFilters from './ActiveFilters';
 import TagManagerModal from './TagManagerModal';
+import AutomationRulesModal from './AutomationRulesModal';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import Tooltip from './Tooltip';
@@ -64,6 +70,12 @@ interface GridToolbarProps {
   groupBy?: ImageGroupByMode;
   onJumpToGroup?: (groupId: string) => void;
   onClearAllFilters?: () => void;
+  /** When a model/cluster/collection scope is active, returns to the matching Explore dimension. */
+  onExitScope?: () => void;
+  /** Human label for the scope's Explore dimension, e.g. "Clusters". */
+  scopeReturnLabel?: string;
+  /** Opens the Analytics view (relocated from the global header into the library toolbar). */
+  onOpenAnalytics?: () => void;
 }
 
 const formatCalendarDateKey = (date: Date): string => {
@@ -215,6 +227,9 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   groupBy = 'none',
   onJumpToGroup,
   onClearAllFilters,
+  onExitScope,
+  scopeReturnLabel,
+  onOpenAnalytics,
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
   const [isCollectionActionsOpen, setIsCollectionActionsOpen] = useState(false);
@@ -226,15 +241,37 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const [previewJumpGroupId, setPreviewJumpGroupId] = useState<string | null>(null);
   const [previewJumpPosition, setPreviewJumpPosition] = useState<PreviewPosition | null>(null);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
+  const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
+  const [isAutomationRulesOpen, setIsAutomationRulesOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const collectionActionsRef = useRef<HTMLDivElement>(null);
   const jumpMenuRef = useRef<HTMLDivElement>(null);
+  const toolsMenuRef = useRef<HTMLDivElement>(null);
+  const calendarInitializedRef = useRef(false);
   const bulkToggleFavorite = useImageStore((state) => state.bulkToggleFavorite);
   const clearImageSelection = useImageStore((state) => state.clearImageSelection);
   const collections = useImageStore((state) => state.collections);
   const allImages = useImageStore((state) => state.images);
-  const { canUseComparison, canUseA1111, canUseComfyUI, canUseImageEditor, showProModal, canUseBulkTagging, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const startAutoTagging = useImageStore((state) => state.startAutoTagging);
+  const isAutoTagging = useImageStore((state) => state.isAutoTagging);
+  const autoTaggingProgress = useImageStore((state) => state.autoTaggingProgress);
+  const scanSubfolders = useImageStore((state) => state.scanSubfolders);
+  const { canUseComparison, canUseA1111, canUseComfyUI, canUseImageEditor, showProModal, canUseBulkTagging, initialized, canUseDuringTrialOrPro, canUseAnalytics } = useFeatureAccess();
   const { isReparsing, reparseImages } = useReparseMetadata();
+
+  const hasDirectories = directories.length > 0;
+  const autoTagPercent = autoTaggingProgress && autoTaggingProgress.total > 0
+    ? Math.min(100, Math.round((autoTaggingProgress.current / autoTaggingProgress.total) * 100))
+    : null;
+
+  const handleAutoTagLibrary = () => {
+    const primaryPath = directories[0]?.path ?? '';
+    if (!hasDirectories || isAutoTagging) {
+      return;
+    }
+    setIsToolsMenuOpen(false);
+    startAutoTagging(primaryPath, scanSubfolders);
+  };
 
 
   // ... (rest of the file)
@@ -286,6 +323,9 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       }
       if (jumpMenuRef.current && !jumpMenuRef.current.contains(event.target as Node)) {
         closeJumpMenu();
+      }
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(event.target as Node)) {
+        setIsToolsMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -504,8 +544,17 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const getJumpGroupImage = (group: ImageGroup) =>
     jumpImageLookup.get(group.thumbnailImageId ?? group.startImageId);
 
+  // Snap the calendar to the active date's month, but only ONCE per menu-open.
+  // Re-running this on every render would revert the user's manual month
+  // navigation (Prev/Next arrows), leaving the calendar stuck on the active
+  // date's month. The ref gates the sync to the initial open.
   useEffect(() => {
-    if (!isJumpMenuOpen || !useCalendarJump || calendarDateKeys.length === 0) {
+    if (!isJumpMenuOpen) {
+      calendarInitializedRef.current = false;
+      return;
+    }
+
+    if (!useCalendarJump || calendarDateKeys.length === 0 || calendarInitializedRef.current) {
       return;
     }
 
@@ -513,6 +562,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     if (!targetKey) {
       return;
     }
+
+    calendarInitializedRef.current = true;
 
     const [year, monthIndex, day] = targetKey.split('-').map(Number);
     const targetDate = new Date(year, monthIndex - 1, day || 1);
@@ -546,7 +597,19 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       selectedRatings.length > 0 ||
       (advancedFilters && Object.keys(advancedFilters).length > 0);
 
-  if (selectedCount === 0 && !hasActiveFilters && !canUseFilteredCollectionActions && slideshowImageCount === 0 && !canJumpToGroups) {
+  // The persistent right-side cluster (Library Tools + Analytics) and the scope
+  // Back button must stay visible even with no selection/filters, so the toolbar
+  // only collapses when there is genuinely nothing to show.
+  const hasPersistentActions = Boolean(onOpenAnalytics) || Boolean(onExitScope);
+
+  if (
+    selectedCount === 0 &&
+    !hasActiveFilters &&
+    !canUseFilteredCollectionActions &&
+    slideshowImageCount === 0 &&
+    !canJumpToGroups &&
+    !hasPersistentActions
+  ) {
     return null;
   }
 
@@ -571,6 +634,23 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       <div className="flex items-center justify-between gap-2 mb-1 px-5 min-h-[36px]">
         {/* Selection Context Toolbar - Centered or justified as needed */}
         <div className="flex items-center gap-1 flex-1 min-w-0">
+            {onExitScope && (
+              <>
+                <Tooltip label={scopeReturnLabel ? `Back to ${scopeReturnLabel}` : 'Back'}>
+                  <button
+                    onClick={onExitScope}
+                    className="flex items-center gap-1 rounded px-2 py-1.5 text-gray-300 transition-colors hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    title={scopeReturnLabel ? `Back to ${scopeReturnLabel}` : 'Back'}
+                    aria-label={scopeReturnLabel ? `Back to ${scopeReturnLabel}` : 'Back'}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span className="text-[11px] font-medium">Back</span>
+                  </button>
+                </Tooltip>
+                <div className="w-px h-4 bg-gray-700 mx-1" />
+              </>
+            )}
+
             {slideshowImageCount > 0 && (
               <>
                 <Tooltip label={`Start slideshow from ${slideshowSourceLabel}`}>
@@ -1014,12 +1094,89 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                <ActiveFilters onClearAll={onClearAllFilters} />
             </div>
         </div>
+
+        {/* Persistent library actions (relocated from the global header) */}
+        {onOpenAnalytics && (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="relative" ref={toolsMenuRef}>
+              <Tooltip label="Library tools (automation rules, auto-tag)">
+                <button
+                  onClick={() => setIsToolsMenuOpen((prev) => !prev)}
+                  className={`flex items-center gap-1 p-1.5 rounded transition-colors hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    isAutoTagging ? 'text-cyan-300' : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="Library tools (automation rules, auto-tag)"
+                  aria-label="Library tools"
+                  aria-haspopup="menu"
+                  aria-expanded={isToolsMenuOpen}
+                >
+                  <Wand2 className={`w-4 h-4 ${isAutoTagging ? 'animate-pulse' : ''}`} />
+                  {autoTagPercent !== null && (
+                    <span className="text-[10px] font-semibold tabular-nums">{autoTagPercent}%</span>
+                  )}
+                </button>
+              </Tooltip>
+              {isToolsMenuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-lg border border-gray-700 bg-gray-900 shadow-xl shadow-black/40"
+                >
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setIsToolsMenuOpen(false);
+                      setIsAutomationRulesOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800"
+                  >
+                    <SlidersHorizontal size={15} className="text-gray-400" />
+                    <span>Automation rules…</span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={handleAutoTagLibrary}
+                    disabled={!hasDirectories || isAutoTagging}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Tag size={15} className="text-gray-400" />
+                    <span>{isAutoTagging ? `Auto-tagging${autoTagPercent !== null ? ` ${autoTagPercent}%` : '…'}` : 'Auto-tag library'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <Tooltip label={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'}>
+              <button
+                onClick={() => {
+                  if (canUseAnalytics) {
+                    onOpenAnalytics();
+                  } else {
+                    showProModal('analytics');
+                  }
+                }}
+                className="relative p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                title={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'}
+                aria-label={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <div className="absolute -right-0.5 -top-0.5">
+                  <Crown className={`w-2.5 h-2.5 ${canUseAnalytics ? 'text-gray-500' : 'text-amber-400'}`} />
+                </div>
+              </button>
+            </Tooltip>
+          </div>
+        )}
       </div>
 
       <TagManagerModal
         isOpen={isTagModalOpen}
         onClose={() => setIsTagModalOpen(false)}
         selectedImageIds={Array.from(selectedImages)}
+      />
+
+      <AutomationRulesModal
+        isOpen={isAutomationRulesOpen}
+        onClose={() => setIsAutomationRulesOpen(false)}
       />
     </>
   );

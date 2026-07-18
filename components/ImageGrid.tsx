@@ -2069,24 +2069,42 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       setPreviewImage(images[targetImageIndex]);
     }
 
-    const virtualItems = expandGroupedItemsForColumns(itemsToRender, Math.max(1, columnCountRef.current));
-    const renderedIndex = virtualItems.findIndex((item) => !isImageRenderItem(item) && item.type === 'group-header' && item.group.id === jumpToGroupRequest.groupId);
-    if (renderedIndex < 0) {
-      return;
-    }
-
-    if (isInfinite) {
+    // Defer the scroll until after the focus/preview state commits and the grid
+    // re-lays out. Running it synchronously here scrolls against a pre-commit
+    // layout (the focus ring / preview sidebar can shift the grid), which made
+    // the very first jump land in the wrong place — it only worked on the second
+    // click once the layout was already settled. A double rAF waits for paint.
+    let firstFrame = 0;
+    let secondFrame = 0;
+    const performScroll = () => {
       const columnCount = Math.max(1, columnCountRef.current);
-      virtualGridRef.current?.scrollToItem({
-        rowIndex: Math.floor(renderedIndex / columnCount),
-        columnIndex: 0,
-        align: 'start',
-      });
-      return;
-    }
+      const virtualItems = expandGroupedItemsForColumns(itemsToRender, columnCount);
+      const renderedIndex = virtualItems.findIndex((item) => !isImageRenderItem(item) && item.type === 'group-header' && item.group.id === jumpToGroupRequest.groupId);
+      if (renderedIndex < 0) {
+        return;
+      }
 
-    const header = gridScopeRef.current?.querySelector<HTMLElement>(`[data-group-id="${CSS.escape(jumpToGroupRequest.groupId)}"]`);
-    header?.scrollIntoView({ block: 'start', inline: 'nearest' });
+      if (isInfinite) {
+        virtualGridRef.current?.scrollToItem({
+          rowIndex: Math.floor(renderedIndex / columnCount),
+          columnIndex: 0,
+          align: 'start',
+        });
+        return;
+      }
+
+      const header = gridScopeRef.current?.querySelector<HTMLElement>(`[data-group-id="${CSS.escape(jumpToGroupRequest.groupId)}"]`);
+      header?.scrollIntoView({ block: 'start', inline: 'nearest' });
+    };
+
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(performScroll);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
   }, [effectiveGroupBy, groupedImages.groups, images, isInfinite, itemsToRender, jumpToGroupRequest, setFocusedImageIndex, setPreviewImage]);
 
   // Add global mouseup listener to handle selection end even outside the grid

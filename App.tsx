@@ -59,7 +59,7 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './components/ComfyUIGenerateModal';
 import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
-import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria, type UpdateDownloadProgress, type UpdateNotificationPayload } from './types';
+import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria, type UpdateDownloadProgress, type UpdateNotificationPayload, type ExploreDimension } from './types';
 import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
 import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
@@ -3354,7 +3354,6 @@ export default function App() {
       >
         <Header
           onOpenSettings={() => handleOpenSettings()}
-          onOpenAnalytics={() => setIsAnalyticsOpen(true)}
           onOpenLicense={handleOpenLicenseSettings}
           onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
           libraryView={libraryView}
@@ -3512,6 +3511,32 @@ export default function App() {
                     groupBy={effectiveImageGroupBy}
                     onJumpToGroup={(groupId) => setPendingJumpGroupRequest({ groupId, requestId: Date.now() })}
                     onClearAllFilters={handleClearAllFilters}
+                    onExitScope={
+                      activeImageScope
+                        ? () => {
+                            const dimension: ExploreDimension =
+                              activeImageScope.type === 'cluster'
+                                ? 'clusters'
+                                : activeImageScope.type === 'model'
+                                ? 'models'
+                                : 'collections';
+                            setActiveImageScope(null);
+                            setExploreDimension(dimension);
+                            resetLibraryGridScrollPosition();
+                            setLibraryView('explore');
+                          }
+                        : undefined
+                    }
+                    scopeReturnLabel={
+                      activeImageScope
+                        ? activeImageScope.type === 'cluster'
+                          ? 'Clusters'
+                          : activeImageScope.type === 'model'
+                          ? 'Models'
+                          : 'Collections'
+                        : undefined
+                    }
+                    onOpenAnalytics={() => setIsAnalyticsOpen(true)}
                   />
                 )}
 
