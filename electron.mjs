@@ -3720,6 +3720,40 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // Sidecar id->chunk index used to make single-image "Reparse Metadata" read
+  // only the chunk holding the target image instead of scanning every chunk.
+  // Stored as `${safeCacheId}_index.json` so `clear-cache-data` (which removes
+  // every `${safeCacheId}_*` file) cleans it up automatically.
+  ipcMain.handle('write-cache-index', async (event, { cacheId, data }) => {
+    try {
+      const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+      const rootPath = await getCacheRootPath();
+      const cacheDir = path.join(rootPath, 'json_cache');
+      await fs.mkdir(cacheDir, { recursive: true });
+      const indexPath = path.join(cacheDir, `${safeCacheId}_index.json`);
+      await fs.writeFile(indexPath, JSON.stringify(data));
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('read-cache-index', async (event, { cacheId }) => {
+    try {
+      const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+      const rootPath = await getCacheRootPath();
+      const cacheDir = path.join(rootPath, 'json_cache');
+      const indexPath = path.join(cacheDir, `${safeCacheId}_index.json`);
+      const raw = await fs.readFile(indexPath, 'utf-8');
+      return { success: true, data: JSON.parse(raw) };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: true, data: null };
+      }
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('clear-cache-data', async (event, cacheId) => {
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
     const rootPath = await getCacheRootPath();

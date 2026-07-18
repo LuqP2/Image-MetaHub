@@ -476,6 +476,8 @@ export interface ElectronAPI {
   writeCacheChunk: (args: { cacheId: string; chunkIndex: number; data: any }) => Promise<{ success: boolean; error?: string }>;
   finalizeCacheWrite: (args: { cacheId: string; record: any; sourceCacheId?: string }) => Promise<{ success: boolean; error?: string }>;
   clearCacheData: (cacheId: string) => Promise<{ success: boolean; error?: string }>;
+  writeCacheIndex: (args: { cacheId: string; data: { lastScan?: number; chunkCount: number; ids: Record<string, number> } }) => Promise<{ success: boolean; error?: string }>;
+  readCacheIndex: (args: { cacheId: string }) => Promise<{ success: boolean; data?: { lastScan?: number; chunkCount: number; ids: Record<string, number> } | null; error?: string }>;
   resolveThumbnailCacheBatch: (args: {
     candidates: ThumbnailCacheCandidate[];
   }) => Promise<{
