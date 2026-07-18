@@ -6,6 +6,7 @@ import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import type { ExploreDimension, IndexedImage, SmartCollection } from '../types';
 import { limitClustersForAccess } from '../utils/smartLibraryClusterState';
 import ScopeCard from './ScopeCard';
+import ClusterUpgradeBanner from './ClusterUpgradeBanner';
 import CollectionFormModal, { type CollectionFormValues } from './CollectionFormModal';
 import AutomationRulesModal from './AutomationRulesModal';
 import { buildCollectionSettingsUpdate } from './CollectionsWorkspace';
@@ -372,6 +373,14 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
               })}
             </div>
           ))}
+
+        {exploreDimension === 'clusters' && clusteringMetadata?.isLimited && (
+          <ClusterUpgradeBanner
+            processedCount={clusteringMetadata.processedCount}
+            remainingCount={clusteringMetadata.remainingCount}
+            clusterCount={clusterEntries.length}
+          />
+        )}
 
         {exploreDimension === 'collections' &&
           (collectionEntries.length === 0 ? (

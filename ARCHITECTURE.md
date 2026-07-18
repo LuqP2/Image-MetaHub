@@ -276,8 +276,13 @@ Clusters dimension and the sidebar's Navigate → Clusters section.
 **Main pieces**
 
 * `components/ExploreWorkspace.tsx` (Clusters dimension)
-* `components/DeduplicationHelper.tsx`
+* `components/ClusterUpgradeBanner.tsx` (free-tier upsell shown in the Clusters
+  dimension when `clusteringMetadata.isLimited`)
 * `utils/smartLibraryClusterState.ts` (access gating, cluster state signatures)
+
+> The in-cluster deduplication workflow (mark best / archive) was removed when
+> cluster drill-in moved to the scoped Library grid; only the free-tier upgrade
+> banner is retained.
 
 **Engines**
 
@@ -286,7 +291,6 @@ Clusters dimension and the sidebar's Navigate → Clusters section.
 * `services/clusterCacheManager.ts`
 * `services/autoTaggingEngine.ts`
 * `services/workers/autoTaggingWorker.ts`
-* `services/deduplicationEngine.ts`
 
 Clustering and auto-tagging are deliberately offloaded to workers because they are CPU-heavy and operate over the full filtered image set.
 
