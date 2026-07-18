@@ -3,7 +3,6 @@ import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { IndexedImage } from '../types';
 import { FileOperations } from '../services/fileOperations';
-import { resolveScopeImageIds, filterImagesByScope } from '../utils/imageScope';
 
 let isDeletingSelectedImages = false;
 
@@ -19,20 +18,15 @@ export function useImageSelection() {
 
     const handleImageSelection = useCallback((image: IndexedImage, event: React.MouseEvent) => {
         const {
-            activeImageScope,
-            filteredImages,
             focusedImageIndex,
             previewImage,
             selectedImage,
             selectedImages,
-            images,
-            clusters,
-            collections,
+            getScopedFilteredImages,
         } = useImageStore.getState();
-        const selectionScope = filterImagesByScope(
-            filteredImages,
-            resolveScopeImageIds(activeImageScope, { images, clusters, collections }),
-        );
+        // The displayed set (filtered ∩ node filter ∩ scope), so shift-click ranges never
+        // include images hidden by the active filters.
+        const selectionScope = getScopedFilteredImages();
 
         // Update focused index
         const clickedIndex = selectionScope.findIndex(img => img.id === image.id);

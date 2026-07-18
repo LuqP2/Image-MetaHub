@@ -4,6 +4,7 @@ import { useSettingsStore } from './store/useSettingsStore';
 import { useLicenseStore } from './store/useLicenseStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
+import { useClusterCacheRestore } from './hooks/useClusterCacheRestore';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useFeatureAccess } from './hooks/useFeatureAccess';
 import { Directory } from './types';
@@ -228,6 +229,7 @@ export default function App() {
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages } = useImageSelection();
+  useClusterCacheRestore();
   const { generateWithA1111, isGenerating: isGeneratingA1111 } = useGenerateWithA1111();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
 
@@ -2463,14 +2465,10 @@ export default function App() {
     return dirSet.size;
   }, [collectionFilteredImages]);
 
-  const findSimilarFilteredImages = useMemo(() => {
-    if (!findSimilarGridFilter) {
-      return null;
-    }
-
-    const filteredIds = new Set(findSimilarGridFilter.imageIds);
-    return safeFilteredImages.filter((image) => filteredIds.has(image.id));
-  }, [findSimilarGridFilter, safeFilteredImages]);
+  const findSimilarIdSet = useMemo(
+    () => (findSimilarGridFilter ? new Set(findSimilarGridFilter.imageIds) : null),
+    [findSimilarGridFilter],
+  );
 
   // ComfyUI workflow-node filter (OR), applied as a post-filter on the filtered library.
   const nodeFilteredImages = useMemo(
@@ -2494,16 +2492,22 @@ export default function App() {
     return resolved ? resolved.ids : null;
   }, [activeImageScope, safeImages, clusters, collections]);
 
+  // Displayed base: node filter, then scope. Find Similar layers on top so it always applies
+  // within an active scope instead of replacing it. Filters remain cumulative.
+  const scopedBaseImages = useMemo(
+    () => (activeImageScope && scopedImageIds
+      ? nodeFilteredImages.filter((image) => scopedImageIds.has(image.id))
+      : nodeFilteredImages),
+    [activeImageScope, scopedImageIds, nodeFilteredImages],
+  );
+
   const displayImages =
     // Collections still owns its in-view display during coexistence (removed in a later phase).
     libraryView === 'collections'
       ? collectionFilteredImages
-      // The scope filters the Library grid: (node-filtered) ∩ scopedImageIds. Filters remain cumulative.
-      : activeImageScope && scopedImageIds
-      ? nodeFilteredImages.filter((image) => scopedImageIds.has(image.id))
-      : libraryView === 'library' && findSimilarFilteredImages
-      ? findSimilarFilteredImages
-      : nodeFilteredImages;
+      : libraryView === 'library' && findSimilarIdSet
+      ? scopedBaseImages.filter((image) => findSimilarIdSet.has(image.id))
+      : scopedBaseImages;
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
 
   const libraryGridSignature = useMemo(() => {
