@@ -380,6 +380,7 @@ const Header: React.FC<HeaderProps> = ({
   }, [canUseComfyUI, canUseImageEditor, onLibraryViewChange, showProModal]);
 
   return (
+    <>
     <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-4 py-2.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
       <div className="container mx-auto flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
@@ -619,9 +620,12 @@ const Header: React.FC<HeaderProps> = ({
           />
         </div>
       )}
-
-      <AutomationRulesModal isOpen={isAutomationRulesOpen} onClose={() => setIsAutomationRulesOpen(false)} />
     </header>
+
+    {/* Rendered outside <header> so the header's backdrop-filter doesn't become the
+        containing block for the modal's fixed positioning (which clipped it at the top). */}
+    <AutomationRulesModal isOpen={isAutomationRulesOpen} onClose={() => setIsAutomationRulesOpen(false)} />
+    </>
   );
 };
 
