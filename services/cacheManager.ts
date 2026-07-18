@@ -952,13 +952,110 @@ class CacheManager {
       return true;
     }
 
-    // Chunked cache: only read/rewrite the chunk(s) that actually contain a
-    // target id, and stop as soon as every reparsed image has been located.
+    // Chunked cache. Prefer a direct id->chunk lookup so reparse reads only the
+    // chunk(s) that hold the target images instead of scanning every (potentially
+    // tens-of-MB) chunk — that scan is what made reparse latency track library
+    // size and, on large ComfyUI libraries, risk the renderer running out of
+    // memory. The index is a best-effort hint: it is validated against the
+    // current record (lastScan + chunkCount) and every lookup is re-verified
+    // against the chunk's real contents, falling back to a full scan otherwise.
     const chunkCount = summary.chunkCount ?? 0;
+    const newLastScan = Date.now();
+
+    const finalizePatch = async () => {
+      // sourceCacheId is omitted so the handler only rewrites the (small) record
+      // and leaves the untouched chunks in place.
+      const finalizeResult = await window.electronAPI.finalizeCacheWrite({
+        cacheId,
+        record: {
+          id: summary.id,
+          directoryPath,
+          directoryName: summary.directoryName ?? directoryName,
+          lastScan: newLastScan,
+          imageCount: summary.imageCount,
+          chunkCount,
+          parserVersion: PARSER_VERSION,
+        },
+      });
+      if (!finalizeResult.success) {
+        throw new Error(finalizeResult.error || 'Failed to finalize cache patch');
+      }
+    };
+
+    // --- Fast path: id->chunk index ---
+    const index = await this.readValidCacheIndex(cacheId, summary.lastScan, chunkCount);
+    if (index) {
+      const idsByChunk = new Map<number, string[]>();
+      let allMapped = true;
+      for (const id of remaining) {
+        const targetChunk = index[id];
+        if (typeof targetChunk !== 'number' || targetChunk < 0 || targetChunk >= chunkCount) {
+          allMapped = false;
+          break;
+        }
+        const list = idsByChunk.get(targetChunk);
+        if (list) list.push(id);
+        else idsByChunk.set(targetChunk, [id]);
+      }
+
+      if (allMapped) {
+        let stale = false;
+        let rewrittenChunks = 0;
+        for (const [targetChunk, ids] of idsByChunk) {
+          const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: targetChunk });
+          if (!chunkResult.success || !Array.isArray(chunkResult.data)) {
+            throw new Error(chunkResult.error || `Failed to read cache chunk ${targetChunk}`);
+          }
+          const entries = chunkResult.data as CacheImageMetadata[];
+          const wanted = new Set(ids);
+          for (let i = 0; i < entries.length && wanted.size > 0; i += 1) {
+            if (wanted.has(entries[i].id)) {
+              entries[i] = updatesById.get(entries[i].id)!;
+              wanted.delete(entries[i].id);
+            }
+          }
+          if (wanted.size > 0) {
+            // The index pointed at the wrong chunk (stale layout); give up on the
+            // fast path and let the full scan below rebuild it.
+            stale = true;
+            break;
+          }
+          const writeResult = await window.electronAPI.writeCacheChunk({ cacheId, chunkIndex: targetChunk, data: entries });
+          if (!writeResult.success) {
+            throw new Error(writeResult.error || `Failed to write cache chunk ${targetChunk}`);
+          }
+          rewrittenChunks += 1;
+        }
+
+        if (!stale) {
+          await finalizePatch();
+          // Chunk membership did not change, so keep the same map and just refresh
+          // its lastScan to match the new record.
+          await window.electronAPI.writeCacheIndex?.({
+            cacheId,
+            data: { lastScan: newLastScan, chunkCount, ids: index },
+          });
+          logCachePerf('patch-cached-images:indexed', {
+            cacheId,
+            patched: updatesById.size,
+            readChunks: rewrittenChunks,
+            chunkCount,
+            durationMs: toFixedMs(performance.now() - start),
+          });
+          return true;
+        }
+      }
+    }
+
+    // --- Fallback: sequential scan (also (re)builds the id->chunk index) ---
+    // Chunks are read one at a time and released each iteration, so peak memory
+    // stays at ~one chunk even on large libraries. This pays the full read once;
+    // subsequent reparses take the indexed fast path above.
+    const rebuiltIds: Record<string, number> = {};
     let readChunks = 0;
     let rewrittenChunks = 0;
 
-    for (let chunkIndex = 0; chunkIndex < chunkCount && remaining.size > 0; chunkIndex += 1) {
+    for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
       const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex });
       readChunks += 1;
       if (!chunkResult.success || !Array.isArray(chunkResult.data)) {
@@ -968,20 +1065,18 @@ class CacheManager {
       const entries = chunkResult.data as CacheImageMetadata[];
       let chunkChanged = false;
       for (let i = 0; i < entries.length; i += 1) {
-        const update = updatesById.get(entries[i].id);
+        const id = entries[i].id;
+        rebuiltIds[id] = chunkIndex;
+        const update = updatesById.get(id);
         if (update) {
           entries[i] = update;
-          remaining.delete(update.id);
+          remaining.delete(id);
           chunkChanged = true;
         }
       }
 
       if (chunkChanged) {
-        const writeResult = await window.electronAPI.writeCacheChunk({
-          cacheId,
-          chunkIndex,
-          data: entries,
-        });
+        const writeResult = await window.electronAPI.writeCacheChunk({ cacheId, chunkIndex, data: entries });
         if (!writeResult.success) {
           throw new Error(writeResult.error || `Failed to write cache chunk ${chunkIndex}`);
         }
@@ -990,28 +1085,23 @@ class CacheManager {
     }
 
     if (rewrittenChunks === 0) {
+      // Nothing to update in this variant (e.g. the image lives only in the other
+      // scan-mode variant). The record was not touched, so persist the freshly
+      // built index against the existing lastScan for next time.
+      await window.electronAPI.writeCacheIndex?.({
+        cacheId,
+        data: { lastScan: summary.lastScan, chunkCount, ids: rebuiltIds },
+      });
       return false;
     }
 
-    // Refresh the main record's lastScan. sourceCacheId is omitted so the handler
-    // only rewrites the (small) record and leaves the untouched chunks in place.
-    const finalizeResult = await window.electronAPI.finalizeCacheWrite({
+    await finalizePatch();
+    await window.electronAPI.writeCacheIndex?.({
       cacheId,
-      record: {
-        id: summary.id,
-        directoryPath,
-        directoryName: summary.directoryName ?? directoryName,
-        lastScan: Date.now(),
-        imageCount: summary.imageCount,
-        chunkCount,
-        parserVersion: PARSER_VERSION,
-      },
+      data: { lastScan: newLastScan, chunkCount, ids: rebuiltIds },
     });
-    if (!finalizeResult.success) {
-      throw new Error(finalizeResult.error || 'Failed to finalize cache patch');
-    }
 
-    logCachePerf('patch-cached-images:chunked', {
+    logCachePerf('patch-cached-images:scanned', {
       cacheId,
       patched: updatesById.size - remaining.size,
       readChunks,
@@ -1020,6 +1110,32 @@ class CacheManager {
       durationMs: toFixedMs(performance.now() - start),
     });
     return true;
+  }
+
+  /**
+   * Reads the id->chunk sidecar index for a cache variant, returning the id map
+   * only when it is safe to trust: it must match the record's current chunkCount
+   * and lastScan. Any external cache write bumps lastScan, so a stale index is
+   * rejected here and rebuilt by the caller's fallback scan. Callers must still
+   * verify each looked-up id against the chunk contents before relying on it.
+   */
+  private async readValidCacheIndex(
+    cacheId: string,
+    lastScan: number | undefined,
+    chunkCount: number
+  ): Promise<Record<string, number> | null> {
+    if (!window.electronAPI?.readCacheIndex) return null;
+    try {
+      const result = await window.electronAPI.readCacheIndex({ cacheId });
+      if (!result.success || !result.data) return null;
+      const { lastScan: indexLastScan, chunkCount: indexChunkCount, ids } = result.data;
+      if (indexChunkCount !== chunkCount) return null;
+      if (typeof lastScan === 'number' && indexLastScan !== lastScan) return null;
+      if (!ids || typeof ids !== 'object') return null;
+      return ids as Record<string, number>;
+    } catch {
+      return null;
+    }
   }
 
   async removeCachedImages(
