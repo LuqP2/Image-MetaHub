@@ -1,5 +1,15 @@
 export const IMAGE_METAHUB_AVIF_EXTENSION_VERSION: 1;
 
+export interface ImageMetaHubAvifExtractedParameters {
+  model?: string;
+  seed?: number;
+  steps?: number;
+  cfg?: number;
+  sampler_name?: string;
+  scheduler?: string;
+  negativePrompt?: string;
+}
+
 export interface ImageMetaHubAvifExtension extends Record<string, unknown> {
   version: 1;
   source_generator?: string;
@@ -8,6 +18,7 @@ export interface ImageMetaHubAvifExtension extends Record<string, unknown> {
   attribution?: Record<string, unknown>;
   analytics?: Record<string, unknown>;
   lineage?: Record<string, unknown>;
+  extracted_parameters?: ImageMetaHubAvifExtractedParameters;
 }
 
 export interface AvifCarrierConflict {

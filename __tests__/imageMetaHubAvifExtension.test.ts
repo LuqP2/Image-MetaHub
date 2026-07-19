@@ -6,12 +6,18 @@ import {
 } from '../utils/imageMetaHubAvifExtension.mjs';
 
 describe('Image MetaHub AVIF extension', () => {
-  it('writes only app-specific fields instead of duplicating workflow metadata', () => {
+  it('keeps the extracted parameter snapshot but never duplicates the workflow graph', () => {
     const extension = buildImageMetaHubAvifExtension({
       generator: 'ComfyUI',
       prompt: 'do not duplicate me',
       workflow: { nodes: [] },
+      model: 'model.safetensors',
       seed: 42,
+      steps: 25,
+      cfg_scale: 6.5,
+      sampler: 'euler',
+      scheduler: 'karras',
+      negativePrompt: 'blurry, low quality',
       tags: ['Favorite', ' Favorite ', ''],
       notes: 'Keep this',
       _analytics: { gpu_device: 'Example GPU' },
@@ -23,10 +29,50 @@ describe('Image MetaHub AVIF extension', () => {
       tags: ['Favorite'],
       notes: 'Keep this',
       analytics: { gpu_device: 'Example GPU' },
+      extracted_parameters: {
+        model: 'model.safetensors',
+        seed: 42,
+        steps: 25,
+        cfg: 6.5,
+        sampler_name: 'euler',
+        scheduler: 'karras',
+        negativePrompt: 'blurry, low quality',
+      },
     });
+    // The full prompt/workflow graph is never copied into the extension.
     expect(extension).not.toHaveProperty('prompt');
     expect(extension).not.toHaveProperty('workflow');
-    expect(extension).not.toHaveProperty('seed');
+  });
+
+  it('restores the extracted snapshot as authoritative over graph re-derivation', () => {
+    const normalized = applyImageMetaHubAvifExtension(
+      // What the standard parser managed to re-derive from an obscure custom
+      // node: blank/zeroed sampling fields it could not resolve.
+      { prompt: 'canonical prompt', model: '', seed: 0, steps: 0, sampler: '', scheduler: '', negativePrompt: '' },
+      {
+        version: 1,
+        extracted_parameters: {
+          model: 'custom.safetensors',
+          seed: 987654321,
+          steps: 30,
+          cfg: 7.5,
+          sampler_name: 'dpmpp_2m_sde',
+          scheduler: 'karras',
+          negativePrompt: 'watermark',
+        },
+      },
+    );
+
+    expect(normalized).toMatchObject({
+      prompt: 'canonical prompt',
+      model: 'custom.safetensors',
+      seed: 987654321,
+      steps: 30,
+      cfg_scale: 7.5,
+      sampler: 'dpmpp_2m_sde',
+      scheduler: 'karras',
+      negativePrompt: 'watermark',
+    });
   });
 
   it('overlays app-specific fields after standard metadata has been parsed', () => {

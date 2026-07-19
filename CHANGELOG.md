@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
-- **Compact AVIF Exports**: Image MetaHub now leaves prompt and workflow documents in their standard ComfyUI XMP fields and writes only tags, notes, attribution, analytics, lineage, and source generator in its private AVIF extension. Conflicting legacy copies are surfaced without overriding the standalone XMP value.
+- **Compact AVIF Exports**: Image MetaHub now leaves the full prompt and workflow graphs in their standard ComfyUI XMP fields instead of duplicating them. Its private AVIF extension keeps app-specific fields (tags, notes, attribution, analytics, lineage, source generator) plus the extracted parameter snapshot (model, seed, steps, cfg, sampler, scheduler, negative prompt) that the Save Node captures, since those are more reliable than re-deriving them from arbitrary custom-node graphs. Conflicting legacy copies are surfaced without overriding the standalone XMP value.
 
 ## [0.17.5] - 2026-07-13
 

@@ -21,6 +21,39 @@ function nonEmptyRecord(value) {
 }
 
 /**
+ * Collect the normalized sampling and model fields Image MetaHub extracts from
+ * the workflow at generation time. These are kept in the extension as an
+ * authoritative snapshot on purpose: re-deriving seed/steps/model/sampler from
+ * arbitrary custom-node graphs is unreliable, which is exactly the failure mode
+ * the extraction exists to avoid. Only the redundant full prompt/workflow graph
+ * copy is dropped, never the extraction. Field names mirror the PNG
+ * `imagemetahub_data` payload so both carriers describe parameters the same way.
+ *
+ * @param {UnknownRecord} source
+ * @returns {UnknownRecord | undefined}
+ */
+function buildExtractedParameters(source) {
+  /** @type {UnknownRecord} */
+  const parameters = {};
+  if (typeof source.model === 'string' && source.model.trim()) {
+    parameters.model = source.model.trim();
+  }
+  if (Number.isFinite(source.seed)) parameters.seed = source.seed;
+  if (Number.isFinite(source.steps)) parameters.steps = source.steps;
+  if (Number.isFinite(source.cfg_scale)) parameters.cfg = source.cfg_scale;
+  if (typeof source.sampler === 'string' && source.sampler.trim()) {
+    parameters.sampler_name = source.sampler.trim();
+  }
+  if (typeof source.scheduler === 'string' && source.scheduler.trim()) {
+    parameters.scheduler = source.scheduler.trim();
+  }
+  if (typeof source.negativePrompt === 'string' && source.negativePrompt.trim()) {
+    parameters.negativePrompt = source.negativePrompt;
+  }
+  return Object.keys(parameters).length > 0 ? parameters : undefined;
+}
+
+/**
  * Build the intentionally small Image MetaHub extension stored in AVIF XMP.
  * Standard prompt and workflow documents stay in their established XMP fields;
  * this object contains only app-specific information those fields cannot carry.
@@ -60,6 +93,9 @@ export function buildImageMetaHubAvifExtension(metadata) {
   const lineage = nonEmptyRecord(source.lineage);
   if (lineage) extension.lineage = lineage;
 
+  const parameters = buildExtractedParameters(source);
+  if (parameters) extension.extracted_parameters = parameters;
+
   return extension;
 }
 
@@ -82,6 +118,7 @@ export function applyImageMetaHubAvifExtension(metadata, extensionValue) {
     'attribution',
     'analytics',
     'lineage',
+    'extracted_parameters',
   ].some((key) => key in extension);
   if (!hasRecognizedField) return isRecord(metadata) ? metadata : null;
 
@@ -114,6 +151,28 @@ export function applyImageMetaHubAvifExtension(metadata, extensionValue) {
 
   const lineage = nonEmptyRecord(extension.lineage);
   if (lineage) result.lineage = lineage;
+
+  // The extracted snapshot is authoritative: it overrides whatever the standard
+  // parser managed to re-derive from the graph, since the snapshot was captured
+  // when the parameters were still known. Missing fields fall back to the parse.
+  const parameters = nonEmptyRecord(extension.extracted_parameters);
+  if (parameters) {
+    if (typeof parameters.model === 'string' && parameters.model.trim()) {
+      result.model = parameters.model.trim();
+    }
+    if (Number.isFinite(parameters.seed)) result.seed = parameters.seed;
+    if (Number.isFinite(parameters.steps)) result.steps = parameters.steps;
+    if (Number.isFinite(parameters.cfg)) result.cfg_scale = parameters.cfg;
+    if (typeof parameters.sampler_name === 'string' && parameters.sampler_name.trim()) {
+      result.sampler = parameters.sampler_name.trim();
+    }
+    if (typeof parameters.scheduler === 'string' && parameters.scheduler.trim()) {
+      result.scheduler = parameters.scheduler.trim();
+    }
+    if (typeof parameters.negativePrompt === 'string') {
+      result.negativePrompt = parameters.negativePrompt;
+    }
+  }
 
   return result;
 }
