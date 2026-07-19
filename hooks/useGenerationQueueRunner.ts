@@ -122,6 +122,7 @@ export function useGenerationQueueRunner({ images, filteredImages }: ImageLookup
             generatedOutputs: result.generatedOutputs,
             providerJobId: result.providerJobId || latest.providerJobId,
             error: undefined,
+            previewImageUrl: null,
           });
         }
       } catch (error) {
@@ -129,6 +130,7 @@ export function useGenerationQueueRunner({ images, filteredImages }: ImageLookup
         if (latest && latest.status !== 'canceled') {
           useGenerationQueueStore.getState().setJobStatus(job.id, 'failed', {
             error: error instanceof Error ? error.message : String(error),
+            previewImageUrl: null,
           });
         }
       } finally {

@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useCallback } from 'react';
-import { ComfyUIProgressUpdate, normalizeLoopbackServerUrl } from '../services/comfyUIApiClient';
+import { ComfyUIProgressUpdate, decodeComfyUIPreviewFrame, normalizeLoopbackServerUrl } from '../services/comfyUIApiClient';
 
 export interface ComfyUIProgressState {
   isGenerating: boolean;
@@ -13,6 +13,7 @@ export interface ComfyUIProgressState {
   totalSteps: number;
   progress: number;  // 0-1, overall progress
   queuePosition: number;
+  previewImageUrl: string | null;
 }
 
 export function useComfyUIProgress() {
@@ -20,6 +21,14 @@ export function useComfyUIProgress() {
   const wsRef = useRef<WebSocket | null>(null);
   const promptIdRef = useRef<string>('');
   const clientIdRef = useRef<string>('');
+  const previewUrlRef = useRef<string | null>(null);
+
+  const revokePreviewUrl = () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+  };
 
   const startTracking = useCallback((serverUrl: string, promptId: string, clientId?: string) => {
     // Store prompt ID for reference
@@ -33,6 +42,7 @@ export function useComfyUIProgress() {
     console.log('[ComfyUI Progress] Connecting to WebSocket:', wsUrl);
 
     const ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {
       console.log('[ComfyUI Progress] WebSocket connected');
@@ -42,11 +52,28 @@ export function useComfyUIProgress() {
         currentStep: 0,
         totalSteps: 0,
         progress: 0,
-        queuePosition: 0
+        queuePosition: 0,
+        previewImageUrl: null
       });
     };
 
     ws.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer) {
+        const blob = decodeComfyUIPreviewFrame(event.data);
+        if (!blob) {
+          return;
+        }
+        revokePreviewUrl();
+        const url = URL.createObjectURL(blob);
+        previewUrlRef.current = url;
+        setProgressState(prev => ({
+          ...prev,
+          isGenerating: true,
+          previewImageUrl: url
+        }));
+        return;
+      }
+
       try {
         const message = JSON.parse(event.data) as ComfyUIProgressUpdate;
         if (message.data?.prompt_id && message.data.prompt_id !== promptIdRef.current) {
@@ -83,6 +110,7 @@ export function useComfyUIProgress() {
             // Close WebSocket after a short delay
             setTimeout(() => {
               ws.close();
+              revokePreviewUrl();
               setProgressState(null);
             }, 2000);
           } else {
@@ -126,6 +154,7 @@ export function useComfyUIProgress() {
     ws.onclose = () => {
       console.log('[ComfyUI Progress] WebSocket closed');
       wsRef.current = null;
+      revokePreviewUrl();
     };
 
     wsRef.current = ws;
@@ -136,6 +165,7 @@ export function useComfyUIProgress() {
       wsRef.current.close();
       wsRef.current = null;
     }
+    revokePreviewUrl();
     setProgressState(null);
     promptIdRef.current = '';
     clientIdRef.current = '';

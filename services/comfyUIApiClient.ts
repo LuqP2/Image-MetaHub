@@ -161,6 +161,34 @@ export function normalizeLoopbackServerUrl(serverUrl: string): string {
   return serverUrl;
 }
 
+const PREVIEW_IMAGE_EVENT_TYPE = 1;
+const PREVIEW_IMAGE_FORMAT_MIME: Record<number, string> = {
+  1: 'image/jpeg',
+  2: 'image/png',
+};
+
+/**
+ * Decodes a ComfyUI binary WebSocket frame into a preview image Blob.
+ * Protocol: 4-byte BE uint32 event type (1 = PREVIEW_IMAGE), then for that
+ * event a 4-byte BE uint32 image format (1 = JPEG, 2 = PNG), then raw image bytes.
+ * Returns null for any other event type or malformed frame.
+ */
+export function decodeComfyUIPreviewFrame(data: ArrayBuffer): Blob | null {
+  if (data.byteLength < 8) {
+    return null;
+  }
+
+  const view = new DataView(data);
+  const eventType = view.getUint32(0);
+  if (eventType !== PREVIEW_IMAGE_EVENT_TYPE) {
+    return null;
+  }
+
+  const imageFormat = view.getUint32(4);
+  const mime = PREVIEW_IMAGE_FORMAT_MIME[imageFormat] || 'image/jpeg';
+  return new Blob([data.slice(8)], { type: mime });
+}
+
 export class ComfyUIApiClient {
   private config: ComfyUIConfig;
   private clientId: string;

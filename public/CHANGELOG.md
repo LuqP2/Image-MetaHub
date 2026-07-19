@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Reparse Metadata Performance**: "Reparse Metadata" no longer rewrites the entire folder cache for a single image, so it stays fast regardless of library size. It patches only the cache chunk(s) that hold the reparsed images instead of re-serializing every entry, and uses a persistent id→chunk index to read just the target chunk directly rather than scanning the whole cache — a big win on large ComfyUI libraries where each chunk can be tens of MB. The index is validated on every use and rebuilt automatically if the cache changed, so it never serves stale data.
+
 ## [0.17.5] - 2026-07-13
 
 ### Added

@@ -366,7 +366,19 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                 </div>
               </div>
 
-              {firstOutput?.url && (
+              {item.status === 'processing' && item.previewImageUrl ? (
+                <div className="relative overflow-hidden rounded border border-gray-700/60 bg-black">
+                  <img
+                    src={item.previewImageUrl}
+                    alt="Live preview"
+                    className="h-24 w-full object-cover"
+                  />
+                  <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-100">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                    Live preview
+                  </span>
+                </div>
+              ) : firstOutput?.url ? (
                 <div className="relative overflow-hidden rounded border border-gray-700/60 bg-black">
                   <img
                     src={firstOutput.url}
@@ -380,7 +392,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                     </span>
                   )}
                 </div>
-              )}
+              ) : null}
 
               <p className="text-xs text-gray-400 break-words">
                 {formatPromptPreview(item.prompt)}

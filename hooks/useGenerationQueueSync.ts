@@ -34,6 +34,7 @@ export function useGenerationQueueSync() {
         currentStep: comfyUIProgress.currentStep,
         totalSteps: comfyUIProgress.totalSteps,
         currentNode: comfyUIProgress.currentNode,
+        previewImageUrl: comfyUIProgress.previewImageUrl,
         status: 'processing',
       });
     }
