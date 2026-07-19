@@ -239,4 +239,46 @@ describe('GridToolbar', () => {
 
     expect(onJumpToGroup).toHaveBeenCalledWith('session-2');
   });
+
+  it('lets the user navigate calendar months without snapping back to the active date', async () => {
+    render(
+      <GridToolbar
+        selectedImages={new Set()}
+        images={[]}
+        directories={[]}
+        filteredImageActionCount={0}
+        onDeleteSelected={vi.fn()}
+        onGenerateA1111={vi.fn()}
+        onGenerateComfyUI={vi.fn()}
+        onCompare={vi.fn()}
+        onBatchExport={vi.fn()}
+        onStartSlideshow={vi.fn()}
+        slideshowImageCount={0}
+        groupBy="date"
+        groups={[
+          {
+            id: 'date-1',
+            label: 'December 12, 2025',
+            count: 3,
+            startImageId: 'img-1',
+            dateKey: '2025-12-12',
+            startTime: new Date(2025, 11, 12, 9, 0).getTime(),
+          },
+        ]}
+        onJumpToGroup={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to group' }));
+
+    // Opens snapped to the active date's month.
+    expect(await screen.findByText('December 2025')).toBeTruthy();
+
+    // Manual navigation must persist (previously an effect reverted it every render).
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    await waitFor(() => expect(screen.getByText('January 2026')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    await waitFor(() => expect(screen.getByText('February 2026')).toBeTruthy());
+  });
 });

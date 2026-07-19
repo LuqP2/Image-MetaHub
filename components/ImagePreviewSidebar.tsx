@@ -168,7 +168,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const directories = useImageStore((state) => state.directories);
   const filteredImages = useImageStore((state) => state.filteredImages);
   const selectedImages = useImageStore((state) => state.selectedImages);
-  const activeImageScope = useImageStore((state) => state.activeImageScope);
+  // Scope-aware export list is resolved on demand via getScopedFilteredImages().
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
   const previewImageFromStore = useImageStore((state) => {
     if (!state.previewImage) return null;
@@ -396,9 +396,10 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds ?? (nMeta as any)?.audio?.duration_seconds;
   const exportScopeImages = (() => {
     if (!activeImage) return [];
+    const scopedImages = useImageStore.getState().getScopedFilteredImages();
     const candidateScopes = [
       clusterNavigationContext,
-      activeImageScope,
+      scopedImages,
       filteredImages,
     ].filter((scope): scope is typeof filteredImages => Array.isArray(scope) && scope.length > 0);
 

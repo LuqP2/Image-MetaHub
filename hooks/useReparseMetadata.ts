@@ -82,24 +82,17 @@ export function useReparseMetadata() {
         }
 
         for (const [directoryPath, payload] of updatesByDirectory.entries()) {
-          const directory = directories.find((candidate) => candidate.path === directoryPath);
-          const updatesById = new Map(payload.images.map((image) => [image.id, image]));
-          const fallbackImages = useImageStore.getState().images
-            .filter((image) => image.directoryId === directory?.id)
-            .map((image) => updatesById.get(image.id) ?? image);
-
-          const cacheModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
-          for (const cacheMode of cacheModes) {
-            await cacheManager.applyChunkedCacheDelta(
-              directoryPath,
-              payload.directoryName,
-              payload.images,
-              [],
-              [],
-              cacheMode,
-              { fallbackImages, createIfMissing: false }
-            );
-          }
+          // Patch only the cache chunk(s) holding these images instead of
+          // rewriting the whole directory cache, so reparse stays fast regardless
+          // of library size (#448 follow-up). Reparse targets are already indexed,
+          // so their entries exist in the cache and patchCachedImages updates them
+          // in place across both scan-mode variants.
+          await cacheManager.patchCachedImages(
+            directoryPath,
+            payload.directoryName,
+            payload.images,
+            scanSubfolders
+          );
         }
       }
 

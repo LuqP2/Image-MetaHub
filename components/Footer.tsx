@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
 import Tooltip from './Tooltip';
-import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks, X } from 'lucide-react';
+import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks, X, RefreshCw } from 'lucide-react';
 import { A1111ProgressState } from '../hooks/useA1111Progress';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { IndexedImage, IndexedImageTransferProgress } from '../types';
+import type { ImageGroupByMode, ImageGroupingSortOrder } from '../utils/imageGrouping';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useThumbnail } from '../hooks/useThumbnail';
 
@@ -36,6 +37,15 @@ interface FooterProps {
   onWindowSelect?: (id: string) => void;
   onWindowClose?: (id: string) => void;
   sticky?: boolean;
+  // Sort/Group controls (shown in groupable views; moved here from the Sidebar).
+  showSortControls?: boolean;
+  sortOrder?: ImageGroupingSortOrder;
+  onSortOrderChange?: (order: ImageGroupingSortOrder) => void;
+  onReshuffle?: () => void;
+  groupBy?: ImageGroupByMode;
+  onGroupByChange?: (mode: ImageGroupByMode) => void;
+  /** When grouping by model/cluster, pagination is suspended and the page-size control hidden. */
+  hidePageSize?: boolean;
 }
 
 const Token: React.FC<{ children: React.ReactNode; title?: string }> = ({ children, title }) => (
@@ -69,6 +79,13 @@ const Footer: React.FC<FooterProps> = ({
   onWindowSelect,
   onWindowClose,
   sticky = true,
+  showSortControls = false,
+  sortOrder,
+  onSortOrderChange,
+  onReshuffle,
+  groupBy,
+  onGroupByChange,
+  hidePageSize = false,
 }) => {
   const { canUseA1111 } = useFeatureAccess();
   const [isEditingPage, setIsEditingPage] = useState(false);
@@ -304,16 +321,66 @@ const Footer: React.FC<FooterProps> = ({
         )}
       </div>
       <nav className="flex items-center gap-4 text-xs">
-        <div className="flex items-center gap-2">
-          <label htmlFor="items-per-page" className="text-gray-500 hidden md:inline font-medium">Show:</label>
-          <select id="items-per-page" value={itemsPerPage} onChange={handleItemsPerPageChange} className="bg-gray-800/80 border border-gray-700/60 rounded-lg px-2.5 py-1.5 text-gray-200 hover:bg-gray-700 hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all cursor-pointer">
-            <option value={10}>10</option>
-            <option value={20}>20</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-            <option value={-1}>All</option>
-          </select>
-        </div>
+        {showSortControls && (
+          <div className="flex items-center gap-2">
+            <label htmlFor="footer-sort" className="text-gray-500 hidden md:inline font-medium">Sort:</label>
+            <select
+              id="footer-sort"
+              value={sortOrder}
+              onChange={(event) => onSortOrderChange?.(event.target.value as ImageGroupingSortOrder)}
+              className="bg-gray-800/80 border border-gray-700/60 rounded-lg px-2.5 py-1.5 text-gray-200 hover:bg-gray-700 hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all cursor-pointer"
+            >
+              <option value="date-desc">Newest First</option>
+              <option value="date-asc">Oldest First</option>
+              <option value="asc">A-Z</option>
+              <option value="desc">Z-A</option>
+              <option value="random">Random</option>
+            </select>
+            {sortOrder === 'random' && onReshuffle && (
+              <Tooltip label="Reshuffle random order">
+                <button
+                  onClick={onReshuffle}
+                  className="p-1.5 text-gray-400 hover:text-white bg-gray-800/80 hover:bg-gray-700 rounded-lg border border-gray-700/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  title="Reshuffle random order"
+                  aria-label="Reshuffle random order"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+            )}
+            {sortOrder !== 'random' && (
+              <>
+                <label htmlFor="footer-group" className="text-gray-500 hidden md:inline font-medium">Group:</label>
+                <select
+                  id="footer-group"
+                  value={groupBy}
+                  onChange={(event) => onGroupByChange?.(event.target.value as ImageGroupByMode)}
+                  className="bg-gray-800/80 border border-gray-700/60 rounded-lg px-2.5 py-1.5 text-gray-200 hover:bg-gray-700 hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all cursor-pointer"
+                >
+                  <option value="none">None</option>
+                  <option value="date">Date</option>
+                  <option value="name">Name</option>
+                  <option value="session">Session</option>
+                  <option value="model">Model</option>
+                  <option value="cluster">Cluster</option>
+                </select>
+              </>
+            )}
+            <div className="w-px h-4 bg-gray-700/50"></div>
+          </div>
+        )}
+        {!hidePageSize && (
+          <div className="flex items-center gap-2">
+            <label htmlFor="items-per-page" className="text-gray-500 hidden md:inline font-medium">Show:</label>
+            <select id="items-per-page" value={itemsPerPage} onChange={handleItemsPerPageChange} className="bg-gray-800/80 border border-gray-700/60 rounded-lg px-2.5 py-1.5 text-gray-200 hover:bg-gray-700 hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all cursor-pointer">
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={-1}>All</option>
+            </select>
+          </div>
+        )}
         {showPageControls && (
           <>
             <div className="w-px h-4 bg-gray-700/50"></div>

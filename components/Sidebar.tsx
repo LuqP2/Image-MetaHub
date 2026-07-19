@@ -1,16 +1,14 @@
 
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronLeft, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Plus } from 'lucide-react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
-import AutomationRulesModal from './AutomationRulesModal';
 import { useImageStore } from '../store/useImageStore';
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
 import { createProfilerOnRender } from '../utils/performanceDiagnostics';
-import type { ImageGroupByMode } from '../utils/imageGrouping';
 
 interface SidebarProps {
   searchQuery: string;
@@ -19,15 +17,19 @@ interface SidebarProps {
   availableLoras: string[];
   availableSamplers: string[];
   availableSchedulers: string[];
+  availableNodes: string[];
+  nodeFacetCounts: Map<string, number>;
   availableDimensions: string[];
   selectedModels: string[];
   selectedLoras: string[];
   selectedSamplers: string[];
   selectedSchedulers: string[];
+  selectedNodes: string[];
   onModelChange: (models: string[]) => void;
   onLoraChange: (loras: string[]) => void;
   onSamplerChange: (samplers: string[]) => void;
   onSchedulerChange: (schedulers: string[]) => void;
+  onNodeChange: (nodes: string[]) => void;
   onClearAllFilters: () => void;
   advancedFilters: AdvancedFilterState;
   onAdvancedFiltersChange: (filters: AdvancedFilterState) => void;
@@ -46,11 +48,6 @@ interface SidebarProps {
   excludedFolders: Set<string>;
   onExcludeFolder: (path: string) => void;
   onIncludeFolder?: (path: string) => void;
-  sortOrder: string;
-  onSortOrderChange: (value: string) => void;
-  onReshuffle?: () => void;
-  groupBy: ImageGroupByMode;
-  onGroupByChange: (value: ImageGroupByMode) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -60,11 +57,15 @@ const Sidebar: React.FC<SidebarProps> = ({
   availableLoras,
   availableSamplers,
   availableSchedulers,
+  availableNodes,
+  nodeFacetCounts,
   availableDimensions,
   selectedModels,
   selectedLoras,
   selectedSamplers,
   selectedSchedulers,
+  selectedNodes,
+  onNodeChange,
   onClearAllFilters,
   advancedFilters,
   onAdvancedFiltersChange,
@@ -83,14 +84,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   excludedFolders,
   onExcludeFolder,
   onIncludeFolder,
-  sortOrder,
-  onSortOrderChange,
-  onReshuffle,
-  groupBy,
-  onGroupByChange
 }) => {
   const [isGenerationParametersExpanded, setIsGenerationParametersExpanded] = useState(true);
-  const [isAutomationRulesOpen, setIsAutomationRulesOpen] = useState(false);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
@@ -108,7 +103,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const loraFacetCounts = useImageStore((state) => state.loraFacetCounts);
   const samplerFacetCounts = useImageStore((state) => state.samplerFacetCounts);
   const schedulerFacetCounts = useImageStore((state) => state.schedulerFacetCounts);
-  const automationRules = useImageStore((state) => state.automationRules);
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
   const sidebarProfilerOnRender = useMemo(() => createProfilerOnRender('Sidebar'), []);
 
@@ -177,6 +171,19 @@ const Sidebar: React.FC<SidebarProps> = ({
       onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedSchedulers, excludedSchedulers, 'exclude', { selected: 'schedulers', excluded: 'excludedSchedulers' }),
       onClear: () => setSelectedFilters({ schedulers: [], excludedSchedulers: [] }),
     },
+    {
+      // ComfyUI workflow nodes: include-only, OR semantics (replaces the old Node View).
+      title: 'ComfyUI Nodes',
+      items: availableNodes,
+      selectedValues: selectedNodes,
+      excludedValues: [] as string[],
+      counts: nodeFacetCounts,
+      onIncludeToggle: (value: string) => onNodeChange(
+        selectedNodes.includes(value) ? selectedNodes.filter((node) => node !== value) : [...selectedNodes, value]
+      ),
+      onExcludeToggle: () => {},
+      onClear: () => onNodeChange([]),
+    },
   ].filter((facet) =>
     facet.items.length > 0 || facet.selectedValues.length > 0 || facet.excludedValues.length > 0
   );
@@ -199,10 +206,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     excludedTags.length > 0 ||
     selectedAutoTags.length > 0 ||
     excludedAutoTags.length > 0 ||
+    selectedNodes.length > 0 ||
     favoriteFilterMode !== 'neutral' ||
     selectedRatings.length > 0 ||
     Object.keys(advancedFilters || {}).length > 0;
-  const activeAutomationRuleCount = automationRules.filter((rule) => rule.enabled).length;
 
   if (isCollapsed) {
     return (
@@ -298,84 +305,25 @@ const Sidebar: React.FC<SidebarProps> = ({
           <ActiveFilters onClearAll={onClearAllFilters} />
         </div>
 
-        <div className="px-4 py-3 border-b border-gray-700">
-          <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
-          <div className="flex items-center">
-          <select
-            id="sidebar-sort"
-            value={sortOrder}
-            onChange={(e) => onSortOrderChange(e.target.value)}
-            className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="date-desc">Newest First</option>
-            <option value="date-asc">Oldest First</option>
-            <option value="asc">A-Z</option>
-            <option value="desc">Z-A</option>
-            <option value="random">Random</option>
-          </select>
-          {sortOrder === 'random' && onReshuffle && (
-            <button
-                onClick={onReshuffle}
-                className="ml-2 p-2 text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-md border border-gray-600 transition-colors"
-                title="Reshuffle Random Order"
-                aria-label="Reshuffle Random Order"
-            >
-                <RefreshCw className="h-5 w-5" />
-            </button>
-          )}
-          </div>
-        </div>
 
-        {sortOrder !== 'random' && (
-          <div className="px-4 py-3 border-b border-gray-700">
-            <label htmlFor="sidebar-group-by" className="block text-gray-400 text-xs font-medium mb-2">Group By</label>
-            <select
-              id="sidebar-group-by"
-              value={groupBy}
-              onChange={(event) => onGroupByChange(event.target.value as ImageGroupByMode)}
-              className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        {/* Folders (Add Folder lives with the folder list) */}
+        {onAddFolder && (
+          <div className="px-3 pb-2">
+            <button
+              onClick={onAddFolder}
+              disabled={isIndexing}
+              className={`flex w-full items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
+                isIndexing
+                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
+              }`}
+              title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
             >
-              <option value="none">None</option>
-              <option value="date">Date</option>
-              <option value="name">Name</option>
-              <option value="session">Session</option>
-            </select>
+              <Plus size={14} />
+              <span>Add Folder</span>
+            </button>
           </div>
         )}
-
-        <div className="px-3 py-2 border-b border-gray-700">
-          <div className={`grid gap-2 ${onAddFolder ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            {onAddFolder && (
-              <button
-                onClick={onAddFolder}
-                disabled={isIndexing}
-                className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
-                  isIndexing
-                    ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
-                    : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
-                }`}
-                title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
-              >
-                <Plus size={14} />
-                <span>Add Folder</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setIsAutomationRulesOpen(true)}
-              className="relative flex items-center justify-center gap-1 rounded bg-gray-700/40 px-2 py-1.5 text-sm text-gray-300 transition-all duration-200 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20"
-              title="Automation rules"
-            >
-              <SlidersHorizontal size={14} />
-              <span>Rules</span>
-              {activeAutomationRuleCount > 0 && (
-                <span className="absolute -right-1 -top-1 rounded-full border border-blue-700/50 bg-blue-950 px-1.5 py-0.5 text-[10px] leading-none text-blue-200">
-                  {activeAutomationRuleCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
 
         {children && React.isValidElement(children) ? (
           React.cloneElement(children as React.ReactElement<any>, {
@@ -416,6 +364,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     onIncludeToggle={facet.onIncludeToggle}
                     onExcludeToggle={facet.onExcludeToggle}
                     onClear={facet.onClear}
+                    hideExclude={facet.title === 'ComfyUI Nodes'}
                   />
                 ))}
               </div>
@@ -443,7 +392,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
     </div>
-    <AutomationRulesModal isOpen={isAutomationRulesOpen} onClose={() => setIsAutomationRulesOpen(false)} />
     </>
     </React.Profiler>
   );

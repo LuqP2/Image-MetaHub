@@ -15,16 +15,25 @@
 
 ## Application Shape
 
-The renderer is centered around `App.tsx`, which coordinates:
+The renderer is centered around `App.tsx`, which coordinates four primary
+navigation contexts — **Library**, **Explore**, **Image Editor**, and
+**ComfyUI** — plus:
 
-* the main **Library** view
-* the **Smart Library** view
-* the **Model View**
+* the main **Library** grid (grid/list)
+* the **Explore** surface, which unifies model, cluster, and collection
+  browsing behind one dimension picker (`components/ExploreWorkspace.tsx`)
 * the **multi-window image viewer**
 * the **comparison modal**
 * the **analytics modal**
 * the **embedded ComfyUI Workspace**
 * generation modals and the shared generation queue sidebar
+
+Drilling into a model/cluster/collection sets an **image scope** (a
+`{ type, id, label }` descriptor in `useImageStore`) that filters the Library
+grid and appears as a fixed chip in `components/ActiveFilters.tsx`; cumulative
+filters continue to apply within the scope. "Classic mode" (a setting) restores
+the old Model View / Smart Library / Collections / Node View labels as
+deep-links into Explore — it changes navigation labels only, never surfaces.
 
 The app is designed so the heavy work happens outside the tight render loop:
 
@@ -40,18 +49,20 @@ The app is designed so the heavy work happens outside the tight render loop:
 **Core entry points**
 
 * `App.tsx` orchestrates folders, library state, global modals, and top-level view switching.
-* `components/Header.tsx` exposes view mode switching, generation entry points, analytics access, safe mode, and Smart Library actions.
-* `components/Sidebar.tsx` contains the current sidebar filter experience:
+* `components/Header.tsx` exposes the four-context navigation (plus optional Classic-mode deep-links), generation entry points, analytics access, and safe mode.
+* `components/Sidebar.tsx` contains the sidebar experience, organized into **Navigate** (Folders, Collections, Clusters actions) and **Filter** categories:
   * search
-  * active filter chips
+  * active filter chips (including the scope chip)
   * tags, favorites, and auto-tags
-  * faceted include/exclude sections for checkpoints, LoRAs, samplers, and schedulers
+  * faceted include/exclude sections for checkpoints, LoRAs, samplers, and schedulers, plus an include-only **ComfyUI Nodes** (OR) facet
   * advanced numeric/date filters
+* Sort Order and Group By live in the grid **Footer** (`components/Footer.tsx`); Group By supports date/name/session and now **model**/**cluster** sectioning (which sections over the whole filtered set and suspends pagination).
 * `components/DirectoryList.tsx` handles indexed folder navigation, subfolder visibility, exclusion, and auto-watch controls.
 
 **Main browsing surfaces**
 
 * `components/ImageGrid.tsx` and `components/ImageTable.tsx` render the main library in grid/list form.
+* `components/ExploreWorkspace.tsx` is the unified browsing surface (Models | Clusters | Collections) built on the generic `components/ScopeCard.tsx` (which owns the shared hover-scrub via `hooks/useHoverScrub.ts`). Card clicks set the active scope and navigate to the Library.
 * `components/ImageModal.tsx` is now a windowed viewer surface with move, resize, minimize/maximize, and dock/collapse behavior.
 * `components/ImageAdjustmentPanel.tsx` provides metadata-preserving PNG adjustment/export controls for brightness, contrast, saturation, and hue.
 * `components/ImagePreviewSidebar.tsx` shows metadata, telemetry, and generation actions in the side preview flow.
@@ -257,16 +268,24 @@ This layer allows:
 * shadow metadata overrides without overwriting the original file metadata
 * image adjustment export metadata for edited PNG copies
 
-## Smart Library
+## Clustering (Clusters dimension)
 
-The Smart Library is a separate browsing mode for similarity-based organization.
+Similarity-based organization is exposed through the **Clusters** dimension of
+the Explore surface (it was previously a standalone Smart Library view). Cluster
+cards are rendered via `ScopeCard`; opening one scopes the Library to that
+cluster. Cluster generation and auto-tagging are triggered from Explore's
+Clusters dimension and the sidebar's Navigate → Clusters section.
 
 **Main pieces**
 
-* `components/SmartLibrary.tsx`
-* `components/StackCard.tsx`
-* `components/StackExpandedView.tsx`
-* `components/DeduplicationHelper.tsx`
+* `components/ExploreWorkspace.tsx` (Clusters dimension)
+* `components/ClusterUpgradeBanner.tsx` (free-tier upsell shown in the Clusters
+  dimension when `clusteringMetadata.isLimited`)
+* `utils/smartLibraryClusterState.ts` (access gating, cluster state signatures)
+
+> The in-cluster deduplication workflow (mark best / archive) was removed when
+> cluster drill-in moved to the scoped Library grid; only the free-tier upgrade
+> banner is retained.
 
 **Engines**
 
@@ -275,7 +294,6 @@ The Smart Library is a separate browsing mode for similarity-based organization.
 * `services/clusterCacheManager.ts`
 * `services/autoTaggingEngine.ts`
 * `services/workers/autoTaggingWorker.ts`
-* `services/deduplicationEngine.ts`
 
 Clustering and auto-tagging are deliberately offloaded to workers because they are CPU-heavy and operate over the full filtered image set.
 

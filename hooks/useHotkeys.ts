@@ -6,7 +6,7 @@ import { useImageSelection } from './useImageSelection';
 import { useImageLoader } from './useImageLoader';
 import { useFeatureAccess } from './useFeatureAccess';
 import { transferIndexedImages } from '../services/fileTransferService';
-import type { Directory, ImageRating } from '../types';
+import type { Directory, ExploreDimension, ImageRating } from '../types';
 
 interface HotkeyProps {
   isCommandPaletteOpen: boolean;
@@ -15,6 +15,8 @@ interface HotkeyProps {
   setIsHotkeyHelpOpen: (isOpen: boolean) => void;
   isSettingsModalOpen: boolean;
   setIsSettingsModalOpen: (isOpen: boolean) => void;
+  /** Opens the Explore surface on the given dimension (for command-palette entries). */
+  onNavigateToExplore?: (dimension: ExploreDimension) => void;
 }
 
 const normalizePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -82,6 +84,7 @@ export const useHotkeys = ({
   setIsHotkeyHelpOpen,
   isSettingsModalOpen,
   setIsSettingsModalOpen,
+  onNavigateToExplore,
 }: HotkeyProps) => {
   const {
     selectedImage,
@@ -356,6 +359,13 @@ export const useHotkeys = ({
     }},
     { id: 'add-folder', name: 'Add Folder', description: 'Open a new folder', hotkey: 'Ctrl+O', action: handleSelectFolder },
     { id: 'toggle-view', name: 'Toggle List/Grid View', description: 'Switch between list and grid view', hotkey: 'Ctrl+L', action: toggleViewMode },
+    ...(onNavigateToExplore
+      ? [
+          { id: 'explore-models', name: 'Explore: Models', description: 'Browse checkpoints in Explore', action: () => onNavigateToExplore('models') },
+          { id: 'explore-clusters', name: 'Explore: Clusters', description: 'Browse image clusters in Explore', action: () => onNavigateToExplore('clusters') },
+          { id: 'explore-collections', name: 'Explore: Collections', description: 'Browse collections in Explore', action: () => onNavigateToExplore('collections') },
+        ]
+      : []),
     ...directories.map(dir => ({
       id: `open-folder-${dir.id}`,
       name: `Go to Folder: ${dir.name}`,
@@ -364,7 +374,7 @@ export const useHotkeys = ({
         useImageStore.getState().toggleDirectoryVisibility(dir.id);
       }
     }))
-  ], [directories, handleSelectFolder, toggleViewMode, theme, setTheme]);
+  ], [directories, handleSelectFolder, toggleViewMode, theme, setTheme, onNavigateToExplore]);
 
   return { commands, registeredHotkeys: hotkeyManager.getRegisteredHotkeys() };
 };

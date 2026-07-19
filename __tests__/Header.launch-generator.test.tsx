@@ -105,7 +105,7 @@ describe('Header launch generator', () => {
     expect(launchGenerator).not.toHaveBeenCalled();
   });
 
-  it('renders and switches to the collections tab', () => {
+  it('renders and switches to the explore tab', () => {
     const onLibraryViewChange = vi.fn();
 
     render(
@@ -118,9 +118,9 @@ describe('Header launch generator', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /collections/i }));
+    fireEvent.click(screen.getByRole('button', { name: /explore/i }));
 
-    expect(onLibraryViewChange).toHaveBeenCalledWith('collections');
+    expect(onLibraryViewChange).toHaveBeenCalledWith('explore');
   });
 
   it('opens a dragged grid or table image in the ComfyUI workspace', () => {

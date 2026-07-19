@@ -18,14 +18,15 @@ export function useImageSelection() {
 
     const handleImageSelection = useCallback((image: IndexedImage, event: React.MouseEvent) => {
         const {
-            activeImageScope,
-            filteredImages,
             focusedImageIndex,
             previewImage,
             selectedImage,
             selectedImages,
+            getScopedFilteredImages,
         } = useImageStore.getState();
-        const selectionScope = activeImageScope ?? filteredImages;
+        // The displayed set (filtered ∩ node filter ∩ scope), so shift-click ranges never
+        // include images hidden by the active filters.
+        const selectionScope = getScopedFilteredImages();
 
         // Update focused index
         const clickedIndex = selectionScope.findIndex(img => img.id === image.id);

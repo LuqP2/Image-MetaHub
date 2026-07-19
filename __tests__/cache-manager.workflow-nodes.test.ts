@@ -256,6 +256,498 @@ describe('cacheManager workflowNodes hydration', () => {
     }
   });
 
+  it('patches only the chunk holding a reparsed image without rewriting the whole cache', async () => {
+    const getCacheChunk = vi.fn().mockImplementation(async ({ chunkIndex }) => {
+      if (chunkIndex === 0) {
+        return {
+          success: true,
+          data: [
+            {
+              id: 'dir-1::a.png',
+              name: 'a.png',
+              metadataString: '{"old":"a"}',
+              metadata: {},
+              lastModified: 1,
+              models: [],
+              loras: [],
+              scheduler: '',
+              workflowNodes: ['OldA'],
+            },
+          ],
+        };
+      }
+      return {
+        success: true,
+        data: [
+          {
+            id: 'dir-1::b.png',
+            name: 'b.png',
+            metadataString: '{"keep":"b"}',
+            metadata: {},
+            lastModified: 1,
+            models: [],
+            loras: [],
+            scheduler: '',
+            workflowNodes: ['KeepB'],
+          },
+        ],
+      };
+    });
+    const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
+    const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
+    const readCacheIndex = vi.fn().mockResolvedValue({ success: true, data: null });
+    const writeCacheIndex = vi.fn().mockResolvedValue({ success: true });
+
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockImplementation(async (cacheId: string) => {
+        if (cacheId === 'D:/library-flat') {
+          return {
+            success: true,
+            data: {
+              id: 'D:/library-flat',
+              directoryPath: 'D:/library',
+              directoryName: 'Library',
+              lastScan: 1,
+              imageCount: 2,
+              chunkCount: 2,
+              parserVersion: PARSER_VERSION,
+            },
+          };
+        }
+        return { success: true, data: null };
+      }),
+      getCacheChunk,
+      writeCacheChunk,
+      finalizeCacheWrite,
+      readCacheIndex,
+      writeCacheIndex,
+    };
+    (cacheManager as any).isElectron = true;
+
+    const patched = await cacheManager.patchCachedImages(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::b.png',
+          name: 'b.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{"new":"b"}',
+          lastModified: 2,
+          models: [],
+          loras: [],
+          scheduler: '',
+          workflowNodes: ['NewB'],
+        } as any,
+      ],
+      false
+    );
+
+    expect(patched).toBe(true);
+    // Only the chunk that actually contains b.png is written back.
+    expect(writeCacheChunk).toHaveBeenCalledTimes(1);
+    expect(writeCacheChunk.mock.calls[0][0].chunkIndex).toBe(1);
+    expect(writeCacheChunk.mock.calls[0][0].data[0].id).toBe('dir-1::b.png');
+    expect(writeCacheChunk.mock.calls[0][0].data[0].metadataString).toBe('{"new":"b"}');
+    // The record is refreshed in place (no chunk swap => no sourceCacheId).
+    expect(finalizeCacheWrite).toHaveBeenCalledTimes(1);
+    expect(finalizeCacheWrite.mock.calls[0][0].sourceCacheId).toBeUndefined();
+    expect(finalizeCacheWrite.mock.calls[0][0].record.chunkCount).toBe(2);
+    expect(finalizeCacheWrite.mock.calls[0][0].record.imageCount).toBe(2);
+    // The fallback scan (no index yet) rebuilds and persists the id->chunk index.
+    expect(writeCacheIndex).toHaveBeenCalledTimes(1);
+    expect(writeCacheIndex.mock.calls[0][0].data.chunkCount).toBe(2);
+    expect(writeCacheIndex.mock.calls[0][0].data.ids).toEqual({
+      'dir-1::a.png': 0,
+      'dir-1::b.png': 1,
+    });
+  });
+
+  it('reads only the target chunk when a valid id->chunk index exists', async () => {
+    const getCacheChunk = vi.fn().mockImplementation(async ({ chunkIndex }) => ({
+      success: true,
+      data: [
+        {
+          id: `dir-1::img-${chunkIndex}.png`,
+          name: `img-${chunkIndex}.png`,
+          metadataString: '{}',
+          metadata: {},
+          lastModified: 1,
+          models: [],
+          loras: [],
+          scheduler: '',
+        },
+      ],
+    }));
+    const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
+    const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
+    const writeCacheIndex = vi.fn().mockResolvedValue({ success: true });
+    const readCacheIndex = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        lastScan: 1,
+        chunkCount: 5,
+        ids: {
+          'dir-1::img-0.png': 0,
+          'dir-1::img-1.png': 1,
+          'dir-1::img-2.png': 2,
+          'dir-1::img-3.png': 3,
+          'dir-1::img-4.png': 4,
+        },
+      },
+    });
+
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockImplementation(async (cacheId: string) =>
+        cacheId === 'D:/library-flat'
+          ? {
+              success: true,
+              data: {
+                id: 'D:/library-flat',
+                directoryPath: 'D:/library',
+                directoryName: 'Library',
+                lastScan: 1,
+                imageCount: 5,
+                chunkCount: 5,
+                parserVersion: PARSER_VERSION,
+              },
+            }
+          : { success: true, data: null }
+      ),
+      getCacheChunk,
+      writeCacheChunk,
+      finalizeCacheWrite,
+      readCacheIndex,
+      writeCacheIndex,
+    };
+    (cacheManager as any).isElectron = true;
+
+    await cacheManager.patchCachedImages(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::img-3.png',
+          name: 'img-3.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{"new":true}',
+          lastModified: 2,
+          models: [],
+          loras: [],
+          scheduler: '',
+        } as any,
+      ],
+      false
+    );
+
+    // The index points straight at chunk 3, so no other chunk is read.
+    expect(getCacheChunk).toHaveBeenCalledTimes(1);
+    expect(getCacheChunk.mock.calls[0][0].chunkIndex).toBe(3);
+    expect(writeCacheChunk).toHaveBeenCalledTimes(1);
+    expect(writeCacheChunk.mock.calls[0][0].chunkIndex).toBe(3);
+    expect(finalizeCacheWrite).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to a full scan when the index is stale (lastScan mismatch)', async () => {
+    const getCacheChunk = vi.fn().mockImplementation(async ({ chunkIndex }) => ({
+      success: true,
+      data: [
+        {
+          id: `dir-1::img-${chunkIndex}.png`,
+          name: `img-${chunkIndex}.png`,
+          metadataString: '{}',
+          metadata: {},
+          lastModified: 1,
+          models: [],
+          loras: [],
+          scheduler: '',
+        },
+      ],
+    }));
+    const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
+    const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
+    const writeCacheIndex = vi.fn().mockResolvedValue({ success: true });
+    // Index built against an older scan; must be ignored.
+    const readCacheIndex = vi.fn().mockResolvedValue({
+      success: true,
+      data: { lastScan: 999, chunkCount: 3, ids: { 'dir-1::img-1.png': 1 } },
+    });
+
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockImplementation(async (cacheId: string) =>
+        cacheId === 'D:/library-flat'
+          ? {
+              success: true,
+              data: {
+                id: 'D:/library-flat',
+                directoryPath: 'D:/library',
+                directoryName: 'Library',
+                lastScan: 1,
+                imageCount: 3,
+                chunkCount: 3,
+                parserVersion: PARSER_VERSION,
+              },
+            }
+          : { success: true, data: null }
+      ),
+      getCacheChunk,
+      writeCacheChunk,
+      finalizeCacheWrite,
+      readCacheIndex,
+      writeCacheIndex,
+    };
+    (cacheManager as any).isElectron = true;
+
+    await cacheManager.patchCachedImages(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::img-1.png',
+          name: 'img-1.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{"new":true}',
+          lastModified: 2,
+          models: [],
+          loras: [],
+          scheduler: '',
+        } as any,
+      ],
+      false
+    );
+
+    // Stale index rejected => full scan of all 3 chunks, then index rebuilt.
+    expect(getCacheChunk).toHaveBeenCalledTimes(3);
+    expect(writeCacheChunk).toHaveBeenCalledTimes(1);
+    expect(writeCacheChunk.mock.calls[0][0].chunkIndex).toBe(1);
+    expect(writeCacheIndex).toHaveBeenCalledTimes(1);
+    expect(writeCacheIndex.mock.calls[0][0].data.ids).toEqual({
+      'dir-1::img-0.png': 0,
+      'dir-1::img-1.png': 1,
+      'dir-1::img-2.png': 2,
+    });
+  });
+
+  it('falls back to a full scan when the index points at the wrong chunk', async () => {
+    // Layout changed but chunkCount/lastScan happen to match: the index says
+    // img-2.png is in chunk 0, but it is actually in chunk 2.
+    const getCacheChunk = vi.fn().mockImplementation(async ({ chunkIndex }) => ({
+      success: true,
+      data: [
+        {
+          id: `dir-1::img-${chunkIndex}.png`,
+          name: `img-${chunkIndex}.png`,
+          metadataString: '{}',
+          metadata: {},
+          lastModified: 1,
+          models: [],
+          loras: [],
+          scheduler: '',
+        },
+      ],
+    }));
+    const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
+    const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
+    const writeCacheIndex = vi.fn().mockResolvedValue({ success: true });
+    const readCacheIndex = vi.fn().mockResolvedValue({
+      success: true,
+      data: { lastScan: 1, chunkCount: 3, ids: { 'dir-1::img-2.png': 0 } },
+    });
+
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockImplementation(async (cacheId: string) =>
+        cacheId === 'D:/library-flat'
+          ? {
+              success: true,
+              data: {
+                id: 'D:/library-flat',
+                directoryPath: 'D:/library',
+                directoryName: 'Library',
+                lastScan: 1,
+                imageCount: 3,
+                chunkCount: 3,
+                parserVersion: PARSER_VERSION,
+              },
+            }
+          : { success: true, data: null }
+      ),
+      getCacheChunk,
+      writeCacheChunk,
+      finalizeCacheWrite,
+      readCacheIndex,
+      writeCacheIndex,
+    };
+    (cacheManager as any).isElectron = true;
+
+    const patched = await cacheManager.patchCachedImages(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::img-2.png',
+          name: 'img-2.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{"new":true}',
+          lastModified: 2,
+          models: [],
+          loras: [],
+          scheduler: '',
+        } as any,
+      ],
+      false
+    );
+
+    expect(patched).toBe(true);
+    // Chunk 0 read via the (wrong) index, verification fails, then full scan.
+    expect(writeCacheChunk).toHaveBeenCalledTimes(1);
+    expect(writeCacheChunk.mock.calls[0][0].chunkIndex).toBe(2);
+    expect(writeCacheChunk.mock.calls[0][0].data[0].metadataString).toBe('{"new":true}');
+  });
+
+  it('does not write anything when the reparsed image is not in the cache variant', async () => {
+    const getCacheChunk = vi.fn().mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'dir-1::other.png',
+          name: 'other.png',
+          metadataString: '{}',
+          metadata: {},
+          lastModified: 1,
+          models: [],
+          loras: [],
+          scheduler: '',
+        },
+      ],
+    });
+    const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
+    const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
+
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockImplementation(async (cacheId: string) =>
+        cacheId === 'D:/library-flat'
+          ? {
+              success: true,
+              data: {
+                id: 'D:/library-flat',
+                directoryPath: 'D:/library',
+                directoryName: 'Library',
+                lastScan: 1,
+                imageCount: 1,
+                chunkCount: 1,
+                parserVersion: PARSER_VERSION,
+              },
+            }
+          : { success: true, data: null }
+      ),
+      getCacheChunk,
+      writeCacheChunk,
+      finalizeCacheWrite,
+    };
+    (cacheManager as any).isElectron = true;
+
+    const patched = await cacheManager.patchCachedImages(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::missing.png',
+          name: 'missing.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{}',
+          lastModified: 2,
+          models: [],
+          loras: [],
+          scheduler: '',
+        } as any,
+      ],
+      false
+    );
+
+    expect(patched).toBe(false);
+    expect(writeCacheChunk).not.toHaveBeenCalled();
+    expect(finalizeCacheWrite).not.toHaveBeenCalled();
+  });
+
+  it('patches inline-metadata caches without touching chunk files', async () => {
+    const cacheData = vi.fn().mockResolvedValue({ success: true });
+    const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
+
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockImplementation(async (cacheId: string) =>
+        cacheId === 'D:/library-flat'
+          ? {
+              success: true,
+              data: {
+                id: 'D:/library-flat',
+                directoryPath: 'D:/library',
+                directoryName: 'Library',
+                lastScan: 1,
+                imageCount: 2,
+                parserVersion: PARSER_VERSION,
+                metadata: [
+                  {
+                    id: 'dir-1::keep.png',
+                    name: 'keep.png',
+                    metadataString: '{"keep":true}',
+                    metadata: {},
+                    lastModified: 1,
+                    models: [],
+                    loras: [],
+                    scheduler: '',
+                  },
+                  {
+                    id: 'dir-1::update.png',
+                    name: 'update.png',
+                    metadataString: '{"old":true}',
+                    metadata: {},
+                    lastModified: 1,
+                    models: [],
+                    loras: [],
+                    scheduler: '',
+                  },
+                ],
+              },
+            }
+          : { success: true, data: null }
+      ),
+      cacheData,
+      writeCacheChunk,
+    };
+    (cacheManager as any).isElectron = true;
+
+    const patched = await cacheManager.patchCachedImages(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::update.png',
+          name: 'update.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{"new":true}',
+          lastModified: 2,
+          models: [],
+          loras: [],
+          scheduler: '',
+        } as any,
+      ],
+      false
+    );
+
+    expect(patched).toBe(true);
+    expect(writeCacheChunk).not.toHaveBeenCalled();
+    expect(cacheData).toHaveBeenCalledTimes(1);
+    const written = cacheData.mock.calls[0][0].data.metadata;
+    expect(written.map((entry: any) => entry.id)).toEqual(['dir-1::keep.png', 'dir-1::update.png']);
+    expect(written[1].metadataString).toBe('{"new":true}');
+  });
+
   it('preserves unchanged inline metadata when applying a chunked cache delta', async () => {
     const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
     const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });

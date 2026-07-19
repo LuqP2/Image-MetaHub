@@ -14,6 +14,8 @@ interface FacetFilterSectionProps {
   emptyLabel?: string;
   searchPlaceholder?: string;
   defaultExpanded?: boolean;
+  /** Include-only facet (OR): hides the exclude control. */
+  hideExclude?: boolean;
 }
 
 const sortAlpha = (a: string, b: string) => a.toLowerCase().localeCompare(b.toLowerCase());
@@ -30,6 +32,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
   emptyLabel = 'No items available.',
   searchPlaceholder,
   defaultExpanded = true,
+  hideExclude = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [query, setQuery] = useState('');
@@ -218,6 +221,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                       >
                         <Plus className="h-3.5 w-3.5" />
                       </button>
+                      {!hideExclude && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -239,6 +243,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                       >
                         <Minus className="h-3.5 w-3.5" />
                       </button>
+                      )}
                     </div>
                   </div>
                 );

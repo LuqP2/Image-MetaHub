@@ -35,6 +35,7 @@ interface ImageTableProps {
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   groupBy?: ImageGroupByMode;
   groupSortOrder?: ImageGroupingSortOrder;
+  clusterByImageId?: Map<string, { id: string; label: string }>;
   jumpToGroupRequest?: { groupId: string; requestId: number } | null;
 }
 
@@ -84,6 +85,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   onOpenComfyUIWorkspace,
   groupBy = 'none',
   groupSortOrder = 'date-desc',
+  clusterByImageId,
   jumpToGroupRequest = null,
 }) => {
   const directories = useImageStore((state) => state.directories);
@@ -461,8 +463,8 @@ const ImageTable: React.FC<ImageTableProps> = ({
     [images, sortField, sortDirection, applySorting]
   );
   const groupedRows = useMemo<ImageGroupRenderItem[]>(
-    () => groupImages(sortedImages, groupBy, { sortOrder: groupSortOrder }).items,
-    [groupBy, groupSortOrder, sortedImages]
+    () => groupImages(sortedImages, groupBy, { sortOrder: groupSortOrder, clusterByImageId }).items,
+    [groupBy, groupSortOrder, sortedImages, clusterByImageId]
   );
   const enableRowThumbnails = sortedImages.length <= 5000;
 

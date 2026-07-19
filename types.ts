@@ -476,6 +476,8 @@ export interface ElectronAPI {
   writeCacheChunk: (args: { cacheId: string; chunkIndex: number; data: any }) => Promise<{ success: boolean; error?: string }>;
   finalizeCacheWrite: (args: { cacheId: string; record: any; sourceCacheId?: string }) => Promise<{ success: boolean; error?: string }>;
   clearCacheData: (cacheId: string) => Promise<{ success: boolean; error?: string }>;
+  writeCacheIndex: (args: { cacheId: string; data: { lastScan?: number; chunkCount: number; ids: Record<string, number> } }) => Promise<{ success: boolean; error?: string }>;
+  readCacheIndex: (args: { cacheId: string }) => Promise<{ success: boolean; data?: { lastScan?: number; chunkCount: number; ids: Record<string, number> } | null; error?: string }>;
   resolveThumbnailCacheBatch: (args: {
     candidates: ThumbnailCacheCandidate[];
   }) => Promise<{
@@ -1118,6 +1120,22 @@ export interface ComparisonMetadataPanelProps {
 /**
  * Image cluster - groups images with similar prompts
  */
+export type ImageScopeType = 'model' | 'cluster' | 'collection';
+
+/** The active dimension of the Explore surface (unifies Model View / Smart Library / Collections). */
+export type ExploreDimension = 'models' | 'clusters' | 'collections';
+
+/**
+ * A navigation scope: a single drill-in target (a model, cluster, or collection)
+ * that constrains the Library grid to the images belonging to it. Exclusive
+ * (one at a time); cumulative filters continue to apply within the scope.
+ */
+export interface ImageScope {
+  type: ImageScopeType;
+  id: string;
+  label: string;
+}
+
 export interface ImageCluster {
   id: string;                      // Hash-based cluster ID
   promptHash: string;              // Hash of the base prompt

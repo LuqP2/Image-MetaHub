@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon } from 'lucide-react';
+import { Settings, Bug, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon, Compass } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -8,30 +8,30 @@ import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
 import { buildProLicenseUrl } from '../utils/creatorAttribution';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
+import type { ExploreDimension } from '../types';
 
-type LibraryView = 'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui' | 'editor';
+type LibraryView = 'library' | 'explore' | 'collections' | 'comfyui' | 'editor';
 
 interface HeaderProps {
     onOpenSettings: () => void;
-    onOpenAnalytics: () => void;
     onOpenLicense: () => void;
     onGeneratorSetupNeeded?: () => void;
     libraryView?: LibraryView;
     onLibraryViewChange?: (view: LibraryView) => void;
+    onNavigateExplore?: (dimension: ExploreDimension) => void;
     onOpenDroppedImageInComfyUI?: (imageId: string) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ 
-    onOpenSettings, 
-    onOpenAnalytics, 
-    onOpenLicense, 
+const Header: React.FC<HeaderProps> = ({
+    onOpenSettings,
+    onOpenLicense,
     onGeneratorSetupNeeded,
     libraryView,
     onLibraryViewChange,
+    onNavigateExplore,
     onOpenDroppedImageInComfyUI,
 }) => {
   const {
-    canUseAnalytics,
     canUseComfyUI,
     canUseImageEditor,
     showProModal,
@@ -65,17 +65,6 @@ const Header: React.FC<HeaderProps> = ({
   const setSuccess = useImageStore((state) => state.setSuccess);
   const setError = useImageStore((state) => state.setError);
 
-  // Store hooks for Smart Library Actions
-  const directories = useImageStore((state) => state.directories);
-  const scanSubfolders = useImageStore((state) => state.scanSubfolders);
-  const isClustering = useImageStore((state) => state.isClustering);
-  const isAutoTagging = useImageStore((state) => state.isAutoTagging);
-  const startClustering = useImageStore((state) => state.startClustering);
-  const startAutoTagging = useImageStore((state) => state.startAutoTagging);
-
-  const primaryPath = directories[0]?.path ?? '';
-  const hasDirectories = directories.length > 0;
-  const DEFAULT_SIMILARITY_THRESHOLD = 0.88;
   const hasLaunchCommand = generatorLaunchCommand.trim().length > 0;
   const detectedGenerator = useMemo(
     () => detectGeneratorFromLaunchCommand(generatorLaunchCommand),
@@ -98,15 +87,6 @@ const Header: React.FC<HeaderProps> = ({
       ? a1111LastConnectionStatus
       : 'unknown';
 
-  const handleGenerateClusters = () => {
-    if (!primaryPath) return;
-    startClustering(primaryPath, scanSubfolders, DEFAULT_SIMILARITY_THRESHOLD);
-  };
-
-  const handleGenerateAutoTags = () => {
-    if (!primaryPath) return;
-    startAutoTagging(primaryPath, scanSubfolders);
-  };
 
   const checkGeneratorStatus = useCallback(async () => {
     if (!hasRelevantServerUrl || detectedGenerator.runtimeFamily === 'none') {
@@ -327,18 +307,27 @@ const Header: React.FC<HeaderProps> = ({
     };
   })();
 
-  const analyticsBadgeClass = canUseAnalytics ? 'text-gray-500' : 'text-amber-400';
+  const classicMode = useSettingsStore((state) => state.classicMode);
   const viewTabs = useMemo(
     () => [
       { id: 'library' as const, label: 'Library' },
-      { id: 'smart' as const, label: 'Smart Library', count: clustersCount > 0 ? clustersCount : null },
-      { id: 'model' as const, label: 'Model View' },
-      { id: 'node' as const, label: 'Node View' },
-      { id: 'collections' as const, label: 'Collections' },
+      { id: 'explore' as const, label: 'Explore', icon: Compass },
       { id: 'editor' as const, label: 'Image Editor', icon: ImageIcon },
       { id: 'comfyui' as const, label: 'ComfyUI', icon: Workflow },
     ],
-    [clustersCount]
+    []
+  );
+  // Classic mode: legacy labels as pure deep-links into Explore (no separate surfaces).
+  const classicTabs = useMemo(
+    () => (classicMode
+      ? [
+          { key: 'smart', label: 'Smart Library', count: clustersCount > 0 ? clustersCount : null, run: () => onNavigateExplore?.('clusters') },
+          { key: 'model', label: 'Model View', count: null, run: () => onNavigateExplore?.('models') },
+          { key: 'collections', label: 'Collections', count: null, run: () => onLibraryViewChange?.('collections') },
+          { key: 'node', label: 'Node View', count: null, run: () => onLibraryViewChange?.('library') },
+        ]
+      : []),
+    [classicMode, clustersCount, onLibraryViewChange, onNavigateExplore]
   );
   const utilityButtonClassName = 'app-top-icon-button';
   const handleViewTabClick = useCallback((view: LibraryView) => {
@@ -355,6 +344,7 @@ const Header: React.FC<HeaderProps> = ({
   }, [canUseComfyUI, canUseImageEditor, onLibraryViewChange, showProModal]);
 
   return (
+    <>
     <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-4 py-2.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
       <div className="container mx-auto flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
@@ -372,7 +362,6 @@ const Header: React.FC<HeaderProps> = ({
               <div className="app-top-segmented w-max">
                 {viewTabs.map((tab) => {
                   const Icon = 'icon' in tab ? tab.icon : null;
-                  const count = 'count' in tab ? tab.count : null;
                   const isComfyUITab = tab.id === 'comfyui';
                   return (
                     <button
@@ -422,23 +411,29 @@ const Header: React.FC<HeaderProps> = ({
                     >
                       {Icon && <Icon size={14} />}
                       <span>{tab.label}</span>
-                      {count ? (
-                        <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
-                          libraryView === tab.id
-                            ? 'border-white/20 bg-black/20 text-white/90'
-                            : 'border-gray-700/80 bg-gray-950/80 text-gray-500'
-                        }`}>
-                          {count}
-                        </span>
-                      ) : null}
                     </button>
                   );
                 })}
+                {classicTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={tab.run}
+                    className="app-top-segment whitespace-nowrap"
+                    title={`${tab.label} (opens Explore)`}
+                  >
+                    <span>{tab.label}</span>
+                    {tab.count ? (
+                      <span className="rounded-full border border-gray-700/80 bg-gray-950/80 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500">
+                        {tab.count}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
               </div>
             </div>
           )}
 
-          {(libraryView === 'library' || libraryView === 'node') && (
+          {libraryView === 'library' && (
             <>
               <span className="app-top-divider shrink-0" />
               <button
@@ -466,31 +461,6 @@ const Header: React.FC<HeaderProps> = ({
             </>
           )}
 
-          {libraryView === 'smart' && (
-            <>
-              <span className="app-top-divider shrink-0" />
-              <div className="app-top-segmented animate-in fade-in shrink-0 duration-300">
-                <button
-                  onClick={handleGenerateClusters}
-                  disabled={!hasDirectories || isClustering}
-                  className={`app-top-segment ${isClustering ? 'text-accent cursor-wait hover:text-accent' : ''} ${!hasDirectories ? 'cursor-not-allowed opacity-50' : ''}`}
-                  title="Generate clusters"
-                >
-                  <Layers size={14} className={isClustering ? 'animate-pulse' : ''} />
-                  <span>Cluster</span>
-                </button>
-                <button
-                  onClick={handleGenerateAutoTags}
-                  disabled={!hasDirectories || isAutoTagging}
-                  className={`app-top-segment ${isAutoTagging ? 'text-accent cursor-wait hover:text-accent' : ''} ${!hasDirectories ? 'cursor-not-allowed opacity-50' : ''}`}
-                  title="Generate auto-tags"
-                >
-                  <Sparkles size={14} className={isAutoTagging ? 'animate-pulse' : ''} />
-                  <span>Auto-Tag</span>
-                </button>
-              </div>
-            </>
-          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -535,22 +505,6 @@ const Header: React.FC<HeaderProps> = ({
               <Bug size={16} />
             </a>
             <button
-              onClick={() => {
-                if (canUseAnalytics) {
-                  onOpenAnalytics();
-                } else {
-                  showProModal('analytics');
-                }
-              }}
-              className={`${utilityButtonClassName} relative h-8 w-8 border-transparent bg-transparent`}
-              title={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'} aria-label={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'}
-            >
-              <BarChart3 size={16} />
-              <div className="absolute -right-0.5 -top-0.5">
-                <Crown className={`w-2.5 h-2.5 ${analyticsBadgeClass}`} />
-              </div>
-            </button>
-            <button
               onClick={onOpenSettings}
               className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent`}
               title="Open Settings" aria-label="Open Settings"
@@ -561,6 +515,7 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
     </header>
+    </>
   );
 };
 

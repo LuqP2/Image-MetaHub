@@ -97,4 +97,38 @@ describe('imageGrouping', () => {
       'oldest',
     ]);
   });
+
+  it('sections by model, ordering groups by size and labeling missing checkpoints', () => {
+    const result = groupImages([
+      makeImage('a', 'a.png', 1, ['SDXL']),
+      makeImage('b', 'b.png', 2, ['Flux']),
+      makeImage('c', 'c.png', 3, ['SDXL']),
+      makeImage('d', 'd.png', 4, []),
+    ], 'model');
+
+    expect(result.groups.map((group) => ({ label: group.label, count: group.count }))).toEqual([
+      { label: 'SDXL', count: 2 },
+      { label: 'Flux', count: 1 },
+      { label: 'Unknown model', count: 1 },
+    ]);
+    expect(result.items[0]).toEqual({ type: 'group-header', group: result.groups[0] });
+  });
+
+  it('sections by cluster via the membership map, bucketing unmatched images under "No cluster"', () => {
+    const clusterByImageId = new Map([
+      ['a', { id: 'cluster-1', label: 'Sunsets' }],
+      ['b', { id: 'cluster-1', label: 'Sunsets' }],
+    ]);
+
+    const result = groupImages([
+      makeImage('a', 'a.png', 1),
+      makeImage('b', 'b.png', 2),
+      makeImage('c', 'c.png', 3),
+    ], 'cluster', { clusterByImageId });
+
+    expect(result.groups.map((group) => ({ id: group.id, label: group.label, count: group.count }))).toEqual([
+      { id: 'cluster-cluster-1', label: 'Sunsets', count: 2 },
+      { id: 'cluster-__none__', label: 'No cluster', count: 1 },
+    ]);
+  });
 });
