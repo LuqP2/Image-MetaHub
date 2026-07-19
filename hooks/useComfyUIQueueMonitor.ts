@@ -325,7 +325,6 @@ export function useComfyUIQueueMonitor() {
           useGenerationQueueStore.getState().upsertExternalComfyUIJob({
             providerJobId: entry.promptId,
             status: 'processing',
-            progress: 0,
             prompt: entry.prompt,
           });
         });
