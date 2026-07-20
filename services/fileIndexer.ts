@@ -12,6 +12,8 @@ import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { traceCacheDebug } from '../utils/cacheDebugTrace';
 import { buildSupportedMediaRegex, inferMimeTypeFromName, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { getAvifDimensions, isAvifBuffer, parseAvifMetadata } from '../utils/avifMetadata.mjs';
+import { applyImageMetaHubAvifExtension } from '../utils/imageMetaHubAvifExtension.mjs';
 
 type ThrottledFunction<T extends (...args: any[]) => any> = T & {
   cancel: () => void;
@@ -152,14 +154,20 @@ function incrementCounter(counter: Record<string, number>, key: string) {
   counter[key] = (counter[key] ?? 0) + 1;
 }
 
+function resolveCatalogMimeType(fileName: string, ...declaredTypes: Array<string | undefined>): string {
+  return declaredTypes.find((value) => /^(image|video|audio)\//.test(value ?? ''))
+    ?? inferMimeTypeFromName(fileName);
+}
+
 function classifyFileType(source?: CatalogFileEntry): string {
   if (!source) {
     return 'unknown';
   }
 
-  const type = source.type ?? inferMimeTypeFromName(source.handle.name);
+  const type = resolveCatalogMimeType(source.handle.name, source.type);
   if (type === 'image/png') return 'png';
   if (type === 'image/webp') return 'webp';
+  if (type === 'image/avif') return 'avif';
   if (type === 'image/jpeg') return 'jpeg';
   if (type.startsWith('video/')) return 'video';
   if (type.startsWith('audio/')) return 'audio';
@@ -196,7 +204,7 @@ function readPngTextKeyword(
   };
 }
 
-function detectImageType(view: DataView): 'png' | 'jpeg' | 'webp' | null {
+function detectImageType(view: DataView): 'png' | 'jpeg' | 'webp' | 'avif' | null {
   if (view.byteLength < 12) {
     return null;
   }
@@ -211,6 +219,10 @@ function detectImageType(view: DataView): 'png' | 'jpeg' | 'webp' | null {
 
   if (view.getUint32(0) === 0x52494646 && view.getUint32(8) === 0x57454250) {
     return 'webp';
+  }
+
+  if (isAvifBuffer(view)) {
+    return 'avif';
   }
 
   return null;
@@ -417,7 +429,7 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string, absolutePath?:
       ? absolutePath
       : imagePath;
     // Generate JSON path by replacing extension with .json
-    const jsonPath = preferredPath.replace(/\.(png|jpg|jpeg|webp)$/i, '.json');
+    const jsonPath = preferredPath.replace(/\.(png|jpg|jpeg|webp|avif)$/i, '.json');
     
     // Check if path is absolute (has drive letter on Windows or starts with / on Unix)
     const isAbsolutePath = /^[a-zA-Z]:[\\/]/.test(jsonPath) || jsonPath.startsWith('/');
@@ -1226,7 +1238,25 @@ function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; heig
     }
   }
 
+  if (type === 'avif') {
+    return getAvifDimensions(buffer);
+  }
+
   return null;
+}
+
+async function parseAvifForIndexing(
+  buffer: ArrayBuffer,
+  truncationInfo?: { truncated: boolean },
+): Promise<ImageMetadata | null> {
+  const result = await parseAvifMetadata(buffer);
+  if (truncationInfo) {
+    truncationInfo.truncated ||= result.metadataTruncated;
+  }
+  if (!isProduction && result.errors.length > 0) {
+    console.warn('[AVIF] Metadata carrier warnings:', result.errors);
+  }
+  return result.rawMetadata as ImageMetadata | null;
 }
 
 // Main image metadata parser
@@ -1242,6 +1272,7 @@ async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata
       isPNG: detectedType === 'png',
       isJPEG: detectedType === 'jpeg',
       isWebP: detectedType === 'webp',
+      isAvif: detectedType === 'avif',
     });
   }
   
@@ -1261,6 +1292,9 @@ async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata
   }
   if (detectedType === 'webp') {
     return { metadata: await parseWebPMetadata(buffer), buffer };
+  }
+  if (detectedType === 'avif') {
+    return { metadata: await parseAvifForIndexing(buffer), buffer };
   }
   return { metadata: null, buffer };
 }
@@ -1423,13 +1457,13 @@ async function processSingleFileOptimized(
     let sidecarJson: EasyDiffusionJson | null = null;
     let bufferForDimensions: ArrayBuffer | undefined;
     let fileSizeValue: number | undefined = fileEntry.size;
-    // Set to true if parsePNGMetadata had to stop scanning chunks early because a
-    // chunk overran the buffer we gave it. Threaded through to the returned
+    // Set to true if a container metadata parser had to stop early because an
+    // item or chunk ran past the head-read buffer. Threaded through to the returned
     // IndexedImage (`_metadataTruncated`) so the Phase B enrichment loop can tell
     // "genuinely no metadata" apart from "metadata chunk was cut off mid-file" and
     // decide whether a full-file re-read is needed.
     const metadataTruncationInfo = { truncated: false };
-    const inferredType = fileEntry.type ?? inferMimeTypeFromName(fileEntry.handle.name);
+    const inferredType = resolveCatalogMimeType(fileEntry.handle.name, fileEntry.type);
     const isVideo = isVideoFileName(fileEntry.handle.name) || inferredType.startsWith('video/');
     const isAudio = isAudioFileName(fileEntry.handle.name) || inferredType.startsWith('audio/');
     let videoInfo: VideoInfo | null = null;
@@ -1450,6 +1484,8 @@ async function processSingleFileOptimized(
         rawMetadata = await parseJPEGMetadata(fileData);
       } else if (detectedType === 'webp') {
         rawMetadata = await parseWebPMetadata(fileData, metadataTruncationInfo);
+      } else if (detectedType === 'avif') {
+        rawMetadata = await parseAvifForIndexing(fileData, metadataTruncationInfo);
       } else {
         rawMetadata = null;
       }
@@ -1480,6 +1516,8 @@ async function processSingleFileOptimized(
         rawMetadata = await parseJPEGMetadata(fileData);
       } else if (detectedType === 'webp') {
         rawMetadata = await parseWebPMetadata(fileData, metadataTruncationInfo);
+      } else if (detectedType === 'avif') {
+        rawMetadata = await parseAvifForIndexing(fileData, metadataTruncationInfo);
       } else {
         rawMetadata = null;
       }
@@ -1525,10 +1563,14 @@ async function processSingleFileOptimized(
 
 let normalizedMetadata: BaseMetadata | undefined;
 if (rawMetadata) {
+  const rawMetadataRecord = rawMetadata as Record<string, unknown>;
+  const isAvifCarrier = rawMetadataRecord._carrierFormat === 'avif';
 
   // Priority 0: Check for MetaHub Save Node chunk (iTXt imagemetahub_data)
   // This has highest priority as it contains pre-extracted, validated metadata
-  if ('imagemetahub_data' in rawMetadata) {
+  // AVIF is the exception: its standalone standard XMP documents are canonical,
+  // while `imagemetahub_data` is retained only as a legacy fallback.
+  if ('imagemetahub_data' in rawMetadata && !isAvifCarrier) {
     try {
       const metaHubData = (rawMetadata as { imagemetahub_data: unknown }).imagemetahub_data;
       normalizedMetadata = await buildNormalizedMetadataFromMetaHubChunk(metaHubData);
@@ -1544,7 +1586,11 @@ if (rawMetadata) {
   }
 
   // Priority 1: Check for text-based formats (A1111, Forge, Fooocus all use 'parameters' string)
-  if (!normalizedMetadata && 'parameters' in rawMetadata && typeof rawMetadata.parameters === 'string') {
+  // An AVIF can carry both a ComfyUI graph (prompt/workflow) and an Image MetaHub
+  // 'parameters' string. Let the ComfyUI graph parser (Priority 2) win in that case
+  // instead of misparsing the compact 'parameters' string through the A1111 fallback.
+  if (!normalizedMetadata && 'parameters' in rawMetadata && typeof rawMetadata.parameters === 'string'
+      && !(isAvifCarrier && isComfyUIMetadata(rawMetadata))) {
     const params = rawMetadata.parameters;
     
     // Sub-priority 2.0: Check if parameters contains SwarmUI JSON format
@@ -1719,6 +1765,13 @@ if (rawMetadata) {
       rawMetadata = sidecarJson;
       normalizedMetadata = parseEasyDiffusionJson(sidecarJson);
     }
+  }
+
+  if ('imagemetahub_extension' in rawMetadata) {
+    normalizedMetadata = applyImageMetaHubAvifExtension(
+      normalizedMetadata as Record<string, unknown> | undefined,
+      rawMetadataRecord.imagemetahub_extension,
+    ) as BaseMetadata | undefined;
   }
 }
 
@@ -2054,6 +2107,12 @@ function compactRawMetadataForRuntime(
 
   if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string') {
     compactedRawMetadata.parametersPreview = rawMetadata.parameters.slice(0, RAW_METADATA_PREVIEW_BYTES);
+  }
+
+  for (const key of ['_carrierFormat', '_carrierConflicts', 'imagemetahub_extension'] as const) {
+    if (key in rawMetadata) {
+      compactedRawMetadata[key] = (rawMetadata as Record<string, unknown>)[key];
+    }
   }
 
   if ('imagemetahub_data' in rawMetadata && rawMetadata.imagemetahub_data && typeof rawMetadata.imagemetahub_data === 'object') {
@@ -2415,7 +2474,7 @@ export async function processFiles(
   ): IndexedImage => {
     const stat = statsLookup.get(entry.path);
     const fileSize = entry.size ?? stat?.size;
-    const inferredType = entry.type ?? stat?.type ?? inferMimeTypeFromName(entry.handle.name);
+    const inferredType = resolveCatalogMimeType(entry.handle.name, entry.type, stat?.type);
     const sortDate = entry.birthtimeMs ?? stat?.birthtimeMs ?? entry.lastModified;
     const catalogMetadata = {
       phase: 'catalog',
@@ -2985,10 +3044,10 @@ export async function processFiles(
       if (!fileSize || fileSize <= buffer.byteLength) {
         return false;
       }
-      const fileType = entry.source.type ?? inferMimeTypeFromName(entry.source.handle.name);
-      // PNG and WebP both store metadata in container chunks that a 64 KB head-read can
-      // cut off mid-file (WebP EXIF/XMP lives in RIFF chunks). Both need the full re-read.
-      if (fileType !== 'image/png' && fileType !== 'image/webp') {
+      const fileType = resolveCatalogMimeType(entry.source.handle.name, entry.source.type);
+      // PNG, WebP, and AVIF can all reference metadata beyond a 64 KB head read.
+      // AVIF commonly places XMP near the end of the ISO-BMFF file.
+      if (fileType !== 'image/png' && fileType !== 'image/webp' && fileType !== 'image/avif') {
         return false;
       }
       // Explicit signal: the head-read buffer cut a chunk off mid-file (e.g. a large
@@ -3025,7 +3084,7 @@ export async function processFiles(
       if (!fileSize || fileSize <= buffer.byteLength) {
         return false;
       }
-      const fileType = entry.source.type ?? inferMimeTypeFromName(entry.source.handle.name);
+      const fileType = resolveCatalogMimeType(entry.source.handle.name, entry.source.type);
       if (fileType !== 'image/png') {
         return false;
       }

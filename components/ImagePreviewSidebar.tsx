@@ -13,6 +13,7 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+import { getAvifCarrierConflicts } from '../utils/imageMetaHubAvifExtension.mjs';
 import { getElectronAbsoluteMediaPath, getRelativeImagePath, mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import ImageLineageSection from './ImageLineageSection';
@@ -604,6 +605,15 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               >
                 <CheckCircle size={12} className="flex-shrink-0" />
                 <span className="whitespace-nowrap">MetaHub Save Node</span>
+              </span>
+            )}
+            {getAvifCarrierConflicts(activeImage.metadata).length > 0 && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-300 border border-amber-500/30"
+                title="This AVIF contains conflicting prompt or workflow copies. Image MetaHub is using the standalone standard XMP value."
+              >
+                <AlertTriangle size={12} className="flex-shrink-0" />
+                <span className="whitespace-nowrap">Metadata conflict</span>
               </span>
             )}
           </div>

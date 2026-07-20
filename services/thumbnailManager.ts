@@ -1,6 +1,6 @@
 import { IndexedImage, ThumbnailStatus } from '../types';
 import cacheManager from './cacheManager';
-import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import {
   getLegacyThumbnailId,
   getThumbnailCacheCandidate,
@@ -886,6 +886,7 @@ class ThumbnailManager {
 
       let blob: Blob | null = null;
       const isVideo = isVideoAsset(image);
+      const isAvif = getFileExtension(image.name) === '.avif';
       const fileSize = image.fileSize;
 
       if (isElectron && isVideo && (!fileSize || fileSize > MAX_RENDERER_VIDEO_THUMBNAIL_BYTES)) {
@@ -893,7 +894,9 @@ class ThumbnailManager {
         return;
       }
 
-      if (isElectron && !isVideo) {
+      // Electron's renderer supports AVIF through Chromium, but nativeImage does
+      // not decode it on every platform. Route AVIF directly to createImageBitmap.
+      if (isElectron && !isVideo && !isAvif) {
         const fileHandle = (image.thumbnailHandle ?? image.handle) as ElectronFileHandle | undefined;
         const filePath = fileHandle?._filePath;
         if (filePath) {

@@ -8,6 +8,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
 import { areFilesystemPathsEqual } from '../utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from '../utils/directoryActivity';
+import { inferMimeTypeFromName, isImageFileName } from '../utils/mediaTypes.js';
 
 // Configure logging level
 const DEBUG = false;
@@ -73,11 +74,7 @@ const electronHandleGetFile = async function (this: { name: string; _filePath?: 
     const fileResult = await electronAPI.readFile(this._filePath);
     if (fileResult.success && fileResult.data) {
         const freshData = new Uint8Array(fileResult.data);
-        const type = this.name.toLowerCase().endsWith('.png')
-            ? 'image/png'
-            : this.name.toLowerCase().endsWith('.webp')
-                ? 'image/webp'
-                : 'image/jpeg';
+        const type = inferMimeTypeFromName(this.name, 'application/octet-stream');
         return new File([freshData as any], this.name, { type });
     }
 
@@ -110,9 +107,9 @@ async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle
     for await (const entry of (directoryHandle as any).values()) {
         const entryPath = path ? `${path}/${entry.name}` : entry.name;
         if (entry.kind === 'file') {
-            if (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg')) {
+            if (isImageFileName(entry.name)) {
                 const file = await entry.getFile();
-                files.push({ name: entryPath, lastModified: file.lastModified, size: file.size, type: file.type || 'image', birthtimeMs: file.lastModified, contentModifiedMs: file.lastModified });
+                files.push({ name: entryPath, lastModified: file.lastModified, size: file.size, type: file.type || inferMimeTypeFromName(entry.name), birthtimeMs: file.lastModified, contentModifiedMs: file.lastModified });
             }
         } else if (entry.kind === 'directory') {
             try {
@@ -139,9 +136,9 @@ async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, dir
         } else {
             const files = [];
             for await (const entry of (directoryHandle as any).values()) {
-                if (entry.kind === 'file' && (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg'))) {
+                if (entry.kind === 'file' && isImageFileName(entry.name)) {
                     const file = await entry.getFile();
-                    files.push({ name: file.name, lastModified: file.lastModified, size: file.size, type: file.type || 'image', birthtimeMs: file.lastModified, contentModifiedMs: file.lastModified });
+                    files.push({ name: file.name, lastModified: file.lastModified, size: file.size, type: file.type || inferMimeTypeFromName(file.name), birthtimeMs: file.lastModified, contentModifiedMs: file.lastModified });
                 }
             }
             return files;

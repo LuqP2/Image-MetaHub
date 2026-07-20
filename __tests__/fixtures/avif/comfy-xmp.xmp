@@ -1,0 +1,10 @@
+<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+    <rdf:Description rdf:about="" xmlns:comfy="https://github.com/Comfy-Org/ComfyUI">
+      <comfy:prompt>{&quot;1&quot;:{&quot;class_type&quot;:&quot;CheckpointLoaderSimple&quot;,&quot;inputs&quot;:{&quot;ckpt_name&quot;:&quot;fixture-model.safetensors&quot;}},&quot;2&quot;:{&quot;class_type&quot;:&quot;CLIPTextEncode&quot;,&quot;inputs&quot;:{&quot;text&quot;:&quot;AVIF fixture prompt&quot;,&quot;clip&quot;:[&quot;1&quot;,1]}},&quot;3&quot;:{&quot;class_type&quot;:&quot;CLIPTextEncode&quot;,&quot;inputs&quot;:{&quot;text&quot;:&quot;fixture negative&quot;,&quot;clip&quot;:[&quot;1&quot;,1]}},&quot;4&quot;:{&quot;class_type&quot;:&quot;EmptyLatentImage&quot;,&quot;inputs&quot;:{&quot;width&quot;:2,&quot;height&quot;:2,&quot;batch_size&quot;:1}},&quot;5&quot;:{&quot;class_type&quot;:&quot;KSampler&quot;,&quot;inputs&quot;:{&quot;seed&quot;:42,&quot;steps&quot;:20,&quot;cfg&quot;:7,&quot;sampler_name&quot;:&quot;euler&quot;,&quot;scheduler&quot;:&quot;normal&quot;,&quot;denoise&quot;:1,&quot;model&quot;:[&quot;1&quot;,0],&quot;positive&quot;:[&quot;2&quot;,0],&quot;negative&quot;:[&quot;3&quot;,0],&quot;latent_image&quot;:[&quot;4&quot;,0]}}}</comfy:prompt>
+      <comfy:workflow>{&quot;nodes&quot;:[{&quot;id&quot;:1,&quot;type&quot;:&quot;CheckpointLoaderSimple&quot;},{&quot;id&quot;:2,&quot;type&quot;:&quot;CLIPTextEncode&quot;},{&quot;id&quot;:3,&quot;type&quot;:&quot;CLIPTextEncode&quot;},{&quot;id&quot;:4,&quot;type&quot;:&quot;EmptyLatentImage&quot;},{&quot;id&quot;:5,&quot;type&quot;:&quot;KSampler&quot;}],&quot;version&quot;:1}</comfy:workflow>
+    </rdf:Description>
+  </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>

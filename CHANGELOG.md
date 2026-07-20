@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Run Current Workflow**: Added a "Run" button to the top of the Queue that queues whatever workflow is currently loaded in the embedded ComfyUI workspace, so you can trigger a generation from anywhere in the app.
 
 
+### Added
+
+- **First-Class AVIF Metadata**: Added AVIF discovery, Chromium-backed previews and thumbnails, dimensions, ComfyUI XMP prompt/workflow parsing, legacy AVIF EXIF compatibility, CLI parsing, bounded full-file fallback for late XMP, metadata stripping, and metadata-preserving AVIF export.
+
+### Improved
+
+- **Compact AVIF Exports**: Image MetaHub now leaves the full prompt and workflow graphs in their standard ComfyUI XMP fields instead of duplicating them. Its private AVIF extension keeps app-specific fields (tags, notes, attribution, analytics, lineage, source generator) plus the extracted parameter snapshot (model, seed, steps, cfg, sampler, scheduler, negative prompt) that the Save Node captures, since those are more reliable than re-deriving them from arbitrary custom-node graphs. Conflicting legacy copies are surfaced without overriding the standalone XMP value.
+
 ### Fixed
 
 - **Reparse Metadata Performance**: "Reparse Metadata" no longer rewrites the entire folder cache for a single image, so it stays fast regardless of library size. It patches only the cache chunk(s) that hold the reparsed images instead of re-serializing every entry, and uses a persistent id→chunk index to read just the target chunk directly rather than scanning the whole cache — a big win on large ComfyUI libraries where each chunk can be tens of MB. The index is validated on every use and rebuilt automatically if the cache changed, so it never serves stale data.

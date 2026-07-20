@@ -41,6 +41,7 @@ import {
 import { bulkSaveShadowMetadata } from '../services/imageAnnotationsStorage';
 import { copyEditableMetadata, readEditableMetadataClipboard } from '../services/metadataClipboard';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+import { getAvifCarrierConflicts } from '../utils/imageMetaHubAvifExtension.mjs';
 import { buildEffectiveMetadata, getEditableMetadataFields } from '../utils/editableMetadata';
 import { eventMatchesKeybinding, isTypingElement } from '../utils/hotkeyUtils';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
@@ -3344,6 +3345,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     title="MetaHub Save Node"
                   >
                     MetaHub Save Node
+                  </span>
+                )}
+                {getAvifCarrierConflicts(liveImage.metadata).length > 0 && (
+                  <span
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-300"
+                    title="This AVIF contains conflicting prompt or workflow copies. Image MetaHub is using the standalone standard XMP value."
+                  >
+                    <AlertTriangle className="h-3 w-3" />
+                    Metadata conflict
                   </span>
                 )}
                 <span className="shrink-0 text-[10px] text-gray-500" title={createdAtLabel}>

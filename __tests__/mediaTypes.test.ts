@@ -25,4 +25,10 @@ describe('media type helpers', () => {
     expect(isSupportedMediaFileName(fileName)).toBe(true);
     expect(resolveMediaType(fileName)).toBe('audio');
   });
+
+  it('discovers AVIF files as first-class images', () => {
+    expect(inferMimeTypeFromName('workflow.AVIF')).toBe('image/avif');
+    expect(isSupportedMediaFileName('workflow.AVIF')).toBe(true);
+    expect(resolveMediaType('workflow.AVIF')).toBe('image');
+  });
 });
