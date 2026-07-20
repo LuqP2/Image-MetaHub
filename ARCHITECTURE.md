@@ -6,7 +6,7 @@
 
 ### Current Stack
 
-* **Version:** 0.17.5
+* **Version:** 0.18.0
 * **Renderer:** React 18 + TypeScript
 * **Desktop shell:** Electron 38
 * **State management:** Zustand
