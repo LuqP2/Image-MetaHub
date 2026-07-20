@@ -38,7 +38,7 @@ export const SettingsSidebarNav: React.FC<SettingsSidebarNavProps> = ({
                 onClick={() => onSelectTab(item.id)}
                 className={`${baseButtonClassName} ${
                   isActive
-                    ? 'bg-blue-500/15 text-blue-200 ring-1 ring-blue-500/30'
+                    ? 'bg-blue-500/15 text-blue-200 light:text-blue-800 ring-1 ring-blue-500/30'
                     : 'text-gray-300 hover:bg-gray-800 hover:text-gray-100'
                 }`}
               >
@@ -56,7 +56,7 @@ export const SettingsSidebarNav: React.FC<SettingsSidebarNavProps> = ({
           onClick={() => onSelectTab('license')}
           className={`${baseButtonClassName} w-full justify-center md:justify-start ${
             activeTab === 'license'
-              ? 'bg-yellow-500/10 text-yellow-200 ring-1 ring-yellow-500/30'
+              ? 'bg-yellow-500/10 text-yellow-200 light:text-yellow-800 ring-1 ring-yellow-500/30'
               : 'text-gray-300 hover:bg-gray-800 hover:text-gray-100'
           }`}
         >

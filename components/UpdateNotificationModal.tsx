@@ -157,7 +157,7 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
               </div>
             </div>
           ) : status === 'error' ? (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200 light:text-red-800">
               {error || 'The update could not be downloaded. Please try again later.'}
             </div>
           ) : (

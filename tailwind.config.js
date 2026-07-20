@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+import plugin from 'tailwindcss/plugin';
+
 export default {
   content: [
     "./index.html",
@@ -29,5 +31,12 @@ export default {
       }
     },
   },
-  plugins: [],
+  plugins: [
+    // Override utilities only under the light theme, without regressing the
+    // dark themes (dark/dracula/nord/ocean). Use for accent-colored text
+    // (red/blue/yellow literals) that don't flip via the gray/accent CSS vars.
+    plugin(({ addVariant }) => {
+      addVariant('light', '[data-theme="light"] &');
+    }),
+  ],
 }

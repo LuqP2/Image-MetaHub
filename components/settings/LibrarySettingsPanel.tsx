@@ -181,9 +181,9 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           </select>
 
           <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3">
-            <p className="text-sm font-medium text-blue-100">{selectedStartupVerificationMode.title}</p>
-            <p className="mt-1 text-sm text-blue-100/85">{selectedStartupVerificationMode.description}</p>
-            <p className="mt-2 text-xs text-blue-200/70">{selectedStartupVerificationMode.impact}</p>
+            <p className="text-sm font-medium text-blue-100 light:text-blue-900">{selectedStartupVerificationMode.title}</p>
+            <p className="mt-1 text-sm text-blue-100/85 light:text-blue-900/85">{selectedStartupVerificationMode.description}</p>
+            <p className="mt-2 text-xs text-blue-200/70 light:text-blue-800/80">{selectedStartupVerificationMode.impact}</p>
           </div>
         </div>
       </SettingsSectionCard>
