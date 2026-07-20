@@ -1040,9 +1040,270 @@ function overwriteItemDataWhenItFits(container, location, payload) {
 }
 
 /**
+ * @param {Uint8Array[]} parts
+ * @returns {Uint8Array}
+ */
+function concatBytes(...parts) {
+  let total = 0;
+  for (const part of parts) total += part.byteLength;
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.byteLength;
+  }
+  return output;
+}
+
+/**
+ * Add `delta` to a file offset stored in a sized integer field, translating its
+ * absolute position into the containing box slice.
+ *
+ * @param {DataView} view
+ * @param {IntegerField} field
+ * @param {number} sliceBase
+ * @param {number} delta
+ */
+function addToOffsetField(view, field, sliceBase, delta) {
+  const at = field.position - sliceBase;
+  if (field.width === 4) {
+    view.setUint32(at, field.value + delta);
+  } else if (field.width === 8) {
+    view.setBigUint64(at, BigInt(field.value + delta));
+  }
+}
+
+/**
+ * Minimal XMP packet used when an AVIF has no XMP item yet. `updateImageMetaHubXmp`
+ * injects the Image MetaHub block into its otherwise-empty `rdf:RDF`.
+ *
+ * @returns {string}
+ */
+function createBaseXmpPacket() {
+  return [
+    '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>',
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/">',
+    '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
+    '  </rdf:RDF>',
+    '</x:xmpmeta>',
+    '<?xpacket end="w"?>',
+  ].join('\n');
+}
+
+/**
+ * Serialize an `infe` (ItemInfoEntry, version 2) box declaring a new `mime` item.
+ *
+ * @param {number} itemId
+ * @param {string} contentType
+ * @returns {Uint8Array}
+ */
+function serializeInfeMime(itemId, contentType) {
+  const nameBytes = textEncoder.encode('XMP\0');
+  const typeBytes = textEncoder.encode('mime');
+  const contentTypeBytes = textEncoder.encode(`${contentType}\0`);
+  const boxLength = 8 + 4 + 2 + 2 + 4 + nameBytes.length + contentTypeBytes.length;
+  const box = new Uint8Array(boxLength);
+  const view = createView(box);
+  view.setUint32(0, boxLength);
+  box.set(textEncoder.encode('infe'), 4);
+  box[8] = 2; // version 2
+  let offset = 12; // after size(4) + type(4) + version/flags(4)
+  view.setUint16(offset, itemId);
+  offset += 2;
+  view.setUint16(offset, 0); // item_protection_index
+  offset += 2;
+  box.set(typeBytes, offset);
+  offset += 4;
+  box.set(nameBytes, offset);
+  offset += nameBytes.length;
+  box.set(contentTypeBytes, offset);
+  return box;
+}
+
+/**
+ * Add a standard XMP item to an AVIF that has none, so metadata can be written to
+ * a plain AVIF. Only the common single-`meta` layout with 32-bit box sizes and
+ * file-offset (`construction_method` 0) item locations pointing after `meta` is
+ * handled; any other shape throws rather than risk corrupting the file.
+ *
+ * @param {AvifContainer} container
+ * @param {Uint8Array} xmpBytes
+ * @returns {ArrayBuffer}
+ */
+function createAvifXmpItem(container, xmpBytes) {
+  const { bytes, view } = container;
+  const unsupported = () => new Error('AVIF has no XMP item and its layout cannot be safely extended to add one.');
+
+  const topLevelBoxes = listBoxes(view, 0, bytes.byteLength);
+  const metaBox = topLevelBoxes.find((boxRange) => boxRange.type === 'meta');
+  if (!metaBox || metaBox.truncated || metaBox.openEnded || metaBox.contentStart - metaBox.start !== 8) {
+    throw unsupported();
+  }
+  const metaChildren = listBoxes(view, metaBox.contentStart + 4, metaBox.contentEnd);
+  const childrenAreContiguous = metaChildren.length > 0
+    && metaChildren[0].start === metaBox.contentStart + 4
+    && metaChildren[metaChildren.length - 1].end === metaBox.contentEnd
+    && metaChildren.every((child, index) => (index === 0 || child.start === metaChildren[index - 1].end)
+      && !child.truncated && !child.openEnded && child.contentStart - child.start === 8);
+  if (!childrenAreContiguous) {
+    throw unsupported();
+  }
+  const iinfBox = metaChildren.find((boxRange) => boxRange.type === 'iinf');
+  const ilocBox = metaChildren.find((boxRange) => boxRange.type === 'iloc');
+  if (!iinfBox || !ilocBox) {
+    throw unsupported();
+  }
+
+  for (const location of container.itemLocations) {
+    if (location.constructionMethod !== 0 || location.dataReferenceIndex !== 0) {
+      throw unsupported();
+    }
+    for (const extent of location.extents) {
+      const effective = location.baseOffset.value + extent.offset.value;
+      if (!Number.isSafeInteger(effective) || effective < metaBox.end) {
+        throw unsupported();
+      }
+    }
+  }
+
+  const ilocVersion = view.getUint8(ilocBox.contentStart);
+  const firstSizeByte = view.getUint8(ilocBox.contentStart + 4);
+  const secondSizeByte = view.getUint8(ilocBox.contentStart + 5);
+  const offsetSize = (firstSizeByte >> 4) & 0x0f;
+  const lengthSize = firstSizeByte & 0x0f;
+  const baseOffsetSize = (secondSizeByte >> 4) & 0x0f;
+  const indexSize = (ilocVersion === 1 || ilocVersion === 2) ? (secondSizeByte & 0x0f) : 0;
+  const idWidth = ilocVersion < 2 ? 2 : 4;
+  if (![4, 8].includes(offsetSize) || ![4, 8].includes(lengthSize) || ![0, 4, 8].includes(baseOffsetSize) || indexSize !== 0) {
+    throw unsupported();
+  }
+
+  const newItemId = container.itemInfos.reduce((max, itemInfo) => Math.max(max, itemInfo.id), 0) + 1;
+  if (idWidth === 2 && newItemId > 0xffff) {
+    throw unsupported();
+  }
+
+  const infeBytes = serializeInfeMime(newItemId, XMP_CONTENT_TYPE);
+  const constructionFieldSize = (ilocVersion === 1 || ilocVersion === 2) ? 2 : 0;
+  const entryLength = idWidth + constructionFieldSize + 2 + baseOffsetSize + 2 + offsetSize + lengthSize;
+  const delta = infeBytes.byteLength + entryLength;
+  const xmpPayloadOffset = bytes.byteLength + delta + 8;
+
+  const narrowOffset = baseOffsetSize > 0 ? baseOffsetSize === 4 : offsetSize === 4;
+  if (narrowOffset && xmpPayloadOffset > 0xffffffff) {
+    throw unsupported();
+  }
+  for (const location of container.itemLocations) {
+    const fields = baseOffsetSize > 0 ? [location.baseOffset] : location.extents.map((extent) => extent.offset);
+    if (fields.some((field) => field.width === 4 && field.value + delta > 0xffffffff)) {
+      throw unsupported();
+    }
+  }
+
+  // Build the new iloc entry pointing at the appended XMP payload.
+  const entry = new Uint8Array(entryLength);
+  const entryView = createView(entry);
+  let entryOffset = 0;
+  if (idWidth === 2) {
+    entryView.setUint16(entryOffset, newItemId);
+  } else {
+    entryView.setUint32(entryOffset, newItemId);
+  }
+  entryOffset += idWidth;
+  if (constructionFieldSize) {
+    entryView.setUint16(entryOffset, 0); // construction_method 0
+    entryOffset += 2;
+  }
+  entryView.setUint16(entryOffset, 0); // data_reference_index
+  entryOffset += 2;
+  const usesBaseOffset = baseOffsetSize > 0;
+  if (baseOffsetSize === 4) {
+    entryView.setUint32(entryOffset, xmpPayloadOffset);
+  } else if (baseOffsetSize === 8) {
+    entryView.setBigUint64(entryOffset, BigInt(xmpPayloadOffset));
+  }
+  entryOffset += baseOffsetSize;
+  entryView.setUint16(entryOffset, 1); // extent_count
+  entryOffset += 2;
+  const extentOffsetValue = usesBaseOffset ? 0 : xmpPayloadOffset;
+  if (offsetSize === 4) {
+    entryView.setUint32(entryOffset, extentOffsetValue);
+  } else {
+    entryView.setBigUint64(entryOffset, BigInt(extentOffsetValue));
+  }
+  entryOffset += offsetSize;
+  if (lengthSize === 4) {
+    entryView.setUint32(entryOffset, xmpBytes.byteLength);
+  } else {
+    entryView.setBigUint64(entryOffset, BigInt(xmpBytes.byteLength));
+  }
+
+  // Rebuild iinf: bump entry_count, append the new infe, fix the box size.
+  const iinfBytes = bytes.slice(iinfBox.start, iinfBox.end);
+  const iinfView = createView(iinfBytes);
+  const iinfVersion = iinfBytes[8];
+  if (iinfVersion === 0) {
+    iinfView.setUint16(12, iinfView.getUint16(12) + 1);
+  } else {
+    iinfView.setUint32(12, iinfView.getUint32(12) + 1);
+  }
+  const newIinf = concatBytes(iinfBytes, infeBytes);
+  createView(newIinf).setUint32(0, newIinf.byteLength);
+
+  // Rebuild iloc: shift existing file offsets by delta, bump item_count, append entry.
+  const ilocBytes = bytes.slice(ilocBox.start, ilocBox.end);
+  const ilocView = createView(ilocBytes);
+  for (const location of container.itemLocations) {
+    if (usesBaseOffset) {
+      addToOffsetField(ilocView, location.baseOffset, ilocBox.start, delta);
+    } else {
+      for (const extent of location.extents) {
+        addToOffsetField(ilocView, extent.offset, ilocBox.start, delta);
+      }
+    }
+  }
+  if (ilocVersion < 2) {
+    ilocView.setUint16(14, ilocView.getUint16(14) + 1);
+  } else {
+    ilocView.setUint32(14, ilocView.getUint32(14) + 1);
+  }
+  const newIloc = concatBytes(ilocBytes, entry);
+  createView(newIloc).setUint32(0, newIloc.byteLength);
+
+  // Reassemble meta with the grown iinf/iloc, then the file with the appended XMP mdat.
+  const metaVersionFlags = bytes.slice(metaBox.contentStart, metaBox.contentStart + 4);
+  const childSegments = metaChildren.map((child) => {
+    if (child === iinfBox) return newIinf;
+    if (child === ilocBox) return newIloc;
+    return bytes.slice(child.start, child.end);
+  });
+  const metaContent = concatBytes(metaVersionFlags, ...childSegments);
+  const newMeta = concatBytes(new Uint8Array(8), metaContent);
+  const newMetaView = createView(newMeta);
+  newMetaView.setUint32(0, newMeta.byteLength);
+  newMeta.set(textEncoder.encode('meta'), 4);
+  if (newMeta.byteLength !== (metaBox.end - metaBox.start) + delta) {
+    throw unsupported();
+  }
+
+  const xmpMdat = concatBytes(new Uint8Array(8), xmpBytes);
+  const xmpMdatView = createView(xmpMdat);
+  xmpMdatView.setUint32(0, xmpMdat.byteLength);
+  xmpMdat.set(textEncoder.encode('mdat'), 4);
+
+  const output = concatBytes(
+    bytes.slice(0, metaBox.start),
+    newMeta,
+    bytes.slice(metaBox.end),
+    xmpMdat,
+  );
+  return /** @type {ArrayBuffer} */ (output.buffer);
+}
+
+/**
  * Rewrite the one standard AVIF XMP item by appending a new `mdat` payload and
- * repointing its `iloc` entry. Encoded AV1 data and unrelated XMP text are not
- * reserialized.
+ * repointing its `iloc` entry, or create an XMP item when the AVIF has none.
+ * Encoded AV1 data and unrelated XMP text are not reserialized.
  *
  * @param {ArrayBuffer | ArrayBufferView} input
  * @param {{ extension: Record<string, unknown> }} update
@@ -1056,8 +1317,15 @@ export function rewriteAvifMetadata(input, update) {
   const xmpItems = container.itemInfos.filter(
     (itemInfo) => itemInfo.type === 'mime' && itemInfo.contentType === XMP_CONTENT_TYPE,
   );
-  if (xmpItems.length !== 1) {
-    throw new Error(`Expected exactly one writable AVIF XMP item, found ${xmpItems.length}.`);
+  if (xmpItems.length > 1) {
+    throw new Error(`Expected at most one writable AVIF XMP item, found ${xmpItems.length}.`);
+  }
+  if (xmpItems.length === 0) {
+    const freshXmp = textEncoder.encode(updateImageMetaHubXmp(createBaseXmpPacket(), update.extension));
+    if (freshXmp.byteLength > MAX_METADATA_ITEM_BYTES) {
+      throw new Error(`AVIF XMP item exceeds the ${MAX_METADATA_ITEM_BYTES}-byte safety limit.`);
+    }
+    return createAvifXmpItem(container, freshXmp);
   }
   const xmpItem = xmpItems[0];
   const current = readItemData(container, xmpItem);

@@ -3080,7 +3080,10 @@ function setupFileOperationHandlers() {
       throw new Error('This file format can only be exported with metadata preserved.');
     }
 
-    if (metadataPolicy === 'strip' && targetFormat === 'original') {
+    // AVIF cannot be re-encoded to another format in the main process (nativeImage
+    // has no AVIF decoder), so a strip export of an AVIF always strips in place and
+    // stays AVIF rather than falling through to the nativeImage conversion path.
+    if (metadataPolicy === 'strip' && (targetFormat === 'original' || sourceExtension === '.avif')) {
       const sourceBuffer = await fs.readFile(sourcePath);
       return {
         buffer: stripMetadataFromImageBuffer(sourceBuffer, sourceExtension),

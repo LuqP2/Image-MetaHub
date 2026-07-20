@@ -384,12 +384,51 @@ describe('AVIF metadata carrier', () => {
     expect(result.metadataTruncated).toBe(true);
   });
 
-  it('rejects metadata rewrites when no standard XMP item exists', () => {
+  it('creates an XMP item in an AVIF that has none, then reads it back', async () => {
     const source = buildAvif([]);
 
+    const written = rewriteAvifMetadata(source, {
+      extension: { version: 1, tags: ['fresh'], notes: 'added to a plain AVIF' },
+    });
+    const result = await parseAvifMetadata(written);
+
+    expect(result.rawMetadata?.imagemetahub_extension).toMatchObject({
+      version: 1,
+      tags: ['fresh'],
+      notes: 'added to a plain AVIF',
+    });
+  });
+
+  it('creates an XMP item without corrupting an existing item that must shift', async () => {
+    const workflow = { nodes: [{ id: 7, type: 'KSampler' }] };
+    const prompt = { '7': { class_type: 'KSampler', inputs: {} } };
+    const source = buildAvif([
+      { id: 1, type: 'Exif', parts: [buildExifPayload(workflow, prompt)] },
+    ]);
+
+    const written = rewriteAvifMetadata(source, { extension: { version: 1, tags: ['added'] } });
+    const result = await parseAvifMetadata(written);
+
+    // The new extension is present...
+    expect(result.rawMetadata?.imagemetahub_extension).toMatchObject({ version: 1, tags: ['added'] });
+    // ...and the pre-existing Exif item still reads correctly, proving its file
+    // offset was shifted rather than corrupted when meta grew.
+    expect(result.rawMetadata).toMatchObject({
+      workflow: JSON.stringify(workflow),
+      prompt: JSON.stringify(prompt),
+    });
+  });
+
+  it('rejects metadata rewrites when several XMP items exist', () => {
+    const xmp = encoder.encode(buildComfyXmp({ '1': {} }, { nodes: [] }));
+    const source = buildAvif([
+      { id: 3, type: 'mime', contentType: 'application/rdf+xml', parts: [xmp] },
+      { id: 4, type: 'mime', contentType: 'application/rdf+xml', parts: [xmp] },
+    ]);
+
     expect(() => rewriteAvifMetadata(source, {
-      extension: { version: 1, tags: ['cannot-write'] },
-    })).toThrow('Expected exactly one writable AVIF XMP item, found 0.');
+      extension: { version: 1, tags: ['ambiguous'] },
+    })).toThrow('Expected at most one writable AVIF XMP item, found 2.');
   });
 
   it('rewrites only the Image MetaHub XMP extension and remains repeatable', async () => {
