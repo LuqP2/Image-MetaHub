@@ -286,6 +286,27 @@ describe('AVIF metadata carrier', () => {
     expect(result.xmpNamespaces).toContain('http://purl.org/dc/elements/1.1/');
   });
 
+  it('reads the primary item ispe for a multi-item AVIF, not the first ispe', () => {
+    // Two ispe properties share the ipco container: a 512x512 tile (index 1) and
+    // the 8192x8192 full image (index 2). ipma associates primary item 1 with the
+    // full-image property, and pitm names item 1 as primary.
+    const tileSpatialExtents = fullBox('ispe', 0, concat(uint32(512), uint32(512)));
+    const fullSpatialExtents = fullBox('ispe', 0, concat(uint32(8192), uint32(8192)));
+    const ipco = box('ipco', concat(tileSpatialExtents, fullSpatialExtents));
+    const ipma = fullBox('ipma', 0, concat(
+      uint32(1), // entry_count
+      uint16(1), // item_ID = 1
+      new Uint8Array([1]), // association_count = 1
+      new Uint8Array([2]), // property index 2 (the full-image ispe), essential bit clear
+    ));
+    const iprp = box('iprp', concat(ipco, ipma));
+    const pitm = fullBox('pitm', 0, uint16(1)); // primary item id = 1
+    const meta = fullBox('meta', 0, concat(pitm, iprp));
+    const buffer = concat(buildFileType(), meta).buffer;
+
+    expect(getAvifDimensions(buffer)).toEqual({ width: 8192, height: 8192 });
+  });
+
   it('joins split XMP extents and supports eight-byte iloc values', async () => {
     const prompt = { '8': { class_type: 'LoadImage', inputs: {} } };
     const workflow = { nodes: [{ id: 8, type: 'LoadImage' }] };
@@ -344,6 +365,32 @@ describe('AVIF metadata carrier', () => {
     const result = await parseAvifMetadata(buffer);
 
     expect(result.rawMetadata?.prompt).toBe(JSON.stringify(legacyPrompt));
+    expect(result.rawMetadata?._carrierConflicts).toBeUndefined();
+  });
+
+  it('does not flag a conflict for identical plain-text prompts across carriers', async () => {
+    // A higher-priority (ComfyUI) and a lower-priority (foreign namespace) carrier
+    // both store the same non-JSON prompt text. Textually identical documents are
+    // the same document, so no CarrierConflict should be reported.
+    const promptText = 'a plain text prompt, not json';
+    const plainTextXmp = [
+      '<x:xmpmeta xmlns:x="adobe:ns:meta/">',
+      '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
+      '    <rdf:Description'
+        + ' xmlns:comfy="https://github.com/Comfy-Org/ComfyUI"'
+        + ' xmlns:legacy="http://example.com/legacy"'
+        + ` comfy:prompt="${escapeXml(promptText)}" legacy:prompt="${escapeXml(promptText)}">`,
+      '    </rdf:Description>',
+      '  </rdf:RDF>',
+      '</x:xmpmeta>',
+    ].join('\n');
+    const buffer = buildAvif([
+      { id: 9, type: 'mime', contentType: 'application/rdf+xml', parts: [encoder.encode(plainTextXmp)] },
+    ]);
+
+    const result = await parseAvifMetadata(buffer);
+
+    expect(result.rawMetadata?.prompt).toBe(promptText);
     expect(result.rawMetadata?._carrierConflicts).toBeUndefined();
   });
 

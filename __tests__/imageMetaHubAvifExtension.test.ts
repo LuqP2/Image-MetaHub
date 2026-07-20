@@ -100,6 +100,18 @@ describe('Image MetaHub AVIF extension', () => {
     });
   });
 
+  it('does not alias analytics and _analytics through a shared reference', () => {
+    const normalized = applyImageMetaHubAvifExtension(
+      { prompt: 'canonical prompt' },
+      { version: 1, analytics: { generation_time_ms: 1000 } },
+    );
+
+    // Both fields carry the value, but mutating one must not leak into the other.
+    expect(normalized?.analytics).not.toBe(normalized?._analytics);
+    (normalized?.analytics as Record<string, unknown>).generation_time_ms = 2000;
+    expect(normalized?._analytics).toEqual({ generation_time_ms: 1000 });
+  });
+
   it('exposes only well-formed carrier conflicts', () => {
     expect(getAvifCarrierConflicts({
       _carrierConflicts: [

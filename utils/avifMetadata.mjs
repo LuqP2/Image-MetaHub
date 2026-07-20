@@ -316,6 +316,85 @@ function parseItemLocations(view, itemLocationBox) {
 
 /**
  * @param {DataView} view
+ * @param {BoxRange} spatialExtents
+ * @returns {{ width: number, height: number } | null}
+ */
+function readSpatialExtentBox(view, spatialExtents) {
+  if (spatialExtents.type !== 'ispe' || spatialExtents.contentStart + 12 > spatialExtents.contentEnd) {
+    return null;
+  }
+  const width = view.getUint32(spatialExtents.contentStart + 4);
+  const height = view.getUint32(spatialExtents.contentStart + 8);
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+/**
+ * @param {DataView} view
+ * @param {BoxRange} metaBox
+ * @returns {number | null}
+ */
+function parsePrimaryItemId(view, metaBox) {
+  const metaChildren = listBoxes(view, metaBox.contentStart + 4, metaBox.contentEnd);
+  const primaryItemBox = metaChildren.find((boxRange) => boxRange.type === 'pitm');
+  if (!primaryItemBox || primaryItemBox.contentStart + 4 > primaryItemBox.contentEnd) {
+    return null;
+  }
+  const version = view.getUint8(primaryItemBox.contentStart);
+  const idOffset = primaryItemBox.contentStart + 4;
+  if (version === 0) {
+    return idOffset + 2 <= primaryItemBox.contentEnd ? view.getUint16(idOffset) : null;
+  }
+  return idOffset + 4 <= primaryItemBox.contentEnd ? view.getUint32(idOffset) : null;
+}
+
+/**
+ * Map each item id to the 1-based ipco property indices associated with it, as
+ * declared by the ItemPropertyAssociation (`ipma`) box.
+ *
+ * @param {DataView} view
+ * @param {BoxRange} associationBox
+ * @returns {Map<number, number[]>}
+ */
+function parseItemPropertyAssociations(view, associationBox) {
+  /** @type {Map<number, number[]>} */
+  const associations = new Map();
+  if (associationBox.contentStart + 8 > associationBox.contentEnd) {
+    return associations;
+  }
+  const version = view.getUint8(associationBox.contentStart);
+  const flags = view.getUint32(associationBox.contentStart) & 0x00ffffff;
+  const wideIndex = (flags & 0x1) === 1;
+  let offset = associationBox.contentStart + 4;
+  const entryCount = view.getUint32(offset);
+  offset += 4;
+  const idWidth = version < 1 ? 2 : 4;
+  for (let entryIndex = 0; entryIndex < entryCount; entryIndex += 1) {
+    if (offset + idWidth + 1 > associationBox.contentEnd) {
+      break;
+    }
+    const itemId = idWidth === 2 ? view.getUint16(offset) : view.getUint32(offset);
+    offset += idWidth;
+    const associationCount = view.getUint8(offset);
+    offset += 1;
+    /** @type {number[]} */
+    const indices = [];
+    for (let associationIndex = 0; associationIndex < associationCount; associationIndex += 1) {
+      const propertyWidth = wideIndex ? 2 : 1;
+      if (offset + propertyWidth > associationBox.contentEnd) {
+        offset = associationBox.contentEnd;
+        break;
+      }
+      const raw = wideIndex ? view.getUint16(offset) : view.getUint8(offset);
+      indices.push(raw & (wideIndex ? 0x7fff : 0x7f));
+      offset += propertyWidth;
+    }
+    associations.set(itemId, indices);
+  }
+  return associations;
+}
+
+/**
+ * @param {DataView} view
  * @param {BoxRange} metaBox
  * @returns {{ width: number, height: number } | null}
  */
@@ -325,19 +404,36 @@ function parseSpatialExtents(view, metaBox) {
   if (!itemProperties) {
     return null;
   }
-  const propertyContainers = listBoxes(view, itemProperties.contentStart, itemProperties.contentEnd);
-  const propertyContainer = propertyContainers.find((boxRange) => boxRange.type === 'ipco');
+  const iprpChildren = listBoxes(view, itemProperties.contentStart, itemProperties.contentEnd);
+  const propertyContainer = iprpChildren.find((boxRange) => boxRange.type === 'ipco');
   if (!propertyContainer) {
     return null;
   }
   const properties = listBoxes(view, propertyContainer.contentStart, propertyContainer.contentEnd);
-  const spatialExtents = properties.find((boxRange) => boxRange.type === 'ispe');
-  if (!spatialExtents || spatialExtents.contentStart + 12 > spatialExtents.contentEnd) {
-    return null;
+
+  // A tiled/grid AVIF (or one with a thumbnail/aux item) holds several `ispe`
+  // properties in the shared `ipco`; the physically-first one may describe a
+  // tile, not the full image. Property association (`ipma`) keyed by the primary
+  // item (`pitm`) selects the `ispe` that actually belongs to the displayed image.
+  const primaryItemId = parsePrimaryItemId(view, metaBox);
+  const associationBox = iprpChildren.find((boxRange) => boxRange.type === 'ipma');
+  if (primaryItemId !== null && associationBox) {
+    const propertyIndices = parseItemPropertyAssociations(view, associationBox).get(primaryItemId);
+    if (propertyIndices) {
+      for (const propertyIndex of propertyIndices) {
+        const property = properties[propertyIndex - 1];
+        const dimensions = property ? readSpatialExtentBox(view, property) : null;
+        if (dimensions) {
+          return dimensions;
+        }
+      }
+    }
   }
-  const width = view.getUint32(spatialExtents.contentStart + 4);
-  const height = view.getUint32(spatialExtents.contentStart + 8);
-  return width > 0 && height > 0 ? { width, height } : null;
+
+  // Single-item files without `pitm`/`ipma`, or unresolved associations, fall
+  // back to the first `ispe`, preserving the original behavior for simple files.
+  const firstSpatialExtents = properties.find((boxRange) => boxRange.type === 'ispe');
+  return firstSpatialExtents ? readSpatialExtentBox(view, firstSpatialExtents) : null;
 }
 
 /**
@@ -545,10 +641,15 @@ function stableJson(value) {
 function documentsEqual(left, right) {
   const leftParsed = parseJson(left);
   const rightParsed = typeof right === 'string' ? parseJson(right) : right;
-  if (leftParsed === null || rightParsed === null || rightParsed === undefined) {
-    return false;
+  if (leftParsed !== null && rightParsed !== null && rightParsed !== undefined) {
+    return stableJson(leftParsed) === stableJson(rightParsed);
   }
-  return stableJson(leftParsed) === stableJson(rightParsed);
+  // At least one side is not valid JSON. A plain-text carrier that is textually
+  // identical to the canonical value is the same document, not a conflict, so
+  // compare the normalized string forms instead of declaring inequality.
+  const leftText = left.trim();
+  const rightText = typeof right === 'string' ? right.trim() : stableJson(right);
+  return leftText === rightText;
 }
 
 /**

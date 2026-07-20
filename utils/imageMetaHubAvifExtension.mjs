@@ -145,8 +145,10 @@ export function applyImageMetaHubAvifExtension(metadata, extensionValue) {
 
   const analytics = nonEmptyRecord(extension.analytics);
   if (analytics) {
-    result.analytics = analytics;
-    result._analytics = analytics;
+    // Copy into each field so a later in-place mutation of `analytics` cannot
+    // silently leak into `_analytics` (or vice versa) through a shared reference.
+    result.analytics = { ...analytics };
+    result._analytics = { ...analytics };
   }
 
   const lineage = nonEmptyRecord(extension.lineage);

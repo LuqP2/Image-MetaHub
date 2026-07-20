@@ -1586,7 +1586,11 @@ if (rawMetadata) {
   }
 
   // Priority 1: Check for text-based formats (A1111, Forge, Fooocus all use 'parameters' string)
-  if (!normalizedMetadata && 'parameters' in rawMetadata && typeof rawMetadata.parameters === 'string') {
+  // An AVIF can carry both a ComfyUI graph (prompt/workflow) and an Image MetaHub
+  // 'parameters' string. Let the ComfyUI graph parser (Priority 2) win in that case
+  // instead of misparsing the compact 'parameters' string through the A1111 fallback.
+  if (!normalizedMetadata && 'parameters' in rawMetadata && typeof rawMetadata.parameters === 'string'
+      && !(isAvifCarrier && isComfyUIMetadata(rawMetadata))) {
     const params = rawMetadata.parameters;
     
     // Sub-priority 2.0: Check if parameters contains SwarmUI JSON format
