@@ -1184,7 +1184,7 @@ const buildCompareCohort = (
 
   return {
     key,
-    label: key === 'present' ? 'Has telemetry' : key === 'missing' ? 'Missing telemetry' : key,
+    label: key === 'present' ? 'Has performance data' : key === 'missing' ? 'Missing performance data' : key,
     count: cohortImages.length,
     favoriteRate: cohortImages.length > 0 ? favoriteCount / cohortImages.length : 0,
     averageRating: ratedCount > 0 ? ratingSum / ratedCount : 0,

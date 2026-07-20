@@ -210,8 +210,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {advancedFilters?.telemetryState === 'present' && (
           <motion.div key="filter-telemetry-present" {...CHIP_ANIMATION} className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
             <CheckCircle size={12} />
-            <span>Has telemetry</span>
-            <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label="Remove has telemetry filter" title="Remove has telemetry filter" className="rounded p-0.5 hover:bg-cyan-900/70">
+            <span>Has performance data</span>
+            <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label="Remove has performance data filter" title="Remove has performance data filter" className="rounded p-0.5 hover:bg-cyan-900/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -220,8 +220,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {advancedFilters?.telemetryState === 'missing' && (
           <motion.div key="filter-telemetry-missing" {...CHIP_ANIMATION} className={`${chipClass} border-gray-700/50 bg-gray-900/70 text-gray-200`}>
             <CheckCircle size={12} />
-            <span>Missing telemetry</span>
-            <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label="Remove missing telemetry filter" title="Remove missing telemetry filter" className="rounded p-0.5 hover:bg-gray-800/70">
+            <span>Missing performance data</span>
+            <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label="Remove missing performance data filter" title="Remove missing performance data filter" className="rounded p-0.5 hover:bg-gray-800/70">
               <X size={12} />
             </button>
           </motion.div>

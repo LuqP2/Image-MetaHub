@@ -1,14 +1,17 @@
 # Image MetaHub
 
+[![Join our Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/2MXWxjKyJ5)
 [![Get Pro](https://img.shields.io/badge/Get%20Pro-Gumroad-4b8bbe)](https://imagemetahub.com/getpro)
 
 Local-first browser, search tool, and metadata hub for AI-generated images and videos.
+
+> **Join the community on [Discord](https://discord.gg/2MXWxjKyJ5)** — feature requests, bug reports, metadata parsing help, and early builds.
 
 ![Image MetaHub main UI](assets/screenshot-hero-grid.webp)
 
 ## What is Image MetaHub?
 
-Image MetaHub is a desktop app for browsing large local libraries of AI outputs without uploading anything to the cloud. It scans your folders, extracts metadata from popular generators, caches results for fast reuse, and lets you filter by prompt, model, LoRA, sampler, seed, dimensions, telemetry, tags, and more.
+Image MetaHub is a desktop app for browsing large local libraries of AI outputs without uploading anything to the cloud. It scans your folders, extracts metadata from popular generators, caches results for fast reuse, and lets you filter by prompt, model, LoRA, sampler, seed, dimensions, tags, and more.
 
 It started as a local browser for InvokeAI outputs and has since grown into a broader metadata hub for Stable Diffusion ecosystems, ComfyUI workflows, and related tools.
 
@@ -18,15 +21,17 @@ It started as a local browser for InvokeAI outputs and has since grown into a br
 * Fast indexing and thumbnail caching for large libraries
 * Metadata parsing for Automatic1111, ComfyUI, InvokeAI, SD.Next, Forge, SwarmUI, Fooocus, Draw Things, Midjourney/Niji, Firefly, DreamStudio, DALL-E, and more
 * Support for PNG, JPG, JPEG, WEBP, AVIF, GIF, MP4, WEBM, MKV, MOV, and AVI
-* Faceted sidebar filters with explicit include/exclude actions for checkpoints, LoRAs, samplers, schedulers, ratings, generation modes, media types, and verified telemetry
-* Dedicated Node View for browsing embedded ComfyUI workflow node types
+* Faceted sidebar filters with explicit include/exclude actions for checkpoints, LoRAs, samplers, schedulers, ratings, generation modes, media types, ComfyUI node types.
+* Unified Explore surface for drilling into Models, Clusters, and Collections, with the drill-in kept as a combinable filter chip
 * Embedded ComfyUI Workspace with a live ComfyUI browser, library thumbnails, workflow metadata, and quick generation actions
+* Live step-by-step generation previews in the queue for ComfyUI jobs
 * Image lineage detection for `img2img`, `inpaint`, and `outpaint`, including source-image recovery when possible
 * Multi-window image viewer with move, resize, docking/collapsible details, and fast cross-reference workflows
-* Non-destructive image adjustment tools for brightness, contrast, saturation, and hue, with metadata-preserving PNG export
-* Smart Library with prompt clustering, TF-IDF auto-tags, manual tag management, and deduplication helpers
+* Built-in image editor with adjustments, crop, transform, resize, enhance, annotations, and metadata-preserving export
+* Prompt clustering, TF-IDF auto-tags, manual tag management, and deduplication helpers
 * Startup verification modes for reopening saved libraries from cache or validating them against disk
 * Automatic1111 and ComfyUI integrations with queueing, progress tracking, and optional launcher shortcuts
+* Opt-in Civitai lookups for model and LoRA hashes, with results cached locally
 * Analytics Explorer and verified metrics support for images generated with the MetaHub Save Node
 
 ## Free vs Pro
@@ -39,7 +44,8 @@ The repository is MPL 2.0 and the core app remains open-source. Some workflow-he
 * Tags, favorites, safe mode, and shadow metadata editing
 * Auto-watch for generation folders
 * Image lineage display and multi-window viewer workflows
-* Smart Library auto-tags and clustering with free-tier limits
+* Explore workspace with auto-tags and clustering under free-tier limits
+* Built-in image editor
 * Deduplication helpers and stack browsing
 
 **Pro currently unlocks:**
@@ -77,34 +83,43 @@ This is a temporary workaround for unsigned builds until macOS signing and notar
 
 Image MetaHub is built around fast local curation:
 
-* **Search + facets**: combine free-text search with include/exclude facets for checkpoints, LoRAs, samplers, schedulers, tags, favorites, ratings, generation modes, media types, and advanced ranges
+* **Search + facets**: combine free-text search with include/exclude facets for checkpoints, LoRAs, samplers, schedulers, ComfyUI node types, tags, favorites, ratings, generation modes, media types, and advanced ranges
 * **Stacking**: group identical prompts in the main library view for faster browsing
+* **Sort + Group By**: sort order and grouping live in the persistent grid footer, with grouping by date, name, generation session, checkpoint model, or cluster, plus Jump To navigation
 * **Manual tags + ratings**: keep a persistent manual tag catalog, switch included tags between `Any` and `All`, and curate with 1-5 ratings
-* **Metadata recovery**: reparse selected images without running a full folder refresh or clearing cache
-* **Image adjustments**: tune brightness, contrast, saturation, and hue from the viewer, then save a metadata-preserving PNG copy or overwrite eligible PNG originals on desktop
+* **Metadata recovery**: reparse selected images without running a full folder refresh or clearing cache — a single reparse patches only the affected cache chunk, so it stays fast on large libraries
+* **Image editor**: adjust, crop, rotate, flip, resize, sharpen, blur, annotate, and redact from the viewer, then Save As a metadata-preserving copy or overwrite eligible originals on desktop
 * **Startup verification**: choose whether saved folders reopen from cache, reconcile in the background, or verify strictly before startup completes
 * **Shadow metadata**: edit metadata non-destructively and keep the original payload available for inspection or revert
 * **Viewer workflows**: open multiple image windows, minimize them into the footer, and navigate derived/source images through lineage
 * **Auto-watch**: keep output folders in sync while A1111 or ComfyUI is generating
 
-## Smart Library
+## Explore
 
-The Smart Library groups similar prompts into stacks and adds metadata-derived discovery tools for large collections.
+Explore is the single discovery workspace that replaced the separate Model View, Smart Library, and Collections screens. It presents your library across three dimensions — **Models**, **Clusters**, and **Collections** — as browsable cards.
 
-* **Prompt clustering**: background worker groups visually related images by prompt similarity
+* **Scope drill-in**: opening a card scopes the Library grid to it and shows the scope as a dedicated chip in Active Filters, so it stays combinable with every other filter instead of trapping you in a separate screen
+* **Prompt clustering**: a background worker groups related images by prompt similarity
 * **TF-IDF auto-tags**: generate useful tags from prompts, models, LoRAs, and workflow metadata
 * **Stack browsing**: open a stack, paginate inside it, and keep navigation context in the image viewer
 * **Deduplication helper**: rank likely keep/archive candidates and estimate space savings
-* **Free-tier limits**: the open-source app includes Smart Library workflows, while Pro removes clustering scale limits
+* **Back button**: return from a drill-in scope straight to the matching Explore dimension
+* **Free-tier limits**: the open-source app includes Explore workflows, while Pro removes clustering scale limits
 
-## ComfyUI Node View
+Library-wide operations (automation rules, auto-tagging the library, analytics) live in the Library Tools menu in the library toolbar.
 
-For libraries that include embedded ComfyUI workflows, Image MetaHub can switch into a dedicated node browser:
+### Classic Mode
+
+If you prefer the previous navigation, **Settings → Appearance → Classic Mode** restores the old Model View / Smart Library / Collections / Node View labels as shortcuts that deep-link into Explore.
+
+## ComfyUI Nodes Filter
+
+The standalone Node View has been retired in favor of a multi-select **ComfyUI Nodes** filter in the sidebar's Generation Parameters, for libraries with embedded ComfyUI workflows:
 
 * Search exact node-type names across the current scope
 * Multi-select node filters with OR matching
 * See per-node result counts before applying a filter
-* Jump straight from node-filtered results back into the normal image viewer workflow
+* Combine node filters with every other filter and the active scope, without leaving the library grid
 
 ## Metadata Support
 
@@ -138,6 +153,10 @@ Image MetaHub reads ComfyUI prompt and workflow documents from standard AVIF XMP
 
 New Image MetaHub AVIF exports are intentionally compact: the full prompt and workflow graphs stay in their established ComfyUI XMP fields rather than being copied again. The Image MetaHub namespace stores app-specific fields (tags, notes, attribution, analytics, lineage, source generator) alongside the extracted parameter snapshot (model, seed, steps, cfg, sampler, scheduler, negative prompt) the Save Node records — those structured fields are kept because re-deriving them from arbitrary custom-node graphs is unreliable. When a legacy nested prompt conflicts with a standalone XMP prompt, the standalone document wins and the viewer shows a metadata-conflict badge.
 
+### Civitai links (opt-in)
+
+Model and LoRA hashes in the Image Modal are clickable and open the matching Civitai page. The lookup only happens when you click — a single request to Civitai's public API, cached locally so each hash is looked up at most once. It works with A1111, Forge, SD.Next, and Fooocus images, plus ComfyUI images saved with the MetaHub Save Node, and can be disabled entirely under **Settings → Privacy**. Indexing and browsing stay fully offline either way.
+
 ### MetaHub Save Node
 
 For ComfyUI, the best experience comes from the companion [ImageMetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) on the [ComfyUI Registry](https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save).
@@ -147,7 +166,6 @@ With the Save Node, Image MetaHub can ingest:
 * Full workflow and prompt payloads
 * Tags and notes saved by the workflow
 * GPU and timing analytics
-* Verified telemetry badges and filters
 * Explicit lineage metadata for derived images
 
 For older ComfyUI images without the node, Image MetaHub still attempts best-effort parsing from embedded workflow data.
@@ -206,6 +224,8 @@ The ComfyUI Workspace adds a full working area around a running local ComfyUI in
 * **Model-family aware overrides** for checkpoints, UNETs, VAEs, CLIP loaders, and LoRAs when supported
 * **Transform-aware source image policies** for img2img/inpaint-style workflows
 * **Shared queue** with retry, cancel, cleanup actions, and optional detection of ComfyUI jobs started outside Image MetaHub
+* **Live generation preview** in the queue, updating step-by-step during generation for jobs started from MetaHub *and* from the embedded ComfyUI UI, with a resizable preview box that remembers its height
+* **Run current workflow** straight from the queue, queueing whatever workflow is loaded in the embedded ComfyUI workspace
 * **Metadata-rich outputs** when used with the MetaHub Save Node and Timer node
 
 **Setup:**
@@ -222,22 +242,20 @@ Image MetaHub currently supports comparing **up to 4 images** with:
 
 * Side-by-side mode with optional synchronized zoom/pan
 * Side Strip and 2x2 Grid layouts for 3-4 image sets
-* Slider mode
-* Hover mode
-* Metadata comparison in standard or diff view
+* Slider, hover, flicker, difference map, loupe, and edge modes for two-image comparisons
+* Metadata comparison in standard or diff view, with all panels expanding, collapsing, and scrolling in sync
 * Quick swap and keyboard shortcuts
 
 ![Compare panel](assets/screenshot-compare.webp)
 
 ## Analytics (Pro)
 
-The Analytics Explorer summarizes library usage and, when telemetry is available, generation performance:
+The Analytics Explorer summarizes library usage and generation performance:
 
 * `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views
 * Scope switching between the current filtered results and the full library
 * Cohort comparisons for generators, models, LoRAs, samplers, GPU devices, ratings, and more
 * One-click promotion of analytics insights into live filters
-* Verified telemetry coverage
 * Average speed, VRAM, and generation time for MetaHub Save Node images
 * Performance charts grouped over time or by GPU
 
@@ -297,6 +315,7 @@ Image MetaHub is designed to stay local:
 * Network activity is limited to things that explicitly need it, such as:
   * auto-update checks
   * local A1111 / ComfyUI APIs
+  * Civitai hash lookups you explicitly click (can be disabled in Settings → Privacy)
   * links you choose to open
 
 ## Credits
@@ -306,6 +325,7 @@ Image MetaHub is built and maintained by **Lucas (LuqP2)** with community feedba
 ## Links
 
 * Website: [https://imagemetahub.com](https://imagemetahub.com)
+* Discord: [https://discord.gg/2MXWxjKyJ5](https://discord.gg/2MXWxjKyJ5)
 * Pro license: [https://imagemetahub.com/getpro](https://imagemetahub.com/getpro)
 * Ko-fi: [https://ko-fi.com/lucaspierri](https://ko-fi.com/lucaspierri)
 * ComfyUI Save Node: [https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save)
