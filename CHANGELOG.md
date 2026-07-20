@@ -6,24 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.18.0]
-
+ 
 ### Added
-
+ 
+- **Unified Explore Surface**: Model View, Smart Library and Collections are replaced by a single Explore workspace with Models / Clusters / Collections dimensions and card-based drill-in. Opening a card scopes the Library grid to it, shown as a dedicated chip in Active Filters that stays combinable with every other filter.
+- **Classic Mode**: A new Settings → Appearance toggle restores the old Model View / Smart Library / Collections / Node View labels as shortcuts into Explore, for anyone who prefers the previous navigation.
+- **ComfyUI Nodes Filter**: Node View is retired in favor of a multi-select "ComfyUI Nodes" filter in the sidebar's Generation Parameters, combinable with every other filter and the active scope instead of being a separate screen.
+- **Header Tools Menu**: Automation rules and Auto-tag library moved into a new header "Tools" menu, since they're library-wide operations rather than tied to a specific collection or cluster.
 - **Live Generation Preview**: The Queue now shows a live, KSampler-style preview image that updates step-by-step during ComfyUI generation — both for generations started from MetaHub's own workspace and from the embedded ComfyUI UI. The preview/output image box can be dragged taller for portrait images, and the size is remembered across sessions.
 - **Run Current Workflow**: Added a "Run" button to the top of the Queue that queues whatever workflow is currently loaded in the embedded ComfyUI workspace, so you can trigger a generation from anywhere in the app.
-
-
-### Added
-
-- **First-Class AVIF Metadata**: Added AVIF discovery, Chromium-backed previews and thumbnails, dimensions, ComfyUI XMP prompt/workflow parsing, legacy AVIF EXIF compatibility, CLI parsing, bounded full-file fallback for late XMP, metadata stripping, and metadata-preserving AVIF export.
+- **First-Class AVIF Metadata**: Added AVIF discovery, Chromium-backed previews and thumbnails, dimensions, ComfyUI XMP prompt/workflow parsing, legacy AVIF EXIF compatibility, CLI parsing, bounded full-file fallback for late XMP, metadata stripping, and metadata-preserving AVIF export. Exports keep the full prompt and workflow graph in standard ComfyUI XMP fields, while MetaHub's own tags, notes, attribution and an extracted parameter snapshot (model, seed, steps, cfg, sampler, scheduler, negative prompt) live in a compact private extension.
 
 ### Improved
-
-- **Compact AVIF Exports**: Image MetaHub now leaves the full prompt and workflow graphs in their standard ComfyUI XMP fields instead of duplicating them. Its private AVIF extension keeps app-specific fields (tags, notes, attribution, analytics, lineage, source generator) plus the extracted parameter snapshot (model, seed, steps, cfg, sampler, scheduler, negative prompt) that the Save Node captures, since those are more reliable than re-deriving them from arbitrary custom-node graphs. Conflicting legacy copies are surfaced without overriding the standalone XMP value.
-
-### Fixed
-
+ 
+- **Group By Model/Cluster**: Sort Order and Group By moved from the sidebar to the persistent grid footer, with new Group By options for checkpoint model and cluster.
 - **Reparse Metadata Performance**: "Reparse Metadata" no longer rewrites the entire folder cache for a single image, so it stays fast regardless of library size. It patches only the cache chunk(s) that hold the reparsed images instead of re-serializing every entry, and uses a persistent id→chunk index to read just the target chunk directly rather than scanning the whole cache — a big win on large ComfyUI libraries where each chunk can be tens of MB. The index is validated on every use and rebuilt automatically if the cache changed, so it never serves stale data.
+- **Compare Mode Metadata Panels**: Metadata panels in Compare now expand and collapse together and scroll in sync, so one click reveals every image's metadata. Simplified the Standard/Diff toggle and fixed the Flicker view mode, which was rendering both images stacked instead of alternating.
+- **Library Toolbar**: Added a Back button that returns to the matching Explore dimension from a drill-in scope, and moved the Library Tools menu and Analytics button out of the global header into the library toolbar.
+### Fixed
+ 
+- **A1111 Sampler/Schedule Parsing**: Fixed the Sampler value being written to the Schedule field instead of Sampler, which left the Generation Details pane showing the sampler name under the wrong heading.
+- **Group By Navigation**: Fixed the Group By date/session calendar getting stuck on the active month, and Jump to Group requiring two clicks to scroll correctly on the first try.
+- **Light Theme Contrast**: Fixed accent-colored text that stayed light in the light theme and washed out — the update dialog's download-error message, the active Settings navigation item, and the startup-verification info box are now readable. These colors were hardcoded for the dark themes; a dedicated light-theme override keeps the dark, Dracula, Nord and Ocean themes unchanged.
+- **ComfyUI Workspace Folder Selector**: The folder dropdown in the thumbnail rail now gives its options an explicit background and text color, fixing folder names rendering as white-on-white in the native dropdown.
+
 
 ## [0.17.5] - 2026-07-13
 

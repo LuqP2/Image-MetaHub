@@ -1494,9 +1494,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                   title="Change workspace folder"
                   aria-label="Change workspace folder"
                 >
-                  <option value="">All folders</option>
+                  <option value="" className="bg-gray-900 text-gray-100">All folders</option>
                   {directories.map((directory) => (
-                    <option key={directory.id} value={directory.id}>
+                    <option key={directory.id} value={directory.id} className="bg-gray-900 text-gray-100">
                       {directory.name}
                     </option>
                   ))}
