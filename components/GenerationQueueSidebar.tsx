@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { X, RefreshCw, CircleX, CircleStop, ArchiveX } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { X, RefreshCw, CircleX, CircleStop, ArchiveX, Play } from 'lucide-react';
 import { useGenerationQueueStore, GenerationQueueItem } from '../store/useGenerationQueueStore';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
@@ -45,6 +45,22 @@ const formatPromptPreview = (prompt?: string) => {
 const formatTime = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+const PREVIEW_HEIGHT_STORAGE_KEY = 'imh:queuePreviewHeight';
+const PREVIEW_HEIGHT_DEFAULT = 96; // matches the previous fixed h-24
+const PREVIEW_HEIGHT_MIN = 64;
+const PREVIEW_HEIGHT_MAX = 640;
+
+const readStoredPreviewHeight = (): number => {
+  if (typeof window === 'undefined') {
+    return PREVIEW_HEIGHT_DEFAULT;
+  }
+  const stored = Number(window.localStorage.getItem(PREVIEW_HEIGHT_STORAGE_KEY));
+  if (!Number.isFinite(stored) || stored <= 0) {
+    return PREVIEW_HEIGHT_DEFAULT;
+  }
+  return Math.min(PREVIEW_HEIGHT_MAX, Math.max(PREVIEW_HEIGHT_MIN, stored));
+};
+
 const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
   onClose,
   width,
@@ -66,8 +82,73 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
   const filteredImages = useImageStore((state) => state.filteredImages);
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
+  const comfyUIEnabled = useSettingsStore((state) => state.comfyUIEnabled);
   const { stopPolling } = useA1111ProgressContext();
   const { stopTracking } = useComfyUIProgressContext();
+
+  // Shared, persisted height for the per-item preview / output image boxes so
+  // portrait images can be dragged taller and stay that way across sessions.
+  const [previewHeight, setPreviewHeight] = useState<number>(readStoredPreviewHeight);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(PREVIEW_HEIGHT_STORAGE_KEY, String(previewHeight));
+    }
+  }, [previewHeight]);
+
+  const handlePreviewResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startY = event.clientY;
+    const startHeight = previewHeight;
+    const onMove = (moveEvent: PointerEvent) => {
+      const next = Math.min(
+        PREVIEW_HEIGHT_MAX,
+        Math.max(PREVIEW_HEIGHT_MIN, startHeight + (moveEvent.clientY - startY))
+      );
+      setPreviewHeight(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }, [previewHeight]);
+
+  const [isRunningWorkflow, setIsRunningWorkflow] = useState(false);
+  const [runFeedback, setRunFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  useEffect(() => {
+    if (!runFeedback) {
+      return;
+    }
+    const timer = window.setTimeout(() => setRunFeedback(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [runFeedback]);
+
+  const handleRunWorkflow = useCallback(async () => {
+    if (isRunningWorkflow) {
+      return;
+    }
+    setIsRunningWorkflow(true);
+    setRunFeedback(null);
+    try {
+      const result = await window.electronAPI?.comfyUIViewRunWorkflow?.();
+      if (result?.success) {
+        setRunFeedback({ type: 'success', message: 'Workflow queued in ComfyUI.' });
+      } else {
+        setRunFeedback({ type: 'error', message: result?.error || 'Could not run the ComfyUI workflow.' });
+      }
+    } catch (error) {
+      setRunFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Could not run the ComfyUI workflow.',
+      });
+    } finally {
+      setIsRunningWorkflow(false);
+    }
+  }, [isRunningWorkflow]);
 
   const overallProgress = useMemo(() => {
     if (items.length === 0) return 0;
@@ -137,7 +218,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
 
     if (item.provider === 'comfyui' && item.origin === 'comfyui-external') {
       if (!comfyUIServerUrl || !item.providerJobId) {
-        setJobStatus(item.id, 'failed', { error: 'Cannot cancel ComfyUI job without a prompt id.' });
+        setJobStatus(item.id, 'failed', { error: 'Cannot cancel ComfyUI job without a prompt id.', previewImageUrl: null });
         return;
       }
 
@@ -152,7 +233,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
           return;
         }
 
-        setJobStatus(item.id, 'canceled', { error: undefined });
+        setJobStatus(item.id, 'canceled', { error: undefined, previewImageUrl: null });
       } catch (error) {
         setJobStatus(item.id, item.status, {
           error: error instanceof Error ? error.message : String(error),
@@ -178,12 +259,12 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
     }
 
     if (item.status === 'waiting') {
-      setJobStatus(item.id, 'canceled', { error: undefined });
+      setJobStatus(item.id, 'canceled', { error: undefined, previewImageUrl: null });
       return;
     }
 
     if (activeJobs[item.provider] !== item.id) {
-      setJobStatus(item.id, 'canceled', { error: undefined });
+      setJobStatus(item.id, 'canceled', { error: undefined, previewImageUrl: null });
       return;
     }
 
@@ -200,7 +281,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
         stopPolling();
         setActiveJob('a1111', null);
       }
-      setJobStatus(item.id, 'canceled', { error: undefined });
+      setJobStatus(item.id, 'canceled', { error: undefined, previewImageUrl: null });
       return;
     }
 
@@ -217,7 +298,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
       stopTracking();
       setActiveJob('comfyui', null);
     }
-    setJobStatus(item.id, 'canceled', { error: undefined });
+    setJobStatus(item.id, 'canceled', { error: undefined, previewImageUrl: null });
   };
 
   const handleRemove = (item: GenerationQueueItem, event: React.MouseEvent<HTMLButtonElement>) => {
@@ -266,15 +347,38 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
             {items.length} items · {statusCounts.processing || 0} processing · {statusCounts.waiting || 0} waiting
           </p>
         </div>
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-gray-50 transition-colors"
-          title="Close queue"
-          aria-label="Close queue"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {comfyUIEnabled && (
+            <button
+              onClick={handleRunWorkflow}
+              disabled={isRunningWorkflow}
+              title="Run current ComfyUI workflow"
+              aria-label="Run current ComfyUI workflow"
+              className="flex items-center gap-1.5 rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Play className="h-3.5 w-3.5" />
+              Run
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-50 transition-colors"
+            title="Close queue"
+            aria-label="Close queue"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
+      {runFeedback && (
+        <div
+          className={`px-4 py-2 text-xs border-b border-gray-700 ${
+            runFeedback.type === 'success' ? 'text-green-300 bg-green-900/20' : 'text-red-300 bg-red-900/20'
+          }`}
+        >
+          {runFeedback.message}
+        </div>
+      )}
 
       <div className="p-4 border-b border-gray-700 space-y-3">
         <div className="flex items-center justify-between text-xs text-gray-400">
@@ -366,12 +470,40 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                 </div>
               </div>
 
-              {firstOutput?.url && (
-                <div className="relative overflow-hidden rounded border border-gray-700/60 bg-black">
+              {item.status === 'processing' && item.previewImageUrl ? (
+                <div
+                  className="group relative overflow-hidden rounded border border-gray-700/60 bg-black"
+                  style={{ height: previewHeight }}
+                >
+                  <img
+                    src={item.previewImageUrl}
+                    alt="Live preview"
+                    className="h-full w-full object-contain"
+                  />
+                  <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-100">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                    Live preview
+                  </span>
+                  <div
+                    onPointerDown={handlePreviewResizeStart}
+                    onClick={(event) => event.stopPropagation()}
+                    className="absolute inset-x-0 bottom-0 flex h-3 cursor-ns-resize items-center justify-center bg-gradient-to-t from-black/70 to-transparent opacity-0 transition-opacity group-hover:opacity-100"
+                    title="Drag to resize preview"
+                    role="separator"
+                    aria-orientation="horizontal"
+                  >
+                    <span className="h-0.5 w-8 rounded-full bg-gray-300/80" />
+                  </div>
+                </div>
+              ) : firstOutput?.url ? (
+                <div
+                  className="group relative overflow-hidden rounded border border-gray-700/60 bg-black"
+                  style={{ height: previewHeight }}
+                >
                   <img
                     src={firstOutput.url}
                     alt={firstOutput.name || 'Generated output'}
-                    className="h-24 w-full object-cover"
+                    className="h-full w-full object-cover"
                     loading="lazy"
                   />
                   {(item.generatedOutputs?.length || 0) > 1 && (
@@ -379,8 +511,18 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                       +{(item.generatedOutputs?.length || 1) - 1}
                     </span>
                   )}
+                  <div
+                    onPointerDown={handlePreviewResizeStart}
+                    onClick={(event) => event.stopPropagation()}
+                    className="absolute inset-x-0 bottom-0 flex h-3 cursor-ns-resize items-center justify-center bg-gradient-to-t from-black/70 to-transparent opacity-0 transition-opacity group-hover:opacity-100"
+                    title="Drag to resize preview"
+                    role="separator"
+                    aria-orientation="horizontal"
+                  >
+                    <span className="h-0.5 w-8 rounded-full bg-gray-300/80" />
+                  </div>
                 </div>
-              )}
+              ) : null}
 
               <p className="text-xs text-gray-400 break-words">
                 {formatPromptPreview(item.prompt)}

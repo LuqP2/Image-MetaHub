@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.18.0]
+
+### Added
+
+- **Live Generation Preview**: The Queue now shows a live, KSampler-style preview image that updates step-by-step during ComfyUI generation — both for generations started from MetaHub's own workspace and from the embedded ComfyUI UI. The preview/output image box can be dragged taller for portrait images, and the size is remembered across sessions.
+- **Run Current Workflow**: Added a "Run" button to the top of the Queue that queues whatever workflow is currently loaded in the embedded ComfyUI workspace, so you can trigger a generation from anywhere in the app.
+
 
 ### Fixed
 

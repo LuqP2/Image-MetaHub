@@ -46,6 +46,7 @@ import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
 import { useGenerationQueueRunner } from './hooks/useGenerationQueueRunner';
 import { useComfyUIQueueMonitor } from './hooks/useComfyUIQueueMonitor';
+import { useComfyUIEmbeddedProgress } from './hooks/useComfyUIEmbeddedProgress';
 import {
   beginPerformanceFlow,
   createProfilerOnRender,
@@ -226,6 +227,7 @@ export default function App() {
   const { progressState: a1111Progress } = useA1111ProgressContext();
   useGenerationQueueSync();
   useComfyUIQueueMonitor();
+  useComfyUIEmbeddedProgress();
 
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles } = useImageLoader();

@@ -52,6 +52,7 @@ export interface GenerationQueueItem {
   currentImage?: number;
   totalImages?: number;
   currentNode?: string | null;
+  previewImageUrl?: string | null;
   providerJobId?: string;
   error?: string;
   payload?: GenerationQueuePayload;
@@ -84,6 +85,7 @@ interface GenerationQueueState {
     currentStep?: number;
     totalSteps?: number;
     currentNode?: string | null;
+    previewImageUrl?: string | null;
     error?: string;
     generatedOutputs?: GeneratedQueueOutput[];
     completedAt?: number;
@@ -101,8 +103,11 @@ const MAX_ITEMS = 200;
 const createQueueId = () =>
   `job_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
 
+const canRevokeObjectUrls = () =>
+  typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function';
+
 const revokeGeneratedOutputUrls = (items: GenerationQueueItem[]) => {
-  if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') {
+  if (!canRevokeObjectUrls()) {
     return;
   }
 
@@ -112,7 +117,18 @@ const revokeGeneratedOutputUrls = (items: GenerationQueueItem[]) => {
         URL.revokeObjectURL(output.url);
       }
     });
+    if (item.previewImageUrl) {
+      URL.revokeObjectURL(item.previewImageUrl);
+    }
   });
+};
+
+// Live preview frames arrive roughly once per sampling step, so the previous
+// blob URL must be revoked on every replacement, not just when the item is removed.
+const revokePreviewUrlIfReplaced = (previous: string | null | undefined, next: string | null | undefined) => {
+  if (previous && previous !== next && canRevokeObjectUrls()) {
+    URL.revokeObjectURL(previous);
+  }
 };
 
 const isTerminalStatus = (status: GenerationStatus) =>
@@ -197,7 +213,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
         return existing.id;
       }
 
-      if (existing.status === 'done' && input.status !== 'done' && input.status !== 'failed') {
+      if ((existing.status === 'done' || existing.status === 'failed') && input.status !== 'done' && input.status !== 'failed') {
         return existing.id;
       }
 
@@ -219,12 +235,17 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
         (input.currentStep !== undefined && existing.currentStep !== input.currentStep) ||
         (input.totalSteps !== undefined && existing.totalSteps !== input.totalSteps) ||
         (input.currentNode !== undefined && existing.currentNode !== input.currentNode) ||
+        (input.previewImageUrl !== undefined && existing.previewImageUrl !== input.previewImageUrl) ||
         existing.error !== input.error ||
         existing.completedAt !== nextCompletedAt ||
         !generatedOutputsEqual(existing.generatedOutputs, nextGeneratedOutputs);
 
       if (!hasChanges) {
         return existing.id;
+      }
+
+      if (input.previewImageUrl !== undefined) {
+        revokePreviewUrlIfReplaced(existing.previewImageUrl, input.previewImageUrl);
       }
 
       set((state) => ({
@@ -240,6 +261,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
                 currentStep: input.currentStep ?? item.currentStep,
                 totalSteps: input.totalSteps ?? item.totalSteps,
                 currentNode: input.currentNode === undefined ? item.currentNode : input.currentNode,
+                previewImageUrl: input.previewImageUrl === undefined ? item.previewImageUrl : input.previewImageUrl,
                 error: input.error,
                 generatedOutputs: nextGeneratedOutputs,
                 completedAt: nextCompletedAt,
@@ -263,6 +285,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
       currentStep: input.currentStep,
       totalSteps: input.totalSteps,
       currentNode: input.currentNode,
+      previewImageUrl: input.previewImageUrl,
       providerJobId: input.providerJobId,
       error: input.error,
       generatedOutputs: input.generatedOutputs,
@@ -284,6 +307,22 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
     return id;
   },
   updateJob: (id, updates) => {
+    if (updates.previewImageUrl !== undefined) {
+      const current = get().items.find((item) => item.id === id);
+      if (current) {
+        revokePreviewUrlIfReplaced(current.previewImageUrl, updates.previewImageUrl);
+      }
+    }
+    if (updates.providerJobId) {
+      const superseded = get().items.filter(
+        (item) =>
+          item.id !== id &&
+          item.provider === 'comfyui' &&
+          item.origin === 'comfyui-external' &&
+          item.providerJobId === updates.providerJobId
+      );
+      revokeGeneratedOutputUrls(superseded);
+    }
     set((state) => ({
       items: state.items
         .filter((item) => {
@@ -298,6 +337,12 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
     }));
   },
   setJobStatus: (id, status, updates) => {
+    if (updates?.previewImageUrl !== undefined) {
+      const current = get().items.find((item) => item.id === id);
+      if (current) {
+        revokePreviewUrlIfReplaced(current.previewImageUrl, updates.previewImageUrl);
+      }
+    }
     set((state) => ({
       items: state.items.map((item) =>
         item.id === id

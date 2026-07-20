@@ -1290,11 +1290,17 @@ function ensureComfyUIView() {
   comfyUIView = new WebContentsView({
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true,
+      // contextIsolation is disabled ONLY for this embedded ComfyUI view so the
+      // preload can patch window.WebSocket in the page's main world at document
+      // start (before ComfyUI creates its socket) and read progress/preview frames.
+      // The preload exposes nothing to the page and only reads socket traffic; the
+      // page is the user's own local ComfyUI server. sandbox stays on (no Node).
+      contextIsolation: false,
       sandbox: true,
       webSecurity: true,
       partition: 'persist:imagemetahub-comfyui',
       backgroundThrottling: false,
+      preload: path.join(__dirname, 'comfyui-view-preload.js'),
     },
   });
 
@@ -3273,6 +3279,74 @@ function setupFileOperationHandlers() {
       return await openComfyUIView(payload);
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to open embedded ComfyUI.' };
+    }
+  });
+
+  // Relay read-only ComfyUI WebSocket events observed by the embedded view's
+  // preload (progress / preview) to the main renderer's generation queue.
+  ipcMain.on('comfy-embedded-ws-event', (event, message) => {
+    if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+      return;
+    }
+    // Only accept events from the embedded ComfyUI view, never other web contents.
+    if (event.sender !== comfyUIView.webContents) {
+      return;
+    }
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.webContents.send('comfy-embedded-progress', message);
+  });
+
+  // Queue the workflow currently loaded in the embedded ComfyUI view, so the user
+  // can trigger a generation from anywhere in the app. Uses ComfyUI's own queue
+  // mechanism (window.app) so the exact current graph/widget state is serialized.
+  ipcMain.handle('comfy-view-run-workflow', async () => {
+    try {
+      const contents = comfyUIView?.webContents;
+      if (!contents || contents.isDestroyed()) {
+        return { success: false, error: 'ComfyUI is not open. Open the ComfyUI workspace and load a workflow first.' };
+      }
+
+      const currentUrl = contents.getURL();
+      if (!currentUrl || !isComfyNavigationAllowed(currentUrl)) {
+        return { success: false, error: 'ComfyUI is not loaded on the configured server.' };
+      }
+
+      await waitForComfyUIRuntime(contents);
+
+      return await contents.executeJavaScript(`
+        (async () => {
+          const app = window.app || window.comfyApp || window.ComfyApp?.instance || null;
+          if (!app) {
+            return { success: false, error: 'ComfyUI app was not found on the page.' };
+          }
+          const runMaybeAsync = async (fn) => {
+            if (typeof fn !== 'function') return false;
+            const out = fn();
+            if (out && typeof out.then === 'function') await out;
+            return true;
+          };
+          const candidates = [
+            () => app.queuePrompt(0),
+            () => app.queuePrompt(0, 1),
+            () => app.extensionManager?.command?.execute?.('Comfy.QueuePrompt'),
+          ];
+          let lastError = null;
+          for (const candidate of candidates) {
+            try {
+              if (await runMaybeAsync(candidate)) {
+                return { success: true };
+              }
+            } catch (error) {
+              lastError = error?.message || String(error);
+            }
+          }
+          return { success: false, error: lastError || 'This ComfyUI version did not expose a supported queue action.' };
+        })()
+      `, true);
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to run the ComfyUI workflow.' };
     }
   });
 

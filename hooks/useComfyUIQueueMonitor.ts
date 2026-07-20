@@ -270,6 +270,7 @@ export function useComfyUIQueueMonitor() {
             error: failureMessage,
             completedAt: Date.now(),
             currentNode: null,
+            previewImageUrl: null,
           });
           return;
         }
@@ -282,6 +283,7 @@ export function useComfyUIQueueMonitor() {
           generatedOutputs: outputs,
           completedAt: Date.now(),
           currentNode: null,
+          previewImageUrl: null,
         });
       } catch {
         // History may not exist yet; the next poll/WebSocket event will try again.
@@ -370,6 +372,7 @@ export function useComfyUIQueueMonitor() {
               error: stringifyMessage(message.data) || (message.type === 'execution_interrupted' ? 'ComfyUI generation interrupted.' : 'ComfyUI generation failed.'),
               completedAt: Date.now(),
               currentNode: null,
+              previewImageUrl: null,
             });
             return;
           }

@@ -15,6 +15,7 @@
     "electron.mjs",
     "electron-deeplink.mjs",
     "preload.js",
+    "comfyui-view-preload.js",
     "services/**/*",
     "utils/**/*.js",
     "utils/**/*.mjs",
