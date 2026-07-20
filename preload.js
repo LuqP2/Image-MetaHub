@@ -229,6 +229,7 @@ const electronAPI = {
   comfyUIViewGoForward: () => ipcRenderer.invoke('comfy-view-go-forward'),
   comfyUIViewGetState: () => ipcRenderer.invoke('comfy-view-get-state'),
   comfyUIViewLoadWorkflow: (payload) => ipcRenderer.invoke('comfy-view-load-workflow', payload),
+  comfyUIViewRunWorkflow: () => ipcRenderer.invoke('comfy-view-run-workflow'),
   onComfyUIViewStateChanged: (callback) => {
     const handler = (event, ...args) => callback(...args);
     ipcRenderer.on('comfy-view-state-changed', handler);
@@ -241,6 +242,13 @@ const electronAPI = {
     ipcRenderer.on('comfy-view-load-failed', handler);
     return () => {
       ipcRenderer.removeListener('comfy-view-load-failed', handler);
+    };
+  },
+  onComfyEmbeddedProgress: (callback) => {
+    const handler = (event, message) => callback(message);
+    ipcRenderer.on('comfy-embedded-progress', handler);
+    return () => {
+      ipcRenderer.removeListener('comfy-embedded-progress', handler);
     };
   },
   getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),

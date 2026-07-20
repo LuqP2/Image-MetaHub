@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ComfyUIApiClient, decodeComfyUIPreviewFrame, normalizeLoopbackServerUrl } from '../services/comfyUIApiClient';
+import { ComfyUIApiClient, normalizeLoopbackServerUrl } from '../services/comfyUIApiClient';
 import { GeneratedQueueOutput, useGenerationQueueStore } from '../store/useGenerationQueueStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -243,7 +243,6 @@ export function useComfyUIQueueMonitor() {
   const serverUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const activePromptIdRef = useRef<string | null>(null);
   const nodeLabelsRef = useRef<Map<string, Record<string, string>>>(new Map());
-  const previewUrlsRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (!comfyUIEnabled || !monitoringEnabled || !serverUrl) {
@@ -253,14 +252,6 @@ export function useComfyUIQueueMonitor() {
     let isDisposed = false;
     let intervalId: number | null = null;
     const client = new ComfyUIApiClient({ serverUrl });
-
-    const clearPreview = (promptId: string) => {
-      const url = previewUrlsRef.current.get(promptId);
-      if (url) {
-        URL.revokeObjectURL(url);
-        previewUrlsRef.current.delete(promptId);
-      }
-    };
 
     const markHistoryIfAvailable = async (promptId: string) => {
       try {
@@ -272,7 +263,6 @@ export function useComfyUIQueueMonitor() {
 
         const failureMessage = getHistoryFailureMessage(promptHistory);
         if (failureMessage) {
-          clearPreview(promptId);
           useGenerationQueueStore.getState().upsertExternalComfyUIJob({
             providerJobId: promptId,
             status: 'failed',
@@ -280,13 +270,11 @@ export function useComfyUIQueueMonitor() {
             error: failureMessage,
             completedAt: Date.now(),
             currentNode: null,
-            previewImageUrl: null,
           });
           return;
         }
 
         const outputs = extractHistoryOutputs(history, promptId, client);
-        clearPreview(promptId);
         useGenerationQueueStore.getState().upsertExternalComfyUIJob({
           providerJobId: promptId,
           status: 'done',
@@ -294,7 +282,6 @@ export function useComfyUIQueueMonitor() {
           generatedOutputs: outputs,
           completedAt: Date.now(),
           currentNode: null,
-          previewImageUrl: null,
         });
       } catch {
         // History may not exist yet; the next poll/WebSocket event will try again.
@@ -361,32 +348,11 @@ export function useComfyUIQueueMonitor() {
       let socket: WebSocket;
       try {
         socket = new WebSocket(wsUrl);
-        socket.binaryType = 'arraybuffer';
       } catch {
         return null;
       }
 
       socket.onmessage = (event) => {
-        if (event.data instanceof ArrayBuffer) {
-          const promptId = activePromptIdRef.current;
-          if (!promptId) {
-            return;
-          }
-          const blob = decodeComfyUIPreviewFrame(event.data);
-          if (!blob) {
-            return;
-          }
-          clearPreview(promptId);
-          const url = URL.createObjectURL(blob);
-          previewUrlsRef.current.set(promptId, url);
-          useGenerationQueueStore.getState().upsertExternalComfyUIJob({
-            providerJobId: promptId,
-            status: 'processing',
-            previewImageUrl: url,
-          });
-          return;
-        }
-
         try {
           const message = JSON.parse(event.data) as ComfyUIMonitorMessage;
           const promptId = typeof message.data?.prompt_id === 'string'
@@ -397,7 +363,6 @@ export function useComfyUIQueueMonitor() {
           }
 
           if (message.type === 'execution_error' || message.type === 'execution_interrupted') {
-            clearPreview(promptId);
             useGenerationQueueStore.getState().upsertExternalComfyUIJob({
               providerJobId: promptId,
               status: 'failed',
@@ -405,7 +370,6 @@ export function useComfyUIQueueMonitor() {
               error: stringifyMessage(message.data) || (message.type === 'execution_interrupted' ? 'ComfyUI generation interrupted.' : 'ComfyUI generation failed.'),
               completedAt: Date.now(),
               currentNode: null,
-              previewImageUrl: null,
             });
             return;
           }
@@ -476,15 +440,6 @@ export function useComfyUIQueueMonitor() {
       ws = null;
       activePromptIdRef.current = null;
       nodeLabelsRef.current.clear();
-      previewUrlsRef.current.forEach((url, promptId) => {
-        URL.revokeObjectURL(url);
-        useGenerationQueueStore.getState().upsertExternalComfyUIJob({
-          providerJobId: promptId,
-          status: 'processing',
-          previewImageUrl: null,
-        });
-      });
-      previewUrlsRef.current.clear();
     };
   }, [comfyUIEnabled, monitoringEnabled, serverUrl]);
 }

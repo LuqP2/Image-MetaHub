@@ -75,6 +75,13 @@ export interface ComfyUIViewLoadFailure {
   url: string;
 }
 
+// Read-only ComfyUI WebSocket event observed inside the embedded view and relayed
+// to the renderer. 'json' carries a parsed ComfyUI message (progress/executing/…);
+// 'binary' carries a preview-image frame as raw bytes.
+export type ComfyEmbeddedWsMessage =
+  | { kind: 'json'; payload: { type?: string; data?: Record<string, unknown> } }
+  | { kind: 'binary'; buffer: ArrayBuffer | Uint8Array };
+
 export interface ExportFileDescriptor {
   imageId?: string;
   directoryPath: string;
@@ -454,8 +461,10 @@ export interface ElectronAPI {
     title?: string;
     preferNewTab?: boolean;
   }) => Promise<ComfyUIViewWorkflowLoadResult>;
+  comfyUIViewRunWorkflow: () => Promise<{ success: boolean; error?: string }>;
   onComfyUIViewStateChanged: (callback: (state: ComfyUIViewState) => void) => () => void;
   onComfyUIViewLoadFailed: (callback: (failure: ComfyUIViewLoadFailure) => void) => () => void;
+  onComfyEmbeddedProgress: (callback: (message: ComfyEmbeddedWsMessage) => void) => () => void;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;

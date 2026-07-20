@@ -161,16 +161,37 @@ export function normalizeLoopbackServerUrl(serverUrl: string): string {
   return serverUrl;
 }
 
-const PREVIEW_IMAGE_EVENT_TYPE = 1;
+// ComfyUI binary WebSocket event types (BE uint32 in the first 4 bytes).
+const PREVIEW_IMAGE_EVENT_TYPE = 1; // [type][format][image bytes]
+const PREVIEW_IMAGE_WITH_METADATA_EVENT_TYPE = 4; // [type][metadataLen][json][image bytes]
 const PREVIEW_IMAGE_FORMAT_MIME: Record<number, string> = {
   1: 'image/jpeg',
   2: 'image/png',
 };
 
+// Detect the image MIME from magic bytes — more reliable than trusting a format
+// enum, and necessary for PREVIEW_IMAGE_WITH_METADATA whose bytes 4-8 are a length.
+const sniffImageMime = (bytes: Uint8Array): string | null => {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return 'image/png';
+  }
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  return null;
+};
+
 /**
- * Decodes a ComfyUI binary WebSocket frame into a preview image Blob.
- * Protocol: 4-byte BE uint32 event type (1 = PREVIEW_IMAGE), then for that
- * event a 4-byte BE uint32 image format (1 = JPEG, 2 = PNG), then raw image bytes.
+ * Decodes a ComfyUI binary WebSocket preview frame into an image Blob.
+ * Handles both PREVIEW_IMAGE (type 1: [type][format][bytes]) and the newer
+ * PREVIEW_IMAGE_WITH_METADATA (type 4: [type][metadataLen][json][bytes]).
  * Returns null for any other event type or malformed frame.
  */
 export function decodeComfyUIPreviewFrame(data: ArrayBuffer): Blob | null {
@@ -180,13 +201,26 @@ export function decodeComfyUIPreviewFrame(data: ArrayBuffer): Blob | null {
 
   const view = new DataView(data);
   const eventType = view.getUint32(0);
-  if (eventType !== PREVIEW_IMAGE_EVENT_TYPE) {
+
+  let imageStart: number;
+  let formatMime: string | undefined;
+
+  if (eventType === PREVIEW_IMAGE_EVENT_TYPE) {
+    formatMime = PREVIEW_IMAGE_FORMAT_MIME[view.getUint32(4)];
+    imageStart = 8;
+  } else if (eventType === PREVIEW_IMAGE_WITH_METADATA_EVENT_TYPE) {
+    const metadataLength = view.getUint32(4);
+    imageStart = 8 + metadataLength;
+    if (imageStart > data.byteLength) {
+      return null;
+    }
+  } else {
     return null;
   }
 
-  const imageFormat = view.getUint32(4);
-  const mime = PREVIEW_IMAGE_FORMAT_MIME[imageFormat] || 'image/jpeg';
-  return new Blob([data.slice(8)], { type: mime });
+  const imageBytes = data.slice(imageStart);
+  const mime = sniffImageMime(new Uint8Array(imageBytes)) || formatMime || 'image/jpeg';
+  return new Blob([imageBytes], { type: mime });
 }
 
 export class ComfyUIApiClient {
