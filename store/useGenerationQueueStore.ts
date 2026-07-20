@@ -213,7 +213,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
         return existing.id;
       }
 
-      if (existing.status === 'done' && input.status !== 'done' && input.status !== 'failed') {
+      if ((existing.status === 'done' || existing.status === 'failed') && input.status !== 'done' && input.status !== 'failed') {
         return existing.id;
       }
 
@@ -312,6 +312,16 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
       if (current) {
         revokePreviewUrlIfReplaced(current.previewImageUrl, updates.previewImageUrl);
       }
+    }
+    if (updates.providerJobId) {
+      const superseded = get().items.filter(
+        (item) =>
+          item.id !== id &&
+          item.provider === 'comfyui' &&
+          item.origin === 'comfyui-external' &&
+          item.providerJobId === updates.providerJobId
+      );
+      revokeGeneratedOutputUrls(superseded);
     }
     set((state) => ({
       items: state.items

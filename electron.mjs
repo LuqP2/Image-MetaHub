@@ -3332,16 +3332,17 @@ function setupFileOperationHandlers() {
             () => app.queuePrompt(0, 1),
             () => app.extensionManager?.command?.execute?.('Comfy.QueuePrompt'),
           ];
+          let lastError = null;
           for (const candidate of candidates) {
             try {
               if (await runMaybeAsync(candidate)) {
                 return { success: true };
               }
             } catch (error) {
-              return { success: false, error: error?.message || String(error) };
+              lastError = error?.message || String(error);
             }
           }
-          return { success: false, error: 'This ComfyUI version did not expose a supported queue action.' };
+          return { success: false, error: lastError || 'This ComfyUI version did not expose a supported queue action.' };
         })()
       `, true);
     } catch (error) {

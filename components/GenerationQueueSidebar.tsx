@@ -218,7 +218,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
 
     if (item.provider === 'comfyui' && item.origin === 'comfyui-external') {
       if (!comfyUIServerUrl || !item.providerJobId) {
-        setJobStatus(item.id, 'failed', { error: 'Cannot cancel ComfyUI job without a prompt id.' });
+        setJobStatus(item.id, 'failed', { error: 'Cannot cancel ComfyUI job without a prompt id.', previewImageUrl: null });
         return;
       }
 
@@ -233,7 +233,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
           return;
         }
 
-        setJobStatus(item.id, 'canceled', { error: undefined });
+        setJobStatus(item.id, 'canceled', { error: undefined, previewImageUrl: null });
       } catch (error) {
         setJobStatus(item.id, item.status, {
           error: error instanceof Error ? error.message : String(error),
@@ -259,12 +259,12 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
     }
 
     if (item.status === 'waiting') {
-      setJobStatus(item.id, 'canceled', { error: undefined });
+      setJobStatus(item.id, 'canceled', { error: undefined, previewImageUrl: null });
       return;
     }
 
     if (activeJobs[item.provider] !== item.id) {
-      setJobStatus(item.id, 'canceled', { error: undefined });
+      setJobStatus(item.id, 'canceled', { error: undefined, previewImageUrl: null });
       return;
     }
 
@@ -281,7 +281,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
         stopPolling();
         setActiveJob('a1111', null);
       }
-      setJobStatus(item.id, 'canceled', { error: undefined });
+      setJobStatus(item.id, 'canceled', { error: undefined, previewImageUrl: null });
       return;
     }
 
@@ -298,7 +298,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
       stopTracking();
       setActiveJob('comfyui', null);
     }
-    setJobStatus(item.id, 'canceled', { error: undefined });
+    setJobStatus(item.id, 'canceled', { error: undefined, previewImageUrl: null });
   };
 
   const handleRemove = (item: GenerationQueueItem, event: React.MouseEvent<HTMLButtonElement>) => {

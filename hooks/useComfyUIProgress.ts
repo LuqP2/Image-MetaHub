@@ -100,17 +100,18 @@ export function useComfyUIProgress() {
           if (message.data.node === null) {
             // Generation complete
             console.log('[ComfyUI Progress] Generation complete');
+            revokePreviewUrl();
             setProgressState(prev => ({
               ...prev,
               isGenerating: false,
               progress: 1,
-              currentStep: prev?.totalSteps || 0
+              currentStep: prev?.totalSteps || 0,
+              previewImageUrl: null
             }));
 
             // Close WebSocket after a short delay
             setTimeout(() => {
               ws.close();
-              revokePreviewUrl();
               setProgressState(null);
             }, 2000);
           } else {

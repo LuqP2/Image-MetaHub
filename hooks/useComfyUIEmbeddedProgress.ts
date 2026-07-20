@@ -51,16 +51,28 @@ export function useComfyUIEmbeddedProgress() {
       }
     };
 
+    // Only enrich jobs the REST poller (useComfyUIQueueMonitor) already knows about via
+    // ComfyUI's authenticated HTTP API — never create a queue item purely from a relayed
+    // WS event, since the embedded page runs with contextIsolation off and its WebSocket
+    // traffic isn't otherwise authenticated as coming from the real ComfyUI server.
+    const isTrackedJob = (promptId: string) =>
+      useGenerationQueueStore.getState().items.some(
+        (item) => item.provider === 'comfyui' && item.providerJobId === promptId
+      );
+
     const handleJson = (payload: { type?: string; data?: Record<string, unknown> }) => {
       const promptId = typeof payload.data?.prompt_id === 'string'
         ? payload.data.prompt_id
         : activePromptIdRef.current;
-      if (!promptId) {
+      if (!promptId || !isTrackedJob(promptId)) {
         return;
       }
 
       if (payload.type === 'execution_error' || payload.type === 'execution_interrupted') {
         clearPreview(promptId);
+        if (activePromptIdRef.current === promptId) {
+          activePromptIdRef.current = null;
+        }
         useGenerationQueueStore.getState().upsertExternalComfyUIJob({
           providerJobId: promptId,
           status: 'processing',
@@ -72,6 +84,9 @@ export function useComfyUIEmbeddedProgress() {
       if (payload.type === 'executing') {
         if (payload.data?.node === null) {
           clearPreview(promptId);
+          if (activePromptIdRef.current === promptId) {
+            activePromptIdRef.current = null;
+          }
           useGenerationQueueStore.getState().upsertExternalComfyUIJob({
             providerJobId: promptId,
             status: 'processing',
