@@ -196,20 +196,6 @@ const buildComfyXmp = (prompt: object, workflow: object): string => {
   ].join('\n');
 };
 
-const buildPixelMetaXmp = (
-  prompt: object,
-  nestedPrompt: object,
-): string => [
-  '<x:xmpmeta xmlns:x="adobe:ns:meta/">',
-  '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
-  '    <rdf:Description xmlns:pm="https://ai-foundry.dev/ns/pixelmeta/1.0/" pm:version="1">',
-  `      <pm:prompt>${escapeXml(JSON.stringify(prompt))}</pm:prompt>`,
-  `      <pm:imagemetahub_data>${escapeXml(JSON.stringify({ generator: 'ComfyUI', prompt_api: nestedPrompt }))}</pm:imagemetahub_data>`,
-  '    </rdf:Description>',
-  '  </rdf:RDF>',
-  '</x:xmpmeta>',
-].join('\n');
-
 const buildExifPayload = (workflow: object, prompt: object): Uint8Array => {
   const values = [
     ascii(`workflow:${JSON.stringify(workflow)}\0`),
@@ -327,45 +313,6 @@ describe('AVIF metadata carrier', () => {
       prompt: JSON.stringify(prompt),
       workflow: JSON.stringify(workflow),
     });
-  });
-
-  it('keeps standalone workflow documents canonical and reports legacy conflicts', async () => {
-    const canonicalPrompt = { '1': { class_type: 'KSampler', inputs: { seed: 1 } } };
-    const conflictingPrompt = { '1': { class_type: 'KSampler', inputs: { seed: 2 } } };
-    const xmp = encoder.encode(buildPixelMetaXmp(canonicalPrompt, conflictingPrompt));
-    const buffer = buildAvif([
-      { id: 3, type: 'mime', contentType: 'application/rdf+xml', parts: [xmp] },
-    ]);
-
-    const result = await parseAvifMetadata(buffer);
-
-    expect(result.rawMetadata?.prompt).toBe(JSON.stringify(canonicalPrompt));
-    expect(result.rawMetadata?.imagemetahub_data).toMatchObject({
-      prompt_api: conflictingPrompt,
-    });
-    expect(result.rawMetadata?._carrierConflicts).toEqual([
-      {
-        field: 'prompt',
-        canonicalSource: 'xmp.prompt',
-        conflictingSource: 'imagemetahub_data.prompt_api',
-      },
-    ]);
-  });
-
-  it('falls back to legacy nested prompt documents when standalone XMP is absent', async () => {
-    const legacyPrompt = { '5': { class_type: 'VAEDecode', inputs: {} } };
-    const xmp = encoder.encode(buildPixelMetaXmp(legacyPrompt, legacyPrompt).replace(
-      /\s*<pm:prompt>.*?<\/pm:prompt>/,
-      '',
-    ));
-    const buffer = buildAvif([
-      { id: 4, type: 'mime', contentType: 'application/rdf+xml', parts: [xmp] },
-    ]);
-
-    const result = await parseAvifMetadata(buffer);
-
-    expect(result.rawMetadata?.prompt).toBe(JSON.stringify(legacyPrompt));
-    expect(result.rawMetadata?._carrierConflicts).toBeUndefined();
   });
 
   it('does not flag a conflict for identical plain-text prompts across carriers', async () => {

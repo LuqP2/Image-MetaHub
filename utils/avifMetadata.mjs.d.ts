@@ -1,6 +1,5 @@
 export const AVIF_MIME_TYPE: 'image/avif';
 export const COMFYUI_XMP_NAMESPACE: 'https://github.com/Comfy-Org/ComfyUI';
-export const PIXELMETA_XMP_NAMESPACE: 'https://ai-foundry.dev/ns/pixelmeta/1.0/';
 export const IMAGE_METAHUB_XMP_NAMESPACE: 'https://github.com/LuqP2/Image-MetaHub';
 
 export interface AvifCarrierConflict {
@@ -14,7 +13,6 @@ export interface AvifRawMetadata extends Record<string, unknown> {
   prompt?: string;
   workflow?: string;
   parameters?: string;
-  imagemetahub_data?: Record<string, unknown>;
   imagemetahub_extension?: Record<string, unknown>;
   _carrierConflicts?: AvifCarrierConflict[];
 }

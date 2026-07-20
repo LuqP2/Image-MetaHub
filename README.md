@@ -134,7 +134,7 @@ For video and audio metadata, Image MetaHub uses container metadata plus `ffprob
 
 ### AVIF metadata
 
-Image MetaHub reads ComfyUI prompt and workflow documents from standard AVIF XMP items, including files produced by the proposed ComfyUI AVIF saver and frontend loader. It also reads the older EXIF convention and legacy PixelMeta `imagemetahub_data` payloads.
+Image MetaHub reads ComfyUI prompt and workflow documents from standard AVIF XMP items, including files produced by the proposed ComfyUI AVIF saver and frontend loader. It also reads the older EXIF convention used by existing ComfyUI AVIF files.
 
 New Image MetaHub AVIF exports are intentionally compact: the full prompt and workflow graphs stay in their established ComfyUI XMP fields rather than being copied again. The Image MetaHub namespace stores app-specific fields (tags, notes, attribution, analytics, lineage, source generator) alongside the extracted parameter snapshot (model, seed, steps, cfg, sampler, scheduler, negative prompt) the Save Node records — those structured fields are kept because re-deriving them from arbitrary custom-node graphs is unreliable. When a legacy nested prompt conflicts with a standalone XMP prompt, the standalone document wins and the viewer shows a metadata-conflict badge.
 

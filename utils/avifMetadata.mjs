@@ -4,7 +4,6 @@ import { parse as parseExif, sidecar as parseSidecar } from 'exifr/dist/full.esm
 
 export const AVIF_MIME_TYPE = 'image/avif';
 export const COMFYUI_XMP_NAMESPACE = 'https://github.com/Comfy-Org/ComfyUI';
-export const PIXELMETA_XMP_NAMESPACE = 'https://ai-foundry.dev/ns/pixelmeta/1.0/';
 export const IMAGE_METAHUB_XMP_NAMESPACE = 'https://github.com/LuqP2/Image-MetaHub';
 
 const XMP_CONTENT_TYPE = 'application/rdf+xml';
@@ -658,7 +657,6 @@ function documentsEqual(left, right) {
  */
 function namespacePriority(namespace) {
   if (namespace === COMFYUI_XMP_NAMESPACE) return 300;
-  if (namespace === PIXELMETA_XMP_NAMESPACE) return 200;
   if (namespace === IMAGE_METAHUB_XMP_NAMESPACE) return 150;
   return 100;
 }
@@ -666,7 +664,7 @@ function namespacePriority(namespace) {
 /**
  * @param {Uint8Array} data
  * @param {number} packetIndex
- * @returns {Promise<{ candidates: DocumentCandidate[], metaHubData?: unknown, extension?: unknown, parameters?: string, namespaces: string[] }>}
+ * @returns {Promise<{ candidates: DocumentCandidate[], extension?: unknown, parameters?: string, namespaces: string[] }>}
  */
 async function parseXmpPacket(data, packetIndex) {
   const parsed = await parseSidecar(data, {
@@ -683,7 +681,6 @@ async function parseXmpPacket(data, packetIndex) {
   const namespaces = Object.values(namespaceMap).filter((value) => typeof value === 'string');
   /** @type {DocumentCandidate[]} */
   const candidates = [];
-  let metaHubData;
   let extension;
   let parameters;
 
@@ -703,8 +700,6 @@ async function parseXmpPacket(data, packetIndex) {
           source: `xmp.${prefix || 'default'}.${key}[${packetIndex}]`,
           priority: namespacePriority(namespace),
         });
-      } else if (key === 'imagemetahub_data' && namespace === PIXELMETA_XMP_NAMESPACE && value) {
-        metaHubData = parseJson(value) ?? undefined;
       } else if (key === 'data' && namespace === IMAGE_METAHUB_XMP_NAMESPACE && value) {
         extension = parseJson(value) ?? undefined;
       } else if (key === 'parameters' && namespace === IMAGE_METAHUB_XMP_NAMESPACE && value) {
@@ -712,7 +707,7 @@ async function parseXmpPacket(data, packetIndex) {
       }
     }
   }
-  return { candidates, metaHubData, extension, parameters, namespaces };
+  return { candidates, extension, parameters, namespaces };
 }
 
 /**
@@ -740,7 +735,6 @@ export async function parseAvifMetadata(input) {
   const candidates = [];
   /** @type {string[]} */
   const xmpNamespaces = [];
-  let metaHubData;
   let extension;
   let parameters;
   let metadataTruncated = container.metadataTruncated;
@@ -761,7 +755,6 @@ export async function parseAvifMetadata(input) {
     const parsedPacket = await parseXmpPacket(item.data, packetIndex);
     candidates.push(...parsedPacket.candidates);
     xmpNamespaces.push(...parsedPacket.namespaces);
-    metaHubData ??= parsedPacket.metaHubData;
     extension ??= parsedPacket.extension;
     parameters ??= parsedPacket.parameters;
   }
@@ -851,29 +844,6 @@ export async function parseAvifMetadata(input) {
     }
   }
 
-  if (isRecord(metaHubData)) {
-    rawMetadata.imagemetahub_data = metaHubData;
-    const nestedDocuments = {
-      prompt: metaHubData.prompt_api,
-      workflow: metaHubData.workflow,
-    };
-    for (const field of /** @type {const} */ (['prompt', 'workflow'])) {
-      const nestedDocument = nestedDocuments[field];
-      const canonicalDocument = typeof rawMetadata[field] === 'string' ? rawMetadata[field] : null;
-      if (canonicalDocument && nestedDocument !== undefined && !documentsEqual(canonicalDocument, nestedDocument)) {
-        conflicts.push({
-          field,
-          canonicalSource: `xmp.${field}`,
-          conflictingSource: `imagemetahub_data.${field === 'prompt' ? 'prompt_api' : 'workflow'}`,
-        });
-      } else if (!canonicalDocument) {
-        const legacyDocument = documentString(nestedDocument);
-        if (legacyDocument) {
-          rawMetadata[field] = legacyDocument;
-        }
-      }
-    }
-  }
   if (isRecord(extension)) {
     rawMetadata.imagemetahub_extension = extension;
   }
