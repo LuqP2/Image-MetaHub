@@ -36,7 +36,7 @@ const electronStorage: StateStorage = {
 const isElectron = !!window.electronAPI;
 
 // Trial duration (shared across UI)
-export const TRIAL_DURATION_DAYS = 3;
+export const TRIAL_DURATION_DAYS = 7;
 
 // Type definitions
 type LicenseStatus = 'free' | 'trial' | 'expired' | 'pro' | 'lifetime';
@@ -47,6 +47,7 @@ interface LicenseState {
   migrationResetApplied: boolean;
   expiredTrialResetApplied: boolean;
   nextReleaseTrialResetApplied: boolean;
+  trialDurationV2ResetApplied: boolean;
 
   // Trial tracking
   trialStartDate: number | null;
@@ -95,6 +96,7 @@ export const useLicenseStore = create<LicenseState>()(
       migrationResetApplied: false,
       expiredTrialResetApplied: false,
       nextReleaseTrialResetApplied: false,
+      trialDurationV2ResetApplied: false,
       trialStartDate: null,
       trialActivated: false,
       licenseStatus: 'free',
@@ -138,6 +140,7 @@ export const useLicenseStore = create<LicenseState>()(
               migrationResetApplied: true,
               expiredTrialResetApplied: true,
               nextReleaseTrialResetApplied: true,
+              trialDurationV2ResetApplied: true,
             });
             return;
           }
@@ -157,6 +160,7 @@ export const useLicenseStore = create<LicenseState>()(
               migrationResetApplied: true,
               expiredTrialResetApplied: true,
               nextReleaseTrialResetApplied: true,
+              trialDurationV2ResetApplied: true,
             });
             return;
           }
@@ -166,6 +170,7 @@ export const useLicenseStore = create<LicenseState>()(
             migrationResetApplied: true,
             expiredTrialResetApplied: true,
             nextReleaseTrialResetApplied: true,
+            trialDurationV2ResetApplied: true,
             licenseStatus: state.licenseStatus,
           });
           return;
@@ -227,6 +232,24 @@ export const useLicenseStore = create<LicenseState>()(
 
         currentState = get();
 
+        // One-time migration: trial duration reverted from 3 to 7 days. Let users who already
+        // burned through the 3-day trial start a fresh 7-day trial.
+        if (!currentState.trialDurationV2ResetApplied && currentState.licenseStatus === 'expired') {
+          set({
+            trialStartDate: null,
+            trialActivated: false,
+            licenseStatus: 'free',
+            trialDurationV2ResetApplied: true,
+            initialized: true,
+          });
+          console.log('[IMH] Expired trial reset to Free due to trial duration reverting to 7 days. User can start a fresh trial.');
+          return;
+        } else if (!currentState.trialDurationV2ResetApplied) {
+          set({ trialDurationV2ResetApplied: true });
+        }
+
+        currentState = get();
+
         // If trial never started, stay in free mode
         if (!currentState.trialActivated) {
           set({ initialized: true, ...clearStoredLicenseState(), trialStartDate: null, trialActivated: false });
@@ -243,6 +266,7 @@ export const useLicenseStore = create<LicenseState>()(
           migrationResetApplied: true,
           expiredTrialResetApplied: true,
           nextReleaseTrialResetApplied: true,
+          trialDurationV2ResetApplied: true,
         });
 
         if (trialExpired) {
@@ -287,6 +311,7 @@ export const useLicenseStore = create<LicenseState>()(
           migrationResetApplied: false,
           expiredTrialResetApplied: false,
           nextReleaseTrialResetApplied: false,
+          trialDurationV2ResetApplied: false,
           trialStartDate: null,
           trialActivated: false,
           licenseStatus: 'free',

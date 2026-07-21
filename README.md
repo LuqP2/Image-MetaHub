@@ -1,7 +1,7 @@
 # Image MetaHub
 
 [![Join our Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/2MXWxjKyJ5)
-[![Get Pro](https://img.shields.io/badge/Get%20Pro-Gumroad-4b8bbe)](https://imagemetahub.com/getpro)
+[![Buy License – $39](https://img.shields.io/badge/Buy%20License-%2439-4b8bbe)](https://imagemetahub.com/getpro.html)
 
 Local-first browser, search tool, and metadata hub for AI-generated images and videos.
 

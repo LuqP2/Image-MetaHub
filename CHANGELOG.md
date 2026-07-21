@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.18.0]
+## [0.18.0] - 2026-07-21
  
 ### Added
  
@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Header Tools Menu**: Automation rules and Auto-tag library moved into a new header "Tools" menu, since they're library-wide operations rather than tied to a specific collection or cluster.
 - **Live Generation Preview**: The Queue now shows a live, KSampler-style preview image that updates step-by-step during ComfyUI generation — both for generations started from MetaHub's own workspace and from the embedded ComfyUI UI. The preview/output image box can be dragged taller for portrait images, and the size is remembered across sessions.
 - **Run Current Workflow**: Added a "Run" button to the top of the Queue that queues whatever workflow is currently loaded in the embedded ComfyUI workspace, so you can trigger a generation from anywhere in the app.
-- **First-Class AVIF Metadata**: Added AVIF discovery, Chromium-backed previews and thumbnails, dimensions, ComfyUI XMP prompt/workflow parsing, legacy AVIF EXIF compatibility, CLI parsing, bounded full-file fallback for late XMP, metadata stripping, and metadata-preserving AVIF export. Exports keep the full prompt and workflow graph in standard ComfyUI XMP fields, while MetaHub's own tags, notes, attribution and an extracted parameter snapshot (model, seed, steps, cfg, sampler, scheduler, negative prompt) live in a compact private extension.
+- **First-Class AVIF Metadata**: Added AVIF discovery, Chromium-backed previews and thumbnails, dimensions, ComfyUI XMP prompt/workflow parsing, legacy AVIF EXIF compatibility, CLI parsing, bounded full-file fallback for late XMP, metadata stripping, and metadata-preserving AVIF export. Exports keep the full prompt and workflow graph in standard ComfyUI XMP fields, while MetaHub's own tags, notes, attribution and an extracted parameter snapshot (model, seed, steps, cfg, sampler, scheduler, negative prompt) live in a compact private extension. Thanks to @austintraver.
 
 ### Improved
  

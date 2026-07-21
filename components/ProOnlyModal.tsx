@@ -231,6 +231,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
                 Start {TRIAL_DURATION_DAYS}-day trial
               </button>
             )}
+            <p className="text-center text-xs text-gray-400">$39 · one-time payment · lifetime license</p>
             <a
               href={proLicenseUrl}
               target="_blank"
