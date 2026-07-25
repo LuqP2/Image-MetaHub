@@ -21,6 +21,10 @@ interface TagInputComboboxProps {
   metaClassName?: string;
   trailingContent?: React.ReactNode;
   onEscape?: () => void;
+  /** When provided, selecting a suggestion (click or keyboard) calls this instead of
+   *  inserting/submitting the value directly — lets callers apply the tag immediately
+   *  (e.g. bulk-tagging) instead of just filling the input. */
+  onSelectSuggestion?: (tagName: string) => void;
 }
 
 const defaultOptionClassName =
@@ -45,6 +49,7 @@ const TagInputCombobox = forwardRef<HTMLInputElement, TagInputComboboxProps>(({
   metaClassName = 'text-xs text-gray-500',
   trailingContent,
   onEscape,
+  onSelectSuggestion,
 }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -86,6 +91,12 @@ const TagInputCombobox = forwardRef<HTMLInputElement, TagInputComboboxProps>(({
   };
 
   const applySuggestion = (tagName: string) => {
+    if (onSelectSuggestion) {
+      onSelectSuggestion(tagName);
+      closeSuggestions();
+      return;
+    }
+
     if (mode === 'csv') {
       onValueChange(replaceLastCsvToken(value, tagName));
       closeSuggestions();

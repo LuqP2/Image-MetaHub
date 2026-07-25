@@ -3,6 +3,7 @@ import { X, Plus, Tag } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import TagInputCombobox from './TagInputCombobox';
+import { getRecentTagChips } from '../utils/tagSuggestions';
 
 interface TagManagerModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
   const { availableTags, bulkAddTag, bulkRemoveTag, images } = useImageStore();
   const recentTags = useImageStore((state) => state.recentTags);
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
+  const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
   const [inputValue, setInputValue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingRemoveTag, setPendingRemoveTag] = useState<string | null>(null);
@@ -67,6 +69,17 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
         isAll: count === selectedImages.length
       }));
   }, [existingTagsStats, selectedImages.length]);
+
+  const tagsOnAllSelected = useMemo(
+    () => sortedExistingTags.filter(t => t.isAll).map(t => t.name),
+    [sortedExistingTags]
+  );
+
+  const quickAddSuggestions = useMemo(() => getRecentTagChips({
+    recentTags,
+    excludedTags: tagsOnAllSelected,
+    limit: recentTagChipLimit,
+  }), [recentTags, tagsOnAllSelected, recentTagChipLimit]);
 
   const handleAddTag = async (input: string) => {
     if (!input.trim()) return;
@@ -182,6 +195,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
               value={inputValue}
               onValueChange={setInputValue}
               onSubmit={handleAddTag}
+              onSelectSuggestion={handleApplySingleTag}
               recentTags={recentTags}
               availableTags={availableTags}
               excludedTags={[]}
@@ -215,6 +229,23 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
               }
             />
           </div>
+
+          {/* Quick-add: recently used tags */}
+          {inputValue.trim().length === 0 && quickAddSuggestions.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {quickAddSuggestions.map(tag => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => void handleApplySingleTag(tag)}
+                  disabled={isSubmitting}
+                  className="text-xs bg-gray-700/30 text-gray-400 px-1.5 py-0.5 rounded hover:bg-gray-600 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
 
           {pendingRemoveTag && (
             <div className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3">
