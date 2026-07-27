@@ -30,10 +30,11 @@ const createImage = (id: string, lastModified: number, token?: string): IndexedI
 } as IndexedImage);
 
 describe('creator attribution', () => {
-  it('builds the Pro URL with imh_ref only when a token exists', () => {
-    expect(buildProLicenseUrl(null)).toBe('https://imagemetahub.com/getpro.html');
-    expect(buildProLicenseUrl('imhcrt_br_creator workflow')).toBe(
-      'https://imagemetahub.com/getpro.html?imh_ref=imhcrt_br_creator+workflow'
+  it('builds the Pro URL with src=app, optional ctx, and imh_ref only when a token exists', () => {
+    expect(buildProLicenseUrl(null)).toBe('https://www.imagemetahub.com/pro?src=app');
+    expect(buildProLicenseUrl(null, 'menu')).toBe('https://www.imagemetahub.com/pro?src=app&ctx=menu');
+    expect(buildProLicenseUrl('imhcrt_br_creator workflow', 'lockedfeature')).toBe(
+      'https://www.imagemetahub.com/pro?src=app&ctx=lockedfeature&imh_ref=imhcrt_br_creator+workflow'
     );
   });
 

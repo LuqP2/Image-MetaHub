@@ -28,7 +28,7 @@ export const LicenseSettingsPanel: React.FC = () => {
   const licenseKey = useLicenseStore((state) => state.licenseKey);
   const activateLicense = useLicenseStore((state) => state.activateLicense);
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken);
+  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'settings');
 
   const [licenseEmailInput, setLicenseEmailInput] = useState(licenseEmail ?? '');
   const [licenseKeyInput, setLicenseKeyInput] = useState(licenseKey ?? '');

@@ -17,7 +17,7 @@ const ClusterUpgradeBanner: React.FC<ClusterUpgradeBannerProps> = ({
 }) => {
   const { showProModal, canStartTrial } = useFeatureAccess();
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken);
+  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'banner');
 
   return (
     <div className="mt-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/30 rounded-lg p-4">

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, ExternalLink } from 'lucide-react';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { buildProLicenseUrl } from '../utils/creatorAttribution';
 
 interface ChangelogModalProps {
   isOpen: boolean;
@@ -10,6 +12,8 @@ interface ChangelogModalProps {
 const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, currentVersion }) => {
   const [changelog, setChangelog] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
+  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'about');
 
   useEffect(() => {
     if (isOpen) {
@@ -191,7 +195,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                   {/* Badges */}
                   <div className="flex gap-3 mt-6 pt-4 border-t border-blue-500/20 flex-wrap">
                     <a
-                      href="https://imagemetahub.com/getpro.html"
+                      href={proLicenseUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
