@@ -1,7 +1,7 @@
 # Image MetaHub
 
 [![Join our Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/2MXWxjKyJ5)
-[![Buy License – $39](https://img.shields.io/badge/Buy%20License-%2439-4b8bbe)](https://imagemetahub.com/getpro.html)
+[![Buy License – $39](https://img.shields.io/badge/Buy%20License-%2439-4b8bbe)](https://www.imagemetahub.com/pro?src=readme)
 
 Local-first browser, search tool, and metadata hub for AI-generated images and videos.
 
@@ -324,8 +324,8 @@ Image MetaHub is built and maintained by **Lucas (LuqP2)** with community feedba
 
 ## Links
 
-* Website: [https://imagemetahub.com](https://imagemetahub.com)
+* Website: [https://www.imagemetahub.com?src=readme](https://www.imagemetahub.com?src=readme)
 * Discord: [https://discord.gg/2MXWxjKyJ5](https://discord.gg/2MXWxjKyJ5)
-* Pro license: [https://imagemetahub.com/getpro](https://imagemetahub.com/getpro)
+* Pro license: [https://www.imagemetahub.com/pro?src=readme](https://www.imagemetahub.com/pro?src=readme)
 * Ko-fi: [https://ko-fi.com/lucaspierri](https://ko-fi.com/lucaspierri)
 * ComfyUI Save Node: [https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save)
