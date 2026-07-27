@@ -1,6 +1,8 @@
 import type { BaseMetadata, IndexedImage, MetaHubAttribution } from '../types';
 
-export const PRO_LICENSE_URL = 'https://imagemetahub.com/getpro.html';
+export const PRO_LICENSE_URL = 'https://www.imagemetahub.com/pro';
+
+export type ProLicenseUrlContext = 'menu' | 'lockedfeature' | 'settings' | 'banner' | 'about';
 
 const normalizeToken = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -39,8 +41,15 @@ export const findLatestCreatorAttributionToken = (images: IndexedImage[]): strin
   return latestToken;
 };
 
-export const buildProLicenseUrl = (token?: string | null): string => {
+export const buildProLicenseUrl = (
+  token?: string | null,
+  ctx?: ProLicenseUrlContext
+): string => {
   const url = new URL(PRO_LICENSE_URL);
+  url.searchParams.set('src', 'app');
+  if (ctx) {
+    url.searchParams.set('ctx', ctx);
+  }
   const normalizedToken = normalizeToken(token);
   if (normalizedToken) {
     url.searchParams.set('imh_ref', normalizedToken);

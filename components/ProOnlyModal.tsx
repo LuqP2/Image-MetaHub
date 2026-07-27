@@ -132,7 +132,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
   isPro,
 }) => {
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken);
+  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'lockedfeature');
 
   if (!isOpen) return null;
 
