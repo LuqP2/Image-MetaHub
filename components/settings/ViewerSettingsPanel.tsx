@@ -28,6 +28,8 @@ export const ViewerSettingsPanel: React.FC = () => {
   const setTagSuggestionLimit = useSettingsStore((state) => state.setTagSuggestionLimit);
   const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
   const setRecentTagChipLimit = useSettingsStore((state) => state.setRecentTagChipLimit);
+  const autoPlayMedia = useSettingsStore((state) => state.autoPlayMedia);
+  const setAutoPlayMedia = useSettingsStore((state) => state.setAutoPlayMedia);
   const slideshowIntervalSeconds = useSettingsStore((state) => state.slideshowIntervalSeconds);
   const setSlideshowIntervalSeconds = useSettingsStore((state) => state.setSlideshowIntervalSeconds);
   const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
@@ -55,6 +57,14 @@ export const ViewerSettingsPanel: React.FC = () => {
           label="Skip delete confirmation"
           description="Bypass the confirmation dialog when deleting files to the trash."
           control={<SettingSwitch checked={skipDeleteConfirmation} onChange={setSkipDeleteConfirmation} />}
+        />
+      </SettingsSectionCard>
+
+      <SettingsSectionCard title="Playback">
+        <SettingRow
+          label="Auto-play video and audio"
+          description="Start playback automatically when a video or audio file opens. When off, press Play to start."
+          control={<SettingSwitch checked={autoPlayMedia} onChange={setAutoPlayMedia} />}
         />
       </SettingsSectionCard>
 

@@ -2101,7 +2101,11 @@ export default function App() {
     );
   }, []);
 
-  const handleImageModalNavigate = useCallback((modalId: string, direction: 'next' | 'previous') => {
+  const handleImageModalNavigate = useCallback((
+    modalId: string,
+    direction: 'next' | 'previous' | 'random',
+    options?: { wrap?: boolean }
+  ) => {
     const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
     if (!targetModal) {
       return;
@@ -2114,10 +2118,31 @@ export default function App() {
       return;
     }
 
-    const nextImageId =
-      direction === 'next'
-        ? availableImageIds[currentIndex + 1]
-        : availableImageIds[currentIndex - 1];
+    const resolveNextIndex = () => {
+      const total = availableImageIds.length;
+
+      if (direction === 'random') {
+        if (total <= 1) {
+          return -1;
+        }
+
+        // Draw from the other entries only, so shuffle never replays the current item.
+        const offset = 1 + Math.floor(Math.random() * (total - 1));
+        return (currentIndex + offset) % total;
+      }
+
+      const step = direction === 'next' ? 1 : -1;
+      const rawIndex = currentIndex + step;
+
+      if (options?.wrap && total > 0) {
+        return (rawIndex + total) % total;
+      }
+
+      return rawIndex;
+    };
+
+    const nextIndex = resolveNextIndex();
+    const nextImageId = nextIndex >= 0 ? availableImageIds[nextIndex] : undefined;
 
     if (!nextImageId) {
       return;
@@ -3808,6 +3833,8 @@ export default function App() {
             totalImages={modal.totalImages}
             onNavigateNext={() => handleImageModalNavigate(modal.modalId, 'next')}
             onNavigatePrevious={() => handleImageModalNavigate(modal.modalId, 'previous')}
+            onNavigateNextWrapping={() => handleImageModalNavigate(modal.modalId, 'next', { wrap: true })}
+            onNavigateRandom={() => handleImageModalNavigate(modal.modalId, 'random')}
             directoryPath={modal.directoryPath}
             isIndexing={progress && progress.total > 0 && progress.current < progress.total}
             zIndex={modal.zIndex}

@@ -99,6 +99,27 @@ export const sanitizeSlideshowIntervalSeconds = (value: number): number => {
   );
 };
 
+export type VideoRepeatMode = 'off' | 'one' | 'all';
+
+const VALID_VIDEO_REPEAT_MODES: VideoRepeatMode[] = ['off', 'one', 'all'];
+const isValidVideoRepeatMode = (value: unknown): value is VideoRepeatMode =>
+  typeof value === 'string' && (VALID_VIDEO_REPEAT_MODES as string[]).includes(value);
+
+/**
+ * Before the tri-state repeat control the video player kept a boolean loop flag in its own
+ * localStorage key. Seeding the initial state from it migrates existing users: persisted settings
+ * are merged on top, so anyone who already has a repeat mode keeps it.
+ */
+const LEGACY_VIDEO_LOOP_STORAGE_KEY = 'video_player_loop';
+
+export const readLegacyVideoRepeatMode = (): VideoRepeatMode => {
+  try {
+    return localStorage.getItem(LEGACY_VIDEO_LOOP_STORAGE_KEY) === 'true' ? 'one' : 'off';
+  } catch {
+    return 'off';
+  }
+};
+
 // Define the state shape
 interface SettingsState {
   // App settings. Unified with useImageStore.sortOrder (the single writer); this copy is
@@ -137,6 +158,12 @@ interface SettingsState {
   performanceDiagnosticsEnabled: boolean;
   slideshowIntervalSeconds: number;
   slideshowShowFilename: boolean;
+  /** Start playback automatically when a video or audio file opens in the viewer. */
+  autoPlayMedia: boolean;
+  /** Video player repeat mode: no repeat, repeat the current file, or advance through the list. */
+  videoRepeatMode: VideoRepeatMode;
+  /** Video player shuffle: when a video ends, jump to a random item instead of the next one. */
+  videoShuffle: boolean;
   creatorAttributionToken: string | null;
   creatorAttributionUpdatedAt: number | null;
 
@@ -190,6 +217,9 @@ interface SettingsState {
   setPerformanceDiagnosticsEnabled: (value: boolean) => void;
   setSlideshowIntervalSeconds: (value: number) => void;
   setSlideshowShowFilename: (value: boolean) => void;
+  setAutoPlayMedia: (value: boolean) => void;
+  setVideoRepeatMode: (value: VideoRepeatMode) => void;
+  setVideoShuffle: (value: boolean) => void;
   setCreatorAttributionToken: (token: string | null) => void;
   setA1111Enabled: (value: boolean) => void;
   setA1111ServerUrl: (url: string) => void;
@@ -247,6 +277,9 @@ export const useSettingsStore = create<SettingsState>()(
       performanceDiagnosticsEnabled: false,
       slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
       slideshowShowFilename: true,
+      autoPlayMedia: true,
+      videoRepeatMode: readLegacyVideoRepeatMode(),
+      videoShuffle: false,
       creatorAttributionToken: null,
       creatorAttributionUpdatedAt: null,
 
@@ -313,6 +346,10 @@ export const useSettingsStore = create<SettingsState>()(
       setSlideshowIntervalSeconds: (value) =>
         set({ slideshowIntervalSeconds: sanitizeSlideshowIntervalSeconds(value) }),
       setSlideshowShowFilename: (value) => set({ slideshowShowFilename: !!value }),
+      setAutoPlayMedia: (value) => set({ autoPlayMedia: !!value }),
+      setVideoRepeatMode: (value) =>
+        set({ videoRepeatMode: isValidVideoRepeatMode(value) ? value : 'off' }),
+      setVideoShuffle: (value) => set({ videoShuffle: !!value }),
       setCreatorAttributionToken: (token) => {
         const normalizedToken = typeof token === 'string' ? token.trim() : '';
         set({
@@ -391,6 +428,9 @@ export const useSettingsStore = create<SettingsState>()(
         performanceDiagnosticsEnabled: false,
         slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
         slideshowShowFilename: true,
+        autoPlayMedia: true,
+        videoRepeatMode: 'off',
+        videoShuffle: false,
         creatorAttributionToken: null,
         creatorAttributionUpdatedAt: null,
         a1111Enabled: true,
@@ -499,6 +539,18 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.slideshowShowFilename !== 'boolean') {
           state.slideshowShowFilename = true;
+        }
+
+        if (state && typeof state.autoPlayMedia !== 'boolean') {
+          state.autoPlayMedia = true;
+        }
+
+        if (state && !isValidVideoRepeatMode(state.videoRepeatMode)) {
+          state.videoRepeatMode = 'off';
+        }
+
+        if (state && typeof state.videoShuffle !== 'boolean') {
+          state.videoShuffle = false;
         }
 
         if (state && typeof state.creatorAttributionToken !== 'string') {

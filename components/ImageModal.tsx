@@ -4,7 +4,7 @@ import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { motion } from 'framer-motion';
-import { AlertTriangle, Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -243,6 +243,10 @@ interface ImageModalProps {
   totalImages?: number;
   onNavigateNext?: () => void;
   onNavigatePrevious?: () => void;
+  /** Advance to the next item, wrapping back to the first one at the end of the list. */
+  onNavigateNextWrapping?: () => void;
+  /** Jump to a random item of the current navigation list. */
+  onNavigateRandom?: () => void;
   directoryPath?: string;
   isIndexing?: boolean;
   zIndex?: number;
@@ -628,6 +632,7 @@ const formatTime = (seconds: number) => {
 const VideoPlayer: React.FC<{
   src: string;
   poster?: string;
+  autoPlay?: boolean;
   onContextMenu?: React.MouseEventHandler;
   onLoadedMetadata?: React.ReactEventHandler<HTMLVideoElement>;
   onCanPlay?: React.ReactEventHandler<HTMLVideoElement>;
@@ -636,7 +641,7 @@ const VideoPlayer: React.FC<{
   externalPath?: string | null;
   diagnostics?: Omit<MediaDiagnosticsContext, 'mediaKind' | 'src'>;
   hasAudioTrack?: boolean;
-}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying, onEnded, externalPath, diagnostics, hasAudioTrack = false }) => {
+}> = ({ src, poster, autoPlay = true, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying, onEnded, externalPath, diagnostics, hasAudioTrack = false }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [audioRendererFailed, setAudioRendererFailed] = useState(false);
@@ -665,9 +670,11 @@ const VideoPlayer: React.FC<{
   const [isMuted, setIsMuted] = useState(() => {
     return localStorage.getItem('video_player_muted') === 'true';
   });
-  const [isLooping, setIsLooping] = useState(() => {
-    return localStorage.getItem('video_player_loop') === 'true';
-  });
+
+  const repeatMode = useSettingsStore((state) => state.videoRepeatMode);
+  const setRepeatMode = useSettingsStore((state) => state.setVideoRepeatMode);
+  const isShuffling = useSettingsStore((state) => state.videoShuffle);
+  const setVideoShuffle = useSettingsStore((state) => state.setVideoShuffle);
 
   useEffect(() => {
     setAudioRendererFailed(false);
@@ -678,15 +685,16 @@ const VideoPlayer: React.FC<{
     if (videoRef.current) {
       videoRef.current.volume = volume;
       videoRef.current.muted = isMuted;
-      videoRef.current.loop = isLooping;
+      // Native loop only covers "repeat one". It also suppresses the `ended` event, which is
+      // what the parent relies on to advance for "repeat all" / shuffle.
+      videoRef.current.loop = repeatMode === 'one';
     }
-  }, [volume, isMuted, isLooping]);
+  }, [volume, isMuted, repeatMode]);
 
   useEffect(() => {
      localStorage.setItem('video_player_volume', volume.toString());
      localStorage.setItem('video_player_muted', isMuted.toString());
-     localStorage.setItem('video_player_loop', isLooping.toString());
-  }, [volume, isMuted, isLooping]);
+  }, [volume, isMuted]);
 
   const togglePlay = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -704,10 +712,21 @@ const VideoPlayer: React.FC<{
     setIsMuted(prev => !prev);
   }, []);
 
-  const toggleLoop = useCallback((e: React.MouseEvent) => {
+  const cycleRepeatMode = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsLooping(prev => !prev);
-  }, []);
+    setRepeatMode(repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off');
+  }, [repeatMode, setRepeatMode]);
+
+  const toggleShuffle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setVideoShuffle(!isShuffling);
+  }, [isShuffling, setVideoShuffle]);
+
+  const repeatModeLabel = repeatMode === 'one'
+    ? 'Repeat one'
+    : repeatMode === 'all'
+      ? 'Repeat all'
+      : 'Repeat off';
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
@@ -790,7 +809,8 @@ const VideoPlayer: React.FC<{
         src={src}
         className="max-w-full max-h-full object-contain"
         poster={poster}
-        autoPlay
+        autoPlay={autoPlay}
+        preload="metadata"
         playsInline
         onLoadStart={mediaDiagnostics.onLoadStart}
         onTimeUpdate={handleTimeUpdate}
@@ -893,13 +913,22 @@ const VideoPlayer: React.FC<{
             </div>
 
             <div className="flex items-center gap-4">
-                <button 
-                  onClick={toggleLoop} 
-                  className={`transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded ${isLooping ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`}
-                  title={isLooping ? "Loop On" : "Loop Off"}
-                  aria-label={isLooping ? "Loop On" : "Loop Off"}
+                <button
+                  onClick={toggleShuffle}
+                  className={`transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded ${isShuffling ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`}
+                  title={isShuffling ? "Shuffle on" : "Shuffle off"}
+                  aria-label={isShuffling ? "Shuffle on" : "Shuffle off"}
+                  aria-pressed={isShuffling}
                 >
-                    <Repeat size={18} />
+                    <Shuffle size={18} />
+                </button>
+                <button
+                  onClick={cycleRepeatMode}
+                  className={`transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded ${repeatMode === 'off' ? 'text-gray-400 hover:text-white' : 'text-blue-400'}`}
+                  title={repeatModeLabel}
+                  aria-label={repeatModeLabel}
+                >
+                    {repeatMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
                 </button>
             </div>
         </div>
@@ -923,6 +952,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   totalImages = 0,
   onNavigateNext,
   onNavigatePrevious,
+  onNavigateNextWrapping,
+  onNavigateRandom,
   directoryPath,
   isIndexing = false,
   zIndex = 50,
@@ -948,6 +979,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isSlideshowMode, setIsSlideshowMode] = useState(false);
   const [isSlideshowPlaying, setIsSlideshowPlaying] = useState(false);
   const [slideshowVideoDuration, setSlideshowVideoDuration] = useState<number | null>(null);
+  // Set when repeat-all/shuffle advanced us because a video ended: the item we land on must keep
+  // playing even if auto-play is off, otherwise those modes would just park on a paused video.
+  const [isChainedPlayback, setIsChainedPlayback] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
     y: 0,
@@ -1023,6 +1057,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const enableAnimations = useSettingsStore((state) => state.enableAnimations);
   const slideshowIntervalSeconds = useSettingsStore((state) => state.slideshowIntervalSeconds);
   const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
+  const autoPlayMedia = useSettingsStore((state) => state.autoPlayMedia);
+  // A running slideshow and a repeat-all/shuffle chain both imply continuous playback, so they
+  // start the media regardless of the auto-play preference.
+  const shouldAutoPlayMedia = autoPlayMedia || isChainedPlayback || (isSlideshowMode && isSlideshowPlaying);
   const modalProfilerOnRender = useMemo(() => createProfilerOnRender('ImageModal'), []);
   const hasMarkedModalShellRef = useRef(false);
   const hasMarkedPreviewVisibleRef = useRef(false);
@@ -2860,19 +2898,46 @@ const ImageModal: React.FC<ImageModalProps> = ({
     totalImages,
   ]);
 
-  const handleSlideshowVideoEnded = useCallback(() => {
-    if (!isSlideshowMode || !isSlideshowPlaying) {
+  const handleVideoEnded = useCallback(() => {
+    // A running slideshow drives its own pacing, so it wins over the player's repeat/shuffle modes.
+    if (isSlideshowMode && isSlideshowPlaying) {
+      clearSlideshowTimer();
+      if (currentIndex >= totalImages - 1) {
+        setIsSlideshowPlaying(false);
+        return;
+      }
+
+      onNavigateNext?.();
       return;
     }
 
-    clearSlideshowTimer();
-    if (currentIndex >= totalImages - 1) {
-      setIsSlideshowPlaying(false);
+    // Repeat decides whether playback continues at all, shuffle only decides where it goes next --
+    // so repeat off stops here even with shuffle on. 'one' never reaches this handler: the native
+    // `loop` attribute restarts the video without firing `ended`.
+    const { videoRepeatMode, videoShuffle } = useSettingsStore.getState();
+
+    if (videoRepeatMode !== 'all') {
       return;
     }
 
-    onNavigateNext?.();
-  }, [clearSlideshowTimer, currentIndex, isSlideshowMode, isSlideshowPlaying, onNavigateNext, totalImages]);
+    setIsChainedPlayback(true);
+
+    if (videoShuffle) {
+      onNavigateRandom?.();
+      return;
+    }
+
+    onNavigateNextWrapping?.();
+  }, [
+    clearSlideshowTimer,
+    currentIndex,
+    isSlideshowMode,
+    isSlideshowPlaying,
+    onNavigateNext,
+    onNavigateNextWrapping,
+    onNavigateRandom,
+    totalImages,
+  ]);
 
   const handleDelete = useCallback(async () => {
     if (isIndexing) {
@@ -2911,6 +2976,25 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   }, [currentIndex, directories, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, totalImages]);
 
+  // Navigation the user asked for explicitly: it ends any repeat-all/shuffle chain, so the item we
+  // land on obeys the auto-play setting again.
+  const navigateManually = useCallback((direction: 'next' | 'previous') => {
+    setIsChainedPlayback(false);
+
+    if (direction === 'next') {
+      // Shuffle randomizes forward navigation as well, the way a shuffled playlist does.
+      if (useSettingsStore.getState().videoShuffle && onNavigateRandom) {
+        onNavigateRandom();
+        return;
+      }
+
+      onNavigateNext?.();
+      return;
+    }
+
+    onNavigatePrevious?.();
+  }, [onNavigateNext, onNavigatePrevious, onNavigateRandom]);
+
   const scheduleKeyboardNavigation = useCallback((direction: 'next' | 'previous', isRepeatedKey = false) => {
     pendingKeyboardNavigationRef.current = direction;
 
@@ -2940,16 +3024,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const nextDirection = pendingKeyboardNavigationRef.current;
       pendingKeyboardNavigationRef.current = null;
 
-      if (nextDirection === 'next') {
-        onNavigateNext?.();
-        return;
-      }
-
-      if (nextDirection === 'previous') {
-        onNavigatePrevious?.();
+      if (nextDirection === 'next' || nextDirection === 'previous') {
+        navigateManually(nextDirection);
       }
     });
-  }, [onNavigateNext, onNavigatePrevious]);
+  }, [navigateManually]);
 
   useEffect(() => {
     if (!isActive) {
@@ -3445,7 +3524,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   key={image.id}
                   src={imageUrl}
                   title={image.name}
-                  autoPlay
+                  autoPlay={shouldAutoPlayMedia}
                   externalPath={externalMediaPath}
                   diagnostics={{ fileName: image.name, surface: isSlideshowMode ? 'slideshow' : 'image-modal' }}
                   onContextMenu={handleContextMenu}
@@ -3470,6 +3549,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   key={image.id}
                   src={imageUrl}
                   poster={preferredThumbnailUrl ?? undefined}
+                  autoPlay={shouldAutoPlayMedia}
                   externalPath={externalMediaPath}
                   diagnostics={{ fileName: image.name, surface: isSlideshowMode ? 'slideshow' : 'image-modal' }}
                   hasAudioTrack={Boolean((image.metadata?.normalizedMetadata as any)?.audio)}
@@ -3491,7 +3571,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       });
                     }
                   }}
-                  onEnded={handleSlideshowVideoEnded}
+                  onEnded={handleVideoEnded}
                 />
               </div>
             ) : (
@@ -3572,7 +3652,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
-                onNavigatePrevious();
+                navigateManually('previous');
               }}
               className="absolute inset-y-0 left-0 z-20 w-16 cursor-pointer bg-gradient-to-r from-white/15 to-transparent opacity-0 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none sm:w-20 lg:w-24"
               aria-label="Previous image"
@@ -3586,7 +3666,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
-                onNavigateNext();
+                navigateManually('next');
               }}
               className="absolute inset-y-0 right-0 z-20 w-16 cursor-pointer bg-gradient-to-l from-white/15 to-transparent opacity-0 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none sm:w-20 lg:w-24"
               aria-label="Next image"
