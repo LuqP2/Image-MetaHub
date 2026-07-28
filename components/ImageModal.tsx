@@ -2911,19 +2911,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    // 'one' never reaches here: native `loop` restarts the video without firing `ended`.
+    // Repeat decides whether playback continues at all, shuffle only decides where it goes next --
+    // so repeat off stops here even with shuffle on. 'one' never reaches this handler: the native
+    // `loop` attribute restarts the video without firing `ended`.
     const { videoRepeatMode, videoShuffle } = useSettingsStore.getState();
 
+    if (videoRepeatMode !== 'all') {
+      return;
+    }
+
+    setIsChainedPlayback(true);
+
     if (videoShuffle) {
-      setIsChainedPlayback(true);
       onNavigateRandom?.();
       return;
     }
 
-    if (videoRepeatMode === 'all') {
-      setIsChainedPlayback(true);
-      onNavigateNextWrapping?.();
-    }
+    onNavigateNextWrapping?.();
   }, [
     clearSlideshowTimer,
     currentIndex,
@@ -2978,12 +2982,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setIsChainedPlayback(false);
 
     if (direction === 'next') {
+      // Shuffle randomizes forward navigation as well, the way a shuffled playlist does.
+      if (useSettingsStore.getState().videoShuffle && onNavigateRandom) {
+        onNavigateRandom();
+        return;
+      }
+
       onNavigateNext?.();
       return;
     }
 
     onNavigatePrevious?.();
-  }, [onNavigateNext, onNavigatePrevious]);
+  }, [onNavigateNext, onNavigatePrevious, onNavigateRandom]);
 
   const scheduleKeyboardNavigation = useCallback((direction: 'next' | 'previous', isRepeatedKey = false) => {
     pendingKeyboardNavigationRef.current = direction;

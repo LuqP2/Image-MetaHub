@@ -210,7 +210,7 @@ describe('ImageModal video playback controls', () => {
     expect(onNavigateRandom).not.toHaveBeenCalled();
   });
 
-  it('jumps to a random item when the video ends with shuffle on', async () => {
+  it('jumps to a random item when the video ends in repeat all with shuffle on', async () => {
     const onNavigateNextWrapping = vi.fn();
     const onNavigateRandom = vi.fn();
     useSettingsStore.getState().setVideoShuffle(true);
@@ -221,6 +221,58 @@ describe('ImageModal video playback controls', () => {
 
     expect(onNavigateRandom).toHaveBeenCalledTimes(1);
     expect(onNavigateNextWrapping).not.toHaveBeenCalled();
+  });
+
+  it('stops at the end of the video when repeat is off, even with shuffle on', async () => {
+    const onNavigateNext = vi.fn();
+    const onNavigateNextWrapping = vi.fn();
+    const onNavigateRandom = vi.fn();
+    useSettingsStore.getState().setVideoShuffle(true);
+
+    const { video } = await renderVideoModal({ onNavigateNext, onNavigateNextWrapping, onNavigateRandom });
+    fireEvent.ended(video);
+
+    expect(onNavigateRandom).not.toHaveBeenCalled();
+    expect(onNavigateNextWrapping).not.toHaveBeenCalled();
+    expect(onNavigateNext).not.toHaveBeenCalled();
+  });
+
+  it('sends the next arrow to a random item while shuffle is on', async () => {
+    const onNavigateNext = vi.fn();
+    const onNavigateRandom = vi.fn();
+    useSettingsStore.getState().setVideoShuffle(true);
+
+    await renderVideoModal({ onNavigateNext, onNavigatePrevious: vi.fn(), onNavigateRandom });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next image' }));
+
+    expect(onNavigateRandom).toHaveBeenCalledTimes(1);
+    expect(onNavigateNext).not.toHaveBeenCalled();
+  });
+
+  it('keeps the next arrow sequential while shuffle is off', async () => {
+    const onNavigateNext = vi.fn();
+    const onNavigateRandom = vi.fn();
+
+    await renderVideoModal({ onNavigateNext, onNavigatePrevious: vi.fn(), onNavigateRandom });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next image' }));
+
+    expect(onNavigateNext).toHaveBeenCalledTimes(1);
+    expect(onNavigateRandom).not.toHaveBeenCalled();
+  });
+
+  it('keeps the previous arrow sequential while shuffle is on', async () => {
+    const onNavigatePrevious = vi.fn();
+    const onNavigateRandom = vi.fn();
+    useSettingsStore.getState().setVideoShuffle(true);
+
+    await renderVideoModal({ onNavigateNext: vi.fn(), onNavigatePrevious, onNavigateRandom });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous image' }));
+
+    expect(onNavigatePrevious).toHaveBeenCalledTimes(1);
+    expect(onNavigateRandom).not.toHaveBeenCalled();
   });
 
   it('keeps playing the chained item even when auto-play is off', async () => {
