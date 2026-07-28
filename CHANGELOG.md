@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.1] - UNRELEASED
+
+### Added
+
+- **Auto-play Toggle**: A new Settings → Viewer → Playback option controls whether videos and audio start playing as soon as they open. It stays on by default; turning it off means the media viewer waits for you to press Play, both when opening a file and when moving to another one with the navigation arrows.
+- **Repeat Modes and Shuffle**: The video player's loop button is now a three-state repeat control — no repeat, repeat all, repeat one — so a video can play the next item when it finishes instead of just stopping. Repeat all wraps around at the end of the list. A new shuffle button next to it jumps to a random item when the video ends. Both preferences are remembered, and an existing loop setting carries over as "repeat one". A running slideshow keeps its own pacing and is unaffected. When repeat all or shuffle moves to the next item, that item plays even if auto-play is off; navigating manually returns to the auto-play preference.
+
+### Fixed
+
+- **Video Controls Click Targets**: Fixed the play/pause, mute, volume and loop controls near the edges of the video player triggering next/previous navigation instead of their own action, because the navigation hover zones painted on top of them.
+
 ## [0.18.0] - 2026-07-21
  
 ### Added
