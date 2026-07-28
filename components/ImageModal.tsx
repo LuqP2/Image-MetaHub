@@ -825,7 +825,7 @@ const VideoPlayer: React.FC<{
 
       {/* Center Play Button Overlay (only when paused and not hovering controls) */}
       {!isPlaying && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
           <button
             type="button"
             aria-label="Play video"
@@ -839,8 +839,8 @@ const VideoPlayer: React.FC<{
       )}
 
       {/* Controls Overlay */}
-      <div 
-        className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/60 to-transparent transition-opacity duration-300 ${isHovering || !isPlaying ? 'opacity-100' : 'opacity-0'}`}
+      <div
+        className={`absolute bottom-0 left-0 right-0 z-30 p-4 bg-gradient-to-t from-black/90 via-black/60 to-transparent transition-opacity duration-300 ${isHovering || !isPlaying ? 'opacity-100' : 'opacity-0'}`}
         onClick={(e) => e.stopPropagation()} // Prevent clicking controls from toggling play
       >
         {/* Progress Bar */}
