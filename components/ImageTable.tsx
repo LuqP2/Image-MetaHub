@@ -5,12 +5,14 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil, Workflow, Image as ImageIcon } from 'lucide-react';
+import { Copy, Folder, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Workflow, Image as ImageIcon } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import ProBadge from './ProBadge';
+import { ContextMenuButton, ContextMenuSubmenu, buildFileMenuItems } from './contextMenu/ContextMenuPrimitives';
 import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { RATING_VALUES, RatingValueIcons, getRatingBadgeClasses, getRatingChipClasses, getRatingLabel } from './RatingStars';
@@ -98,6 +100,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   const [isCopySubmenuOpen, setIsCopySubmenuOpen] = useState(false);
   const [isCollectionSubmenuOpen, setIsCollectionSubmenuOpen] = useState(false);
   const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
+  const [isFileSubmenuOpen, setIsFileSubmenuOpen] = useState(false);
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [renameImage, setRenameImage] = useState<IndexedImage | null>(null);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
@@ -108,7 +111,9 @@ const ImageTable: React.FC<ImageTableProps> = ({
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
   const removeImagesFromCollection = useImageStore((state) => state.removeImagesFromCollection);
   const updateCollection = useImageStore((state) => state.updateCollection);
-  const { canUseComfyUI, canUseFileManagement, canUseImageEditor, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const { canUseComfyUI, canUseFileManagement, canUseImageEditor, canUseBatchExport, showProModal, initialized } = useFeatureAccess();
+  const { visibleProviders } = useGenerationProviderAvailability();
+  const isComfyUIProviderVisible = visibleProviders.some((provider) => provider.id === 'comfyui');
   const { isReparsing, reparseImages } = useReparseMetadata();
 
   const {
@@ -138,7 +143,10 @@ const ImageTable: React.FC<ImageTableProps> = ({
     if (!contextMenu.visible && isAddToCollectionSubmenuOpen) {
       setIsAddToCollectionSubmenuOpen(false);
     }
-  }, [contextMenu.visible, isAddToCollectionSubmenuOpen, isCollectionSubmenuOpen, isCopySubmenuOpen]);
+    if (!contextMenu.visible && isFileSubmenuOpen) {
+      setIsFileSubmenuOpen(false);
+    }
+  }, [contextMenu.visible, isAddToCollectionSubmenuOpen, isCollectionSubmenuOpen, isCopySubmenuOpen, isFileSubmenuOpen]);
 
   const selectedCount = selectedImages.size;
 
@@ -330,15 +338,10 @@ const ImageTable: React.FC<ImageTableProps> = ({
       hideContextMenu();
       return;
     }
-    if (!canUseFileManagement) {
-      showProModal('file_management');
-      hideContextMenu();
-      return;
-    }
 
     setRenameImage(image);
     hideContextMenu();
-  }, [canUseFileManagement, hideContextMenu, showProModal]);
+  }, [hideContextMenu]);
 
   const handleTransferConfirm = useCallback(async (directory: TransferDestination) => {
     if (!transferMode) {
@@ -817,18 +820,19 @@ const ImageTable: React.FC<ImageTableProps> = ({
             >
               <ImageIcon className="w-4 h-4" />
               <span className="flex-1">Edit Image</span>
-              {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
+              {!canUseImageEditor && initialized && <ProBadge size="sm" variant="subtle" tooltip="Image Editor (Pro Feature) - start trial" />}
             </button>
           )}
 
-          {onOpenComfyUIWorkspace && (
+          {onOpenComfyUIWorkspace && isComfyUIProviderVisible && (
             <button
               onClick={openComfyUIWorkspace}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title="Open this image in the ComfyUI workspace context panel"
+              title={canUseComfyUI ? 'Open this image in the ComfyUI workspace context panel' : 'Pro feature - start trial'}
             >
               <Workflow className="w-4 h-4" />
-              Open ComfyUI Workspace
+              <span className="flex-1">Open ComfyUI Workspace</span>
+              {!canUseComfyUI && <ProBadge size="sm" variant="subtle" tooltip="Pro feature - start trial" />}
             </button>
           )}
 
@@ -843,60 +847,44 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
           <div className="border-t border-gray-600 my-1"></div>
 
-          <button
-            onClick={showInFolder}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Folder className="w-4 h-4" />
-            Show in Folder
-          </button>
+          {(() => {
+            const fileMenuItems = buildFileMenuItems({
+              onRename: () => openRenameModal(contextMenu.image),
+              onCopyTo: () => openTransferModal('copy'),
+              onMoveTo: () => openTransferModal('move'),
+              onShowInFolder: showInFolder,
+              onExport: exportImage,
+              onBatchExport: handleBatchExport,
+              selectedCount,
+              canUseFileManagement,
+              canUseBatchExport,
+            });
+            const fileHasProItem = fileMenuItems.some((item) => item.isPro);
 
-          <button
-            onClick={() => openRenameModal(contextMenu.image)}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
-          >
-            <Pencil className="w-4 h-4" />
-            <span className="flex-1">Rename...</span>
-            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
-          </button>
-
-          <button
-            onClick={() => openTransferModal('copy')}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
-          >
-            <Folder className="w-4 h-4" />
-            <span className="flex-1">Copy To...</span>
-            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
-          </button>
-
-          <button
-            onClick={() => openTransferModal('move')}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
-          >
-            <Folder className="w-4 h-4" />
-            <span className="flex-1">Move To...</span>
-            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
-          </button>
-
-            <button
-              onClick={exportImage}
-              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Export Image
-            </button>
-            {selectedCount > 1 && (
-              <button
-                onClick={handleBatchExport}
-                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            return (
+              <ContextMenuSubmenu
+                label="File"
+                icon={<Folder className="w-4 h-4" />}
+                isOpen={isFileSubmenuOpen}
+                onOpenChange={setIsFileSubmenuOpen}
+                horizontalClass={submenuHorizontalClass}
+                showProBadge={fileHasProItem && initialized}
+                proBadgeTooltip="Pro feature - start trial"
               >
-                <Package className="w-4 h-4" />
-                Batch Export Selected ({selectedCount})
-              </button>
-            )}
+                {fileMenuItems.map((item) => (
+                  <ContextMenuButton
+                    key={item.key}
+                    onClick={item.onClick}
+                    icon={item.icon}
+                    label={item.label}
+                    title={item.isPro && initialized ? 'Pro feature - start trial' : undefined}
+                    showProBadge={item.isPro}
+                    proBadgeTooltip="Pro feature - start trial"
+                  />
+                ))}
+              </ContextMenuSubmenu>
+            );
+          })()}
           </div>,
           document.body,
         )}
