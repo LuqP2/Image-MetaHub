@@ -8,16 +8,14 @@ import { type IndexedImage, type BaseMetadata, type Directory, ImageStack, Smart
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Heart, Info, Copy, CheckCircle, Folder, Download, Clipboard, Sparkles, GitCompare, Square, Search,
+import { Heart, Info, Copy, CheckCircle, Folder, Clipboard, Sparkles, GitCompare, Square, Search,
   ChevronRight,
   CheckSquare,
   EyeOff,
-  Package,
   Play,
   Music,
   Tag,
   RefreshCw,
-  Pencil,
   Image as ImageIcon,
   Workflow
 } from 'lucide-react';
@@ -32,7 +30,7 @@ import { RATING_VALUES, RatingValueIcons, getRatingChipClasses, getRatingLabel }
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import ProBadge from './ProBadge';
-import { ContextMenuButton, ContextMenuSubmenu } from './contextMenu/ContextMenuPrimitives';
+import { ContextMenuButton, ContextMenuSubmenu, buildFileMenuItems } from './contextMenu/ContextMenuPrimitives';
 import { useImageStacking } from '../hooks/useImageStacking';
 import TagManagerModal from './TagManagerModal';
 import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
@@ -2407,52 +2405,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           <div className="border-t border-gray-600 my-1"></div>
 
           {(() => {
-            const fileMenuItems = [
-              {
-                key: 'rename',
-                icon: <Pencil className="w-4 h-4" />,
-                label: 'Rename...',
-                onClick: () => openInlineRename(contextMenu.image),
-                isPro: false,
-              },
-              {
-                key: 'copy-to',
-                icon: <Folder className="w-4 h-4" />,
-                label: 'Copy To...',
-                onClick: () => openTransferModal('copy'),
-                isPro: !canUseFileManagement,
-              },
-              {
-                key: 'move-to',
-                icon: <Folder className="w-4 h-4" />,
-                label: 'Move To...',
-                onClick: () => openTransferModal('move'),
-                isPro: !canUseFileManagement,
-              },
-              {
-                key: 'show-in-folder',
-                icon: <Folder className="w-4 h-4" />,
-                label: 'Show in Folder',
-                onClick: showInFolder,
-                isPro: false,
-              },
-              {
-                key: 'export',
-                icon: <Download className="w-4 h-4" />,
-                label: 'Export Image',
-                onClick: exportImage,
-                isPro: false,
-              },
-              ...(selectedCount > 1
-                ? [{
-                    key: 'batch-export',
-                    icon: <Package className="w-4 h-4" />,
-                    label: `Batch Export Selected (${selectedCount})`,
-                    onClick: handleBatchExport,
-                    isPro: !canUseBatchExport,
-                  }]
-                : []),
-            ];
+            const fileMenuItems = buildFileMenuItems({
+              onRename: () => openInlineRename(contextMenu.image),
+              onCopyTo: () => openTransferModal('copy'),
+              onMoveTo: () => openTransferModal('move'),
+              onShowInFolder: showInFolder,
+              onExport: exportImage,
+              onBatchExport: handleBatchExport,
+              selectedCount,
+              canUseFileManagement,
+              canUseBatchExport,
+            });
             const fileHasProItem = fileMenuItems.some((item) => item.isPro);
 
             return (
@@ -2528,7 +2491,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                   label: 'Open in ComfyUI Workspace',
                   onClick: openComfyUIWorkspace,
                   isPro: !canUseComfyUI,
-                  title: canUseComfyUI ? 'Open this image workflow in the ComfyUI workspace' : undefined,
+                  title: 'Open this image workflow in the ComfyUI workspace',
                 });
               }
             }

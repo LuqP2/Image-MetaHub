@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Pencil, Folder, Download, Package } from 'lucide-react';
 import ProBadge from '../ProBadge';
 
 /**
@@ -94,3 +94,85 @@ export const ContextMenuSubmenu: React.FC<ContextMenuSubmenuProps> = ({
     )}
   </div>
 );
+
+export interface FileMenuItem {
+  key: string;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  isPro: boolean;
+}
+
+export interface BuildFileMenuItemsArgs {
+  onRename: () => void;
+  onCopyTo: () => void;
+  onMoveTo: () => void;
+  onShowInFolder: () => void;
+  onExport: () => void;
+  onBatchExport: () => void;
+  selectedCount: number;
+  canUseFileManagement: boolean;
+  canUseBatchExport: boolean;
+}
+
+/**
+ * Shared File submenu contents (Rename/Copy To/Move To/Show in Folder/
+ * Export/Batch Export) used identically by ImageGrid and ImageTable so the
+ * two menus can't drift out of sync.
+ */
+export const buildFileMenuItems = ({
+  onRename,
+  onCopyTo,
+  onMoveTo,
+  onShowInFolder,
+  onExport,
+  onBatchExport,
+  selectedCount,
+  canUseFileManagement,
+  canUseBatchExport,
+}: BuildFileMenuItemsArgs): FileMenuItem[] => [
+  {
+    key: 'rename',
+    icon: <Pencil className="w-4 h-4" />,
+    label: 'Rename...',
+    onClick: onRename,
+    isPro: false,
+  },
+  {
+    key: 'copy-to',
+    icon: <Folder className="w-4 h-4" />,
+    label: 'Copy To...',
+    onClick: onCopyTo,
+    isPro: !canUseFileManagement,
+  },
+  {
+    key: 'move-to',
+    icon: <Folder className="w-4 h-4" />,
+    label: 'Move To...',
+    onClick: onMoveTo,
+    isPro: !canUseFileManagement,
+  },
+  {
+    key: 'show-in-folder',
+    icon: <Folder className="w-4 h-4" />,
+    label: 'Show in Folder',
+    onClick: onShowInFolder,
+    isPro: false,
+  },
+  {
+    key: 'export',
+    icon: <Download className="w-4 h-4" />,
+    label: 'Export Image',
+    onClick: onExport,
+    isPro: false,
+  },
+  ...(selectedCount > 1
+    ? [{
+        key: 'batch-export',
+        icon: <Package className="w-4 h-4" />,
+        label: `Batch Export Selected (${selectedCount})`,
+        onClick: onBatchExport,
+        isPro: !canUseBatchExport,
+      }]
+    : []),
+];

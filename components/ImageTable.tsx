@@ -5,14 +5,14 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil, Workflow, Image as ImageIcon } from 'lucide-react';
+import { Copy, Folder, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Workflow, Image as ImageIcon } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import ProBadge from './ProBadge';
-import { ContextMenuButton, ContextMenuSubmenu } from './contextMenu/ContextMenuPrimitives';
+import { ContextMenuButton, ContextMenuSubmenu, buildFileMenuItems } from './contextMenu/ContextMenuPrimitives';
 import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { RATING_VALUES, RatingValueIcons, getRatingBadgeClasses, getRatingChipClasses, getRatingLabel } from './RatingStars';
@@ -848,52 +848,17 @@ const ImageTable: React.FC<ImageTableProps> = ({
           <div className="border-t border-gray-600 my-1"></div>
 
           {(() => {
-            const fileMenuItems = [
-              {
-                key: 'rename',
-                icon: <Pencil className="w-4 h-4" />,
-                label: 'Rename...',
-                onClick: () => openRenameModal(contextMenu.image),
-                isPro: false,
-              },
-              {
-                key: 'copy-to',
-                icon: <Folder className="w-4 h-4" />,
-                label: 'Copy To...',
-                onClick: () => openTransferModal('copy'),
-                isPro: !canUseFileManagement,
-              },
-              {
-                key: 'move-to',
-                icon: <Folder className="w-4 h-4" />,
-                label: 'Move To...',
-                onClick: () => openTransferModal('move'),
-                isPro: !canUseFileManagement,
-              },
-              {
-                key: 'show-in-folder',
-                icon: <Folder className="w-4 h-4" />,
-                label: 'Show in Folder',
-                onClick: showInFolder,
-                isPro: false,
-              },
-              {
-                key: 'export',
-                icon: <Download className="w-4 h-4" />,
-                label: 'Export Image',
-                onClick: exportImage,
-                isPro: false,
-              },
-              ...(selectedCount > 1
-                ? [{
-                    key: 'batch-export',
-                    icon: <Package className="w-4 h-4" />,
-                    label: `Batch Export Selected (${selectedCount})`,
-                    onClick: handleBatchExport,
-                    isPro: !canUseBatchExport,
-                  }]
-                : []),
-            ];
+            const fileMenuItems = buildFileMenuItems({
+              onRename: () => openRenameModal(contextMenu.image),
+              onCopyTo: () => openTransferModal('copy'),
+              onMoveTo: () => openTransferModal('move'),
+              onShowInFolder: showInFolder,
+              onExport: exportImage,
+              onBatchExport: handleBatchExport,
+              selectedCount,
+              canUseFileManagement,
+              canUseBatchExport,
+            });
             const fileHasProItem = fileMenuItems.some((item) => item.isPro);
 
             return (
