@@ -478,6 +478,7 @@ describe('ImageGrid context menu', () => {
 
     render(<Harness images={[image]} />);
 
+    fireEvent.click(screen.getByText('File'));
     fireEvent.click(screen.getByText('Rename...'));
 
     expect(screen.getByRole('textbox', { name: /rename alpha\.png/i })).toBeTruthy();

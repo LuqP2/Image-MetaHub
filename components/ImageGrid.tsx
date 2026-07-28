@@ -30,7 +30,9 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import { RATING_VALUES, RatingValueIcons, getRatingChipClasses, getRatingLabel } from './RatingStars';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import ProBadge from './ProBadge';
+import { ContextMenuButton, ContextMenuSubmenu } from './contextMenu/ContextMenuPrimitives';
 import { useImageStacking } from '../hooks/useImageStacking';
 import TagManagerModal from './TagManagerModal';
 import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
@@ -1143,6 +1145,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const [isCopySubmenuOpen, setIsCopySubmenuOpen] = useState(false);
   const [isCollectionSubmenuOpen, setIsCollectionSubmenuOpen] = useState(false);
   const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
+  const [isGenerateSubmenuOpen, setIsGenerateSubmenuOpen] = useState(false);
+  const [isFileSubmenuOpen, setIsFileSubmenuOpen] = useState(false);
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [renamingImageId, setRenamingImageId] = useState<string | null>(null);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
@@ -1151,7 +1155,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
   const removeImagesFromCollection = useImageStore((state) => state.removeImagesFromCollection);
   const updateCollection = useImageStore((state) => state.updateCollection);
-  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, canUseFileManagement, canUseImageEditor, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, canUseFileManagement, canUseImageEditor, initialized } = useFeatureAccess();
+  const { visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
+  const isA1111ProviderVisible = visibleProviders.some((provider) => provider.id === 'a1111');
+  const isComfyUIProviderVisible = visibleProviders.some((provider) => provider.id === 'comfyui');
   const selectedCount = selectedImages.size;
   const sensitiveTagSet = useMemo(() => {
     return new Set(
@@ -1347,7 +1354,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     if (!contextMenu.visible && isAddToCollectionSubmenuOpen) {
       setIsAddToCollectionSubmenuOpen(false);
     }
-  }, [contextMenu.visible, isAddToCollectionSubmenuOpen, isCollectionSubmenuOpen, isCopySubmenuOpen]);
+    if (!contextMenu.visible && isGenerateSubmenuOpen) {
+      setIsGenerateSubmenuOpen(false);
+    }
+    if (!contextMenu.visible && isFileSubmenuOpen) {
+      setIsFileSubmenuOpen(false);
+    }
+  }, [contextMenu.visible, isAddToCollectionSubmenuOpen, isCollectionSubmenuOpen, isCopySubmenuOpen, isFileSubmenuOpen, isGenerateSubmenuOpen]);
 
   const queuedComparisonFirstImageId = queuedComparisonImages[0]?.id;
   const imageGridProfilerOnRender = useMemo(() => createProfilerOnRender('ImageGrid'), []);
@@ -1593,15 +1606,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       hideContextMenu();
       return;
     }
-    if (!canUseFileManagement) {
-      showProModal('file_management');
-      hideContextMenu();
-      return;
-    }
 
     setRenamingImageId(image.id);
     hideContextMenu();
-  }, [canUseFileManagement, hideContextMenu, showProModal]);
+  }, [hideContextMenu]);
 
   const closeInlineRename = useCallback((result?: ImageRenameResult) => {
     if (result) {
@@ -2175,7 +2183,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           >
             <Tag className="w-4 h-4" />
             <span className="flex-1">Add/Remove Tags</span>
-            {!canUseBulkTagging && selectedCount > 1 && initialized && !canUseDuringTrialOrPro && <ProBadge size="sm" />}
+            {!canUseBulkTagging && selectedCount > 1 && initialized && <ProBadge size="sm" variant="subtle" tooltip="Pro feature - start trial" />}
           </button>
 
           <div
@@ -2351,7 +2359,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <span className="flex-1">
               Add to Compare {canUseComparison && comparisonCount > 0 ? `(${comparisonCount}/4)` : ''}
             </span>
-            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+            {!canUseComparison && <ProBadge size="sm" variant="subtle" tooltip="Pro feature - start trial" />}
           </button>
 
           <button
@@ -2372,7 +2380,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             >
               <ImageIcon className="w-4 h-4" />
               <span className="flex-1">Open in Editor</span>
-              {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
+              {!canUseImageEditor && initialized && <ProBadge size="sm" variant="subtle" tooltip="Image Editor (Pro Feature) - start trial" />}
             </button>
           )}
 
@@ -2398,110 +2406,179 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
           <div className="border-t border-gray-600 my-1"></div>
 
-          <button
-            onClick={showInFolder}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Folder className="w-4 h-4" />
-            Show in Folder
-          </button>
+          {(() => {
+            const fileMenuItems = [
+              {
+                key: 'rename',
+                icon: <Pencil className="w-4 h-4" />,
+                label: 'Rename...',
+                onClick: () => openInlineRename(contextMenu.image),
+                isPro: false,
+              },
+              {
+                key: 'copy-to',
+                icon: <Folder className="w-4 h-4" />,
+                label: 'Copy To...',
+                onClick: () => openTransferModal('copy'),
+                isPro: !canUseFileManagement,
+              },
+              {
+                key: 'move-to',
+                icon: <Folder className="w-4 h-4" />,
+                label: 'Move To...',
+                onClick: () => openTransferModal('move'),
+                isPro: !canUseFileManagement,
+              },
+              {
+                key: 'show-in-folder',
+                icon: <Folder className="w-4 h-4" />,
+                label: 'Show in Folder',
+                onClick: showInFolder,
+                isPro: false,
+              },
+              {
+                key: 'export',
+                icon: <Download className="w-4 h-4" />,
+                label: 'Export Image',
+                onClick: exportImage,
+                isPro: false,
+              },
+              ...(selectedCount > 1
+                ? [{
+                    key: 'batch-export',
+                    icon: <Package className="w-4 h-4" />,
+                    label: `Batch Export Selected (${selectedCount})`,
+                    onClick: handleBatchExport,
+                    isPro: !canUseBatchExport,
+                  }]
+                : []),
+            ];
+            const fileHasProItem = fileMenuItems.some((item) => item.isPro);
 
-          <button
-            onClick={() => openInlineRename(contextMenu.image)}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
-          >
-            <Pencil className="w-4 h-4" />
-            <span className="flex-1">Rename...</span>
-            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
-          </button>
-
-          <button
-            onClick={() => openTransferModal('copy')}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
-          >
-            <Folder className="w-4 h-4" />
-            <span className="flex-1">Copy To...</span>
-            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
-          </button>
-
-          <button
-            onClick={() => openTransferModal('move')}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
-          >
-            <Folder className="w-4 h-4" />
-            <span className="flex-1">Move To...</span>
-            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
-          </button>
-
-            <button
-              onClick={exportImage}
-              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Export Image
-            </button>
-
-            {selectedCount > 1 && (
-              <button
-                onClick={handleBatchExport}
-                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-                title={!canUseBatchExport && initialized ? 'Pro feature - start trial' : undefined}
+            return (
+              <ContextMenuSubmenu
+                label="File"
+                icon={<Folder className="w-4 h-4" />}
+                isOpen={isFileSubmenuOpen}
+                onOpenChange={setIsFileSubmenuOpen}
+                horizontalClass={submenuHorizontalClass}
+                showProBadge={fileHasProItem && initialized}
+                proBadgeTooltip="Pro feature - start trial"
               >
-                <Package className="w-4 h-4" />
-                <span className="flex-1">Batch Export Selected ({selectedCount})</span>
-                {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
-              </button>
-            )}
+                {fileMenuItems.map((item) => (
+                  <ContextMenuButton
+                    key={item.key}
+                    onClick={item.onClick}
+                    icon={item.icon}
+                    label={item.label}
+                    title={item.isPro && initialized ? 'Pro feature - start trial' : undefined}
+                    showProBadge={item.isPro}
+                    proBadgeTooltip="Pro feature - start trial"
+                  />
+                ))}
+              </ContextMenuSubmenu>
+            );
+          })()}
 
-            <div className="border-t border-gray-600 my-1"></div>
+          {(() => {
+            const hasPromptMetadata = Boolean(contextMenu.image?.metadata?.normalizedMetadata?.prompt);
+            const generateMenuItems: Array<{
+              key: string;
+              icon: React.ReactNode;
+              label: string;
+              onClick: () => void;
+              disabled?: boolean;
+              isPro: boolean;
+              title?: string;
+            }> = [];
 
-          <button
-            onClick={copyMetadataToA1111}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.metadata?.normalizedMetadata?.prompt}
-            title={!canUseA1111 && initialized ? 'Pro feature - start trial' : undefined}
-          >
-            <Clipboard className="w-4 h-4" />
-            <span className="flex-1">Copy to A1111</span>
-            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
-          </button>
+            if (isA1111ProviderVisible) {
+              generateMenuItems.push({
+                key: 'copy-a1111',
+                icon: <Clipboard className="w-4 h-4" />,
+                label: 'Copy to A1111',
+                onClick: copyMetadataToA1111,
+                disabled: !hasPromptMetadata,
+                isPro: !canUseA1111,
+              });
+              generateMenuItems.push({
+                key: 'generate-a1111',
+                icon: <Sparkles className="w-4 h-4" />,
+                label: singleVisibleProvider ? 'Generate' : 'Generate with A1111',
+                onClick: openGenerateModal,
+                disabled: !hasPromptMetadata,
+                isPro: !canUseA1111,
+              });
+            }
 
-          <button
-            onClick={openGenerateModal}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.metadata?.normalizedMetadata?.prompt}
-            title={!canUseA1111 && initialized ? 'Pro feature - start trial' : undefined}
-          >
-            <Sparkles className="w-4 h-4" />
-            <span className="flex-1">Generate with A1111</span>
-            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
-          </button>
+            if (isComfyUIProviderVisible) {
+              generateMenuItems.push({
+                key: 'generate-comfyui',
+                icon: <Sparkles className="w-4 h-4" />,
+                label: singleVisibleProvider ? 'Generate' : 'Generate with ComfyUI',
+                onClick: openComfyUIGenerateModal,
+                disabled: !hasPromptMetadata,
+                isPro: !canUseComfyUI,
+              });
 
-          <button
-            onClick={openComfyUIGenerateModal}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.metadata?.normalizedMetadata?.prompt}
-            title={!canUseComfyUI && initialized ? 'Pro feature - start trial' : undefined}
-          >
-            <Sparkles className="w-4 h-4" />
-            <span className="flex-1">Generate with ComfyUI</span>
-            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
-          </button>
+              if (onOpenComfyUIWorkspace) {
+                generateMenuItems.push({
+                  key: 'comfyui-workspace',
+                  icon: <Workflow className="w-4 h-4" />,
+                  label: 'Open in ComfyUI Workspace',
+                  onClick: openComfyUIWorkspace,
+                  isPro: !canUseComfyUI,
+                  title: canUseComfyUI ? 'Open this image workflow in the ComfyUI workspace' : undefined,
+                });
+              }
+            }
 
-          {onOpenComfyUIWorkspace && (
-            <button
-              onClick={openComfyUIWorkspace}
-              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title={!canUseComfyUI && initialized ? 'Pro feature - start trial' : 'Open this image workflow in the ComfyUI workspace'}
-            >
-              <Workflow className="w-4 h-4" />
-              <span className="flex-1">Open in ComfyUI Workspace</span>
-              {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
-            </button>
-          )}
+            if (generateMenuItems.length === 0) {
+              return null;
+            }
+
+            const generateHasProItem = generateMenuItems.some((item) => item.isPro);
+
+            return (
+              <>
+                <div className="border-t border-gray-600 my-1"></div>
+                {generateMenuItems.length === 1 ? (
+                  <ContextMenuButton
+                    onClick={generateMenuItems[0].onClick}
+                    icon={generateMenuItems[0].icon}
+                    label={generateMenuItems[0].label}
+                    disabled={generateMenuItems[0].disabled}
+                    title={generateMenuItems[0].isPro && initialized ? 'Pro feature - start trial' : generateMenuItems[0].title}
+                    showProBadge={generateMenuItems[0].isPro}
+                    proBadgeTooltip="Pro feature - start trial"
+                  />
+                ) : (
+                  <ContextMenuSubmenu
+                    label="Generate"
+                    icon={<Sparkles className="w-4 h-4" />}
+                    isOpen={isGenerateSubmenuOpen}
+                    onOpenChange={setIsGenerateSubmenuOpen}
+                    horizontalClass={submenuHorizontalClass}
+                    showProBadge={generateHasProItem && initialized}
+                    proBadgeTooltip="Pro feature - start trial"
+                  >
+                    {generateMenuItems.map((item) => (
+                      <ContextMenuButton
+                        key={item.key}
+                        onClick={item.onClick}
+                        icon={item.icon}
+                        label={item.label}
+                        disabled={item.disabled}
+                        title={item.isPro && initialized ? 'Pro feature - start trial' : item.title}
+                        showProBadge={item.isPro}
+                        proBadgeTooltip="Pro feature - start trial"
+                      />
+                    ))}
+                  </ContextMenuSubmenu>
+                )}
+              </>
+            );
+          })()}
         </div>,
         document.body,
       )
