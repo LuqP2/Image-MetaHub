@@ -607,16 +607,30 @@ const getRelativeImagePath = (image: IndexedImage): string => {
     return relative || image.name;
 };
 
+// Memoized by object identity: IndexedImage references only change when
+// sanitizeIndexedImageFacets/applyAnnotationsToImages actually produce a new
+// object (they're referentially stable otherwise), so this cache stays valid
+// across repeated filterAndSort calls (e.g. every keystroke of a search
+// query) without any manual invalidation.
+const catalogSearchTextCache = new WeakMap<IndexedImage, string>();
+const compactSearchTextCache = new WeakMap<IndexedImage, string>();
+
 const buildCatalogSearchText = (image: IndexedImage): string => {
+    const cached = catalogSearchTextCache.get(image);
+    if (cached !== undefined) {
+        return cached;
+    }
     const relativePath = getRelativeImagePath(image).replace(/\\/g, '/').toLowerCase();
     const name = (image.name || '').toLowerCase();
     const directory = (image.directoryName || '').replace(/\\/g, '/').toLowerCase();
-    return [name, relativePath, directory].filter(Boolean).join(' ');
+    const text = [name, relativePath, directory].filter(Boolean).join(' ');
+    catalogSearchTextCache.set(image, text);
+    return text;
 };
 
 const MAX_SEARCH_TEXT_LENGTH = 8192;
 
-const buildCompactSearchText = (image: IndexedImage): string => {
+const buildCompactSearchTextUncached = (image: IndexedImage): string => {
     const segments: string[] = [];
     const pushValue = (value: unknown) => {
         if (typeof value === 'number') {
@@ -696,6 +710,16 @@ const buildCompactSearchText = (image: IndexedImage): string => {
     }
 
     return searchText.slice(0, MAX_SEARCH_TEXT_LENGTH);
+};
+
+const buildCompactSearchText = (image: IndexedImage): string => {
+    const cached = compactSearchTextCache.get(image);
+    if (cached !== undefined) {
+        return cached;
+    }
+    const text = buildCompactSearchTextUncached(image);
+    compactSearchTextCache.set(image, text);
+    return text;
 };
 
 const getImageAnalyticsSnapshot = (image: IndexedImage) => {
