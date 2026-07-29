@@ -2506,12 +2506,29 @@ export const useImageStore = create<ImageState>((set, get) => {
             const processed = processImageBatch(delta.updated, currentState.annotations);
             const updatesMap = new Map<string, IndexedImage>();
             for (const img of processed) updatesMap.set(img.id, img);
-            images = images.map(img => updatesMap.get(img.id) ?? img);
-            const updatedIds = new Set(updatesMap.keys());
-            filteredImages = filteredImages.filter(img => !updatedIds.has(img.id));
-            const matching = processed.filter(accepts);
-            if (matching.length > 0) {
-                filteredImages = binaryInsertSorted(filteredImages, matching, comparator);
+
+            // Only images that actually replaced an existing entry should be
+            // reconsidered for filteredImages. An update whose id isn't in
+            // `images` (stale/removed id) or a duplicate id that got deduped
+            // by updatesMap must not still count as "matching" below — that
+            // used to insert phantom/duplicate rows into filteredImages.
+            const appliedUpdates: IndexedImage[] = [];
+            images = images.map(img => {
+                const updated = updatesMap.get(img.id);
+                if (updated) {
+                    appliedUpdates.push(updated);
+                    return updated;
+                }
+                return img;
+            });
+
+            if (appliedUpdates.length > 0) {
+                const appliedIds = new Set(appliedUpdates.map(img => img.id));
+                filteredImages = filteredImages.filter(img => !appliedIds.has(img.id));
+                const matching = appliedUpdates.filter(accepts);
+                if (matching.length > 0) {
+                    filteredImages = binaryInsertSorted(filteredImages, matching, comparator);
+                }
             }
         }
 
