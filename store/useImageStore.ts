@@ -1232,7 +1232,12 @@ export const useImageStore = create<ImageState>((set, get) => {
             } else {
                 queueMetadataTagImports(addedImages);
             }
-            maybeQueueLineageBuild(700);
+            // Longer debounce here specifically: this path also carries the
+            // auto-watch drip-add flow, where images can land one at a time a
+            // few seconds apart. A longer window gives back-to-back generations
+            // a real chance to coalesce into a single lineage rebuild instead of
+            // paying a full images.map() + worker spawn per file.
+            maybeQueueLineageBuild(2500);
         }
 
         traceCacheDebug('store:flushPendingImages', () => ({
@@ -3227,8 +3232,17 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         removeImages: (imageIds) => {
+            if (!imageIds || imageIds.length === 0) {
+                return;
+            }
             const idsToRemove = new Set(imageIds);
             flushPendingImages(true);
+            // Callers (e.g. the watched-files-removed handler) may re-request removal
+            // of ids a manual delete already removed locally. Skip the full recompute
+            // entirely when none of the ids are actually present.
+            if (!get().images.some(img => idsToRemove.has(img.id))) {
+                return;
+            }
             set(state => {
                 const remainingImages = state.images.filter(img => !idsToRemove.has(img.id));
                 return _updateState(state, remainingImages);
@@ -3241,6 +3255,9 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         removeImage: (imageId) => {
+            if (!get().images.some(img => img.id === imageId)) {
+                return;
+            }
             flushPendingImages(true);
             set(state => {
                 const remainingImages = state.images.filter(img => img.id !== imageId);

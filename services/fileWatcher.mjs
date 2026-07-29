@@ -77,9 +77,12 @@ const toRelativePath = (rootPath, targetPath) => {
   return relativePath.replace(/\\/g, '/');
 };
 
-const sendWatcherDebug = (mainWindow, message) => {
+// Nothing in the renderer subscribes to the 'watcher-debug' channel (checked:
+// no electronAPI.onWatcherDebug call anywhere in the app), so sending it was
+// a pure-waste IPC round-trip + structured clone on every watcher event
+// (multiple per added/removed file). Keep the main-process console.log only.
+const sendWatcherDebug = (_mainWindow, message) => {
   console.log(message);
-  sendToRenderer(mainWindow, 'watcher-debug', { message });
 };
 
 const sendToRenderer = (mainWindow, channel, payload) => {

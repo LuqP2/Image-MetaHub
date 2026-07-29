@@ -1,4 +1,4 @@
-import React, { startTransition, useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { startTransition, useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useLicenseStore } from './store/useLicenseStore';
@@ -1121,18 +1121,16 @@ export default function App() {
     void (async () => {
       await waitForDirectoryActivityToSettle(pending.directory.id);
       const activeScanSubfolders = useImageStore.getState().scanSubfolders;
-      const cacheModes = Array.from(new Set([activeScanSubfolders, !activeScanSubfolders]));
 
-      for (const scanSubfoldersMode of cacheModes) {
-        await cacheManager.applyChunkedCacheDelta(
-          pending.directory.path,
-          pending.directory.name,
-          [],
-          removedIds,
-          removedNames,
-          scanSubfoldersMode,
-        );
-      }
+      // removeCachedImages already covers both scan-mode variants internally
+      // and only rewrites the chunk(s) that actually hold the removed ids.
+      await cacheManager.removeCachedImages(
+        pending.directory.path,
+        pending.directory.name,
+        removedIds,
+        removedNames,
+        activeScanSubfolders,
+      );
     })().catch((error) => {
       console.error('Failed to update cache after watched file removal:', error);
     });
@@ -1267,36 +1265,40 @@ export default function App() {
       if (!directory) return;
 
       const { removedIds, removedNames } = resolveWatchedRemovalIds(directory, data);
-      if (removedIds.length === 0 && removedNames.length === 0) {
+      if (removedIds.length === 0) {
+        // Nothing currently indexed matches these paths — either they were
+        // never indexed, or (the common case) this watcher event is just the
+        // filesystem catching up with a delete the app already handled itself
+        // (see useImageSelection's handleDeleteSelectedImages, which removes
+        // locally and patches the cache by id immediately). Skip the toast and
+        // the cache delta: falling back to a name-only full-cache rewrite here
+        // would pay the exact cost we're trying to avoid, for nothing to prune.
         return;
       }
 
-      if (removedIds.length > 0) {
-        removeImages(removedIds);
-        const removedIdSet = new Set(removedIds);
-        setOpenImageModals((current) =>
-          current.flatMap((modal) => {
-            const navigationImageIds = modal.navigationImageIds.filter((id) => !removedIdSet.has(id));
-            if (removedIdSet.has(modal.imageId)) {
-              return [];
-            }
-            return [{ ...modal, navigationImageIds }];
-          })
-        );
+      removeImages(removedIds);
+      const removedIdSet = new Set(removedIds);
+      setOpenImageModals((current) =>
+        current.flatMap((modal) => {
+          const navigationImageIds = modal.navigationImageIds.filter((id) => !removedIdSet.has(id));
+          if (removedIdSet.has(modal.imageId)) {
+            return [];
+          }
+          return [{ ...modal, navigationImageIds }];
+        })
+      );
 
-        useImageStore.setState((state) => ({
-          selectedImages: new Set(Array.from(state.selectedImages).filter((id) => !removedIdSet.has(id))),
-          previewImage: state.previewImage && removedIdSet.has(state.previewImage.id) ? null : state.previewImage,
-          selectedImage: state.selectedImage && removedIdSet.has(state.selectedImage.id) ? null : state.selectedImage,
-          comparisonImages: state.comparisonImages.filter((image) => !removedIdSet.has(image.id)),
-        }));
-      }
+      useImageStore.setState((state) => ({
+        selectedImages: new Set(Array.from(state.selectedImages).filter((id) => !removedIdSet.has(id))),
+        previewImage: state.previewImage && removedIdSet.has(state.previewImage.id) ? null : state.previewImage,
+        selectedImage: state.selectedImage && removedIdSet.has(state.selectedImage.id) ? null : state.selectedImage,
+        comparisonImages: state.comparisonImages.filter((image) => !removedIdSet.has(image.id)),
+      }));
 
       scheduleWatchedRemovalCacheDelta(directory, removedIds, removedNames);
 
-      const removedCount = Math.max(removedIds.length, removedNames.length);
       setNewImagesToast({
-        message: `${removedCount} file${removedCount !== 1 ? 's' : ''} removed from ${directory.name}`,
+        message: `${removedIds.length} file${removedIds.length !== 1 ? 's' : ''} removed from ${directory.name}`,
       });
     });
 
@@ -2508,7 +2510,12 @@ export default function App() {
     [safeFilteredImages, selectedNodes],
   );
 
-  const availableNodeCatalog = useMemo(() => buildWorkflowNodeCatalog(safeImages), [safeImages]);
+  // Deferred: buildWorkflowNodeCatalog scans every image's workflowNodes and is
+  // only used to populate the node-filter dropdown, not the displayed grid, so
+  // it's safe to lag a render or two behind rapid library changes (auto-watch
+  // adds, bulk deletes) instead of recomputing synchronously on every one.
+  const deferredSafeImages = useDeferredValue(safeImages);
+  const availableNodeCatalog = useMemo(() => buildWorkflowNodeCatalog(deferredSafeImages), [deferredSafeImages]);
   const availableNodes = useMemo(() => availableNodeCatalog.map((node) => node.name), [availableNodeCatalog]);
   const nodeFacetCounts = useMemo(() => {
     const map = new Map<string, number>();
