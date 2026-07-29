@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
+import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { useLicenseStore, TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
 export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging' | 'file_management' | 'image_editor';
@@ -22,19 +23,84 @@ export const isDevProLicenseOverride = (): boolean =>
   typeof window !== 'undefined' &&
   localStorage.getItem('IMH_DEV_LICENSE') === 'pro';
 
+export type ProModalBlockedAttempts = Record<ProFeature, number>;
+
+const EMPTY_BLOCKED_ATTEMPTS: ProModalBlockedAttempts = {
+  a1111: 0,
+  comfyui: 0,
+  comparison: 0,
+  analytics: 0,
+  clustering: 0,
+  batch_export: 0,
+  bulk_tagging: 0,
+  file_management: 0,
+  image_editor: 0,
+};
+
+// --- Electron IPC-based storage for the Pro modal's blocked-attempt counters ---
+const electronProModalStorage: StateStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    if (window.electronAPI) {
+      const settings = await window.electronAPI.getSettings();
+      const blockedAttempts = settings?.proModalBlockedAttempts;
+      if (!blockedAttempts) return null;
+
+      return JSON.stringify({ state: { blockedAttempts } });
+    }
+    return null;
+  },
+  setItem: async (name: string, value: string): Promise<void> => {
+    if (window.electronAPI) {
+      const { state } = JSON.parse(value);
+      const currentSettings = await window.electronAPI.getSettings();
+      const result = await window.electronAPI.saveSettings({
+        ...currentSettings,
+        proModalBlockedAttempts: state.blockedAttempts,
+      });
+      if (!result?.success) {
+        throw new Error(result?.error || 'Failed to persist Pro modal attempt counts.');
+      }
+    }
+  },
+  removeItem: async (name: string): Promise<void> => {
+    console.warn('Clearing Pro modal attempt counts is not implemented.');
+  },
+};
+
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
+
 type ProModalState = {
   proModalOpen: boolean;
   proModalFeature: ProFeature;
+  blockedAttempts: ProModalBlockedAttempts;
   openProModal: (feature: ProFeature) => void;
   closeProModal: () => void;
 };
 
-export const useProModalStore = create<ProModalState>((set) => ({
-  proModalOpen: false,
-  proModalFeature: 'a1111',
-  openProModal: (feature) => set({ proModalOpen: true, proModalFeature: feature }),
-  closeProModal: () => set({ proModalOpen: false }),
-}));
+export const useProModalStore = create<ProModalState>()(
+  persist(
+    (set) => ({
+      proModalOpen: false,
+      proModalFeature: 'a1111',
+      blockedAttempts: { ...EMPTY_BLOCKED_ATTEMPTS },
+      openProModal: (feature) =>
+        set((state) => ({
+          proModalOpen: true,
+          proModalFeature: feature,
+          blockedAttempts: {
+            ...state.blockedAttempts,
+            [feature]: (state.blockedAttempts[feature] ?? 0) + 1,
+          },
+        })),
+      closeProModal: () => set({ proModalOpen: false }),
+    }),
+    {
+      name: 'image-metahub-pro-modal',
+      storage: createJSONStorage(() => (isElectron ? electronProModalStorage : localStorage)),
+      partialize: (state) => ({ blockedAttempts: state.blockedAttempts }),
+    }
+  )
+);
 
 // Helper: Check if trial has expired
 const isTrialExpired = (trialStartDate: number | null): boolean => {

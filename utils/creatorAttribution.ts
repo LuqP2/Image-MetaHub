@@ -43,7 +43,8 @@ export const findLatestCreatorAttributionToken = (images: IndexedImage[]): strin
 
 export const buildProLicenseUrl = (
   token?: string | null,
-  ctx?: ProLicenseUrlContext
+  ctx?: ProLicenseUrlContext,
+  feature?: string
 ): string => {
   const url = new URL(PRO_LICENSE_URL);
   url.searchParams.set('src', 'app');
@@ -53,6 +54,9 @@ export const buildProLicenseUrl = (
   const normalizedToken = normalizeToken(token);
   if (normalizedToken) {
     url.searchParams.set('imh_ref', normalizedToken);
+  }
+  if (feature) {
+    url.searchParams.set('feature', feature);
   }
   return url.toString();
 };
