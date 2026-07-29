@@ -714,7 +714,7 @@ class CacheManager {
     directoryName: string,
     images: IndexedImage[],
     scanSubfolders: boolean,
-    options?: { chunkSize?: number }
+    options?: { chunkSize?: number; fallbackImages?: IndexedImage[] }
   ): Promise<void> {
     if (!this.isElectron) return;
     if (!images || images.length === 0) return;
@@ -731,17 +731,31 @@ class CacheManager {
     directoryName: string,
     images: IndexedImage[],
     scanSubfolders: boolean,
-    options?: { chunkSize?: number }
+    options?: { chunkSize?: number; fallbackImages?: IndexedImage[] }
   ): Promise<void> {
     const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
     const start = performance.now();
     const summaryResult = await summaryFn(cacheId);
 
     if (!summaryResult.success || !summaryResult.data) {
-      await this.cacheData(directoryPath, directoryName, images, scanSubfolders);
+      // No cache exists for this variant yet (missing/cleared/invalidated, or
+      // a prior write failed). Writing just `images` here would create a
+      // cache that only knows about this batch's new files, so the next
+      // launch would think the directory has nothing else and reparse every
+      // pre-existing file. Merge in the caller-supplied full directory image
+      // list first, same fallback pattern as applyChunkedCacheDelta.
+      const merged = new Map<string, IndexedImage>();
+      for (const image of options?.fallbackImages ?? []) {
+        merged.set(image.id, image);
+      }
+      for (const image of images) {
+        merged.set(image.id, image);
+      }
+      await this.cacheData(directoryPath, directoryName, Array.from(merged.values()), scanSubfolders);
       logCachePerf('append-to-cache:fallback-cache-data', {
         cacheId,
         images: images.length,
+        fallbackImages: options?.fallbackImages?.length ?? 0,
         durationMs: toFixedMs(performance.now() - start),
       });
       return;
@@ -1208,7 +1222,13 @@ class CacheManager {
     const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
     for (const mode of candidateModes) {
       const cacheId = `${directoryPath}-${mode ? 'recursive' : 'flat'}`;
-      const removedByIndex = imageIds.length > 0
+      // The index fast path only prunes by id. If there are also bare names to
+      // prune (e.g. subfolder files that only exist in the other scan-mode's
+      // cache and were never loaded into the current id-based index), it can't
+      // account for them — always go through the full scan-and-rewrite path
+      // (which matches by both id and name) in that case instead of silently
+      // dropping the name-based removals.
+      const removedByIndex = imageIds.length > 0 && imageNames.length === 0
         ? await this.runChunkedCacheDeltaLocked(cacheId, () =>
             this.removeCacheVariantByIndex(cacheId, directoryPath, directoryName, imageIds, mode)
           )

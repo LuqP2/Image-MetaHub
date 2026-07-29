@@ -1931,14 +1931,20 @@ export function useImageLoader() {
                     }
 
                     // New entries: append to the last chunk / new chunks instead of
-                    // rewriting the whole directory cache. appendToCache already falls
-                    // back to a full cacheData write when there's no cache yet.
+                    // rewriting the whole directory cache. If there's no cache yet,
+                    // appendToCache falls back to a full cacheData write — pass the
+                    // full in-memory directory image list so that fallback doesn't
+                    // regress to a cache containing only this batch's new files.
                     if (enrichedForCache.length > 0) {
+                        const directoryImages = useImageStore.getState().images.filter(
+                            image => image.directoryId === directory.id
+                        );
                         await cacheManager.appendToCache(
                             directory.path,
                             directory.name,
                             enrichedForCache,
-                            shouldScanSubfolders
+                            shouldScanSubfolders,
+                            { fallbackImages: directoryImages }
                         );
                     }
                 } catch (err) {

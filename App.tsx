@@ -1265,14 +1265,22 @@ export default function App() {
       if (!directory) return;
 
       const { removedIds, removedNames } = resolveWatchedRemovalIds(directory, data);
-      if (removedIds.length === 0) {
-        // Nothing currently indexed matches these paths — either they were
-        // never indexed, or (the common case) this watcher event is just the
+      if (removedIds.length === 0 && removedNames.length === 0) {
+        // Nothing currently indexed matches these paths and there's nothing
+        // name-based to prune either — this watcher event is just the
         // filesystem catching up with a delete the app already handled itself
         // (see useImageSelection's handleDeleteSelectedImages, which removes
-        // locally and patches the cache by id immediately). Skip the toast and
-        // the cache delta: falling back to a name-only full-cache rewrite here
-        // would pay the exact cost we're trying to avoid, for nothing to prune.
+        // locally and patches the cache by id immediately). Skip entirely.
+        return;
+      }
+
+      if (removedIds.length === 0) {
+        // No in-memory images matched (e.g. the active scan mode is flat but
+        // the watcher — which always watches recursively — saw a subfolder
+        // file removed). Nothing to remove from the store, but a stale
+        // recursive-mode cache on disk may still hold these entries by name,
+        // so still queue the name-based cache prune.
+        scheduleWatchedRemovalCacheDelta(directory, removedIds, removedNames);
         return;
       }
 
