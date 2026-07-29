@@ -3255,10 +3255,10 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         removeImage: (imageId) => {
+            flushPendingImages(true);
             if (!get().images.some(img => img.id === imageId)) {
                 return;
             }
-            flushPendingImages(true);
             set(state => {
                 const remainingImages = state.images.filter(img => img.id !== imageId);
                 return _updateState(state, remainingImages);

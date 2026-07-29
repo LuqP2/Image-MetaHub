@@ -1281,6 +1281,9 @@ export default function App() {
         // recursive-mode cache on disk may still hold these entries by name,
         // so still queue the name-based cache prune.
         scheduleWatchedRemovalCacheDelta(directory, removedIds, removedNames);
+        setNewImagesToast({
+          message: `${removedNames.length} file${removedNames.length !== 1 ? 's' : ''} removed from ${directory.name}`,
+        });
         return;
       }
 

@@ -714,7 +714,7 @@ class CacheManager {
     directoryName: string,
     images: IndexedImage[],
     scanSubfolders: boolean,
-    options?: { chunkSize?: number; fallbackImages?: IndexedImage[] }
+    options?: { chunkSize?: number; getFallbackImages?: () => IndexedImage[] }
   ): Promise<void> {
     if (!this.isElectron) return;
     if (!images || images.length === 0) return;
@@ -731,7 +731,7 @@ class CacheManager {
     directoryName: string,
     images: IndexedImage[],
     scanSubfolders: boolean,
-    options?: { chunkSize?: number; fallbackImages?: IndexedImage[] }
+    options?: { chunkSize?: number; getFallbackImages?: () => IndexedImage[] }
   ): Promise<void> {
     const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
     const start = performance.now();
@@ -744,8 +744,9 @@ class CacheManager {
       // launch would think the directory has nothing else and reparse every
       // pre-existing file. Merge in the caller-supplied full directory image
       // list first, same fallback pattern as applyChunkedCacheDelta.
+      const fallbackImages = options?.getFallbackImages?.() ?? [];
       const merged = new Map<string, IndexedImage>();
-      for (const image of options?.fallbackImages ?? []) {
+      for (const image of fallbackImages) {
         merged.set(image.id, image);
       }
       for (const image of images) {
@@ -755,7 +756,7 @@ class CacheManager {
       logCachePerf('append-to-cache:fallback-cache-data', {
         cacheId,
         images: images.length,
-        fallbackImages: options?.fallbackImages?.length ?? 0,
+        fallbackImages: fallbackImages.length,
         durationMs: toFixedMs(performance.now() - start),
       });
       return;
@@ -1279,6 +1280,15 @@ class CacheManager {
 
     const index = await this.readValidCacheIndex(cacheId, summary.lastScan, chunkCount);
     if (!index) {
+      return false;
+    }
+    if (Object.keys(index).length !== (summary.imageCount ?? 0)) {
+      // Index doesn't account for every cached entry (e.g. it was never
+      // populated for this cache — appendToCache only maintains an index that
+      // already existed, it doesn't create one from scratch). Treating a
+      // missing-from-index id as "genuinely absent" in that case would report
+      // success without actually removing anything. Bail to the full scan,
+      // which rebuilds the index from a complete read.
       return false;
     }
 
