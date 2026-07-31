@@ -13,6 +13,7 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+import { copyTextToClipboard } from '../utils/imageUtils';
 import { getAvifCarrierConflicts } from '../utils/imageMetaHubAvifExtension.mjs';
 import { getElectronAbsoluteMediaPath, getRelativeImagePath, mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
@@ -429,13 +430,12 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
   const copyToClipboard = async (text: string, type: string) => {
     if(!text) return false;
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch (err) {
-      console.error(`Failed to copy ${type}:`, err);
+    const result = await copyTextToClipboard(text);
+    if (!result.success) {
+      console.error(`Failed to copy ${type}:`, result.error);
       return false;
     }
+    return true;
   };
 
   const hideContextMenu = () => {

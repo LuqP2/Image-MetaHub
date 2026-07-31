@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { X, Plus, Trash2, Save, Copy, Clipboard, RefreshCw } from 'lucide-react';
 import { ShadowMetadata, ShadowResource } from '../types';
 import { applyShadowMetadataUpdates } from '../utils/editableMetadata';
+import { copyTextToClipboard } from '../utils/imageUtils';
 
 const EDITABLE_METADATA_SCHEMA = 'imagemetahub/editable-metadata';
 const EDITABLE_METADATA_VERSION = 1;
@@ -483,7 +484,10 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
       if (onCopyEditableMetadata) {
         await onCopyEditableMetadata(portableMetadata, serialized);
       } else if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(serialized);
+        const result = await copyTextToClipboard(serialized);
+        if (!result.success) {
+          throw new Error(result.error || 'Unknown error occurred');
+        }
       } else {
         throw new Error('Clipboard access is not available in this context.');
       }

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Video Controls Click Targets**: Fixed the play/pause, mute, volume and loop controls near the edges of the video player triggering next/previous navigation instead of their own action, because the navigation hover zones painted on top of them.
+- **Copy Metadata to Clipboard**: Fixed "Failed to copy..." errors on Copy Prompt, Copy Negative Prompt, Copy to A1111/ComfyUI and other clipboard actions that could occur after clearing the library cache or reindexing a folder, until the app was restarted. Text copies now go through Electron's native clipboard API, the same way image copies already did, instead of the browser API that could lose focus after a reload.
 
 ## [0.18.0] - 2026-07-21
  

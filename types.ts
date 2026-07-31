@@ -473,6 +473,7 @@ export interface ElectronAPI {
   resolveMediaUrl: (filePath: string) => Promise<{ success: boolean; url?: string; error?: string; errorType?: string; errorCode?: string }>;
   startFileDrag: (args: { directoryPath: string; relativePath: string }) => void;
   copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  copyTextToClipboard: (text: string) => Promise<{ success: boolean; error?: string }>;
   
   // --- Caching ---
   getCachedData: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;

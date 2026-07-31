@@ -5307,6 +5307,21 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // Handle copying text to clipboard (avoids the renderer's "Document is not focused" error)
+  ipcMain.handle('copy-text-to-clipboard', async (event, text) => {
+    try {
+      if (typeof text !== 'string') {
+        return { success: false, error: 'No text provided' };
+      }
+
+      electron.clipboard.writeText(text);
+      return { success: true };
+    } catch (error) {
+      console.error('Error copying text to clipboard:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Handle getting file statistics (creation date, etc.)
   ipcMain.handle('get-file-stats', async (event, filePath) => {
     try {

@@ -263,6 +263,7 @@ const electronAPI = {
 
   // --- Caching ---
   copyImageToClipboard: (filePath) => ipcRenderer.invoke('copy-image-to-clipboard', filePath),
+  copyTextToClipboard: (text) => ipcRenderer.invoke('copy-text-to-clipboard', text),
   getCachedData: (cacheId) => ipcRenderer.invoke('get-cached-data', cacheId),
   getJsonCacheData: (cacheId) => ipcRenderer.invoke('get-json-cache-data', cacheId),
   getCacheSummary: (cacheId) => ipcRenderer.invoke('get-cache-summary', cacheId),

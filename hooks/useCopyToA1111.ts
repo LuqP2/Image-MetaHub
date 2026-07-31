@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { BaseMetadata, IndexedImage } from '../types';
 import { formatMetadataForA1111 } from '../utils/a1111Formatter';
+import { copyTextToClipboard } from '../utils/imageUtils';
 import {
   getClipboardErrorMessage,
   getNormalizedMetadata,
@@ -38,7 +39,10 @@ export function useCopyToA1111() {
       const formattedText = formatMetadataForA1111(metadata);
 
       // Copy to clipboard
-      await navigator.clipboard.writeText(formattedText);
+      const result = await copyTextToClipboard(formattedText);
+      if (!result.success) {
+        throw new Error(result.error || 'Unknown error occurred');
+      }
 
       setCopyStatus({
         success: true,
