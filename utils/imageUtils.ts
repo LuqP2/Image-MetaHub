@@ -76,6 +76,43 @@ export const copyImageToClipboard = async (image: IndexedImage, directoryPath?: 
 };
 
 /**
+ * Copies text to the clipboard, preferring Electron's native clipboard API.
+ * Falls back to the Web Clipboard API, which throws a "Document is not focused"
+ * error when the renderer's document loses focus (e.g. after a page reload
+ * triggered by clearing the library cache).
+ * @param text - The text to copy
+ * @returns Promise with operation result
+ */
+export const copyTextToClipboard = async (text: string): Promise<OperationResult> => {
+  try {
+    if (typeof window !== 'undefined' && window.electronAPI?.copyTextToClipboard) {
+      const result = await window.electronAPI.copyTextToClipboard(text);
+      if (result.success) {
+        return { success: true };
+      }
+      console.warn('Native clipboard copy failed, falling back to Web API:', result.error);
+    }
+
+    // Web API fallback (or if native failed)
+    // Ensure document has focus before clipboard operation (browser requirement)
+    if (typeof document !== 'undefined' && (document.hidden || !document.hasFocus())) {
+      window.focus();
+      // Short delay to allow focus to take effect
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    await navigator.clipboard.writeText(text);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to copy text to clipboard:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
+};
+
+/**
  * Shows the image file in the system's file explorer
  * @param imageOrPath - The IndexedImage object or full file path string
  * @returns Promise with operation result
@@ -166,12 +203,6 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
  */
 export const copyFilePathToClipboard = async (image: IndexedImage): Promise<OperationResult> => {
   try {
-    // Ensure document has focus before clipboard operation
-    if (document.hidden || !document.hasFocus()) {
-      window.focus();
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
     // Determine the path to copy based on environment
     const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
     let pathToCopy: string;
@@ -191,16 +222,9 @@ export const copyFilePathToClipboard = async (image: IndexedImage): Promise<Oper
       pathToCopy = image.id;
     }
 
-    await navigator.clipboard.writeText(pathToCopy);
-
-    // Show confirmation messages
-    if (isElectron) {
-      // Electron handles its own confirmation
-    } else {
-      // Show additional context if we have directory name
-      if (image.directoryName) {
-        // Browser-specific handling
-      }
+    const result = await copyTextToClipboard(pathToCopy);
+    if (!result.success) {
+      throw new Error(result.error || 'Unknown error occurred');
     }
 
     return { success: true };

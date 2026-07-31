@@ -19,6 +19,7 @@ import { Heart, Info, Copy, CheckCircle, Folder, Clipboard, Sparkles, GitCompare
   Image as ImageIcon,
   Workflow
 } from 'lucide-react';
+import { copyTextToClipboard } from '../utils/imageUtils';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
@@ -335,12 +336,12 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   const handleCopyClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (image.prompt) {
-      try {
-        await navigator.clipboard.writeText(image.prompt);
+      const result = await copyTextToClipboard(image.prompt);
+      if (result.success) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
-      } catch (err) {
-        console.error('Failed to copy prompt:', err);
+      } else {
+        console.error('Failed to copy prompt:', result.error);
       }
     }
   };

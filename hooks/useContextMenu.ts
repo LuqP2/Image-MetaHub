@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { type IndexedImage } from '../types';
-import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
+import { copyImageToClipboard, copyTextToClipboard, showInExplorer } from '../utils/imageUtils';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -156,11 +156,13 @@ export const useContextMenu = () => {
 
   const copyToClipboardElectron = (text: string, label: string) => {
     if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(() => {
-        showNotification(`${label} copied to clipboard!`);
-      }).catch(err => {
-        console.error('Failed to copy to clipboard:', err);
-        alert(`Failed to copy ${label} to clipboard`);
+      copyTextToClipboard(text).then((result) => {
+        if (result.success) {
+          showNotification(`${label} copied to clipboard!`);
+        } else {
+          console.error('Failed to copy to clipboard:', result.error);
+          alert(`Failed to copy ${label} to clipboard`);
+        }
       });
     } else {
       const textArea = document.createElement('textarea');
@@ -281,7 +283,10 @@ export const useContextMenu = () => {
       const formattedText = formatMetadataForA1111(metadata);
 
       // Copy to clipboard
-      await navigator.clipboard.writeText(formattedText);
+      const result = await copyTextToClipboard(formattedText);
+      if (!result.success) {
+        throw new Error(result.error || 'Unknown error occurred');
+      }
 
       showNotification('Copied! Paste into A1111 prompt box and click the Blue Arrow.');
     } catch (error: unknown) {

@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, 
 import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageEditRecipe } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
-import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
+import { copyImageToClipboard, copyTextToClipboard, showInExplorer } from '../utils/imageUtils';
 import { motion } from 'framer-motion';
 import { AlertTriangle, Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
@@ -1921,36 +1921,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
         alert(`No ${type} to copy.`);
         return false;
     }
-    try {
-      await navigator.clipboard.writeText(text);
-      if (!silent) {
-        const notification = document.createElement('div');
-        notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-        notification.textContent = `${type} copied to clipboard!`;
-        document.body.appendChild(notification);
-        setTimeout(() => {
-          if (document.body.contains(notification)) {
-            document.body.removeChild(notification);
-          }
-        }, 2000);
-      }
-      return true;
-    } catch (err) {
-      console.error(`Failed to copy ${type}:`, err);
+    const result = await copyTextToClipboard(text);
+    if (!result.success) {
+      console.error(`Failed to copy ${type}:`, result.error);
       alert(`Failed to copy ${type}.`);
       return false;
     }
-  };
-
-  const copyToClipboardElectron = async (text: string, type: string) => {
-    if (!text) {
-      alert(`No ${type} to copy.`);
-      return false;
-    }
-
-    try {
-      await navigator.clipboard.writeText(text);
-
+    if (!silent) {
       const notification = document.createElement('div');
       notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
       notification.textContent = `${type} copied to clipboard!`;
@@ -1960,12 +1937,33 @@ const ImageModal: React.FC<ImageModalProps> = ({
           document.body.removeChild(notification);
         }
       }, 2000);
-      return true;
-    } catch (err) {
-      console.error(`Failed to copy ${type}:`, err);
+    }
+    return true;
+  };
+
+  const copyToClipboardElectron = async (text: string, type: string) => {
+    if (!text) {
+      alert(`No ${type} to copy.`);
+      return false;
+    }
+
+    const result = await copyTextToClipboard(text);
+    if (!result.success) {
+      console.error(`Failed to copy ${type}:`, result.error);
       alert(`Failed to copy ${type}.`);
       return false;
     }
+
+    const notification = document.createElement('div');
+    notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+    notification.textContent = `${type} copied to clipboard!`;
+    document.body.appendChild(notification);
+    setTimeout(() => {
+      if (document.body.contains(notification)) {
+        document.body.removeChild(notification);
+      }
+    }, 2000);
+    return true;
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {

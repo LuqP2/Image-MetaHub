@@ -7,6 +7,7 @@ import { useState, useCallback } from 'react';
 import { BaseMetadata, IndexedImage } from '../types';
 import { formatImageForComfyUI, formatMetadataForComfyUI } from '../utils/comfyUIFormatter';
 import { hydrateImageForEmbeddedComfyWorkflow } from '../services/comfyUIWorkflowHydration';
+import { copyTextToClipboard } from '../utils/imageUtils';
 import {
   getClipboardErrorMessage,
   getNormalizedMetadata,
@@ -50,7 +51,10 @@ export function useCopyToComfyUI() {
         : formatImageForComfyUI(sourceImage);
 
       // Copy to clipboard
-      await navigator.clipboard.writeText(workflowJSON);
+      const result = await copyTextToClipboard(workflowJSON);
+      if (!result.success) {
+        throw new Error(result.error || 'Unknown error occurred');
+      }
 
       setCopyStatus({
         success: true,

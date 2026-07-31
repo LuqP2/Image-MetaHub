@@ -35,6 +35,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+import { copyTextToClipboard } from '../utils/imageUtils';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { formatImageForComfyUI } from '../utils/comfyUIFormatter';
@@ -426,11 +427,11 @@ const WorkspaceImagePreviewModal: React.FC<{
       return;
     }
 
-    try {
-      await navigator.clipboard.writeText(parameterText);
+    const result = await copyTextToClipboard(parameterText);
+    if (result.success) {
       setParameterCopyStatus('Copied');
-    } catch (error) {
-      console.error('Failed to copy preview parameters:', error);
+    } else {
+      console.error('Failed to copy preview parameters:', result.error);
       setParameterCopyStatus('Copy failed');
     }
   };
@@ -1114,13 +1115,14 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       return;
     }
 
-    navigator.clipboard.writeText(text)
-      .then(() => {
-        setAssetActionMessage(`${label} copied.`);
-      })
-      .catch((error) => {
-        console.error(`Failed to copy ${label}:`, error);
-        setAssetActionMessage(`Failed to copy ${label}.`);
+    copyTextToClipboard(text)
+      .then((result) => {
+        if (result.success) {
+          setAssetActionMessage(`${label} copied.`);
+        } else {
+          console.error(`Failed to copy ${label}:`, result.error);
+          setAssetActionMessage(`Failed to copy ${label}.`);
+        }
       });
   }, []);
 

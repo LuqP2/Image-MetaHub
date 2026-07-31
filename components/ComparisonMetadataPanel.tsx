@@ -2,6 +2,7 @@ import React, { FC, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Copy, AlertTriangle, CheckCircle } from 'lucide-react';
 import { ComparisonMetadataPanelProps, BaseMetadata } from '../types';
 import { compareField, formatFieldValue, diffText, DiffToken } from '../utils/metadataComparison';
+import { copyTextToClipboard } from '../utils/imageUtils';
 
 // Helper component for individual metadata fields
 const MetadataField: FC<{
@@ -130,8 +131,8 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
 
   const copyToClipboard = async (value: string, label: string) => {
     if (navigator.clipboard && window.isSecureContext) {
-      try {
-        await navigator.clipboard.writeText(value);
+      const result = await copyTextToClipboard(value);
+      if (result.success) {
         // Show notification
         const notification = document.createElement('div');
         notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
@@ -143,8 +144,8 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
           }
         }, 2000);
         return true;
-      } catch (err) {
-        console.error('Failed to copy to clipboard:', err);
+      } else {
+        console.error('Failed to copy to clipboard:', result.error);
         return false;
       }
     } else {
