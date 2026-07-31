@@ -1941,30 +1941,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     return true;
   };
 
-  const copyToClipboardElectron = async (text: string, type: string) => {
-    if (!text) {
-      alert(`No ${type} to copy.`);
-      return false;
-    }
-
-    const result = await copyTextToClipboard(text);
-    if (!result.success) {
-      console.error(`Failed to copy ${type}:`, result.error);
-      alert(`Failed to copy ${type}.`);
-      return false;
-    }
-
-    const notification = document.createElement('div');
-    notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-    notification.textContent = `${type} copied to clipboard!`;
-    document.body.appendChild(notification);
-    setTimeout(() => {
-      if (document.body.contains(notification)) {
-        document.body.removeChild(notification);
-      }
-    }, 2000);
-    return true;
-  };
+  const copyToClipboardElectron = (text: string, type: string) => copyToClipboard(text, type);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();

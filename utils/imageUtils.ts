@@ -86,11 +86,16 @@ export const copyImageToClipboard = async (image: IndexedImage, directoryPath?: 
 export const copyTextToClipboard = async (text: string): Promise<OperationResult> => {
   try {
     if (typeof window !== 'undefined' && window.electronAPI?.copyTextToClipboard) {
-      const result = await window.electronAPI.copyTextToClipboard(text);
-      if (result.success) {
-        return { success: true };
+      try {
+        const result = await window.electronAPI.copyTextToClipboard(text);
+        if (result.success) {
+          return { success: true };
+        }
+        console.warn('Native clipboard copy failed, falling back to Web API:', result.error);
+      } catch (nativeError) {
+        // e.g. the main process has no handler registered - still worth trying the Web API
+        console.warn('Native clipboard copy threw, falling back to Web API:', nativeError);
       }
-      console.warn('Native clipboard copy failed, falling back to Web API:', result.error);
     }
 
     // Web API fallback (or if native failed)
