@@ -23,6 +23,7 @@ import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getElectronAbsoluteMediaPath, mediaSourceCache } from '../services/mediaSourceCache';
+import { mediaDecodeCache } from '../services/mediaDecodeCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import cacheManager from '../services/cacheManager';
 import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndexer';
@@ -1039,6 +1040,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const pendingKeyboardNavigationRef = useRef<'next' | 'previous' | null>(null);
   const keyboardNavigationIdleTimeoutRef = useRef<number | null>(null);
   const isRapidKeyboardNavigatingRef = useRef(false);
+  // Which way the user is travelling, so the neighbour prefetch can spend its budget ahead of
+  // them instead of splitting it evenly. Forward until they tell us otherwise.
+  const navigationDirectionRef = useRef<'next' | 'previous'>('next');
   const onWindowStateChangeRef = useRef(onWindowStateChange);
   const lastReportedWindowStateRef = useRef<ModalWindowState | null>(null);
   const slideshowTimeoutRef = useRef<number | null>(null);
@@ -1245,7 +1249,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
     hasImageEditChanges &&
     !isShowingOriginalForAdjustmentCompare &&
     !(imageEditorTab === 'crop' && normalizedImageEditRecipe.crop.enabled);
-  const displayedImageUrl = shouldShowEditedPreview && editedPreviewUrl ? editedPreviewUrl : imageUrl;
+  // Resolved during render, not in an effect: an effect runs after paint, which would cost the
+  // frame this whole path exists to save. When the neighbour prefetch already decoded this
+  // source, the <img> can swap straight to it in the same commit as the image id change.
+  const warmFullImageUrl = useMemo(() => {
+    if (isPlayableMedia) {
+      return null;
+    }
+
+    const cachedUrl = mediaSourceCache.peek(liveImage, directoryPath);
+    return cachedUrl && mediaDecodeCache.isWarm(cachedUrl) ? cachedUrl : null;
+  }, [liveImage, directoryPath, isPlayableMedia]);
+  const displayedImageUrl = shouldShowEditedPreview && editedPreviewUrl
+    ? editedPreviewUrl
+    : (warmFullImageUrl ?? imageUrl);
 
   useEffect(() => {
     let isMounted = true;
@@ -2692,8 +2709,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
     const hasPreview = Boolean(preferredThumbnailUrl);
     const sourceLoadStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
-    setIsFullImageSourceReady(false);
-    setImageUrl(isPlayableMedia ? null : (preferredThumbnailUrl ?? null));
+    if (warmFullImageUrl) {
+      // Already fetched and decoded by the neighbour prefetch. Showing the thumbnail first would
+      // only add a second decode and a visible resolution pop, so go straight to the full source.
+      setImageUrl(warmFullImageUrl);
+      setIsFullImageSourceReady(true);
+    } else {
+      setIsFullImageSourceReady(false);
+      setImageUrl(isPlayableMedia ? null : (preferredThumbnailUrl ?? null));
+    }
 
     const loadImage = async () => {
       if (!isMounted) return;
@@ -2719,26 +2743,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
             isPlayableMedia,
           });
 
-          const state = useImageStore.getState();
-          const navigationImages = state.clusterNavigationContext || state.filteredImages;
-          const currentNavigationIndex = navigationImages.findIndex((candidate) => candidate.id === liveImage.id);
-          if (currentNavigationIndex !== -1) {
-            const directoryMap = new Map(state.directories.map((dir) => [dir.id, dir.path]));
-            const neighborCandidates = [
-              navigationImages[currentNavigationIndex - 1],
-              navigationImages[currentNavigationIndex + 1],
-            ].filter(Boolean) as IndexedImage[];
-
-            for (const neighbor of neighborCandidates) {
-              const neighborDirectoryPath = directoryMap.get(neighbor.directoryId || '');
-              mediaSourceCache.prefetch(neighbor, neighborDirectoryPath);
-            }
+          // Keep the image we are showing in the decode cache too, so stepping back onto it is
+          // as instant as stepping forward. Neighbours are warmed by their own effect below.
+          if (!isPlayableMedia) {
+            void mediaDecodeCache.warm(url);
           }
         }
       } catch (loadError) {
         console.error('Failed to load full image source:', loadError);
-        if (isMounted && !hasPreview) {
-          setImageUrl(null);
+        if (isMounted) {
+          // The warm branch above marks the source ready before this confirms it, so a failure
+          // here has to take that back: otherwise export and editing stay enabled over nothing.
+          setIsFullImageSourceReady(false);
+          if (!hasPreview) {
+            setImageUrl(null);
+          }
         }
       } finally {
         recordPerformanceDuration('modal.full-source-load', (typeof performance !== 'undefined' ? performance.now() : Date.now()) - sourceLoadStartedAt, {
@@ -2754,7 +2773,115 @@ const ImageModal: React.FC<ImageModalProps> = ({
     return () => {
       isMounted = false;
     };
+    // warmFullImageUrl is read from the closure on purpose. It is computed in the same render as
+    // the image id change, so the run that matters already sees the right value; adding it here
+    // would re-run the whole load when a later prefetch flips warmth for the image on screen.
   }, [diagnosticsFlowId, liveImage.id, liveImage.handle, liveImage.thumbnailHandle, liveImage.name, liveImage.lastModified, directoryPath, preferredThumbnailUrl, isPlayableMedia, isVideo]);
+
+  // Decoded bitmaps are worth tens of megabytes, so they only stay alive while a modal is open.
+  useEffect(() => {
+    mediaDecodeCache.retain();
+    return () => {
+      mediaDecodeCache.release();
+    };
+  }, []);
+
+  // Warm the neighbours the user is most likely to land on next. Resolving a source only produces
+  // a URL string, so this decodes the bytes as well: that decode is the part that cannot fit in
+  // the frame where the <img> src changes.
+  useEffect(() => {
+    // Waiting on isFullImageSourceReady keeps the image on screen ahead of the ones that are not,
+    // without chaining this to the load promise. During a held-arrow burst the user outruns any
+    // decode we could start, so queueing work there would only compete with the image they stop on.
+    if (isPlayableMedia || !isFullImageSourceReady || isRapidKeyboardNavigating) {
+      return;
+    }
+
+    const state = useImageStore.getState();
+    const navigationImages = state.clusterNavigationContext || state.filteredImages;
+    const currentNavigationIndex = navigationImages.findIndex((candidate) => candidate.id === liveImage.id);
+
+    if (currentNavigationIndex === -1) {
+      return;
+    }
+
+    // The store's list is not always the one this modal navigates: a viewer opened from Find
+    // Similar, a ComfyUI workflow or a scope walks its own id list, and currentIndex/totalImages
+    // are the props derived from it. When they disagree, the neighbours here are somebody else's
+    // images — decoding them would evict the useful entries from a five-slot cache for nothing.
+    if (navigationImages.length !== totalImages || currentNavigationIndex !== currentIndex) {
+      return;
+    }
+
+    const step = navigationDirectionRef.current === 'previous' ? -1 : 1;
+    const directoryMap = new Map(state.directories.map((dir) => [dir.id, dir.path]));
+    // Two ahead, one behind: people rarely alternate directions, so spending the budget on the way
+    // they are heading buys a much better hit rate for the same number of decoded bitmaps.
+    const neighbors = [
+      navigationImages[currentNavigationIndex + step],
+      navigationImages[currentNavigationIndex + step * 2],
+      navigationImages[currentNavigationIndex - step],
+    ].filter((candidate): candidate is IndexedImage =>
+      Boolean(candidate)
+      && !isVideoFileName(candidate.name, candidate.fileType)
+      && !isAudioFileName(candidate.name, candidate.fileType));
+
+    if (neighbors.length === 0) {
+      return;
+    }
+
+    let isMounted = true;
+    let idleHandle: number | null = null;
+    let timeoutHandle: number | null = null;
+
+    const scheduleIdle = (callback: () => void) => {
+      if (typeof window.requestIdleCallback === 'function') {
+        idleHandle = window.requestIdleCallback(callback, { timeout: 500 });
+        return;
+      }
+
+      timeoutHandle = window.setTimeout(callback, 32);
+    };
+
+    let queueIndex = 0;
+    const warmNextNeighbor = () => {
+      if (!isMounted || queueIndex >= neighbors.length) {
+        return;
+      }
+
+      const neighbor = neighbors[queueIndex++]!;
+
+      void (async () => {
+        try {
+          // No prioritize here: this must not pause the grid's background thumbnail work.
+          const url = await mediaSourceCache.getOrLoad(neighbor, directoryMap.get(neighbor.directoryId || ''));
+          if (isMounted) {
+            await mediaDecodeCache.warm(url);
+          }
+        } catch {
+          // A neighbour that refuses to load is not worth surfacing: the user may never reach it,
+          // and opening it directly still reports the failure through the load effect.
+        }
+
+        // One at a time, so three multi-megabyte decodes never land on the main thread together.
+        if (isMounted && queueIndex < neighbors.length) {
+          scheduleIdle(warmNextNeighbor);
+        }
+      })();
+    };
+
+    scheduleIdle(warmNextNeighbor);
+
+    return () => {
+      isMounted = false;
+      if (idleHandle !== null && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleHandle);
+      }
+      if (timeoutHandle !== null) {
+        window.clearTimeout(timeoutHandle);
+      }
+    };
+  }, [currentIndex, isFullImageSourceReady, isPlayableMedia, isRapidKeyboardNavigating, liveImage.id, totalImages]);
 
   useEffect(() => {
     if (!preferredThumbnailUrl || hasMarkedPreviewVisibleRef.current) {
@@ -2955,6 +3082,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   // land on obeys the auto-play setting again.
   const navigateManually = useCallback((direction: 'next' | 'previous') => {
     setIsChainedPlayback(false);
+    navigationDirectionRef.current = direction;
 
     if (direction === 'next') {
       // Shuffle randomizes forward navigation as well, the way a shuffled playlist does. It only

@@ -177,8 +177,15 @@ class MediaSourceCache {
     return loading;
   }
 
-  prefetch(image: IndexedImage, directoryPath?: string): void {
-    void this.getOrLoad(image, directoryPath).catch(() => {});
+  /**
+   * Synchronous lookup for callers that need to know during render whether a source is already
+   * resolved. Deliberately does not touch lastAccess: render frequency is not cache usage, and
+   * the getOrLoad that follows a render promotes the entry anyway.
+   */
+  peek(image: IndexedImage, directoryPath?: string): string | null {
+    // Entries still loading are stored with an empty url, so this also filters those out.
+    const entry = this.entries.get(this.getCacheKey(image, directoryPath));
+    return entry?.url ? entry.url : null;
   }
 
   async getRendererOwnedObjectUrl(
