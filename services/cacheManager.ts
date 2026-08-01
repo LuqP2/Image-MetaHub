@@ -62,15 +62,70 @@ export interface CacheDiff {
   needsFullRefresh: boolean;
 }
 
+// Entries-per-chunk is only an upper bound. Chunk files are read and rewritten
+// whole, so what actually matters is their size in bytes: on a ComfyUI library
+// a single entry carries the workflow graph, so 1024 entries produced ~58MB
+// chunk files (measured: 326MB across 7 chunks for 6.2k images) and removing
+// one image meant reading and rewriting all 326MB. Cap by bytes as well.
 const DEFAULT_INCREMENTAL_CHUNK_SIZE = 1024;
-const MAX_INLINE_RAW_METADATA_BYTES = 32 * 1024;
+const TARGET_CHUNK_BYTES = 2 * 1024 * 1024;
+
+// Raw metadata above this is stripped from the cache and replaced by a compact
+// summary; the full text is re-read from the file on demand by
+// hydrateImageRawMetadata (wired into ImageModal, ImagePreviewSidebar,
+// ImageEditorWorkspace and the ComfyUI workspace). Kept low deliberately: the
+// raw string is by far the biggest field and the cache only needs the derived
+// fields to drive search, filters and facets.
+const MAX_INLINE_RAW_METADATA_BYTES = 4 * 1024;
 const RAW_METADATA_PREVIEW_BYTES = 4096;
+
+// Cheap proxy for an entry's serialized size. The raw metadata string dominates
+// every other field, so this avoids a JSON.stringify per entry just to measure.
+const estimateEntryBytes = (entry: CacheImageMetadata): number => {
+  const raw = typeof entry.metadataString === 'string' ? entry.metadataString.length : 0;
+  return raw + 1024;
+};
+
+// Splits entries so a chunk stays under both the entry-count and the byte cap.
+// A single oversized entry still gets its own chunk rather than being dropped.
+const chunkByBudget = (
+  entries: CacheImageMetadata[],
+  maxEntries: number
+): CacheImageMetadata[][] => {
+  const chunks: CacheImageMetadata[][] = [];
+  let current: CacheImageMetadata[] = [];
+  let currentBytes = 0;
+
+  for (const entry of entries) {
+    const entryBytes = estimateEntryBytes(entry);
+    if (current.length > 0 && (current.length >= maxEntries || currentBytes + entryBytes > TARGET_CHUNK_BYTES)) {
+      chunks.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(entry);
+    currentBytes += entryBytes;
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+
+  return chunks;
+};
 
 const logCachePerf = (
   event: string,
   details: Record<string, unknown> = {}
 ) => {
-  console.log('[cache:perf]', { event, ...details });
+  // Surface every *Ms field in the message itself. They were already being
+  // measured but sat behind a collapsed object in DevTools, so the one number
+  // that matters was never visible in a pasted log.
+  const timings = Object.entries(details)
+    .filter(([key, value]) => key.endsWith('Ms') && typeof value === 'number')
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' ');
+  console.log(`[cache:perf] ${event}${timings ? ` | ${timings}` : ''}`, { event, ...details });
 };
 
 const toFixedMs = (durationMs: number) => Number(durationMs.toFixed(2));
@@ -772,8 +827,7 @@ class CacheManager {
     let chunkIndex = inlineMetadata.length > 0 ? 0 : (summary.chunkCount ?? 0);
     const indexUpdates: Record<string, number> = {};
 
-    for (let i = 0; i < inlineMetadata.length; i += chunkSize) {
-      const chunk = inlineMetadata.slice(i, i + chunkSize);
+    for (const chunk of chunkByBudget(inlineMetadata, chunkSize)) {
       const result = await window.electronAPI.writeCacheChunk({
         cacheId,
         chunkIndex,
@@ -813,8 +867,7 @@ class CacheManager {
       }
     }
 
-    for (let i = 0; i < metadata.length; i += chunkSize) {
-      const chunk = metadata.slice(i, i + chunkSize);
+    for (const chunk of chunkByBudget(metadata, chunkSize)) {
       const result = await window.electronAPI.writeCacheChunk({
         cacheId,
         chunkIndex,
@@ -1223,15 +1276,15 @@ class CacheManager {
     const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
     for (const mode of candidateModes) {
       const cacheId = `${directoryPath}-${mode ? 'recursive' : 'flat'}`;
-      // The index fast path only prunes by id. If there are also bare names to
-      // prune (e.g. subfolder files that only exist in the other scan-mode's
-      // cache and were never loaded into the current id-based index), it can't
-      // account for them — always go through the full scan-and-rewrite path
-      // (which matches by both id and name) in that case instead of silently
-      // dropping the name-based removals.
-      const removedByIndex = imageIds.length > 0 && imageNames.length === 0
+      // Names are resolved against the index too (see removeCacheVariantByIndex):
+      // its keys are the entry ids, and getRelativeCacheName derives the match
+      // name from the id, so a name-based removal needs no chunk reads either.
+      // This matters because the watcher path (App.tsx) always supplies names —
+      // gating the fast path on `imageNames.length === 0` meant the dominant
+      // delete path always fell through to the full 22s scan-and-rewrite.
+      const removedByIndex = (imageIds.length > 0 || imageNames.length > 0)
         ? await this.runChunkedCacheDeltaLocked(cacheId, () =>
-            this.removeCacheVariantByIndex(cacheId, directoryPath, directoryName, imageIds, mode)
+            this.removeCacheVariantByIndex(cacheId, directoryPath, directoryName, imageIds, imageNames, mode)
           )
         : false;
 
@@ -1261,6 +1314,7 @@ class CacheManager {
     directoryPath: string,
     directoryName: string,
     imageIds: string[],
+    imageNames: string[],
     scanSubfolders: boolean
   ): Promise<boolean> {
     const start = performance.now();
@@ -1287,13 +1341,32 @@ class CacheManager {
       // populated for this cache — appendToCache only maintains an index that
       // already existed, it doesn't create one from scratch). Treating a
       // missing-from-index id as "genuinely absent" in that case would report
-      // success without actually removing anything. Bail to the full scan,
-      // which rebuilds the index from a complete read.
+      // success without actually removing anything. Bail to the full scan in
+      // applyChunkedCacheDelta, which rebuilds the index from a complete read
+      // so this only costs a full rewrite once.
       return false;
     }
 
+    const targetIds = new Set(imageIds);
+    if (imageNames.length > 0) {
+      const wantedNames = new Set(
+        imageNames.map((name) => name.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+      );
+      for (const id of Object.keys(index)) {
+        // getRelativeCacheName falls back to the entry's `name` field when the
+        // id carries no '::' separator, and the index doesn't hold names — so a
+        // name match can't be decided here. Bail to the full scan in that case.
+        if (id.indexOf('::') < 0) {
+          return false;
+        }
+        if (wantedNames.has(getRelativeCacheName(id, ''))) {
+          targetIds.add(id);
+        }
+      }
+    }
+
     const idsByChunk = new Map<number, Set<string>>();
-    for (const id of imageIds) {
+    for (const id of targetIds) {
       const targetChunk = index[id];
       if (typeof targetChunk !== 'number' || targetChunk < 0 || targetChunk >= chunkCount) {
         // Not in this cache variant per the index. Could genuinely be absent
@@ -1429,6 +1502,7 @@ class CacheManager {
     ];
     const outputChunkSize = DEFAULT_INCREMENTAL_CHUNK_SIZE;
     const outputBuffer: CacheImageMetadata[] = [];
+    let outputBufferBytes = 0;
     let outputChunkIndex = 0;
     let imageCount = 0;
     let readChunks = 0;
@@ -1436,12 +1510,25 @@ class CacheManager {
     let writeChunkMs = 0;
     let pruneMs = 0;
 
+    // Rebuilt as chunks stream out, so the id->chunk sidecar index survives this
+    // path. Without it the index kept the pre-delta lastScan, readValidCacheIndex
+    // rejected it, removeCacheVariantByIndex bailed, and every delete fell back
+    // here again — a full read+rewrite of every chunk, forever. Measured at 22.5s
+    // per deleted file on a 6.2k-image cache.
+    const rebuiltIds: Record<string, number> = {};
+
     const flushOutputChunk = async (force = false) => {
-      if (outputBuffer.length === 0 || (!force && outputBuffer.length < outputChunkSize)) {
+      const budgetReached =
+        outputBuffer.length >= outputChunkSize || outputBufferBytes >= TARGET_CHUNK_BYTES;
+      if (outputBuffer.length === 0 || (!force && !budgetReached)) {
         return;
       }
 
       const chunk = outputBuffer.splice(0, outputBuffer.length);
+      outputBufferBytes = 0;
+      for (const entry of chunk) {
+        rebuiltIds[entry.id] = outputChunkIndex;
+      }
       const writeStart = performance.now();
       const result = await window.electronAPI.writeCacheChunk({
         cacheId: outputCacheId,
@@ -1460,6 +1547,7 @@ class CacheManager {
     const appendOutputEntries = async (entries: CacheImageMetadata[]) => {
       for (const entry of entries) {
         outputBuffer.push(entry);
+        outputBufferBytes += estimateEntryBytes(entry);
         imageCount += 1;
         await flushOutputChunk();
       }
@@ -1497,6 +1585,7 @@ class CacheManager {
     await appendOutputEntries(upserts);
     await flushOutputChunk(true);
 
+    const newLastScan = Date.now();
     const finalizeResult = await window.electronAPI.finalizeCacheWrite({
       cacheId,
       sourceCacheId: outputCacheId,
@@ -1504,7 +1593,7 @@ class CacheManager {
         id: cacheId,
         directoryPath,
         directoryName: summary.directoryName ?? directoryName,
-        lastScan: Date.now(),
+        lastScan: newLastScan,
         imageCount,
         chunkCount: outputChunkIndex,
         parserVersion: PARSER_VERSION,
@@ -1514,6 +1603,13 @@ class CacheManager {
        if (!finalizeResult.success) {
       throw new Error(finalizeResult.error || 'Failed to finalize cache delta');
     }
+
+    // Must carry the same lastScan the record was just finalized with, or the
+    // next removal rejects the index and falls back here again.
+    await window.electronAPI.writeCacheIndex?.({
+      cacheId,
+      data: { lastScan: newLastScan, chunkCount: outputChunkIndex, ids: rebuiltIds },
+    });
 
     logCachePerf('chunked-delta:complete', {
       cacheId,
