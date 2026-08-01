@@ -2751,8 +2751,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
         }
       } catch (loadError) {
         console.error('Failed to load full image source:', loadError);
-        if (isMounted && !hasPreview) {
-          setImageUrl(null);
+        if (isMounted) {
+          // The warm branch above marks the source ready before this confirms it, so a failure
+          // here has to take that back: otherwise export and editing stay enabled over nothing.
+          setIsFullImageSourceReady(false);
+          if (!hasPreview) {
+            setImageUrl(null);
+          }
         }
       } finally {
         recordPerformanceDuration('modal.full-source-load', (typeof performance !== 'undefined' ? performance.now() : Date.now()) - sourceLoadStartedAt, {
@@ -2797,6 +2802,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
     const currentNavigationIndex = navigationImages.findIndex((candidate) => candidate.id === liveImage.id);
 
     if (currentNavigationIndex === -1) {
+      return;
+    }
+
+    // The store's list is not always the one this modal navigates: a viewer opened from Find
+    // Similar, a ComfyUI workflow or a scope walks its own id list, and currentIndex/totalImages
+    // are the props derived from it. When they disagree, the neighbours here are somebody else's
+    // images — decoding them would evict the useful entries from a five-slot cache for nothing.
+    if (navigationImages.length !== totalImages || currentNavigationIndex !== currentIndex) {
       return;
     }
 
@@ -2851,7 +2864,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         }
 
         // One at a time, so three multi-megabyte decodes never land on the main thread together.
-        if (isMounted) {
+        if (isMounted && queueIndex < neighbors.length) {
           scheduleIdle(warmNextNeighbor);
         }
       })();
@@ -2868,7 +2881,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         window.clearTimeout(timeoutHandle);
       }
     };
-  }, [isFullImageSourceReady, isPlayableMedia, isRapidKeyboardNavigating, liveImage.id]);
+  }, [currentIndex, isFullImageSourceReady, isPlayableMedia, isRapidKeyboardNavigating, liveImage.id, totalImages]);
 
   useEffect(() => {
     if (!preferredThumbnailUrl || hasMarkedPreviewVisibleRef.current) {

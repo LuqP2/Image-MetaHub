@@ -8,6 +8,16 @@ type DecodeEntry = {
 };
 
 const MAX_DECODED_ENTRIES = 5;
+const MAX_LOGGED_URL_CHARS = 96;
+
+/**
+ * A source can be a `data:` URL holding a whole base64 PNG, and diagnostics keep 2000 events plus
+ * console-log every counter. Log something bounded that still identifies the entry.
+ */
+const describeUrl = (url: string): string =>
+  url.length > MAX_LOGGED_URL_CHARS
+    ? `${url.slice(0, MAX_LOGGED_URL_CHARS)}…(${url.length} chars)`
+    : url;
 
 /**
  * Keeps a handful of fully decoded bitmaps alive so swapping an <img> src can paint in the
@@ -47,7 +57,7 @@ class MediaDecodeCache {
 
     if (existing?.decoded) {
       this.touch(url);
-      recordPerformanceCounter('media-decode-cache.hit', { url });
+      recordPerformanceCounter('media-decode-cache.hit', { url: describeUrl(url) });
       return;
     }
 
@@ -55,19 +65,28 @@ class MediaDecodeCache {
       return existing.loading;
     }
 
-    recordPerformanceCounter('media-decode-cache.miss', { url });
+    recordPerformanceCounter('media-decode-cache.miss', { url: describeUrl(url) });
 
     const element = new Image();
     element.decoding = 'async';
+
+    // Registered before the decode starts: `decode()` can throw synchronously where it is not
+    // implemented, and a catch that runs before the entry exists would leave a never-decoded
+    // entry with a settled `loading` behind, permanently blocking any retry of this url.
+    const entry: DecodeEntry = {
+      element,
+      decoded: false,
+      lastAccess: Date.now(),
+    };
+    this.entries.set(url, entry);
 
     const loading = (async () => {
       try {
         element.src = url;
         await element.decode();
 
-        const entry = this.entries.get(url);
         // A clear() or a failed sibling may have dropped us while the decode was in flight.
-        if (!entry || entry.element !== element) {
+        if (this.entries.get(url) !== entry) {
           this.destroyElement(element);
           return;
         }
@@ -77,24 +96,18 @@ class MediaDecodeCache {
         entry.lastAccess = Date.now();
         this.prune();
       } catch (error) {
-        const entry = this.entries.get(url);
-        if (entry?.element === element) {
+        if (this.entries.get(url) === entry) {
           this.entries.delete(url);
         }
         this.destroyElement(element);
         recordPerformanceCounter('media-decode-cache.warm-error', {
-          url,
+          url: describeUrl(url),
           error: error instanceof Error ? error.message : String(error),
         });
       }
     })();
 
-    this.entries.set(url, {
-      element,
-      decoded: false,
-      lastAccess: Date.now(),
-      loading,
-    });
+    entry.loading = loading;
 
     return loading;
   }
@@ -124,7 +137,9 @@ class MediaDecodeCache {
   private destroyElement(element: HTMLImageElement): void {
     element.onload = null;
     element.onerror = null;
-    element.src = '';
+    // Assigning '' would resolve against the document URL and fetch the renderer's own page as an
+    // image; removing the attribute is what actually drops the source.
+    element.removeAttribute('src');
   }
 
   private prune(): void {
@@ -140,7 +155,7 @@ class MediaDecodeCache {
       this.entries.delete(url);
       this.destroyElement(entry.element);
       recordPerformanceCounter('media-decode-cache.evicted', {
-        url,
+        url: describeUrl(url),
         cacheSize: this.entries.size,
         maxCacheEntries: MAX_DECODED_ENTRIES,
       });

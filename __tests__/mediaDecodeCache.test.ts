@@ -25,6 +25,12 @@ class FakeImage {
     return this.decodePromise;
   }
 
+  removeAttribute(name: string): void {
+    if (name === 'src') {
+      this.src = '';
+    }
+  }
+
   settle(): void {
     this.resolveDecode();
   }
