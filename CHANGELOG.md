@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Auto-play Toggle**: A new Settings → Viewer → Playback option controls whether videos and audio start playing as soon as they open. It stays on by default; turning it off means the media viewer waits for you to press Play, both when opening a file and when moving to another one with the navigation arrows.
 - **Repeat Modes and Shuffle**: The video player's loop button is now a three-state repeat control — no repeat, repeat all, repeat one — so a video can play the next item when it finishes instead of just stopping. A new shuffle button next to it randomizes where playback goes. As in VLC, repeat decides whether playback continues (with no repeat a video still stops at its end, shuffle or not) while shuffle decides where it goes: repeat all advances in order, or to a random item when shuffle is on. Shuffle also applies to the next arrow and the right arrow key; going back stays sequential. Both preferences are remembered, and an existing loop setting carries over as "repeat one". A running slideshow keeps its own pacing and is unaffected. When repeat all moves to the following item, that item plays even if auto-play is off; navigating manually returns to the auto-play preference.
 
+### Improved
+
+- **Deleting Images**: Deleting one file could freeze the app for ~25 seconds on a large ComfyUI library. It no longer rewrites the whole folder cache to remove one entry, and cache chunks are capped by size instead of only by entry count.
+- **Cache File Size**: Cached entries no longer duplicate large raw metadata alongside its parsed form; the full text is re-read from the file when you open the metadata or workflow views. Applies as folders are reindexed.
+- **New Images While Watching a Folder**: Adding, removing or enriching images no longer re-runs the whole filter and sort pipeline per event, so generating into a watched folder doesn't drop frames or block scrolling.
+- **Search Responsiveness**: Search text is computed once per image and reused instead of rebuilt on every keystroke.
+- **Image Lineage Rebuilds**: Lineage is no longer written to disk mid-interaction — rebuilds are coalesced and saved once things go quiet.
+
 ### Fixed
 
 - **Video Controls Click Targets**: Fixed the play/pause, mute, volume and loop controls near the edges of the video player triggering next/previous navigation instead of their own action, because the navigation hover zones painted on top of them.

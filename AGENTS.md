@@ -722,10 +722,32 @@ For advanced manual workflows, users can:
 
 ### Fixing Performance Issues
 
-1. Check IndexedDB caching logic
-2. Review virtual scrolling implementation
-3. Profile with large image collections
-4. Consider lazy loading and background processing
+**Measure first.** Do not infer the bottleneck from reading code — this codebase
+has repeatedly punished that. A reported "delete is slow" was diagnosed as the
+store's filter pipeline and optimized across three PRs with zero effect; the
+actual cost was 326 MB of cache chunks being read and rewritten per deleted
+file, in the main process. Add instrumentation, reproduce, read the numbers,
+then fix what the numbers point at.
+
+1. Instrument the suspect path with `recordPerformanceDuration` /
+   `beginPerformanceFlow` (`utils/performanceDiagnostics.ts`). Enable
+   Performance Diagnostics in Settings, or use `window.__IMH_PERF__` —
+   `printSummary()`, `getEvents()`, `setConsoleLogging(true)`. A long-task
+   observer is already attached.
+2. Check whether the freeze is even in the renderer. Work awaited over IPC does
+   not block the renderer's main thread, but it **does** occupy the Electron
+   main process, and every other IPC call queues behind it — including the image
+   reads that grid and modal navigation need. A UI that stutters during a
+   background write is usually main-process starvation, not a slow component.
+3. For anything touching the metadata cache, look at chunk file *sizes* before
+   anything else (`services/cacheManager.ts`). Chunks are read and rewritten
+   whole, so their size is the cost of every single-image edit. A ComfyUI
+   library carries a full workflow graph per entry, which makes per-entry costs
+   roughly 25x what an A1111 library shows.
+4. Anything that serializes a whole collection across the IPC boundary (registry
+   snapshots, worker datasets, cache records) belongs off the interactive path —
+   debounce and coalesce it.
+5. Profile with large collections, and prefer lazy loading and background work.
 
 ## Testing Strategy
 
@@ -755,10 +777,11 @@ Browser version uses File System Access API with limited capabilities.
 
 ## Performance Tips
 
-- Always test with large image collections (10,000+ images)
+- Always test with large image collections (10,000+ images), and on a ComfyUI library — entries there are far heavier than A1111 ones and are what surface per-entry costs
 - Use React.memo() for expensive components
 - Implement proper virtualization for lists
-- Cache metadata aggressively in IndexedDB
+- Cache metadata aggressively, but keep cached entries small: large raw metadata is compacted on write and rehydrated on demand (`services/rawMetadataHydration.ts`)
+- Prefer touching one cache chunk over rewriting a directory cache; the id→chunk index exists for exactly this, and any write that finalizes a cache record must also rewrite that index
 - Process files in background threads when possible
 - Use synchronous I/O (`fs.openSync`) for header reads during indexing to prevent disk contention (Phase B optimization)
 
