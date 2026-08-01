@@ -102,6 +102,13 @@ It also contains the central filter pipeline, including:
 * safe mode
 * advanced filters such as dimensions, steps, CFG, dates, and verified telemetry
 
+The pipeline has two paths:
+
+* **Full recompute** (`filterAndSort`) runs the whole filter chain and re-sorts. Used for structural changes — setting or clearing images, replacing a directory, and any change to a filter or sort parameter.
+* **Incremental** (`_updateStateIncremental`) handles add / remove / merge. It compiles the active filters into a single-image predicate, evaluates only the touched images, and inserts matches into the already-sorted list rather than re-sorting. Facet counts, collection counts and available-filter lists are reconciled on a debounced pass afterwards, capped so a sustained burst still gets periodic updates. That pass compares its result against a full recompute and falls back to it on any divergence.
+
+Two consequences worth knowing before changing this area: `compileImageFilter` duplicates `filterAndSort`'s filter chain, so a new filter has to be added in both or the two silently disagree; and search text is memoized in a `WeakMap` keyed by the image object, which is only sound because every store path replaces `IndexedImage` objects instead of mutating them in place.
+
 **`store/useSettingsStore.ts`**
 
 Persists user preferences such as:
@@ -213,7 +220,10 @@ Metadata and thumbnails are cached separately.
 * `services/cacheManager.ts` stores normalized image metadata in chunked cache files.
 * Parser/cache versioning is used to invalidate stale cache when metadata logic changes.
 * Writes are incremental to avoid large all-at-once cache flushes.
-* Oversized raw payloads can be compacted and hydrated on demand to reduce renderer memory pressure.
+* Chunks are bounded by **both** an entry count and a byte budget. The byte budget is the load-bearing one: a single ComfyUI entry carries a whole workflow graph, so sizing purely by entry count produced chunk files of tens of MB. Chunk files are always read and rewritten whole, so their size directly sets the cost of every single-image edit.
+* A sidecar `{cacheId}_index.json` maps image id → chunk index, so removing or patching an image reads just the chunk holding it instead of scanning the cache. The index is validated against the record's `chunkCount` and `lastScan` on every use, and rejected if either differs. **Every path that finalizes a cache write must rewrite the index with the same `lastScan` it finalized the record with** — an index left behind at an older `lastScan` is silently rejected forever, which quietly degrades every later edit into a full rewrite.
+* Removals resolve bare filenames against the index keys (entry ids encode the relative path) rather than reading chunks, so watcher-driven removals also take the indexed path.
+* Raw metadata above a small threshold is not stored inline. Entries keep `normalizedMetadata` plus previews, and `services/rawMetadataHydration.ts` re-reads the full text from the image file on demand for the metadata, editor and ComfyUI workflow views. This keeps both the on-disk cache and renderer memory small; the derived fields the cache does keep are what drive search, filters and facets.
 
 **Thumbnail cache**
 
