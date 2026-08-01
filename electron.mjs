@@ -3567,7 +3567,7 @@ function setupFileOperationHandlers() {
         mainRecordBytes: data.length,
         durationMs: elapsedMs(start),
       });
-      return { success: true, data: parsed };
+      return { success: true, data: parsed, mainMs: elapsedMs(start) };
     } catch (error) {
       if (error.code === 'ENOENT') {
         logMainPerf('get-cache-summary:miss', {
@@ -3802,7 +3802,7 @@ function setupFileOperationHandlers() {
         tombstoneCount,
         durationMs: elapsedMs(start),
       });
-      return { success: true };
+      return { success: true, mainMs: elapsedMs(start) };
     } catch (error) {
       logMainPerf('finalize-cache-write:error', {
         cacheId,
@@ -3863,13 +3863,14 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('read-cache-index', async (event, { cacheId }) => {
+    const start = Date.now();
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
       const rootPath = await getCacheRootPath();
       const cacheDir = path.join(rootPath, 'json_cache');
       const indexPath = path.join(cacheDir, `${safeCacheId}_index.json`);
       const raw = await fs.readFile(indexPath, 'utf-8');
-      return { success: true, data: JSON.parse(raw) };
+      return { success: true, data: JSON.parse(raw), mainMs: elapsedMs(start) };
     } catch (error) {
       if (error.code === 'ENOENT') {
         return { success: true, data: null };
@@ -3881,11 +3882,13 @@ function setupFileOperationHandlers() {
   // The sidecar is only ever written as part of finalize-cache-write, so there
   // is no matching write handler here.
   ipcMain.handle('read-cache-tombstones', async (event, { cacheId }) => {
+    const start = Date.now();
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
       const rootPath = await getCacheRootPath();
       const cacheDir = path.join(rootPath, 'json_cache');
-      return { success: true, data: await readCacheTombstonesFile(cacheDir, safeCacheId) };
+      const data = await readCacheTombstonesFile(cacheDir, safeCacheId);
+      return { success: true, data, mainMs: elapsedMs(start) };
     } catch (error) {
       return { success: false, error: error.message };
     }

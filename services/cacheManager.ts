@@ -138,6 +138,29 @@ const logCachePerf = (
   console.log(`[cache:perf] ${event}${timings ? ` | ${timings}` : ''}`, { event, ...details });
 };
 
+// TEMPORARY DIAGNOSTIC (remove before merging).
+//
+// Every timing on the delete path is measured around an `await` in the
+// renderer, so it charges the round trip for three different things at once:
+// the handler's own work in the main process, the main process being busy with
+// something else when the message arrives, and this thread being too busy to
+// run the continuation once the reply is back. A tombstoned delete writes two
+// files of a few hundred bytes and still measured 2s, so it is worth knowing
+// which of the three it actually is before optimizing anything else.
+//
+// `mainMs` is what the handler itself took, reported back with the reply.
+// `lagMs` is how late a `setTimeout(0)` queued at the same moment fired: if it
+// tracks the round trip, this thread was starved and the main process is
+// innocent.
+const lastMainMs: Record<string, number | null> = {};
+
+const measureEventLoopLag = (): Promise<number> => {
+  const start = performance.now();
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(performance.now() - start), 0);
+  });
+};
+
 const toFixedMs = (durationMs: number) => Number(durationMs.toFixed(2));
 const isSlow = (durationMs: number, thresholdMs = 500) => durationMs >= thresholdMs;
 
@@ -638,6 +661,7 @@ class CacheManager {
     const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
     const start = performance.now();
     const result = await summaryFn(cacheId);
+    lastMainMs.getCacheSummary = (result as any)?.mainMs ?? null;
 
     if (!result.success || !result.data) {
       if (!result.success) {
@@ -1320,6 +1344,7 @@ class CacheManager {
     if (!window.electronAPI?.readCacheIndex) return null;
     try {
       const result = await window.electronAPI.readCacheIndex({ cacheId });
+      lastMainMs.readCacheIndex = (result as any)?.mainMs ?? null;
       if (!result.success || !result.data) return null;
       const { lastScan: indexLastScan, chunkCount: indexChunkCount, ids } = result.data;
       if (indexChunkCount !== chunkCount) return null;
@@ -1353,6 +1378,7 @@ class CacheManager {
 
     try {
       const result = await window.electronAPI.readCacheTombstones({ cacheId });
+      lastMainMs.readCacheTombstones = (result as any)?.mainMs ?? null;
       const data = result?.success ? result.data : null;
       if (!data || !Array.isArray(data.ids)) {
         console.warn(`Cache tombstones missing for ${cacheId} (record expects ${expected}); serving the cache uncompacted.`);
@@ -1525,6 +1551,7 @@ class CacheManager {
     }
 
     const finalizeStart = performance.now();
+    const finalizeLagProbe = measureEventLoopLag();
     const finalizeResult = await window.electronAPI.finalizeCacheWrite({
       cacheId,
       record: {
@@ -1541,6 +1568,7 @@ class CacheManager {
       tombstones: { chunkCount, ids: nextIds },
     });
     const finalizeMs = performance.now() - finalizeStart;
+    const finalizeLagMs = await finalizeLagProbe;
     if (!finalizeResult.success) {
       return false;
     }
@@ -1555,6 +1583,12 @@ class CacheManager {
       tombstonesMs: toFixedMs(tombstonesMs),
       finalizeMs: toFixedMs(finalizeMs),
       durationMs: toFixedMs(performance.now() - start),
+      // TEMPORARY DIAGNOSTIC (remove before merging) — see measureEventLoopLag.
+      summaryMainMs: lastMainMs.getCacheSummary,
+      indexMainMs: lastMainMs.readCacheIndex,
+      tombstonesMainMs: lastMainMs.readCacheTombstones,
+      finalizeMainMs: (finalizeResult as any)?.mainMs ?? null,
+      finalizeLagMs: toFixedMs(finalizeLagMs),
     });
     return true;
   }
