@@ -1301,55 +1301,263 @@ describe('cacheManager workflowNodes hydration', () => {
     });
   });
 
-  it('removeCachedImages rewrites only the chunk holding the removed id and updates the index', async () => {
-    const getCacheChunk = vi.fn().mockImplementation(async ({ chunkIndex }) => ({
-      success: true,
-      data: chunkIndex === 0
-        ? [{ id: 'dir-1::a.png', name: 'a.png', metadataString: '{}', metadata: {}, lastModified: 1, models: [], loras: [], scheduler: '' }]
-        : [{ id: 'dir-1::b.png', name: 'b.png', metadataString: '{}', metadata: {}, lastModified: 1, models: [], loras: [], scheduler: '' }],
-    }));
-    const writeCacheChunk = vi.fn().mockResolvedValue({ success: true });
-    const finalizeCacheWrite = vi.fn().mockResolvedValue({ success: true });
-    const writeCacheIndex = vi.fn().mockResolvedValue({ success: true });
-    const readCacheIndex = vi.fn().mockResolvedValue({
-      success: true,
-      data: { lastScan: 1, chunkCount: 2, ids: { 'dir-1::a.png': 0, 'dir-1::b.png': 1 } },
+  describe('tombstoned removals', () => {
+    const makeEntry = (id: string, name: string) => ({
+      id,
+      name,
+      metadataString: '{}',
+      metadata: {},
+      lastModified: 1,
+      models: [],
+      loras: [],
+      scheduler: '',
     });
 
-    window.electronAPI = {
-      getCacheSummary: vi.fn().mockImplementation(async (cacheId: string) =>
-        cacheId === 'D:/library-flat'
-          ? {
-              success: true,
-              data: {
-                id: 'D:/library-flat',
-                directoryPath: 'D:/library',
-                directoryName: 'Library',
-                lastScan: 1,
-                imageCount: 2,
-                chunkCount: 2,
-                parserVersion: PARSER_VERSION,
-              },
-            }
-          : { success: true, data: null }
-      ),
-      getCacheChunk,
-      writeCacheChunk,
-      finalizeCacheWrite,
-      readCacheIndex,
-      writeCacheIndex,
+    // Two chunks, one entry each: a.png in chunk 0, b.png in chunk 1.
+    const setupTwoChunkCache = (overrides: {
+      imageCount?: number;
+      tombstoneCount?: number;
+      tombstoneIds?: string[] | null;
+      indexIds?: Record<string, number>;
+    } = {}) => {
+      const getCacheChunk = vi.fn().mockImplementation(async ({ chunkIndex }) => ({
+        success: true,
+        data: chunkIndex === 0
+          ? [makeEntry('dir-1::a.png', 'a.png')]
+          : [makeEntry('dir-1::b.png', 'b.png')],
+      }));
+      const api = {
+        getCacheSummary: vi.fn().mockImplementation(async (cacheId: string) =>
+          cacheId === 'D:/library-flat'
+            ? {
+                success: true,
+                data: {
+                  id: 'D:/library-flat',
+                  directoryPath: 'D:/library',
+                  directoryName: 'Library',
+                  lastScan: 1,
+                  imageCount: overrides.imageCount ?? 2,
+                  chunkCount: 2,
+                  tombstoneCount: overrides.tombstoneCount ?? 0,
+                  parserVersion: PARSER_VERSION,
+                },
+              }
+            : { success: true, data: null }
+        ),
+        getCacheChunk,
+        writeCacheChunk: vi.fn().mockResolvedValue({ success: true }),
+        finalizeCacheWrite: vi.fn().mockResolvedValue({ success: true }),
+        writeCacheIndex: vi.fn().mockResolvedValue({ success: true }),
+        readCacheIndex: vi.fn().mockResolvedValue({
+          success: true,
+          data: {
+            lastScan: 1,
+            chunkCount: 2,
+            ids: overrides.indexIds ?? { 'dir-1::a.png': 0, 'dir-1::b.png': 1 },
+          },
+        }),
+        readCacheTombstones: vi.fn().mockResolvedValue({
+          success: true,
+          data: overrides.tombstoneIds === null || overrides.tombstoneIds === undefined
+            ? null
+            : { chunkCount: 2, ids: overrides.tombstoneIds },
+        }),
+      };
+      window.electronAPI = api as any;
+      (cacheManager as any).isElectron = true;
+      return api;
     };
-    (cacheManager as any).isElectron = true;
 
-    await cacheManager.removeCachedImages('D:/library', 'Library', ['dir-1::b.png'], [], false);
+    it('records a removal in the sidecar without touching any chunk file', async () => {
+      const api = setupTwoChunkCache();
 
-    // Only chunk 1 (holding b.png) is read and rewritten; chunk 0 (a.png) is untouched.
-    expect(getCacheChunk).toHaveBeenCalledTimes(1);
-    expect(getCacheChunk.mock.calls[0][0].chunkIndex).toBe(1);
-    expect(writeCacheChunk).toHaveBeenCalledTimes(1);
-    expect(writeCacheChunk.mock.calls[0][0]).toMatchObject({ chunkIndex: 1, data: [] });
-    expect(finalizeCacheWrite.mock.calls[0][0].record.imageCount).toBe(1);
-    expect(writeCacheIndex.mock.calls[0][0].data.ids).toEqual({ 'dir-1::a.png': 0 });
+      await cacheManager.removeCachedImages('D:/library', 'Library', ['dir-1::b.png'], [], false);
+
+      expect(api.getCacheChunk).not.toHaveBeenCalled();
+      expect(api.writeCacheChunk).not.toHaveBeenCalled();
+      const finalized = api.finalizeCacheWrite.mock.calls[0][0];
+      expect(finalized.tombstones).toEqual({ chunkCount: 2, ids: ['dir-1::b.png'] });
+      expect(finalized.record.imageCount).toBe(1);
+      expect(finalized.record.chunkCount).toBe(2);
+      // lastScan is left alone so the id->chunk index stays valid for the next delete.
+      expect(finalized.record.lastScan).toBe(1);
+      expect(api.writeCacheIndex).not.toHaveBeenCalled();
+    });
+
+    it('resolves removals passed by name through the id->chunk index', async () => {
+      const api = setupTwoChunkCache();
+
+      await cacheManager.removeCachedImages('D:/library', 'Library', [], ['b.png'], false);
+
+      expect(api.getCacheChunk).not.toHaveBeenCalled();
+      expect(api.finalizeCacheWrite.mock.calls[0][0].tombstones.ids).toEqual(['dir-1::b.png']);
+    });
+
+    it('appends to the existing sidecar instead of replacing it', async () => {
+      const api = setupTwoChunkCache({
+        imageCount: 1,
+        tombstoneCount: 1,
+        tombstoneIds: ['dir-1::b.png'],
+      });
+
+      await cacheManager.removeCachedImages('D:/library', 'Library', ['dir-1::a.png'], [], false);
+
+      const finalized = api.finalizeCacheWrite.mock.calls[0][0];
+      expect(finalized.tombstones.ids).toEqual(['dir-1::b.png', 'dir-1::a.png']);
+      expect(finalized.record.imageCount).toBe(0);
+    });
+
+    it('writes nothing when the id is already tombstoned', async () => {
+      const api = setupTwoChunkCache({
+        imageCount: 1,
+        tombstoneCount: 1,
+        tombstoneIds: ['dir-1::b.png'],
+      });
+
+      await cacheManager.removeCachedImages('D:/library', 'Library', ['dir-1::b.png'], [], false);
+
+      expect(api.finalizeCacheWrite).not.toHaveBeenCalled();
+      expect(api.writeCacheChunk).not.toHaveBeenCalled();
+    });
+
+    it('rewrites the cache when the sidecar is missing but the record expects one', async () => {
+      const api = setupTwoChunkCache({
+        imageCount: 1,
+        tombstoneCount: 1,
+        tombstoneIds: null,
+      });
+
+      await cacheManager.removeCachedImages('D:/library', 'Library', ['dir-1::a.png'], [], false);
+
+      // Full rewrite: every chunk read, and the surviving entries written back.
+      expect(api.getCacheChunk).toHaveBeenCalledTimes(2);
+      const written = api.writeCacheChunk.mock.calls.flatMap((call: any) => call[0].data.map((entry: any) => entry.id));
+      // The unusable sidecar is ignored, so b.png comes back rather than being
+      // silently dropped along with the entries it could not account for.
+      expect(written).toEqual(['dir-1::b.png']);
+      const finalized = api.finalizeCacheWrite.mock.calls[0][0];
+      expect(finalized.tombstones).toBeUndefined();
+    });
+
+    it('compacts instead of tombstoning once the sidecar grows past the budget', async () => {
+      const staleIds = Array.from({ length: 500 }, (_, index) => `dir-1::stale-${index}.png`);
+      const indexIds: Record<string, number> = { 'dir-1::a.png': 0, 'dir-1::b.png': 1 };
+      for (const id of staleIds) indexIds[id] = 0;
+      const api = setupTwoChunkCache({
+        imageCount: 2,
+        tombstoneCount: 500,
+        tombstoneIds: staleIds,
+        indexIds,
+      });
+      api.readCacheTombstones.mockResolvedValue({
+        success: true,
+        data: { chunkCount: 2, ids: staleIds },
+      });
+
+      await cacheManager.removeCachedImages('D:/library', 'Library', ['dir-1::b.png'], [], false);
+
+      // 501 tombstones would exceed the budget, so the delete pays for the
+      // rewrite that drops them all and clears the sidecar.
+      expect(api.getCacheChunk).toHaveBeenCalledTimes(2);
+      const finalized = api.finalizeCacheWrite.mock.calls[0][0];
+      expect(finalized.tombstones).toBeUndefined();
+      expect(finalized.record.imageCount).toBe(1);
+    });
+
+    it('drops tombstoned entries when a delta rewrite streams the chunks out', async () => {
+      const api = setupTwoChunkCache({
+        imageCount: 1,
+        tombstoneCount: 1,
+        tombstoneIds: ['dir-1::b.png'],
+      });
+
+      await cacheManager.applyChunkedCacheDelta('D:/library', 'Library', [], ['dir-1::a.png'], [], false);
+
+      const written = api.writeCacheChunk.mock.calls.flatMap((call: any) => call[0].data.map((entry: any) => entry.id));
+      expect(written).toEqual([]);
+      const finalized = api.finalizeCacheWrite.mock.calls[0][0];
+      expect(finalized.record.imageCount).toBe(0);
+      expect(finalized.tombstones).toBeUndefined();
+    });
+
+    it('serves every cached entry when the sidecar disagrees with the record', async () => {
+      const api = setupTwoChunkCache({
+        imageCount: 1,
+        tombstoneCount: 2,
+        tombstoneIds: ['dir-1::b.png'],
+      });
+
+      const delivered: string[] = [];
+      await cacheManager.iterateCachedMetadata('D:/library', false, (chunk) => {
+        delivered.push(...chunk.map((entry) => entry.id));
+      });
+
+      expect(api.readCacheTombstones).toHaveBeenCalled();
+      expect(delivered).toEqual(['dir-1::a.png', 'dir-1::b.png']);
+    });
+
+    it('hides tombstoned entries from the cache load path', async () => {
+      setupTwoChunkCache({
+        imageCount: 1,
+        tombstoneCount: 1,
+        tombstoneIds: ['dir-1::b.png'],
+      });
+
+      const delivered: string[] = [];
+      await cacheManager.iterateCachedMetadata('D:/library', false, (chunk) => {
+        delivered.push(...chunk.map((entry) => entry.id));
+      });
+      expect(delivered).toEqual(['dir-1::a.png']);
+
+      const cached = await cacheManager.getCachedData('D:/library', false);
+      expect(cached?.metadata.map((entry) => entry.id)).toEqual(['dir-1::a.png']);
+      expect(cached?.imageCount).toBe(1);
+    });
+
+    it('rewrites the cache when a tombstoned id is added back', async () => {
+      const api = setupTwoChunkCache({
+        imageCount: 1,
+        tombstoneCount: 1,
+        tombstoneIds: ['dir-1::b.png'],
+      });
+
+      await cacheManager.appendToCache(
+        'D:/library',
+        'Library',
+        [{ ...makeEntry('dir-1::b.png', 'b.png'), handle: {} as any, lastModified: 5 } as any],
+        false
+      );
+
+      // The dead b.png entry is still sitting in chunk 1, so an incremental
+      // append would leave two entries for the same id.
+      const written = api.writeCacheChunk.mock.calls.flatMap((call: any) => call[0].data.map((entry: any) => entry.id));
+      expect(written).toEqual(['dir-1::a.png', 'dir-1::b.png']);
+      const finalized = api.finalizeCacheWrite.mock.calls[0][0];
+      expect(finalized.record.imageCount).toBe(2);
+      expect(finalized.tombstones).toBeUndefined();
+    });
+
+    it('carries the sidecar forward across an ordinary append', async () => {
+      const api = setupTwoChunkCache({
+        imageCount: 1,
+        tombstoneCount: 1,
+        tombstoneIds: ['dir-1::b.png'],
+      });
+
+      await cacheManager.appendToCache(
+        'D:/library',
+        'Library',
+        [{ ...makeEntry('dir-1::c.png', 'c.png'), handle: {} as any } as any],
+        false,
+        { chunkSize: 1 }
+      );
+
+      const finalized = api.finalizeCacheWrite.mock.calls[0][0];
+      expect(finalized.tombstones).toEqual({
+        chunkCount: finalized.record.chunkCount,
+        ids: ['dir-1::b.png'],
+      });
+    });
   });
 
   it('removeCachedImages falls back to a full scan when no id->chunk index exists', async () => {

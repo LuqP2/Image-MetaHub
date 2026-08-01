@@ -3610,6 +3610,58 @@ function setupFileOperationHandlers() {
   const CHUNK_SIZE = 1024; // Keep cache chunks small enough to parse without freezing the renderer
   const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+  // Removed-image sidecar, stored as `${safeCacheId}_removed.json` so
+  // `clear-cache-data` (which removes every `${safeCacheId}_*` file) cleans it
+  // up automatically. Deleting an image only appends its id here instead of
+  // reading and rewriting the chunk that holds the entry; read paths filter the
+  // listed ids out, and the next full rewrite drops them for good.
+  //
+  // The record's `tombstoneCount` must always match the sidecar's length. The
+  // renderer treats any disagreement as "sidecar unusable" and serves the cache
+  // exactly as it sits on disk, so a torn write resurrects a deleted thumbnail
+  // until the next scan — it never hides a live image.
+  const getCacheTombstonesPath = (cacheDir, safeCacheId) =>
+    path.join(cacheDir, `${safeCacheId}_removed.json`);
+
+  const readCacheTombstonesFile = async (cacheDir, safeCacheId) => {
+    try {
+      const raw = await fs.readFile(getCacheTombstonesPath(cacheDir, safeCacheId), 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.ids)) return null;
+      return { chunkCount: parsed.chunkCount ?? 0, ids: parsed.ids };
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    }
+  };
+
+  // `tombstones` is part of the finalize-cache-write contract:
+  //   undefined            -> full rewrite: drop the sidecar (tombstoneCount 0)
+  //   'preserve'           -> chunks changed in place: leave the sidecar alone
+  //   { chunkCount, ids }  -> replace the sidecar with exactly these ids
+  // Returns the tombstone count the record must be stamped with.
+  const applyCacheTombstones = async (cacheDir, safeCacheId, tombstones) => {
+    if (tombstones === 'preserve') {
+      const existing = await readCacheTombstonesFile(cacheDir, safeCacheId).catch(() => null);
+      return existing ? existing.ids.length : 0;
+    }
+
+    const ids = Array.isArray(tombstones?.ids) ? tombstones.ids : [];
+    if (ids.length === 0) {
+      await fs.unlink(getCacheTombstonesPath(cacheDir, safeCacheId)).catch(error => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+      return 0;
+    }
+
+    await fs.mkdir(cacheDir, { recursive: true });
+    await fs.writeFile(
+      getCacheTombstonesPath(cacheDir, safeCacheId),
+      JSON.stringify({ chunkCount: tombstones.chunkCount ?? 0, ids })
+    );
+    return ids.length;
+  };
+
   ipcMain.handle('cache-data', async (event, { cacheId, data }) => {
     const start = Date.now();
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
@@ -3626,10 +3678,15 @@ function setupFileOperationHandlers() {
       await fs.writeFile(chunkPath, JSON.stringify(chunk));
     }
 
+    // Every entry was just rewritten from the caller's full list, so any
+    // pending tombstones are already reflected in it.
+    await applyCacheTombstones(cacheDir, safeCacheId, undefined);
+
     // Write main cache record (without metadata) with parser version
     const mainCachePath = await getCacheFilePath(cacheId);
     cacheRecord.chunkCount = chunkCount;
     cacheRecord.parserVersion = PARSER_VERSION; // Add parser version
+    cacheRecord.tombstoneCount = 0;
     await fs.writeFile(mainCachePath, JSON.stringify(cacheRecord, null, 2));
 
     logMainPerf('cache-data:complete', {
@@ -3716,14 +3773,14 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('finalize-cache-write', async (event, { cacheId, sourceCacheId, record }) => {
+  ipcMain.handle('finalize-cache-write', async (event, { cacheId, sourceCacheId, record, tombstones }) => {
     const start = Date.now();
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
       const safeSourceCacheId = sourceCacheId?.replace(/[^a-zA-Z0-9-_]/g, '_');
+      const rootPath = await getCacheRootPath();
+      const cacheDir = path.join(rootPath, 'json_cache');
       if (safeSourceCacheId && safeSourceCacheId !== safeCacheId) {
-        const rootPath = await getCacheRootPath();
-        const cacheDir = path.join(rootPath, 'json_cache');
         await fs.mkdir(cacheDir, { recursive: true });
 
         const files = await fs.readdir(cacheDir).catch(error => {
@@ -3762,15 +3819,21 @@ function setupFileOperationHandlers() {
         });
       }
 
+      // Sidecar first: if the process dies between the two writes the record
+      // still carries the old count, the mismatch invalidates the sidecar, and
+      // the cache is served whole rather than with images missing.
+      const tombstoneCount = await applyCacheTombstones(cacheDir, safeCacheId, tombstones);
+
       const mainCachePath = await getCacheFilePath(cacheId);
       // Add parser version to cache record
-      const recordWithVersion = { ...record, parserVersion: PARSER_VERSION };
+      const recordWithVersion = { ...record, parserVersion: PARSER_VERSION, tombstoneCount };
       await fs.writeFile(mainCachePath, JSON.stringify(recordWithVersion, null, 2));
       logMainPerf('finalize-cache-write:complete', {
         cacheId,
         sourceCacheId: sourceCacheId ?? null,
         imageCount: recordWithVersion.imageCount,
         chunkCount: recordWithVersion.chunkCount,
+        tombstoneCount,
         durationMs: elapsedMs(start),
       });
       return { success: true };
@@ -3845,6 +3908,19 @@ function setupFileOperationHandlers() {
       if (error.code === 'ENOENT') {
         return { success: true, data: null };
       }
+      return { success: false, error: error.message };
+    }
+  });
+
+  // The sidecar is only ever written as part of finalize-cache-write, so there
+  // is no matching write handler here.
+  ipcMain.handle('read-cache-tombstones', async (event, { cacheId }) => {
+    try {
+      const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+      const rootPath = await getCacheRootPath();
+      const cacheDir = path.join(rootPath, 'json_cache');
+      return { success: true, data: await readCacheTombstonesFile(cacheDir, safeCacheId) };
+    } catch (error) {
       return { success: false, error: error.message };
     }
   });

@@ -276,6 +276,7 @@ const electronAPI = {
   getCacheChunk: (args) => ipcRenderer.invoke('get-cache-chunk', args),
   writeCacheIndex: (args) => ipcRenderer.invoke('write-cache-index', args),
   readCacheIndex: (args) => ipcRenderer.invoke('read-cache-index', args),
+  readCacheTombstones: (args) => ipcRenderer.invoke('read-cache-tombstones', args),
   resolveThumbnailCacheBatch: (args) => ipcRenderer.invoke('resolve-thumbnail-cache-batch', args),
   getThumbnail: (thumbnailId) => ipcRenderer.invoke('get-thumbnail', thumbnailId),
   cacheThumbnail: (args) => ipcRenderer.invoke('cache-thumbnail', args),

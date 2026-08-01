@@ -53,6 +53,9 @@ export interface CacheEntry {
   metadata: CacheImageMetadata[];
   chunkCount?: number;
   parserVersion?: number; // Track which parser version created this cache
+  // Number of ids in the removed-ids sidecar. `imageCount` counts live entries,
+  // so the chunks physically hold `imageCount + tombstoneCount` entries.
+  tombstoneCount?: number;
 }
 
 export interface CacheDiff {
@@ -78,6 +81,13 @@ const TARGET_CHUNK_BYTES = 2 * 1024 * 1024;
 // fields to drive search, filters and facets.
 const MAX_INLINE_RAW_METADATA_BYTES = 4 * 1024;
 const RAW_METADATA_PREVIEW_BYTES = 4096;
+
+// Deleting an image appends its id to the removed-ids sidecar instead of
+// rewriting the chunk that holds it, so the delete costs the same no matter how
+// big the chunk is. The dead entries are still read (and skipped) on every cache
+// load, so past this many the next delete pays for a full rewrite that drops
+// them for good — one compaction per this many deletions, amortized.
+const MAX_TOMBSTONES_BEFORE_COMPACTION = 500;
 
 // Cheap proxy for an entry's serialized size. The raw metadata string dominates
 // every other field, so this avoids a JSON.stringify per entry just to measure.
@@ -564,8 +574,13 @@ class CacheManager {
       return null;
     }
 
+    const tombstoned = await this.readValidCacheTombstones(cacheId, summary);
+    const keepEntry = tombstoned
+      ? (entry: CacheImageMetadata) => !tombstoned.has(entry.id)
+      : null;
+
     let metadata: CacheImageMetadata[] = Array.isArray(summary.metadata)
-      ? compactCacheMetadataEntries(summary.metadata)
+      ? compactCacheMetadataEntries(keepEntry ? summary.metadata.filter(keepEntry) : summary.metadata)
       : [];
     const chunkCount = summary.chunkCount ?? 0;
 
@@ -577,7 +592,8 @@ class CacheManager {
         const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: i });
         chunkReadMs += performance.now() - chunkStart;
         if (chunkResult.success && Array.isArray(chunkResult.data)) {
-          chunks.push(...compactCacheMetadataEntries(chunkResult.data));
+          const entries = keepEntry ? chunkResult.data.filter(keepEntry) : chunkResult.data;
+          chunks.push(...compactCacheMetadataEntries(entries));
         } else if (!chunkResult.success) {
           console.error(`Failed to load cache chunk ${i} for ${cacheId}:`, chunkResult.error);
         }
@@ -587,6 +603,7 @@ class CacheManager {
         cacheId,
         chunkCount,
         records: metadata.length,
+        tombstoned: tombstoned?.size ?? 0,
         chunkReadMs: toFixedMs(chunkReadMs),
       });
     }
@@ -614,7 +631,7 @@ class CacheManager {
   async getCacheSummary(
     directoryPath: string,
     scanSubfolders: boolean,
-  ): Promise<Pick<CacheEntry, 'id' | 'directoryPath' | 'directoryName' | 'lastScan' | 'imageCount' | 'chunkCount' | 'parserVersion'> & { metadata?: CacheImageMetadata[] } | null> {
+  ): Promise<Pick<CacheEntry, 'id' | 'directoryPath' | 'directoryName' | 'lastScan' | 'imageCount' | 'chunkCount' | 'parserVersion' | 'tombstoneCount'> & { metadata?: CacheImageMetadata[] } | null> {
     if (!this.isElectron) return null;
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
@@ -643,6 +660,7 @@ class CacheManager {
       cacheId,
       imageCount: summary.imageCount ?? 0,
       chunkCount: summary.chunkCount ?? 0,
+      tombstoneCount: summary.tombstoneCount ?? 0,
       hasInlineMetadata: Array.isArray(summary.metadata),
       durationMs: toFixedMs(performance.now() - start),
     });
@@ -654,6 +672,7 @@ class CacheManager {
       imageCount: summary.imageCount,
       chunkCount: summary.chunkCount,
       parserVersion: summary.parserVersion,
+      tombstoneCount: summary.tombstoneCount,
       metadata: Array.isArray(summary.metadata)
         ? compactCacheMetadataEntries(summary.metadata)
         : undefined,
@@ -690,11 +709,17 @@ class CacheManager {
       return;
     }
 
+    const tombstoned = await this.readValidCacheTombstones(cacheId, summary);
+    const keepEntry = tombstoned
+      ? (entry: CacheImageMetadata) => !tombstoned.has(entry.id)
+      : null;
+
     if (Array.isArray(summary.metadata) && summary.metadata.length > 0) {
-      await onChunk(compactCacheMetadataEntries(summary.metadata));
+      const entries = keepEntry ? summary.metadata.filter(keepEntry) : summary.metadata;
+      await onChunk(compactCacheMetadataEntries(entries));
       logCachePerf('iterate-cached-metadata:inline-complete', {
         cacheId,
-        records: summary.metadata.length,
+        records: entries.length,
         durationMs: toFixedMs(performance.now() - start),
       });
       return;
@@ -709,11 +734,14 @@ class CacheManager {
       const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: i });
       chunkReadMs += performance.now() - chunkStart;
       if (chunkResult.success && Array.isArray(chunkResult.data) && chunkResult.data.length > 0) {
-        const compacted = compactCacheMetadataEntries(chunkResult.data);
+        const entries = keepEntry ? chunkResult.data.filter(keepEntry) : chunkResult.data;
+        const compacted = compactCacheMetadataEntries(entries);
         records += compacted.length;
-        const callbackStart = performance.now();
-        await onChunk(compacted);
-        callbackMs += performance.now() - callbackStart;
+        if (compacted.length > 0) {
+          const callbackStart = performance.now();
+          await onChunk(compacted);
+          callbackMs += performance.now() - callbackStart;
+        }
       } else if (!chunkResult.success) {
         console.error(`Failed to load cache chunk ${i} for ${cacheId}:`, chunkResult.error);
       }
@@ -722,6 +750,7 @@ class CacheManager {
       cacheId,
       chunkCount,
       records,
+      tombstoned: tombstoned?.size ?? 0,
       chunkReadMs: toFixedMs(chunkReadMs),
       callbackMs: toFixedMs(callbackMs),
       durationMs: toFixedMs(performance.now() - start),
@@ -775,11 +804,32 @@ class CacheManager {
     if (!images || images.length === 0) return;
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-    await this.runChunkedCacheDeltaLocked(cacheId, () =>
+    const appended = await this.runChunkedCacheDeltaLocked(cacheId, () =>
       this.appendToCacheLocked(cacheId, directoryPath, directoryName, images, scanSubfolders, options)
     );
+
+    // Appending alone can't undo a tombstone: the removed entry is still sitting
+    // in its chunk, so re-adding the same id would leave two entries for it.
+    // The full rewrite drops the old copy and clears the sidecar. Run it outside
+    // the lock above — applyChunkedCacheDelta takes the same one.
+    if (!appended) {
+      await this.applyChunkedCacheDelta(
+        directoryPath,
+        directoryName,
+        images,
+        [],
+        [],
+        scanSubfolders,
+        { fallbackImages: options?.getFallbackImages?.() }
+      );
+    }
   }
 
+  /**
+   * Returns false when the append can't be done incrementally and the caller
+   * must fall back to a full rewrite. Every other failure is logged and
+   * swallowed, as before.
+   */
   private async appendToCacheLocked(
     cacheId: string,
     directoryPath: string,
@@ -787,7 +837,7 @@ class CacheManager {
     images: IndexedImage[],
     scanSubfolders: boolean,
     options?: { chunkSize?: number; getFallbackImages?: () => IndexedImage[] }
-  ): Promise<void> {
+  ): Promise<boolean> {
     const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
     const start = performance.now();
     const summaryResult = await summaryFn(cacheId);
@@ -814,11 +864,27 @@ class CacheManager {
         fallbackImages: fallbackImages.length,
         durationMs: toFixedMs(performance.now() - start),
       });
-      return;
+      return true;
     }
 
     const summary = summaryResult.data as CacheEntry;
     const chunkSize = options?.chunkSize ?? DEFAULT_INCREMENTAL_CHUNK_SIZE;
+
+    // Checked before anything is written, so handing over to the full rewrite
+    // never leaves a half-appended cache behind.
+    const tombstoned = await this.readValidCacheTombstones(cacheId, summary);
+    if (!tombstoned && (summary.tombstoneCount ?? 0) > 0) {
+      return false;
+    }
+    if (tombstoned && images.some((image) => tombstoned.has(image.id))) {
+      logCachePerf('append-to-cache:rewrite-for-tombstoned-id', {
+        cacheId,
+        images: images.length,
+        tombstones: tombstoned.size,
+      });
+      return false;
+    }
+
     let metadata = sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true });
 
     const inlineMetadata = Array.isArray(summary.metadata)
@@ -835,7 +901,7 @@ class CacheManager {
       });
       if (!result.success) {
         console.error('Failed to migrate inline cache chunk:', result.error);
-        return;
+        return true;
       }
       chunkIndex += 1;
     }
@@ -860,7 +926,7 @@ class CacheManager {
           const writeResult = await window.electronAPI.writeCacheChunk({ cacheId, chunkIndex: lastChunkIndex, data: merged });
           if (!writeResult.success) {
             console.error('Failed to top off cache chunk:', writeResult.error);
-            return;
+            return true;
           }
           for (const entry of toAdd) indexUpdates[entry.id] = lastChunkIndex;
         }
@@ -875,7 +941,7 @@ class CacheManager {
       });
       if (!result.success) {
         console.error('Failed to append cache chunk:', result.error);
-        return;
+        return true;
       }
       for (const entry of chunk) indexUpdates[entry.id] = chunkIndex;
       chunkIndex += 1;
@@ -892,7 +958,13 @@ class CacheManager {
       parserVersion: PARSER_VERSION,
     } satisfies Omit<CacheEntry, 'metadata'>;
 
-    const finalizeResult = await window.electronAPI.finalizeCacheWrite({ cacheId, record });
+    const finalizeResult = await window.electronAPI.finalizeCacheWrite({
+      cacheId,
+      record,
+      // Carried forward with the new chunk count: none of the removed ids came
+      // back (checked above) and no existing entry moved chunks.
+      tombstones: tombstoned ? { chunkCount: chunkIndex, ids: [...tombstoned] } : undefined,
+    });
     if (!finalizeResult.success) {
       console.error('Failed to finalize appended cache write:', finalizeResult.error);
     } else if (existingIndex) {
@@ -909,6 +981,7 @@ class CacheManager {
       chunkCount: chunkIndex,
       durationMs: toFixedMs(performance.now() - start),
     });
+    return true;
   }
 
   async createIncrementalWriter(
@@ -1094,6 +1167,8 @@ class CacheManager {
           chunkCount,
           parserVersion: PARSER_VERSION,
         },
+        // Entries are updated in place, so no removed id becomes live again.
+        tombstones: 'preserve',
       });
       if (!finalizeResult.success) {
         throw new Error(finalizeResult.error || 'Failed to finalize cache patch');
@@ -1257,11 +1332,51 @@ class CacheManager {
   }
 
   /**
-   * Removes specific images from an existing cache without rewriting the whole
-   * directory cache. Mirrors patchCachedImages' id->chunk index approach: only
-   * the chunk(s) that actually hold the removed images are read and rewritten.
-   * Falls back to the full applyChunkedCacheDelta scan (which also matches by
-   * name) whenever the index can't account for every id, so correctness never
+   * Reads the removed-ids sidecar for a cache variant. The ids listed there are
+   * still physically present in their chunks and must be skipped by every read
+   * path until a full rewrite drops them.
+   *
+   * Returns null when the record says there is nothing to skip, and also when
+   * the sidecar disagrees with the record — a missing file, a torn write, or a
+   * record written by a build that predates tombstones. That is the safe
+   * direction on purpose: ignoring the sidecar shows an already-deleted image
+   * again until the next scan removes it, while trusting a stale one would hide
+   * images that are still on disk.
+   */
+  private async readValidCacheTombstones(
+    cacheId: string,
+    record: { chunkCount?: number; tombstoneCount?: number }
+  ): Promise<Set<string> | null> {
+    const expected = record.tombstoneCount ?? 0;
+    if (expected <= 0) return null;
+    if (!window.electronAPI?.readCacheTombstones) return null;
+
+    try {
+      const result = await window.electronAPI.readCacheTombstones({ cacheId });
+      const data = result?.success ? result.data : null;
+      if (!data || !Array.isArray(data.ids)) {
+        console.warn(`Cache tombstones missing for ${cacheId} (record expects ${expected}); serving the cache uncompacted.`);
+        return null;
+      }
+      if (data.ids.length !== expected || (data.chunkCount ?? 0) !== (record.chunkCount ?? 0)) {
+        console.warn(
+          `Cache tombstones out of sync for ${cacheId} (sidecar ${data.ids.length}/${data.chunkCount ?? 0}, record ${expected}/${record.chunkCount ?? 0}); serving the cache uncompacted.`
+        );
+        return null;
+      }
+      return new Set(data.ids);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Removes specific images from an existing cache without touching any chunk
+   * file: the removed ids are appended to the sidecar and the record's live
+   * image count is adjusted, so a delete costs two small writes regardless of
+   * library size. Falls back to the full applyChunkedCacheDelta rewrite (which
+   * also matches by name, drops the tombstoned entries and clears the sidecar)
+   * whenever the sidecar path can't account for every id, so correctness never
    * regresses versus the old always-full-rewrite behavior.
    */
   async removeCachedImages(
@@ -1276,19 +1391,17 @@ class CacheManager {
     const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
     for (const mode of candidateModes) {
       const cacheId = `${directoryPath}-${mode ? 'recursive' : 'flat'}`;
-      // Names are resolved against the index too (see removeCacheVariantByIndex):
+      // Names are resolved against the index too (see tombstoneCacheVariant):
       // its keys are the entry ids, and getRelativeCacheName derives the match
       // name from the id, so a name-based removal needs no chunk reads either.
       // This matters because the watcher path (App.tsx) always supplies names —
       // gating the fast path on `imageNames.length === 0` meant the dominant
       // delete path always fell through to the full 22s scan-and-rewrite.
-      const removedByIndex = (imageIds.length > 0 || imageNames.length > 0)
-        ? await this.runChunkedCacheDeltaLocked(cacheId, () =>
-            this.removeCacheVariantByIndex(cacheId, directoryPath, directoryName, imageIds, imageNames, mode)
-          )
-        : false;
+      const tombstoned = await this.runChunkedCacheDeltaLocked(cacheId, () =>
+        this.tombstoneCacheVariant(cacheId, directoryPath, directoryName, imageIds, imageNames, mode)
+      );
 
-      if (!removedByIndex) {
+      if (!tombstoned) {
         await this.applyChunkedCacheDelta(
           directoryPath,
           directoryName,
@@ -1303,13 +1416,13 @@ class CacheManager {
   }
 
   /**
-   * Fast path for removeCachedImages: removes imageIds from the chunk(s) the
-   * id->chunk index says they live in. Returns false (no changes made) if the
-   * cache doesn't exist, uses the legacy inline-metadata format, has no usable
-   * index, or the index turns out stale for any id — callers should fall back
-   * to the full scan-and-rewrite path in that case.
+   * Fast path for removeCachedImages: marks the ids as removed in the sidecar
+   * and leaves the chunk files alone. Returns false (nothing written) if the
+   * cache uses the legacy inline-metadata format, has no usable id->chunk index
+   * or sidecar, or has accumulated enough tombstones to be worth compacting —
+   * callers fall back to the full rewrite path in that case.
    */
-  private async removeCacheVariantByIndex(
+  private async tombstoneCacheVariant(
     cacheId: string,
     directoryPath: string,
     directoryName: string,
@@ -1319,6 +1432,7 @@ class CacheManager {
   ): Promise<boolean> {
     const start = performance.now();
     const summary = await this.getCacheSummary(directoryPath, scanSubfolders);
+    const summaryMs = performance.now() - start;
     if (!summary) {
       // No cache for this variant — nothing to remove, no fallback needed.
       return true;
@@ -1332,18 +1446,31 @@ class CacheManager {
       return true;
     }
 
+    const indexStart = performance.now();
     const index = await this.readValidCacheIndex(cacheId, summary.lastScan, chunkCount);
+    const indexMs = performance.now() - indexStart;
     if (!index) {
       return false;
     }
-    if (Object.keys(index).length !== (summary.imageCount ?? 0)) {
-      // Index doesn't account for every cached entry (e.g. it was never
-      // populated for this cache — appendToCache only maintains an index that
-      // already existed, it doesn't create one from scratch). Treating a
-      // missing-from-index id as "genuinely absent" in that case would report
-      // success without actually removing anything. Bail to the full scan in
-      // applyChunkedCacheDelta, which rebuilds the index from a complete read
-      // so this only costs a full rewrite once.
+
+    const tombstonesStart = performance.now();
+    const tombstoned = await this.readValidCacheTombstones(cacheId, summary);
+    const tombstonesMs = performance.now() - tombstonesStart;
+    if (!tombstoned && (summary.tombstoneCount ?? 0) > 0) {
+      // Sidecar unusable but the record expects one. A full rewrite is the only
+      // way back to a consistent pair, and it fixes both files at once.
+      return false;
+    }
+    const alreadyRemoved = tombstoned ?? new Set<string>();
+
+    if (Object.keys(index).length !== (summary.imageCount ?? 0) + alreadyRemoved.size) {
+      // Index doesn't account for every entry the chunks physically hold (e.g.
+      // it was never populated for this cache — appendToCache only maintains an
+      // index that already existed, it doesn't create one from scratch).
+      // Treating a missing-from-index id as "genuinely absent" in that case
+      // would report success without actually removing anything. Bail to the
+      // full scan in applyChunkedCacheDelta, which rebuilds the index from a
+      // complete read so this only costs a full rewrite once.
       return false;
     }
 
@@ -1365,7 +1492,7 @@ class CacheManager {
       }
     }
 
-    const idsByChunk = new Map<number, Set<string>>();
+    const newlyRemoved: string[] = [];
     for (const id of targetIds) {
       const targetChunk = index[id];
       if (typeof targetChunk !== 'number' || targetChunk < 0 || targetChunk >= chunkCount) {
@@ -1374,65 +1501,59 @@ class CacheManager {
         // forcing a fallback scan for every removal that touches one variant.
         continue;
       }
-      const set = idsByChunk.get(targetChunk);
-      if (set) set.add(id);
-      else idsByChunk.set(targetChunk, new Set([id]));
+      if (alreadyRemoved.has(id)) {
+        continue;
+      }
+      newlyRemoved.push(id);
     }
 
-    if (idsByChunk.size === 0) {
+    if (newlyRemoved.length === 0) {
       return true;
     }
 
-    let removedCount = 0;
-    const nextIndex = { ...index };
-    for (const [chunkIndex, wanted] of idsByChunk) {
-      const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex });
-      if (!chunkResult.success || !Array.isArray(chunkResult.data)) {
-        return false;
-      }
-      const entries = chunkResult.data as CacheImageMetadata[];
-      const filtered = entries.filter((entry) => !wanted.has(entry.id));
-      if (filtered.length === entries.length) {
-        // The index pointed at the wrong chunk (stale layout) — bail to the
-        // full fallback scan, which also rebuilds the index.
-        return false;
-      }
-      removedCount += entries.length - filtered.length;
-      const writeResult = await window.electronAPI.writeCacheChunk({ cacheId, chunkIndex, data: filtered });
-      if (!writeResult.success) {
-        return false;
-      }
-      for (const id of wanted) delete nextIndex[id];
+    const nextIds = [...alreadyRemoved, ...newlyRemoved];
+    if (nextIds.length > MAX_TOMBSTONES_BEFORE_COMPACTION) {
+      // Enough dead weight to be worth paying for a rewrite. The fallback path
+      // prunes these ids along with the new ones and clears the sidecar, so
+      // nothing is lost by not writing it here.
+      logCachePerf('remove-cached-images:compacting', {
+        cacheId,
+        tombstones: nextIds.length,
+        threshold: MAX_TOMBSTONES_BEFORE_COMPACTION,
+      });
+      return false;
     }
 
-    const newImageCount = Math.max(0, (summary.imageCount ?? 0) - removedCount);
-    const newLastScan = Date.now();
+    const finalizeStart = performance.now();
     const finalizeResult = await window.electronAPI.finalizeCacheWrite({
       cacheId,
       record: {
         id: summary.id,
         directoryPath,
         directoryName: summary.directoryName ?? directoryName,
-        lastScan: newLastScan,
-        imageCount: newImageCount,
+        // Deliberately unchanged: no chunk moved, so the id->chunk index stays
+        // valid and the next delete can take this path again.
+        lastScan: summary.lastScan,
+        imageCount: Math.max(0, (summary.imageCount ?? 0) - newlyRemoved.length),
         chunkCount,
         parserVersion: PARSER_VERSION,
       },
+      tombstones: { chunkCount, ids: nextIds },
     });
+    const finalizeMs = performance.now() - finalizeStart;
     if (!finalizeResult.success) {
       return false;
     }
 
-    await window.electronAPI.writeCacheIndex?.({
+    logCachePerf('remove-cached-images:tombstoned', {
       cacheId,
-      data: { lastScan: newLastScan, chunkCount, ids: nextIndex },
-    });
-
-    logCachePerf('remove-cached-images:indexed', {
-      cacheId,
-      removed: removedCount,
-      chunksTouched: idsByChunk.size,
+      removed: newlyRemoved.length,
+      tombstones: nextIds.length,
       chunkCount,
+      summaryMs: toFixedMs(summaryMs),
+      indexMs: toFixedMs(indexMs),
+      tombstonesMs: toFixedMs(tombstonesMs),
+      finalizeMs: toFixedMs(finalizeMs),
       durationMs: toFixedMs(performance.now() - start),
     });
     return true;
@@ -1493,9 +1614,14 @@ class CacheManager {
     const buildUpsertsStart = performance.now();
     const upserts = sanitizeCacheMetadata(toCacheMetadata(imagesToUpsert), { forceClone: true });
     const buildUpsertsMs = performance.now() - buildUpsertsStart;
+    // This path rewrites every chunk, which is the only place tombstoned
+    // entries actually get dropped. finalizeCacheWrite below is called without
+    // a `tombstones` argument, so the sidecar is cleared at the same time.
+    const tombstoned = await this.readValidCacheTombstones(cacheId, summary);
     const pruneIds = [
       ...removedImageIds,
       ...upserts.map((image) => image.id),
+      ...(tombstoned ?? []),
     ];
     const pruneNames = [
       ...removedImageNames,
@@ -1617,6 +1743,7 @@ class CacheManager {
       upserts: imagesToUpsert.length,
       removedIds: removedImageIds.length,
       removedNames: removedImageNames.length,
+      compactedTombstones: tombstoned?.size ?? 0,
       inputChunks: chunkCount,
       readChunks,
       outputChunks: outputChunkIndex,
