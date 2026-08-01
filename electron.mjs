@@ -30,6 +30,7 @@ import {
   normalizeComfyUIViewUrl,
 } from './utils/comfyUIViewSecurity.mjs';
 import { rewriteAvifMetadata, stripAvifMetadata } from './utils/avifMetadata.mjs';
+import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTombstones.mjs';
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -3610,56 +3611,16 @@ function setupFileOperationHandlers() {
   const CHUNK_SIZE = 1024; // Keep cache chunks small enough to parse without freezing the renderer
   const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  // Removed-image sidecar, stored as `${safeCacheId}_removed.json` so
-  // `clear-cache-data` (which removes every `${safeCacheId}_*` file) cleans it
-  // up automatically. Deleting an image only appends its id here instead of
-  // reading and rewriting the chunk that holds the entry; read paths filter the
-  // listed ids out, and the next full rewrite drops them for good.
-  //
-  // The record's `tombstoneCount` must always match the sidecar's length. The
-  // renderer treats any disagreement as "sidecar unusable" and serves the cache
-  // exactly as it sits on disk, so a torn write resurrects a deleted thumbnail
-  // until the next scan — it never hides a live image.
-  const getCacheTombstonesPath = (cacheDir, safeCacheId) =>
-    path.join(cacheDir, `${safeCacheId}_removed.json`);
-
-  const readCacheTombstonesFile = async (cacheDir, safeCacheId) => {
+  // The record's tombstoneCount as it stands on disk right now. Only needed for
+  // the 'preserve' path, which must carry the existing count forward instead of
+  // recounting the sidecar — see utils/cacheTombstones.mjs.
+  const readRecordTombstoneCount = async (cacheId) => {
     try {
-      const raw = await fs.readFile(getCacheTombstonesPath(cacheDir, safeCacheId), 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (!parsed || !Array.isArray(parsed.ids)) return null;
-      return { chunkCount: parsed.chunkCount ?? 0, ids: parsed.ids };
-    } catch (error) {
-      if (error.code === 'ENOENT') return null;
-      throw error;
-    }
-  };
-
-  // `tombstones` is part of the finalize-cache-write contract:
-  //   undefined            -> full rewrite: drop the sidecar (tombstoneCount 0)
-  //   'preserve'           -> chunks changed in place: leave the sidecar alone
-  //   { chunkCount, ids }  -> replace the sidecar with exactly these ids
-  // Returns the tombstone count the record must be stamped with.
-  const applyCacheTombstones = async (cacheDir, safeCacheId, tombstones) => {
-    if (tombstones === 'preserve') {
-      const existing = await readCacheTombstonesFile(cacheDir, safeCacheId).catch(() => null);
-      return existing ? existing.ids.length : 0;
-    }
-
-    const ids = Array.isArray(tombstones?.ids) ? tombstones.ids : [];
-    if (ids.length === 0) {
-      await fs.unlink(getCacheTombstonesPath(cacheDir, safeCacheId)).catch(error => {
-        if (error.code !== 'ENOENT') throw error;
-      });
+      const raw = await fs.readFile(await getCacheFilePath(cacheId), 'utf-8');
+      return JSON.parse(raw)?.tombstoneCount ?? 0;
+    } catch {
       return 0;
     }
-
-    await fs.mkdir(cacheDir, { recursive: true });
-    await fs.writeFile(
-      getCacheTombstonesPath(cacheDir, safeCacheId),
-      JSON.stringify({ chunkCount: tombstones.chunkCount ?? 0, ids })
-    );
-    return ids.length;
   };
 
   ipcMain.handle('cache-data', async (event, { cacheId, data }) => {
@@ -3680,7 +3641,7 @@ function setupFileOperationHandlers() {
 
     // Every entry was just rewritten from the caller's full list, so any
     // pending tombstones are already reflected in it.
-    await applyCacheTombstones(cacheDir, safeCacheId, undefined);
+    await applyCacheTombstones({ cacheDir, safeCacheId, tombstones: undefined });
 
     // Write main cache record (without metadata) with parser version
     const mainCachePath = await getCacheFilePath(cacheId);
@@ -3822,7 +3783,12 @@ function setupFileOperationHandlers() {
       // Sidecar first: if the process dies between the two writes the record
       // still carries the old count, the mismatch invalidates the sidecar, and
       // the cache is served whole rather than with images missing.
-      const tombstoneCount = await applyCacheTombstones(cacheDir, safeCacheId, tombstones);
+      const tombstoneCount = await applyCacheTombstones({
+        cacheDir,
+        safeCacheId,
+        tombstones,
+        recordTombstoneCount: tombstones === 'preserve' ? await readRecordTombstoneCount(cacheId) : 0,
+      });
 
       const mainCachePath = await getCacheFilePath(cacheId);
       // Add parser version to cache record
