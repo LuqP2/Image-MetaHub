@@ -14,11 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
-- **Deleting Images**: Deleting a single file could freeze the app for around 25 seconds on a large ComfyUI library, and left it stuttering while browsing afterwards. The folder cache is no longer read and rewritten in full to remove one entry — only the chunk actually holding it is touched. Cache chunk files are also capped by size instead of only by entry count, which is what made them balloon to tens of MB each on libraries where every image carries a full workflow graph. Bulk deletes run in parallel and update the cache directly by id, and repeat delete events from the folder watcher no longer redo work that was already done.
-- **Cache File Size**: Cached entries no longer store a full copy of large raw metadata alongside its parsed form. The full text is re-read from the image file on demand when you open the metadata or workflow views, so nothing is lost, and the on-disk cache for a ComfyUI library shrinks dramatically. Takes effect as folders are reindexed or their cache is rewritten.
-- **New Images While Watching a Folder**: Adding, removing or enriching images no longer re-runs the entire filter and sort pipeline over the whole library for each event. Matching images are placed directly into the already-sorted list, and filter dropdown counts catch up shortly after a burst settles. Generating into a watched folder — one image at a time or fifty at once — no longer drops frames or blocks scrolling.
-- **Search Responsiveness**: The text each image is searched against is now computed once and reused instead of being rebuilt for every image on every keystroke, so typing in the search box stays responsive on large libraries.
-- **Image Lineage Rebuilds**: The lineage registry is no longer written to disk in the middle of an interaction. Rebuilds after a delete or a new image are coalesced and saved once things go quiet, removing several seconds of freeze per deleted file.
+- **Deleting Images**: Deleting one file could freeze the app for ~25 seconds on a large ComfyUI library. It no longer rewrites the whole folder cache to remove one entry, and cache chunks are capped by size instead of only by entry count.
+- **Cache File Size**: Cached entries no longer duplicate large raw metadata alongside its parsed form; the full text is re-read from the file when you open the metadata or workflow views. Applies as folders are reindexed.
+- **New Images While Watching a Folder**: Adding, removing or enriching images no longer re-runs the whole filter and sort pipeline per event, so generating into a watched folder doesn't drop frames or block scrolling.
+- **Search Responsiveness**: Search text is computed once per image and reused instead of rebuilt on every keystroke.
+- **Image Lineage Rebuilds**: Lineage is no longer written to disk mid-interaction — rebuilds are coalesced and saved once things go quiet.
 
 ### Fixed
 
