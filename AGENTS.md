@@ -729,6 +729,15 @@ actual cost was 326 MB of cache chunks being read and rewritten per deleted
 file, in the main process. Add instrumentation, reproduce, read the numbers,
 then fix what the numbers point at.
 
+**Then measure again, more than once.** Development happens on a machine with
+games, antivirus and external drives on it, and a single sample there is worth
+very little: the same delete has measured 3082 ms, 1395 ms and 145 ms across
+runs, and an IPC call that only hits `ENOENT` — no file, no work at all —
+measured 1227 ms in one run and 1.1 ms in another. Take two or three samples,
+treat a spread wider than about 2x as environmental until proven otherwise, and
+get a quiet-machine number before concluding that a change did nothing. One bad
+sample nearly buried a 155x improvement as "no difference".
+
 1. Instrument the suspect path with `recordPerformanceDuration` /
    `beginPerformanceFlow` (`utils/performanceDiagnostics.ts`). Enable
    Performance Diagnostics in Settings, or use `window.__IMH_PERF__` —
@@ -739,6 +748,13 @@ then fix what the numbers point at.
    main process, and every other IPC call queues behind it — including the image
    reads that grid and modal navigation need. A UI that stutters during a
    background write is usually main-process starvation, not a slow component.
+   Note that a timing taken around an `await` in the renderer cannot tell those
+   apart on its own: it charges the handler's own work, the main process being
+   busy when the message arrives, and this thread being too busy to run the
+   continuation, all to the same number. To split them, temporarily return the
+   handler's own elapsed time with the reply and queue a `setTimeout(0)`
+   alongside the call — if it fires late, the renderer was starved and the main
+   process is innocent.
 3. For anything touching the metadata cache, look at chunk file *sizes* before
    anything else (`services/cacheManager.ts`). Chunks are read and rewritten
    whole, so their size is the cost of every single-image edit. A ComfyUI
@@ -781,7 +797,7 @@ Browser version uses File System Access API with limited capabilities.
 - Use React.memo() for expensive components
 - Implement proper virtualization for lists
 - Cache metadata aggressively, but keep cached entries small: large raw metadata is compacted on write and rehydrated on demand (`services/rawMetadataHydration.ts`)
-- Prefer touching one cache chunk over rewriting a directory cache; the id→chunk index exists for exactly this, and any write that finalizes a cache record must also rewrite that index
+- Prefer touching one cache chunk over rewriting a directory cache; the id→chunk index exists for exactly this, and any write that finalizes a cache record must also rewrite that index. Deletes touch no chunk at all — they tombstone the id in `{cacheId}_removed.json` and let a later rewrite compact it. If you add a path that writes a cache record, decide what it does to that sidecar (`finalize-cache-write` makes you say so) and read `utils/cacheTombstones.mjs` first: a record and a sidecar that disagree must be left disagreeing, never quietly reconciled
 - Process files in background threads when possible
 - Use synchronous I/O (`fs.openSync`) for header reads during indexing to prevent disk contention (Phase B optimization)
 

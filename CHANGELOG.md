@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
-- **Deleting Images**: Deleting one file could freeze the app for ~25 seconds on a large ComfyUI library. It no longer rewrites the whole folder cache to remove one entry, and cache chunks are capped by size instead of only by entry count.
+- **Deleting Images**: Deleting one file could freeze the app for ~25 seconds on a large ComfyUI library, and the grid and viewer stayed unresponsive the whole time. Deleting now takes a fraction of a second on the same library, and no longer gets slower as the library grows: the folder cache is no longer rewritten around the removed entry, which is instead marked as gone and cleared out for good in a single pass once enough images have been deleted, or the next time the folder is reindexed. Cache chunks are also capped by size instead of only by entry count.
 - **Cache File Size**: Cached entries no longer duplicate large raw metadata alongside its parsed form; the full text is re-read from the file when you open the metadata or workflow views. Applies as folders are reindexed.
 - **New Images While Watching a Folder**: Adding, removing or enriching images no longer re-runs the whole filter and sort pipeline per event, so generating into a watched folder doesn't drop frames or block scrolling.
 - **Search Responsiveness**: Search text is computed once per image and reused instead of rebuilt on every keystroke.
