@@ -484,10 +484,18 @@ export interface ElectronAPI {
   writeJsonCacheData: (args: { cacheId: string; data: any }) => Promise<{ success: boolean; error?: string }>;
   prepareCacheWrite: (args: { cacheId: string }) => Promise<{ success: boolean; error?: string }>;
   writeCacheChunk: (args: { cacheId: string; chunkIndex: number; data: any }) => Promise<{ success: boolean; error?: string }>;
-  finalizeCacheWrite: (args: { cacheId: string; record: any; sourceCacheId?: string }) => Promise<{ success: boolean; error?: string }>;
+  finalizeCacheWrite: (args: {
+    cacheId: string;
+    record: any;
+    sourceCacheId?: string;
+    // undefined = full rewrite, drop the removed-ids sidecar; 'preserve' = keep
+    // it as is; an object replaces it. See the electron.mjs handler.
+    tombstones?: 'preserve' | { chunkCount: number; ids: string[] };
+  }) => Promise<{ success: boolean; error?: string }>;
   clearCacheData: (cacheId: string) => Promise<{ success: boolean; error?: string }>;
   writeCacheIndex: (args: { cacheId: string; data: { lastScan?: number; chunkCount: number; ids: Record<string, number> } }) => Promise<{ success: boolean; error?: string }>;
   readCacheIndex: (args: { cacheId: string }) => Promise<{ success: boolean; data?: { lastScan?: number; chunkCount: number; ids: Record<string, number> } | null; error?: string }>;
+  readCacheTombstones: (args: { cacheId: string }) => Promise<{ success: boolean; data?: { chunkCount: number; ids: string[] } | null; error?: string }>;
   resolveThumbnailCacheBatch: (args: {
     candidates: ThumbnailCacheCandidate[];
   }) => Promise<{

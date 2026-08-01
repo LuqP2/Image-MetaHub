@@ -30,6 +30,7 @@ import {
   normalizeComfyUIViewUrl,
 } from './utils/comfyUIViewSecurity.mjs';
 import { rewriteAvifMetadata, stripAvifMetadata } from './utils/avifMetadata.mjs';
+import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTombstones.mjs';
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -3628,8 +3629,13 @@ function setupFileOperationHandlers() {
 
     // Write main cache record (without metadata) with parser version
     const mainCachePath = await getCacheFilePath(cacheId);
+
+    // Every entry was just rewritten from the caller's full list, so any
+    // pending tombstones are already reflected in it.
+    await applyCacheTombstones({ cacheDir, safeCacheId, recordPath: mainCachePath, tombstones: undefined });
     cacheRecord.chunkCount = chunkCount;
     cacheRecord.parserVersion = PARSER_VERSION; // Add parser version
+    cacheRecord.tombstoneCount = 0;
     await fs.writeFile(mainCachePath, JSON.stringify(cacheRecord, null, 2));
 
     logMainPerf('cache-data:complete', {
@@ -3716,14 +3722,14 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('finalize-cache-write', async (event, { cacheId, sourceCacheId, record }) => {
+  ipcMain.handle('finalize-cache-write', async (event, { cacheId, sourceCacheId, record, tombstones }) => {
     const start = Date.now();
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
       const safeSourceCacheId = sourceCacheId?.replace(/[^a-zA-Z0-9-_]/g, '_');
+      const rootPath = await getCacheRootPath();
+      const cacheDir = path.join(rootPath, 'json_cache');
       if (safeSourceCacheId && safeSourceCacheId !== safeCacheId) {
-        const rootPath = await getCacheRootPath();
-        const cacheDir = path.join(rootPath, 'json_cache');
         await fs.mkdir(cacheDir, { recursive: true });
 
         const files = await fs.readdir(cacheDir).catch(error => {
@@ -3763,14 +3769,27 @@ function setupFileOperationHandlers() {
       }
 
       const mainCachePath = await getCacheFilePath(cacheId);
+
+      // Sidecar first: if the process dies between the two writes the record
+      // still carries the old count, the mismatch invalidates the sidecar, and
+      // the cache is served whole rather than with images missing. A throw here
+      // aborts the whole finalize, leaving both files untouched.
+      const tombstoneCount = await applyCacheTombstones({
+        cacheDir,
+        safeCacheId,
+        recordPath: mainCachePath,
+        tombstones,
+      });
+
       // Add parser version to cache record
-      const recordWithVersion = { ...record, parserVersion: PARSER_VERSION };
+      const recordWithVersion = { ...record, parserVersion: PARSER_VERSION, tombstoneCount };
       await fs.writeFile(mainCachePath, JSON.stringify(recordWithVersion, null, 2));
       logMainPerf('finalize-cache-write:complete', {
         cacheId,
         sourceCacheId: sourceCacheId ?? null,
         imageCount: recordWithVersion.imageCount,
         chunkCount: recordWithVersion.chunkCount,
+        tombstoneCount,
         durationMs: elapsedMs(start),
       });
       return { success: true };
@@ -3845,6 +3864,19 @@ function setupFileOperationHandlers() {
       if (error.code === 'ENOENT') {
         return { success: true, data: null };
       }
+      return { success: false, error: error.message };
+    }
+  });
+
+  // The sidecar is only ever written as part of finalize-cache-write, so there
+  // is no matching write handler here.
+  ipcMain.handle('read-cache-tombstones', async (event, { cacheId }) => {
+    try {
+      const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+      const rootPath = await getCacheRootPath();
+      const cacheDir = path.join(rootPath, 'json_cache');
+      return { success: true, data: await readCacheTombstonesFile(cacheDir, safeCacheId) };
+    } catch (error) {
       return { success: false, error: error.message };
     }
   });
