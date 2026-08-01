@@ -1109,12 +1109,10 @@ export const useImageStore = create<ImageState>((set, get) => {
     const FORCE_FLUSH_PENDING_IMAGES_THRESHOLD = 2400;
     let pendingMergeQueue: IndexedImage[] = [];
     let pendingMergeTimer: ReturnType<typeof setTimeout> | null = null;
-    let pendingFilterRecomputeTimer: ReturnType<typeof setTimeout> | null = null;
     const MERGE_FLUSH_INTERVAL_MS = 250;
     const MERGE_FLUSH_INTERVAL_INDEXING_MS = 3000;
     const MERGE_FLUSH_INTERVAL_INDEXING_LARGE_MS = 15000;
     const MERGE_FLUSH_LARGE_THRESHOLD = 8000;
-    const FILTER_RECOMPUTE_INDEXING_MS = 5000;
     let searchWorker: Worker | null = null;
     let searchDatasetVersion = 0;
     let searchDatasetSourceImages: IndexedImage[] | null = null;
@@ -1131,10 +1129,6 @@ export const useImageStore = create<ImageState>((set, get) => {
         if (pendingMergeTimer) {
             clearTimeout(pendingMergeTimer);
             pendingMergeTimer = null;
-        }
-        if (pendingFilterRecomputeTimer) {
-            clearTimeout(pendingFilterRecomputeTimer);
-            pendingFilterRecomputeTimer = null;
         }
     };
 
@@ -1334,27 +1328,6 @@ export const useImageStore = create<ImageState>((set, get) => {
         }, interval);
     };
 
-    const isFilteringActive = (state: ImageState) => {
-        if (state.searchQuery) return true;
-        if (state.favoriteFilterMode !== 'neutral') return true;
-        if (state.selectedRatings?.length) return true;
-        if (state.selectedTags?.length) return true;
-        if (state.excludedTags?.length) return true;
-        if (state.selectedAutoTags?.length) return true;
-        if (state.excludedAutoTags?.length) return true;
-        if (state.selectedModels?.length || state.excludedModels?.length) return true;
-        if (state.selectedLoras?.length || state.excludedLoras?.length) return true;
-        if (state.selectedSamplers?.length || state.excludedSamplers?.length) return true;
-        if (state.selectedSchedulers?.length || state.excludedSchedulers?.length) return true;
-        if (state.selectedGenerators?.length || state.excludedGenerators?.length) return true;
-        if (state.selectedGpuDevices?.length || state.excludedGpuDevices?.length) return true;
-        if (state.selectedNodes?.length) return true;
-        if (state.advancedFilters && Object.keys(state.advancedFilters).length > 0) return true;
-        if (state.selectedFolders && state.selectedFolders.size > 0) return true;
-        if (state.directories.some(dir => dir.visible === false)) return true;
-        return false;
-    };
-
     const buildSearchWorkerDataset = (state: ImageState): SearchWorkerImage[] => {
         return state.images.map(toSearchWorkerImage);
     };
@@ -1500,23 +1473,6 @@ export const useImageStore = create<ImageState>((set, get) => {
                 criteria,
             },
         });
-    };
-
-    const scheduleFilterRecompute = () => {
-        if (pendingFilterRecomputeTimer) {
-            return;
-        }
-        pendingFilterRecomputeTimer = setTimeout(() => {
-            pendingFilterRecomputeTimer = null;
-            set(state => {
-                if (state.searchQuery) {
-                    runAsyncSearchRecompute(state);
-                    return state;
-                }
-                const filteredResult = filterAndSort(state);
-                return { ...state, ...filteredResult };
-            });
-        }, FILTER_RECOMPUTE_INDEXING_MS);
     };
 
     const getImageById = (state: ImageState, imageId: string): IndexedImage | undefined => {
@@ -2384,13 +2340,34 @@ export const useImageStore = create<ImageState>((set, get) => {
         return compareById;
     };
 
-    // --- Binary insert into a sorted array ---
+    // --- Insert items into a sorted array ---
+    // Each splice is O(n), so per-item binary insert degrades to O(items * n).
+    // flushPendingImages can drain up to MAX_PENDING_IMAGES_PER_FLUSH (or the
+    // whole queue with drainAll) at once, so above a small batch size we sort
+    // the incoming items and do a single linear merge instead: O(n + m log m).
+    const BINARY_INSERT_MAX_ITEMS = 16;
+
     const binaryInsertSorted = (
         sorted: IndexedImage[],
         items: IndexedImage[],
         comparator: (a: IndexedImage, b: IndexedImage) => number,
     ): IndexedImage[] => {
         if (items.length === 0) return sorted;
+
+        if (items.length > BINARY_INSERT_MAX_ITEMS) {
+            const incoming = items.slice().sort(comparator);
+            const merged: IndexedImage[] = new Array(sorted.length + incoming.length);
+            let i = 0, j = 0, k = 0;
+            while (i < sorted.length && j < incoming.length) {
+                // `<= 0` keeps existing entries ahead of equal-comparing new
+                // ones, matching the upper-bound placement of the binary path.
+                merged[k++] = comparator(sorted[i], incoming[j]) <= 0 ? sorted[i++] : incoming[j++];
+            }
+            while (i < sorted.length) merged[k++] = sorted[i++];
+            while (j < incoming.length) merged[k++] = incoming[j++];
+            return merged;
+        }
+
         const result = sorted.slice();
         for (const item of items) {
             let lo = 0, hi = result.length;
@@ -2421,54 +2398,103 @@ export const useImageStore = create<ImageState>((set, get) => {
         });
 
     // --- Deferred reconciliation ---
+    const RECONCILIATION_DEBOUNCE_MS = 400;
+    // Hard cap on the debounce. Indexing flushes every FLUSH_INTERVAL_MS (100ms)
+    // and auto-watch bursts are similarly dense, so a pure debounce would be
+    // re-armed forever and never fire — leaving facet dropdowns and collection
+    // counts frozen for the whole run.
+    const RECONCILIATION_MAX_WAIT_MS = 2000;
+
     let reconciliationTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconciliationFirstScheduledAt = 0;
 
     const cancelDeferredReconciliation = () => {
         if (reconciliationTimer !== null) {
             clearTimeout(reconciliationTimer);
             reconciliationTimer = null;
         }
+        reconciliationFirstScheduledAt = 0;
+    };
+
+    const runDeferredReconciliation = () => {
+        reconciliationTimer = null;
+        reconciliationFirstScheduledAt = 0;
+
+        const state = useImageStore.getState();
+        const syncedCollections = syncCollectionCounts(state.collections, state.images);
+        const activeCollectionId = syncedCollections.some(c => c.id === state.activeCollectionId)
+            ? state.activeCollectionId
+            : null;
+
+        if (state.searchQuery) {
+            // Search-active recomputes are worker-offloaded everywhere else in
+            // this store (filterAndSortImages, setSearchQuery). Running
+            // filterAndSort here would rebuild the
+            // catalog/compact search text for the whole scoped library on the
+            // main thread — the exact freeze the incremental path avoids. The
+            // worker's completion handler writes filteredImages and facets.
+            useImageStore.setState({ collections: syncedCollections, activeCollectionId });
+            runAsyncSearchRecompute(useImageStore.getState());
+            return;
+        }
+
+        const fullResult = filterAndSort(state);
+
+        // Compare element-wise, not just by length: predicate drift between
+        // compileImageFilter and filterAndSort, or a misplaced binary insert,
+        // can diverge without changing the count. Every comparator ends in a
+        // compareById tie-break over unique ids, so a correct incremental
+        // result is reference-identical to the full one.
+        const nextFiltered = fullResult.filteredImages;
+        const prevFiltered = state.filteredImages;
+        let diverged = nextFiltered.length !== prevFiltered.length;
+        if (!diverged) {
+            for (let i = 0; i < nextFiltered.length; i++) {
+                if (nextFiltered[i] !== prevFiltered[i]) {
+                    diverged = true;
+                    break;
+                }
+            }
+        }
+
+        if (diverged && isPerformanceDiagnosticsEnabled()) {
+            recordPerformanceDuration('store.incremental-divergence', 0, {
+                incrementalCount: prevFiltered.length,
+                fullCount: nextFiltered.length,
+            });
+        }
+
+        useImageStore.setState({
+            ...(diverged ? { filteredImages: nextFiltered } : {}),
+            availableModels: fullResult.availableModels,
+            availableLoras: fullResult.availableLoras,
+            availableSamplers: fullResult.availableSamplers,
+            availableSchedulers: fullResult.availableSchedulers,
+            availableGenerators: fullResult.availableGenerators,
+            availableGpuDevices: fullResult.availableGpuDevices,
+            availableDimensions: fullResult.availableDimensions,
+            modelFacetCounts: fullResult.modelFacetCounts,
+            loraFacetCounts: fullResult.loraFacetCounts,
+            samplerFacetCounts: fullResult.samplerFacetCounts,
+            schedulerFacetCounts: fullResult.schedulerFacetCounts,
+            selectionTotalImages: fullResult.selectionTotalImages,
+            selectionDirectoryCount: fullResult.selectionDirectoryCount,
+            collections: syncedCollections,
+            activeCollectionId,
+        });
     };
 
     const scheduleDeferredReconciliation = () => {
-        cancelDeferredReconciliation();
-        reconciliationTimer = setTimeout(() => {
-            reconciliationTimer = null;
-            const state = useImageStore.getState();
-            const combinedState = { ...state, images: state.images };
-            const fullResult = filterAndSort(combinedState);
-            const syncedCollections = syncCollectionCounts(state.collections, state.images);
-            const activeCollectionId = syncedCollections.some(c => c.id === state.activeCollectionId)
-                ? state.activeCollectionId
-                : null;
-
-            const diverged = fullResult.filteredImages.length !== state.filteredImages.length;
-            if (diverged && isPerformanceDiagnosticsEnabled()) {
-                recordPerformanceDuration('store.incremental-divergence', 0, {
-                    incrementalCount: state.filteredImages.length,
-                    fullCount: fullResult.filteredImages.length,
-                });
-            }
-
-            useImageStore.setState({
-                ...(diverged ? { filteredImages: fullResult.filteredImages } : {}),
-                availableModels: fullResult.availableModels,
-                availableLoras: fullResult.availableLoras,
-                availableSamplers: fullResult.availableSamplers,
-                availableSchedulers: fullResult.availableSchedulers,
-                availableGenerators: fullResult.availableGenerators,
-                availableGpuDevices: fullResult.availableGpuDevices,
-                availableDimensions: fullResult.availableDimensions,
-                modelFacetCounts: fullResult.modelFacetCounts,
-                loraFacetCounts: fullResult.loraFacetCounts,
-                samplerFacetCounts: fullResult.samplerFacetCounts,
-                schedulerFacetCounts: fullResult.schedulerFacetCounts,
-                selectionTotalImages: fullResult.selectionTotalImages,
-                selectionDirectoryCount: fullResult.selectionDirectoryCount,
-                collections: syncedCollections,
-                activeCollectionId,
-            });
-        }, 400);
+        const now = Date.now();
+        if (reconciliationFirstScheduledAt === 0) {
+            reconciliationFirstScheduledAt = now;
+        }
+        if (reconciliationTimer !== null) {
+            clearTimeout(reconciliationTimer);
+        }
+        const remainingMaxWait = RECONCILIATION_MAX_WAIT_MS - (now - reconciliationFirstScheduledAt);
+        const delay = Math.max(0, Math.min(RECONCILIATION_DEBOUNCE_MS, remainingMaxWait));
+        reconciliationTimer = setTimeout(runDeferredReconciliation, delay);
     };
 
     type IncrementalDelta = {
