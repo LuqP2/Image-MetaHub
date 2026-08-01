@@ -378,6 +378,43 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['searchable.png']);
   });
 
+  it('rebuilds memoized search text when an image is replaced by a new object', async () => {
+    // buildCatalogSearchText/buildCompactSearchText are memoized in WeakMaps keyed
+    // by the IndexedImage object itself. That is only sound because every store
+    // path replaces images instead of mutating them in place. If a future change
+    // ever mutates an image, the memoized text goes stale and search silently
+    // returns wrong results with no other symptom — this test is the guard.
+    const original = createImage({
+      id: 'dir-1::memoized.png',
+      name: 'memoized.png',
+      prompt: 'alpha-marker prompt',
+      enrichmentState: 'enriched',
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [original],
+      filteredImages: [original],
+      sortOrder: 'asc',
+    });
+
+    useImageStore.getState().setSearchQuery('alpha-marker');
+    await flushSearchWorker();
+    expect(useImageStore.getState().filteredImages.map((image) => image.id)).toEqual(['dir-1::memoized.png']);
+
+    // Same id, new object, different prompt — the enrichment/merge shape.
+    useImageStore.getState().mergeImages([{ ...original, prompt: 'beta-marker prompt' }]);
+
+    useImageStore.getState().setSearchQuery('beta-marker');
+    await flushSearchWorker();
+    expect(useImageStore.getState().filteredImages.map((image) => image.id)).toEqual(['dir-1::memoized.png']);
+
+    useImageStore.getState().setSearchQuery('alpha-marker');
+    await flushSearchWorker();
+    expect(useImageStore.getState().filteredImages).toEqual([]);
+  });
+
   it('does not match search terms that exist only inside raw metadata JSON blobs', async () => {
     const rawOnly = createImage({
       id: 'dir-1::raw-only.png',

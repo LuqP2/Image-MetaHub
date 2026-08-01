@@ -607,11 +607,19 @@ const getRelativeImagePath = (image: IndexedImage): string => {
     return relative || image.name;
 };
 
-// Memoized by object identity: IndexedImage references only change when
-// sanitizeIndexedImageFacets/applyAnnotationsToImages actually produce a new
-// object (they're referentially stable otherwise), so this cache stays valid
-// across repeated filterAndSort calls (e.g. every keystroke of a search
-// query) without any manual invalidation.
+// Memoized by object identity, so that repeated filterAndSort /
+// buildSearchWorkerDataset passes (e.g. one per keystroke of a search query)
+// don't rebuild the same strings for the whole library.
+//
+// LOAD-BEARING INVARIANT: IndexedImage objects are treated as immutable —
+// every content change must produce a *new* object. That holds today across
+// every producer (sanitizeIndexedImageFacets and applyAnnotationsToImages
+// return the input unchanged when nothing differs and a spread copy when it
+// does; processEnrichmentResult, updateImage, the tag/auto-tag actions and the
+// cache loader all spread as well), which is why no manual invalidation is
+// needed. If any path ever mutates an image in place instead, these caches
+// will silently serve stale text and search will return wrong results with no
+// other symptom — see the regression test in useImageStore.filters.test.ts.
 const catalogSearchTextCache = new WeakMap<IndexedImage, string>();
 const compactSearchTextCache = new WeakMap<IndexedImage, string>();
 
