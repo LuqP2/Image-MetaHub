@@ -3611,18 +3611,6 @@ function setupFileOperationHandlers() {
   const CHUNK_SIZE = 1024; // Keep cache chunks small enough to parse without freezing the renderer
   const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  // The record's tombstoneCount as it stands on disk right now. Only needed for
-  // the 'preserve' path, which must carry the existing count forward instead of
-  // recounting the sidecar — see utils/cacheTombstones.mjs.
-  const readRecordTombstoneCount = async (cacheId) => {
-    try {
-      const raw = await fs.readFile(await getCacheFilePath(cacheId), 'utf-8');
-      return JSON.parse(raw)?.tombstoneCount ?? 0;
-    } catch {
-      return 0;
-    }
-  };
-
   ipcMain.handle('cache-data', async (event, { cacheId, data }) => {
     const start = Date.now();
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
@@ -3639,12 +3627,12 @@ function setupFileOperationHandlers() {
       await fs.writeFile(chunkPath, JSON.stringify(chunk));
     }
 
-    // Every entry was just rewritten from the caller's full list, so any
-    // pending tombstones are already reflected in it.
-    await applyCacheTombstones({ cacheDir, safeCacheId, tombstones: undefined });
-
     // Write main cache record (without metadata) with parser version
     const mainCachePath = await getCacheFilePath(cacheId);
+
+    // Every entry was just rewritten from the caller's full list, so any
+    // pending tombstones are already reflected in it.
+    await applyCacheTombstones({ cacheDir, safeCacheId, recordPath: mainCachePath, tombstones: undefined });
     cacheRecord.chunkCount = chunkCount;
     cacheRecord.parserVersion = PARSER_VERSION; // Add parser version
     cacheRecord.tombstoneCount = 0;
@@ -3780,17 +3768,19 @@ function setupFileOperationHandlers() {
         });
       }
 
+      const mainCachePath = await getCacheFilePath(cacheId);
+
       // Sidecar first: if the process dies between the two writes the record
       // still carries the old count, the mismatch invalidates the sidecar, and
-      // the cache is served whole rather than with images missing.
+      // the cache is served whole rather than with images missing. A throw here
+      // aborts the whole finalize, leaving both files untouched.
       const tombstoneCount = await applyCacheTombstones({
         cacheDir,
         safeCacheId,
+        recordPath: mainCachePath,
         tombstones,
-        recordTombstoneCount: tombstones === 'preserve' ? await readRecordTombstoneCount(cacheId) : 0,
       });
 
-      const mainCachePath = await getCacheFilePath(cacheId);
       // Add parser version to cache record
       const recordWithVersion = { ...record, parserVersion: PARSER_VERSION, tombstoneCount };
       await fs.writeFile(mainCachePath, JSON.stringify(recordWithVersion, null, 2));

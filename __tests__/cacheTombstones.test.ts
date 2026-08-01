@@ -6,6 +6,7 @@ import {
   applyCacheTombstones,
   getCacheTombstonesPath,
   readCacheTombstonesFile,
+  readRecordTombstoneCount,
 } from '../utils/cacheTombstones.mjs';
 
 const SAFE_CACHE_ID = 'D__library-flat';
@@ -24,6 +25,15 @@ describe('cache tombstone sidecar', () => {
       getCacheTombstonesPath(cacheDir, SAFE_CACHE_ID),
       JSON.stringify({ chunkCount, ids })
     );
+  };
+
+  // The record lives next to the cache dir, not inside it, same as in the app.
+  const recordPathFor = (cacheDir: string) => path.join(cacheDir, `${SAFE_CACHE_ID}.record.json`);
+
+  const writeRecord = async (cacheDir: string, record: unknown) => {
+    const recordPath = recordPathFor(cacheDir);
+    await fs.writeFile(recordPath, typeof record === 'string' ? record : JSON.stringify(record));
+    return recordPath;
   };
 
   afterEach(async () => {
@@ -54,7 +64,7 @@ describe('cache tombstone sidecar', () => {
       cacheDir,
       safeCacheId: SAFE_CACHE_ID,
       tombstones: undefined,
-      recordTombstoneCount: 1,
+      recordPath: await writeRecord(cacheDir, { imageCount: 10, tombstoneCount: 1 }),
     });
 
     expect(count).toBe(0);
@@ -83,7 +93,7 @@ describe('cache tombstone sidecar', () => {
       cacheDir,
       safeCacheId: SAFE_CACHE_ID,
       tombstones: 'preserve',
-      recordTombstoneCount: 2,
+      recordPath: await writeRecord(cacheDir, { imageCount: 10, tombstoneCount: 2 }),
     });
 
     expect(count).toBe(2);
@@ -104,7 +114,7 @@ describe('cache tombstone sidecar', () => {
       cacheDir,
       safeCacheId: SAFE_CACHE_ID,
       tombstones: 'preserve',
-      recordTombstoneCount: 5,
+      recordPath: await writeRecord(cacheDir, { imageCount: 10, tombstoneCount: 5 }),
     });
 
     // Zero here would declare the still-tombstoned entries live, and no later
@@ -120,12 +130,89 @@ describe('cache tombstone sidecar', () => {
       cacheDir,
       safeCacheId: SAFE_CACHE_ID,
       tombstones: 'preserve',
-      recordTombstoneCount: 3,
+      recordPath: await writeRecord(cacheDir, { imageCount: 10, tombstoneCount: 3 }),
     });
 
     // Adopting 2 would start trusting a sidecar that was rejected, which can
     // hide entries that are still on disk.
     expect(count).toBe(3);
+  });
+
+  // Only a missing record may answer zero. Every other failure has to abort the
+  // finalize: zero is not "unknown", it is the claim that nothing is tombstoned,
+  // and stamping it while the sidecar still lists ids resurrects those entries
+  // and leaves imageCount permanently short.
+  describe("the count 'preserve' preserves", () => {
+    it('takes the count the record already carries', async () => {
+      const cacheDir = await makeCacheDir();
+      const recordPath = await writeRecord(cacheDir, { imageCount: 17499, tombstoneCount: 4 });
+
+      expect(await readRecordTombstoneCount(recordPath)).toBe(4);
+    });
+
+    it('answers zero only when the record is genuinely gone', async () => {
+      const cacheDir = await makeCacheDir();
+
+      expect(await readRecordTombstoneCount(recordPathFor(cacheDir))).toBe(0);
+    });
+
+    it('answers zero for a record written before tombstones existed', async () => {
+      const cacheDir = await makeCacheDir();
+      const recordPath = await writeRecord(cacheDir, { imageCount: 17499 });
+
+      expect(await readRecordTombstoneCount(recordPath)).toBe(0);
+    });
+
+    it('refuses to guess when the record cannot be read', async () => {
+      const cacheDir = await makeCacheDir();
+      // A directory in the record's place reproduces the shape of the errors
+      // that matter on Windows (EPERM/EBUSY from AV, EMFILE under a big scan):
+      // something other than ENOENT came back, so the count is unknown.
+      const recordPath = path.join(cacheDir, 'record-as-directory');
+      await fs.mkdir(recordPath);
+
+      await expect(readRecordTombstoneCount(recordPath)).rejects.toThrow();
+    });
+
+    it('refuses to guess when the record is torn', async () => {
+      const cacheDir = await makeCacheDir();
+      const recordPath = await writeRecord(cacheDir, '{"imageCount":17499,"tombstone');
+
+      await expect(readRecordTombstoneCount(recordPath)).rejects.toThrow();
+    });
+
+    it.each([
+      ['null', null],
+      ['a string', '4'],
+      ['negative', -1],
+      ['fractional', 1.5],
+    ])('refuses to guess when the count is %s', async (_label, tombstoneCount) => {
+      const cacheDir = await makeCacheDir();
+      const recordPath = await writeRecord(cacheDir, { imageCount: 17499, tombstoneCount });
+
+      await expect(readRecordTombstoneCount(recordPath)).rejects.toThrow(/Unusable tombstoneCount/);
+    });
+
+    it('aborts the whole finalize rather than stamping a guessed count', async () => {
+      const cacheDir = await makeCacheDir();
+      await writeSidecar(cacheDir, ['dir-1::a.png']);
+      const recordPath = path.join(cacheDir, 'record-as-directory');
+      await fs.mkdir(recordPath);
+
+      await expect(applyCacheTombstones({
+        cacheDir,
+        safeCacheId: SAFE_CACHE_ID,
+        tombstones: 'preserve',
+        recordPath,
+      })).rejects.toThrow();
+
+      // The sidecar survives untouched, so the pair stays exactly as it was and
+      // the next delete or append still forces the repairing rewrite.
+      expect(await readCacheTombstonesFile(cacheDir, SAFE_CACHE_ID)).toEqual({
+        chunkCount: 2,
+        ids: ['dir-1::a.png'],
+      });
+    });
   });
 
   it('reads a missing sidecar as absent and a corrupt one as an error', async () => {
