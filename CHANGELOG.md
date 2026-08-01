@@ -5,12 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.18.1] - UNRELEASED
+## [0.18.1] - 2026-08-01
 
 ### Added
 
 - **Auto-play Toggle**: A new Settings → Viewer → Playback option controls whether videos and audio start playing as soon as they open. It stays on by default; turning it off means the media viewer waits for you to press Play, both when opening a file and when moving to another one with the navigation arrows.
-- **Repeat Modes and Shuffle**: The video player's loop button is now a three-state repeat control — no repeat, repeat all, repeat one — so a video can play the next item when it finishes instead of just stopping. A new shuffle button next to it randomizes where playback goes. As in VLC, repeat decides whether playback continues (with no repeat a video still stops at its end, shuffle or not) while shuffle decides where it goes: repeat all advances in order, or to a random item when shuffle is on. While a video is open, shuffle also applies to the next arrow and the right arrow key; going back stays sequential, and browsing images is never affected. Both preferences are remembered, and an existing loop setting carries over as "repeat one". A running slideshow keeps its own pacing and is unaffected. When repeat all moves to the following item, that item plays even if auto-play is off; navigating manually returns to the auto-play preference.
+- **Repeat Modes and Shuffle**: The video player now supports three repeat modes (off, repeat all, repeat one) plus shuffle playback. Like VLC, repeat controls whether playback continues, while shuffle controls the playback order. Both settings are remembered, and slideshows are unaffected.
 
 ### Improved
 

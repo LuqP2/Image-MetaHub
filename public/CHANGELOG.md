@@ -5,7 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.18.0]
+## [0.18.1] - 2026-08-01
+
+### Added
+
+- **Auto-play Toggle**: A new Settings → Viewer → Playback option controls whether videos and audio start playing as soon as they open. It stays on by default; turning it off means the media viewer waits for you to press Play, both when opening a file and when moving to another one with the navigation arrows.
+- **Repeat Modes and Shuffle**: The video player now supports three repeat modes (off, repeat all, repeat one) plus shuffle playback. Like VLC, repeat controls whether playback continues, while shuffle controls the playback order. Both settings are remembered, and slideshows are unaffected.
+
+### Improved
+
+- **Deleting Images**: Deleting one file could freeze the app for ~25 seconds on a large ComfyUI library, and the grid and viewer stayed unresponsive the whole time. Deleting now takes a fraction of a second on the same library, and no longer gets slower as the library grows: the folder cache is no longer rewritten around the removed entry, which is instead marked as gone and cleared out for good in a single pass once enough images have been deleted, or the next time the folder is reindexed. Cache chunks are also capped by size instead of only by entry count.
+- **Cache File Size**: Cached entries no longer duplicate large raw metadata alongside its parsed form; the full text is re-read from the file when you open the metadata or workflow views. Applies as folders are reindexed.
+- **New Images While Watching a Folder**: Adding, removing or enriching images no longer re-runs the whole filter and sort pipeline per event, so generating into a watched folder doesn't drop frames or block scrolling.
+- **Search Responsiveness**: Search text is computed once per image and reused instead of rebuilt on every keystroke.
+- **Image Lineage Rebuilds**: Lineage is no longer written to disk mid-interaction — rebuilds are coalesced and saved once things go quiet.
+- **Viewer Navigation**: Moving between images in the viewer no longer flashes a low-resolution thumbnail or a loading placeholder before the full image lands. The neighbouring images — two ahead in the direction you're browsing, one behind — are now read and fully decoded in the background while you look at the current one, so stepping onto them is immediate. The viewer previously only worked out a neighbour's file path in advance, which left the actual read and decode to happen at the moment you pressed the key. Holding an arrow key still scrubs through previews, and any image that hasn't been prepared yet behaves as before.
+
+### Fixed
+
+- **Video Controls Click Targets**: Fixed the play/pause, mute, volume and loop controls near the edges of the video player triggering next/previous navigation instead of their own action, because the navigation hover zones painted on top of them.
+- **Copy Metadata to Clipboard**: Fixed "Failed to copy..." errors on Copy Prompt, Copy Negative Prompt, Copy to A1111/ComfyUI and other clipboard actions that could occur after clearing the library cache or reindexing a folder, until the app was restarted. Text copies now go through Electron's native clipboard API, the same way image copies already did, instead of the browser API that could lose focus after a reload.
+
+## [0.18.0] - 2026-07-21
  
 ### Added
  
@@ -15,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Header Tools Menu**: Automation rules and Auto-tag library moved into a new header "Tools" menu, since they're library-wide operations rather than tied to a specific collection or cluster.
 - **Live Generation Preview**: The Queue now shows a live, KSampler-style preview image that updates step-by-step during ComfyUI generation — both for generations started from MetaHub's own workspace and from the embedded ComfyUI UI. The preview/output image box can be dragged taller for portrait images, and the size is remembered across sessions.
 - **Run Current Workflow**: Added a "Run" button to the top of the Queue that queues whatever workflow is currently loaded in the embedded ComfyUI workspace, so you can trigger a generation from anywhere in the app.
-- **First-Class AVIF Metadata**: Added AVIF discovery, Chromium-backed previews and thumbnails, dimensions, ComfyUI XMP prompt/workflow parsing, legacy AVIF EXIF compatibility, CLI parsing, bounded full-file fallback for late XMP, metadata stripping, and metadata-preserving AVIF export. Exports keep the full prompt and workflow graph in standard ComfyUI XMP fields, while MetaHub's own tags, notes, attribution and an extracted parameter snapshot (model, seed, steps, cfg, sampler, scheduler, negative prompt) live in a compact private extension.
+- **First-Class AVIF Metadata**: Added AVIF discovery, Chromium-backed previews and thumbnails, dimensions, ComfyUI XMP prompt/workflow parsing, legacy AVIF EXIF compatibility, CLI parsing, bounded full-file fallback for late XMP, metadata stripping, and metadata-preserving AVIF export. Exports keep the full prompt and workflow graph in standard ComfyUI XMP fields, while MetaHub's own tags, notes, attribution and an extracted parameter snapshot (model, seed, steps, cfg, sampler, scheduler, negative prompt) live in a compact private extension. Thanks to @austintraver.
 
 ### Improved
  
