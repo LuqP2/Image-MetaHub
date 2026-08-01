@@ -235,6 +235,15 @@ Metadata and thumbnails are cached separately.
 * Video thumbnails are generated from captured frames.
 * Thumbnail state is intentionally decoupled from the main image collection to avoid full-list re-renders as thumbnails arrive.
 
+**Viewer media cache**
+
+* `services/mediaSourceCache.ts` turns an image into a URL the renderer can display — an `imh-media://` stream URL in Electron, an object or data URL otherwise — keyed by `directoryPath::id::lastModified` and LRU-capped separately per kind.
+* **Resolving a source yields a string, not bytes.** On the Electron path it is a path resolution plus an `fs.access`; nothing is read and nothing is decoded. That fetch and decode is precisely what cannot fit in the frame where the viewer's `<img src>` changes, so warming a neighbour means decoding it, not resolving it.
+* `services/mediaDecodeCache.ts` is that second layer: a small LRU of decoded bitmaps keyed **by URL only**, with no knowledge of `IndexedImage` or directories. Holding the `HTMLImageElement` is what keeps Chromium from dropping the decoded copy. `ImageModal` warms two neighbours ahead in the direction of travel and one behind, serialized on `requestIdleCallback`, and deliberately without `prioritize` so it never pauses the grid's background thumbnail work.
+* The viewer reads `mediaSourceCache.peek()` and `mediaDecodeCache.isWarm()` **during render**, not in an effect: an effect runs after paint, which would cost the frame the whole path exists to save. A warm source is swapped in the same commit as the image id change, skipping the thumbnail step entirely; a cold one falls back to thumbnail-then-full as before.
+* Both `peek()` and `isWarm()` are side-effect free on purpose. They run on every render, and touching LRU recency there would rank entries by how often a component re-rendered rather than by use.
+* The decode cache is refcounted (`retain`/`release`) because several viewer windows can be open at once — the last one to close is what drops the bitmaps.
+
 ## Filtering, Tags, and Curation
 
 The current filter system is intentionally explicit rather than implicit.

@@ -800,6 +800,7 @@ Browser version uses File System Access API with limited capabilities.
 - Prefer touching one cache chunk over rewriting a directory cache; the id→chunk index exists for exactly this, and any write that finalizes a cache record must also rewrite that index. Deletes touch no chunk at all — they tombstone the id in `{cacheId}_removed.json` and let a later rewrite compact it. If you add a path that writes a cache record, decide what it does to that sidecar (`finalize-cache-write` makes you say so) and read `utils/cacheTombstones.mjs` first: a record and a sidecar that disagree must be left disagreeing, never quietly reconciled
 - Process files in background threads when possible
 - Use synchronous I/O (`fs.openSync`) for header reads during indexing to prevent disk contention (Phase B optimization)
+- Viewer navigation latency is the full image's fetch and decode, not React work. A prefetch that only resolves a source warms nothing — `mediaSourceCache` hands back a URL string without reading a byte — so neighbours are decoded ahead of time through `services/mediaDecodeCache.ts`, and `ImageModal` reads that warmth during render to swap in a single commit. Assigning `src` twice (thumbnail, then full) costs a second decode and a visible resolution pop, so it is worth avoiding whenever the full source is already warm
 
 ## Common Pitfalls
 

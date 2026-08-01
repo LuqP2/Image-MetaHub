@@ -74,6 +74,7 @@ vi.mock('../services/mediaSourceCache', () => ({
   getElectronAbsoluteMediaPath: () => null,
   mediaSourceCache: {
     getOrLoad: vi.fn(async () => 'blob:test-video'),
+    peek: vi.fn(() => null),
   },
 }));
 

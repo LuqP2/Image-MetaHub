@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New Images While Watching a Folder**: Adding, removing or enriching images no longer re-runs the whole filter and sort pipeline per event, so generating into a watched folder doesn't drop frames or block scrolling.
 - **Search Responsiveness**: Search text is computed once per image and reused instead of rebuilt on every keystroke.
 - **Image Lineage Rebuilds**: Lineage is no longer written to disk mid-interaction — rebuilds are coalesced and saved once things go quiet.
+- **Viewer Navigation**: Moving between images in the viewer no longer flashes a low-resolution thumbnail or a loading placeholder before the full image lands. The neighbouring images — two ahead in the direction you're browsing, one behind — are now read and fully decoded in the background while you look at the current one, so stepping onto them is immediate. The viewer previously only worked out a neighbour's file path in advance, which left the actual read and decode to happen at the moment you pressed the key. Holding an arrow key still scrubs through previews, and any image that hasn't been prepared yet behaves as before.
 
 ### Fixed
 
