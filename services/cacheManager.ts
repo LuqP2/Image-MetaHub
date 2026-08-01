@@ -714,21 +714,49 @@ class CacheManager {
     directoryName: string,
     images: IndexedImage[],
     scanSubfolders: boolean,
-    options?: { chunkSize?: number }
+    options?: { chunkSize?: number; getFallbackImages?: () => IndexedImage[] }
   ): Promise<void> {
     if (!this.isElectron) return;
     if (!images || images.length === 0) return;
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    await this.runChunkedCacheDeltaLocked(cacheId, () =>
+      this.appendToCacheLocked(cacheId, directoryPath, directoryName, images, scanSubfolders, options)
+    );
+  }
+
+  private async appendToCacheLocked(
+    cacheId: string,
+    directoryPath: string,
+    directoryName: string,
+    images: IndexedImage[],
+    scanSubfolders: boolean,
+    options?: { chunkSize?: number; getFallbackImages?: () => IndexedImage[] }
+  ): Promise<void> {
     const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
     const start = performance.now();
     const summaryResult = await summaryFn(cacheId);
 
     if (!summaryResult.success || !summaryResult.data) {
-      await this.cacheData(directoryPath, directoryName, images, scanSubfolders);
+      // No cache exists for this variant yet (missing/cleared/invalidated, or
+      // a prior write failed). Writing just `images` here would create a
+      // cache that only knows about this batch's new files, so the next
+      // launch would think the directory has nothing else and reparse every
+      // pre-existing file. Merge in the caller-supplied full directory image
+      // list first, same fallback pattern as applyChunkedCacheDelta.
+      const fallbackImages = options?.getFallbackImages?.() ?? [];
+      const merged = new Map<string, IndexedImage>();
+      for (const image of fallbackImages) {
+        merged.set(image.id, image);
+      }
+      for (const image of images) {
+        merged.set(image.id, image);
+      }
+      await this.cacheData(directoryPath, directoryName, Array.from(merged.values()), scanSubfolders);
       logCachePerf('append-to-cache:fallback-cache-data', {
         cacheId,
         images: images.length,
+        fallbackImages: fallbackImages.length,
         durationMs: toFixedMs(performance.now() - start),
       });
       return;
@@ -736,12 +764,13 @@ class CacheManager {
 
     const summary = summaryResult.data as CacheEntry;
     const chunkSize = options?.chunkSize ?? DEFAULT_INCREMENTAL_CHUNK_SIZE;
-    const metadata = sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true });
+    let metadata = sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true });
 
     const inlineMetadata = Array.isArray(summary.metadata)
       ? compactCacheMetadataEntries(summary.metadata)
       : [];
     let chunkIndex = inlineMetadata.length > 0 ? 0 : (summary.chunkCount ?? 0);
+    const indexUpdates: Record<string, number> = {};
 
     for (let i = 0; i < inlineMetadata.length; i += chunkSize) {
       const chunk = inlineMetadata.slice(i, i + chunkSize);
@@ -757,6 +786,33 @@ class CacheManager {
       chunkIndex += 1;
     }
 
+    // Top off the last existing chunk before creating new ones, so a steady
+    // trickle of single-file appends (auto-watch) doesn't fragment the cache
+    // into many tiny chunk files. Only applies to the already-chunked case —
+    // the inline-metadata migration above always starts a fresh chunk layout.
+    const existingIndex = inlineMetadata.length === 0 && (summary.chunkCount ?? 0) > 0
+      ? await this.readValidCacheIndex(cacheId, summary.lastScan, summary.chunkCount ?? 0)
+      : null;
+    if (inlineMetadata.length === 0 && chunkIndex > 0 && metadata.length > 0) {
+      const lastChunkIndex = chunkIndex - 1;
+      const lastChunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: lastChunkIndex });
+      if (lastChunkResult.success && Array.isArray(lastChunkResult.data)) {
+        const lastChunkEntries = lastChunkResult.data as CacheImageMetadata[];
+        const room = chunkSize - lastChunkEntries.length;
+        if (room > 0) {
+          const toAdd = metadata.slice(0, room);
+          metadata = metadata.slice(room);
+          const merged = [...lastChunkEntries, ...toAdd];
+          const writeResult = await window.electronAPI.writeCacheChunk({ cacheId, chunkIndex: lastChunkIndex, data: merged });
+          if (!writeResult.success) {
+            console.error('Failed to top off cache chunk:', writeResult.error);
+            return;
+          }
+          for (const entry of toAdd) indexUpdates[entry.id] = lastChunkIndex;
+        }
+      }
+    }
+
     for (let i = 0; i < metadata.length; i += chunkSize) {
       const chunk = metadata.slice(i, i + chunkSize);
       const result = await window.electronAPI.writeCacheChunk({
@@ -768,14 +824,16 @@ class CacheManager {
         console.error('Failed to append cache chunk:', result.error);
         return;
       }
+      for (const entry of chunk) indexUpdates[entry.id] = chunkIndex;
       chunkIndex += 1;
     }
 
+    const newLastScan = Date.now();
     const record = {
       id: cacheId,
       directoryPath,
       directoryName: summary.directoryName ?? directoryName,
-      lastScan: Date.now(),
+      lastScan: newLastScan,
       imageCount: (inlineMetadata.length > 0 ? inlineMetadata.length : (summary.imageCount ?? 0)) + images.length,
       chunkCount: chunkIndex,
       parserVersion: PARSER_VERSION,
@@ -784,6 +842,13 @@ class CacheManager {
     const finalizeResult = await window.electronAPI.finalizeCacheWrite({ cacheId, record });
     if (!finalizeResult.success) {
       console.error('Failed to finalize appended cache write:', finalizeResult.error);
+    } else if (existingIndex) {
+      // Keep the id->chunk index in sync so a subsequent patch/remove call can
+      // still use its own fast path instead of falling back to a full scan.
+      await window.electronAPI.writeCacheIndex?.({
+        cacheId,
+        data: { lastScan: newLastScan, chunkCount: chunkIndex, ids: { ...existingIndex, ...indexUpdates } },
+      });
     }
     logCachePerf(finalizeResult.success ? 'append-to-cache:complete' : 'append-to-cache:error', {
       cacheId,
@@ -1138,6 +1203,14 @@ class CacheManager {
     }
   }
 
+  /**
+   * Removes specific images from an existing cache without rewriting the whole
+   * directory cache. Mirrors patchCachedImages' id->chunk index approach: only
+   * the chunk(s) that actually hold the removed images are read and rewritten.
+   * Falls back to the full applyChunkedCacheDelta scan (which also matches by
+   * name) whenever the index can't account for every id, so correctness never
+   * regresses versus the old always-full-rewrite behavior.
+   */
   async removeCachedImages(
     directoryPath: string,
     directoryName: string,
@@ -1149,38 +1222,147 @@ class CacheManager {
 
     const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
     for (const mode of candidateModes) {
-      const existing = await this.getCachedData(directoryPath, mode);
-      if (!existing) {
-        continue;
-      }
-
-      const metadata = pruneCacheMetadata(existing.metadata, {
-        ids: imageIds,
-        names: imageNames,
-      });
-
-      if (metadata.length === existing.metadata.length) {
-        continue;
-      }
-
       const cacheId = `${directoryPath}-${mode ? 'recursive' : 'flat'}`;
-      const result = await window.electronAPI.cacheData({
-        cacheId,
-        data: {
-          id: existing.id,
-          directoryPath,
-          directoryName: existing.directoryName ?? directoryName,
-          lastScan: Date.now(),
-          imageCount: metadata.length,
-          metadata,
-          parserVersion: PARSER_VERSION,
-        },
-      });
+      // The index fast path only prunes by id. If there are also bare names to
+      // prune (e.g. subfolder files that only exist in the other scan-mode's
+      // cache and were never loaded into the current id-based index), it can't
+      // account for them — always go through the full scan-and-rewrite path
+      // (which matches by both id and name) in that case instead of silently
+      // dropping the name-based removals.
+      const removedByIndex = imageIds.length > 0 && imageNames.length === 0
+        ? await this.runChunkedCacheDeltaLocked(cacheId, () =>
+            this.removeCacheVariantByIndex(cacheId, directoryPath, directoryName, imageIds, mode)
+          )
+        : false;
 
-      if (!result.success) {
-        console.error('Failed to remove cached images:', result.error);
+      if (!removedByIndex) {
+        await this.applyChunkedCacheDelta(
+          directoryPath,
+          directoryName,
+          [],
+          imageIds,
+          imageNames,
+          mode,
+          { createIfMissing: false }
+        );
       }
     }
+  }
+
+  /**
+   * Fast path for removeCachedImages: removes imageIds from the chunk(s) the
+   * id->chunk index says they live in. Returns false (no changes made) if the
+   * cache doesn't exist, uses the legacy inline-metadata format, has no usable
+   * index, or the index turns out stale for any id — callers should fall back
+   * to the full scan-and-rewrite path in that case.
+   */
+  private async removeCacheVariantByIndex(
+    cacheId: string,
+    directoryPath: string,
+    directoryName: string,
+    imageIds: string[],
+    scanSubfolders: boolean
+  ): Promise<boolean> {
+    const start = performance.now();
+    const summary = await this.getCacheSummary(directoryPath, scanSubfolders);
+    if (!summary) {
+      // No cache for this variant — nothing to remove, no fallback needed.
+      return true;
+    }
+    if (Array.isArray(summary.metadata) && summary.metadata.length > 0) {
+      return false;
+    }
+
+    const chunkCount = summary.chunkCount ?? 0;
+    if (chunkCount === 0) {
+      return true;
+    }
+
+    const index = await this.readValidCacheIndex(cacheId, summary.lastScan, chunkCount);
+    if (!index) {
+      return false;
+    }
+    if (Object.keys(index).length !== (summary.imageCount ?? 0)) {
+      // Index doesn't account for every cached entry (e.g. it was never
+      // populated for this cache — appendToCache only maintains an index that
+      // already existed, it doesn't create one from scratch). Treating a
+      // missing-from-index id as "genuinely absent" in that case would report
+      // success without actually removing anything. Bail to the full scan,
+      // which rebuilds the index from a complete read.
+      return false;
+    }
+
+    const idsByChunk = new Map<number, Set<string>>();
+    for (const id of imageIds) {
+      const targetChunk = index[id];
+      if (typeof targetChunk !== 'number' || targetChunk < 0 || targetChunk >= chunkCount) {
+        // Not in this cache variant per the index. Could genuinely be absent
+        // (e.g. only exists in the other scan-mode variant) — skip rather than
+        // forcing a fallback scan for every removal that touches one variant.
+        continue;
+      }
+      const set = idsByChunk.get(targetChunk);
+      if (set) set.add(id);
+      else idsByChunk.set(targetChunk, new Set([id]));
+    }
+
+    if (idsByChunk.size === 0) {
+      return true;
+    }
+
+    let removedCount = 0;
+    const nextIndex = { ...index };
+    for (const [chunkIndex, wanted] of idsByChunk) {
+      const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex });
+      if (!chunkResult.success || !Array.isArray(chunkResult.data)) {
+        return false;
+      }
+      const entries = chunkResult.data as CacheImageMetadata[];
+      const filtered = entries.filter((entry) => !wanted.has(entry.id));
+      if (filtered.length === entries.length) {
+        // The index pointed at the wrong chunk (stale layout) — bail to the
+        // full fallback scan, which also rebuilds the index.
+        return false;
+      }
+      removedCount += entries.length - filtered.length;
+      const writeResult = await window.electronAPI.writeCacheChunk({ cacheId, chunkIndex, data: filtered });
+      if (!writeResult.success) {
+        return false;
+      }
+      for (const id of wanted) delete nextIndex[id];
+    }
+
+    const newImageCount = Math.max(0, (summary.imageCount ?? 0) - removedCount);
+    const newLastScan = Date.now();
+    const finalizeResult = await window.electronAPI.finalizeCacheWrite({
+      cacheId,
+      record: {
+        id: summary.id,
+        directoryPath,
+        directoryName: summary.directoryName ?? directoryName,
+        lastScan: newLastScan,
+        imageCount: newImageCount,
+        chunkCount,
+        parserVersion: PARSER_VERSION,
+      },
+    });
+    if (!finalizeResult.success) {
+      return false;
+    }
+
+    await window.electronAPI.writeCacheIndex?.({
+      cacheId,
+      data: { lastScan: newLastScan, chunkCount, ids: nextIndex },
+    });
+
+    logCachePerf('remove-cached-images:indexed', {
+      cacheId,
+      removed: removedCount,
+      chunksTouched: idsByChunk.size,
+      chunkCount,
+      durationMs: toFixedMs(performance.now() - start),
+    });
+    return true;
   }
 
   async applyChunkedCacheDelta(

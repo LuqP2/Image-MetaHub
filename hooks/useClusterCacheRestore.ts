@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from './useFeatureAccess';
 import { loadClusterCache } from '../services/clusterCacheManager';
+import type { IndexedImage } from '../types';
 import {
   buildClusterSourceSignature,
   buildClusterStateSignature,
@@ -9,6 +10,8 @@ import {
   getPromptImagesForClustering,
   isClusterCacheCompatible,
 } from '../utils/smartLibraryClusterState';
+
+const EMPTY_IMAGES: IndexedImage[] = [];
 
 /**
  * Restores compatible cached clusters on launch and keeps their access-gated metadata in sync.
@@ -30,8 +33,20 @@ export function useClusterCacheRestore(): void {
   const clusterMetadataSignatureRef = useRef<string | null>(null);
 
   const primaryPath = directories[0]?.path ?? '';
-  const promptImages = useMemo(() => getPromptImagesForClustering(images), [images]);
-  const clusterSourceSignature = useMemo(() => buildClusterSourceSignature(images), [images]);
+  // promptImages/clusterSourceSignature only feed the cache-restore effect
+  // below, which is a no-op once clusters already exist. buildClusterSourceSignature
+  // hashes every prompt character-by-character, so recomputing it on every
+  // images change (e.g. one auto-watch add at a time) after clustering has
+  // already run once is pure waste — skip it once clusters.length > 0.
+  const hasClusters = clusters.length > 0;
+  const promptImages = useMemo(
+    () => (hasClusters ? EMPTY_IMAGES : getPromptImagesForClustering(images)),
+    [images, hasClusters],
+  );
+  const clusterSourceSignature = useMemo(
+    () => (hasClusters ? '' : buildClusterSourceSignature(images)),
+    [images, hasClusters],
+  );
   const currentClusteringMetadata = useMemo(
     () => buildClusteringMetadata(images, canUseFullClustering),
     [canUseFullClustering, images],

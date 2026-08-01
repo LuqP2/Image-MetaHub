@@ -5,7 +5,7 @@ import { cacheManager, IncrementalCacheWriter } from '../services/cacheManager';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
+import { createCacheDebugSnapshot, isCacheDebugEnabled, traceCacheDebug } from '../utils/cacheDebugTrace';
 import { areFilesystemPathsEqual } from '../utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from '../utils/directoryActivity';
 import { inferMimeTypeFromName, isImageFileName } from '../utils/mediaTypes.js';
@@ -1846,7 +1846,9 @@ export function useImageLoader() {
 
             // Callback para processar batches de imagens
             const handleBatchProcessed = (batch: IndexedImage[]) => {
-                console.log('[auto-watch] Phase A processed', batch.length, 'images (not adding yet, waiting for Phase B)');
+                if (isCacheDebugEnabled()) {
+                    console.log('[auto-watch] Phase A processed', batch.length, 'images (not adding yet, waiting for Phase B)');
+                }
             };
 
             // Processar novos arquivos usando o pipeline existente
@@ -1865,11 +1867,16 @@ export function useImageLoader() {
                     fileStats: fileStatsMap,
                     onEnrichmentBatch: (enrichedBatch) => {
                         // Phase B: Enriquecimento completo - adicionar as imagens agora
-                        console.log('[auto-watch] Phase B enriched', enrichedBatch.length, 'images - adding to store');
+                        if (isCacheDebugEnabled()) {
+                            console.log('[auto-watch] Phase B enriched', enrichedBatch.length, 'images - adding to store');
+                        }
                         const refreshedBatch = enrichedBatch.filter(image => forceReindexExistingIds.has(image.id));
                         const newBatch = enrichedBatch.filter(image => !forceReindexExistingIds.has(image.id));
                         const addStart = performance.now();
                         if (newBatch.length > 0) {
+                            // addImages coalesces into a single _updateState via its own
+                            // ~100ms flush timer — no need to force an immediate flush here,
+                            // which used to pay a full _updateState per enrichment batch.
                             addImages(newBatch);
                             enrichedForCache.push(...newBatch);
                         }
@@ -1878,46 +1885,72 @@ export function useImageLoader() {
                             refreshedForCache.push(...refreshedBatch);
                         }
                         const addDurationMs = performance.now() - addStart;
-                        // Force flush imediatamente
-                        const flushPendingImages = useImageStore.getState().flushPendingImages;
-                        setTimeout(() => {
-                            console.log('[auto-watch] Flushing enriched images');
-                            const flushStart = performance.now();
-                            flushPendingImages();
-                            const flushDurationMs = performance.now() - flushStart;
-                            traceCacheDebug('loader:autoWatch:flushPendingImages', () => ({
-                                directoryId: directory.id,
-                                batchCount: enrichedBatch.length,
-                                details: {
-                                    addDurationMs: Number(addDurationMs.toFixed(2)),
-                                    flushDurationMs: Number(flushDurationMs.toFixed(2)),
-                                },
-                                snapshot: createCacheDebugSnapshot(useImageStore.getState()),
-                            }));
-                        }, 0);
+                        traceCacheDebug('loader:autoWatch:enrichmentBatchQueued', () => ({
+                            directoryId: directory.id,
+                            batchCount: enrichedBatch.length,
+                            details: {
+                                addDurationMs: Number(addDurationMs.toFixed(2)),
+                            },
+                            snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+                        }));
                     },
                 }
             );
 
             // Aguardar Phase B completar
-            console.log('[auto-watch] Waiting for Phase B to complete...');
             await phaseB;
-            console.log('[auto-watch] Phase B completed!');
 
             if (getIsElectron() && (enrichedForCache.length > 0 || refreshedForCache.length > 0)) {
                 try {
-                    const directoryImages = useImageStore.getState().images.filter(
-                        image => image.directoryId === directory.id
-                    );
-                    await cacheManager.applyChunkedCacheDelta(
-                        directory.path,
-                        directory.name,
-                        [...enrichedForCache, ...refreshedForCache],
-                        [],
-                        [],
-                        shouldScanSubfolders,
-                        { fallbackImages: directoryImages }
-                    );
+                    const fallbackToFullDelta = async (imagesToUpsert: IndexedImage[]) => {
+                        const directoryImages = useImageStore.getState().images.filter(
+                            image => image.directoryId === directory.id
+                        );
+                        await cacheManager.applyChunkedCacheDelta(
+                            directory.path,
+                            directory.name,
+                            imagesToUpsert,
+                            [],
+                            [],
+                            shouldScanSubfolders,
+                            { fallbackImages: directoryImages }
+                        );
+                    };
+
+                    // Existing entries: patch only the chunk(s) that hold them.
+                    if (refreshedForCache.length > 0) {
+                        const patched = await cacheManager.patchCachedImages(
+                            directory.path,
+                            directory.name,
+                            refreshedForCache,
+                            shouldScanSubfolders
+                        );
+                        if (!patched) {
+                            await fallbackToFullDelta(refreshedForCache);
+                        }
+                    }
+
+                    // New entries: append to the last chunk / new chunks instead of
+                    // rewriting the whole directory cache. If there's no cache yet,
+                    // appendToCache falls back to a full cacheData write — pass the
+                    // full in-memory directory image list so that fallback doesn't
+                    // regress to a cache containing only this batch's new files.
+                    // Computed lazily: appendToCache only needs this when it hits the
+                    // no-cache-yet branch, which isn't the common case once a
+                    // directory's cache already exists.
+                    if (enrichedForCache.length > 0) {
+                        await cacheManager.appendToCache(
+                            directory.path,
+                            directory.name,
+                            enrichedForCache,
+                            shouldScanSubfolders,
+                            {
+                                getFallbackImages: () => useImageStore.getState().images.filter(
+                                    image => image.directoryId === directory.id
+                                ),
+                            }
+                        );
+                    }
                 } catch (err) {
                     console.error('Failed to upsert auto-watch cache entries:', err);
                 }
