@@ -1109,12 +1109,10 @@ export const useImageStore = create<ImageState>((set, get) => {
     const FORCE_FLUSH_PENDING_IMAGES_THRESHOLD = 2400;
     let pendingMergeQueue: IndexedImage[] = [];
     let pendingMergeTimer: ReturnType<typeof setTimeout> | null = null;
-    let pendingFilterRecomputeTimer: ReturnType<typeof setTimeout> | null = null;
     const MERGE_FLUSH_INTERVAL_MS = 250;
     const MERGE_FLUSH_INTERVAL_INDEXING_MS = 3000;
     const MERGE_FLUSH_INTERVAL_INDEXING_LARGE_MS = 15000;
     const MERGE_FLUSH_LARGE_THRESHOLD = 8000;
-    const FILTER_RECOMPUTE_INDEXING_MS = 5000;
     let searchWorker: Worker | null = null;
     let searchDatasetVersion = 0;
     let searchDatasetSourceImages: IndexedImage[] | null = null;
@@ -1131,10 +1129,6 @@ export const useImageStore = create<ImageState>((set, get) => {
         if (pendingMergeTimer) {
             clearTimeout(pendingMergeTimer);
             pendingMergeTimer = null;
-        }
-        if (pendingFilterRecomputeTimer) {
-            clearTimeout(pendingFilterRecomputeTimer);
-            pendingFilterRecomputeTimer = null;
         }
     };
 
@@ -1221,8 +1215,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return state;
             }
             addedImages = uniqueNewImages;
-            const allImages = [...state.images, ...uniqueNewImages];
-            return _updateState(state, allImages);
+            return _updateStateIncremental(state, { added: uniqueNewImages });
         });
 
         // Import tags from metadata only after annotations are available.
@@ -1263,7 +1256,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         }, FLUSH_INTERVAL_MS);
     };
 
-    const flushPendingMerges = (forceFullRecompute: boolean = false) => {
+    const flushPendingMerges = () => {
         if (pendingMergeQueue.length === 0) {
             return;
         }
@@ -1297,49 +1290,12 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return state;
             }
 
-            let hasChanges = false;
-            const merged = state.images.map(img => {
-                const updated = updates.get(img.id);
-                if (updated) {
-                    hasChanges = true;
-                    return updated;
-                }
-                return img;
-            });
-
-            if (!hasChanges) {
+            const hasAnyMatch = state.images.some(img => updates.has(img.id));
+            if (!hasAnyMatch) {
                 return state;
             }
 
-            const isIndexing = state.indexingState === 'indexing';
-            if (isIndexing && !forceFullRecompute) {
-                const filtersActive = isFilteringActive(state);
-                let nextFilteredImages = state.filteredImages;
-
-                if (!filtersActive) {
-                    nextFilteredImages = merged;
-                } else {
-                    nextFilteredImages = state.filteredImages.map(img => updates.get(img.id) ?? img);
-                    scheduleFilterRecompute();
-                }
-
-                const derivedFacets = recalculateAvailableFilters(getLibraryScopedImages({
-                    ...state,
-                    images: merged,
-                }));
-
-                return {
-                    ...state,
-                    images: merged,
-                    filteredImages: nextFilteredImages,
-                    selectionTotalImages: merged.length,
-                    selectionDirectoryCount: state.directories.length,
-                    lineageBuildState: markLineageBuildStateDirty(state.lineageBuildState),
-                    ...derivedFacets,
-                };
-            }
-
-            return _updateState(state, merged);
+            return _updateStateIncremental(state, { updated: Array.from(updates.values()) });
         });
 
         if (get().isAnnotationsLoaded) {
@@ -1351,7 +1307,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             batchCount: updatesToMerge.length,
             details: {
                 remainingQueue: pendingMergeQueue.length,
-                forceFullRecompute,
+                incremental: true,
             },
             snapshot: createCacheDebugSnapshot(get()),
         }));
@@ -1370,27 +1326,6 @@ export const useImageStore = create<ImageState>((set, get) => {
         pendingMergeTimer = setTimeout(() => {
             flushPendingMerges();
         }, interval);
-    };
-
-    const isFilteringActive = (state: ImageState) => {
-        if (state.searchQuery) return true;
-        if (state.favoriteFilterMode !== 'neutral') return true;
-        if (state.selectedRatings?.length) return true;
-        if (state.selectedTags?.length) return true;
-        if (state.excludedTags?.length) return true;
-        if (state.selectedAutoTags?.length) return true;
-        if (state.excludedAutoTags?.length) return true;
-        if (state.selectedModels?.length || state.excludedModels?.length) return true;
-        if (state.selectedLoras?.length || state.excludedLoras?.length) return true;
-        if (state.selectedSamplers?.length || state.excludedSamplers?.length) return true;
-        if (state.selectedSchedulers?.length || state.excludedSchedulers?.length) return true;
-        if (state.selectedGenerators?.length || state.excludedGenerators?.length) return true;
-        if (state.selectedGpuDevices?.length || state.excludedGpuDevices?.length) return true;
-        if (state.selectedNodes?.length) return true;
-        if (state.advancedFilters && Object.keys(state.advancedFilters).length > 0) return true;
-        if (state.selectedFolders && state.selectedFolders.size > 0) return true;
-        if (state.directories.some(dir => dir.visible === false)) return true;
-        return false;
     };
 
     const buildSearchWorkerDataset = (state: ImageState): SearchWorkerImage[] => {
@@ -1538,23 +1473,6 @@ export const useImageStore = create<ImageState>((set, get) => {
                 criteria,
             },
         });
-    };
-
-    const scheduleFilterRecompute = () => {
-        if (pendingFilterRecomputeTimer) {
-            return;
-        }
-        pendingFilterRecomputeTimer = setTimeout(() => {
-            pendingFilterRecomputeTimer = null;
-            set(state => {
-                if (state.searchQuery) {
-                    runAsyncSearchRecompute(state);
-                    return state;
-                }
-                const filteredResult = filterAndSort(state);
-                return { ...state, ...filteredResult };
-            });
-        }, FILTER_RECOMPUTE_INDEXING_MS);
     };
 
     const getImageById = (state: ImageState, imageId: string): IndexedImage | undefined => {
@@ -2125,8 +2043,546 @@ export const useImageStore = create<ImageState>((set, get) => {
         return hasChanges ? result : images;
     };
 
+    // --- Compile a single-image filter predicate from current state ---
+    // Precomputes all state-dependent values once, returns a function that
+    // checks one image against every active filter (scope + favorites + tags +
+    // search + facets + advanced). Same logic as filterAndSort's filter chain
+    // but without creating intermediate arrays.
+    const compileImageFilter = (state: ImageState): ((img: IndexedImage) => boolean) => {
+        const { directories, selectedFolders, excludedFolders, includeSubfolders } = state;
+
+        const visibleDirectoryIds = new Set<string>();
+        for (const dir of directories) {
+            if (dir.visible ?? true) visibleDirectoryIds.add(dir.id);
+        }
+        const directoryPathMap = new Map<string, string>();
+        for (const dir of directories) {
+            directoryPathMap.set(dir.id, normalizePath(dir.path));
+        }
+        const normalizedExcludedFolders: string[] = [];
+        if (excludedFolders?.size) {
+            for (const f of excludedFolders) normalizedExcludedFolders.push(normalizePath(f));
+        }
+        const normalizedSelectedFolders: string[] = [];
+        if (selectedFolders?.size) {
+            for (const f of selectedFolders) normalizedSelectedFolders.push(normalizePath(f));
+        }
+        const hasSelectedFolders = normalizedSelectedFolders.length > 0;
+        const selectedFoldersSet = new Set(normalizedSelectedFolders);
+        const hasExcludedFolders = normalizedExcludedFolders.length > 0;
+        const sensitiveTagSet = getHiddenSensitiveTagSet();
+
+        const {
+            searchQuery,
+            selectedModels,
+            selectedLoras,
+            selectedSamplers,
+            selectedSchedulers,
+            selectedGenerators,
+            selectedGpuDevices,
+            advancedFilters,
+            favoriteFilterMode,
+            selectedRatings,
+            selectedTags,
+            excludedTags,
+            selectedTagsMatchMode,
+            selectedAutoTags,
+            excludedAutoTags,
+        } = state;
+
+        const searchTerms = searchQuery
+            ? searchQuery.toLowerCase().split(/\s+/).filter(Boolean)
+            : [];
+        const ratingsSet = selectedRatings?.length ? new Set(selectedRatings) : null;
+
+        return (img: IndexedImage): boolean => {
+            // --- Library scope ---
+            if (!visibleDirectoryIds.has(img.directoryId || '')) return false;
+            const parentPath = directoryPathMap.get(img.directoryId || '');
+            if (!parentPath) return false;
+            if (hasExcludedFolders || hasSelectedFolders) {
+                const folderPath = getImageFolderPath(img, parentPath);
+                if (hasExcludedFolders) {
+                    for (const ef of normalizedExcludedFolders) {
+                        if (folderPath === ef || folderPath.startsWith(ef + '/') || folderPath.startsWith(ef + '\\')) return false;
+                    }
+                }
+                if (hasSelectedFolders) {
+                    let inSelected = selectedFoldersSet.has(folderPath);
+                    if (!inSelected && includeSubfolders) {
+                        for (const sf of normalizedSelectedFolders) {
+                            if (folderPath.startsWith(sf + '/') || folderPath.startsWith(sf + '\\')) { inSelected = true; break; }
+                        }
+                    }
+                    if (!inSelected) return false;
+                }
+            }
+            if (!isVisibleWithSafeMode(img, sensitiveTagSet)) return false;
+
+            // --- Favorites ---
+            if (favoriteFilterMode === 'include' && img.isFavorite !== true) return false;
+            if (favoriteFilterMode === 'exclude' && img.isFavorite === true) return false;
+
+            // --- Ratings ---
+            if (ratingsSet && (img.rating === undefined || !ratingsSet.has(img.rating))) return false;
+
+            // --- Tags ---
+            if (selectedTags?.length) {
+                if (!img.tags?.length) return false;
+                if (selectedTagsMatchMode === 'all') {
+                    if (!selectedTags.every(tag => img.tags!.includes(tag))) return false;
+                } else {
+                    if (!selectedTags.some(tag => img.tags!.includes(tag))) return false;
+                }
+            }
+            if (excludedTags?.length && img.tags?.length) {
+                if (excludedTags.some(tag => img.tags!.includes(tag))) return false;
+            }
+
+            // --- Auto-tags ---
+            if (selectedAutoTags?.length) {
+                if (!img.autoTags?.length) return false;
+                if (!selectedAutoTags.some(tag => img.autoTags!.includes(tag))) return false;
+            }
+            if (excludedAutoTags?.length && img.autoTags?.length) {
+                if (excludedAutoTags.some(tag => img.autoTags!.includes(tag))) return false;
+            }
+
+            // --- Search ---
+            if (searchTerms.length > 0) {
+                const catalogText = buildCatalogSearchText(img);
+                const catalogMatch = searchTerms.every(term => catalogText.includes(term));
+                if (!catalogMatch) {
+                    const enrichedText = buildCompactSearchText(img);
+                    if (!enrichedText || !searchTerms.every(term => enrichedText.includes(term))) return false;
+                }
+            }
+
+            // --- Facet filters ---
+            if (selectedModels.length > 0) {
+                if (!img.models?.length || !selectedModels.some(sm => img.models.includes(sm))) return false;
+            }
+            if (state.excludedModels.length > 0) {
+                if (img.models?.length && state.excludedModels.some(sm => img.models.includes(sm))) return false;
+            }
+            if (selectedLoras.length > 0) {
+                if (!img.loras?.length) return false;
+                const loraNames = img.loras
+                    .map(lora => normalizeLoraName(typeof lora === 'string' ? lora : lora))
+                    .filter((l): l is string => Boolean(l));
+                if (!selectedLoras.some(sl => loraNames.includes(sl))) return false;
+            }
+            if (state.excludedLoras.length > 0 && img.loras?.length) {
+                const loraNames = img.loras
+                    .map(lora => normalizeLoraName(typeof lora === 'string' ? lora : lora))
+                    .filter((l): l is string => Boolean(l));
+                if (state.excludedLoras.some(sl => loraNames.includes(sl))) return false;
+            }
+            if (selectedSamplers.length > 0) {
+                if (!img.sampler || !selectedSamplers.includes(img.sampler)) return false;
+            }
+            if (state.excludedSamplers.length > 0) {
+                if (img.sampler && state.excludedSamplers.includes(img.sampler)) return false;
+            }
+            if (selectedSchedulers.length > 0) {
+                if (!selectedSchedulers.includes(img.scheduler)) return false;
+            }
+            if (state.excludedSchedulers.length > 0) {
+                if (state.excludedSchedulers.includes(img.scheduler)) return false;
+            }
+            if (selectedGenerators.length > 0) {
+                if (!selectedGenerators.includes(getImageGenerator(img))) return false;
+            }
+            if (state.excludedGenerators.length > 0) {
+                if (state.excludedGenerators.includes(getImageGenerator(img))) return false;
+            }
+            if (selectedGpuDevices.length > 0) {
+                const gpuDevice = getImageGpuDevice(img);
+                if (gpuDevice === null || !selectedGpuDevices.includes(gpuDevice)) return false;
+            }
+            if (state.excludedGpuDevices.length > 0) {
+                const gpuDevice = getImageGpuDevice(img);
+                if (gpuDevice !== null && state.excludedGpuDevices.includes(gpuDevice)) return false;
+            }
+
+            // --- Advanced filters ---
+            if (advancedFilters) {
+                if (advancedFilters.dimension) {
+                    if (!img.dimensions) return false;
+                    if (img.dimensions.replace(/\s+/g, '') !== advancedFilters.dimension.replace(/\s+/g, '')) return false;
+                }
+                if (advancedFilters.steps) {
+                    const steps = img.steps;
+                    if (steps === null || steps === undefined) return false;
+                    const hasMin = advancedFilters.steps.min !== null && advancedFilters.steps.min !== undefined;
+                    const hasMax = advancedFilters.steps.max !== null && advancedFilters.steps.max !== undefined;
+                    if (hasMin && steps < advancedFilters.steps.min) return false;
+                    if (hasMax && steps > advancedFilters.steps.max) return false;
+                }
+                if (advancedFilters.cfg) {
+                    const cfg = img.cfgScale;
+                    if (cfg === null || cfg === undefined) return false;
+                    const hasMin = advancedFilters.cfg.min !== null && advancedFilters.cfg.min !== undefined;
+                    const hasMax = advancedFilters.cfg.max !== null && advancedFilters.cfg.max !== undefined;
+                    if (hasMin && cfg < advancedFilters.cfg.min) return false;
+                    if (hasMax && cfg > advancedFilters.cfg.max) return false;
+                }
+                if (advancedFilters.date && (advancedFilters.date.from || advancedFilters.date.to)) {
+                    const imageTime = img.lastModified;
+                    if (advancedFilters.date.from) {
+                        if (imageTime < parseLocalDateFilterStart(advancedFilters.date.from)) return false;
+                    }
+                    if (advancedFilters.date.to) {
+                        if (imageTime >= parseLocalDateFilterEndExclusive(advancedFilters.date.to)) return false;
+                    }
+                }
+                if (Array.isArray(advancedFilters.generationModes) && advancedFilters.generationModes.length > 0) {
+                    const normalizedMetadata = img.metadata?.normalizedMetadata;
+                    const explicitGenerationType = normalizedMetadata?.generationType;
+                    if (explicitGenerationType === 'txt2img' || explicitGenerationType === 'img2img') {
+                        if (!advancedFilters.generationModes.includes(explicitGenerationType)) return false;
+                    } else {
+                        const mediaType = normalizedMetadata?.media_type ?? resolveMediaType(img.name, img.fileType);
+                        const isGeneratedImageCandidate = mediaType !== 'video' && mediaType !== 'audio';
+                        if (!isGeneratedImageCandidate || !advancedFilters.generationModes.includes('txt2img')) return false;
+                    }
+                }
+                if (Array.isArray(advancedFilters.mediaTypes) && advancedFilters.mediaTypes.length > 0) {
+                    const metadataMediaType = img.metadata?.normalizedMetadata?.media_type;
+                    const inferredMediaType = resolveMediaType(img.name, img.fileType);
+                    const resolvedMediaType =
+                        metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'image'
+                            ? metadataMediaType
+                            : inferredMediaType === 'video' || inferredMediaType === 'audio'
+                                ? inferredMediaType
+                                : 'image';
+                    if (!advancedFilters.mediaTypes.includes(resolvedMediaType)) return false;
+                }
+                if (advancedFilters.telemetryState === 'present' && !hasTelemetryData(img)) return false;
+                if (advancedFilters.telemetryState === 'missing' && hasTelemetryData(img)) return false;
+                if (advancedFilters.hasVerifiedTelemetry === true && !hasVerifiedTelemetry(img)) return false;
+                if (advancedFilters.generationTimeMs) {
+                    const generationTimeMs =
+                        img.metadata?.normalizedMetadata?.analytics?.generation_time_ms ??
+                        (img.metadata?.normalizedMetadata as { _analytics?: { generation_time_ms?: number } } | undefined)?._analytics?.generation_time_ms;
+                    if (typeof generationTimeMs !== 'number') return false;
+                    const hasMin = advancedFilters.generationTimeMs.min !== null && advancedFilters.generationTimeMs.min !== undefined;
+                    const hasMax = advancedFilters.generationTimeMs.max !== null && advancedFilters.generationTimeMs.max !== undefined;
+                    if (hasMin && generationTimeMs < advancedFilters.generationTimeMs.min!) return false;
+                    if (hasMax && advancedFilters.generationTimeMs.maxExclusive === true && generationTimeMs >= advancedFilters.generationTimeMs.max!) return false;
+                    if (hasMax && advancedFilters.generationTimeMs.maxExclusive !== true && generationTimeMs > advancedFilters.generationTimeMs.max!) return false;
+                }
+                if (advancedFilters.stepsPerSecond) {
+                    const stepsPerSecond =
+                        img.metadata?.normalizedMetadata?.analytics?.steps_per_second ??
+                        (img.metadata?.normalizedMetadata as { _analytics?: { steps_per_second?: number } } | undefined)?._analytics?.steps_per_second;
+                    if (typeof stepsPerSecond !== 'number') return false;
+                    const hasMin = advancedFilters.stepsPerSecond.min !== null && advancedFilters.stepsPerSecond.min !== undefined;
+                    const hasMax = advancedFilters.stepsPerSecond.max !== null && advancedFilters.stepsPerSecond.max !== undefined;
+                    if (hasMin && stepsPerSecond < advancedFilters.stepsPerSecond.min!) return false;
+                    if (hasMax && advancedFilters.stepsPerSecond.maxExclusive === true && stepsPerSecond >= advancedFilters.stepsPerSecond.max!) return false;
+                    if (hasMax && advancedFilters.stepsPerSecond.maxExclusive !== true && stepsPerSecond > advancedFilters.stepsPerSecond.max!) return false;
+                }
+                if (advancedFilters.vramPeakMb) {
+                    const vramPeakMb =
+                        img.metadata?.normalizedMetadata?.analytics?.vram_peak_mb ??
+                        (img.metadata?.normalizedMetadata as { _analytics?: { vram_peak_mb?: number } } | undefined)?._analytics?.vram_peak_mb;
+                    if (typeof vramPeakMb !== 'number') return false;
+                    const hasMin = advancedFilters.vramPeakMb.min !== null && advancedFilters.vramPeakMb.min !== undefined;
+                    const hasMax = advancedFilters.vramPeakMb.max !== null && advancedFilters.vramPeakMb.max !== undefined;
+                    if (hasMin && vramPeakMb < advancedFilters.vramPeakMb.min!) return false;
+                    if (hasMax && advancedFilters.vramPeakMb.maxExclusive === true && vramPeakMb >= advancedFilters.vramPeakMb.max!) return false;
+                    if (hasMax && advancedFilters.vramPeakMb.maxExclusive !== true && vramPeakMb > advancedFilters.vramPeakMb.max!) return false;
+                }
+            }
+
+            return true;
+        };
+    };
+
+    // --- Sort comparator factory ---
+    const getActiveComparator = (sortOrder: string, randomSeed: number) => {
+        const compareById = (a: IndexedImage, b: IndexedImage) => accentCollator.compare(a.id, b.id);
+        const compareByNameAsc = (a: IndexedImage, b: IndexedImage) => {
+            const c = accentCollator.compare(a.name || '', b.name || '');
+            return c !== 0 ? c : compareById(a, b);
+        };
+
+        if (sortOrder === 'asc') return compareByNameAsc;
+        if (sortOrder === 'desc') return (a: IndexedImage, b: IndexedImage) => {
+            const c = accentCollator.compare(b.name || '', a.name || '');
+            return c !== 0 ? c : compareById(a, b);
+        };
+        if (sortOrder === 'date-asc') return (a: IndexedImage, b: IndexedImage) => {
+            const d = a.lastModified - b.lastModified;
+            return d !== 0 ? d : compareByNameAsc(a, b);
+        };
+        if (sortOrder === 'date-desc') return (a: IndexedImage, b: IndexedImage) => {
+            const d = b.lastModified - a.lastModified;
+            return d !== 0 ? d : compareByNameAsc(a, b);
+        };
+        if (sortOrder === 'random') {
+            const stringHash = (str: string) => {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                    hash = hash & hash;
+                }
+                return hash;
+            };
+            const seed = randomSeed || 0;
+            return (a: IndexedImage, b: IndexedImage) => {
+                const hA = stringHash(a.id + seed.toString());
+                const hB = stringHash(b.id + seed.toString());
+                return hA !== hB ? hA - hB : accentCollator.compare(a.id, b.id);
+            };
+        }
+        return compareById;
+    };
+
+    // --- Insert items into a sorted array ---
+    // Each splice is O(n), so per-item binary insert degrades to O(items * n).
+    // flushPendingImages can drain up to MAX_PENDING_IMAGES_PER_FLUSH (or the
+    // whole queue with drainAll) at once, so above a small batch size we sort
+    // the incoming items and do a single linear merge instead: O(n + m log m).
+    const BINARY_INSERT_MAX_ITEMS = 16;
+
+    const binaryInsertSorted = (
+        sorted: IndexedImage[],
+        items: IndexedImage[],
+        comparator: (a: IndexedImage, b: IndexedImage) => number,
+    ): IndexedImage[] => {
+        if (items.length === 0) return sorted;
+
+        if (items.length > BINARY_INSERT_MAX_ITEMS) {
+            const incoming = items.slice().sort(comparator);
+            const merged: IndexedImage[] = new Array(sorted.length + incoming.length);
+            let i = 0, j = 0, k = 0;
+            while (i < sorted.length && j < incoming.length) {
+                // `<= 0` keeps existing entries ahead of equal-comparing new
+                // ones, matching the upper-bound placement of the binary path.
+                merged[k++] = comparator(sorted[i], incoming[j]) <= 0 ? sorted[i++] : incoming[j++];
+            }
+            while (i < sorted.length) merged[k++] = sorted[i++];
+            while (j < incoming.length) merged[k++] = incoming[j++];
+            return merged;
+        }
+
+        const result = sorted.slice();
+        for (const item of items) {
+            let lo = 0, hi = result.length;
+            while (lo < hi) {
+                const mid = (lo + hi) >>> 1;
+                if (comparator(result[mid], item) <= 0) lo = mid + 1;
+                else hi = mid;
+            }
+            result.splice(lo, 0, item);
+        }
+        return result;
+    };
+
+    // --- Sanitize + annotate a small batch of images ---
+    const processImageBatch = (batch: IndexedImage[], annotations: Map<string, ImageAnnotations>): IndexedImage[] =>
+        batch.map(img => {
+            let processed = sanitizeIndexedImageFacets(img);
+            const annotation = annotations.get(processed.id);
+            if (annotation) {
+                const isFavChanged = processed.isFavorite !== annotation.isFavorite;
+                const tagsChanged = !areTagsEqual(processed.tags, annotation.tags);
+                const ratingChanged = processed.rating !== annotation.rating;
+                if (isFavChanged || tagsChanged || ratingChanged) {
+                    processed = { ...processed, isFavorite: annotation.isFavorite, tags: annotation.tags, rating: annotation.rating };
+                }
+            }
+            return processed;
+        });
+
+    // --- Deferred reconciliation ---
+    const RECONCILIATION_DEBOUNCE_MS = 400;
+    // Hard cap on the debounce. Indexing flushes every FLUSH_INTERVAL_MS (100ms)
+    // and auto-watch bursts are similarly dense, so a pure debounce would be
+    // re-armed forever and never fire — leaving facet dropdowns and collection
+    // counts frozen for the whole run.
+    const RECONCILIATION_MAX_WAIT_MS = 2000;
+
+    let reconciliationTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconciliationFirstScheduledAt = 0;
+
+    const cancelDeferredReconciliation = () => {
+        if (reconciliationTimer !== null) {
+            clearTimeout(reconciliationTimer);
+            reconciliationTimer = null;
+        }
+        reconciliationFirstScheduledAt = 0;
+    };
+
+    const runDeferredReconciliation = () => {
+        reconciliationTimer = null;
+        reconciliationFirstScheduledAt = 0;
+
+        const state = useImageStore.getState();
+        const syncedCollections = syncCollectionCounts(state.collections, state.images);
+        const activeCollectionId = syncedCollections.some(c => c.id === state.activeCollectionId)
+            ? state.activeCollectionId
+            : null;
+
+        if (state.searchQuery) {
+            // Search-active recomputes are worker-offloaded everywhere else in
+            // this store (filterAndSortImages, setSearchQuery). Running
+            // filterAndSort here would rebuild the
+            // catalog/compact search text for the whole scoped library on the
+            // main thread — the exact freeze the incremental path avoids. The
+            // worker's completion handler writes filteredImages and facets.
+            useImageStore.setState({ collections: syncedCollections, activeCollectionId });
+            runAsyncSearchRecompute(useImageStore.getState());
+            return;
+        }
+
+        const fullResult = filterAndSort(state);
+
+        // Compare element-wise, not just by length: predicate drift between
+        // compileImageFilter and filterAndSort, or a misplaced binary insert,
+        // can diverge without changing the count. Every comparator ends in a
+        // compareById tie-break over unique ids, so a correct incremental
+        // result is reference-identical to the full one.
+        const nextFiltered = fullResult.filteredImages;
+        const prevFiltered = state.filteredImages;
+        let diverged = nextFiltered.length !== prevFiltered.length;
+        if (!diverged) {
+            for (let i = 0; i < nextFiltered.length; i++) {
+                if (nextFiltered[i] !== prevFiltered[i]) {
+                    diverged = true;
+                    break;
+                }
+            }
+        }
+
+        if (diverged && isPerformanceDiagnosticsEnabled()) {
+            recordPerformanceDuration('store.incremental-divergence', 0, {
+                incrementalCount: prevFiltered.length,
+                fullCount: nextFiltered.length,
+            });
+        }
+
+        useImageStore.setState({
+            ...(diverged ? { filteredImages: nextFiltered } : {}),
+            availableModels: fullResult.availableModels,
+            availableLoras: fullResult.availableLoras,
+            availableSamplers: fullResult.availableSamplers,
+            availableSchedulers: fullResult.availableSchedulers,
+            availableGenerators: fullResult.availableGenerators,
+            availableGpuDevices: fullResult.availableGpuDevices,
+            availableDimensions: fullResult.availableDimensions,
+            modelFacetCounts: fullResult.modelFacetCounts,
+            loraFacetCounts: fullResult.loraFacetCounts,
+            samplerFacetCounts: fullResult.samplerFacetCounts,
+            schedulerFacetCounts: fullResult.schedulerFacetCounts,
+            selectionTotalImages: fullResult.selectionTotalImages,
+            selectionDirectoryCount: fullResult.selectionDirectoryCount,
+            collections: syncedCollections,
+            activeCollectionId,
+        });
+    };
+
+    const scheduleDeferredReconciliation = () => {
+        const now = Date.now();
+        if (reconciliationFirstScheduledAt === 0) {
+            reconciliationFirstScheduledAt = now;
+        }
+        if (reconciliationTimer !== null) {
+            clearTimeout(reconciliationTimer);
+        }
+        const remainingMaxWait = RECONCILIATION_MAX_WAIT_MS - (now - reconciliationFirstScheduledAt);
+        const delay = Math.max(0, Math.min(RECONCILIATION_DEBOUNCE_MS, remainingMaxWait));
+        reconciliationTimer = setTimeout(runDeferredReconciliation, delay);
+    };
+
+    type IncrementalDelta = {
+        added?: IndexedImage[];
+        removed?: Set<string>;
+        updated?: IndexedImage[];
+    };
+
+    // --- Incremental state update (add/remove/merge only) ---
+    const _updateStateIncremental = (
+        currentState: ImageState,
+        delta: IncrementalDelta,
+    ): Partial<ImageState> => {
+        let images = currentState.images;
+        let filteredImages = currentState.filteredImages;
+        const comparator = getActiveComparator(currentState.sortOrder, currentState.randomSeed);
+        const accepts = compileImageFilter(currentState);
+
+        if (delta.removed && delta.removed.size > 0) {
+            const r = delta.removed;
+            images = images.filter(img => !r.has(img.id));
+            filteredImages = filteredImages.filter(img => !r.has(img.id));
+        }
+
+        if (delta.added && delta.added.length > 0) {
+            const processed = processImageBatch(delta.added, currentState.annotations);
+            images = [...images, ...processed];
+            const matching = processed.filter(accepts);
+            if (matching.length > 0) {
+                filteredImages = binaryInsertSorted(filteredImages, matching, comparator);
+            }
+        }
+
+        if (delta.updated && delta.updated.length > 0) {
+            const processed = processImageBatch(delta.updated, currentState.annotations);
+            const updatesMap = new Map<string, IndexedImage>();
+            for (const img of processed) updatesMap.set(img.id, img);
+
+            // Only images that actually replaced an existing entry should be
+            // reconsidered for filteredImages. An update whose id isn't in
+            // `images` (stale/removed id) or a duplicate id that got deduped
+            // by updatesMap must not still count as "matching" below — that
+            // used to insert phantom/duplicate rows into filteredImages.
+            const appliedUpdates: IndexedImage[] = [];
+            images = images.map(img => {
+                const updated = updatesMap.get(img.id);
+                if (updated) {
+                    appliedUpdates.push(updated);
+                    return updated;
+                }
+                return img;
+            });
+
+            if (appliedUpdates.length > 0) {
+                const appliedIds = new Set(appliedUpdates.map(img => img.id));
+                filteredImages = filteredImages.filter(img => !appliedIds.has(img.id));
+                const matching = appliedUpdates.filter(accepts);
+                if (matching.length > 0) {
+                    filteredImages = binaryInsertSorted(filteredImages, matching, comparator);
+                }
+            }
+        }
+
+        if (currentState.searchQuery) {
+            invalidateSearchWorkerDataset();
+        }
+
+        scheduleDeferredReconciliation();
+
+        return {
+            images,
+            filteredImages,
+            selectionTotalImages: images.length,
+            ...(images.length === 0
+                ? {
+                    lineageResolvedByImageId: {},
+                    lineageDerivedIdsBySourceId: {},
+                    lineageBuildState: { ...DEFAULT_LINEAGE_BUILD_STATE },
+                }
+                : {
+                    lineageBuildState: markLineageBuildStateDirty(currentState.lineageBuildState),
+                }),
+        };
+    };
+
     // --- Helper function for recalculating all derived state ---
     const _updateState = (currentState: ImageState, newImages: IndexedImage[]) => {
+        cancelDeferredReconciliation();
         const sanitizedImages = newImages.map(sanitizeIndexedImageFacets);
 
         // Apply annotations to new images
@@ -2979,7 +3435,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         }),
         setIndexingState: (indexingState) => {
             if (indexingState !== 'indexing') {
-                flushPendingMerges(true);
+                flushPendingMerges();
             }
             set({ indexingState });
             if (indexingState !== 'indexing' && indexingState !== 'paused') {
@@ -3127,8 +3583,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     return state;
                 }
 
-                const allImages = [...state.images, ...uniqueNewImages];
-                return _updateState(state, allImages);
+                return _updateStateIncremental(state, { added: uniqueNewImages });
             });
 
             maybeQueueLineageBuild(700);
@@ -3200,16 +3655,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
             flushPendingImages(true);
         flushPendingMerges();
-            set(state => {
-                // Optimization: Replace new Map(arr.map()) with a for loop
-                // Impact: Avoids O(N) allocation of intermediate array of tuples and reduces GC pressure
-                const updates = new Map<string, IndexedImage>();
-                for (const img of updatedImages) {
-                    updates.set(img.id, img);
-                }
-                const merged = state.images.map(img => updates.get(img.id) ?? img);
-                return _updateState(state, merged);
-            });
+            set(state => _updateStateIncremental(state, { updated: updatedImages }));
 
             if (get().isAnnotationsLoaded) {
                 void get().importMetadataTags(updatedImages);
@@ -3243,10 +3689,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (!get().images.some(img => idsToRemove.has(img.id))) {
                 return;
             }
-            set(state => {
-                const remainingImages = state.images.filter(img => !idsToRemove.has(img.id));
-                return _updateState(state, remainingImages);
-            });
+            set(state => _updateStateIncremental(state, { removed: idsToRemove }));
             traceCacheDebug('store:removeImages', () => ({
                 imageIdsCount: imageIds.length,
                 snapshot: createCacheDebugSnapshot(get()),
@@ -3259,10 +3702,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (!get().images.some(img => img.id === imageId)) {
                 return;
             }
-            set(state => {
-                const remainingImages = state.images.filter(img => img.id !== imageId);
-                return _updateState(state, remainingImages);
-            });
+            set(state => _updateStateIncremental(state, { removed: new Set([imageId]) }));
             maybeQueueLineageBuild(500);
         },
 

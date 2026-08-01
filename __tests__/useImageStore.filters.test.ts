@@ -203,6 +203,9 @@ describe('useImageStore tri-state filters', () => {
   });
 
   afterEach(() => {
+    // Unconditional: tests that opt into fake timers must not leak them into
+    // the rest of the file if an assertion throws before restoring.
+    vi.useRealTimers();
     useImageStore.getState().resetState();
     vi.unstubAllGlobals();
     mockWorkerInstances.length = 0;
@@ -472,6 +475,9 @@ describe('useImageStore tri-state filters', () => {
       dimensions: { name: '1024x1024' } as any,
     });
 
+    // Install fake timers BEFORE the call so the deferred reconciliation
+    // timer is tracked and can be advanced.
+    vi.useFakeTimers();
     expect(() => useImageStore.getState().appendImagesSilently([malformed])).not.toThrow();
 
     const stored = useImageStore.getState().images[0];
@@ -480,6 +486,8 @@ describe('useImageStore tri-state filters', () => {
     expect(stored.sampler).toBe('euler_a');
     expect(stored.scheduler).toBe('karras');
     expect(stored.dimensions).toBe('1024x1024');
+    // Facet counts are deferred (~400ms) in the incremental path.
+    vi.advanceTimersByTime(500);
     expect(useImageStore.getState().availableSamplers).toEqual(['euler_a']);
     expect(useImageStore.getState().availableSchedulers).toEqual(['karras']);
     expect(useImageStore.getState().availableDimensions).toEqual(['1024x1024']);
