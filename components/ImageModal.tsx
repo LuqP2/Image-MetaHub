@@ -2957,8 +2957,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setIsChainedPlayback(false);
 
     if (direction === 'next') {
-      // Shuffle randomizes forward navigation as well, the way a shuffled playlist does.
-      if (useSettingsStore.getState().videoShuffle && onNavigateRandom) {
+      // Shuffle randomizes forward navigation as well, the way a shuffled playlist does. It only
+      // applies while a video is open, which is the only place its button exists to be turned off:
+      // browsing images stays sequential instead of obeying a control that isn't on screen.
+      if (isVideo && useSettingsStore.getState().videoShuffle && onNavigateRandom) {
         onNavigateRandom();
         return;
       }
@@ -2968,7 +2970,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     onNavigatePrevious?.();
-  }, [onNavigateNext, onNavigatePrevious, onNavigateRandom]);
+  }, [isVideo, onNavigateNext, onNavigatePrevious, onNavigateRandom]);
 
   const scheduleKeyboardNavigation = useCallback((direction: 'next' | 'previous', isRepeatedKey = false) => {
     pendingKeyboardNavigationRef.current = direction;
