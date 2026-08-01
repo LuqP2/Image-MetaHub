@@ -101,6 +101,12 @@ const createVideo = (id: string): IndexedImage => ({
   fileType: 'video/mp4',
 });
 
+const createImage = (id: string): IndexedImage => ({
+  ...createVideo(id),
+  name: `${id}.png`,
+  fileType: 'image/png',
+});
+
 const renderVideoModal = async (props: Partial<React.ComponentProps<typeof ImageModal>> = {}) => {
   const view = render(
     <ImageModal
@@ -257,6 +263,31 @@ describe('ImageModal video playback controls', () => {
     await renderVideoModal({ onNavigateNext, onNavigatePrevious: vi.fn(), onNavigateRandom });
 
     fireEvent.click(screen.getByRole('button', { name: 'Next image' }));
+
+    expect(onNavigateNext).toHaveBeenCalledTimes(1);
+    expect(onNavigateRandom).not.toHaveBeenCalled();
+  });
+
+  it('keeps the next arrow sequential on an image, even while shuffle is on', async () => {
+    const onNavigateNext = vi.fn();
+    const onNavigateRandom = vi.fn();
+    useSettingsStore.getState().setVideoShuffle(true);
+
+    render(
+      <ImageModal
+        image={createImage('shot-one')}
+        onClose={vi.fn()}
+        currentIndex={0}
+        totalImages={3}
+        directoryPath="C:/images"
+        isActive
+        onNavigateNext={onNavigateNext}
+        onNavigatePrevious={vi.fn()}
+        onNavigateRandom={onNavigateRandom}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Next image' }));
 
     expect(onNavigateNext).toHaveBeenCalledTimes(1);
     expect(onNavigateRandom).not.toHaveBeenCalled();
