@@ -1730,17 +1730,61 @@ export const useImageStore = create<ImageState>((set, get) => {
         return buildLineageLibrarySignature(signatures, state.scanSubfolders);
     };
 
-    const persistLineageSnapshot = async (
-        snapshot: LineageRegistrySnapshot,
-        state: ImageState
-    ): Promise<void> => {
-        const directoryPaths = state.directories.map(directory => directory.path);
-        if (!snapshot.librarySignature || directoryPaths.length === 0) {
+    // Writing the snapshot ships the whole registry (one entry per image) across
+    // the Electron IPC boundary and rewrites the file. Measured at ~3s for a
+    // 17k-image library — and a single delete triggers two rebuilds (the local
+    // delete and the watcher echo), so it cost ~6-7s of frozen UI per deleted
+    // file. It's a disk cache that only has to be correct by the time the app is
+    // next opened, so it must never sit on the interactive path: coalesce to the
+    // newest snapshot and write it once the burst settles.
+    const LINEAGE_PERSIST_DEBOUNCE_MS = 5000;
+    let pendingLineagePersist: { snapshot: LineageRegistrySnapshot; state: ImageState } | null = null;
+    let lineagePersistTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const writePendingLineageSnapshot = async (): Promise<void> => {
+        lineagePersistTimer = null;
+        const pending = pendingLineagePersist;
+        pendingLineagePersist = null;
+        if (!pending) {
             return;
         }
 
-        await saveLineageRegistrySnapshot(directoryPaths, state.scanSubfolders, snapshot);
+        const directoryPaths = pending.state.directories.map(directory => directory.path);
+        if (!pending.snapshot.librarySignature || directoryPaths.length === 0) {
+            return;
+        }
+
+        await saveLineageRegistrySnapshot(directoryPaths, pending.state.scanSubfolders, pending.snapshot);
     };
+
+    const persistLineageSnapshot = (
+        snapshot: LineageRegistrySnapshot,
+        state: ImageState
+    ): void => {
+        // Newest snapshot wins: an older one is always superseded by it.
+        pendingLineagePersist = { snapshot, state };
+        if (lineagePersistTimer !== null) {
+            clearTimeout(lineagePersistTimer);
+        }
+        lineagePersistTimer = setTimeout(() => {
+            void writePendingLineageSnapshot();
+        }, LINEAGE_PERSIST_DEBOUNCE_MS);
+    };
+
+    const flushPendingLineagePersist = (): void => {
+        if (lineagePersistTimer !== null) {
+            clearTimeout(lineagePersistTimer);
+            lineagePersistTimer = null;
+        }
+        void writePendingLineageSnapshot();
+    };
+
+    // Best-effort flush so a quit inside the debounce window doesn't drop the
+    // snapshot. Losing it is not a correctness problem — loadLineageRegistrySnapshot
+    // validates by librarySignature and a miss just costs one rebuild at startup.
+    if (typeof window !== 'undefined') {
+        window.addEventListener('beforeunload', flushPendingLineagePersist);
+    }
 
     const scheduleLineageBuildInternal = (delayMs: number = 600) => {
         if (typeof Worker === 'undefined') {
@@ -1879,7 +1923,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                         },
                     }));
 
-                    void persistLineageSnapshot(payload.snapshot, get());
+                    // Debounced + coalesced: no longer on the interactive path.
+                    persistLineageSnapshot(payload.snapshot, get());
                     break;
 
                 case 'error':
@@ -5074,6 +5119,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         resetState: () => {
+            // The pending snapshot belongs to the library being torn down.
+            flushPendingLineagePersist();
             pendingMetadataTagImportMap.clear();
             clearLineageBuildTimer();
             invalidateSearchWorkerDataset();
