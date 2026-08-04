@@ -36,7 +36,7 @@ type WorkerMessage =
       payload: { modelId: string; modelPath: string; wasmPath: string; device: Device; fallbackDevice?: Device; numThreads?: number };
     }
   | { type: 'embedImages'; payload: { jobId: number; items: EmbedItem[] } }
-  | { type: 'embedText'; payload: { jobId: number; text: string } }
+  | { type: 'embedText'; payload: { jobId: number; text: string; negatives?: string[]; negativeWeight?: number } }
   | { type: 'unloadVision' }
   | { type: 'dispose' };
 
@@ -198,14 +198,37 @@ const embedImages = async (jobId: number, items: EmbedItem[]): Promise<void> => 
   );
 };
 
-const embedText = async (jobId: number, text: string): Promise<void> => {
+const embedTextRaw = async (text: string): Promise<Float32Array> => {
   await ensureText();
   const inputs = tokenizer([text], { padding: true, truncation: true });
   const output = await textModel(inputs);
   const embeddings = output.text_embeds;
   const width = embeddings.dims[1];
-  const values = new Float32Array((embeddings.data as Float32Array).subarray(0, width));
-  const { scale, codes } = toQuantized(values);
+  return new Float32Array((embeddings.data as Float32Array).subarray(0, width));
+};
+
+const embedText = async (
+  jobId: number,
+  text: string,
+  negatives: string[] = [],
+  negativeWeight = 0.5
+): Promise<void> => {
+  // Work in normalized fp32 space, then let toQuantized re-normalize the result.
+  const combined = l2Normalize(await embedTextRaw(text));
+
+  if (negatives.length > 0) {
+    // Subtract the averaged negative direction so results are pushed away from
+    // the unwanted concept(s) while staying anchored to the positive query.
+    const perNegative = negativeWeight / negatives.length;
+    for (const negative of negatives) {
+      const negativeVector = l2Normalize(await embedTextRaw(negative));
+      for (let i = 0; i < combined.length; i += 1) {
+        combined[i] -= perNegative * negativeVector[i];
+      }
+    }
+  }
+
+  const { scale, codes } = toQuantized(combined);
   post({ type: 'text', payload: { jobId, scale, codes } }, [codes]);
 };
 
@@ -236,7 +259,12 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         break;
 
       case 'embedText':
-        await embedText(message.payload.jobId, message.payload.text);
+        await embedText(
+          message.payload.jobId,
+          message.payload.text,
+          message.payload.negatives,
+          message.payload.negativeWeight
+        );
         break;
 
       case 'unloadVision': {

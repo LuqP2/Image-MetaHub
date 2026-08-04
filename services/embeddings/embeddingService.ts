@@ -217,8 +217,14 @@ export const embedImages = async (items: EmbedItem[]): Promise<QuantizedResult[]
   return toQuantizedResults(payload.results);
 };
 
-export const embedText = async (text: string): Promise<{ scale: number; codes: Int8Array }> => {
-  const payload = await call<{ scale: number; codes: ArrayBuffer }>({ type: 'embedText', payload: { text } });
+export const embedText = async (
+  text: string,
+  negatives: string[] = []
+): Promise<{ scale: number; codes: Int8Array }> => {
+  const payload = await call<{ scale: number; codes: ArrayBuffer }>({
+    type: 'embedText',
+    payload: { text, negatives },
+  });
   return { scale: payload.scale, codes: new Int8Array(payload.codes) };
 };
 

@@ -266,6 +266,30 @@ const toHits = (rows: number[], scores: number[]): SemanticHit[] => {
   return hits;
 };
 
+export interface ParsedQuery {
+  positive: string;
+  negatives: string[];
+}
+
+/**
+ * Splits a query into its positive phrase and any negative phrases. Everything
+ * before the first ` -` is positive; each following ` -<phrase>` is a concept to
+ * push away from. Splitting on space-hyphen (not bare `-`) leaves hyphenated
+ * words like "state-of-the-art" intact.
+ *
+ * Examples: `beach -people` → {positive:'beach', negatives:['people']};
+ * `a city at night -cars -crowds` → negatives ['cars','crowds'].
+ */
+export const parseSemanticQuery = (query: string): ParsedQuery => {
+  const parts = query.split(/\s+-(?=\S)/);
+  const positive = (parts[0] ?? '').trim();
+  const negatives = parts
+    .slice(1)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  return { positive, negatives };
+};
+
 export const searchByText = async (
   query: string,
   options: { topK?: number; minScore?: number } = {}
@@ -274,8 +298,14 @@ export const searchByText = async (
     return { hits: [], stats: { scannedRows: 0, durationMs: 0, embedMs: 0 } };
   }
 
+  const { positive, negatives } = parseSemanticQuery(query);
+  // A query that is only negatives ("-people") has no anchor to rank against.
+  if (!positive) {
+    return { hits: [], stats: { scannedRows: 0, durationMs: 0, embedMs: 0 } };
+  }
+
   const embedStartedAt = performance.now();
-  const { scale, codes } = await embedText(query);
+  const { scale, codes } = await embedText(positive, negatives);
   const embedMs = performance.now() - embedStartedAt;
 
   await syncWorker();

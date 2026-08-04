@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { selectPendingImages } from '../services/embeddings/embeddingIndexer';
 import { contentKeyForImage } from '../services/embeddings/embeddingStore';
-import { applyRelevanceCutoff } from '../services/embeddings/semanticSearchEngine';
+import { applyRelevanceCutoff, parseSemanticQuery } from '../services/embeddings/semanticSearchEngine';
 import type { IndexedImage } from '../types';
 
 const image = (id: string, modified: number, fileSize = 10): IndexedImage => ({
@@ -83,5 +83,34 @@ describe('applyRelevanceCutoff', () => {
 
   it('handles an empty candidate list', () => {
     expect(applyRelevanceCutoff([], { mean: 0.2, std: 0.01 }, 2.0, 300)).toEqual([]);
+  });
+});
+
+describe('parseSemanticQuery', () => {
+  it('returns the whole query as positive when there are no negatives', () => {
+    expect(parseSemanticQuery('a red car')).toEqual({ positive: 'a red car', negatives: [] });
+  });
+
+  it('splits a single negative', () => {
+    expect(parseSemanticQuery('beach -people')).toEqual({ positive: 'beach', negatives: ['people'] });
+  });
+
+  it('splits multiple multi-word negatives', () => {
+    expect(parseSemanticQuery('a city at night -cars -crowds of people')).toEqual({
+      positive: 'a city at night',
+      negatives: ['cars', 'crowds of people'],
+    });
+  });
+
+  it('leaves hyphenated words intact', () => {
+    expect(parseSemanticQuery('state-of-the-art robot')).toEqual({
+      positive: 'state-of-the-art robot',
+      negatives: [],
+    });
+  });
+
+  it('yields an empty positive when the query is only a negative', () => {
+    expect(parseSemanticQuery('-people')).toEqual({ positive: '-people', negatives: [] });
+    expect(parseSemanticQuery(' -people')).toEqual({ positive: '', negatives: ['people'] });
   });
 });

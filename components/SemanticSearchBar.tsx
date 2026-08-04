@@ -122,7 +122,7 @@ const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSe
       const best = queryTopScore != null ? ` · best ${queryTopScore.toFixed(2)}` : '';
       return { text: `${queryResultCount.toLocaleString()} visual matches${best}`, tone: 'text-gray-400' };
     }
-    return { text: 'Press Enter to search by what the image shows.', tone: 'text-gray-500' };
+    return { text: 'Search by what the image shows. Exclude with a minus, e.g. "beach -people".', tone: 'text-gray-500' };
   })();
 
   return (
