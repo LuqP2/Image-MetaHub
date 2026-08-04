@@ -87,6 +87,13 @@ if (disabledChromiumFeatures.size > 0) {
 
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 
+// WebGPU powers the optional GPU backend for local visual search. Several
+// Electron builds keep navigator.gpu behind this switch even when hardware
+// acceleration is on, so enable it unless the user disabled the GPU entirely.
+if (!gpuMitigationEnabled) {
+  app.commandLine.appendSwitch('enable-unsafe-webgpu');
+}
+
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
 const PARSER_VERSION = 10; // v10: Parse AVIF XMP/EXIF metadata and compact Image MetaHub extensions

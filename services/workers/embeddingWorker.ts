@@ -93,11 +93,32 @@ const dtypeForDevice = (d: Device): 'q8' | 'fp16' => (d === 'webgpu' ? 'fp16' : 
 const LOAD_OPTIONS = () => ({ device, dtype: dtypeForDevice(device) });
 
 /**
+ * Probes for a usable WebGPU adapter. Returns a human-readable reason when the
+ * backend can't be used, or null when it can — so the fallback is explained
+ * rather than silent.
+ */
+const webgpuUnavailableReason = async (): Promise<string | null> => {
+  // WebGPU types aren't in the TS lib here; probe structurally.
+  const gpu = (self.navigator as unknown as {
+    gpu?: { requestAdapter: (opts?: { powerPreference?: string }) => Promise<unknown> };
+  })?.gpu;
+  if (!gpu) return 'navigator.gpu is not exposed in this runtime';
+  try {
+    const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) return 'no WebGPU adapter (GPU blocklisted, driver, or disabled)';
+    return null;
+  } catch (error) {
+    return `requestAdapter threw: ${error instanceof Error ? error.message : String(error)}`;
+  }
+};
+
+/**
  * Downgrades to the fallback backend after a failed GPU load and clears any
  * half-initialized models so the retry starts clean.
  */
 const downgradeDevice = (reason: string): void => {
   if (device === fallbackDevice) return;
+  console.warn(`[visual-search] GPU backend unavailable, falling back to ${fallbackDevice}: ${reason}`);
   device = fallbackDevice;
   processor = null;
   tokenizer = null;
@@ -244,12 +265,18 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         modelId = message.payload.modelId;
         fallbackDevice = message.payload.fallbackDevice ?? 'wasm';
         device = message.payload.device;
-        // No WebGPU adapter in this runtime → don't even try; the fp16 model
-        // would just fail to find a backend.
-        if (device === 'webgpu' && !(self.navigator as unknown as { gpu?: unknown })?.gpu) {
-          device = fallbackDevice;
-        }
         configureEnvironment(message.payload.modelPath, message.payload.wasmPath, message.payload.numThreads);
+        // Confirm a real adapter is obtainable before committing to WebGPU; the
+        // fp16 model would otherwise fail to find a backend at first inference.
+        if (device === 'webgpu') {
+          const reason = await webgpuUnavailableReason();
+          if (reason) {
+            console.warn(`[visual-search] WebGPU requested but unavailable, using ${fallbackDevice}: ${reason}`);
+            device = fallbackDevice;
+          } else {
+            console.info('[visual-search] WebGPU adapter acquired; running fp16 on GPU');
+          }
+        }
         post({ type: 'ready', payload: { device } });
         break;
       }
