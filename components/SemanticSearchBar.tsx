@@ -12,10 +12,17 @@ interface SemanticSearchBarProps {
 const VISUAL_SEARCH_DEBOUNCE_MS = 450;
 
 /**
- * Wraps SearchBar with the visual-search wiring: the toggle is offered only when
- * the feature is enabled and the model is downloaded, and switching modes swaps
- * the text-search value for a separate visual query that runs on Enter or after
- * a short idle pause.
+ * Asks App to open Settings on the Visual Search tab. Used the first time the
+ * user clicks the toggle before the model has been downloaded, so the setup UI
+ * is one click away instead of buried.
+ */
+export const OPEN_VISUAL_SEARCH_SETTINGS_EVENT = 'imh:open-visual-search-settings';
+
+/**
+ * Wraps SearchBar with the visual-search wiring: the toggle appears whenever the
+ * feature is enabled, and switching modes swaps the text-search value for a
+ * separate visual query that runs on Enter or after a short idle pause. Clicking
+ * the toggle before the model is installed opens Settings to download it.
  */
 const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSearchChange }) => {
   const semanticEnabled = useSettingsStore((s) => s.semanticSearchEnabled);
@@ -43,7 +50,9 @@ const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSe
   const [visualValue, setVisualValue] = React.useState('');
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showVisualToggle = semanticEnabled && modelInstalled;
+  // The toggle shows whenever the feature is enabled; the model may not be
+  // installed yet, in which case clicking it routes to Settings.
+  const showVisualToggle = semanticEnabled;
 
   const cancelDebounce = () => {
     if (debounceRef.current) {
@@ -52,15 +61,15 @@ const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSe
     }
   };
 
-  // If the feature is turned off (or the model removed) while visual mode is on,
-  // fall back to text search so the input never gets stuck in a dead mode.
+  // If the feature is turned off while visual mode is on, fall back to text
+  // search so the input never gets stuck in a dead mode.
   React.useEffect(() => {
-    if (!showVisualToggle && visualMode) {
+    if (!semanticEnabled && visualMode) {
       setVisualMode(false);
       cancelDebounce();
       if (queryActive) clearQuery();
     }
-  }, [showVisualToggle, visualMode, queryActive, clearQuery]);
+  }, [semanticEnabled, visualMode, queryActive, clearQuery]);
 
   React.useEffect(() => cancelDebounce, []);
 
@@ -70,6 +79,12 @@ const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSe
   };
 
   const handleToggle = () => {
+    // No model yet: send the user to the one-click setup instead of entering a
+    // mode that can only report "nothing indexed".
+    if (!modelInstalled) {
+      window.dispatchEvent(new CustomEvent(OPEN_VISUAL_SEARCH_SETTINGS_EVENT));
+      return;
+    }
     const next = !visualMode;
     setVisualMode(next);
     if (next) {
@@ -93,7 +108,7 @@ const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSe
 
   const notice = (() => {
     if (!visualMode) return null;
-    if (queryRunning) return { text: 'Searching by image content…', tone: 'text-fuchsia-300' };
+    if (queryRunning) return { text: 'Searching by image content…', tone: 'text-indigo-300' };
     if (queryNotice === 'no-index') {
       return { text: 'No images indexed yet — open Settings → Visual Search to build the index.', tone: 'text-amber-300' };
     }

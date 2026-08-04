@@ -149,8 +149,10 @@ interface SettingsState {
   blurSensitiveImages: boolean;
   enableSafeMode: boolean;
   civitaiLookupEnabled: boolean;
-  /** Master switch for local visual search. Off by default: while off, no model
-   *  is downloaded, no worker runs and no vector file is written. */
+  /** Master switch for local visual search. On by default so the toggle is
+   *  discoverable, but that only surfaces the UI — the model is still downloaded
+   *  and the index built only on an explicit user action. Turning it off hides
+   *  the feature entirely. */
   semanticSearchEnabled: boolean;
   /** Inference backend for the CLIP model. WASM (CPU) by default so it never
    *  competes with an image generator for VRAM. */
@@ -279,7 +281,7 @@ export const useSettingsStore = create<SettingsState>()(
       blurSensitiveImages: true,
       enableSafeMode: true,
       civitaiLookupEnabled: true,
-      semanticSearchEnabled: false,
+      semanticSearchEnabled: true,
       semanticSearchDevice: 'wasm',
       enableAnimations: true,
       classicMode: false,
@@ -434,7 +436,7 @@ export const useSettingsStore = create<SettingsState>()(
         blurSensitiveImages: true,
         enableSafeMode: true,
         civitaiLookupEnabled: true,
-        semanticSearchEnabled: false,
+        semanticSearchEnabled: true,
         semanticSearchDevice: 'wasm',
         enableAnimations: true,
         classicMode: false,

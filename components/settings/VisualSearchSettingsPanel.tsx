@@ -100,7 +100,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                 ) : (
                   <button
                     onClick={startModelDownload}
-                    className="rounded-lg bg-fuchsia-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-fuchsia-500"
+                    className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
                   >
                     Download model
                   </button>
@@ -110,7 +110,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
               {modelDownloading && (
                 <div className="space-y-1">
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-800">
-                    <div className="h-full rounded-full bg-fuchsia-500 transition-all" style={{ width: `${downloadPercent}%` }} />
+                    <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${downloadPercent}%` }} />
                   </div>
                   <p className="text-xs text-gray-500">
                     {modelProgress?.file} · {formatBytes(modelProgress?.receivedBytes ?? 0)}
@@ -160,7 +160,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                   ) : (
                     <button
                       onClick={() => startBackfill(cap)}
-                      className="rounded-lg bg-fuchsia-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-fuchsia-500"
+                      className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
                     >
                       {coverage && coverage.embedded > 0 ? 'Update index' : 'Build index'}
                     </button>
@@ -170,7 +170,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                 {isBackfilling && indexProgress && (
                   <div className="space-y-1">
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-800">
-                      <div className="h-full rounded-full bg-fuchsia-500 transition-all" style={{ width: `${indexPercent}%` }} />
+                      <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${indexPercent}%` }} />
                     </div>
                     <p className="text-xs text-gray-500">
                       {indexProgress.current.toLocaleString()} / {indexProgress.total.toLocaleString()}
@@ -181,7 +181,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                 )}
 
                 {!canUseUnlimitedSemanticSearch && coverage && coverage.total > SEMANTIC_FREE_TIER_LIMIT && (
-                  <p className="text-xs text-fuchsia-300/80">
+                  <p className="text-xs text-indigo-300/80">
                     Free indexes your {SEMANTIC_FREE_TIER_LIMIT.toLocaleString()} newest images. Upgrade to Pro to search all {coverage.total.toLocaleString()}.
                   </p>
                 )}

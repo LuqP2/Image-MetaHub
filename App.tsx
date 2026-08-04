@@ -18,6 +18,7 @@ import BrowserCompatibilityWarning from './components/BrowserCompatibilityWarnin
 import Header from './components/Header';
 import Toast from './components/Toast';
 import SettingsModal from './components/SettingsModal';
+import { OPEN_VISUAL_SEARCH_SETTINGS_EVENT } from './components/SemanticSearchBar';
 import ChangelogModal from './components/ChangelogModal';
 import UpdateNotificationModal, { type UpdateNotificationStatus } from './components/UpdateNotificationModal';
 import ComparisonModal from './components/ComparisonModal';
@@ -736,6 +737,14 @@ export default function App() {
     setIsHotkeyHelpOpen(false);
     handleOpenSettings('shortcuts');
   };
+
+  // The visual-search toggle (deep in the sidebar) asks to open Settings for
+  // model setup via a window event, avoiding threading a callback down to it.
+  useEffect(() => {
+    const openVisualSearchSettings = () => handleOpenSettings('visual-search');
+    window.addEventListener(OPEN_VISUAL_SEARCH_SETTINGS_EVENT, openVisualSearchSettings);
+    return () => window.removeEventListener(OPEN_VISUAL_SEARCH_SETTINGS_EVENT, openVisualSearchSettings);
+  }, []);
 
   const handleOpenLicenseSettings = () => {
     handleOpenSettings('license', 'license');

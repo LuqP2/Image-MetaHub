@@ -78,12 +78,12 @@ const SearchBar: React.FC<SearchBarProps> = ({
         aria-label={visualMode ? 'Visual search' : 'Search'}
         className={`peer w-full bg-gray-800/50 backdrop-blur-sm text-gray-200 placeholder-gray-400 py-3 pl-10 ${showVisualToggle ? 'pr-20' : 'pr-10'} rounded-xl border transition-all duration-300 shadow-sm hover:bg-gray-800/70 focus:outline-none focus:ring-2 ${
           visualMode
-            ? 'border-fuchsia-500/50 focus:border-fuchsia-500/60 focus:ring-fuchsia-500/20'
+            ? 'border-indigo-500/50 focus:border-indigo-500/60 focus:ring-indigo-500/20'
             : 'border-gray-700/50 focus:border-blue-500/50 focus:ring-blue-500/20'
         }`}
         data-testid="search-input"
       />
-      <div className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors duration-300 ${visualMode ? 'text-fuchsia-400' : 'text-gray-400 group-focus-within:text-blue-500'}`}>
+      <div className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors duration-300 ${visualMode ? 'text-indigo-400' : 'text-gray-400 group-focus-within:text-blue-500'}`}>
         {visualMode ? (
           <Sparkles aria-hidden="true" className={`h-5 w-5 ${visualLoading ? 'animate-pulse' : ''}`} />
         ) : (
@@ -109,8 +109,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
         {showVisualToggle && (
           <button
             onClick={onToggleVisualMode}
-            className={`p-1 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500 ${
-              visualMode ? 'text-fuchsia-400 bg-fuchsia-500/10' : 'text-gray-400 hover:text-fuchsia-300 hover:bg-gray-700/50'
+            className={`p-1 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              visualMode ? 'text-indigo-400 bg-indigo-500/10' : 'text-gray-400 hover:text-indigo-300 hover:bg-gray-700/50'
             }`}
             aria-label="Toggle visual search"
             aria-pressed={visualMode}
