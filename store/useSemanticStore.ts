@@ -13,6 +13,7 @@ import {
   stopEmbeddingWorker,
 } from '../services/embeddings/embeddingService';
 import { runBackfill } from '../services/embeddings/embeddingIndexer';
+import type { IndexedImage } from '../types';
 import {
   SEMANTIC_CACHE_ID,
   closeLibrary,
@@ -20,6 +21,7 @@ import {
   openLibrary,
   reconcileWithImages,
   searchByText,
+  searchSimilarToImage,
 } from '../services/embeddings/semanticSearchEngine';
 import { deleteEmbeddingIndex } from '../services/embeddings/embeddingStore';
 import { useImageStore } from './useImageStore';
@@ -43,6 +45,8 @@ interface SemanticStoreState {
 
   queryActive: boolean;
   queryRunning: boolean;
+  /** Name of the source image when the active result is a "find similar", else null. */
+  similarSourceName: string | null;
   /** Why the last query produced nothing, so the search UI can explain itself. */
   queryNotice: 'ok' | 'no-index' | 'no-results' | 'error' | null;
   queryResultCount: number;
@@ -63,6 +67,8 @@ interface SemanticStoreState {
   cancelBackfill: () => void;
 
   runQuery: (query: string) => Promise<void>;
+  /** Ranks the grid by visual similarity to an image (embedding it if needed). */
+  runVisualSimilar: (image: IndexedImage) => Promise<void>;
   clearQuery: () => void;
 
   deleteIndex: () => Promise<void>;
@@ -108,6 +114,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
   isPaused: false,
   queryActive: false,
   queryRunning: false,
+  similarSourceName: null,
   queryNotice: null,
   queryResultCount: 0,
   queryTopScore: null,
@@ -225,7 +232,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     }
 
     const generation = ++queryGeneration;
-    set({ queryRunning: true, queryActive: true, lastError: null, queryNotice: null });
+    set({ queryRunning: true, queryActive: true, lastError: null, queryNotice: null, similarSourceName: null });
 
     try {
       // Open the index on demand: the search can be run without ever visiting
@@ -261,10 +268,53 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     }
   },
 
+  runVisualSimilar: async (image) => {
+    const generation = ++queryGeneration;
+    set({
+      queryRunning: true,
+      queryActive: true,
+      lastError: null,
+      queryNotice: null,
+      similarSourceName: image.name,
+    });
+
+    try {
+      const result = await searchSimilarToImage(image);
+      if (generation !== queryGeneration) return;
+
+      if (!result) {
+        set({ queryRunning: false, queryNotice: 'error', similarSourceName: null, lastError: 'Could not read this image for visual search' });
+        return;
+      }
+
+      const scoreById = new Map<string, number>();
+      // Keep the source in view, pinned at the top, so the comparison is visible.
+      scoreById.set(image.id, Number.POSITIVE_INFINITY);
+      for (const hit of result.hits) scoreById.set(hit.imageId, hit.score);
+
+      useImageStore.getState().applySemanticResult({
+        generation,
+        query: `similar to ${image.name}`,
+        scoreById,
+      });
+      set({
+        queryRunning: false,
+        queryResultCount: result.hits.length,
+        queryTopScore: result.hits[0]?.score ?? null,
+        queryNotice: result.hits.length === 0 ? 'no-results' : 'ok',
+      });
+    } catch (error) {
+      if (generation !== queryGeneration) return;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[visual-search] find similar failed:', error);
+      set({ queryRunning: false, queryNotice: 'error', similarSourceName: null, lastError: message });
+    }
+  },
+
   clearQuery: () => {
     queryGeneration += 1;
     useImageStore.getState().applySemanticResult(null);
-    set({ queryActive: false, queryRunning: false, queryNotice: null, queryResultCount: 0, queryTopScore: null });
+    set({ queryActive: false, queryRunning: false, queryNotice: null, queryResultCount: 0, queryTopScore: null, similarSourceName: null });
   },
 
   deleteIndex: async () => {

@@ -1,7 +1,8 @@
+import type { IndexedImage } from '../../types';
 import { ROW_FLAG_TOMBSTONE } from './embeddingFormat';
 import { CLIP_MODEL } from './embeddingModel';
-import { EmbeddingIndex } from './embeddingStore';
-import { embedText } from './embeddingService';
+import { EmbeddingIndex, contentKeyForImage } from './embeddingStore';
+import { buildEmbedItems, embedImages, embedText } from './embeddingService';
 
 /**
  * Owns the searchable side of the vector index: the on-disk store plus the
@@ -335,6 +336,38 @@ export const searchByImageId = async (
     hits: toHits(result.rows, result.scores).filter((hit) => hit.imageId !== imageId),
     stats: { scannedRows: result.scannedRows, durationMs: result.durationMs, embedMs: 0 },
   };
+};
+
+/**
+ * Ensures an image has a vector in the index, embedding it on demand if not.
+ * This is what lets Find Similar work on an image with no metadata that a
+ * capped or partial backfill never reached.
+ */
+export const ensureImageEmbedded = async (image: IndexedImage): Promise<boolean> => {
+  const activeIndex = await openLibrary(SEMANTIC_CACHE_ID);
+  if (activeIndex.hasVector(image.id)) return true;
+
+  const items = await buildEmbedItems([image]);
+  const [vector] = await embedImages(items);
+  if (!vector?.codes || vector.scale === 0) return false;
+
+  activeIndex.append(image.id, contentKeyForImage(image), { scale: vector.scale, codes: vector.codes });
+  await activeIndex.flush();
+  await syncWorker();
+  return true;
+};
+
+/**
+ * Ranks the library by visual similarity to a given image, embedding the source
+ * first if needed. Returns null when the source cannot be embedded.
+ */
+export const searchSimilarToImage = async (
+  image: IndexedImage,
+  options: { topK?: number; minScore?: number } = {}
+): Promise<{ hits: SemanticHit[]; stats: SemanticQueryStats } | null> => {
+  const embedded = await ensureImageEmbedded(image);
+  if (!embedded) return null;
+  return searchByImageId(image.id, options);
 };
 
 export const applyRename = async (oldImageId: string, newImageId: string): Promise<void> => {

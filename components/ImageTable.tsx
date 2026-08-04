@@ -5,7 +5,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Workflow, Image as ImageIcon } from 'lucide-react';
+import { Copy, Folder, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Sparkles, Star, Workflow, Image as ImageIcon } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -33,6 +33,8 @@ interface ImageTableProps {
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
   onFindSimilar?: (image: IndexedImage) => void;
+  onFindVisuallySimilar?: (image: IndexedImage) => void;
+  canFindVisuallySimilar?: boolean;
   onOpenImageEditor?: (image: IndexedImage) => void;
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   groupBy?: ImageGroupByMode;
@@ -83,6 +85,8 @@ const ImageTable: React.FC<ImageTableProps> = ({
   isCollectionsView = false,
   onImageRenamed,
   onFindSimilar,
+  onFindVisuallySimilar,
+  canFindVisuallySimilar = false,
   onOpenImageEditor,
   onOpenComfyUIWorkspace,
   groupBy = 'none',
@@ -168,6 +172,15 @@ const ImageTable: React.FC<ImageTableProps> = ({
     onFindSimilar(contextMenu.image);
     hideContextMenu();
   }, [contextMenu.image, hideContextMenu, onFindSimilar]);
+
+  const openFindVisuallySimilar = useCallback(() => {
+    if (!contextMenu.image || !onFindVisuallySimilar) {
+      return;
+    }
+
+    onFindVisuallySimilar(contextMenu.image);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, onFindVisuallySimilar]);
 
   const openComfyUIWorkspace = useCallback(() => {
     if (!contextMenu.image || !onOpenComfyUIWorkspace) {
@@ -811,6 +824,20 @@ const ImageTable: React.FC<ImageTableProps> = ({
             <Search className="w-4 h-4" />
             Find similar...
           </button>
+
+          {onFindVisuallySimilar && (
+            <button
+              onClick={openFindVisuallySimilar}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!canFindVisuallySimilar}
+              title={canFindVisuallySimilar
+                ? 'Find images that look like this one'
+                : 'Enable Visual Search and download the model in Settings first'}
+            >
+              <Sparkles className="w-4 h-4 text-indigo-400" />
+              Find visually similar
+            </button>
+          )}
 
           {canOpenContextImageEditor && (
             <button

@@ -1,6 +1,7 @@
 import React, { startTransition, useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
+import { useSemanticStore } from './store/useSemanticStore';
 import { useLicenseStore } from './store/useLicenseStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
@@ -745,6 +746,17 @@ export default function App() {
     window.addEventListener(OPEN_VISUAL_SEARCH_SETTINGS_EVENT, openVisualSearchSettings);
     return () => window.removeEventListener(OPEN_VISUAL_SEARCH_SETTINGS_EVENT, openVisualSearchSettings);
   }, []);
+
+  // Visual "find similar": reuses the relevance ranking pipeline rather than the
+  // metadata-based FindSimilarModal, so it works on images with no prompt.
+  const semanticSearchEnabled = useSettingsStore((s) => s.semanticSearchEnabled);
+  const semanticModelInstalled = useSemanticStore((s) => s.modelInstalled);
+  const runVisualSimilar = useSemanticStore((s) => s.runVisualSimilar);
+  const semanticSimilarSourceName = useSemanticStore((s) => s.similarSourceName);
+  const semanticQueryRunning = useSemanticStore((s) => s.queryRunning);
+  const semanticResultCount = useSemanticStore((s) => s.queryResultCount);
+  const clearSemanticQuery = useSemanticStore((s) => s.clearQuery);
+  const canFindVisuallySimilar = semanticSearchEnabled && semanticModelInstalled;
 
   const handleOpenLicenseSettings = () => {
     handleOpenSettings('license', 'license');
@@ -3621,6 +3633,35 @@ export default function App() {
                   </div>
                 )}
 
+                {libraryView === 'library' && semanticSimilarSourceName && (
+                  <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-100">
+                    <div className="min-w-0">
+                      <span className="font-medium">Visually similar</span>
+                      <span className="text-indigo-200/80"> to </span>
+                      <span className="inline-block max-w-[320px] truncate align-bottom" title={semanticSimilarSourceName}>
+                        {semanticSimilarSourceName}
+                      </span>
+                      <span className="text-indigo-200/80">
+                        {semanticQueryRunning
+                          ? ' · searching…'
+                          : ` · ${semanticResultCount} match${semanticResultCount === 1 ? '' : 'es'}`}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearSemanticQuery();
+                        resetLibraryGridScrollPosition();
+                        setCurrentPage(1);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-indigo-400/40 px-2 py-1 text-xs font-medium text-indigo-100 transition-colors hover:bg-indigo-500/20"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Clear
+                    </button>
+                  </div>
+                )}
+
               <div className={`flex-1 min-h-0 transition-[filter,opacity] duration-150 ease-out ${libraryContentFocusClass}`}>
                 {libraryView === 'library' ? (
                   shouldShowLibraryPlaceholder ? (
@@ -3654,6 +3695,8 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                          onFindVisuallySimilar={runVisualSimilar}
+                          canFindVisuallySimilar={canFindVisuallySimilar}
                           onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                           onOpenComfyUIWorkspace={(image) => openComfyUIWorkflowInWorkspace(image, displayImages)}
                           groupBy={effectiveImageGroupBy}
@@ -3672,6 +3715,8 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                          onFindVisuallySimilar={runVisualSimilar}
+                          canFindVisuallySimilar={canFindVisuallySimilar}
                           onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                           onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                           groupBy={effectiveImageGroupBy}
@@ -3706,6 +3751,8 @@ export default function App() {
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                        onFindVisuallySimilar={runVisualSimilar}
+                        canFindVisuallySimilar={canFindVisuallySimilar}
                         onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         groupBy={effectiveImageGroupBy}
@@ -3726,6 +3773,8 @@ export default function App() {
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                        onFindVisuallySimilar={runVisualSimilar}
+                        canFindVisuallySimilar={canFindVisuallySimilar}
                         onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         groupBy={effectiveImageGroupBy}
