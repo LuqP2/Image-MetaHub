@@ -92,23 +92,40 @@ const dtypeForDevice = (d: Device): 'q8' | 'fp16' => (d === 'webgpu' ? 'fp16' : 
 
 const LOAD_OPTIONS = () => ({ device, dtype: dtypeForDevice(device) });
 
+// WebGPU types aren't in the TS lib here; describe only what we touch.
+interface MinimalGpuAdapter {
+  features: { has: (name: string) => boolean };
+  requestDevice: (opts?: { requiredFeatures?: string[] }) => Promise<unknown>;
+}
+interface MinimalGpu {
+  requestAdapter: (opts?: { powerPreference?: string }) => Promise<MinimalGpuAdapter | null>;
+}
+
 /**
- * Probes for a usable WebGPU adapter. Returns a human-readable reason when the
- * backend can't be used, or null when it can — so the fallback is explained
- * rather than silent.
+ * Acquires a WebGPU device that can run the fp16 model and hands it to
+ * onnxruntime-web. ORT otherwise creates its own device *without* requesting
+ * `shader-f16`, so the fp16 towers report "device does not support fp16" even on
+ * hardware (e.g. RTX cards) that supports it. Returns a reason string when
+ * WebGPU can't be used, or null on success.
  */
-const webgpuUnavailableReason = async (): Promise<string | null> => {
-  // WebGPU types aren't in the TS lib here; probe structurally.
-  const gpu = (self.navigator as unknown as {
-    gpu?: { requestAdapter: (opts?: { powerPreference?: string }) => Promise<unknown> };
-  })?.gpu;
+const provisionWebGpu = async (): Promise<string | null> => {
+  const gpu = (self.navigator as unknown as { gpu?: MinimalGpu })?.gpu;
   if (!gpu) return 'navigator.gpu is not exposed in this runtime';
   try {
     const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) return 'no WebGPU adapter (GPU blocklisted, driver, or disabled)';
+    if (!adapter.features.has('shader-f16')) {
+      return 'adapter lacks shader-f16, required by the fp16 model';
+    }
+    const gpuDevice = await adapter.requestDevice({ requiredFeatures: ['shader-f16'] });
+    // onnxruntime-web reads env.webgpu.device before creating the first session
+    // and uses it instead of building its own (feature-less) device. webgpu is a
+    // pre-existing flags object, so only its device is set — never replaced.
+    const onnxWebgpu = (env.backends.onnx as unknown as { webgpu: { device?: unknown } }).webgpu;
+    onnxWebgpu.device = gpuDevice;
     return null;
   } catch (error) {
-    return `requestAdapter threw: ${error instanceof Error ? error.message : String(error)}`;
+    return `WebGPU device setup failed: ${error instanceof Error ? error.message : String(error)}`;
   }
 };
 
@@ -266,15 +283,15 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         fallbackDevice = message.payload.fallbackDevice ?? 'wasm';
         device = message.payload.device;
         configureEnvironment(message.payload.modelPath, message.payload.wasmPath, message.payload.numThreads);
-        // Confirm a real adapter is obtainable before committing to WebGPU; the
-        // fp16 model would otherwise fail to find a backend at first inference.
+        // Provision an fp16-capable WebGPU device before committing to it; on
+        // failure fall back so we never advertise a GPU that can't load fp16.
         if (device === 'webgpu') {
-          const reason = await webgpuUnavailableReason();
+          const reason = await provisionWebGpu();
           if (reason) {
             console.warn(`[visual-search] WebGPU requested but unavailable, using ${fallbackDevice}: ${reason}`);
             device = fallbackDevice;
           } else {
-            console.info('[visual-search] WebGPU adapter acquired; running fp16 on GPU');
+            console.info('[visual-search] WebGPU device (shader-f16) acquired; running fp16 on GPU');
           }
         }
         post({ type: 'ready', payload: { device } });
