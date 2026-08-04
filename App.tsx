@@ -20,6 +20,7 @@ import Header from './components/Header';
 import Toast from './components/Toast';
 import SettingsModal from './components/SettingsModal';
 import { OPEN_VISUAL_SEARCH_SETTINGS_EVENT } from './components/SemanticSearchBar';
+import VisualSearchOnboarding from './components/VisualSearchOnboarding';
 import ChangelogModal from './components/ChangelogModal';
 import UpdateNotificationModal, { type UpdateNotificationStatus } from './components/UpdateNotificationModal';
 import ComparisonModal from './components/ComparisonModal';
@@ -3606,6 +3607,10 @@ export default function App() {
                     }
                     onOpenAnalytics={() => setIsAnalyticsOpen(true)}
                   />
+                )}
+
+                {libraryView === 'library' && (
+                  <VisualSearchOnboarding hasImages={safeFilteredImages.length > 0} />
                 )}
 
                 {libraryView === 'library' && findSimilarGridFilter && (

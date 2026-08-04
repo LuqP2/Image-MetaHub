@@ -163,6 +163,8 @@ interface SettingsState {
   classicMode: boolean;
   /** One-time flag so the Explore navigation-change onboarding toast shows only once, ever. */
   hasSeenExploreOnboarding: boolean;
+  /** One-time flag so the visual-search intro card shows only once, ever. */
+  hasSeenVisualSearchOnboarding: boolean;
   performanceDiagnosticsEnabled: boolean;
   slideshowIntervalSeconds: number;
   slideshowShowFilename: boolean;
@@ -224,6 +226,7 @@ interface SettingsState {
   setEnableAnimations: (value: boolean) => void;
   setClassicMode: (value: boolean) => void;
   setHasSeenExploreOnboarding: (value: boolean) => void;
+  setHasSeenVisualSearchOnboarding: (value: boolean) => void;
   setPerformanceDiagnosticsEnabled: (value: boolean) => void;
   setSlideshowIntervalSeconds: (value: number) => void;
   setSlideshowShowFilename: (value: boolean) => void;
@@ -286,6 +289,7 @@ export const useSettingsStore = create<SettingsState>()(
       enableAnimations: true,
       classicMode: false,
       hasSeenExploreOnboarding: false,
+      hasSeenVisualSearchOnboarding: false,
       performanceDiagnosticsEnabled: false,
       slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
       slideshowShowFilename: true,
@@ -356,6 +360,7 @@ export const useSettingsStore = create<SettingsState>()(
       setEnableAnimations: (value) => set({ enableAnimations: !!value }),
       setClassicMode: (value) => set({ classicMode: !!value }),
       setHasSeenExploreOnboarding: (value) => set({ hasSeenExploreOnboarding: !!value }),
+      setHasSeenVisualSearchOnboarding: (value) => set({ hasSeenVisualSearchOnboarding: !!value }),
       setPerformanceDiagnosticsEnabled: (value) => set({ performanceDiagnosticsEnabled: !!value }),
       setSlideshowIntervalSeconds: (value) =>
         set({ slideshowIntervalSeconds: sanitizeSlideshowIntervalSeconds(value) }),
@@ -441,6 +446,7 @@ export const useSettingsStore = create<SettingsState>()(
         enableAnimations: true,
         classicMode: false,
         hasSeenExploreOnboarding: false,
+      hasSeenVisualSearchOnboarding: false,
         performanceDiagnosticsEnabled: false,
         slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
         slideshowShowFilename: true,
