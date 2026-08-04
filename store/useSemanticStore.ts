@@ -10,8 +10,11 @@ import {
   deleteModel,
   downloadModel,
   getModelStatus,
+  setOnDeviceChanged,
+  setPreferredDevice,
   stopEmbeddingWorker,
 } from '../services/embeddings/embeddingService';
+import type { EmbeddingDevice } from '../services/embeddings/embeddingModel';
 import { runBackfill } from '../services/embeddings/embeddingIndexer';
 import type { IndexedImage } from '../types';
 import {
@@ -34,7 +37,15 @@ import { useImageStore } from './useImageStore';
  */
 
 interface SemanticStoreState {
+  /** Backend the user asked for (mirrors settings.semanticSearchDevice). */
+  device: EmbeddingDevice;
+  /** Backend the worker actually settled on after any fallback. */
+  activeDevice: EmbeddingDevice;
+
+  /** WASM (q8) baseline present — this is what gates the feature at all. */
   modelInstalled: boolean;
+  /** fp16 towers present — unlocks the WebGPU accelerator on top of the baseline. */
+  gpuModelInstalled: boolean;
   modelDownloading: boolean;
   modelProgress: EmbeddingModelProgress | null;
 
@@ -54,6 +65,7 @@ interface SemanticStoreState {
   queryTopScore: number | null;
   lastError: string | null;
 
+  setDevice: (device: EmbeddingDevice) => void;
   refreshModelStatus: () => Promise<boolean>;
   startModelDownload: () => Promise<boolean>;
   cancelModelDownload: () => Promise<void>;
@@ -105,7 +117,10 @@ const buildCoverage = (cap: number | null, total: number): SemanticIndexCoverage
 };
 
 export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
+  device: 'wasm',
+  activeDevice: 'wasm',
   modelInstalled: false,
+  gpuModelInstalled: false,
   modelDownloading: false,
   modelProgress: null,
   indexProgress: null,
@@ -120,19 +135,33 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
   queryTopScore: null,
   lastError: null,
 
+  setDevice: (device) => {
+    if (device === get().device) return;
+    // Route inference to the new backend (drops the current worker), and keep
+    // activeDevice in sync when a later fp16 load forces a fallback.
+    setPreferredDevice(device);
+    setOnDeviceChanged((resolved) => set({ activeDevice: resolved }));
+    set({ device, activeDevice: device });
+    // The installed set differs per backend (q8 vs fp16 towers), so re-check.
+    void get().refreshModelStatus();
+  },
+
   refreshModelStatus: async () => {
-    const status = await getModelStatus();
-    set({ modelInstalled: status.installed });
-    return status.installed;
+    // Check the always-needed CPU baseline and the optional GPU towers together.
+    const [cpu, gpu] = await Promise.all([getModelStatus('wasm'), getModelStatus('webgpu')]);
+    set({ modelInstalled: cpu.installed, gpuModelInstalled: gpu.installed });
+    return cpu.installed;
   },
 
   startModelDownload: async () => {
     if (get().modelDownloading) return false;
     set({ modelDownloading: true, modelProgress: null, lastError: null });
     try {
-      const result = await downloadModel((progress) => set({ modelProgress: progress }));
+      const result = await downloadModel((progress) => set({ modelProgress: progress }), get().device);
       if (result.success) {
-        set({ modelInstalled: true, modelDownloading: false });
+        // Downloaded files depend on the selected backend; re-check both flags.
+        await get().refreshModelStatus();
+        set({ modelDownloading: false });
         return true;
       }
       set({

@@ -33,7 +33,7 @@ interface EmbedItem {
 type WorkerMessage =
   | {
       type: 'init';
-      payload: { modelId: string; modelPath: string; wasmPath: string; device: Device; numThreads?: number };
+      payload: { modelId: string; modelPath: string; wasmPath: string; device: Device; fallbackDevice?: Device; numThreads?: number };
     }
   | { type: 'embedImages'; payload: { jobId: number; items: EmbedItem[] } }
   | { type: 'embedText'; payload: { jobId: number; text: string } }
@@ -49,6 +49,9 @@ interface EmbedResult {
 
 type WorkerResponse =
   | { type: 'ready'; payload: { device: Device } }
+  // Emitted when a WebGPU load fails and the worker drops to WASM, so the UI
+  // can stop advertising GPU acceleration.
+  | { type: 'deviceChanged'; payload: { device: Device; reason: string } }
   | { type: 'images'; payload: { jobId: number; results: EmbedResult[]; durationMs: number } }
   | { type: 'text'; payload: { jobId: number; scale: number; codes: ArrayBuffer } }
   | { type: 'error'; payload: { jobId?: number; error: string } };
@@ -59,6 +62,7 @@ const post = (message: WorkerResponse, transfer?: Transferable[]) => {
 
 let modelId = '';
 let device: Device = 'wasm';
+let fallbackDevice: Device = 'wasm';
 let processor: any = null;
 let tokenizer: any = null;
 let visionModel: any = null;
@@ -81,21 +85,57 @@ const configureEnvironment = (modelPath: string, wasmPath: string, numThreads?: 
   }
 };
 
-// q8 to match the *_quantized.onnx files the downloader fetches. Without this,
-// transformers.js v3 defaults to fp32 and would look for model.onnx, which was
-// never downloaded.
-const LOAD_OPTIONS = () => ({ device, dtype: 'q8' as const });
+// dtype must match the *.onnx file the downloader fetched for this backend:
+// WASM runs q8 (*_quantized), WebGPU runs fp16 (*_fp16). transformers.js v3
+// otherwise defaults to fp32 (model.onnx), which was never downloaded.
+const dtypeForDevice = (d: Device): 'q8' | 'fp16' => (d === 'webgpu' ? 'fp16' : 'q8');
+
+const LOAD_OPTIONS = () => ({ device, dtype: dtypeForDevice(device) });
+
+/**
+ * Downgrades to the fallback backend after a failed GPU load and clears any
+ * half-initialized models so the retry starts clean.
+ */
+const downgradeDevice = (reason: string): void => {
+  if (device === fallbackDevice) return;
+  device = fallbackDevice;
+  processor = null;
+  tokenizer = null;
+  visionModel = null;
+  textModel = null;
+  post({ type: 'deviceChanged', payload: { device, reason } });
+};
 
 const ensureVision = async (): Promise<void> => {
   if (visionModel && processor) return;
-  processor = processor ?? (await AutoProcessor.from_pretrained(modelId));
-  visionModel = visionModel ?? (await CLIPVisionModelWithProjection.from_pretrained(modelId, LOAD_OPTIONS()));
+  try {
+    processor = processor ?? (await AutoProcessor.from_pretrained(modelId));
+    visionModel = visionModel ?? (await CLIPVisionModelWithProjection.from_pretrained(modelId, LOAD_OPTIONS()));
+  } catch (error) {
+    if (device !== fallbackDevice) {
+      downgradeDevice(error instanceof Error ? error.message : String(error));
+      processor = await AutoProcessor.from_pretrained(modelId);
+      visionModel = await CLIPVisionModelWithProjection.from_pretrained(modelId, LOAD_OPTIONS());
+      return;
+    }
+    throw error;
+  }
 };
 
 const ensureText = async (): Promise<void> => {
   if (textModel && tokenizer) return;
-  tokenizer = tokenizer ?? (await AutoTokenizer.from_pretrained(modelId));
-  textModel = textModel ?? (await CLIPTextModelWithProjection.from_pretrained(modelId, LOAD_OPTIONS()));
+  try {
+    tokenizer = tokenizer ?? (await AutoTokenizer.from_pretrained(modelId));
+    textModel = textModel ?? (await CLIPTextModelWithProjection.from_pretrained(modelId, LOAD_OPTIONS()));
+  } catch (error) {
+    if (device !== fallbackDevice) {
+      downgradeDevice(error instanceof Error ? error.message : String(error));
+      tokenizer = await AutoTokenizer.from_pretrained(modelId);
+      textModel = await CLIPTextModelWithProjection.from_pretrained(modelId, LOAD_OPTIONS());
+      return;
+    }
+    throw error;
+  }
 };
 
 const loadImage = async (item: EmbedItem): Promise<RawImage> => {
@@ -179,7 +219,13 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     switch (message.type) {
       case 'init': {
         modelId = message.payload.modelId;
+        fallbackDevice = message.payload.fallbackDevice ?? 'wasm';
         device = message.payload.device;
+        // No WebGPU adapter in this runtime → don't even try; the fp16 model
+        // would just fail to find a backend.
+        if (device === 'webgpu' && !(self.navigator as unknown as { gpu?: unknown })?.gpu) {
+          device = fallbackDevice;
+        }
         configureEnvironment(message.payload.modelPath, message.payload.wasmPath, message.payload.numThreads);
         post({ type: 'ready', payload: { device } });
         break;

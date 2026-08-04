@@ -3,6 +3,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useSemanticStore, deleteSemanticModel } from '../../store/useSemanticStore';
 import { useFeatureAccess, SEMANTIC_FREE_TIER_LIMIT } from '../../hooks/useFeatureAccess';
 import { CLIP_MODEL } from '../../services/embeddings/embeddingModel';
+import { getModelDownloadSize } from '../../services/embeddings/embeddingService';
 import { SettingRow } from './SettingRow';
 import { SettingsPanel } from './SettingsPanel';
 import { SettingsSectionCard } from './SettingsSectionCard';
@@ -26,11 +27,16 @@ const formatEta = (ms?: number): string => {
 export const VisualSearchSettingsPanel: React.FC = () => {
   const enabled = useSettingsStore((s) => s.semanticSearchEnabled);
   const setEnabled = useSettingsStore((s) => s.setSemanticSearchEnabled);
+  const deviceSetting = useSettingsStore((s) => s.semanticSearchDevice);
+  const setDeviceSetting = useSettingsStore((s) => s.setSemanticSearchDevice);
 
   const { semanticSearchImageLimit, canUseUnlimitedSemanticSearch } = useFeatureAccess();
 
   const {
+    device,
+    activeDevice,
     modelInstalled,
+    gpuModelInstalled,
     modelDownloading,
     modelProgress,
     indexProgress,
@@ -38,6 +44,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
     isBackfilling,
     isPaused,
     lastError,
+    setDevice,
     refreshModelStatus,
     startModelDownload,
     cancelModelDownload,
@@ -49,12 +56,22 @@ export const VisualSearchSettingsPanel: React.FC = () => {
     deleteIndex,
   } = useSemanticStore();
 
+  // Keep the engine's backend in sync with the persisted setting.
+  useEffect(() => {
+    setDevice(deviceSetting === 'webgpu' ? 'webgpu' : 'wasm');
+  }, [deviceSetting, setDevice]);
+
   useEffect(() => {
     if (enabled) {
       refreshModelStatus();
       openForLibrary();
     }
   }, [enabled, refreshModelStatus, openForLibrary]);
+
+  const usingGpu = device === 'webgpu';
+  // GPU selected but its towers aren't downloaded yet: the worker will run on CPU
+  // until they are, so make that explicit rather than looking broken.
+  const gpuNeedsDownload = usingGpu && modelInstalled && !gpuModelInstalled;
 
   const cap = canUseUnlimitedSemanticSearch ? null : SEMANTIC_FREE_TIER_LIMIT;
 
@@ -78,6 +95,14 @@ export const VisualSearchSettingsPanel: React.FC = () => {
         />
 
         {enabled && (
+          <SettingRow
+            label="Use GPU acceleration (WebGPU)"
+            description="Much faster indexing on a supported GPU, using a separate fp16 model. May compete for VRAM with image generation — leave off while generating. Falls back to CPU automatically if the GPU is unavailable."
+            control={<SettingSwitch checked={deviceSetting === 'webgpu'} onChange={(v) => setDeviceSetting(v ? 'webgpu' : 'wasm')} />}
+          />
+        )}
+
+        {enabled && (
           <div className="space-y-4">
             {/* Model download */}
             <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-2">
@@ -85,25 +110,27 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                 <div>
                   <p className="text-sm font-medium text-gray-100">Search model</p>
                   <p className="text-xs text-gray-400">
-                    {CLIP_MODEL.id} · one-time download, about {formatBytes(CLIP_MODEL.approxBytes)} from huggingface.co
+                    {CLIP_MODEL.id} · one-time download, about {formatBytes(getModelDownloadSize(device))} from huggingface.co
                   </p>
                 </div>
-                {modelInstalled ? (
-                  <span className="text-xs font-medium text-emerald-400">Installed</span>
-                ) : modelDownloading ? (
+                {modelDownloading ? (
                   <button
                     onClick={cancelModelDownload}
                     className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-800"
                   >
                     Cancel
                   </button>
-                ) : (
+                ) : !modelInstalled || gpuNeedsDownload ? (
                   <button
                     onClick={startModelDownload}
                     className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
                   >
-                    Download model
+                    {gpuNeedsDownload ? 'Download GPU model' : 'Download model'}
                   </button>
+                ) : (
+                  <span className="text-xs font-medium text-emerald-400">
+                    Installed{usingGpu ? (activeDevice === 'webgpu' ? ' · GPU' : ' · CPU (GPU unavailable)') : ''}
+                  </span>
                 )}
               </div>
 

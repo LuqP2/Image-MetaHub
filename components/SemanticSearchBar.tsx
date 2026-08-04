@@ -26,6 +26,8 @@ export const OPEN_VISUAL_SEARCH_SETTINGS_EVENT = 'imh:open-visual-search-setting
  */
 const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSearchChange }) => {
   const semanticEnabled = useSettingsStore((s) => s.semanticSearchEnabled);
+  const semanticDevice = useSettingsStore((s) => s.semanticSearchDevice);
+  const setDevice = useSemanticStore((s) => s.setDevice);
 
   const modelInstalled = useSemanticStore((s) => s.modelInstalled);
   const queryRunning = useSemanticStore((s) => s.queryRunning);
@@ -40,11 +42,13 @@ const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSe
 
   // Learn the model/index state as soon as the feature is on, so the toggle
   // shows and the first query has an open index — without needing Settings.
+  // Also point the engine at the configured backend so queries use it.
   React.useEffect(() => {
     if (!semanticEnabled) return;
+    setDevice(semanticDevice === 'webgpu' ? 'webgpu' : 'wasm');
     refreshModelStatus();
     openForLibrary();
-  }, [semanticEnabled, refreshModelStatus, openForLibrary]);
+  }, [semanticEnabled, semanticDevice, setDevice, refreshModelStatus, openForLibrary]);
 
   const [visualMode, setVisualMode] = React.useState(false);
   const [visualValue, setVisualValue] = React.useState('');

@@ -1,6 +1,13 @@
 import type { EmbeddingModelProgress, IndexedImage } from '../../types';
 import { getThumbnailCacheCandidate } from '../thumbnailCache';
-import { CLIP_MODEL, MODEL_LOCAL_PATH, buildMediaUrl } from './embeddingModel';
+import {
+  CLIP_MODEL,
+  MODEL_LOCAL_PATH,
+  approxBytesForDevice,
+  buildMediaUrl,
+  filesForDevice,
+  type EmbeddingDevice,
+} from './embeddingModel';
 import type { EmbedItem, EmbedResult } from '../workers/embeddingWorker';
 
 /**
@@ -11,7 +18,28 @@ import type { EmbedItem, EmbedResult } from '../workers/embeddingWorker';
  * worker is spawned and no file is written before that.
  */
 
-type Device = 'wasm' | 'webgpu';
+type Device = EmbeddingDevice;
+
+/** Backend the next worker start should try. Falls back to WASM at load time. */
+let preferredDevice: Device = 'wasm';
+/** Backend the running worker actually settled on (after any fallback). */
+let activeDevice: Device = 'wasm';
+
+export const getActiveDevice = (): Device => activeDevice;
+
+/** Notified when the running worker's backend changes (e.g. webgpu→wasm). */
+let onDeviceChanged: ((device: Device) => void) | null = null;
+export const setOnDeviceChanged = (cb: ((device: Device) => void) | null): void => {
+  onDeviceChanged = cb;
+};
+
+export const setPreferredDevice = (device: Device): void => {
+  if (device === preferredDevice) return;
+  preferredDevice = device;
+  // The device is chosen at worker init, so a change only takes effect on the
+  // next start; drop the current worker so the new backend is picked up.
+  stopEmbeddingWorker();
+};
 
 export interface QuantizedResult {
   id: string;
@@ -28,18 +56,24 @@ const getElectronAPI = () => {
   return api;
 };
 
-export const getModelStatus = async (): Promise<{ installed: boolean; missing: string[]; totalBytes: number }> => {
+export const getModelStatus = async (
+  device: Device = 'wasm'
+): Promise<{ installed: boolean; missing: string[]; totalBytes: number }> => {
   const api = getElectronAPI();
-  const result = await api.getEmbeddingModelStatus({ modelId: CLIP_MODEL.id, files: CLIP_MODEL.files });
+  const files = filesForDevice(device);
+  const result = await api.getEmbeddingModelStatus({ modelId: CLIP_MODEL.id, files });
   return {
     installed: Boolean(result.success && result.installed),
-    missing: result.missing ?? CLIP_MODEL.files,
+    missing: result.missing ?? files,
     totalBytes: result.totalBytes ?? 0,
   };
 };
 
+export const getModelDownloadSize = (device: Device = 'wasm'): number => approxBytesForDevice(device);
+
 export const downloadModel = async (
-  onProgress?: (progress: EmbeddingModelProgress) => void
+  onProgress?: (progress: EmbeddingModelProgress) => void,
+  device: Device = 'wasm'
 ): Promise<{ success: boolean; cancelled?: boolean; error?: string }> => {
   const api = getElectronAPI();
   const unsubscribe = onProgress ? api.onEmbeddingModelProgress(onProgress) : null;
@@ -47,7 +81,9 @@ export const downloadModel = async (
     return await api.downloadEmbeddingModel({
       modelId: CLIP_MODEL.id,
       revision: CLIP_MODEL.revision,
-      files: CLIP_MODEL.files,
+      // The handler skips files already on disk, so passing the full set for the
+      // device downloads only the missing towers (e.g. just fp16 when adding GPU).
+      files: filesForDevice(device),
     });
   } finally {
     unsubscribe?.();
@@ -81,7 +117,7 @@ const resolveWasmPath = (): string => {
   return new URL('ort/', base).href;
 };
 
-export const startEmbeddingWorker = async (device: Device = 'wasm'): Promise<void> => {
+export const startEmbeddingWorker = async (device: Device = preferredDevice): Promise<void> => {
   if (workerReady) return workerReady;
 
   workerReady = new Promise<void>((resolve, reject) => {
@@ -90,7 +126,17 @@ export const startEmbeddingWorker = async (device: Device = 'wasm'): Promise<voi
     instance.onmessage = (event: MessageEvent<any>) => {
       const message = event.data;
       if (message?.type === 'ready') {
+        // The worker may downgrade webgpu→wasm if no adapter or the fp16 load
+        // fails, and reports what it actually settled on.
+        activeDevice = message.payload?.device === 'webgpu' ? 'webgpu' : 'wasm';
         resolve();
+        return;
+      }
+      if (message?.type === 'deviceChanged') {
+        // A later fp16 load failure dropped us to CPU; reflect that so the UI
+        // stops claiming GPU acceleration.
+        activeDevice = message.payload?.device === 'webgpu' ? 'webgpu' : 'wasm';
+        onDeviceChanged?.(activeDevice);
         return;
       }
       if (message?.type === 'error') {
@@ -129,6 +175,7 @@ export const startEmbeddingWorker = async (device: Device = 'wasm'): Promise<voi
         modelPath: MODEL_LOCAL_PATH,
         wasmPath: resolveWasmPath(),
         device,
+        fallbackDevice: 'wasm' as Device,
       },
     });
   }).catch((error) => {
