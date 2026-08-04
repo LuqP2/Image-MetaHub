@@ -335,6 +335,9 @@ const Footer: React.FC<FooterProps> = ({
               <option value="asc">A-Z</option>
               <option value="desc">Z-A</option>
               <option value="random">Random</option>
+              {/* Not user-selectable; shown only so the control reflects an
+                  active visual search instead of rendering blank. */}
+              {sortOrder === 'relevance' && <option value="relevance">Relevance</option>}
             </select>
             {sortOrder === 'random' && onReshuffle && (
               <Tooltip label="Reshuffle random order">

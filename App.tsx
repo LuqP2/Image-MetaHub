@@ -1252,7 +1252,9 @@ export default function App() {
   }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, resetLibraryGridScrollPosition, selectedFolders, sortOrder]);
 
   useEffect(() => {
-    if (sortOrder === 'random' && groupBy !== 'none') {
+    // Grouping has no meaning under an ordering with no stable buckets: random
+    // and relevance both order by a per-image key rather than a facet.
+    if ((sortOrder === 'random' || sortOrder === 'relevance') && groupBy !== 'none') {
       setGroupBy('none');
     }
   }, [groupBy, setGroupBy, sortOrder]);
@@ -3830,7 +3832,7 @@ export default function App() {
                   sortOrder={sortOrder}
                   onSortOrderChange={imageStoreSetSortOrder}
                   onReshuffle={reshuffle}
-                  groupBy={sortOrder === 'random' ? 'none' : groupBy}
+                  groupBy={sortOrder === 'random' || sortOrder === 'relevance' ? 'none' : groupBy}
                   onGroupByChange={setGroupBy}
                   hidePageSize={isSectionedByEntity}
                 />

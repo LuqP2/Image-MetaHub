@@ -149,6 +149,12 @@ interface SettingsState {
   blurSensitiveImages: boolean;
   enableSafeMode: boolean;
   civitaiLookupEnabled: boolean;
+  /** Master switch for local visual search. Off by default: while off, no model
+   *  is downloaded, no worker runs and no vector file is written. */
+  semanticSearchEnabled: boolean;
+  /** Inference backend for the CLIP model. WASM (CPU) by default so it never
+   *  competes with an image generator for VRAM. */
+  semanticSearchDevice: 'wasm' | 'webgpu';
   enableAnimations: boolean;
   /** Classic mode: show the legacy tabs (Model View / Smart Library / Collections / Node View)
    *  as deep-links into the unified Explore surface. Off by default. */
@@ -211,6 +217,8 @@ interface SettingsState {
   setBlurSensitiveImages: (value: boolean) => void;
   setEnableSafeMode: (value: boolean) => void;
   setCivitaiLookupEnabled: (value: boolean) => void;
+  setSemanticSearchEnabled: (value: boolean) => void;
+  setSemanticSearchDevice: (value: 'wasm' | 'webgpu') => void;
   setEnableAnimations: (value: boolean) => void;
   setClassicMode: (value: boolean) => void;
   setHasSeenExploreOnboarding: (value: boolean) => void;
@@ -271,6 +279,8 @@ export const useSettingsStore = create<SettingsState>()(
       blurSensitiveImages: true,
       enableSafeMode: true,
       civitaiLookupEnabled: true,
+      semanticSearchEnabled: false,
+      semanticSearchDevice: 'wasm',
       enableAnimations: true,
       classicMode: false,
       hasSeenExploreOnboarding: false,
@@ -339,6 +349,8 @@ export const useSettingsStore = create<SettingsState>()(
       setBlurSensitiveImages: (value) => set({ blurSensitiveImages: !!value }),
       setEnableSafeMode: (value) => set({ enableSafeMode: !!value }),
       setCivitaiLookupEnabled: (value) => set({ civitaiLookupEnabled: !!value }),
+      setSemanticSearchEnabled: (value) => set({ semanticSearchEnabled: !!value }),
+      setSemanticSearchDevice: (value) => set({ semanticSearchDevice: value === 'webgpu' ? 'webgpu' : 'wasm' }),
       setEnableAnimations: (value) => set({ enableAnimations: !!value }),
       setClassicMode: (value) => set({ classicMode: !!value }),
       setHasSeenExploreOnboarding: (value) => set({ hasSeenExploreOnboarding: !!value }),
@@ -422,6 +434,8 @@ export const useSettingsStore = create<SettingsState>()(
         blurSensitiveImages: true,
         enableSafeMode: true,
         civitaiLookupEnabled: true,
+        semanticSearchEnabled: false,
+        semanticSearchDevice: 'wasm',
         enableAnimations: true,
         classicMode: false,
         hasSeenExploreOnboarding: false,

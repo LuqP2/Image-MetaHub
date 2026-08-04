@@ -1,0 +1,275 @@
+import { ROW_FLAG_TOMBSTONE } from './embeddingFormat';
+import { CLIP_MODEL } from './embeddingModel';
+import { EmbeddingIndex } from './embeddingStore';
+import { embedText } from './embeddingService';
+
+/**
+ * Owns the searchable side of the vector index: the on-disk store plus the
+ * long-lived worker that holds the matrix in memory and ranks it.
+ *
+ * Split from embeddingService on purpose — producing vectors and searching them
+ * have different lifetimes. The search worker only exists while visual search is
+ * in use, and the embedding worker only while a backfill or a text query runs.
+ */
+
+export interface SemanticHit {
+  imageId: string;
+  score: number;
+}
+
+export interface SemanticQueryStats {
+  scannedRows: number;
+  durationMs: number;
+  embedMs: number;
+}
+
+/**
+ * Fixed id for the vector index. The metadata cache is per directory, but the
+ * store materializes every directory into one flat `images` array, and image
+ * ids are already globally unique (`directoryId::relativePath`). A single index
+ * mirrors that array exactly; rows for images no longer present are reconciled
+ * away rather than swept per directory, so a directory's metadata rebuild does
+ * not throw away its vectors.
+ */
+export const SEMANTIC_CACHE_ID = 'imh-visual-search';
+
+/** Cap on returned matches. Well above any page the grid renders at once. */
+export const DEFAULT_TOP_K = 5000;
+
+/**
+ * Cosine floor for text queries. CLIP text/image similarities cluster in a
+ * narrow band, so this only rejects clearly unrelated rows; ranking does the
+ * real work.
+ */
+export const DEFAULT_MIN_SCORE = 0.15;
+
+/** Find Similar is a tighter question than search, so it uses its own floor. */
+export const DEFAULT_VISUAL_SIMILARITY_MIN_SCORE = 0.75;
+
+let index: EmbeddingIndex | null = null;
+let currentCacheId: string | null = null;
+let worker: Worker | null = null;
+let workerReady = false;
+let nextQueryId = 1;
+/** Rows already handed to the worker, per segment index. */
+let syncedSegmentRows: number[] = [];
+
+const pendingQueries = new Map<number, {
+  resolve: (value: { rows: number[]; scores: number[]; scannedRows: number; durationMs: number }) => void;
+  reject: (error: Error) => void;
+}>();
+
+export const getIndex = (): EmbeddingIndex | null => index;
+
+export const isOpen = (): boolean => index !== null;
+
+export const openLibrary = async (cacheId: string = SEMANTIC_CACHE_ID): Promise<EmbeddingIndex> => {
+  if (index && currentCacheId === cacheId) return index;
+  closeLibrary();
+  index = await EmbeddingIndex.open(cacheId, CLIP_MODEL.id, CLIP_MODEL.revision, CLIP_MODEL.dim);
+  currentCacheId = cacheId;
+  return index;
+};
+
+/**
+ * Tombstones vectors for images that have left the library (directory removed,
+ * files deleted outside the app). Keeps the searchable set aligned with what the
+ * grid actually shows.
+ */
+export const reconcileWithImages = async (presentImageIds: Set<string>): Promise<void> => {
+  if (!index) return;
+  const stale: string[] = [];
+  for (const imageId of index.liveEntries().keys()) {
+    if (!presentImageIds.has(imageId)) stale.push(imageId);
+  }
+  if (stale.length > 0) {
+    index.tombstone(stale);
+    await index.flush();
+  }
+};
+
+export const closeLibrary = (): void => {
+  stopSearchWorker();
+  index = null;
+  currentCacheId = null;
+};
+
+const stopSearchWorker = (): void => {
+  if (worker) {
+    worker.postMessage({ type: 'dispose' });
+    worker.terminate();
+  }
+  worker = null;
+  workerReady = false;
+  syncedSegmentRows = [];
+  for (const pending of pendingQueries.values()) {
+    pending.reject(new Error('Vector search worker stopped'));
+  }
+  pendingQueries.clear();
+};
+
+const ensureWorker = (): Worker => {
+  if (worker) return worker;
+
+  const instance = new Worker(new URL('../workers/vectorSearchWorker.ts', import.meta.url), { type: 'module' });
+  instance.onmessage = (event: MessageEvent<any>) => {
+    const message = event.data;
+    if (message?.type === 'ready') {
+      workerReady = true;
+      return;
+    }
+    if (message?.type === 'result') {
+      pendingQueries.get(message.payload.queryId)?.resolve(message.payload);
+      pendingQueries.delete(message.payload.queryId);
+      return;
+    }
+    if (message?.type === 'error') {
+      const error = new Error(message.payload?.error || 'Vector search failed');
+      for (const pending of pendingQueries.values()) pending.reject(error);
+      pendingQueries.clear();
+    }
+  };
+  instance.onerror = () => {
+    const error = new Error('Vector search worker crashed');
+    for (const pending of pendingQueries.values()) pending.reject(error);
+    pendingQueries.clear();
+    stopSearchWorker();
+  };
+
+  worker = instance;
+  instance.postMessage({ type: 'init', payload: { dim: CLIP_MODEL.dim } });
+  return instance;
+};
+
+/**
+ * Brings the worker's matrix up to date. Only segments whose row count changed
+ * are re-sent, so a backfill flush costs one segment transfer rather than a
+ * reload of the whole index.
+ */
+export const syncWorker = async (): Promise<void> => {
+  if (!index) return;
+  const instance = ensureWorker();
+  if (!workerReady) {
+    // init is handled synchronously by the worker before it processes anything
+    // else, so there is nothing to wait on beyond the message ordering.
+    workerReady = true;
+  }
+
+  for await (const segment of index.readSegments()) {
+    if (syncedSegmentRows[segment.index] === segment.rowCount) continue;
+    instance.postMessage(
+      { type: 'addSegment', payload: { index: segment.index, buffer: segment.buffer, rowCount: segment.rowCount } },
+      [segment.buffer]
+    );
+    syncedSegmentRows[segment.index] = segment.rowCount;
+  }
+
+  const rows = index.rowSnapshot();
+  const mask = new Uint8Array(rows.length);
+  for (let row = 0; row < rows.length; row += 1) {
+    mask[row] = (rows[row][2] & ROW_FLAG_TOMBSTONE) === 0 ? 1 : 0;
+  }
+  instance.postMessage({ type: 'setLiveMask', payload: { mask: mask.buffer } }, [mask.buffer]);
+};
+
+const runWorkerQuery = (
+  message: { type: string; payload: Record<string, unknown> }
+): Promise<{ rows: number[]; scores: number[]; scannedRows: number; durationMs: number }> => {
+  const instance = ensureWorker();
+  const queryId = nextQueryId;
+  nextQueryId += 1;
+
+  return new Promise((resolve, reject) => {
+    pendingQueries.set(queryId, { resolve, reject });
+    instance.postMessage({ ...message, payload: { ...message.payload, queryId } });
+  });
+};
+
+const toHits = (rows: number[], scores: number[]): SemanticHit[] => {
+  if (!index) return [];
+  const hits: SemanticHit[] = [];
+  for (let i = 0; i < rows.length; i += 1) {
+    const imageId = index.imageIdForRow(rows[i]);
+    if (imageId) {
+      hits.push({ imageId, score: scores[i] });
+    }
+  }
+  return hits;
+};
+
+export const searchByText = async (
+  query: string,
+  options: { topK?: number; minScore?: number } = {}
+): Promise<{ hits: SemanticHit[]; stats: SemanticQueryStats }> => {
+  if (!index || index.stats.liveRows === 0) {
+    return { hits: [], stats: { scannedRows: 0, durationMs: 0, embedMs: 0 } };
+  }
+
+  const embedStartedAt = performance.now();
+  const { scale, codes } = await embedText(query);
+  const embedMs = performance.now() - embedStartedAt;
+
+  await syncWorker();
+  const buffer = codes.buffer.slice(codes.byteOffset, codes.byteOffset + codes.byteLength);
+  const result = await runWorkerQuery({
+    type: 'query',
+    payload: {
+      codes: buffer,
+      scale,
+      topK: options.topK ?? DEFAULT_TOP_K,
+      minScore: options.minScore ?? DEFAULT_MIN_SCORE,
+    },
+  });
+
+  return {
+    hits: toHits(result.rows, result.scores),
+    stats: { scannedRows: result.scannedRows, durationMs: result.durationMs, embedMs },
+  };
+};
+
+/** Ranks the library against an image already present in the index. */
+export const searchByImageId = async (
+  imageId: string,
+  options: { topK?: number; minScore?: number } = {}
+): Promise<{ hits: SemanticHit[]; stats: SemanticQueryStats } | null> => {
+  if (!index) return null;
+  const rows = index.rowSnapshot();
+  let sourceRow = -1;
+  for (let row = 0; row < rows.length; row += 1) {
+    if (rows[row][0] === imageId && (rows[row][2] & ROW_FLAG_TOMBSTONE) === 0) {
+      sourceRow = row;
+      break;
+    }
+  }
+  if (sourceRow < 0) return null;
+
+  await syncWorker();
+  const result = await runWorkerQuery({
+    type: 'queryByRow',
+    payload: {
+      row: sourceRow,
+      topK: options.topK ?? 250,
+      minScore: options.minScore ?? DEFAULT_VISUAL_SIMILARITY_MIN_SCORE,
+    },
+  });
+
+  return {
+    hits: toHits(result.rows, result.scores).filter((hit) => hit.imageId !== imageId),
+    stats: { scannedRows: result.scannedRows, durationMs: result.durationMs, embedMs: 0 },
+  };
+};
+
+export const applyRename = async (oldImageId: string, newImageId: string): Promise<void> => {
+  if (!index) return;
+  if (index.rename(oldImageId, newImageId)) {
+    await index.flush();
+  }
+};
+
+export const applyDeletions = async (imageIds: string[]): Promise<void> => {
+  if (!index || imageIds.length === 0) return;
+  if (index.tombstone(imageIds) > 0) {
+    await index.flush();
+    await syncWorker();
+  }
+};

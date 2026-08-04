@@ -116,6 +116,7 @@ const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
 const MEDIA_PROTOCOL_SCHEME = 'imh-media';
 const THUMBNAIL_PROTOCOL_SCHEME = 'imh-thumb';
+const MODEL_PROTOCOL_SCHEME = 'imh-model';
 const THUMBNAIL_CACHE_VERSION = 2;
 const THUMBNAIL_MANIFEST_VERSION = 1;
 const THUMBNAIL_MANIFEST_FILE = 'thumbnail-manifest-v1.json';
@@ -134,6 +135,19 @@ protocol.registerSchemesAsPrivileged([
   },
   {
     scheme: THUMBNAIL_PROTOCOL_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
+  {
+    // Serves the downloaded CLIP weights to the embedding worker. transformers.js
+    // fetches model files by URL, and the worker has no preload bridge to read
+    // them through, so they need a fetchable origin.
+    scheme: MODEL_PROTOCOL_SCHEME,
     privileges: {
       standard: true,
       secure: true,
@@ -296,6 +310,47 @@ const registerThumbnailProtocol = () => {
     } catch (error) {
       console.error('Error serving thumbnail protocol request:', request.url, error);
       callback({ error: -2 });
+    }
+  });
+};
+
+const getEmbeddingModelsRoot = () => path.join(app.getPath('userData'), 'models');
+
+// Models are app-scoped, not library-scoped, so they stay in userData even when
+// the user points the cache at another drive. The Hugging Face `org/name`
+// layout is preserved on disk so imh-model:// URLs map straight to files.
+const getEmbeddingModelDir = (modelId) => {
+  const safeModelId = String(modelId || '').replace(/[^a-zA-Z0-9-_./]/g, '_');
+  const modelsRoot = getEmbeddingModelsRoot();
+  const resolved = path.resolve(modelsRoot, safeModelId);
+  if (!isSameOrChildPath(normalizeAllowedPath(resolved), normalizeAllowedPath(modelsRoot))) {
+    throw new Error(`Rejected model id: ${modelId}`);
+  }
+  return resolved;
+};
+
+let embeddingModelDownload = null;
+
+const registerModelProtocol = () => {
+  protocol.registerFileProtocol(MODEL_PROTOCOL_SCHEME, async (request, callback) => {
+    try {
+      const requestUrl = new URL(request.url);
+      const relativePath = decodeURIComponent(requestUrl.pathname).replace(/^\/+/, '');
+      const modelsRoot = getEmbeddingModelsRoot();
+      const filePath = path.resolve(modelsRoot, relativePath);
+
+      if (!isSameOrChildPath(normalizeAllowedPath(filePath), normalizeAllowedPath(modelsRoot))) {
+        console.error('SECURITY VIOLATION: Attempted to load a model file outside of the models directory.');
+        console.error('  [imh-model] Requested path:', relativePath);
+        callback({ error: -10 });
+        return;
+      }
+
+      await fs.access(filePath);
+      callback({ path: filePath });
+    } catch (error) {
+      console.error('Error serving model protocol request:', request.url, error);
+      callback({ error: -6 });
     }
   });
 };
@@ -2348,6 +2403,7 @@ app.whenReady().then(async () => {
   registerProcessDiagnostics();
   registerMediaProtocol();
   registerThumbnailProtocol();
+  registerModelProtocol();
 
   // Listen for theme changes and notify renderer
   nativeTheme.on('updated', () => {
@@ -3903,6 +3959,262 @@ function setupFileOperationHandlers() {
         return { success: true };
     } catch (error) {
         return { success: false, error: error.message };
+    }
+  });
+
+
+  // --- Visual search (embedding) sidecar IPC Handlers ---
+  // These live in json_cache next to the metadata chunks and are named
+  // `${safeCacheId}_emb*`, so clear-cache-data's prefix sweep already removes
+  // them and no separate cleanup path is needed.
+  const getEmbeddingCacheDir = async () => {
+    const rootPath = await getCacheRootPath();
+    const cacheDir = path.join(rootPath, 'json_cache');
+    await fs.mkdir(cacheDir, { recursive: true });
+    return cacheDir;
+  };
+
+  const toSafeCacheId = (cacheId) => String(cacheId ?? '').replace(/[^a-zA-Z0-9-_]/g, '_');
+
+  // Sidecar names are built in the renderer from a whitelisted pattern; reject
+  // anything else so a malformed id cannot escape the cache directory.
+  const isSafeEmbeddingFileName = (fileName) =>
+    typeof fileName === 'string' && /^[a-zA-Z0-9-_]+_emb_(manifest\.json|rows_\d+\.json|seg_\d+\.bin)$/.test(fileName);
+
+  const resolveEmbeddingFilePath = async (fileName) => {
+    if (!isSafeEmbeddingFileName(fileName)) {
+      throw new Error(`Rejected embedding sidecar name: ${fileName}`);
+    }
+    return path.join(await getEmbeddingCacheDir(), fileName);
+  };
+
+  ipcMain.handle('read-embedding-file', async (event, { fileName, binary = false } = {}) => {
+    try {
+      const filePath = await resolveEmbeddingFilePath(fileName);
+      const contents = await fs.readFile(filePath).catch((error) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (contents === null) {
+        return { success: true, data: null };
+      }
+      if (binary) {
+        // Copy out of Node's Buffer pool so the renderer receives exactly the
+        // file's bytes rather than a view into a shared allocation.
+        const copy = contents.buffer.slice(
+          contents.byteOffset,
+          contents.byteOffset + contents.byteLength
+        );
+        return { success: true, data: copy };
+      }
+      return { success: true, data: JSON.parse(contents.toString('utf8')) };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('write-embedding-file', async (event, { fileName, data, binary = false } = {}) => {
+    try {
+      const filePath = await resolveEmbeddingFilePath(fileName);
+      const payload = binary ? Buffer.from(data) : Buffer.from(JSON.stringify(data), 'utf8');
+      // Temp+rename so a crash mid-write cannot leave a half-parsed manifest.
+      const tempPath = `${filePath}.tmp`;
+      await fs.writeFile(tempPath, payload);
+      await renameCacheChunkWithRetry(tempPath, filePath);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Appending is the hot path during backfill: segments grow one flush at a
+  // time and rewriting a 4MB segment per flush would dominate the job's IO.
+  ipcMain.handle('append-embedding-segment', async (event, { fileName, data } = {}) => {
+    try {
+      const filePath = await resolveEmbeddingFilePath(fileName);
+      await fs.appendFile(filePath, Buffer.from(data));
+      const stats = await fs.stat(filePath);
+      return { success: true, byteLength: stats.size };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('stat-embedding-index', async (event, { cacheId } = {}) => {
+    try {
+      const safeCacheId = toSafeCacheId(cacheId);
+      const cacheDir = await getEmbeddingCacheDir();
+      const files = await fs.readdir(cacheDir).catch((error) => {
+        if (error.code === 'ENOENT') return [];
+        throw error;
+      });
+      const prefix = `${safeCacheId}_emb_`;
+      let totalBytes = 0;
+      let fileCount = 0;
+      for (const file of files) {
+        if (!file.startsWith(prefix)) continue;
+        const stats = await fs.stat(path.join(cacheDir, file)).catch(() => null);
+        if (!stats) continue;
+        totalBytes += stats.size;
+        fileCount += 1;
+      }
+      return { success: true, totalBytes, fileCount };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // --- Visual search model download ---
+  // The model is ~155MB and only a subset of users enable visual search, so it
+  // is fetched on first opt-in instead of shipping in the installer. This is the
+  // only network request the feature ever makes; nothing is uploaded.
+  ipcMain.handle('get-embedding-model-status', async (event, { modelId, files } = {}) => {
+    try {
+      const modelDir = getEmbeddingModelDir(modelId);
+      const missing = [];
+      let totalBytes = 0;
+      for (const file of Array.isArray(files) ? files : []) {
+        const filePath = path.join(modelDir, ...file.split('/'));
+        const stats = await fs.stat(filePath).catch(() => null);
+        if (!stats || stats.size === 0) {
+          missing.push(file);
+        } else {
+          totalBytes += stats.size;
+        }
+      }
+      return { success: true, installed: missing.length === 0, modelDir, missing, totalBytes };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('download-embedding-model', async (event, { modelId, revision, files, baseUrl } = {}) => {
+    if (embeddingModelDownload) {
+      return { success: false, error: 'A model download is already running' };
+    }
+
+    const controller = new AbortController();
+    embeddingModelDownload = controller;
+    const sender = event.sender;
+    const modelDir = getEmbeddingModelDir(modelId);
+    const host = baseUrl || 'https://huggingface.co';
+
+    const emit = (payload) => {
+      if (!sender.isDestroyed()) {
+        sender.send('embedding-model-progress', payload);
+      }
+    };
+
+    try {
+      const list = Array.isArray(files) ? files : [];
+      let completed = 0;
+
+      for (const file of list) {
+        const destination = path.join(modelDir, ...file.split('/'));
+        await fs.mkdir(path.dirname(destination), { recursive: true });
+
+        const existing = await fs.stat(destination).catch(() => null);
+        if (existing && existing.size > 0) {
+          completed += 1;
+          emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: existing.size, totalBytes: existing.size });
+          continue;
+        }
+
+        const partPath = `${destination}.part`;
+        const partial = await fs.stat(partPath).catch(() => null);
+        const resumeFrom = partial ? partial.size : 0;
+
+        const url = `${host}/${modelId}/resolve/${revision || 'main'}/${file}`;
+        const headers = resumeFrom > 0 ? { Range: `bytes=${resumeFrom}-` } : {};
+        const response = await fetch(url, { headers, signal: controller.signal });
+
+        if (!response.ok && response.status !== 206) {
+          throw new Error(`Download failed for ${file}: HTTP ${response.status}`);
+        }
+        // A server that ignores the Range header restarts the file; drop the
+        // partial rather than concatenating two copies of the same prefix.
+        const appending = response.status === 206 && resumeFrom > 0;
+        if (!appending && resumeFrom > 0) {
+          await fs.rm(partPath, { force: true });
+        }
+
+        const declared = Number(response.headers.get('content-length')) || 0;
+        const totalBytes = appending ? resumeFrom + declared : declared;
+        let received = appending ? resumeFrom : 0;
+
+        const stream = fsSync.createWriteStream(partPath, { flags: appending ? 'a' : 'w' });
+        try {
+          const reader = response.body.getReader();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            received += value.byteLength;
+            if (!stream.write(Buffer.from(value))) {
+              await new Promise((resolve) => stream.once('drain', resolve));
+            }
+            emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: received, totalBytes });
+          }
+        } finally {
+          await new Promise((resolve) => stream.end(resolve));
+        }
+
+        if (totalBytes > 0 && received !== totalBytes) {
+          throw new Error(`Truncated download for ${file}: got ${received} of ${totalBytes} bytes`);
+        }
+
+        // Only rename once the bytes are complete, so a partial file is never
+        // visible under the real name and never fed to the runtime.
+        await fs.rename(partPath, destination);
+        completed += 1;
+        emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: received, totalBytes });
+      }
+
+      emit({ phase: 'complete', completedFiles: completed, totalFiles: list.length });
+      return { success: true, modelDir };
+    } catch (error) {
+      const cancelled = error?.name === 'AbortError';
+      emit({ phase: cancelled ? 'cancelled' : 'error', error: cancelled ? null : error.message });
+      return { success: false, cancelled, error: cancelled ? 'Download cancelled' : error.message };
+    } finally {
+      embeddingModelDownload = null;
+    }
+  });
+
+  ipcMain.handle('cancel-embedding-model-download', async () => {
+    if (!embeddingModelDownload) {
+      return { success: true, running: false };
+    }
+    embeddingModelDownload.abort();
+    return { success: true, running: true };
+  });
+
+  ipcMain.handle('delete-embedding-model', async (event, { modelId } = {}) => {
+    try {
+      await fs.rm(getEmbeddingModelDir(modelId), { recursive: true, force: true });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('delete-embedding-index', async (event, { cacheId } = {}) => {
+    try {
+      const safeCacheId = toSafeCacheId(cacheId);
+      const cacheDir = await getEmbeddingCacheDir();
+      const files = await fs.readdir(cacheDir).catch((error) => {
+        if (error.code === 'ENOENT') return [];
+        throw error;
+      });
+      const prefix = `${safeCacheId}_emb_`;
+      let removed = 0;
+      for (const file of files) {
+        if (!file.startsWith(prefix)) continue;
+        await unlinkCacheChunkWithRetry(path.join(cacheDir, file));
+        removed += 1;
+      }
+      return { success: true, removed };
+    } catch (error) {
+      return { success: false, error: error.message };
     }
   });
 

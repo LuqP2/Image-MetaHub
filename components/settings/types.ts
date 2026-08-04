@@ -2,6 +2,7 @@ export type SettingsTab =
   | 'library'
   | 'viewer'
   | 'integrations'
+  | 'visual-search'
   | 'appearance'
   | 'privacy'
   | 'shortcuts'
@@ -25,6 +26,7 @@ export const resolveSettingsTab = (tab: SettingsTabInput | undefined): SettingsT
       return 'privacy';
     case 'viewer':
     case 'integrations':
+    case 'visual-search':
     case 'appearance':
     case 'library':
     case 'shortcuts':
