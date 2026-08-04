@@ -21,6 +21,10 @@ export interface SemanticQueryStats {
   scannedRows: number;
   durationMs: number;
   embedMs: number;
+  /** Best cosine among all candidates, before the cutoff trimmed the list. */
+  topScore?: number;
+  /** How many rows cleared the gather floor, before the relevance cutoff. */
+  candidateCount?: number;
 }
 
 /**
@@ -33,15 +37,62 @@ export interface SemanticQueryStats {
  */
 export const SEMANTIC_CACHE_ID = 'imh-visual-search';
 
-/** Cap on returned matches. Well above any page the grid renders at once. */
+/** Candidates to gather from the worker before the relevance cutoff trims them. */
 export const DEFAULT_TOP_K = 5000;
 
+/** Hard cap on what a query actually shows, so it reads as "best matches". */
+export const DEFAULT_RESULT_LIMIT = 300;
+
 /**
- * Cosine floor for text queries. CLIP text/image similarities cluster in a
- * narrow band, so this only rejects clearly unrelated rows; ranking does the
- * real work.
+ * Floor used only to gather candidates from the worker. CLIP text↔image cosines
+ * sit in a narrow, query-dependent band, so this alone does not decide what the
+ * user sees — the relevance cutoff below does.
  */
 export const DEFAULT_MIN_SCORE = 0.15;
+
+/**
+ * How many standard deviations above the library's mean score a row must sit to
+ * count as a match. CLIP absolute cosines are compressed and query-dependent
+ * (~0.22–0.25 here regardless of the query), so an absolute floor is useless —
+ * but a real match is a statistical *outlier* within a query's own score
+ * distribution. Measured on a 125-image set: "dog" (3 dogs present) peaked ~2.3σ
+ * above the mean while "cat" (none present) barely cleared 1.5σ, so ~2.0 admits
+ * true matches and rejects queries with nothing to find.
+ */
+export const DEFAULT_RELEVANCE_Z = 2.0;
+
+export interface ScoreDistribution {
+  mean: number;
+  std: number;
+}
+
+/**
+ * Keeps rows that are strong outliers in the query's own score distribution.
+ * Exported for unit testing the cutoff independent of the worker.
+ *
+ * `hits` must be sorted by score descending (as the worker returns them).
+ */
+export const applyRelevanceCutoff = (
+  hits: SemanticHit[],
+  distribution: ScoreDistribution,
+  z = DEFAULT_RELEVANCE_Z,
+  limit = DEFAULT_RESULT_LIMIT
+): SemanticHit[] => {
+  if (hits.length === 0) return hits;
+
+  // A flat distribution has no outliers: nothing meaningfully matches, so
+  // returning the top-K reordered would just be the "whole library" bug again.
+  if (distribution.std < 1e-4) return [];
+
+  const threshold = distribution.mean + z * distribution.std;
+  const kept: SemanticHit[] = [];
+  for (const hit of hits) {
+    if (hit.score < threshold) break; // sorted desc
+    kept.push(hit);
+    if (kept.length >= limit) break;
+  }
+  return kept;
+};
 
 /** Find Similar is a tighter question than search, so it uses its own floor. */
 export const DEFAULT_VISUAL_SIMILARITY_MIN_SCORE = 0.75;
@@ -54,8 +105,17 @@ let nextQueryId = 1;
 /** Rows already handed to the worker, per segment index. */
 let syncedSegmentRows: number[] = [];
 
+interface WorkerQueryResult {
+  rows: number[];
+  scores: number[];
+  scannedRows: number;
+  durationMs: number;
+  scoreSum: number;
+  scoreSqSum: number;
+}
+
 const pendingQueries = new Map<number, {
-  resolve: (value: { rows: number[]; scores: number[]; scannedRows: number; durationMs: number }) => void;
+  resolve: (value: WorkerQueryResult) => void;
   reject: (error: Error) => void;
 }>();
 
@@ -174,7 +234,7 @@ export const syncWorker = async (): Promise<void> => {
 
 const runWorkerQuery = (
   message: { type: string; payload: Record<string, unknown> }
-): Promise<{ rows: number[]; scores: number[]; scannedRows: number; durationMs: number }> => {
+): Promise<WorkerQueryResult> => {
   const instance = ensureWorker();
   const queryId = nextQueryId;
   nextQueryId += 1;
@@ -183,6 +243,14 @@ const runWorkerQuery = (
     pendingQueries.set(queryId, { resolve, reject });
     instance.postMessage({ ...message, payload: { ...message.payload, queryId } });
   });
+};
+
+/** Mean and standard deviation of scores over every scanned row. */
+const distributionFrom = (scoreSum: number, scoreSqSum: number, count: number): ScoreDistribution => {
+  if (count <= 0) return { mean: 0, std: 0 };
+  const mean = scoreSum / count;
+  const variance = Math.max(0, scoreSqSum / count - mean * mean);
+  return { mean, std: Math.sqrt(variance) };
 };
 
 const toHits = (rows: number[], scores: number[]): SemanticHit[] => {
@@ -221,9 +289,19 @@ export const searchByText = async (
     },
   });
 
+  const candidates = toHits(result.rows, result.scores);
+  const distribution = distributionFrom(result.scoreSum, result.scoreSqSum, result.scannedRows);
+  const hits = applyRelevanceCutoff(candidates, distribution);
+
   return {
-    hits: toHits(result.rows, result.scores),
-    stats: { scannedRows: result.scannedRows, durationMs: result.durationMs, embedMs },
+    hits,
+    stats: {
+      scannedRows: result.scannedRows,
+      durationMs: result.durationMs,
+      embedMs,
+      topScore: candidates[0]?.score,
+      candidateCount: candidates.length,
+    },
   };
 };
 

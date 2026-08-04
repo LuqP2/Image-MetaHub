@@ -43,6 +43,11 @@ interface SemanticStoreState {
 
   queryActive: boolean;
   queryRunning: boolean;
+  /** Why the last query produced nothing, so the search UI can explain itself. */
+  queryNotice: 'ok' | 'no-index' | 'no-results' | 'error' | null;
+  queryResultCount: number;
+  /** Best cosine of the last query, surfaced for tuning/diagnosis. */
+  queryTopScore: number | null;
   lastError: string | null;
 
   refreshModelStatus: () => Promise<boolean>;
@@ -103,6 +108,9 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
   isPaused: false,
   queryActive: false,
   queryRunning: false,
+  queryNotice: null,
+  queryResultCount: 0,
+  queryTopScore: null,
   lastError: null,
 
   refreshModelStatus: async () => {
@@ -217,27 +225,46 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     }
 
     const generation = ++queryGeneration;
-    set({ queryRunning: true, queryActive: true, lastError: null });
+    set({ queryRunning: true, queryActive: true, lastError: null, queryNotice: null });
 
     try {
-      const { hits } = await searchByText(trimmed);
+      // Open the index on demand: the search can be run without ever visiting
+      // the settings panel, which was previously the only place that opened it.
+      const index = await openLibrary(SEMANTIC_CACHE_ID);
+      if (generation !== queryGeneration) return;
+
+      if (index.stats.liveRows === 0) {
+        // Nothing embedded yet — leave the grid untouched and say why, rather
+        // than blanking it with an empty ranked set.
+        set({ queryRunning: false, queryNotice: 'no-index', queryResultCount: 0 });
+        return;
+      }
+
+      const { hits, stats } = await searchByText(trimmed);
       if (generation !== queryGeneration) return;
 
       const scoreById = new Map<string, number>();
       for (const hit of hits) scoreById.set(hit.imageId, hit.score);
       const result: SemanticSearchResult = { generation, query: trimmed, scoreById };
       useImageStore.getState().applySemanticResult(result);
-      set({ queryRunning: false });
+      set({
+        queryRunning: false,
+        queryResultCount: hits.length,
+        queryTopScore: stats.topScore ?? null,
+        queryNotice: hits.length === 0 ? 'no-results' : 'ok',
+      });
     } catch (error) {
       if (generation !== queryGeneration) return;
-      set({ queryRunning: false, lastError: error instanceof Error ? error.message : String(error) });
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[visual-search] query failed:', error);
+      set({ queryRunning: false, queryNotice: 'error', lastError: message });
     }
   },
 
   clearQuery: () => {
     queryGeneration += 1;
     useImageStore.getState().applySemanticResult(null);
-    set({ queryActive: false, queryRunning: false });
+    set({ queryActive: false, queryRunning: false, queryNotice: null, queryResultCount: 0, queryTopScore: null });
   },
 
   deleteIndex: async () => {

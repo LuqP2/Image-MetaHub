@@ -4171,13 +4171,15 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const preSemanticSortOrder = state.semanticResult
                     ? state.preSemanticSortOrder
                     : state.sortOrder;
-                const nextState = {
-                    ...state,
+                const changed = {
                     semanticResult: result,
                     preSemanticSortOrder,
                     sortOrder: 'relevance' as SortOrder,
                 };
-                return { ...filterAndSort(nextState), ...nextState };
+                // Only re-add the fields that changed after filterAndSort —
+                // spreading the whole prior state back would clobber the freshly
+                // filtered filteredImages/facets with the stale ones.
+                return { ...filterAndSort({ ...state, ...changed }), ...changed };
             }
 
             if (!state.semanticResult) {
@@ -4185,14 +4187,12 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             // Relevance only makes sense while a result is present; fall back to
             // whatever the user had before, or a sane default.
-            const restoredSortOrder = state.preSemanticSortOrder ?? 'date-desc';
-            const nextState = {
-                ...state,
+            const changed = {
                 semanticResult: null,
                 preSemanticSortOrder: null,
-                sortOrder: restoredSortOrder,
+                sortOrder: (state.preSemanticSortOrder ?? 'date-desc') as SortOrder,
             };
-            return { ...filterAndSort(nextState), ...nextState };
+            return { ...filterAndSort({ ...state, ...changed }), ...changed };
         }),
 
         reshuffle: () => set(state => {

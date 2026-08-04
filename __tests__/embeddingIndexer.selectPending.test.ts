@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { selectPendingImages } from '../services/embeddings/embeddingIndexer';
 import { contentKeyForImage } from '../services/embeddings/embeddingStore';
+import { applyRelevanceCutoff } from '../services/embeddings/semanticSearchEngine';
 import type { IndexedImage } from '../types';
 
 const image = (id: string, modified: number, fileSize = 10): IndexedImage => ({
@@ -49,5 +50,38 @@ describe('selectPendingImages', () => {
     const images = [image('a', 5), image('b', 4)];
     expect(selectPendingImages(images, new Map(), 0)).toEqual([]);
     expect(selectPendingImages(images, new Map(), -3)).toEqual([]);
+  });
+});
+
+describe('applyRelevanceCutoff', () => {
+  const hit = (id: string, score: number) => ({ imageId: id, score });
+
+  it('keeps only outliers well above the mean (real matches present)', () => {
+    // Mimics "dog": a few high scores over a background clustered near the mean.
+    const hits = [hit('a', 0.253), hit('b', 0.251), hit('c', 0.249), hit('d', 0.230), hit('e', 0.228)];
+    const kept = applyRelevanceCutoff(hits, { mean: 0.225, std: 0.010 }, 2.0, 300);
+    // threshold = 0.225 + 2*0.010 = 0.245 → keeps the three standouts.
+    expect(kept.map((h) => h.imageId)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps nothing when the best barely clears the mean (no real match)', () => {
+    // Mimics "cat": top is only ~1.2σ above the mean.
+    const hits = [hit('a', 0.235), hit('b', 0.231), hit('c', 0.229)];
+    expect(applyRelevanceCutoff(hits, { mean: 0.223, std: 0.010 }, 2.0, 300)).toEqual([]);
+  });
+
+  it('returns nothing for a flat distribution (degenerate scores)', () => {
+    const hits = [hit('a', 0.22), hit('b', 0.22), hit('c', 0.22)];
+    expect(applyRelevanceCutoff(hits, { mean: 0.22, std: 0 }, 2.0, 300)).toEqual([]);
+  });
+
+  it('enforces the hard cap', () => {
+    const hits = Array.from({ length: 500 }, (_, i) => hit(`i${i}`, 0.5 - i * 0.00001));
+    // Every score is far above the mean, so the cap is what bounds the result.
+    expect(applyRelevanceCutoff(hits, { mean: 0.2, std: 0.01 }, 2.0, 300)).toHaveLength(300);
+  });
+
+  it('handles an empty candidate list', () => {
+    expect(applyRelevanceCutoff([], { mean: 0.2, std: 0.01 }, 2.0, 300)).toEqual([]);
   });
 });

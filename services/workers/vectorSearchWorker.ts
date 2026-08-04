@@ -28,7 +28,21 @@ type WorkerMessage =
 
 type WorkerResponse =
   | { type: 'ready'; payload: { rowCount: number; segmentCount: number } }
-  | { type: 'result'; payload: { queryId: number; rows: number[]; scores: number[]; scannedRows: number; durationMs: number } }
+  | {
+      type: 'result';
+      payload: {
+        queryId: number;
+        rows: number[];
+        scores: number[];
+        scannedRows: number;
+        durationMs: number;
+        // Distribution of scores over every scanned row, so the caller can pick
+        // a relevance cutoff that adapts to the query. Computed here because the
+        // worker already visits every row and the renderer only sees top-K.
+        scoreSum: number;
+        scoreSqSum: number;
+      };
+    }
   | { type: 'error'; payload: { error: string } };
 
 const SEGMENTS: ExplodedSegment[] = [];
@@ -149,9 +163,11 @@ const runQuery = (
   queryScale: number,
   topK: number,
   minScore: number
-): { rows: number[]; scores: number[]; scannedRows: number } => {
+): { rows: number[]; scores: number[]; scannedRows: number; scoreSum: number; scoreSqSum: number } => {
   const heap = new TopK(Math.max(1, topK));
   let scanned = 0;
+  let scoreSum = 0;
+  let scoreSqSum = 0;
 
   for (let s = 0; s < SEGMENTS.length; s += 1) {
     const segment = SEGMENTS[s];
@@ -164,12 +180,16 @@ const runQuery = (
       if (liveMask[physicalRow] !== 1) continue;
       scanned += 1;
       const score = scoreRow(queryCodes, queryScale, codes, row * dim, dim, scales[row]);
+      // Accumulate over every live row, before the heap gate, so mean/std
+      // describe the whole library rather than just the top-K survivors.
+      scoreSum += score;
+      scoreSqSum += score * score;
       if (score < minScore || score <= heap.worst) continue;
       heap.push(score, physicalRow);
     }
   }
 
-  return { ...heap.drainSorted(), scannedRows: scanned };
+  return { ...heap.drainSorted(), scannedRows: scanned, scoreSum, scoreSqSum };
 };
 
 self.onmessage = (event: MessageEvent<WorkerMessage>) => {
@@ -228,6 +248,8 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
             scores: result.scores,
             scannedRows: result.scannedRows,
             durationMs: performance.now() - startedAt,
+            scoreSum: result.scoreSum,
+            scoreSqSum: result.scoreSqSum,
           },
         });
         break;
@@ -238,7 +260,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         const { queryId, row, topK, minScore } = message.payload;
         const located = locateRow(row);
         if (!located) {
-          post({ type: 'result', payload: { queryId, rows: [], scores: [], scannedRows: 0, durationMs: 0 } });
+          post({ type: 'result', payload: { queryId, rows: [], scores: [], scannedRows: 0, durationMs: 0, scoreSum: 0, scoreSqSum: 0 } });
           break;
         }
         const { segment, localRow } = located;
@@ -252,6 +274,8 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
             scores: result.scores,
             scannedRows: result.scannedRows,
             durationMs: performance.now() - startedAt,
+            scoreSum: result.scoreSum,
+            scoreSqSum: result.scoreSqSum,
           },
         });
         break;
