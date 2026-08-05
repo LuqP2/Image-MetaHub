@@ -12,7 +12,7 @@
  * array plus a scale array, which is what the similarity loop wants.
  */
 
-export const EMBEDDING_FORMAT_VERSION = 1;
+export const EMBEDDING_FORMAT_VERSION = 2;
 
 /** Rows per segment file. 8192 x 516B keeps a segment near 4MB. */
 export const SEGMENT_ROWS = 8192;
@@ -53,7 +53,22 @@ export interface EmbeddingManifest {
   liveRows: number;
   tombstoneCount: number;
   updatedAt: number;
+  /**
+   * Running sum of every embedded image vector, and how many went into it. The
+   * mean derived from these is what text queries are centered against (see
+   * `centeredInverseNorms`). Stored as a sum rather than a mean so an
+   * incremental backfill can extend it without revisiting existing rows.
+   */
+  centroidSum: number[];
+  centroidCount: number;
 }
+
+/**
+ * Rows needed before the centroid is trusted. Below this the mean is dominated
+ * by whatever handful of images happened to be indexed first, and centering
+ * against it would distort ranking rather than correct it.
+ */
+export const MIN_CENTROID_ROWS = 16;
 
 /**
  * Identity of the file's *content*, used to detect that an image changed
@@ -85,6 +100,8 @@ export const createEmptyManifest = (
   liveRows: 0,
   tombstoneCount: 0,
   updatedAt: Date.now(),
+  centroidSum: new Array(dim).fill(0),
+  centroidCount: 0,
 });
 
 /**
@@ -253,6 +270,82 @@ export const scoreRow = (
     accumulator += queryCodes[i] * segmentCodes[rowOffset + i];
   }
   return accumulator * queryScale * rowScale;
+};
+
+/**
+ * Mean image vector from a manifest's running sum, or null while the index is
+ * too small for it to mean anything. Not re-normalized: the centering math
+ * wants the actual mean, not a unit vector pointing at it.
+ */
+export const centroidFrom = (
+  centroidSum: number[] | undefined,
+  centroidCount: number | undefined,
+  dim: number
+): Float32Array | null => {
+  if (!centroidSum || centroidSum.length !== dim) return null;
+  if (!centroidCount || centroidCount < MIN_CENTROID_ROWS) return null;
+  const mean = new Float32Array(dim);
+  for (let i = 0; i < dim; i += 1) {
+    mean[i] = centroidSum[i] / centroidCount;
+  }
+  return mean;
+};
+
+/**
+ * Dot product of a float vector with a quantized one. Used to fold the constant
+ * `mean · query` term out of the per-row centering math.
+ */
+export const dotFloatWithQuantized = (
+  vector: Float32Array,
+  codes: Int8Array,
+  scale: number
+): number => {
+  let accumulator = 0;
+  for (let i = 0; i < vector.length; i += 1) {
+    accumulator += vector[i] * codes[i];
+  }
+  return accumulator * scale;
+};
+
+/**
+ * Per-row `1 / ‖v − mean‖`, the only part of centered scoring that cannot be
+ * folded into a per-query constant.
+ *
+ * Centering is what makes text→image ranking work. CLIP's text and image towers
+ * occupy near-disjoint cones (the "modality gap"), so raw text↔image cosines all
+ * land in a narrow band and a handful of hub images sit close to *every* query.
+ * Scoring `(v − mean)·q / ‖v − mean‖` removes the shared component and divides
+ * out hubness. Subtracting the mean alone would not reorder anything — `mean·q`
+ * is the same constant for every row — so this norm is where the ranking change
+ * actually comes from.
+ *
+ * Returns all-ones when there is no mean yet, which degrades exactly to the
+ * uncentered cosine (stored vectors are unit length).
+ */
+export const centeredInverseNorms = (
+  segment: ExplodedSegment,
+  dim: number,
+  mean: Float32Array | null
+): Float32Array => {
+  const inverseNorms = new Float32Array(segment.rowCount);
+  if (!mean) {
+    inverseNorms.fill(1);
+    return inverseNorms;
+  }
+
+  for (let row = 0; row < segment.rowCount; row += 1) {
+    const offset = row * dim;
+    const scale = segment.scales[row];
+    let sumSquares = 0;
+    for (let i = 0; i < dim; i += 1) {
+      const centered = segment.codes[offset + i] * scale - mean[i];
+      sumSquares += centered * centered;
+    }
+    // A zero-length centered vector carries no direction to rank by; 0 drops it
+    // to the bottom instead of producing Infinity.
+    inverseNorms[row] = sumSquares > 0 ? 1 / Math.sqrt(sumSquares) : 0;
+  }
+  return inverseNorms;
 };
 
 export const isTombstoned = (entry: EmbeddingRowEntry): boolean =>

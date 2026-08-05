@@ -62,6 +62,50 @@ export const CLIP_MODEL: EmbeddingModelDescriptor = {
   imageSize: 224,
 };
 
+/**
+ * Caption templates a short query is expanded into before embedding.
+ *
+ * CLIP's text tower was trained on alt-text captions, never on bare nouns, so
+ * "dog" sits in a thinner part of the text space than "a photo of a dog" does.
+ * Embedding several phrasings and averaging them — the same prompt-ensembling
+ * trick the original zero-shot results relied on — lands closer to the region
+ * the image tower actually maps dogs to, and averages away the wording quirks of
+ * any single template.
+ *
+ * Skewed toward rendered/illustrated phrasing rather than the photographic
+ * templates of the ImageNet ensemble, because this library is generated art.
+ * The bare query is kept in the set so an already well-phrased one is not
+ * diluted by templates that fit it badly.
+ */
+export const QUERY_TEMPLATES = [
+  '{}',
+  'a photo of {}',
+  'a picture of {}',
+  'digital art of {}',
+  'an illustration of {}',
+  'a rendering of {}',
+  'a close-up of {}',
+];
+
+/**
+ * Word count past which a query is embedded verbatim. A long query is already
+ * caption-shaped, and wrapping it ("a photo of a misty forest at dawn with a
+ * lone figure walking") adds noise instead of context.
+ */
+export const MAX_TEMPLATED_WORDS = 4;
+
+/**
+ * The phrasings a query should be embedded as and averaged over. Returns the
+ * query alone when templating would not help.
+ */
+export const expandQuery = (text: string): string[] => {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  const words = trimmed.split(/\s+/).length;
+  if (words > MAX_TEMPLATED_WORDS) return [trimmed];
+  return QUERY_TEMPLATES.map((template) => template.replace('{}', trimmed));
+};
+
 /** Files that must be present to run the model on a given backend. */
 export const filesForDevice = (device: EmbeddingDevice): string[] => [
   ...CLIP_MODEL.baseFiles,

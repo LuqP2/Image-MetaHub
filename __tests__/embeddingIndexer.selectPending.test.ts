@@ -98,6 +98,27 @@ describe('applyRelevanceCutoff', () => {
   it('handles an empty candidate list', () => {
     expect(applyRelevanceCutoff([], { mean: 0.2, std: 0.01 }, 2.0, 300)).toEqual([]);
   });
+
+  it('does not admit a long tail just because the library is large', () => {
+    // At 17.5k rows, 2σ is roughly the 98th percentile, so a z-only cutoff let
+    // ~350 rows through on every query and the hard cap did the real cutting.
+    // Here one row is a genuine standout and the rest sit just past 2σ.
+    const hits = [
+      hit('match', 0.90),
+      ...Array.from({ length: 350 }, (_, i) => hit(`tail${i}`, 0.42 - i * 0.0001)),
+    ];
+    const kept = applyRelevanceCutoff(hits, { mean: 0.2, std: 0.1 }, 2.0, 300);
+    // relative floor = 0.2 + 0.55*(0.90-0.2) = 0.585, well above the tail.
+    expect(kept.map((h) => h.imageId)).toEqual(['match']);
+  });
+
+  it('keeps a whole cluster when many rows are genuinely comparable', () => {
+    // The mirror case: a query with lots of real matches must not be trimmed to
+    // the single best one.
+    const hits = Array.from({ length: 40 }, (_, i) => hit(`m${i}`, 0.90 - i * 0.002));
+    const kept = applyRelevanceCutoff(hits, { mean: 0.2, std: 0.1 }, 2.0, 300);
+    expect(kept).toHaveLength(40);
+  });
 });
 
 describe('parseSemanticQuery', () => {

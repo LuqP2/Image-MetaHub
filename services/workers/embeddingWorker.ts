@@ -7,6 +7,7 @@ import {
   env,
 } from '@huggingface/transformers';
 import { l2Normalize, quantizeVector } from '../embeddings/embeddingFormat';
+import { expandQuery } from '../embeddings/embeddingModel';
 
 /**
  * Runs the CLIP towers that turn images and query text into vectors.
@@ -239,13 +240,32 @@ const embedImages = async (jobId: number, items: EmbedItem[]): Promise<void> => 
   );
 };
 
+/**
+ * Embeds a query as the average of its template phrasings (see `expandQuery`).
+ *
+ * The whole ensemble goes through the tower as one batch, so the extra
+ * phrasings cost padding rather than extra forward passes — and the text tower
+ * is the small one, unloaded-vision-tower small. Each phrasing is normalized
+ * before averaging: without that, a template whose embedding happens to be
+ * longer would quietly dominate the mean.
+ */
 const embedTextRaw = async (text: string): Promise<Float32Array> => {
   await ensureText();
-  const inputs = tokenizer([text], { padding: true, truncation: true });
+  const prompts = expandQuery(text);
+  const inputs = tokenizer(prompts, { padding: true, truncation: true });
   const output = await textModel(inputs);
   const embeddings = output.text_embeds;
-  const width = embeddings.dims[1];
-  return new Float32Array((embeddings.data as Float32Array).subarray(0, width));
+  const [batch, width] = embeddings.dims;
+  const flat = embeddings.data as Float32Array;
+
+  const averaged = new Float32Array(width);
+  for (let row = 0; row < batch; row += 1) {
+    const vector = l2Normalize(new Float32Array(flat.subarray(row * width, (row + 1) * width)));
+    for (let i = 0; i < width; i += 1) {
+      averaged[i] += vector[i];
+    }
+  }
+  return l2Normalize(averaged);
 };
 
 const embedText = async (

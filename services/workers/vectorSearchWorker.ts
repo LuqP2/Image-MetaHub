@@ -1,4 +1,10 @@
-import { explodeSegment, scoreRow, type ExplodedSegment } from '../embeddings/embeddingFormat';
+import {
+  centeredInverseNorms,
+  dotFloatWithQuantized,
+  explodeSegment,
+  scoreRow,
+  type ExplodedSegment,
+} from '../embeddings/embeddingFormat';
 
 /**
  * Holds the quantized vector matrix and ranks it against a query vector.
@@ -19,8 +25,21 @@ type WorkerMessage =
   | { type: 'init'; payload: { dim: number } }
   | { type: 'addSegment'; payload: { index: number; buffer: ArrayBuffer; rowCount: number } }
   | { type: 'setLiveMask'; payload: { mask: ArrayBuffer } }
+  // Mean image vector the text queries center against. Null clears it.
+  | { type: 'setMean'; payload: { mean: ArrayBuffer | null } }
   | { type: 'markDead'; payload: { rows: number[] } }
-  | { type: 'query'; payload: { queryId: number; codes: ArrayBuffer; scale: number; topK: number; minScore: number } }
+  | {
+      type: 'query';
+      payload: {
+        queryId: number;
+        codes: ArrayBuffer;
+        scale: number;
+        topK: number;
+        minScore: number;
+        /** Score against mean-centered rows. Text queries only — see below. */
+        centered?: boolean;
+      };
+    }
   // Find Similar by content: the query vector is a row already in the matrix,
   // so it never has to be read back into the renderer.
   | { type: 'queryByRow'; payload: { queryId: number; row: number; topK: number; minScore: number } }
@@ -48,11 +67,15 @@ type WorkerResponse =
 const SEGMENTS: ExplodedSegment[] = [];
 /** Physical row of the first row in each segment, parallel to SEGMENTS. */
 const SEGMENT_BASE_ROW: number[] = [];
+/** Per-row `1 / ‖v − mean‖`, parallel to SEGMENTS. Recomputed when mean moves. */
+const SEGMENT_INV_NORMS: Float32Array[] = [];
 
 let dim = 0;
 let totalRows = 0;
 /** One byte per physical row: 0 = tombstoned or unknown, 1 = searchable. */
 let liveMask = new Uint8Array(0);
+/** Mean image vector, or null until the index is big enough to have one. */
+let mean: Float32Array | null = null;
 
 const post = (message: WorkerResponse, transfer?: Transferable[]) => {
   (self as unknown as Worker).postMessage(message, transfer ?? []);
@@ -162,24 +185,35 @@ const runQuery = (
   queryCodes: Int8Array,
   queryScale: number,
   topK: number,
-  minScore: number
+  minScore: number,
+  centered = false
 ): { rows: number[]; scores: number[]; scannedRows: number; scoreSum: number; scoreSqSum: number } => {
   const heap = new TopK(Math.max(1, topK));
   let scanned = 0;
   let scoreSum = 0;
   let scoreSqSum = 0;
 
+  // Centering only reorders rows through the per-row `1/‖v − mean‖` factor; the
+  // `mean · query` term is the same for every row, so it is computed once here
+  // rather than 400k times inside the scan.
+  const useCentering = centered && mean !== null;
+  const meanDotQuery = useCentering ? dotFloatWithQuantized(mean!, queryCodes, queryScale) : 0;
+
   for (let s = 0; s < SEGMENTS.length; s += 1) {
     const segment = SEGMENTS[s];
     if (!segment) continue;
     const baseRow = SEGMENT_BASE_ROW[s];
     const { codes, scales, rowCount } = segment;
+    const inverseNorms = SEGMENT_INV_NORMS[s];
 
     for (let row = 0; row < rowCount; row += 1) {
       const physicalRow = baseRow + row;
       if (liveMask[physicalRow] !== 1) continue;
       scanned += 1;
-      const score = scoreRow(queryCodes, queryScale, codes, row * dim, dim, scales[row]);
+      const raw = scoreRow(queryCodes, queryScale, codes, row * dim, dim, scales[row]);
+      const score = useCentering && inverseNorms
+        ? (raw - meanDotQuery) * inverseNorms[row]
+        : raw;
       // Accumulate over every live row, before the heap gate, so mean/std
       // describe the whole library rather than just the top-K survivors.
       scoreSum += score;
@@ -200,15 +234,30 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         dim = message.payload.dim;
         SEGMENTS.length = 0;
         SEGMENT_BASE_ROW.length = 0;
+        SEGMENT_INV_NORMS.length = 0;
         totalRows = 0;
         liveMask = new Uint8Array(0);
+        mean = null;
         post({ type: 'ready', payload: { rowCount: 0, segmentCount: 0 } });
+        break;
+      }
+
+      case 'setMean': {
+        const { mean: buffer } = message.payload;
+        mean = buffer ? new Float32Array(buffer) : null;
+        // The norms are derived from the mean, so every loaded segment has to be
+        // revisited. It is one pass of rowCount × dim — cheap next to the scan a
+        // single query already pays, and it only happens when the index grows.
+        for (let s = 0; s < SEGMENTS.length; s += 1) {
+          if (SEGMENTS[s]) SEGMENT_INV_NORMS[s] = centeredInverseNorms(SEGMENTS[s], dim, mean);
+        }
         break;
       }
 
       case 'addSegment': {
         const { index, buffer, rowCount } = message.payload;
         SEGMENTS[index] = explodeSegment(buffer, dim, rowCount);
+        SEGMENT_INV_NORMS[index] = centeredInverseNorms(SEGMENTS[index], dim, mean);
         // Segments are fixed-capacity and arrive in order, so the base row of a
         // segment is the running total of everything before it.
         let base = 0;
@@ -238,8 +287,8 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
 
       case 'query': {
         const startedAt = performance.now();
-        const { queryId, codes, scale, topK, minScore } = message.payload;
-        const result = runQuery(new Int8Array(codes), scale, topK, minScore);
+        const { queryId, codes, scale, topK, minScore, centered } = message.payload;
+        const result = runQuery(new Int8Array(codes), scale, topK, minScore, centered);
         post({
           type: 'result',
           payload: {
@@ -284,7 +333,9 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       case 'dispose': {
         SEGMENTS.length = 0;
         SEGMENT_BASE_ROW.length = 0;
+        SEGMENT_INV_NORMS.length = 0;
         liveMask = new Uint8Array(0);
+        mean = null;
         totalRows = 0;
         break;
       }

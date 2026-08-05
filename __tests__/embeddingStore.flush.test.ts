@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  EMBEDDING_FORMAT_VERSION,
   SEGMENT_ROWS,
   manifestFileName,
   segmentFileName,
@@ -34,8 +35,10 @@ describe('EmbeddingIndex.flush', () => {
   // Seed a manifest two rows short of filling segment 0, so a 4-vector flush
   // straddles the segment boundary: 2 rows land in segment 0 (already has
   // room), 2 more spill into segment 1.
+  // Pinned to the live constant: a format bump makes this manifest incompatible,
+  // which sends open() down the rebuild path instead of the one under test.
   const seedManifest: EmbeddingManifest = {
-    formatVersion: 1,
+    formatVersion: EMBEDDING_FORMAT_VERSION,
     modelId,
     modelRevision,
     dim,
@@ -46,6 +49,8 @@ describe('EmbeddingIndex.flush', () => {
     liveRows: SEGMENT_ROWS - 2,
     tombstoneCount: 0,
     updatedAt: Date.now(),
+    centroidSum: new Array(dim).fill(0),
+    centroidCount: 0,
   };
 
   const vector = (n: number) => ({ scale: 1, codes: Int8Array.from([n, n, n, n]) });

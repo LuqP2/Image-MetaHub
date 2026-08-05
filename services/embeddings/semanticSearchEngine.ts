@@ -45,22 +45,40 @@ export const DEFAULT_TOP_K = 5000;
 export const DEFAULT_RESULT_LIMIT = 300;
 
 /**
- * Floor used only to gather candidates from the worker. CLIP text↔image cosines
- * sit in a narrow, query-dependent band, so this alone does not decide what the
- * user sees — the relevance cutoff below does.
+ * Floor used only to gather candidates from the worker. Uncentered CLIP
+ * text↔image cosines sit in a narrow, query-dependent band, so this alone does
+ * not decide what the user sees — the relevance cutoff below does.
  */
 export const DEFAULT_MIN_SCORE = 0.15;
 
 /**
+ * Gather floor for centered scores, which are distributed around 0 rather than
+ * around a positive band. A row anti-correlated with the query is never a match,
+ * so 0 costs nothing and keeps the heap small.
+ */
+export const DEFAULT_CENTERED_MIN_SCORE = 0;
+
+/**
  * How many standard deviations above the library's mean score a row must sit to
- * count as a match. CLIP absolute cosines are compressed and query-dependent
- * (~0.22–0.25 here regardless of the query), so an absolute floor is useless —
- * but a real match is a statistical *outlier* within a query's own score
- * distribution. Measured on a 125-image set: "dog" (3 dogs present) peaked ~2.3σ
- * above the mean while "cat" (none present) barely cleared 1.5σ, so ~2.0 admits
- * true matches and rejects queries with nothing to find.
+ * be considered at all. This is a sanity floor, not the real discriminator: it
+ * exists so a query with nothing to find ("cat" in a library of landscapes)
+ * returns empty instead of returning the least-bad rows.
  */
 export const DEFAULT_RELEVANCE_Z = 2.0;
+
+/**
+ * The actual discriminator: a row must sit at least this fraction of the way
+ * from the library mean to the best row to count as a match.
+ *
+ * A pure z-threshold does not survive a change of library size. At 125 images,
+ * 2σ is far out in the tail and only genuine matches clear it. At 17.5k images
+ * the same 2σ is roughly the 98th percentile, so ~350 rows clear it on *every*
+ * query and DEFAULT_RESULT_LIMIT does the real cutting — which is why a query
+ * returned 300 results whether or not it matched anything. A cutoff expressed
+ * relative to the best row is scale-free: it asks "is this row comparable to the
+ * best thing we found?", which is the question the user is actually asking.
+ */
+export const DEFAULT_TOP_FRACTION = 0.55;
 
 export interface ScoreDistribution {
   mean: number;
@@ -68,7 +86,7 @@ export interface ScoreDistribution {
 }
 
 /**
- * Keeps rows that are strong outliers in the query's own score distribution.
+ * Keeps rows that are both statistical outliers and comparable to the best hit.
  * Exported for unit testing the cutoff independent of the worker.
  *
  * `hits` must be sorted by score descending (as the worker returns them).
@@ -77,7 +95,8 @@ export const applyRelevanceCutoff = (
   hits: SemanticHit[],
   distribution: ScoreDistribution,
   z = DEFAULT_RELEVANCE_Z,
-  limit = DEFAULT_RESULT_LIMIT
+  limit = DEFAULT_RESULT_LIMIT,
+  topFraction = DEFAULT_TOP_FRACTION
 ): SemanticHit[] => {
   if (hits.length === 0) return hits;
 
@@ -85,7 +104,10 @@ export const applyRelevanceCutoff = (
   // returning the top-K reordered would just be the "whole library" bug again.
   if (distribution.std < 1e-4) return [];
 
-  const threshold = distribution.mean + z * distribution.std;
+  const sanityFloor = distribution.mean + z * distribution.std;
+  const relativeFloor = distribution.mean + topFraction * (hits[0].score - distribution.mean);
+  const threshold = Math.max(sanityFloor, relativeFloor);
+
   const kept: SemanticHit[] = [];
   for (const hit of hits) {
     if (hit.score < threshold) break; // sorted desc
@@ -105,6 +127,8 @@ let workerReady = false;
 let nextQueryId = 1;
 /** Rows already handed to the worker, per segment index. */
 let syncedSegmentRows: number[] = [];
+/** Centroid version the worker currently holds; -1 until the first sync. */
+let syncedCentroidVersion = -1;
 
 interface WorkerQueryResult {
   rows: number[];
@@ -169,6 +193,7 @@ const stopSearchWorker = (): void => {
   worker = null;
   workerReady = false;
   syncedSegmentRows = [];
+  syncedCentroidVersion = -1;
   for (const pending of pendingQueries.values()) {
     pending.reject(new Error('Vector search worker stopped'));
   }
@@ -234,6 +259,15 @@ export const syncWorker = async (): Promise<void> => {
       [buffer]
     );
     syncedSegmentRows[descriptor.index] = descriptor.rowCount;
+  }
+
+  // After the segments, so a mean that moved re-derives the norms for every
+  // segment the worker holds — including any just added above.
+  if (syncedCentroidVersion !== index.centroidVersion) {
+    const centroid = index.centroid();
+    const buffer = centroid ? centroid.buffer.slice(0) : null;
+    instance.postMessage({ type: 'setMean', payload: { mean: buffer } }, buffer ? [buffer] : []);
+    syncedCentroidVersion = index.centroidVersion;
   }
 
   const rows = index.rowSnapshot();
@@ -327,7 +361,10 @@ export const searchByText = async (
       codes: buffer,
       scale,
       topK: options.topK ?? DEFAULT_TOP_K,
-      minScore: options.minScore ?? DEFAULT_MIN_SCORE,
+      minScore: options.minScore ?? DEFAULT_CENTERED_MIN_SCORE,
+      // Text↔image is the only direction with a modality gap to correct. The
+      // worker falls back to plain cosine while the index has no mean yet.
+      centered: true,
     },
   });
 

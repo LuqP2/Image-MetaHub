@@ -6,6 +6,7 @@ import {
   ROW_INDEX_CHUNK_SIZE,
   SEGMENT_ROWS,
   buildContentKey,
+  centroidFrom,
   createEmptyManifest,
   encodeRow,
   isManifestCompatible,
@@ -65,9 +66,22 @@ export class EmbeddingIndex {
 
   private manifestDirty = false;
 
+  /**
+   * Running sum of every appended vector, kept in float64 so a 400k-row sum does
+   * not accumulate rounding error. Mirrored into the manifest on flush.
+   */
+  private centroidSum: Float64Array;
+
+  private centroidCount = 0;
+
   private constructor(safeCacheId: string, manifest: EmbeddingManifest) {
     this.safeCacheId = safeCacheId;
     this.manifest = manifest;
+    this.centroidSum = new Float64Array(manifest.dim);
+    if (manifest.centroidSum?.length === manifest.dim) {
+      this.centroidSum.set(manifest.centroidSum);
+      this.centroidCount = manifest.centroidCount ?? 0;
+    }
   }
 
   static async open(cacheId: string, modelId: string, modelRevision: string, dim: number): Promise<EmbeddingIndex> {
@@ -168,6 +182,41 @@ export class EmbeddingIndex {
       contentKey,
       bytes: encodeRow(this.manifest.dim, quantized),
     });
+    this.accumulateCentroid(quantized);
+  }
+
+  /**
+   * Folds a vector into the running centroid. Deliberately approximate: rows
+   * that are later tombstoned are never subtracted back out, and a failed flush
+   * leaves the sum slightly ahead of what is durable. Both are harmless — the
+   * centroid only has to describe the *shape* of the library well enough to
+   * remove the modality gap, and a few stale vectors out of thousands do not
+   * move a 512-dimensional mean measurably.
+   */
+  private accumulateCentroid(quantized: QuantizedVector): void {
+    const { dim } = this.manifest;
+    for (let i = 0; i < dim; i += 1) {
+      this.centroidSum[i] += quantized.codes[i] * quantized.scale;
+    }
+    this.centroidCount += 1;
+    this.manifestDirty = true;
+  }
+
+  /**
+   * Mean image vector, or null while the index is too small to have one. Text
+   * queries are scored against centered vectors; Find Similar is not, since
+   * image↔image comparisons have no modality gap to correct.
+   */
+  centroid(): Float32Array | null {
+    return centroidFrom(Array.from(this.centroidSum), this.centroidCount, this.manifest.dim);
+  }
+
+  /**
+   * Monotonic counter that changes whenever the centroid moves, so a consumer
+   * can tell whether the copy it holds is still current.
+   */
+  get centroidVersion(): number {
+    return this.centroidCount;
   }
 
   tombstone(imageIds: string[]): number {
@@ -274,6 +323,8 @@ export class EmbeddingIndex {
     }
 
     this.manifest.updatedAt = Date.now();
+    this.manifest.centroidSum = Array.from(this.centroidSum);
+    this.manifest.centroidCount = this.centroidCount;
     this.pending = [];
 
     for (const chunk of this.dirtyRowChunks) {
