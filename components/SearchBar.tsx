@@ -94,7 +94,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
       </div>
 
       <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-        {currentValue && (
+        {currentValue ? (
           <button
             onClick={handleClear}
             className="text-gray-400 hover:text-white transition-colors p-1 rounded-full hover:bg-gray-700/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
@@ -105,6 +105,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+        ) : (
+          <kbd className="pointer-events-none hidden h-5 items-center rounded border border-gray-700/50 bg-gray-900/50 px-1.5 font-sans text-[10px] font-medium text-gray-500 transition-opacity duration-200 peer-focus:opacity-0 sm:inline-flex">
+            /
+          </kbd>
         )}
         {showVisualToggle && (
           <button

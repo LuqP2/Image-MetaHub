@@ -4095,6 +4095,29 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // Hashes a file on disk without holding the whole thing in memory — the ONNX
+  // towers run 80-150MB each.
+  const sha256File = (filePath) => new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fsSync.createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+
+  // Hugging Face reports the LFS object's sha256 as the `x-linked-etag`
+  // response header (quoted). Non-LFS files (the small config/tokenizer JSON)
+  // don't carry one, so verification is best-effort: it catches a corrupted or
+  // tampered download of the files that actually matter — the multi-hundred-MB
+  // ONNX weights — without requiring hashes to be pinned in source ahead of a
+  // `main`-tracking revision.
+  const expectedSha256FromHeaders = (headers) => {
+    const raw = headers.get('x-linked-etag') || headers.get('x-linked-etag'.toUpperCase());
+    if (!raw) return null;
+    const value = raw.replace(/^"|"$/g, '').trim().toLowerCase();
+    return /^[a-f0-9]{64}$/.test(value) ? value : null;
+  };
+
   ipcMain.handle('download-embedding-model', async (event, { modelId, revision, files, baseUrl } = {}) => {
     if (embeddingModelDownload) {
       return { success: false, error: 'A model download is already running' };
@@ -4148,6 +4171,10 @@ function setupFileOperationHandlers() {
         const declared = Number(response.headers.get('content-length')) || 0;
         const totalBytes = appending ? resumeFrom + declared : declared;
         let received = appending ? resumeFrom : 0;
+        // Only trustworthy for a fresh (non-resumed) download: a resume's hash
+        // header describes just the remaining range being fetched, not the
+        // stitched-together file.
+        const expectedSha256 = !appending ? expectedSha256FromHeaders(response.headers) : null;
 
         const stream = fsSync.createWriteStream(partPath, { flags: appending ? 'a' : 'w' });
         try {
@@ -4169,8 +4196,21 @@ function setupFileOperationHandlers() {
           throw new Error(`Truncated download for ${file}: got ${received} of ${totalBytes} bytes`);
         }
 
-        // Only rename once the bytes are complete, so a partial file is never
-        // visible under the real name and never fed to the runtime.
+        // Verify the bytes on disk match what the server said we'd get before
+        // this file is ever handed to the runtime. A resumed download that
+        // ends up without a usable header (see above) is not verified here —
+        // a byte-length mismatch would already have thrown above.
+        if (expectedSha256) {
+          const actualSha256 = await sha256File(partPath);
+          if (actualSha256 !== expectedSha256) {
+            await fs.rm(partPath, { force: true });
+            throw new Error(`Checksum mismatch for ${file}: expected ${expectedSha256}, got ${actualSha256}`);
+          }
+        }
+
+        // Only rename once the bytes are complete (and verified, when a hash
+        // was available), so a partial or corrupt file is never visible under
+        // the real name and never fed to the runtime.
         await fs.rename(partPath, destination);
         completed += 1;
         emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: received, totalBytes });

@@ -147,10 +147,18 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
   },
 
   refreshModelStatus: async () => {
-    // Check the always-needed CPU baseline and the optional GPU towers together.
-    const [cpu, gpu] = await Promise.all([getModelStatus('wasm'), getModelStatus('webgpu')]);
-    set({ modelInstalled: cpu.installed, gpuModelInstalled: gpu.installed });
-    return cpu.installed;
+    try {
+      // Check the always-needed CPU baseline and the optional GPU towers together.
+      const [cpu, gpu] = await Promise.all([getModelStatus('wasm'), getModelStatus('webgpu')]);
+      set({ modelInstalled: cpu.installed, gpuModelInstalled: gpu.installed });
+      return cpu.installed;
+    } catch (error) {
+      // Callers fire this from mount effects without awaiting it, so a failure
+      // (bridge unavailable, IPC error) must land in state rather than become
+      // an unhandled rejection.
+      set({ lastError: error instanceof Error ? error.message : String(error) });
+      return false;
+    }
   },
 
   startModelDownload: async () => {
@@ -181,16 +189,25 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
   },
 
   openForLibrary: async () => {
-    await openLibrary(SEMANTIC_CACHE_ID);
-    const images = useImageStore.getState().images;
-    await reconcileWithImages(new Set(images.map((image) => image.id)));
-    set({ coverage: buildCoverage(get().coverage?.cap ?? null, images.length) });
+    // Also fired from mount effects — same reasoning as refreshModelStatus above.
+    try {
+      await openLibrary(SEMANTIC_CACHE_ID);
+      const images = useImageStore.getState().images;
+      await reconcileWithImages(new Set(images.map((image) => image.id)));
+      set({ coverage: buildCoverage(get().coverage?.cap ?? null, images.length) });
+    } catch (error) {
+      set({ lastError: error instanceof Error ? error.message : String(error) });
+    }
   },
 
   refreshCoverage: async () => {
-    await openLibrary(SEMANTIC_CACHE_ID);
-    const total = useImageStore.getState().images.length;
-    set({ coverage: buildCoverage(get().coverage?.cap ?? null, total) });
+    try {
+      await openLibrary(SEMANTIC_CACHE_ID);
+      const total = useImageStore.getState().images.length;
+      set({ coverage: buildCoverage(get().coverage?.cap ?? null, total) });
+    } catch (error) {
+      set({ lastError: error instanceof Error ? error.message : String(error) });
+    }
   },
 
   startBackfill: async (cap) => {
