@@ -1,15 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildContentKey,
-  centeredInverseNorms,
   centroidFrom,
   dequantizeVector,
-  dotFloatWithQuantized,
   encodeRow,
   explodeSegment,
   isManifestCompatible,
   l2Normalize,
   quantizeVector,
+  rowHubnessScores,
   rowStrideBytes,
   scoreRow,
   createEmptyManifest,
@@ -123,7 +122,7 @@ describe('content key', () => {
   });
 });
 
-describe('mean centering', () => {
+describe('hubness penalty', () => {
   const DIM = 8;
 
   const vector = (...values: number[]): Float32Array => {
@@ -141,74 +140,48 @@ describe('mean centering', () => {
     return explodeSegment(buffer.buffer, DIM, vectors.length);
   };
 
-  const meanOf = (segment: ExplodedSegment): Float32Array => {
-    const mean = new Float32Array(DIM);
-    for (let row = 0; row < segment.rowCount; row += 1) {
-      for (let i = 0; i < DIM; i += 1) {
-        mean[i] += segment.codes[row * DIM + i] * segment.scales[row];
-      }
-    }
-    for (let i = 0; i < DIM; i += 1) mean[i] /= segment.rowCount;
-    return mean;
-  };
-
-  /** Mirrors exactly what vectorSearchWorker does per row. */
+  /** Mirrors the worker's `raw - HUBNESS_PENALTY * hubness` score. */
   const scoreAll = (
     segment: ExplodedSegment,
     query: Float32Array,
     mean: Float32Array | null
   ): number[] => {
     const { scale, codes } = quantizeVector(new Float32Array(query));
-    const inverseNorms = centeredInverseNorms(segment, DIM, mean);
-    const meanDotQuery = mean ? dotFloatWithQuantized(mean, codes, scale) : 0;
+    const hubness = rowHubnessScores(segment, DIM, mean);
     const scores: number[] = [];
     for (let row = 0; row < segment.rowCount; row += 1) {
       const raw = scoreRow(codes, scale, segment.codes, row * DIM, DIM, segment.scales[row]);
-      scores.push(mean ? (raw - meanDotQuery) * inverseNorms[row] : raw);
+      scores.push(mean ? raw - hubness[row] : raw);
     }
     return scores;
   };
 
-  // Every image shares a large component along dim 0 — the stand-in for CLIP's
-  // modality gap — and differs only in a small distinctive tail.
-  const MATCH = vector(0.9, 0.1);       // the image the query is asking for
-  const OTHER = vector(0.9, 0, 0.1);    // a different subject
-  const HUB = vector(0.95, 0.02);       // nearly pure shared component
-  const QUERY = vector(0.3, 0.7);       // text vector: mostly distinctive
-
-  it('collapses the gap-dominated scores into a spread ranking', () => {
-    const segment = buildSegment([MATCH, OTHER, HUB]);
-    const mean = meanOf(segment);
-
-    const raw = scoreAll(segment, QUERY, null);
-    const centered = scoreAll(segment, QUERY, mean);
-
-    // Uncentered, everything is crowded into a narrow band because the shared
-    // component dominates the dot product.
-    expect(Math.max(...raw) - Math.min(...raw)).toBeLessThan(0.2);
-    // Centered, the same three images spread across most of the cosine range.
-    expect(Math.max(...centered) - Math.min(...centered)).toBeGreaterThan(1.0);
+  it('returns zero penalties while the library mean is unavailable', () => {
+    const segment = buildSegment([vector(1, 0), vector(0, 1)]);
+    expect(Array.from(rowHubnessScores(segment, DIM, null))).toEqual([0, 0]);
   });
 
-  it('demotes a hub image that was riding the shared component', () => {
-    const segment = buildSegment([MATCH, OTHER, HUB]);
-    const mean = meanOf(segment);
-    const [match, other, hub] = scoreAll(segment, QUERY, mean);
+  it('assigns the largest penalty to an image aligned with the library mean', () => {
+    const segment = buildSegment([vector(1, 0), vector(0, 1)]);
+    const penalties = rowHubnessScores(segment, DIM, vector(1, 0));
 
-    // The hub scored second uncentered purely by being close to everything.
-    const [rawMatch, , rawHub] = scoreAll(segment, QUERY, null);
-    expect(rawHub).toBeGreaterThan(0.75 * rawMatch);
-
-    // Centered, it is no longer competitive with the real match.
-    expect(match).toBeGreaterThan(0);
-    expect(hub).toBeLessThan(0);
-    expect(other).toBeLessThan(0);
+    expect(penalties[0]).toBeGreaterThan(0.99);
+    expect(Math.abs(penalties[1])).toBeLessThan(0.01);
   });
 
-  it('falls back to plain cosine when there is no mean yet', () => {
-    const segment = buildSegment([MATCH, OTHER, HUB]);
-    const inverseNorms = centeredInverseNorms(segment, DIM, null);
-    expect(Array.from(inverseNorms)).toEqual([1, 1, 1]);
+  it('demotes a generic hub that narrowly wins on raw cosine', () => {
+    const match = vector(0.8, 0.6);
+    const hub = vector(1, 0);
+    const query = vector(0.95, 0.312);
+    const mean = vector(1, 0);
+    const segment = buildSegment([match, hub]);
+
+    const raw = scoreAll(segment, query, null);
+    const corrected = scoreAll(segment, query, mean);
+
+    expect(raw[1]).toBeGreaterThan(raw[0]);
+    expect(corrected[0]).toBeGreaterThan(corrected[1]);
+    expect(corrected[0] - corrected[1]).toBeGreaterThan(0.1);
   });
 });
 
