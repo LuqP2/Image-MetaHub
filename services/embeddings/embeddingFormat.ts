@@ -308,44 +308,54 @@ export const dotFloatWithQuantized = (
 };
 
 /**
- * Per-row `1 / ‖v − mean‖`, the only part of centered scoring that cannot be
- * folded into a per-query constant.
+ * Per-row hubness: the cosine between a stored vector and the unit vector
+ * pointing at the library's mean. High means "this image looks like the average
+ * of everything here" — the images that sit close to *every* query.
  *
- * Centering is what makes text→image ranking work. CLIP's text and image towers
- * occupy near-disjoint cones (the "modality gap"), so raw text↔image cosines all
- * land in a narrow band and a handful of hub images sit close to *every* query.
- * Scoring `(v − mean)·q / ‖v − mean‖` removes the shared component and divides
- * out hubness. Subtracting the mean alone would not reorder anything — `mean·q`
- * is the same constant for every row — so this norm is where the ranking change
- * actually comes from.
+ * This is the correction for CLIP's modality gap. Text and image towers occupy
+ * near-disjoint cones, so raw text↔image cosines land in a narrow band whose
+ * ordering is dominated by how generic each image is rather than by what the
+ * query asked for. The worker scores `q·v − λ·hubness`, which subtracts that
+ * generic component out.
  *
- * Returns all-ones when there is no mean yet, which degrades exactly to the
- * uncentered cosine (stored vectors are unit length).
+ * The earlier attempt scored `q·(v − mean) / ‖v − mean‖` instead. That is the
+ * textbook centering formula and it is wrong for quantized vectors: a row near
+ * the mean has a tiny `v − mean` whose direction is mostly int8 quantization
+ * noise, and dividing by that tiny norm amplifies the noise to full scale. The
+ * most generic images ended up with the highest — and essentially random —
+ * scores. Penalizing hubness directly reorders the same way without ever
+ * dividing by a near-zero quantity.
+ *
+ * Returns all-zeros when there is no mean yet, which degrades exactly to the
+ * plain cosine (stored vectors are unit length).
  */
-export const centeredInverseNorms = (
+export const rowHubnessScores = (
   segment: ExplodedSegment,
   dim: number,
   mean: Float32Array | null
 ): Float32Array => {
-  const inverseNorms = new Float32Array(segment.rowCount);
-  if (!mean) {
-    inverseNorms.fill(1);
-    return inverseNorms;
-  }
+  const hubness = new Float32Array(segment.rowCount);
+  if (!mean) return hubness;
+
+  // The mean's own length carries no ranking information — only the direction
+  // it points does — so normalize once here rather than letting a tightly
+  // clustered library scale every penalty up.
+  let meanNorm = 0;
+  for (let i = 0; i < dim; i += 1) meanNorm += mean[i] * mean[i];
+  meanNorm = Math.sqrt(meanNorm);
+  if (meanNorm === 0) return hubness;
+  const inverseMeanNorm = 1 / meanNorm;
 
   for (let row = 0; row < segment.rowCount; row += 1) {
     const offset = row * dim;
     const scale = segment.scales[row];
-    let sumSquares = 0;
+    let dot = 0;
     for (let i = 0; i < dim; i += 1) {
-      const centered = segment.codes[offset + i] * scale - mean[i];
-      sumSquares += centered * centered;
+      dot += segment.codes[offset + i] * mean[i];
     }
-    // A zero-length centered vector carries no direction to rank by; 0 drops it
-    // to the bottom instead of producing Infinity.
-    inverseNorms[row] = sumSquares > 0 ? 1 / Math.sqrt(sumSquares) : 0;
+    hubness[row] = dot * scale * inverseMeanNorm;
   }
-  return inverseNorms;
+  return hubness;
 };
 
 export const isTombstoned = (entry: EmbeddingRowEntry): boolean =>

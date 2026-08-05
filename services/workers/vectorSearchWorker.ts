@@ -1,10 +1,18 @@
 import {
-  centeredInverseNorms,
-  dotFloatWithQuantized,
   explodeSegment,
+  rowHubnessScores,
   scoreRow,
   type ExplodedSegment,
 } from '../embeddings/embeddingFormat';
+
+/**
+ * How hard to push generic ("hub") images down. Scores read `q·v − λ·(v·mean̂)`
+ * — a linear combination whose ranking is equivalent to cosine against a
+ * mean-corrected query, but without the noise-amplifying `1/‖v−mean‖` factor
+ * the previous attempt used. λ=1 removes the full projection of each row onto
+ * the mean direction, which is the analog of full centering.
+ */
+const HUBNESS_PENALTY = 1.0;
 
 /**
  * Holds the quantized vector matrix and ranks it against a query vector.
@@ -67,8 +75,8 @@ type WorkerResponse =
 const SEGMENTS: ExplodedSegment[] = [];
 /** Physical row of the first row in each segment, parallel to SEGMENTS. */
 const SEGMENT_BASE_ROW: number[] = [];
-/** Per-row `1 / ‖v − mean‖`, parallel to SEGMENTS. Recomputed when mean moves. */
-const SEGMENT_INV_NORMS: Float32Array[] = [];
+/** Per-row `v · mean̂`, parallel to SEGMENTS. Recomputed when mean moves. */
+const SEGMENT_HUBNESS: Float32Array[] = [];
 
 let dim = 0;
 let totalRows = 0;
@@ -193,26 +201,27 @@ const runQuery = (
   let scoreSum = 0;
   let scoreSqSum = 0;
 
-  // Centering only reorders rows through the per-row `1/‖v − mean‖` factor; the
-  // `mean · query` term is the same for every row, so it is computed once here
-  // rather than 400k times inside the scan.
+  // Centering here is a per-row penalty on how much a stored row looks like the
+  // library mean — the "hubness" precomputed in SEGMENT_HUBNESS. Subtracting it
+  // demotes generic images (which sit near the mean and rank high against
+  // *every* text query thanks to the modality gap) without ever dividing by a
+  // small norm, which is what made the previous formulation amplify noise.
   const useCentering = centered && mean !== null;
-  const meanDotQuery = useCentering ? dotFloatWithQuantized(mean!, queryCodes, queryScale) : 0;
 
   for (let s = 0; s < SEGMENTS.length; s += 1) {
     const segment = SEGMENTS[s];
     if (!segment) continue;
     const baseRow = SEGMENT_BASE_ROW[s];
     const { codes, scales, rowCount } = segment;
-    const inverseNorms = SEGMENT_INV_NORMS[s];
+    const hubness = SEGMENT_HUBNESS[s];
 
     for (let row = 0; row < rowCount; row += 1) {
       const physicalRow = baseRow + row;
       if (liveMask[physicalRow] !== 1) continue;
       scanned += 1;
       const raw = scoreRow(queryCodes, queryScale, codes, row * dim, dim, scales[row]);
-      const score = useCentering && inverseNorms
-        ? (raw - meanDotQuery) * inverseNorms[row]
+      const score = useCentering && hubness
+        ? raw - HUBNESS_PENALTY * hubness[row]
         : raw;
       // Accumulate over every live row, before the heap gate, so mean/std
       // describe the whole library rather than just the top-K survivors.
@@ -234,7 +243,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         dim = message.payload.dim;
         SEGMENTS.length = 0;
         SEGMENT_BASE_ROW.length = 0;
-        SEGMENT_INV_NORMS.length = 0;
+        SEGMENT_HUBNESS.length = 0;
         totalRows = 0;
         liveMask = new Uint8Array(0);
         mean = null;
@@ -249,7 +258,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         // revisited. It is one pass of rowCount × dim — cheap next to the scan a
         // single query already pays, and it only happens when the index grows.
         for (let s = 0; s < SEGMENTS.length; s += 1) {
-          if (SEGMENTS[s]) SEGMENT_INV_NORMS[s] = centeredInverseNorms(SEGMENTS[s], dim, mean);
+          if (SEGMENTS[s]) SEGMENT_HUBNESS[s] = rowHubnessScores(SEGMENTS[s], dim, mean);
         }
         break;
       }
@@ -257,7 +266,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       case 'addSegment': {
         const { index, buffer, rowCount } = message.payload;
         SEGMENTS[index] = explodeSegment(buffer, dim, rowCount);
-        SEGMENT_INV_NORMS[index] = centeredInverseNorms(SEGMENTS[index], dim, mean);
+        SEGMENT_HUBNESS[index] = rowHubnessScores(SEGMENTS[index], dim, mean);
         // Segments are fixed-capacity and arrive in order, so the base row of a
         // segment is the running total of everything before it.
         let base = 0;
@@ -333,7 +342,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       case 'dispose': {
         SEGMENTS.length = 0;
         SEGMENT_BASE_ROW.length = 0;
-        SEGMENT_INV_NORMS.length = 0;
+        SEGMENT_HUBNESS.length = 0;
         liveMask = new Uint8Array(0);
         mean = null;
         totalRows = 0;

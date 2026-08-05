@@ -54,11 +54,14 @@ export const DEFAULT_RESULT_LIMIT = 300;
 export const DEFAULT_MIN_SCORE = 0.15;
 
 /**
- * Gather floor for centered scores, which are distributed around 0 rather than
- * around a positive band. A row anti-correlated with the query is never a match,
- * so 0 costs nothing and keeps the heap small.
+ * Gather floor for centered scores. The centered formula (`q·v − λ·hubness`)
+ * shifts scores negative — typical hubness sits around 0.6-0.9 while text↔image
+ * cosines sit at 0.2-0.3 — so a floor of 0 would drop every row before the heap
+ * ever saw them. Negative infinity effectively disables the pre-filter and lets
+ * the heap do the top-K work, then the relevance cutoff (which is scale-free)
+ * decides what actually surfaces to the user.
  */
-export const DEFAULT_CENTERED_MIN_SCORE = 0;
+export const DEFAULT_CENTERED_MIN_SCORE = -Infinity;
 
 /**
  * How many standard deviations above the library's mean score a row must sit to
@@ -107,8 +110,17 @@ export const applyRelevanceCutoff = (
   if (distribution.std < 1e-4) return [];
 
   const sanityFloor = distribution.mean + z * distribution.std;
-  const relativeFloor = distribution.mean + topFraction * (hits[0].score - distribution.mean);
-  const threshold = Math.max(sanityFloor, relativeFloor);
+
+  // The sanity floor gates the entire query: if even the best hit is not a
+  // statistical outlier, nothing genuinely matches and we return empty.
+  if (hits[0].score < sanityFloor) return [];
+
+  // Within a genuine result set, the relative floor decides which rows are
+  // comparable to the best.  Using max(sanityFloor, relativeFloor) let the
+  // z-threshold also act as a filter inside the results, which clips matches
+  // that sit above the relative floor but below 2σ — exactly the symptom that
+  // made text search return nothing for queries with many real matches.
+  const threshold = distribution.mean + topFraction * (hits[0].score - distribution.mean);
 
   const kept: SemanticHit[] = [];
   for (const hit of hits) {
