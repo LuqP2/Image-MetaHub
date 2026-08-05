@@ -3,6 +3,7 @@ import {
   buildContentKey,
   centroidFrom,
   dequantizeVector,
+  dotFloatWithQuantized,
   encodeRow,
   explodeSegment,
   isManifestCompatible,
@@ -102,7 +103,6 @@ describe('segment encode/explode', () => {
   it('ignores trailing rows beyond the manifest count (uncommitted flush)', () => {
     const dim = 16;
     const stride = rowStrideBytes(dim);
-    // Three rows on disk, but the manifest only vouches for two.
     const buffer = new Uint8Array(stride * 3);
     const exploded = explodeSegment(buffer.buffer, dim, 2);
     expect(exploded.rowCount).toBe(2);
@@ -122,7 +122,7 @@ describe('content key', () => {
   });
 });
 
-describe('hubness penalty', () => {
+describe('query-conditioned mean projection', () => {
   const DIM = 8;
 
   const vector = (...values: number[]): Float32Array => {
@@ -140,7 +140,7 @@ describe('hubness penalty', () => {
     return explodeSegment(buffer.buffer, DIM, vectors.length);
   };
 
-  /** Mirrors the worker's `raw - HUBNESS_PENALTY * hubness` score. */
+  /** Mirrors the worker's `q·v - (q·mean̂)(v·mean̂)` score. */
   const scoreAll = (
     segment: ExplodedSegment,
     query: Float32Array,
@@ -148,28 +148,36 @@ describe('hubness penalty', () => {
   ): number[] => {
     const { scale, codes } = quantizeVector(new Float32Array(query));
     const hubness = rowHubnessScores(segment, DIM, mean);
+    let queryMeanAlignment = 0;
+    if (mean) {
+      let meanNormSq = 0;
+      for (let i = 0; i < DIM; i += 1) meanNormSq += mean[i] * mean[i];
+      const meanNorm = Math.sqrt(meanNormSq);
+      if (meanNorm > 0) queryMeanAlignment = dotFloatWithQuantized(mean, codes, scale) / meanNorm;
+    }
+
     const scores: number[] = [];
     for (let row = 0; row < segment.rowCount; row += 1) {
       const raw = scoreRow(codes, scale, segment.codes, row * DIM, DIM, segment.scales[row]);
-      scores.push(mean ? raw - hubness[row] : raw);
+      scores.push(mean ? raw - queryMeanAlignment * hubness[row] : raw);
     }
     return scores;
   };
 
-  it('returns zero penalties while the library mean is unavailable', () => {
+  it('returns zero row alignments while the library mean is unavailable', () => {
     const segment = buildSegment([vector(1, 0), vector(0, 1)]);
     expect(Array.from(rowHubnessScores(segment, DIM, null))).toEqual([0, 0]);
   });
 
-  it('assigns the largest penalty to an image aligned with the library mean', () => {
+  it('measures row alignment with the mean axis', () => {
     const segment = buildSegment([vector(1, 0), vector(0, 1)]);
-    const penalties = rowHubnessScores(segment, DIM, vector(1, 0));
+    const alignments = rowHubnessScores(segment, DIM, vector(1, 0));
 
-    expect(penalties[0]).toBeGreaterThan(0.99);
-    expect(Math.abs(penalties[1])).toBeLessThan(0.01);
+    expect(alignments[0]).toBeGreaterThan(0.99);
+    expect(Math.abs(alignments[1])).toBeLessThan(0.01);
   });
 
-  it('demotes a generic hub that narrowly wins on raw cosine', () => {
+  it('removes the shared mean component without replacing the query', () => {
     const match = vector(0.8, 0.6);
     const hub = vector(1, 0);
     const query = vector(0.95, 0.312);
@@ -182,6 +190,15 @@ describe('hubness penalty', () => {
     expect(raw[1]).toBeGreaterThan(raw[0]);
     expect(corrected[0]).toBeGreaterThan(corrected[1]);
     expect(corrected[0] - corrected[1]).toBeGreaterThan(0.1);
+  });
+
+  it('does not penalize the mean axis when the query is orthogonal to it', () => {
+    const segment = buildSegment([vector(1, 0), vector(0, 1)]);
+    const query = vector(0, 1);
+    const scores = scoreAll(segment, query, vector(1, 0));
+
+    expect(Math.abs(scores[0])).toBeLessThan(0.01);
+    expect(scores[1]).toBeGreaterThan(0.99);
   });
 });
 

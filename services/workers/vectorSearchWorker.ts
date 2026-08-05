@@ -1,18 +1,10 @@
 import {
+  dotFloatWithQuantized,
   explodeSegment,
   rowHubnessScores,
   scoreRow,
   type ExplodedSegment,
 } from '../embeddings/embeddingFormat';
-
-/**
- * How hard to push generic ("hub") images down. Scores read `q·v − λ·(v·mean̂)`
- * — a linear combination whose ranking is equivalent to cosine against a
- * mean-corrected query, but without the noise-amplifying `1/‖v−mean‖` factor
- * the previous attempt used. λ=1 removes the full projection of each row onto
- * the mean direction, which is the analog of full centering.
- */
-const HUBNESS_PENALTY = 1.0;
 
 /**
  * Holds the quantized vector matrix and ranks it against a query vector.
@@ -33,7 +25,7 @@ type WorkerMessage =
   | { type: 'init'; payload: { dim: number } }
   | { type: 'addSegment'; payload: { index: number; buffer: ArrayBuffer; rowCount: number } }
   | { type: 'setLiveMask'; payload: { mask: ArrayBuffer } }
-  // Mean image vector the text queries center against. Null clears it.
+  // Mean image vector the text queries project away from. Null clears it.
   | { type: 'setMean'; payload: { mean: ArrayBuffer | null } }
   | { type: 'markDead'; payload: { rows: number[] } }
   | {
@@ -44,7 +36,7 @@ type WorkerMessage =
         scale: number;
         topK: number;
         minScore: number;
-        /** Score against mean-centered rows. Text queries only — see below. */
+        /** Remove the library-mean axis from text↔image scores. */
         centered?: boolean;
       };
     }
@@ -201,12 +193,24 @@ const runQuery = (
   let scoreSum = 0;
   let scoreSqSum = 0;
 
-  // Centering here is a per-row penalty on how much a stored row looks like the
-  // library mean — the "hubness" precomputed in SEGMENT_HUBNESS. Subtracting it
-  // demotes generic images (which sit near the mean and rank high against
-  // *every* text query thanks to the modality gap) without ever dividing by a
-  // small norm, which is what made the previous formulation amplify noise.
+  // Remove only the component that the query and row share along the library's
+  // mean direction:
+  //   q·v - (q·mean̂)(v·mean̂)
+  // This is the dot product of both vectors projected off the mean axis. The
+  // previous fixed penalty `q·v - 1*(v·mean̂)` was not a centering analog: it
+  // made ranking mostly "least average image" and could overwhelm the actual
+  // text query. No row renormalization is used, so near-mean int8 noise is not
+  // amplified.
   const useCentering = centered && mean !== null;
+  let queryMeanAlignment = 0;
+  if (useCentering && mean) {
+    let meanNormSq = 0;
+    for (let i = 0; i < dim; i += 1) meanNormSq += mean[i] * mean[i];
+    const meanNorm = Math.sqrt(meanNormSq);
+    if (meanNorm > 0) {
+      queryMeanAlignment = dotFloatWithQuantized(mean, queryCodes, queryScale) / meanNorm;
+    }
+  }
 
   for (let s = 0; s < SEGMENTS.length; s += 1) {
     const segment = SEGMENTS[s];
@@ -221,7 +225,7 @@ const runQuery = (
       scanned += 1;
       const raw = scoreRow(queryCodes, queryScale, codes, row * dim, dim, scales[row]);
       const score = useCentering && hubness
-        ? raw - HUBNESS_PENALTY * hubness[row]
+        ? raw - queryMeanAlignment * hubness[row]
         : raw;
       // Accumulate over every live row, before the heap gate, so mean/std
       // describe the whole library rather than just the top-K survivors.
@@ -254,7 +258,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       case 'setMean': {
         const { mean: buffer } = message.payload;
         mean = buffer ? new Float32Array(buffer) : null;
-        // The norms are derived from the mean, so every loaded segment has to be
+        // Hubness is derived from the mean, so every loaded segment has to be
         // revisited. It is one pass of rowCount × dim — cheap next to the scan a
         // single query already pays, and it only happens when the index grows.
         for (let s = 0; s < SEGMENTS.length; s += 1) {
