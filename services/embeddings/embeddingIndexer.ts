@@ -15,16 +15,19 @@ import { openLibrary, syncWorker } from './semanticSearchEngine';
  * PARSER_VERSION bump, and a bump discards every user's metadata cache.
  */
 
-/** Images per inference batch. Small enough that cancel feels immediate. */
-const DEFAULT_BATCH_SIZE = 8;
+// Images per batch. The batch is decoded concurrently and run through the
+// vision tower in one pass, so a larger batch amortizes per-batch overhead
+// (IPC, GPU upload) without hurting cancel latency much.
+const DEFAULT_BATCH_SIZE = 16;
 
 /** Vectors buffered before they are written out. Caps crash loss to ~40s. */
 const FLUSH_EVERY_VECTORS = 256;
 
 const FLUSH_EVERY_MS = 30_000;
 
-/** Yield between batches so the grid keeps rendering while the job runs. */
-const DEFAULT_THROTTLE_MS = 50;
+// Yield between batches so the grid keeps rendering. Kept small: the heavy work
+// runs in the worker, so the main thread only needs a brief breather.
+const DEFAULT_THROTTLE_MS = 15;
 
 const PROGRESS_INTERVAL_MS = 300;
 

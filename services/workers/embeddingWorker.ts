@@ -200,11 +200,12 @@ const embedImages = async (jobId: number, items: EmbedItem[]): Promise<void> => 
   await ensureVision();
 
   const results: EmbedResult[] = [];
-  const loaded: Array<{ item: EmbedItem; image: RawImage }> = [];
 
-  for (const item of items) {
+  // Decode the whole batch concurrently — fetch + createImageBitmap overlap, so
+  // this is where a batch's wall-clock time collapses versus decoding serially.
+  const decoded = await Promise.all(items.map(async (item) => {
     try {
-      loaded.push({ item, image: await loadImage(item) });
+      return { item, image: await loadImage(item) };
     } catch (error) {
       // A single unreadable file must not sink the batch; the indexer records
       // it as attempted so the job still makes progress.
@@ -214,8 +215,10 @@ const embedImages = async (jobId: number, items: EmbedItem[]): Promise<void> => 
         codes: null,
         error: error instanceof Error ? error.message : String(error),
       });
+      return null;
     }
-  }
+  }));
+  const loaded = decoded.filter((entry): entry is { item: EmbedItem; image: RawImage } => entry !== null);
 
   if (loaded.length > 0) {
     const inputs = await processor(loaded.map((entry) => entry.image));

@@ -263,15 +263,17 @@ export const buildEmbedItems = async (images: IndexedImage[]): Promise<EmbedItem
   const resolved = await api.resolveThumbnailCacheBatch({ candidates });
   const results = resolved.success ? resolved.results ?? {} : {};
 
-  const items: EmbedItem[] = [];
-  for (const image of images) {
+  // Resolve each image's source in parallel. On a first run every thumbnail is
+  // a miss, so generating them one at a time (one IPC round-trip each) was the
+  // dominant cost — far more than the embedding itself. Order does not matter:
+  // the worker returns results keyed by id.
+  const built = await Promise.all(images.map(async (image): Promise<EmbedItem | null> => {
     const filePath = getFilePath(image);
     const fallbackUrl = filePath ? buildMediaUrl(filePath) : undefined;
     const hit = results[image.id];
 
     if (hit?.hit && hit.url) {
-      items.push({ id: image.id, url: hit.url, fallbackUrl });
-      continue;
+      return { id: image.id, url: hit.url, fallbackUrl };
     }
 
     if (filePath) {
@@ -280,15 +282,12 @@ export const buildEmbedItems = async (images: IndexedImage[]): Promise<EmbedItem
         filePath,
       }).catch(() => null);
       if (generated?.success && generated.url) {
-        items.push({ id: image.id, url: generated.url, fallbackUrl });
-        continue;
+        return { id: image.id, url: generated.url, fallbackUrl };
       }
     }
 
-    if (fallbackUrl) {
-      items.push({ id: image.id, url: fallbackUrl });
-    }
-  }
+    return fallbackUrl ? { id: image.id, url: fallbackUrl } : null;
+  }));
 
-  return items;
+  return built.filter((item): item is EmbedItem => item !== null);
 };
