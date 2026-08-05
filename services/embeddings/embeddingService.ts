@@ -1,12 +1,14 @@
 import type { EmbeddingModelProgress, IndexedImage } from '../../types';
 import { getThumbnailCacheCandidate } from '../thumbnailCache';
 import {
-  CLIP_MODEL,
+  DEFAULT_EMBEDDING_MODEL_KEY,
   MODEL_LOCAL_PATH,
   approxBytesForDevice,
   buildMediaUrl,
   filesForDevice,
+  getEmbeddingModel,
   type EmbeddingDevice,
+  type EmbeddingModelKey,
 } from './embeddingModel';
 import type { EmbedItem, EmbedResult } from '../workers/embeddingWorker';
 
@@ -41,6 +43,19 @@ export const setPreferredDevice = (device: Device): void => {
   stopEmbeddingWorker();
 };
 
+/** Model the next worker start loads, and the default for status/download. */
+let preferredModelKey: EmbeddingModelKey = DEFAULT_EMBEDDING_MODEL_KEY;
+
+export const getPreferredModel = () => getEmbeddingModel(preferredModelKey);
+
+export const setPreferredModel = (key: EmbeddingModelKey): void => {
+  if (key === preferredModelKey) return;
+  preferredModelKey = key;
+  // Same reasoning as the device: the model is bound at worker init, so the
+  // running worker has to go before the new weights can be loaded.
+  stopEmbeddingWorker();
+};
+
 export interface QuantizedResult {
   id: string;
   scale: number;
@@ -57,11 +72,13 @@ const getElectronAPI = () => {
 };
 
 export const getModelStatus = async (
-  device: Device = 'wasm'
+  device: Device = 'wasm',
+  modelKey: EmbeddingModelKey = preferredModelKey
 ): Promise<{ installed: boolean; missing: string[]; totalBytes: number }> => {
   const api = getElectronAPI();
-  const files = filesForDevice(device);
-  const result = await api.getEmbeddingModelStatus({ modelId: CLIP_MODEL.id, files });
+  const model = getEmbeddingModel(modelKey);
+  const files = filesForDevice(model, device);
+  const result = await api.getEmbeddingModelStatus({ modelId: model.id, files });
   return {
     installed: Boolean(result.success && result.installed),
     missing: result.missing ?? files,
@@ -69,21 +86,26 @@ export const getModelStatus = async (
   };
 };
 
-export const getModelDownloadSize = (device: Device = 'wasm'): number => approxBytesForDevice(device);
+export const getModelDownloadSize = (
+  device: Device = 'wasm',
+  modelKey: EmbeddingModelKey = preferredModelKey
+): number => approxBytesForDevice(getEmbeddingModel(modelKey), device);
 
 export const downloadModel = async (
   onProgress?: (progress: EmbeddingModelProgress) => void,
-  device: Device = 'wasm'
+  device: Device = 'wasm',
+  modelKey: EmbeddingModelKey = preferredModelKey
 ): Promise<{ success: boolean; cancelled?: boolean; error?: string }> => {
   const api = getElectronAPI();
+  const model = getEmbeddingModel(modelKey);
   const unsubscribe = onProgress ? api.onEmbeddingModelProgress(onProgress) : null;
   try {
     return await api.downloadEmbeddingModel({
-      modelId: CLIP_MODEL.id,
-      revision: CLIP_MODEL.revision,
+      modelId: model.id,
+      revision: model.revision,
       // The handler skips files already on disk, so passing the full set for the
       // device downloads only the missing towers (e.g. just fp16 when adding GPU).
-      files: filesForDevice(device),
+      files: filesForDevice(model, device),
     });
   } finally {
     unsubscribe?.();
@@ -94,8 +116,10 @@ export const cancelModelDownload = async (): Promise<void> => {
   await getElectronAPI().cancelEmbeddingModelDownload();
 };
 
-export const deleteModel = async (): Promise<void> => {
-  await getElectronAPI().deleteEmbeddingModel({ modelId: CLIP_MODEL.id });
+export const deleteModel = async (
+  modelKey: EmbeddingModelKey = preferredModelKey
+): Promise<void> => {
+  await getElectronAPI().deleteEmbeddingModel({ modelId: getEmbeddingModel(modelKey).id });
 };
 
 let worker: Worker | null = null;
@@ -171,7 +195,7 @@ export const startEmbeddingWorker = async (device: Device = preferredDevice): Pr
     instance.postMessage({
       type: 'init',
       payload: {
-        modelId: CLIP_MODEL.id,
+        modelId: getEmbeddingModel(preferredModelKey).id,
         modelPath: MODEL_LOCAL_PATH,
         wasmPath: resolveWasmPath(),
         device,

@@ -12,18 +12,24 @@ import {
   getModelStatus,
   setOnDeviceChanged,
   setPreferredDevice,
+  setPreferredModel,
   stopEmbeddingWorker,
 } from '../services/embeddings/embeddingService';
-import type { EmbeddingDevice } from '../services/embeddings/embeddingModel';
+import {
+  DEFAULT_EMBEDDING_MODEL_KEY,
+  getEmbeddingModel,
+  type EmbeddingDevice,
+  type EmbeddingModelKey,
+} from '../services/embeddings/embeddingModel';
 import { runBackfill } from '../services/embeddings/embeddingIndexer';
 import type { IndexedImage } from '../types';
 import {
-  SEMANTIC_CACHE_ID,
   closeLibrary,
   getIndex,
   openLibrary,
   searchByText,
   searchSimilarToImage,
+  semanticCacheId,
 } from '../services/embeddings/semanticSearchEngine';
 import { deleteEmbeddingIndex } from '../services/embeddings/embeddingStore';
 import { useImageStore } from './useImageStore';
@@ -40,6 +46,8 @@ interface SemanticStoreState {
   device: EmbeddingDevice;
   /** Backend the worker actually settled on after any fallback. */
   activeDevice: EmbeddingDevice;
+  /** Model the user picked (mirrors settings.semanticSearchModel). */
+  modelKey: EmbeddingModelKey;
 
   /** WASM (q8) baseline present — this is what gates the feature at all. */
   modelInstalled: boolean;
@@ -65,6 +73,8 @@ interface SemanticStoreState {
   lastError: string | null;
 
   setDevice: (device: EmbeddingDevice) => void;
+  /** Switches models: swaps the index, the worker and the downloaded weights. */
+  setModel: (modelKey: EmbeddingModelKey) => void;
   refreshModelStatus: () => Promise<boolean>;
   startModelDownload: () => Promise<boolean>;
   cancelModelDownload: () => Promise<void>;
@@ -118,6 +128,7 @@ const buildCoverage = (cap: number | null, total: number): SemanticIndexCoverage
 export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
   device: 'wasm',
   activeDevice: 'wasm',
+  modelKey: DEFAULT_EMBEDDING_MODEL_KEY,
   modelInstalled: false,
   gpuModelInstalled: false,
   modelDownloading: false,
@@ -145,10 +156,32 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     void get().refreshModelStatus();
   },
 
+  setModel: (modelKey) => {
+    const resolved = getEmbeddingModel(modelKey).key;
+    if (resolved === get().modelKey) return;
+
+    // A running query or backfill belongs to the old model's index; both would
+    // otherwise keep writing into an index the app no longer considers current.
+    get().cancelBackfill();
+    get().clearQuery();
+    setPreferredModel(resolved);
+    // Drops the open index and its search worker. openForLibrary below reopens
+    // against the new model, whose vectors have a different width.
+    closeLibrary();
+    set({ modelKey: resolved, coverage: null, indexProgress: null, lastError: null });
+
+    void get().refreshModelStatus();
+    void get().openForLibrary();
+  },
+
   refreshModelStatus: async () => {
     try {
       // Check the always-needed CPU baseline and the optional GPU towers together.
-      const [cpu, gpu] = await Promise.all([getModelStatus('wasm'), getModelStatus('webgpu')]);
+      const modelKey = get().modelKey;
+      const [cpu, gpu] = await Promise.all([
+        getModelStatus('wasm', modelKey),
+        getModelStatus('webgpu', modelKey),
+      ]);
       set({ modelInstalled: cpu.installed, gpuModelInstalled: gpu.installed });
       return cpu.installed;
     } catch (error) {
@@ -164,7 +197,11 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     if (get().modelDownloading) return false;
     set({ modelDownloading: true, modelProgress: null, lastError: null });
     try {
-      const result = await downloadModel((progress) => set({ modelProgress: progress }), get().device);
+      const result = await downloadModel(
+        (progress) => set({ modelProgress: progress }),
+        get().device,
+        get().modelKey
+      );
       if (result.success) {
         // Downloaded files depend on the selected backend; re-check both flags.
         await get().refreshModelStatus();
@@ -197,7 +234,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     // Reconciliation only happens from runBackfill, which is a deliberate user action
     // that already has the authoritative, fully-loaded image array.
     try {
-      await openLibrary(SEMANTIC_CACHE_ID);
+      await openLibrary(getEmbeddingModel(get().modelKey));
       const total = useImageStore.getState().images.length;
       set({ coverage: buildCoverage(get().coverage?.cap ?? null, total) });
     } catch (error) {
@@ -217,7 +254,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
 
     try {
       await runBackfill({
-        cacheId: SEMANTIC_CACHE_ID,
+        model: getEmbeddingModel(get().modelKey),
         images,
         cap,
         signal: backfillController.signal,
@@ -278,7 +315,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     try {
       // Open the index on demand: the search can be run without ever visiting
       // the settings panel, which was previously the only place that opened it.
-      const index = await openLibrary(SEMANTIC_CACHE_ID);
+      const index = await openLibrary(getEmbeddingModel(get().modelKey));
       if (generation !== queryGeneration) return;
 
       if (index.stats.liveRows === 0) {
@@ -362,7 +399,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     get().cancelBackfill();
     get().clearQuery();
     closeLibrary();
-    await deleteEmbeddingIndex(SEMANTIC_CACHE_ID);
+    await deleteEmbeddingIndex(semanticCacheId(getEmbeddingModel(get().modelKey)));
     set({ coverage: null, indexProgress: null });
   },
 
@@ -384,6 +421,10 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
 
 /** Exposed separately because it is only reachable from the settings panel. */
 export const deleteSemanticModel = async (): Promise<void> => {
-  await deleteModel();
-  useSemanticStore.setState({ modelInstalled: false, modelProgress: null });
+  // Removes the selected model only; the other one's weights stay on disk, so
+  // switching back does not re-download.
+  await deleteModel(useSemanticStore.getState().modelKey);
+  // Both towers go with it, so the GPU flag has to drop too or the panel keeps
+  // claiming the fp16 model is installed.
+  useSemanticStore.setState({ modelInstalled: false, gpuModelInstalled: false, modelProgress: null });
 };

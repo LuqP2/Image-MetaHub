@@ -1,7 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { selectPendingImages } from '../services/embeddings/embeddingIndexer';
 import { contentKeyForImage } from '../services/embeddings/embeddingStore';
-import { CLIP_MODEL } from '../services/embeddings/embeddingModel';
+import { DEFAULT_EMBEDDING_MODEL_KEY, getEmbeddingModel } from '../services/embeddings/embeddingModel';
 import {
   applyRelevanceCutoff,
   closeLibrary,
@@ -157,17 +157,24 @@ describe('reconcileWithImages', () => {
     vi.restoreAllMocks();
   });
 
+  // The real model descriptor, redirected at a scratch index so the test never
+  // touches the cache id a running app uses.
+  const testModel = {
+    ...getEmbeddingModel(DEFAULT_EMBEDDING_MODEL_KEY),
+    cacheId: 'test-reconcile-lib',
+  };
+
   const openEmptyLibrary = async () => {
     window.electronAPI = {
       readEmbeddingFile: vi.fn().mockResolvedValue({ success: true, data: null }),
       writeEmbeddingFile: vi.fn().mockResolvedValue({ success: true }),
       appendEmbeddingSegment: vi.fn().mockResolvedValue({ success: true }),
     };
-    await openLibrary('test-reconcile-lib');
+    await openLibrary(testModel);
     const index = getIndex()!;
     index.append('present-image', 'key-0', {
       scale: 1,
-      codes: new Int8Array(CLIP_MODEL.dim).fill(1),
+      codes: new Int8Array(testModel.dim).fill(1),
     });
     await index.flush();
     return index;

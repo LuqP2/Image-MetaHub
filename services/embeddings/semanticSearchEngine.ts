@@ -1,8 +1,8 @@
 import type { IndexedImage } from '../../types';
 import { ROW_FLAG_TOMBSTONE } from './embeddingFormat';
-import { CLIP_MODEL } from './embeddingModel';
+import type { EmbeddingModelDescriptor } from './embeddingModel';
 import { EmbeddingIndex, contentKeyForImage } from './embeddingStore';
-import { buildEmbedItems, embedImages, embedText } from './embeddingService';
+import { buildEmbedItems, embedImages, embedText, getPreferredModel } from './embeddingService';
 
 /**
  * Owns the searchable side of the vector index: the on-disk store plus the
@@ -29,14 +29,16 @@ export interface SemanticQueryStats {
 }
 
 /**
- * Fixed id for the vector index. The metadata cache is per directory, but the
+ * One index per model, named by the model descriptor's `cacheId`.
+ *
+ * Within a model the id is fixed: the metadata cache is per directory, but the
  * store materializes every directory into one flat `images` array, and image
  * ids are already globally unique (`directoryId::relativePath`). A single index
  * mirrors that array exactly; rows for images no longer present are reconciled
  * away rather than swept per directory, so a directory's metadata rebuild does
  * not throw away its vectors.
  */
-export const SEMANTIC_CACHE_ID = 'imh-visual-search';
+export const semanticCacheId = (model: EmbeddingModelDescriptor): string => model.cacheId;
 
 /** Candidates to gather from the worker before the relevance cutoff trims them. */
 export const DEFAULT_TOP_K = 5000;
@@ -148,10 +150,18 @@ export const getIndex = (): EmbeddingIndex | null => index;
 
 export const isOpen = (): boolean => index !== null;
 
-export const openLibrary = async (cacheId: string = SEMANTIC_CACHE_ID): Promise<EmbeddingIndex> => {
+/**
+ * Opens the index belonging to a model. Switching models swaps the whole index
+ * — including the search worker, whose matrix is bound to the model's `dim` —
+ * rather than reinterpreting vectors that mean nothing to the new model.
+ */
+export const openLibrary = async (
+  model: EmbeddingModelDescriptor = getPreferredModel()
+): Promise<EmbeddingIndex> => {
+  const cacheId = semanticCacheId(model);
   if (index && currentCacheId === cacheId) return index;
   closeLibrary();
-  index = await EmbeddingIndex.open(cacheId, CLIP_MODEL.id, CLIP_MODEL.revision, CLIP_MODEL.dim);
+  index = await EmbeddingIndex.open(cacheId, model.id, model.revision, model.dim);
   currentCacheId = cacheId;
   return index;
 };
@@ -229,7 +239,9 @@ const ensureWorker = (): Worker => {
   };
 
   worker = instance;
-  instance.postMessage({ type: 'init', payload: { dim: CLIP_MODEL.dim } });
+  // The matrix width comes from the open index, not from a global: a model
+  // switch replaces both together, and a mismatch would silently misread rows.
+  instance.postMessage({ type: 'init', payload: { dim: index?.dim ?? getPreferredModel().dim } });
   return instance;
 };
 
@@ -422,7 +434,7 @@ export const searchByImageId = async (
  * capped or partial backfill never reached.
  */
 export const ensureImageEmbedded = async (image: IndexedImage): Promise<boolean> => {
-  const activeIndex = await openLibrary(SEMANTIC_CACHE_ID);
+  const activeIndex = await openLibrary();
   if (activeIndex.hasVector(image.id)) return true;
 
   const items = await buildEmbedItems([image]);

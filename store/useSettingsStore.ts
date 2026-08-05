@@ -5,6 +5,11 @@ import {
   DEFAULT_TAG_SUGGESTION_LIMIT,
   sanitizeTagUiLimit,
 } from '../utils/tagSuggestions';
+import {
+  DEFAULT_EMBEDDING_MODEL_KEY,
+  getEmbeddingModel,
+  type EmbeddingModelKey,
+} from '../services/embeddings/embeddingModel';
 
 export const stripLicenseFromSettings = <T extends Record<string, unknown>>(settings: T | null | undefined): Omit<T, 'license'> => {
   if (!settings) {
@@ -158,6 +163,9 @@ interface SettingsState {
   /** Inference backend for the CLIP model. WASM (CPU) by default so it never
    *  competes with an image generator for VRAM. */
   semanticSearchDevice: 'wasm' | 'webgpu';
+  /** Which CLIP model backs the index. Trades indexing time for search quality;
+   *  each model keeps its own index, so switching back is free. */
+  semanticSearchModel: EmbeddingModelKey;
   enableAnimations: boolean;
   /** Classic mode: show the legacy tabs (Model View / Smart Library / Collections / Node View)
    *  as deep-links into the unified Explore surface. Off by default. */
@@ -224,6 +232,7 @@ interface SettingsState {
   setCivitaiLookupEnabled: (value: boolean) => void;
   setSemanticSearchEnabled: (value: boolean) => void;
   setSemanticSearchDevice: (value: 'wasm' | 'webgpu') => void;
+  setSemanticSearchModel: (value: EmbeddingModelKey) => void;
   setEnableAnimations: (value: boolean) => void;
   setClassicMode: (value: boolean) => void;
   setHasSeenExploreOnboarding: (value: boolean) => void;
@@ -287,6 +296,7 @@ export const useSettingsStore = create<SettingsState>()(
       civitaiLookupEnabled: true,
       semanticSearchEnabled: false,
       semanticSearchDevice: 'wasm',
+      semanticSearchModel: DEFAULT_EMBEDDING_MODEL_KEY,
       enableAnimations: true,
       classicMode: false,
       hasSeenExploreOnboarding: false,
@@ -358,6 +368,7 @@ export const useSettingsStore = create<SettingsState>()(
       setCivitaiLookupEnabled: (value) => set({ civitaiLookupEnabled: !!value }),
       setSemanticSearchEnabled: (value) => set({ semanticSearchEnabled: !!value }),
       setSemanticSearchDevice: (value) => set({ semanticSearchDevice: value === 'webgpu' ? 'webgpu' : 'wasm' }),
+      setSemanticSearchModel: (value) => set({ semanticSearchModel: getEmbeddingModel(value).key }),
       setEnableAnimations: (value) => set({ enableAnimations: !!value }),
       setClassicMode: (value) => set({ classicMode: !!value }),
       setHasSeenExploreOnboarding: (value) => set({ hasSeenExploreOnboarding: !!value }),
@@ -444,6 +455,7 @@ export const useSettingsStore = create<SettingsState>()(
         civitaiLookupEnabled: true,
         semanticSearchEnabled: false,
         semanticSearchDevice: 'wasm',
+        semanticSearchModel: DEFAULT_EMBEDDING_MODEL_KEY,
         enableAnimations: true,
         classicMode: false,
         hasSeenExploreOnboarding: false,

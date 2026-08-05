@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useSemanticStore, deleteSemanticModel } from '../../store/useSemanticStore';
 import { useFeatureAccess, SEMANTIC_FREE_TIER_LIMIT } from '../../hooks/useFeatureAccess';
-import { CLIP_MODEL } from '../../services/embeddings/embeddingModel';
+import { EMBEDDING_MODELS, getEmbeddingModel } from '../../services/embeddings/embeddingModel';
 import { getModelDownloadSize } from '../../services/embeddings/embeddingService';
 import { SettingRow } from './SettingRow';
 import { SettingsPanel } from './SettingsPanel';
@@ -29,6 +29,8 @@ export const VisualSearchSettingsPanel: React.FC = () => {
   const setEnabled = useSettingsStore((s) => s.setSemanticSearchEnabled);
   const deviceSetting = useSettingsStore((s) => s.semanticSearchDevice);
   const setDeviceSetting = useSettingsStore((s) => s.setSemanticSearchDevice);
+  const modelSetting = useSettingsStore((s) => s.semanticSearchModel);
+  const setModelSetting = useSettingsStore((s) => s.setSemanticSearchModel);
 
   const { semanticSearchImageLimit, canUseUnlimitedSemanticSearch } = useFeatureAccess();
 
@@ -45,6 +47,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
     isPaused,
     lastError,
     setDevice,
+    setModel,
     refreshModelStatus,
     startModelDownload,
     cancelModelDownload,
@@ -56,10 +59,14 @@ export const VisualSearchSettingsPanel: React.FC = () => {
     deleteIndex,
   } = useSemanticStore();
 
-  // Keep the engine's backend in sync with the persisted setting.
+  // Keep the engine's backend and model in sync with the persisted settings.
   useEffect(() => {
     setDevice(deviceSetting === 'webgpu' ? 'webgpu' : 'wasm');
   }, [deviceSetting, setDevice]);
+
+  useEffect(() => {
+    setModel(getEmbeddingModel(modelSetting).key);
+  }, [modelSetting, setModel]);
 
   useEffect(() => {
     if (enabled) {
@@ -68,6 +75,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
     }
   }, [enabled, refreshModelStatus, openForLibrary]);
 
+  const activeModel = getEmbeddingModel(modelSetting);
   const usingGpu = device === 'webgpu';
   // GPU selected but its towers aren't downloaded yet: the worker will run on CPU
   // until they are, so make that explicit rather than looking broken.
@@ -104,13 +112,55 @@ export const VisualSearchSettingsPanel: React.FC = () => {
 
         {enabled && (
           <div className="space-y-4">
+            {/* Model choice */}
+            <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-gray-100">Search quality</p>
+                <p className="text-xs text-gray-400">
+                  Both run entirely on your machine and produce the same index size and search speed —
+                  they differ only in how much detail they look at, and so in how long indexing takes.
+                  Each keeps its own index, so switching back never re-indexes.
+                </p>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {Object.values(EMBEDDING_MODELS).map((option) => {
+                  const selected = option.key === activeModel.key;
+                  return (
+                    <button
+                      key={option.key}
+                      onClick={() => setModelSetting(option.key)}
+                      disabled={isBackfilling || modelDownloading}
+                      aria-pressed={selected}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                        selected
+                          ? 'border-indigo-500 bg-indigo-500/10'
+                          : 'border-gray-700 hover:bg-gray-800/60'
+                      }`}
+                    >
+                      <p className={`text-xs font-medium ${selected ? 'text-indigo-200' : 'text-gray-200'}`}>
+                        {option.label}
+                      </p>
+                      <p className="mt-0.5 text-[11px] leading-snug text-gray-400">{option.description}</p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {(isBackfilling || modelDownloading) && (
+                <p className="text-[11px] text-gray-500">
+                  Switching is disabled while {isBackfilling ? 'the index is building' : 'the model is downloading'}.
+                </p>
+              )}
+            </div>
+
             {/* Model download */}
             <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-2">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-100">Search model</p>
                   <p className="text-xs text-gray-400">
-                    {CLIP_MODEL.id} · one-time download, about {formatBytes(getModelDownloadSize(device))} from huggingface.co
+                    {activeModel.id} · one-time download, about {formatBytes(getModelDownloadSize(device, activeModel.key))} from huggingface.co
                   </p>
                 </div>
                 {modelDownloading ? (

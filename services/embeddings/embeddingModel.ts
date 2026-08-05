@@ -16,11 +16,26 @@ export type EmbeddingDevice = 'wasm' | 'webgpu';
 export const dtypeForDevice = (device: EmbeddingDevice): 'q8' | 'fp16' =>
   device === 'webgpu' ? 'fp16' : 'q8';
 
+/** Selectable models. The key is persisted in settings and names the index. */
+export type EmbeddingModelKey = 'clip-b32' | 'clip-b16';
+
 export interface EmbeddingModelDescriptor {
+  key: EmbeddingModelKey;
   id: string;
   revision: string;
   /** Embedding width. Changing this invalidates every stored vector. */
   dim: number;
+  /**
+   * Vector index this model's embeddings live in. Per model, so switching back
+   * and forth reuses an index that is already built instead of rebuilding it —
+   * vectors from two models are not comparable and cannot share one.
+   */
+  cacheId: string;
+  /** Settings label. Describes the trade-off, not the architecture. */
+  label: string;
+  description: string;
+  /** Indexing cost relative to the cheapest model, for the settings copy. */
+  relativeIndexingCost: number;
   /** Shared config/tokenizer/processor files, needed by every backend. */
   baseFiles: string[];
   /** The two ONNX towers, per dtype. WASM needs q8; WebGPU needs fp16. */
@@ -31,36 +46,79 @@ export interface EmbeddingModelDescriptor {
   imageSize: number;
 }
 
+const CLIP_BASE_FILES = [
+  'config.json',
+  'tokenizer.json',
+  'tokenizer_config.json',
+  'preprocessor_config.json',
+  'special_tokens_map.json',
+];
+
+const CLIP_ONNX_BY_DTYPE = {
+  q8: ['onnx/text_model_quantized.onnx', 'onnx/vision_model_quantized.onnx'],
+  fp16: ['onnx/text_model_fp16.onnx', 'onnx/vision_model_fp16.onnx'],
+};
+
 /**
- * ViT-B/32 is the cheapest CLIP vision tower that still ranks well, and the
- * OpenAI weights are MIT licensed. SigLIP is the upgrade path if the quality
- * gate fails: the manifest records modelId and dim, so switching models means
- * rebuilding the index, not migrating its format.
+ * The models the user can pick between, both OpenAI CLIP under the MIT license.
  *
- * File paths verified against the Hugging Face repo tree (q8 = *_quantized,
+ * They differ only in patch size, which is a pure quality/indexing-time dial:
+ * at 224px, /32 gives the vision tower 49 patches and /16 gives it 196, so /16
+ * sees four times as much detail and costs roughly four times as much per image
+ * to index. Everything downstream is identical — same 512-dim vectors, same
+ * index size on disk, same query latency, same text tower — so the choice only
+ * ever trades one-time indexing time for retrieval quality.
+ *
+ * File paths verified against the Hugging Face repo trees (q8 = *_quantized,
  * fp16 = *_fp16). A wrong entry surfaces as an HTTP 404 naming the file.
  */
-export const CLIP_MODEL: EmbeddingModelDescriptor = {
-  id: 'Xenova/clip-vit-base-patch32',
-  revision: 'main',
-  dim: 512,
-  baseFiles: [
-    'config.json',
-    'tokenizer.json',
-    'tokenizer_config.json',
-    'preprocessor_config.json',
-    'special_tokens_map.json',
-  ],
-  onnxByDtype: {
-    q8: ['onnx/text_model_quantized.onnx', 'onnx/vision_model_quantized.onnx'],
-    fp16: ['onnx/text_model_fp16.onnx', 'onnx/vision_model_fp16.onnx'],
+export const EMBEDDING_MODELS: Record<EmbeddingModelKey, EmbeddingModelDescriptor> = {
+  'clip-b32': {
+    key: 'clip-b32',
+    id: 'Xenova/clip-vit-base-patch32',
+    revision: 'main',
+    dim: 512,
+    // Keeps the original, un-suffixed id so an index built before models were
+    // selectable is found — and, being format-incompatible, properly reclaimed
+    // by open() rather than orphaned under a name nothing looks at.
+    cacheId: 'imh-visual-search',
+    label: 'Balanced',
+    description: 'Fastest to index. Good for finding subjects and overall composition.',
+    relativeIndexingCost: 1,
+    baseFiles: CLIP_BASE_FILES,
+    onnxByDtype: CLIP_ONNX_BY_DTYPE,
+    approxBytesByDtype: {
+      q8: 155 * 1024 * 1024,
+      fp16: 290 * 1024 * 1024,
+    },
+    imageSize: 224,
   },
-  approxBytesByDtype: {
-    q8: 155 * 1024 * 1024,
-    fp16: 290 * 1024 * 1024,
+  'clip-b16': {
+    key: 'clip-b16',
+    id: 'Xenova/clip-vit-base-patch16',
+    revision: 'main',
+    dim: 512,
+    cacheId: 'imh-visual-search-b16',
+    label: 'Higher quality',
+    description: 'Noticeably better at text searches. Takes about four times as long to index.',
+    relativeIndexingCost: 4,
+    baseFiles: CLIP_BASE_FILES,
+    onnxByDtype: CLIP_ONNX_BY_DTYPE,
+    // Near-identical parameter count to /32 — the smaller patch shrinks the
+    // patch embedding and grows the position embedding, roughly cancelling out.
+    approxBytesByDtype: {
+      q8: 155 * 1024 * 1024,
+      fp16: 290 * 1024 * 1024,
+    },
+    imageSize: 224,
   },
-  imageSize: 224,
 };
+
+export const DEFAULT_EMBEDDING_MODEL_KEY: EmbeddingModelKey = 'clip-b32';
+
+/** Resolves a persisted key, falling back when it names a model we dropped. */
+export const getEmbeddingModel = (key: string | undefined | null): EmbeddingModelDescriptor =>
+  EMBEDDING_MODELS[(key ?? '') as EmbeddingModelKey] ?? EMBEDDING_MODELS[DEFAULT_EMBEDDING_MODEL_KEY];
 
 /**
  * Caption templates a short query is expanded into before embedding.
@@ -106,18 +164,25 @@ export const expandQuery = (text: string): string[] => {
   return QUERY_TEMPLATES.map((template) => template.replace('{}', trimmed));
 };
 
-/** Files that must be present to run the model on a given backend. */
-export const filesForDevice = (device: EmbeddingDevice): string[] => [
-  ...CLIP_MODEL.baseFiles,
-  ...CLIP_MODEL.onnxByDtype[dtypeForDevice(device)],
+/** Files that must be present to run a model on a given backend. */
+export const filesForDevice = (
+  model: EmbeddingModelDescriptor,
+  device: EmbeddingDevice
+): string[] => [
+  ...model.baseFiles,
+  ...model.onnxByDtype[dtypeForDevice(device)],
 ];
 
 /** Only the ONNX towers a device adds on top of an existing install. */
-export const onnxFilesForDevice = (device: EmbeddingDevice): string[] =>
-  CLIP_MODEL.onnxByDtype[dtypeForDevice(device)];
+export const onnxFilesForDevice = (
+  model: EmbeddingModelDescriptor,
+  device: EmbeddingDevice
+): string[] => model.onnxByDtype[dtypeForDevice(device)];
 
-export const approxBytesForDevice = (device: EmbeddingDevice): number =>
-  CLIP_MODEL.approxBytesByDtype[dtypeForDevice(device)];
+export const approxBytesForDevice = (
+  model: EmbeddingModelDescriptor,
+  device: EmbeddingDevice
+): number => model.approxBytesByDtype[dtypeForDevice(device)];
 
 /**
  * Base transformers.js resolves model files against. No trailing slash: it

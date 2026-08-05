@@ -2,6 +2,7 @@ import React from 'react';
 import SearchBar from './SearchBar';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useSemanticStore } from '../store/useSemanticStore';
+import { getEmbeddingModel } from '../services/embeddings/embeddingModel';
 
 interface SemanticSearchBarProps {
   searchQuery: string;
@@ -27,7 +28,9 @@ export const OPEN_VISUAL_SEARCH_SETTINGS_EVENT = 'imh:open-visual-search-setting
 const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSearchChange }) => {
   const semanticEnabled = useSettingsStore((s) => s.semanticSearchEnabled);
   const semanticDevice = useSettingsStore((s) => s.semanticSearchDevice);
+  const semanticModel = useSettingsStore((s) => s.semanticSearchModel);
   const setDevice = useSemanticStore((s) => s.setDevice);
+  const setModel = useSemanticStore((s) => s.setModel);
 
   const modelInstalled = useSemanticStore((s) => s.modelInstalled);
   const queryRunning = useSemanticStore((s) => s.queryRunning);
@@ -42,13 +45,16 @@ const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSe
 
   // Learn the model/index state as soon as the feature is on, so the toggle
   // shows and the first query has an open index — without needing Settings.
-  // Also point the engine at the configured backend so queries use it.
+  // Also point the engine at the configured backend and model so queries use
+  // them; setModel must run before openForLibrary, since it decides which
+  // index is opened.
   React.useEffect(() => {
     if (!semanticEnabled) return;
     setDevice(semanticDevice === 'webgpu' ? 'webgpu' : 'wasm');
+    setModel(getEmbeddingModel(semanticModel).key);
     refreshModelStatus();
     openForLibrary();
-  }, [semanticEnabled, semanticDevice, setDevice, refreshModelStatus, openForLibrary]);
+  }, [semanticEnabled, semanticDevice, semanticModel, setDevice, setModel, refreshModelStatus, openForLibrary]);
 
   const [visualMode, setVisualMode] = React.useState(false);
   const [visualValue, setVisualValue] = React.useState('');

@@ -1,4 +1,5 @@
 import type { IndexedImage, SemanticIndexProgress } from '../../types';
+import type { EmbeddingModelDescriptor } from './embeddingModel';
 import { buildEmbedItems, embedImages, unloadVisionTower } from './embeddingService';
 import { contentKeyForImage } from './embeddingStore';
 import { openLibrary, reconcileWithImages, syncWorker } from './semanticSearchEngine';
@@ -32,7 +33,8 @@ const DEFAULT_THROTTLE_MS = 15;
 const PROGRESS_INTERVAL_MS = 300;
 
 export interface BackfillOptions {
-  cacheId: string;
+  /** Model to embed with; also selects which index the vectors land in. */
+  model: EmbeddingModelDescriptor;
   images: IndexedImage[];
   /** Free-tier ceiling on live vectors, or null for unlimited. */
   cap: number | null;
@@ -83,7 +85,7 @@ export const selectPendingImages = (
 
 export const runBackfill = async (options: BackfillOptions): Promise<BackfillResult> => {
   const {
-    cacheId,
+    model,
     images,
     cap,
     signal,
@@ -93,7 +95,7 @@ export const runBackfill = async (options: BackfillOptions): Promise<BackfillRes
     throttleMs = DEFAULT_THROTTLE_MS,
   } = options;
 
-  const index = await openLibrary(cacheId);
+  const index = await openLibrary(model);
   // Backfill is an explicit user action with the authoritative, fully-loaded
   // image array, unlike the mount-time open — the only safe place to sweep
   // vectors for images that have left the library.
