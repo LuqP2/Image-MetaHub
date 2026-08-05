@@ -1,8 +1,22 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { selectPendingImages } from '../services/embeddings/embeddingIndexer';
 import { contentKeyForImage } from '../services/embeddings/embeddingStore';
-import { applyRelevanceCutoff, parseSemanticQuery } from '../services/embeddings/semanticSearchEngine';
+import { CLIP_MODEL } from '../services/embeddings/embeddingModel';
+import {
+  applyRelevanceCutoff,
+  closeLibrary,
+  getIndex,
+  openLibrary,
+  parseSemanticQuery,
+  reconcileWithImages,
+} from '../services/embeddings/semanticSearchEngine';
 import type { IndexedImage } from '../types';
+
+declare global {
+  interface Window {
+    electronAPI?: any;
+  }
+}
 
 const image = (id: string, modified: number, fileSize = 10): IndexedImage => ({
   id,
@@ -112,5 +126,52 @@ describe('parseSemanticQuery', () => {
   it('yields an empty positive when the query is only a negative', () => {
     expect(parseSemanticQuery('-people')).toEqual({ positive: '-people', negatives: [] });
     expect(parseSemanticQuery(' -people')).toEqual({ positive: '', negatives: ['people'] });
+  });
+});
+
+describe('reconcileWithImages', () => {
+  afterEach(() => {
+    closeLibrary();
+    delete window.electronAPI;
+    vi.restoreAllMocks();
+  });
+
+  const openEmptyLibrary = async () => {
+    window.electronAPI = {
+      readEmbeddingFile: vi.fn().mockResolvedValue({ success: true, data: null }),
+      writeEmbeddingFile: vi.fn().mockResolvedValue({ success: true }),
+      appendEmbeddingSegment: vi.fn().mockResolvedValue({ success: true }),
+    };
+    await openLibrary('test-reconcile-lib');
+    const index = getIndex()!;
+    index.append('present-image', 'key-0', {
+      scale: 1,
+      codes: new Int8Array(CLIP_MODEL.dim).fill(1),
+    });
+    await index.flush();
+    return index;
+  };
+
+  it('does nothing for an empty present-ids set (not-yet-hydrated library, not an empty one)', async () => {
+    const index = await openEmptyLibrary();
+    expect(index.stats.liveRows).toBe(1);
+
+    // An empty set must never be read as "the library has no images" — a
+    // caller that hasn't finished loading yet also produces an empty set, and
+    // treating it as authoritative would wipe every live vector.
+    await reconcileWithImages(new Set());
+
+    expect(index.stats.liveRows).toBe(1);
+    expect(index.hasVector('present-image')).toBe(true);
+  });
+
+  it('tombstones vectors for images that are genuinely no longer present', async () => {
+    const index = await openEmptyLibrary();
+    expect(index.stats.liveRows).toBe(1);
+
+    await reconcileWithImages(new Set(['some-other-image']));
+
+    expect(index.stats.liveRows).toBe(0);
+    expect(index.hasVector('present-image')).toBe(false);
   });
 });

@@ -136,9 +136,15 @@ export const openLibrary = async (cacheId: string = SEMANTIC_CACHE_ID): Promise<
  * Tombstones vectors for images that have left the library (directory removed,
  * files deleted outside the app). Keeps the searchable set aligned with what the
  * grid actually shows.
+ *
+ * Callers must pass the *complete, hydrated* image set: an empty or partial set
+ * here does not mean "the library is empty", it means "not loaded yet", and
+ * treating it as authoritative would tombstone every live vector. Only call this
+ * from a point that already has the real, fully-loaded image array (currently:
+ * runBackfill, which runs on an explicit user action).
  */
 export const reconcileWithImages = async (presentImageIds: Set<string>): Promise<void> => {
-  if (!index) return;
+  if (!index || presentImageIds.size === 0) return;
   const stale: string[] = [];
   for (const imageId of index.liveEntries().keys()) {
     if (!presentImageIds.has(imageId)) stale.push(imageId);
@@ -216,13 +222,18 @@ export const syncWorker = async (): Promise<void> => {
     workerReady = true;
   }
 
-  for await (const segment of index.readSegments()) {
-    if (syncedSegmentRows[segment.index] === segment.rowCount) continue;
+  // Check rowCount against what the worker already has *before* reading —
+  // otherwise every query pays for reading the whole index off disk just to
+  // discard the segments that did not change.
+  for (const descriptor of index.segmentDescriptors()) {
+    if (syncedSegmentRows[descriptor.index] === descriptor.rowCount) continue;
+    const buffer = await index.readSegment(descriptor.index);
+    if (!buffer) continue;
     instance.postMessage(
-      { type: 'addSegment', payload: { index: segment.index, buffer: segment.buffer, rowCount: segment.rowCount } },
-      [segment.buffer]
+      { type: 'addSegment', payload: { index: descriptor.index, buffer, rowCount: descriptor.rowCount } },
+      [buffer]
     );
-    syncedSegmentRows[segment.index] = segment.rowCount;
+    syncedSegmentRows[descriptor.index] = descriptor.rowCount;
   }
 
   const rows = index.rowSnapshot();

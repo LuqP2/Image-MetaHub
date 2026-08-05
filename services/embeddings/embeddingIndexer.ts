@@ -1,7 +1,7 @@
 import type { IndexedImage, SemanticIndexProgress } from '../../types';
 import { buildEmbedItems, embedImages, unloadVisionTower } from './embeddingService';
 import { contentKeyForImage } from './embeddingStore';
-import { openLibrary, syncWorker } from './semanticSearchEngine';
+import { openLibrary, reconcileWithImages, syncWorker } from './semanticSearchEngine';
 
 /**
  * Resumable backfill that fills the vector index for a library.
@@ -94,6 +94,10 @@ export const runBackfill = async (options: BackfillOptions): Promise<BackfillRes
   } = options;
 
   const index = await openLibrary(cacheId);
+  // Backfill is an explicit user action with the authoritative, fully-loaded
+  // image array, unlike the mount-time open — the only safe place to sweep
+  // vectors for images that have left the library.
+  await reconcileWithImages(new Set(images.map((image) => image.id)));
   const embedded = index.liveEntries();
   const remainingCapacity = cap === null ? null : cap - index.stats.liveRows;
   const pending = selectPendingImages(images, embedded, remainingCapacity);

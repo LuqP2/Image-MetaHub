@@ -260,12 +260,19 @@ export class EmbeddingIndex {
         };
       }
 
+      // Advance the manifest's row bookkeeping immediately after each segment
+      // append succeeds, not once at the end of the loop: if a later iteration
+      // throws, totalRows must already reflect what is durable on disk, or the
+      // next flush computes firstRow from a stale value and reissues row
+      // numbers a still-earlier append already claimed on disk.
+      this.manifest.totalRows = physicalRow + count;
+      this.manifest.liveRows = this.rowByImageId.size;
+      this.manifest.rowChunkCount = Math.ceil(this.manifest.totalRows / ROW_INDEX_CHUNK_SIZE);
+      this.manifestDirty = true;
+
       cursor += count;
     }
 
-    this.manifest.totalRows = this.rows.length;
-    this.manifest.liveRows = this.rowByImageId.size;
-    this.manifest.rowChunkCount = Math.ceil(this.rows.length / ROW_INDEX_CHUNK_SIZE);
     this.manifest.updatedAt = Date.now();
     this.pending = [];
 
@@ -296,19 +303,28 @@ export class EmbeddingIndex {
   }
 
   /**
-   * Reads every segment back as raw bytes for transfer into the search worker.
-   * Yields per segment so the caller can hand them over incrementally instead
-   * of holding the whole matrix in the renderer heap at once.
+   * Segment metadata only — no disk read. Lets the caller decide which segments
+   * actually changed (by rowCount) before paying for a read, rather than reading
+   * every segment first and discarding the unchanged ones.
    */
-  async *readSegments(): AsyncGenerator<{ index: number; buffer: ArrayBuffer; rowCount: number }> {
-    const api = getElectronAPI();
+  segmentDescriptors(): Array<{ index: number; rowCount: number }> {
+    const descriptors: Array<{ index: number; rowCount: number }> = [];
     for (let index = 0; index < this.manifest.segments.length; index += 1) {
       const descriptor = this.manifest.segments[index];
       if (!descriptor || descriptor.rowCount === 0) continue;
-      const result = await api.readEmbeddingFile({ fileName: descriptor.file, binary: true });
-      if (!result.success || !result.data) continue;
-      yield { index, buffer: result.data as ArrayBuffer, rowCount: descriptor.rowCount };
+      descriptors.push({ index, rowCount: descriptor.rowCount });
     }
+    return descriptors;
+  }
+
+  /** Reads one segment's raw bytes for transfer into the search worker. */
+  async readSegment(index: number): Promise<ArrayBuffer | null> {
+    const descriptor = this.manifest.segments[index];
+    if (!descriptor) return null;
+    const api = getElectronAPI();
+    const result = await api.readEmbeddingFile({ fileName: descriptor.file, binary: true });
+    if (!result.success || !result.data) return null;
+    return result.data as ArrayBuffer;
   }
 
   /** Image id for a physical row, used to map worker results back to images. */

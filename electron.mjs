@@ -336,6 +336,22 @@ const getEmbeddingModelDir = (modelId) => {
   return resolved;
 };
 
+// Individual file entries (`files`) come from the renderer's model descriptor and
+// are joined onto modelDir with no validation elsewhere; unlike modelId above and
+// every cache-sidecar path in this file, a `file` was never checked for escaping
+// its directory. path.resolve neutralizes both `../..` segments and an absolute
+// `file`, and isSameOrChildPath is the final gate.
+const resolveEmbeddingModelFilePath = (modelDir, file) => {
+  if (typeof file !== 'string' || !file) {
+    throw new Error(`Rejected model file: ${file}`);
+  }
+  const resolved = path.resolve(modelDir, file);
+  if (!isSameOrChildPath(normalizeAllowedPath(resolved), normalizeAllowedPath(modelDir))) {
+    throw new Error(`Rejected model file: ${file}`);
+  }
+  return resolved;
+};
+
 let embeddingModelDownload = null;
 
 const registerModelProtocol = () => {
@@ -4081,7 +4097,7 @@ function setupFileOperationHandlers() {
       const missing = [];
       let totalBytes = 0;
       for (const file of Array.isArray(files) ? files : []) {
-        const filePath = path.join(modelDir, ...file.split('/'));
+        const filePath = resolveEmbeddingModelFilePath(modelDir, file);
         const stats = await fs.stat(filePath).catch(() => null);
         if (!stats || stats.size === 0) {
           missing.push(file);
@@ -4140,7 +4156,7 @@ function setupFileOperationHandlers() {
       let completed = 0;
 
       for (const file of list) {
-        const destination = path.join(modelDir, ...file.split('/'));
+        const destination = resolveEmbeddingModelFilePath(modelDir, file);
         await fs.mkdir(path.dirname(destination), { recursive: true });
 
         const existing = await fs.stat(destination).catch(() => null);
@@ -4177,6 +4193,17 @@ function setupFileOperationHandlers() {
         const expectedSha256 = !appending ? expectedSha256FromHeaders(response.headers) : null;
 
         const stream = fsSync.createWriteStream(partPath, { flags: appending ? 'a' : 'w' });
+        // Without an 'error' listener a write failure (disk full, device removed)
+        // is an uncaught exception in the main process instead of surfacing through
+        // this handler's try/catch. Wait on 'close' rather than the end() callback,
+        // since autoDestroy fires 'close' on both the success and error paths —
+        // the end() callback alone would never settle after stream.destroy().
+        let streamError = null;
+        const closed = new Promise((resolve) => stream.once('close', resolve));
+        stream.on('error', (err) => {
+          streamError = err;
+          stream.destroy();
+        });
         try {
           const reader = response.body.getReader();
           for (;;) {
@@ -4189,7 +4216,11 @@ function setupFileOperationHandlers() {
             emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: received, totalBytes });
           }
         } finally {
-          await new Promise((resolve) => stream.end(resolve));
+          stream.end();
+          await closed;
+        }
+        if (streamError) {
+          throw streamError;
         }
 
         if (totalBytes > 0 && received !== totalBytes) {

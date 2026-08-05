@@ -22,7 +22,6 @@ import {
   closeLibrary,
   getIndex,
   openLibrary,
-  reconcileWithImages,
   searchByText,
   searchSimilarToImage,
 } from '../services/embeddings/semanticSearchEngine';
@@ -70,8 +69,8 @@ interface SemanticStoreState {
   startModelDownload: () => Promise<boolean>;
   cancelModelDownload: () => Promise<void>;
 
+  /** Opens the on-disk index and refreshes coverage stats. Never reconciles. */
   openForLibrary: () => Promise<void>;
-  refreshCoverage: () => Promise<void>;
 
   startBackfill: (cap: number | null) => Promise<void>;
   pauseBackfill: () => void;
@@ -190,17 +189,13 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
 
   openForLibrary: async () => {
     // Also fired from mount effects — same reasoning as refreshModelStatus above.
-    try {
-      await openLibrary(SEMANTIC_CACHE_ID);
-      const images = useImageStore.getState().images;
-      await reconcileWithImages(new Set(images.map((image) => image.id)));
-      set({ coverage: buildCoverage(get().coverage?.cap ?? null, images.length) });
-    } catch (error) {
-      set({ lastError: error instanceof Error ? error.message : String(error) });
-    }
-  },
-
-  refreshCoverage: async () => {
+    //
+    // Deliberately does NOT reconcile against useImageStore.images: this runs from a
+    // mount effect that can fire before the library has finished hydrating from the
+    // metadata cache, and reconciling against a still-empty/partial image list would
+    // tombstone every live vector as "no longer present" and flush that away for real.
+    // Reconciliation only happens from runBackfill, which is a deliberate user action
+    // that already has the authoritative, fully-loaded image array.
     try {
       await openLibrary(SEMANTIC_CACHE_ID);
       const total = useImageStore.getState().images.length;

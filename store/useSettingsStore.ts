@@ -149,10 +149,11 @@ interface SettingsState {
   blurSensitiveImages: boolean;
   enableSafeMode: boolean;
   civitaiLookupEnabled: boolean;
-  /** Master switch for local visual search. On by default so the toggle is
-   *  discoverable, but that only surfaces the UI — the model is still downloaded
-   *  and the index built only on an explicit user action. Turning it off hides
-   *  the feature entirely. */
+  /** Master switch for local visual search. Off by default: while off, no new
+   *  code path runs and no file is written — the onboarding card is still
+   *  discoverable above the grid, and turning this on there or in Settings is
+   *  what first opens the index (the model download and index build stay
+   *  separate, explicit user actions after that). */
   semanticSearchEnabled: boolean;
   /** Inference backend for the CLIP model. WASM (CPU) by default so it never
    *  competes with an image generator for VRAM. */
@@ -284,7 +285,7 @@ export const useSettingsStore = create<SettingsState>()(
       blurSensitiveImages: true,
       enableSafeMode: true,
       civitaiLookupEnabled: true,
-      semanticSearchEnabled: true,
+      semanticSearchEnabled: false,
       semanticSearchDevice: 'wasm',
       enableAnimations: true,
       classicMode: false,
@@ -441,12 +442,12 @@ export const useSettingsStore = create<SettingsState>()(
         blurSensitiveImages: true,
         enableSafeMode: true,
         civitaiLookupEnabled: true,
-        semanticSearchEnabled: true,
+        semanticSearchEnabled: false,
         semanticSearchDevice: 'wasm',
         enableAnimations: true,
         classicMode: false,
         hasSeenExploreOnboarding: false,
-      hasSeenVisualSearchOnboarding: false,
+        hasSeenVisualSearchOnboarding: false,
         performanceDiagnosticsEnabled: false,
         slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
         slideshowShowFilename: true,
