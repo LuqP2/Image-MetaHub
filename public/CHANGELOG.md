@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-08-05
+
+### Added
+
+- **Local Visual Search**: A new opt-in way to search your library by what images actually show, not just their prompt or filename — including screenshots, downloads, and anything else with no generation metadata at all. Runs entirely on your machine using a small CLIP model (about 155MB, downloaded once from Hugging Face on first use); nothing is ever uploaded. Turn it on from Settings → Visual Search or the sparkle icon in the sidebar search bar, then build the index — indexing can be paused, resumed, and picks up where it left off across restarts. Exclude a concept from a search with a minus, e.g. `beach -people`. An optional GPU-accelerated mode (WebGPU) speeds up indexing on supported hardware; it's off by default so it never competes with an image generator for VRAM, and falls back to CPU automatically if the GPU can't run it. Free indexes your 2,000 most recent images; Pro indexes the whole library.
+- **Find Visually Similar**: A new "Find visually similar" action in the grid and table context menus ranks the library by visual resemblance to any image, including ones with no metadata — the image is embedded on the spot the first time you use it.
+
 ## [0.18.1] - 2026-08-01
 
 ### Added

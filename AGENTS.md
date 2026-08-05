@@ -211,6 +211,7 @@ Metadata sources:
 11. **Image Adjustments**: Brightness, contrast, saturation, and hue adjustments with metadata-preserving PNG Save As / Overwrite desktop workflows
 12. **ComfyUI Workspace**: Embedded ComfyUI browser in Electron with image context, library thumbnails, workflow metadata tabs, and direct grid/table/viewer entry points
 13. **External ComfyUI Queue Monitoring**: Optional detection of ComfyUI jobs started outside Image MetaHub in the shared generation queue
+14. **Local Visual Search**: Opt-in, fully local CLIP-based search by image content ("beach -people"), plus "Find visually similar" — off by default, no model download or index write until the user turns it on
 
 ## Smart Library & Auto-Tags
 
@@ -218,6 +219,23 @@ Metadata sources:
 - **Auto-Tags (TF-IDF)**: `services/autoTaggingEngine.ts`, `services/workers/autoTaggingWorker.ts`, `components/TagsAndFavorites.tsx`, `components/ImageModal.tsx`, `components/ImagePreviewSidebar.tsx`
 - **Deduplication Helper**: `services/deduplicationEngine.ts`, `components/DeduplicationHelper.tsx`, `components/ImageGrid.tsx`
 - **Cluster Cache**: `services/clusterCacheManager.ts` (atomic writes, userData path resolution)
+
+## Local Visual Search
+
+Opt-in, fully local CLIP-based search by image content (`services/embeddings/`, `services/workers/embeddingWorker.ts`, `services/workers/vectorSearchWorker.ts`, `store/useSemanticStore.ts`). A CLIP model runs entirely on-device; the only network request the feature ever makes is a one-time weights download from Hugging Face.
+
+**Key pieces:**
+
+- **Vector format** (`services/embeddings/embeddingFormat.ts`): int8-quantized vectors with a per-vector scale, in append-only segment files (`${safeCacheId}_emb_seg_*.bin`) next to the metadata cache. A manifest (`${safeCacheId}_emb_manifest.json`) is the source of truth for how much of each segment is real — a segment longer than its declared row count holds bytes from an uncommitted flush and is discarded on load.
+- **On-disk store** (`services/embeddings/embeddingStore.ts`, `EmbeddingIndex`): owns append/flush/tombstone/rename for one library-wide index, keyed by the fixed id `SEMANTIC_CACHE_ID = 'imh-visual-search'` (not per-directory, since the store flattens every directory into one `images[]`).
+- **Backfill** (`services/embeddings/embeddingIndexer.ts`, `runBackfill`): resumable, newest-first, pause/cancel-able indexing job. This is the *only* place that reconciles the index against the live image set (tombstones vectors for images no longer present) — it is the only caller with the authoritative, fully-hydrated image array. Do not add reconciliation to a mount effect or anywhere else that can fire before the library has finished loading from cache: an empty/partial image list there reads as "every image left the library" and wipes the index.
+- **Search** (`services/embeddings/semanticSearchEngine.ts` + `services/workers/vectorSearchWorker.ts`): brute-force cosine over the in-memory matrix in a long-lived worker, top-K via a min-heap, relevance decided by a z-score cutoff over the query's own score distribution (CLIP text↔image cosines are compressed and query-dependent, so an absolute floor doesn't work).
+- **Embedding worker** (`services/workers/embeddingWorker.ts`, `services/embeddings/embeddingService.ts`): runs the CLIP towers via `@huggingface/transformers`. WASM/q8 is the always-present CPU baseline; an opt-in WebGPU/fp16 accelerator falls back to CPU automatically on adapter or `shader-f16` load failure.
+- **Model files**: served to the worker over a dedicated `imh-model://` protocol from `<userData>/models/`, registered in `electron.mjs` alongside the embedding sidecar IPC handlers (`read/write/append-embedding-*`, `*-embedding-model*`).
+- **UI**: `components/SemanticSearchBar.tsx` (sidebar toggle + query input), `components/settings/VisualSearchSettingsPanel.tsx` (model download, index build/pause/resume, GPU toggle), `components/VisualSearchOnboarding.tsx` (dismissible intro card).
+- **Store integration**: a visual query lives in `useImageStore.semanticResult.scoreById` (a `Map`, never on `IndexedImage`) and *replaces* the text-search predicate rather than combining with it, driving a `'relevance'` sort order.
+
+**Defaults and gating:** `settings.semanticSearchEnabled` is **off by default** — while off, no model status check, no index open, no file write. The onboarding card and the Settings tab stay visible regardless, so the feature is still discoverable; turning it on is what first opens the index. Free tier caps the backfill at `SEMANTIC_FREE_TIER_LIMIT` (2,000) most-recent images (`hooks/useFeatureAccess.ts`); Pro is unlimited.
 
 ## A1111 Integration
 
