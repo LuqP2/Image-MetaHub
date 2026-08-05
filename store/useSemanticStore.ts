@@ -197,11 +197,15 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     if (get().modelDownloading) return false;
     set({ modelDownloading: true, modelProgress: null, lastError: null });
     try {
-      const result = await downloadModel(
-        (progress) => set({ modelProgress: progress }),
-        get().device,
-        get().modelKey
-      );
+      // The q8 baseline is the CPU fallback and is what modelInstalled gates on,
+      // so it must always be fetched — even on GPU, which otherwise pulls only
+      // the fp16 towers and would leave modelInstalled stuck false. On GPU we
+      // then add the fp16 towers on top (the handler skips files already on disk).
+      const onProgress = (progress: EmbeddingModelProgress) => set({ modelProgress: progress });
+      let result = await downloadModel(onProgress, 'wasm', get().modelKey);
+      if (result.success && get().device === 'webgpu') {
+        result = await downloadModel(onProgress, 'webgpu', get().modelKey);
+      }
       if (result.success) {
         // Downloaded files depend on the selected backend; re-check both flags.
         await get().refreshModelStatus();
