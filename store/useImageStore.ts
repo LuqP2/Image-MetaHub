@@ -62,6 +62,7 @@ import {
     recordPerformanceDuration,
 } from '../utils/performanceDiagnostics';
 import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
+import { semanticSearchScopeRevision } from './semanticSearchState';
 
 const RECENT_TAGS_STORAGE_KEY = 'image-metahub-recent-tags';
 const MAX_RECENT_TAGS = MAX_RECENT_TAG_HISTORY;
@@ -845,6 +846,12 @@ const toSearchWorkerImage = (image: IndexedImage): SearchWorkerImage => {
     };
 };
 
+export interface SemanticSearchScopeSnapshot {
+  images: IndexedImage[];
+  imageIds: ReadonlySet<string>;
+  revision: string;
+}
+
 interface ImageState {
   // Core Data
   images: IndexedImage[];
@@ -1035,6 +1042,11 @@ interface ImageState {
   validateActiveImageScope: () => void;
   /** filteredImages intersected with the active scope (or filteredImages when no scope). */
   getScopedFilteredImages: () => IndexedImage[];
+  /**
+   * Cards eligible for a new visual query before any prior semantic/text result
+   * is applied. Includes every grid scope/filter, including node and active scope.
+   */
+  getSemanticSearchScopeSnapshot: () => SemanticSearchScopeSnapshot;
   loadCollections: () => Promise<void>;
   loadAutomationRules: () => Promise<void>;
   createCollection: (collection: Omit<SmartCollection, 'id' | 'imageCount' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<SmartCollection>;
@@ -3242,6 +3254,82 @@ export const useImageStore = create<ImageState>((set, get) => {
         };
     };
 
+    let semanticScopeCache: {
+        dependencies: readonly unknown[];
+        snapshot: SemanticSearchScopeSnapshot;
+    } | null = null;
+
+    const semanticScopeDependencies = (state: ImageState): readonly unknown[] => {
+        const settings = useSettingsStore.getState();
+        return [
+            state.images,
+            state.directories,
+            state.selectedFolders,
+            state.excludedFolders,
+            state.includeSubfolders,
+            state.favoriteFilterMode,
+            state.selectedRatings,
+            state.selectedTags,
+            state.excludedTags,
+            state.selectedTagsMatchMode,
+            state.selectedAutoTags,
+            state.excludedAutoTags,
+            state.selectedModels,
+            state.excludedModels,
+            state.selectedLoras,
+            state.excludedLoras,
+            state.selectedSamplers,
+            state.excludedSamplers,
+            state.selectedSchedulers,
+            state.excludedSchedulers,
+            state.selectedGenerators,
+            state.excludedGenerators,
+            state.selectedGpuDevices,
+            state.excludedGpuDevices,
+            state.advancedFilters,
+            state.selectedNodes,
+            state.activeImageScope,
+            state.clusters,
+            state.collections,
+            settings.enableSafeMode,
+            settings.blurSensitiveImages,
+            settings.sensitiveTags,
+        ];
+    };
+
+    const getSemanticSearchScopeSnapshot = (): SemanticSearchScopeSnapshot => {
+        const state = get();
+        const dependencies = semanticScopeDependencies(state);
+        if (
+            semanticScopeCache &&
+            semanticScopeCache.dependencies.length === dependencies.length &&
+            semanticScopeCache.dependencies.every((value, index) => Object.is(value, dependencies[index]))
+        ) {
+            return semanticScopeCache.snapshot;
+        }
+
+        // A visual query replaces ordinary text search and must never narrow
+        // itself to the previous semantic result. Every other grid filter stays.
+        const baseState: ImageState = {
+            ...state,
+            searchQuery: '',
+            semanticResult: null,
+        };
+        const matchesBaseFilters = compileImageFilter(baseState);
+        const baseFilteredImages = baseState.images.filter(matchesBaseFilters);
+        const images = resolveDisplayedImages({
+            ...baseState,
+            filteredImages: baseFilteredImages,
+        });
+        const snapshot: SemanticSearchScopeSnapshot = {
+            images,
+            imageIds: new Set(images.map((image) => image.id)),
+            revision: semanticSearchScopeRevision(images),
+        };
+        semanticScopeCache = { dependencies, snapshot };
+        return snapshot;
+    };
+
 
     return {
         // Initial State
@@ -4230,6 +4318,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             return state;
         }),
         getScopedFilteredImages: () => resolveDisplayedImages(get()),
+        getSemanticSearchScopeSnapshot,
         loadCollections: async () => {
             const persistedCollections = await getAllSmartCollections();
             set((state) => {

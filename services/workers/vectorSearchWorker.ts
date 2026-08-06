@@ -1,4 +1,5 @@
 import {
+  centroidFromLiveSegments,
   dotFloatWithQuantized,
   explodeSegment,
   rowHubnessScores,
@@ -25,8 +26,7 @@ type WorkerMessage =
   | { type: 'init'; payload: { dim: number } }
   | { type: 'addSegment'; payload: { index: number; buffer: ArrayBuffer; rowCount: number } }
   | { type: 'setLiveMask'; payload: { mask: ArrayBuffer } }
-  // Mean image vector the text queries project away from. Null clears it.
-  | { type: 'setMean'; payload: { mean: ArrayBuffer | null } }
+  | { type: 'setResultMask'; payload: { mask: ArrayBuffer } }
   | { type: 'markDead'; payload: { rows: number[] } }
   | {
       type: 'query';
@@ -74,8 +74,28 @@ let dim = 0;
 let totalRows = 0;
 /** One byte per physical row: 0 = tombstoned or unknown, 1 = searchable. */
 let liveMask = new Uint8Array(0);
+/** One byte per physical row: 1 = eligible to be returned to the current grid. */
+let resultMask = new Uint8Array(0);
 /** Mean image vector, or null until the index is big enough to have one. */
 let mean: Float32Array | null = null;
+let meanDirty = true;
+
+const refreshLiveMean = (): void => {
+  if (!meanDirty) return;
+  mean = centroidFromLiveSegments(SEGMENTS, SEGMENT_BASE_ROW, liveMask, dim);
+  for (let s = 0; s < SEGMENTS.length; s += 1) {
+    if (SEGMENTS[s]) SEGMENT_HUBNESS[s] = rowHubnessScores(SEGMENTS[s], dim, mean);
+  }
+  meanDirty = false;
+};
+
+const masksEqual = (a: Uint8Array, b: Uint8Array): boolean => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+};
 
 const post = (message: WorkerResponse, transfer?: Transferable[]) => {
   (self as unknown as Worker).postMessage(message, transfer ?? []);
@@ -159,14 +179,14 @@ class TopK {
   }
 }
 
-const growLiveMask = (requiredRows: number): void => {
-  if (liveMask.length >= requiredRows) return;
+const growMask = (mask: Uint8Array, requiredRows: number): Uint8Array => {
+  if (mask.length >= requiredRows) return mask;
   const next = new Uint8Array(requiredRows);
-  next.set(liveMask);
+  next.set(mask);
   // Rows added after the last mask sync are assumed live: they were just
   // appended by the indexer, which never appends a dead row.
-  next.fill(1, liveMask.length);
-  liveMask = next;
+  next.fill(1, mask.length);
+  return next;
 };
 
 const locateRow = (physicalRow: number): { segment: ExplodedSegment; localRow: number } | null => {
@@ -188,6 +208,7 @@ const runQuery = (
   minScore: number,
   centered = false
 ): { rows: number[]; scores: number[]; scannedRows: number; scoreSum: number; scoreSqSum: number } => {
+  if (centered) refreshLiveMean();
   const heap = new TopK(Math.max(1, topK));
   let scanned = 0;
   let scoreSum = 0;
@@ -222,6 +243,11 @@ const runQuery = (
     for (let row = 0; row < rowCount; row += 1) {
       const physicalRow = baseRow + row;
       if (liveMask[physicalRow] !== 1) continue;
+      const eligibleResult = resultMask[physicalRow] === 1;
+      // Text queries need the full hydrated-library distribution for a stable
+      // centroid and cutoff even when the visible grid is tiny. Find Similar
+      // has no distribution-based cutoff, so it only scans returnable rows.
+      if (!centered && !eligibleResult) continue;
       scanned += 1;
       const raw = scoreRow(queryCodes, queryScale, codes, row * dim, dim, scales[row]);
       const score = useCentering && hubness
@@ -231,6 +257,7 @@ const runQuery = (
       // describe the whole library rather than just the top-K survivors.
       scoreSum += score;
       scoreSqSum += score * score;
+      if (!eligibleResult) continue;
       if (score < minScore || score <= heap.worst) continue;
       heap.push(score, physicalRow);
     }
@@ -250,27 +277,17 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         SEGMENT_HUBNESS.length = 0;
         totalRows = 0;
         liveMask = new Uint8Array(0);
+        resultMask = new Uint8Array(0);
         mean = null;
+        meanDirty = true;
         post({ type: 'ready', payload: { rowCount: 0, segmentCount: 0 } });
-        break;
-      }
-
-      case 'setMean': {
-        const { mean: buffer } = message.payload;
-        mean = buffer ? new Float32Array(buffer) : null;
-        // Hubness is derived from the mean, so every loaded segment has to be
-        // revisited. It is one pass of rowCount × dim — cheap next to the scan a
-        // single query already pays, and it only happens when the index grows.
-        for (let s = 0; s < SEGMENTS.length; s += 1) {
-          if (SEGMENTS[s]) SEGMENT_HUBNESS[s] = rowHubnessScores(SEGMENTS[s], dim, mean);
-        }
         break;
       }
 
       case 'addSegment': {
         const { index, buffer, rowCount } = message.payload;
         SEGMENTS[index] = explodeSegment(buffer, dim, rowCount);
-        SEGMENT_HUBNESS[index] = rowHubnessScores(SEGMENTS[index], dim, mean);
+        SEGMENT_HUBNESS[index] = new Float32Array(rowCount);
         // Segments are fixed-capacity and arrive in order, so the base row of a
         // segment is the running total of everything before it.
         let base = 0;
@@ -279,21 +296,36 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         }
         SEGMENT_BASE_ROW[index] = base;
         totalRows = Math.max(totalRows, base + SEGMENTS[index].rowCount);
-        growLiveMask(totalRows);
+        liveMask = growMask(liveMask, totalRows);
+        resultMask = growMask(resultMask, totalRows);
+        meanDirty = true;
         post({ type: 'ready', payload: { rowCount: totalRows, segmentCount: SEGMENTS.length } });
         break;
       }
 
       case 'setLiveMask': {
-        liveMask = new Uint8Array(message.payload.mask);
+        const nextMask = new Uint8Array(message.payload.mask);
+        if (!masksEqual(liveMask, nextMask)) {
+          liveMask = nextMask;
+          meanDirty = true;
+        }
+        break;
+      }
+
+      case 'setResultMask': {
+        resultMask = new Uint8Array(message.payload.mask);
         break;
       }
 
       case 'markDead': {
         for (const row of message.payload.rows) {
           if (row >= 0 && row < liveMask.length) {
-            liveMask[row] = 0;
+            if (liveMask[row] === 1) {
+              liveMask[row] = 0;
+              meanDirty = true;
+            }
           }
+          if (row >= 0 && row < resultMask.length) resultMask[row] = 0;
         }
         break;
       }
@@ -348,6 +380,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         SEGMENT_BASE_ROW.length = 0;
         SEGMENT_HUBNESS.length = 0;
         liveMask = new Uint8Array(0);
+        resultMask = new Uint8Array(0);
         mean = null;
         totalRows = 0;
         break;

@@ -35,6 +35,14 @@ import { deleteEmbeddingIndex } from '../services/embeddings/embeddingStore';
 import { useImageStore } from './useImageStore';
 import { useSettingsStore } from './useSettingsStore';
 import { getSemanticSearchTopFraction } from '../services/embeddings/semanticSearchPrecision';
+import {
+  createDiagnosticIdMapper,
+  isSemanticQuerySnapshotCurrent,
+  summarizeScorePercentiles,
+  summarizeVisibleSemanticResults,
+} from './semanticSearchState';
+
+export const SEMANTIC_SEARCH_DEBUG_STORAGE_KEY = 'imh-semantic-debug';
 
 /**
  * Orchestrates the visual-search feature: model download, the backfill job, and
@@ -103,6 +111,36 @@ let pauseResolvers: Array<() => void> = [];
 let paused = false;
 /** Monotonic query id so a slow reply from a superseded query is ignored. */
 let queryGeneration = 0;
+type ActiveSemanticRequest =
+  | { kind: 'text'; query: string; scopeRevision: string; generation: number }
+  | { kind: 'similar'; sourceImageId: string; scopeRevision: string; generation: number };
+
+let activeSemanticRequest: ActiveSemanticRequest | null = null;
+let discardedQueryCount = 0;
+const diagnosticIds = createDiagnosticIdMapper();
+let cachedLibraryImages: readonly IndexedImage[] | null = null;
+let cachedLibraryImageIds = new Set<string>();
+
+/** Current fully hydrated library, used only to exclude orphaned index rows. */
+const currentLibraryImageIds = (): ReadonlySet<string> => {
+  const images = useImageStore.getState().images;
+  if (images !== cachedLibraryImages) {
+    cachedLibraryImages = images;
+    cachedLibraryImageIds = new Set(images.map((image) => image.id));
+  }
+  return cachedLibraryImageIds;
+};
+
+const diagnosticsEnabled = (): boolean => {
+  // Explicit developer opt-in; this is intentionally not a persisted user setting.
+  // Enable with: localStorage.setItem('imh-semantic-debug', '1')
+  if (!import.meta.env.DEV || typeof localStorage === 'undefined') return false;
+  try {
+    return localStorage.getItem(SEMANTIC_SEARCH_DEBUG_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
 
 const waitWhilePaused = (): Promise<void> => {
   if (!paused) return Promise.resolve();
@@ -316,13 +354,43 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     }
 
     const generation = ++queryGeneration;
+    const scope = useImageStore.getState().getSemanticSearchScopeSnapshot();
+    const queryStartedAt = performance.now();
+    activeSemanticRequest = {
+      kind: 'text',
+      query: trimmed,
+      scopeRevision: scope.revision,
+      generation,
+    };
     set({ queryRunning: true, queryActive: true, lastError: null, queryNotice: null, similarSourceName: null });
 
     try {
       // Open the index on demand: the search can be run without ever visiting
       // the settings panel, which was previously the only place that opened it.
       const index = await openLibrary(getEmbeddingModel(get().modelKey));
-      if (generation !== queryGeneration) return;
+      if (generation !== queryGeneration) {
+        discardedQueryCount += 1;
+        return;
+      }
+
+      const scopeAfterOpen = useImageStore.getState().getSemanticSearchScopeSnapshot();
+      if (!isSemanticQuerySnapshotCurrent(
+        generation,
+        queryGeneration,
+        scope.revision,
+        scopeAfterOpen.revision
+      )) {
+        discardedQueryCount += 1;
+        if (diagnosticsEnabled()) {
+          console.info('[visual-search][diagnostics] discarded query', {
+            generation,
+            discardedQueryCount,
+            stage: 'open',
+          });
+        }
+        void get().runQuery(trimmed);
+        return;
+      }
 
       if (index.stats.liveRows === 0) {
         // Nothing embedded yet — leave the grid untouched and say why, rather
@@ -334,18 +402,96 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
       const topFraction = getSemanticSearchTopFraction(
         useSettingsStore.getState().semanticSearchPrecision
       );
-      const { hits, stats } = await searchByText(trimmed, { topFraction });
-      if (generation !== queryGeneration) return;
+      const includeDiagnostics = diagnosticsEnabled();
+      const { hits, stats, diagnostics } = await searchByText(trimmed, {
+        topFraction,
+        allowedImageIds: scope.imageIds,
+        calibrationImageIds: currentLibraryImageIds(),
+        includeDiagnostics,
+      });
+      if (generation !== queryGeneration) {
+        discardedQueryCount += 1;
+        return;
+      }
+
+      const currentScope = useImageStore.getState().getSemanticSearchScopeSnapshot();
+      if (!isSemanticQuerySnapshotCurrent(
+        generation,
+        queryGeneration,
+        scope.revision,
+        currentScope.revision
+      )) {
+        discardedQueryCount += 1;
+        if (includeDiagnostics) {
+          console.info('[visual-search][diagnostics] discarded query', {
+            generation,
+            discardedQueryCount,
+            stage: 'search',
+            workerMs: stats.durationMs,
+          });
+        }
+        void get().runQuery(trimmed);
+        return;
+      }
+
+      if (includeDiagnostics) {
+        const percentiles = summarizeScorePercentiles(
+          (diagnostics?.candidates ?? []).map((candidate) => candidate.score)
+        );
+        const queryPassedSanity = stats.scoreStd !== undefined &&
+          stats.scoreStd >= 1e-4 &&
+          stats.topScore !== undefined &&
+          stats.sanityFloor !== undefined &&
+          stats.topScore >= stats.sanityFloor;
+        console.info('[visual-search][diagnostics] text query', {
+          generation,
+          scopeRows: scope.imageIds.size,
+          indexedRows: index.stats.liveRows,
+          scannedRows: stats.scannedRows,
+          candidateCount: stats.candidateCount ?? 0,
+          acceptedCount: hits.length,
+          mean: stats.scoreMean ?? null,
+          std: stats.scoreStd ?? null,
+          topScore: stats.topScore ?? null,
+          sanityFloor: stats.sanityFloor ?? null,
+          cutoff: stats.relevanceThreshold ?? null,
+          topFraction: stats.topFraction ?? null,
+          candidateP50: percentiles.p50,
+          candidateP90: percentiles.p90,
+          candidateP95: percentiles.p95,
+          embedMs: stats.embedMs,
+          workerMs: stats.durationMs,
+          totalMs: performance.now() - queryStartedAt,
+          discardedQueryCount,
+        });
+        console.table((diagnostics?.candidates ?? []).slice(0, 500).map((candidate) => ({
+          candidateId: diagnosticIds.get(candidate.imageId),
+          score: candidate.score,
+          relativeToBest: candidate.relativeToBest,
+          accepted: candidate.accepted,
+          decision: candidate.accepted
+            ? 'accepted'
+            : !queryPassedSanity
+              ? 'query-gate'
+              : stats.relevanceThreshold !== undefined && candidate.score < stats.relevanceThreshold
+                ? 'relative-cutoff'
+                : 'result-limit',
+        })));
+      }
 
       const scoreById = new Map<string, number>();
       for (const hit of hits) scoreById.set(hit.imageId, hit.score);
       const result: SemanticSearchResult = { generation, query: trimmed, scoreById };
       useImageStore.getState().applySemanticResult(result);
+      const visible = summarizeVisibleSemanticResults(
+        useImageStore.getState().getScopedFilteredImages(),
+        scoreById
+      );
       set({
         queryRunning: false,
-        queryResultCount: hits.length,
-        queryTopScore: stats.topScore ?? null,
-        queryNotice: hits.length === 0 ? 'no-results' : 'ok',
+        queryResultCount: visible.count,
+        queryTopScore: visible.topScore,
+        queryNotice: visible.count === 0 ? 'no-results' : 'ok',
       });
     } catch (error) {
       if (generation !== queryGeneration) return;
@@ -357,6 +503,14 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
 
   runVisualSimilar: async (image) => {
     const generation = ++queryGeneration;
+    const scope = useImageStore.getState().getSemanticSearchScopeSnapshot();
+    const queryStartedAt = performance.now();
+    activeSemanticRequest = {
+      kind: 'similar',
+      sourceImageId: image.id,
+      scopeRevision: scope.revision,
+      generation,
+    };
     set({
       queryRunning: true,
       queryActive: true,
@@ -366,12 +520,77 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     });
 
     try {
-      const result = await searchSimilarToImage(image);
-      if (generation !== queryGeneration) return;
+      const includeDiagnostics = diagnosticsEnabled();
+      const result = await searchSimilarToImage(image, {
+        allowedImageIds: scope.imageIds,
+        calibrationImageIds: currentLibraryImageIds(),
+      });
+      if (generation !== queryGeneration) {
+        discardedQueryCount += 1;
+        return;
+      }
+
+      const currentScope = useImageStore.getState().getSemanticSearchScopeSnapshot();
+      if (!isSemanticQuerySnapshotCurrent(
+        generation,
+        queryGeneration,
+        scope.revision,
+        currentScope.revision
+      )) {
+        discardedQueryCount += 1;
+        if (includeDiagnostics) {
+          console.info('[visual-search][diagnostics] discarded query', {
+            generation,
+            discardedQueryCount,
+            stage: 'similarity',
+          });
+        }
+        const currentImage = useImageStore.getState().images.find((candidate) => candidate.id === image.id);
+        if (currentImage) {
+          void get().runVisualSimilar(currentImage);
+        } else {
+          activeSemanticRequest = null;
+          useImageStore.getState().applySemanticResult(null);
+          set({
+            queryActive: false,
+            queryRunning: false,
+            queryNotice: null,
+            queryResultCount: 0,
+            queryTopScore: null,
+            similarSourceName: null,
+          });
+        }
+        return;
+      }
 
       if (!result) {
         set({ queryRunning: false, queryNotice: 'error', similarSourceName: null, lastError: 'Could not read this image for visual search' });
         return;
+      }
+
+      if (includeDiagnostics) {
+        const percentiles = summarizeScorePercentiles(result.hits.map((hit) => hit.score));
+        console.info('[visual-search][diagnostics] image query', {
+          generation,
+          sourceId: diagnosticIds.get(image.id),
+          scopeRows: scope.imageIds.size,
+          indexedRows: getIndex()?.stats.liveRows ?? 0,
+          scannedRows: result.stats.scannedRows,
+          neighborCount: result.hits.length,
+          mean: result.stats.scoreMean ?? null,
+          std: result.stats.scoreStd ?? null,
+          topScore: result.stats.topScore ?? null,
+          neighborP50: percentiles.p50,
+          neighborP90: percentiles.p90,
+          neighborP95: percentiles.p95,
+          workerMs: result.stats.durationMs,
+          totalMs: performance.now() - queryStartedAt,
+          discardedQueryCount,
+        });
+        console.table(result.hits.map((hit) => ({
+          candidateId: diagnosticIds.get(hit.imageId),
+          similarity: hit.score,
+        })));
       }
 
       const scoreById = new Map<string, number>();
@@ -384,11 +603,16 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
         query: `similar to ${image.name}`,
         scoreById,
       });
+      const visible = summarizeVisibleSemanticResults(
+        useImageStore.getState().getScopedFilteredImages(),
+        scoreById,
+        image.id
+      );
       set({
         queryRunning: false,
-        queryResultCount: result.hits.length,
-        queryTopScore: result.hits[0]?.score ?? null,
-        queryNotice: result.hits.length === 0 ? 'no-results' : 'ok',
+        queryResultCount: visible.count,
+        queryTopScore: visible.topScore,
+        queryNotice: visible.count === 0 ? 'no-results' : 'ok',
       });
     } catch (error) {
       if (generation !== queryGeneration) return;
@@ -400,6 +624,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
 
   clearQuery: () => {
     queryGeneration += 1;
+    activeSemanticRequest = null;
     useImageStore.getState().applySemanticResult(null);
     set({ queryActive: false, queryRunning: false, queryNotice: null, queryResultCount: 0, queryTopScore: null, similarSourceName: null });
   },
@@ -417,6 +642,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     get().clearQuery();
     closeLibrary();
     stopEmbeddingWorker();
+    diagnosticIds.reset();
     set({
       indexProgress: null,
       coverage: null,
@@ -427,6 +653,116 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     });
   },
 }));
+
+const refreshVisibleQueryStats = (): void => {
+  const imageState = useImageStore.getState();
+  const semanticResult = imageState.semanticResult;
+  if (!semanticResult) return;
+
+  let excludedSourceId: string | undefined;
+  for (const [imageId, score] of semanticResult.scoreById) {
+    if (score === Number.POSITIVE_INFINITY) {
+      excludedSourceId = imageId;
+      break;
+    }
+  }
+
+  const visible = summarizeVisibleSemanticResults(
+    imageState.getScopedFilteredImages(),
+    semanticResult.scoreById,
+    excludedSourceId
+  );
+  const semanticState = useSemanticStore.getState();
+  const nextNotice = !semanticState.queryRunning &&
+    (semanticState.queryNotice === 'ok' || semanticState.queryNotice === 'no-results')
+      ? (visible.count === 0 ? 'no-results' : 'ok')
+      : semanticState.queryNotice;
+
+  if (
+    semanticState.queryResultCount !== visible.count ||
+    semanticState.queryTopScore !== visible.topScore ||
+    semanticState.queryNotice !== nextNotice
+  ) {
+    useSemanticStore.setState({
+      queryResultCount: visible.count,
+      queryTopScore: visible.topScore,
+      queryNotice: nextNotice,
+    });
+  }
+};
+
+let scopeRerunQueued = false;
+
+const scheduleScopeRerunIfNeeded = (): void => {
+  const request = activeSemanticRequest;
+  const semanticState = useSemanticStore.getState();
+  if (!request || !semanticState.queryActive) return;
+
+  const scope = useImageStore.getState().getSemanticSearchScopeSnapshot();
+  if (scope.revision === request.scopeRevision || semanticState.queryRunning || scopeRerunQueued) {
+    return;
+  }
+
+  scopeRerunQueued = true;
+  queueMicrotask(() => {
+    scopeRerunQueued = false;
+    const latestRequest = activeSemanticRequest;
+    const latestState = useSemanticStore.getState();
+    if (!latestRequest || !latestState.queryActive || latestState.queryRunning) return;
+
+    const latestScope = useImageStore.getState().getSemanticSearchScopeSnapshot();
+    if (latestScope.revision === latestRequest.scopeRevision) return;
+
+    if (latestRequest.kind === 'text') {
+      void latestState.runQuery(latestRequest.query);
+      return;
+    }
+
+    const source = useImageStore.getState().images.find(
+      (image) => image.id === latestRequest.sourceImageId
+    );
+    if (source) {
+      void latestState.runVisualSimilar(source);
+    } else {
+      latestState.clearQuery();
+    }
+  });
+};
+
+const unsubscribeImageStore = useImageStore.subscribe((state, previousState) => {
+  if (!useSemanticStore.getState().queryActive) return;
+
+  if (
+    state.filteredImages !== previousState.filteredImages ||
+    state.selectedNodes !== previousState.selectedNodes ||
+    state.activeImageScope !== previousState.activeImageScope ||
+    state.clusters !== previousState.clusters ||
+    state.collections !== previousState.collections ||
+    state.semanticResult !== previousState.semanticResult
+  ) {
+    refreshVisibleQueryStats();
+  }
+  scheduleScopeRerunIfNeeded();
+});
+
+const unsubscribeSettingsStore = useSettingsStore.subscribe((state, previousState) => {
+  if (
+    state.enableSafeMode === previousState.enableSafeMode &&
+    state.blurSensitiveImages === previousState.blurSensitiveImages &&
+    state.sensitiveTags === previousState.sensitiveTags
+  ) {
+    return;
+  }
+  if (!useSemanticStore.getState().queryActive) return;
+  scheduleScopeRerunIfNeeded();
+});
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    unsubscribeImageStore();
+    unsubscribeSettingsStore();
+  });
+}
 
 /** Exposed separately because it is only reachable from the settings panel. */
 export const deleteSemanticModel = async (): Promise<void> => {

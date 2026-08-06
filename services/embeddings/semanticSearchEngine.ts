@@ -1,5 +1,5 @@
 import type { IndexedImage } from '../../types';
-import { ROW_FLAG_TOMBSTONE } from './embeddingFormat';
+import { ROW_FLAG_TOMBSTONE, type EmbeddingRowEntry } from './embeddingFormat';
 import type { EmbeddingModelDescriptor } from './embeddingModel';
 import { EmbeddingIndex, contentKeyForImage } from './embeddingStore';
 import { buildEmbedItems, embedImages, embedText, getPreferredModel } from './embeddingService';
@@ -26,7 +26,46 @@ export interface SemanticQueryStats {
   topScore?: number;
   /** How many rows cleared the gather floor, before the relevance cutoff. */
   candidateCount?: number;
+  /** Distribution and relative floor used by text-search relevance diagnostics. */
+  scoreMean?: number;
+  scoreStd?: number;
+  sanityFloor?: number;
+  relevanceThreshold?: number;
+  topFraction?: number;
 }
+
+export interface SemanticCandidateDiagnostic extends SemanticHit {
+  relativeToBest: number;
+  accepted: boolean;
+}
+
+export interface SemanticSearchDiagnostics {
+  candidates: SemanticCandidateDiagnostic[];
+}
+
+export interface SemanticSearchScopeOptions {
+  /** Rows allowed into the returned candidate heap. */
+  allowedImageIds?: ReadonlySet<string>;
+  /**
+   * Rows used to calibrate the library mean and score distribution. Keeping
+   * this broader than a small visible scope avoids a degenerate one-row cutoff.
+   * Both masks are temporary and never tombstone the on-disk index.
+   */
+  calibrationImageIds?: ReadonlySet<string>;
+}
+
+export const buildSearchLiveMask = (
+  rows: readonly EmbeddingRowEntry[],
+  allowedImageIds?: ReadonlySet<string>
+): Uint8Array => {
+  const mask = new Uint8Array(rows.length);
+  for (let row = 0; row < rows.length; row += 1) {
+    const isLive = (rows[row][2] & ROW_FLAG_TOMBSTONE) === 0;
+    const isAllowed = !allowedImageIds || allowedImageIds.has(rows[row][0]);
+    mask[row] = isLive && isAllowed ? 1 : 0;
+  }
+  return mask;
+};
 
 /**
  * One index per model, named by the model descriptor's `cacheId`.
@@ -141,8 +180,6 @@ let workerReady = false;
 let nextQueryId = 1;
 /** Rows already handed to the worker, per segment index. */
 let syncedSegmentRows: number[] = [];
-/** Centroid version the worker currently holds; -1 until the first sync. */
-let syncedCentroidVersion = -1;
 
 interface WorkerQueryResult {
   rows: number[];
@@ -215,7 +252,6 @@ const stopSearchWorker = (): void => {
   worker = null;
   workerReady = false;
   syncedSegmentRows = [];
-  syncedCentroidVersion = -1;
   for (const pending of pendingQueries.values()) {
     pending.reject(new Error('Vector search worker stopped'));
   }
@@ -262,7 +298,10 @@ const ensureWorker = (): Worker => {
  * are re-sent, so a backfill flush costs one segment transfer rather than a
  * reload of the whole index.
  */
-export const syncWorker = async (): Promise<void> => {
+export const syncWorker = async (
+  allowedImageIds?: ReadonlySet<string>,
+  calibrationImageIds?: ReadonlySet<string>
+): Promise<void> => {
   if (!index) return;
   const instance = ensureWorker();
   if (!workerReady) {
@@ -285,21 +324,17 @@ export const syncWorker = async (): Promise<void> => {
     syncedSegmentRows[descriptor.index] = descriptor.rowCount;
   }
 
-  // After the segments, so a mean that moved re-derives the norms for every
-  // segment the worker holds — including any just added above.
-  if (syncedCentroidVersion !== index.centroidVersion) {
-    const centroid = index.centroid();
-    const buffer = centroid ? centroid.buffer.slice(0) : null;
-    instance.postMessage({ type: 'setMean', payload: { mean: buffer } }, buffer ? [buffer] : []);
-    syncedCentroidVersion = index.centroidVersion;
-  }
-
   const rows = index.rowSnapshot();
-  const mask = new Uint8Array(rows.length);
-  for (let row = 0; row < rows.length; row += 1) {
-    mask[row] = (rows[row][2] & ROW_FLAG_TOMBSTONE) === 0 ? 1 : 0;
-  }
-  instance.postMessage({ type: 'setLiveMask', payload: { mask: mask.buffer } }, [mask.buffer]);
+  const liveMask = buildSearchLiveMask(rows, calibrationImageIds ?? allowedImageIds);
+  const resultMask = buildSearchLiveMask(rows, allowedImageIds ?? calibrationImageIds);
+  instance.postMessage(
+    { type: 'setLiveMask', payload: { mask: liveMask.buffer } },
+    [liveMask.buffer]
+  );
+  instance.postMessage(
+    { type: 'setResultMask', payload: { mask: resultMask.buffer } },
+    [resultMask.buffer]
+  );
 };
 
 const runWorkerQuery = (
@@ -361,8 +396,13 @@ export const parseSemanticQuery = (query: string): ParsedQuery => {
 
 export const searchByText = async (
   query: string,
-  options: { topK?: number; minScore?: number; topFraction?: number } = {}
-): Promise<{ hits: SemanticHit[]; stats: SemanticQueryStats }> => {
+  options: SemanticSearchScopeOptions & {
+    topK?: number;
+    minScore?: number;
+    topFraction?: number;
+    includeDiagnostics?: boolean;
+  } = {}
+): Promise<{ hits: SemanticHit[]; stats: SemanticQueryStats; diagnostics?: SemanticSearchDiagnostics }> => {
   if (!index || index.stats.liveRows === 0) {
     return { hits: [], stats: { scannedRows: 0, durationMs: 0, embedMs: 0 } };
   }
@@ -377,7 +417,7 @@ export const searchByText = async (
   const { scale, codes } = await embedText(positive, negatives);
   const embedMs = performance.now() - embedStartedAt;
 
-  await syncWorker();
+  await syncWorker(options.allowedImageIds, options.calibrationImageIds);
   const buffer = codes.buffer.slice(codes.byteOffset, codes.byteOffset + codes.byteLength);
   const result = await runWorkerQuery({
     type: 'query',
@@ -394,22 +434,49 @@ export const searchByText = async (
 
   const candidates = toHits(result.rows, result.scores);
   const distribution = distributionFrom(result.scoreSum, result.scoreSqSum, result.scannedRows);
+  const topFraction = options.topFraction ?? DEFAULT_TOP_FRACTION;
   const hits = applyRelevanceCutoff(
     candidates,
     distribution,
     DEFAULT_RELEVANCE_Z,
     DEFAULT_RESULT_LIMIT,
-    options.topFraction ?? DEFAULT_TOP_FRACTION
+    topFraction
   );
+  const topScore = candidates[0]?.score;
+  const sanityFloor = distribution.mean + DEFAULT_RELEVANCE_Z * distribution.std;
+  const relevanceThreshold = topScore === undefined
+    ? undefined
+    : distribution.mean + topFraction * (topScore - distribution.mean);
+  const acceptedIds = options.includeDiagnostics
+    ? new Set(hits.map((hit) => hit.imageId))
+    : null;
+  const scoreRange = topScore === undefined ? 0 : topScore - distribution.mean;
+  const diagnostics = options.includeDiagnostics
+    ? {
+        candidates: candidates.map((candidate) => ({
+          ...candidate,
+          relativeToBest: scoreRange > 0
+            ? (candidate.score - distribution.mean) / scoreRange
+            : 0,
+          accepted: acceptedIds?.has(candidate.imageId) ?? false,
+        })),
+      }
+    : undefined;
 
   return {
     hits,
+    diagnostics,
     stats: {
       scannedRows: result.scannedRows,
       durationMs: result.durationMs,
       embedMs,
-      topScore: candidates[0]?.score,
+      topScore,
       candidateCount: candidates.length,
+      scoreMean: distribution.mean,
+      scoreStd: distribution.std,
+      sanityFloor,
+      relevanceThreshold,
+      topFraction,
     },
   };
 };
@@ -417,7 +484,7 @@ export const searchByText = async (
 /** Ranks the library against an image already present in the index. */
 export const searchByImageId = async (
   imageId: string,
-  options: { topK?: number; minScore?: number } = {}
+  options: SemanticSearchScopeOptions & { topK?: number; minScore?: number } = {}
 ): Promise<{ hits: SemanticHit[]; stats: SemanticQueryStats } | null> => {
   if (!index) return null;
   const rows = index.rowSnapshot();
@@ -430,7 +497,7 @@ export const searchByImageId = async (
   }
   if (sourceRow < 0) return null;
 
-  await syncWorker();
+  await syncWorker(options.allowedImageIds, options.calibrationImageIds);
   const result = await runWorkerQuery({
     type: 'queryByRow',
     payload: {
@@ -440,9 +507,27 @@ export const searchByImageId = async (
     },
   });
 
+  const allHits = toHits(result.rows, result.scores);
+  const sourceHit = allHits.find((hit) => hit.imageId === imageId);
+  const hits = allHits.filter((hit) => hit.imageId !== imageId);
+  const sourceScore = sourceHit?.score;
+  const distribution = distributionFrom(
+    sourceScore === undefined ? result.scoreSum : result.scoreSum - sourceScore,
+    sourceScore === undefined ? result.scoreSqSum : result.scoreSqSum - sourceScore * sourceScore,
+    sourceScore === undefined ? result.scannedRows : result.scannedRows - 1
+  );
+
   return {
-    hits: toHits(result.rows, result.scores).filter((hit) => hit.imageId !== imageId),
-    stats: { scannedRows: result.scannedRows, durationMs: result.durationMs, embedMs: 0 },
+    hits,
+    stats: {
+      scannedRows: result.scannedRows,
+      durationMs: result.durationMs,
+      embedMs: 0,
+      topScore: hits[0]?.score,
+      candidateCount: hits.length,
+      scoreMean: distribution.mean,
+      scoreStd: distribution.std,
+    },
   };
 };
 
@@ -471,7 +556,7 @@ export const ensureImageEmbedded = async (image: IndexedImage): Promise<boolean>
  */
 export const searchSimilarToImage = async (
   image: IndexedImage,
-  options: { topK?: number; minScore?: number } = {}
+  options: SemanticSearchScopeOptions & { topK?: number; minScore?: number } = {}
 ): Promise<{ hits: SemanticHit[]; stats: SemanticQueryStats } | null> => {
   const embedded = await ensureImageEmbedded(image);
   if (!embedded) return null;

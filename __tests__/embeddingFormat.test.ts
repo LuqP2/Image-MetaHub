@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildContentKey,
   centroidFrom,
+  centroidFromLiveSegments,
   dequantizeVector,
   dotFloatWithQuantized,
   encodeRow,
@@ -225,5 +226,27 @@ describe('manifest compatibility', () => {
     expect(isManifestCompatible(manifest, 'model-b', 512)).toBe(false);
     expect(isManifestCompatible(manifest, 'model-a', 768)).toBe(false);
     expect(isManifestCompatible(null, 'model-a', 512)).toBe(false);
+  });
+});
+
+describe('centroidFromLiveSegments', () => {
+  it('ignores a majority of tombstoned or out-of-scope rows when rebuilding the mean', () => {
+    const dim = 2;
+    const live = Array.from({ length: 16 }, () => Float32Array.from([1, 0]));
+    const stale = Array.from({ length: 100 }, () => Float32Array.from([0, 1]));
+    const vectors = [...live, ...stale];
+    const stride = rowStrideBytes(dim);
+    const buffer = new Uint8Array(stride * vectors.length);
+    vectors.forEach((value, row) => {
+      buffer.set(encodeRow(dim, quantizeVector(value)), row * stride);
+    });
+    const segment = explodeSegment(buffer.buffer, dim, vectors.length);
+    const mask = new Uint8Array(live.length + stale.length);
+    mask.fill(1, 0, live.length);
+
+    const mean = centroidFromLiveSegments([segment], [0], mask, dim);
+
+    expect(mean?.[0]).toBeGreaterThan(0.99);
+    expect(Math.abs(mean?.[1] ?? 1)).toBeLessThan(0.01);
   });
 });

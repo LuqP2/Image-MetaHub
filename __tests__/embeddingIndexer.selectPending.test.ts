@@ -4,6 +4,7 @@ import { contentKeyForImage } from '../services/embeddings/embeddingStore';
 import { DEFAULT_EMBEDDING_MODEL_KEY, getEmbeddingModel } from '../services/embeddings/embeddingModel';
 import {
   applyRelevanceCutoff,
+  buildSearchLiveMask,
   closeLibrary,
   DEFAULT_TOP_FRACTION,
   getIndex,
@@ -16,6 +17,7 @@ import {
   DEFAULT_SEMANTIC_SEARCH_PRECISION,
   getSemanticSearchTopFraction,
 } from '../services/embeddings/semanticSearchPrecision';
+import { ROW_FLAG_TOMBSTONE, type EmbeddingRowEntry } from '../services/embeddings/embeddingFormat';
 
 declare global {
   interface Window {
@@ -69,6 +71,33 @@ describe('selectPendingImages', () => {
     const images = [image('a', 5), image('b', 4)];
     expect(selectPendingImages(images, new Map(), 0)).toEqual([]);
     expect(selectPendingImages(images, new Map(), -3)).toEqual([]);
+  });
+});
+
+describe('buildSearchLiveMask', () => {
+  it('builds separate calibration and visible-result masks without mutating rows', () => {
+    const rows: EmbeddingRowEntry[] = [
+      ['visible', 'key-a', 0],
+      ['hidden-by-filter', 'key-b', 0],
+      ['orphan', 'key-c', 0],
+      ['deleted', 'key-d', ROW_FLAG_TOMBSTONE],
+    ];
+
+    const calibrationMask = buildSearchLiveMask(
+      rows,
+      new Set(['visible', 'hidden-by-filter', 'deleted'])
+    );
+    const resultMask = buildSearchLiveMask(rows, new Set(['visible']));
+
+    expect(Array.from(calibrationMask)).toEqual([1, 1, 0, 0]);
+    expect(Array.from(resultMask)).toEqual([1, 0, 0, 0]);
+    expect(rows).toEqual([
+      ['visible', 'key-a', 0],
+      ['hidden-by-filter', 'key-b', 0],
+      ['orphan', 'key-c', 0],
+      ['deleted', 'key-d', ROW_FLAG_TOMBSTONE],
+    ]);
+    expect(Array.from(buildSearchLiveMask(rows))).toEqual([1, 1, 1, 0]);
   });
 });
 

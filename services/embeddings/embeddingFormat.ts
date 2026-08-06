@@ -54,10 +54,9 @@ export interface EmbeddingManifest {
   tombstoneCount: number;
   updatedAt: number;
   /**
-   * Running sum of every embedded image vector, and how many went into it. The
-   * mean derived from these is what text queries are centered against (see
-   * `centeredInverseNorms`). Stored as a sum rather than a mean so an
-   * incremental backfill can extend it without revisiting existing rows.
+   * Historical running sum of embedded vectors. Retained for format
+   * compatibility; text search rebuilds its exact mean from live rows because
+   * append-only segments may contain substantial tombstoned history.
    */
   centroidSum: number[];
   centroidCount: number;
@@ -209,6 +208,39 @@ export interface ExplodedSegment {
   scales: Float32Array;
   rowCount: number;
 }
+
+/**
+ * Rebuilds the library mean from searchable rows only. Segment files are
+ * append-only, so a long-lived index can contain far more tombstoned history
+ * than live images; letting that history define the mean distorts text search.
+ */
+export const centroidFromLiveSegments = (
+  segments: Array<ExplodedSegment | undefined>,
+  segmentBaseRows: number[],
+  liveMask: Uint8Array,
+  dim: number
+): Float32Array | null => {
+  const sum = new Float64Array(dim);
+  let count = 0;
+
+  for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+    const segment = segments[segmentIndex];
+    if (!segment) continue;
+    const baseRow = segmentBaseRows[segmentIndex] ?? 0;
+
+    for (let row = 0; row < segment.rowCount; row += 1) {
+      if (liveMask[baseRow + row] !== 1) continue;
+      const offset = row * dim;
+      const scale = segment.scales[row];
+      for (let i = 0; i < dim; i += 1) {
+        sum[i] += segment.codes[offset + i] * scale;
+      }
+      count += 1;
+    }
+  }
+
+  return centroidFrom(Array.from(sum), count, dim);
+};
 
 /**
  * Splits an interleaved segment into the flat arrays the similarity loop reads.

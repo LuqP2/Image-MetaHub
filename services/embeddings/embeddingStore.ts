@@ -189,9 +189,9 @@ export class EmbeddingIndex {
    * Folds a vector into the running centroid. Deliberately approximate: rows
    * that are later tombstoned are never subtracted back out, and a failed flush
    * leaves the sum slightly ahead of what is durable. Both are harmless — the
-   * centroid only has to describe the *shape* of the library well enough to
-   * remove the modality gap, and a few stale vectors out of thousands do not
-   * move a 512-dimensional mean measurably.
+   * This accumulator is retained in the manifest for format compatibility.
+   * Ranking does not use it: the search worker rebuilds the exact mean from
+   * live rows so tombstoned history cannot distort text queries.
    */
   private accumulateCentroid(quantized: QuantizedVector): void {
     const { dim } = this.manifest;
@@ -203,9 +203,8 @@ export class EmbeddingIndex {
   }
 
   /**
-   * Mean image vector, or null while the index is too small to have one. Text
-   * queries are scored against centered vectors; Find Similar is not, since
-   * image↔image comparisons have no modality gap to correct.
+   * Historical approximate mean retained for compatibility. Text ranking uses
+   * the live-only mean rebuilt by the search worker.
    */
   centroid(): Float32Array | null {
     return centroidFrom(Array.from(this.centroidSum), this.centroidCount, this.manifest.dim);
