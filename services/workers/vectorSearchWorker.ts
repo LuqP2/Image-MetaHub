@@ -73,9 +73,9 @@ const SEGMENT_HUBNESS: Float32Array[] = [];
 let dim = 0;
 let totalRows = 0;
 /** One byte per physical row: 0 = tombstoned or unknown, 1 = searchable. */
-let liveMask = new Uint8Array(0);
+let liveMask: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
 /** One byte per physical row: 1 = eligible to be returned to the current grid. */
-let resultMask = new Uint8Array(0);
+let resultMask: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
 /** Mean image vector, or null until the index is big enough to have one. */
 let mean: Float32Array | null = null;
 let meanDirty = true;
