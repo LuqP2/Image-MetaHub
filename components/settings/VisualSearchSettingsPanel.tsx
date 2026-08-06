@@ -8,6 +8,17 @@ import { SettingRow } from './SettingRow';
 import { SettingsPanel } from './SettingsPanel';
 import { SettingsSectionCard } from './SettingsSectionCard';
 import { SettingSwitch } from './SettingSwitch';
+import type { SemanticSearchPrecision } from '../../services/embeddings/semanticSearchPrecision';
+
+const PRECISION_OPTIONS: Array<{
+  value: SemanticSearchPrecision;
+  label: string;
+  description: string;
+}> = [
+  { value: 'broad', label: 'More results', description: 'Includes weaker matches.' },
+  { value: 'balanced', label: 'Balanced', description: 'Recommended default.' },
+  { value: 'strict', label: 'More precise', description: 'Only results close to the best matches.' },
+];
 
 const formatBytes = (bytes: number): string => {
   if (bytes <= 0) return '0 MB';
@@ -31,6 +42,8 @@ export const VisualSearchSettingsPanel: React.FC = () => {
   const setDeviceSetting = useSettingsStore((s) => s.setSemanticSearchDevice);
   const modelSetting = useSettingsStore((s) => s.semanticSearchModel);
   const setModelSetting = useSettingsStore((s) => s.setSemanticSearchModel);
+  const precisionSetting = useSettingsStore((s) => s.semanticSearchPrecision);
+  const setPrecisionSetting = useSettingsStore((s) => s.setSemanticSearchPrecision);
 
   const { semanticSearchImageLimit, canUseUnlimitedSemanticSearch } = useFeatureAccess();
 
@@ -152,6 +165,39 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                   Switching is disabled while {isBackfilling ? 'the index is building' : 'the model is downloading'}.
                 </p>
               )}
+            </div>
+
+            <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-gray-100">Visual search precision</p>
+                <p className="text-xs text-gray-400">
+                  More results includes weaker matches. Balanced is recommended. More precise only shows results close to the best matches.
+                </p>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                {PRECISION_OPTIONS.map((option) => {
+                  const selected = option.value === precisionSetting;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setPrecisionSetting(option.value)}
+                      aria-pressed={selected}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                        selected
+                          ? 'border-indigo-500 bg-indigo-500/10'
+                          : 'border-gray-700 hover:bg-gray-800/60'
+                      }`}
+                    >
+                      <p className={`text-xs font-medium ${selected ? 'text-indigo-200' : 'text-gray-200'}`}>
+                        {option.label}
+                      </p>
+                      <p className="mt-0.5 text-[11px] leading-snug text-gray-400">{option.description}</p>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Model download */}

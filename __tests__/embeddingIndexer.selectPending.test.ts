@@ -5,12 +5,17 @@ import { DEFAULT_EMBEDDING_MODEL_KEY, getEmbeddingModel } from '../services/embe
 import {
   applyRelevanceCutoff,
   closeLibrary,
+  DEFAULT_TOP_FRACTION,
   getIndex,
   openLibrary,
   parseSemanticQuery,
   reconcileWithImages,
 } from '../services/embeddings/semanticSearchEngine';
 import type { IndexedImage } from '../types';
+import {
+  DEFAULT_SEMANTIC_SEARCH_PRECISION,
+  getSemanticSearchTopFraction,
+} from '../services/embeddings/semanticSearchPrecision';
 
 declare global {
   interface Window {
@@ -108,7 +113,7 @@ describe('applyRelevanceCutoff', () => {
       ...Array.from({ length: 350 }, (_, i) => hit(`tail${i}`, 0.42 - i * 0.0001)),
     ];
     const kept = applyRelevanceCutoff(hits, { mean: 0.2, std: 0.1 }, 2.0, 300);
-    // relative floor = 0.2 + 0.55*(0.90-0.2) = 0.585, well above the tail.
+    // Balanced relative floor = 0.2 + 0.70*(0.90-0.2) = 0.69, well above the tail.
     expect(kept.map((h) => h.imageId)).toEqual(['match']);
   });
 
@@ -118,6 +123,25 @@ describe('applyRelevanceCutoff', () => {
     const hits = Array.from({ length: 40 }, (_, i) => hit(`m${i}`, 0.90 - i * 0.002));
     const kept = applyRelevanceCutoff(hits, { mean: 0.2, std: 0.1 }, 2.0, 300);
     expect(kept).toHaveLength(40);
+  });
+
+  it('maps precision presets to their top fractions and falls back to balanced', () => {
+    expect(getSemanticSearchTopFraction('broad')).toBe(0.55);
+    expect(getSemanticSearchTopFraction('balanced')).toBe(0.70);
+    expect(getSemanticSearchTopFraction('strict')).toBe(0.82);
+    expect(DEFAULT_SEMANTIC_SEARCH_PRECISION).toBe('balanced');
+    expect(DEFAULT_TOP_FRACTION).toBe(0.70);
+    expect(getSemanticSearchTopFraction(undefined)).toBe(0.70);
+  });
+
+  it('keeps fewer results when the top fraction is higher', () => {
+    const hits = [hit('a', 0.90), hit('b', 0.75), hit('c', 0.65), hit('d', 0.55)];
+    const distribution = { mean: 0.20, std: 0.10 };
+
+    const broad = applyRelevanceCutoff(hits, distribution, 2.0, 300, getSemanticSearchTopFraction('broad'));
+    const strict = applyRelevanceCutoff(hits, distribution, 2.0, 300, getSemanticSearchTopFraction('strict'));
+
+    expect(strict.length).toBeLessThan(broad.length);
   });
 });
 

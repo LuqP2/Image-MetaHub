@@ -33,6 +33,8 @@ import {
 } from '../services/embeddings/semanticSearchEngine';
 import { deleteEmbeddingIndex } from '../services/embeddings/embeddingStore';
 import { useImageStore } from './useImageStore';
+import { useSettingsStore } from './useSettingsStore';
+import { getSemanticSearchTopFraction } from '../services/embeddings/semanticSearchPrecision';
 
 /**
  * Orchestrates the visual-search feature: model download, the backfill job, and
@@ -329,7 +331,10 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
         return;
       }
 
-      const { hits, stats } = await searchByText(trimmed);
+      const topFraction = getSemanticSearchTopFraction(
+        useSettingsStore.getState().semanticSearchPrecision
+      );
+      const { hits, stats } = await searchByText(trimmed, { topFraction });
       if (generation !== queryGeneration) return;
 
       const scoreById = new Map<string, number>();

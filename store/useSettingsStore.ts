@@ -10,6 +10,11 @@ import {
   getEmbeddingModel,
   type EmbeddingModelKey,
 } from '../services/embeddings/embeddingModel';
+import {
+  DEFAULT_SEMANTIC_SEARCH_PRECISION,
+  sanitizeSemanticSearchPrecision,
+  type SemanticSearchPrecision,
+} from '../services/embeddings/semanticSearchPrecision';
 
 export const stripLicenseFromSettings = <T extends Record<string, unknown>>(settings: T | null | undefined): Omit<T, 'license'> => {
   if (!settings) {
@@ -166,6 +171,8 @@ interface SettingsState {
   /** Which CLIP model backs the index. Trades indexing time for search quality;
    *  each model keeps its own index, so switching back is free. */
   semanticSearchModel: EmbeddingModelKey;
+  /** How close results must be to the best text-search match. */
+  semanticSearchPrecision: SemanticSearchPrecision;
   enableAnimations: boolean;
   /** Classic mode: show the legacy tabs (Model View / Smart Library / Collections / Node View)
    *  as deep-links into the unified Explore surface. Off by default. */
@@ -233,6 +240,7 @@ interface SettingsState {
   setSemanticSearchEnabled: (value: boolean) => void;
   setSemanticSearchDevice: (value: 'wasm' | 'webgpu') => void;
   setSemanticSearchModel: (value: EmbeddingModelKey) => void;
+  setSemanticSearchPrecision: (value: SemanticSearchPrecision) => void;
   setEnableAnimations: (value: boolean) => void;
   setClassicMode: (value: boolean) => void;
   setHasSeenExploreOnboarding: (value: boolean) => void;
@@ -297,6 +305,7 @@ export const useSettingsStore = create<SettingsState>()(
       semanticSearchEnabled: false,
       semanticSearchDevice: 'wasm',
       semanticSearchModel: DEFAULT_EMBEDDING_MODEL_KEY,
+      semanticSearchPrecision: DEFAULT_SEMANTIC_SEARCH_PRECISION,
       enableAnimations: true,
       classicMode: false,
       hasSeenExploreOnboarding: false,
@@ -369,6 +378,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSemanticSearchEnabled: (value) => set({ semanticSearchEnabled: !!value }),
       setSemanticSearchDevice: (value) => set({ semanticSearchDevice: value === 'webgpu' ? 'webgpu' : 'wasm' }),
       setSemanticSearchModel: (value) => set({ semanticSearchModel: getEmbeddingModel(value).key }),
+      setSemanticSearchPrecision: (value) => set({ semanticSearchPrecision: sanitizeSemanticSearchPrecision(value) }),
       setEnableAnimations: (value) => set({ enableAnimations: !!value }),
       setClassicMode: (value) => set({ classicMode: !!value }),
       setHasSeenExploreOnboarding: (value) => set({ hasSeenExploreOnboarding: !!value }),
@@ -456,6 +466,7 @@ export const useSettingsStore = create<SettingsState>()(
         semanticSearchEnabled: false,
         semanticSearchDevice: 'wasm',
         semanticSearchModel: DEFAULT_EMBEDDING_MODEL_KEY,
+        semanticSearchPrecision: DEFAULT_SEMANTIC_SEARCH_PRECISION,
         enableAnimations: true,
         classicMode: false,
         hasSeenExploreOnboarding: false,
@@ -558,6 +569,10 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.civitaiLookupEnabled !== 'boolean') {
           state.civitaiLookupEnabled = true;
+        }
+
+        if (state) {
+          state.semanticSearchPrecision = sanitizeSemanticSearchPrecision(state.semanticSearchPrecision);
         }
 
         if (state && typeof state.enableAnimations !== 'boolean') {

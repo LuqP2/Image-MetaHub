@@ -83,7 +83,7 @@ export const DEFAULT_RELEVANCE_Z = 2.0;
  * relative to the best row is scale-free: it asks "is this row comparable to the
  * best thing we found?", which is the question the user is actually asking.
  */
-export const DEFAULT_TOP_FRACTION = 0.55;
+export const DEFAULT_TOP_FRACTION = 0.70;
 
 export interface ScoreDistribution {
   mean: number;
@@ -361,7 +361,7 @@ export const parseSemanticQuery = (query: string): ParsedQuery => {
 
 export const searchByText = async (
   query: string,
-  options: { topK?: number; minScore?: number } = {}
+  options: { topK?: number; minScore?: number; topFraction?: number } = {}
 ): Promise<{ hits: SemanticHit[]; stats: SemanticQueryStats }> => {
   if (!index || index.stats.liveRows === 0) {
     return { hits: [], stats: { scannedRows: 0, durationMs: 0, embedMs: 0 } };
@@ -394,7 +394,13 @@ export const searchByText = async (
 
   const candidates = toHits(result.rows, result.scores);
   const distribution = distributionFrom(result.scoreSum, result.scoreSqSum, result.scannedRows);
-  const hits = applyRelevanceCutoff(candidates, distribution);
+  const hits = applyRelevanceCutoff(
+    candidates,
+    distribution,
+    DEFAULT_RELEVANCE_Z,
+    DEFAULT_RESULT_LIMIT,
+    options.topFraction ?? DEFAULT_TOP_FRACTION
+  );
 
   return {
     hits,
