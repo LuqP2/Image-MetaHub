@@ -1047,6 +1047,8 @@ interface ImageState {
    * is applied. Includes every grid scope/filter, including node and active scope.
    */
   getSemanticSearchScopeSnapshot: () => SemanticSearchScopeSnapshot;
+  /** Folder/directory scope used to calibrate text search before facet filters. */
+  getSemanticTextQueryScopeSnapshot: () => SemanticSearchScopeSnapshot;
   loadCollections: () => Promise<void>;
   loadAutomationRules: () => Promise<void>;
   createCollection: (collection: Omit<SmartCollection, 'id' | 'imageCount' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<SmartCollection>;
@@ -3258,6 +3260,47 @@ export const useImageStore = create<ImageState>((set, get) => {
         dependencies: readonly unknown[];
         snapshot: SemanticSearchScopeSnapshot;
     } | null = null;
+    let semanticTextQueryScopeCache: {
+        dependencies: readonly unknown[];
+        snapshot: SemanticSearchScopeSnapshot;
+    } | null = null;
+
+    const semanticTextQueryScopeDependencies = (state: ImageState): readonly unknown[] => {
+        const settings = useSettingsStore.getState();
+        return [
+            state.images,
+            state.directories,
+            state.selectedFolders,
+            state.excludedFolders,
+            state.includeSubfolders,
+            settings.enableSafeMode,
+            settings.blurSensitiveImages,
+            settings.sensitiveTags,
+        ];
+    };
+
+    const getSemanticTextQueryScopeSnapshot = (): SemanticSearchScopeSnapshot => {
+        const state = get();
+        const dependencies = semanticTextQueryScopeDependencies(state);
+        if (
+            semanticTextQueryScopeCache &&
+            semanticTextQueryScopeCache.dependencies.length === dependencies.length &&
+            semanticTextQueryScopeCache.dependencies.every(
+                (value, index) => Object.is(value, dependencies[index])
+            )
+        ) {
+            return semanticTextQueryScopeCache.snapshot;
+        }
+
+        const images = getLibraryScopedImages(state);
+        const snapshot: SemanticSearchScopeSnapshot = {
+            images,
+            imageIds: new Set(images.map((image) => image.id)),
+            revision: semanticSearchScopeRevision(images),
+        };
+        semanticTextQueryScopeCache = { dependencies, snapshot };
+        return snapshot;
+    };
 
     const semanticScopeDependencies = (state: ImageState): readonly unknown[] => {
         const settings = useSettingsStore.getState();
@@ -4319,6 +4362,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         }),
         getScopedFilteredImages: () => resolveDisplayedImages(get()),
         getSemanticSearchScopeSnapshot,
+        getSemanticTextQueryScopeSnapshot,
         loadCollections: async () => {
             const persistedCollections = await getAllSmartCollections();
             set((state) => {

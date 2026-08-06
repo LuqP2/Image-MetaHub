@@ -25,22 +25,27 @@ import { runBackfill } from '../services/embeddings/embeddingIndexer';
 import type { IndexedImage } from '../types';
 import {
   closeLibrary,
+  DEFAULT_RESULT_LIMIT,
   getIndex,
   openLibrary,
+  searchByImageId,
   searchByText,
   searchSimilarToImage,
   semanticCacheId,
 } from '../services/embeddings/semanticSearchEngine';
+import { applyCorroboratedVisualExpansion } from '../services/embeddings/semanticSearchExpansion';
 import { deleteEmbeddingIndex } from '../services/embeddings/embeddingStore';
 import { useImageStore } from './useImageStore';
 import { useSettingsStore } from './useSettingsStore';
 import { getSemanticSearchTopFraction } from '../services/embeddings/semanticSearchPrecision';
 import {
+  correlateVisualNeighborsWithText,
   createDiagnosticIdMapper,
   isSemanticQuerySnapshotCurrent,
   semanticSearchScopeRevision,
   summarizeScorePercentiles,
   summarizeVisibleSemanticResults,
+  type TextCandidateScoreDiagnostic,
 } from './semanticSearchState';
 
 export const SEMANTIC_SEARCH_DEBUG_STORAGE_KEY = 'imh-semantic-debug';
@@ -119,6 +124,10 @@ type ActiveSemanticRequest =
 let activeSemanticRequest: ActiveSemanticRequest | null = null;
 let discardedQueryCount = 0;
 const diagnosticIds = createDiagnosticIdMapper();
+let lastTextDiagnostic: {
+  generation: number;
+  candidates: TextCandidateScoreDiagnostic[];
+} | null = null;
 let cachedLibraryImages: readonly IndexedImage[] | null = null;
 let cachedLibrarySnapshot = {
   imageIds: new Set<string>() as ReadonlySet<string>,
@@ -364,12 +373,13 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     }
 
     const generation = ++queryGeneration;
-    const library = currentLibrarySnapshot();
+    lastTextDiagnostic = null;
+    const queryScope = useImageStore.getState().getSemanticTextQueryScopeSnapshot();
     const queryStartedAt = performance.now();
     activeSemanticRequest = {
       kind: 'text',
       query: trimmed,
-      scopeRevision: library.revision,
+      scopeRevision: queryScope.revision,
       generation,
     };
     set({ queryRunning: true, queryActive: true, lastError: null, queryNotice: null, similarSourceName: null });
@@ -383,12 +393,12 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
         return;
       }
 
-      const libraryAfterOpen = currentLibrarySnapshot();
+      const scopeAfterOpen = useImageStore.getState().getSemanticTextQueryScopeSnapshot();
       if (!isSemanticQuerySnapshotCurrent(
         generation,
         queryGeneration,
-        library.revision,
-        libraryAfterOpen.revision
+        queryScope.revision,
+        scopeAfterOpen.revision
       )) {
         discardedQueryCount += 1;
         if (diagnosticsEnabled()) {
@@ -409,14 +419,13 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
         return;
       }
 
-      const topFraction = getSemanticSearchTopFraction(
-        useSettingsStore.getState().semanticSearchPrecision
-      );
+      const precision = useSettingsStore.getState().semanticSearchPrecision;
+      const topFraction = getSemanticSearchTopFraction(precision);
       const includeDiagnostics = diagnosticsEnabled();
       const { hits, stats, diagnostics } = await searchByText(trimmed, {
         topFraction,
-        allowedImageIds: library.imageIds,
-        calibrationImageIds: library.imageIds,
+        allowedImageIds: queryScope.imageIds,
+        calibrationImageIds: queryScope.imageIds,
         includeDiagnostics,
       });
       if (generation !== queryGeneration) {
@@ -424,12 +433,12 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
         return;
       }
 
-      const currentLibrary = currentLibrarySnapshot();
+      const currentScope = useImageStore.getState().getSemanticTextQueryScopeSnapshot();
       if (!isSemanticQuerySnapshotCurrent(
         generation,
         queryGeneration,
-        library.revision,
-        currentLibrary.revision
+        queryScope.revision,
+        currentScope.revision
       )) {
         discardedQueryCount += 1;
         if (includeDiagnostics) {
@@ -444,7 +453,58 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
         return;
       }
 
+      let expansionNeighbors: Awaited<ReturnType<typeof searchByImageId>> = null;
+      if (precision !== 'strict' && hits.length >= 2) {
+        try {
+          expansionNeighbors = await searchByImageId(hits[0].imageId, {
+            allowedImageIds: queryScope.imageIds,
+            calibrationImageIds: queryScope.imageIds,
+          });
+        } catch {
+          if (includeDiagnostics) {
+            console.info('[visual-search][diagnostics] visual expansion skipped', {
+              generation,
+              reason: 'neighbor-query-error',
+            });
+          }
+        }
+
+        if (generation !== queryGeneration) {
+          discardedQueryCount += 1;
+          return;
+        }
+        const scopeAfterExpansion = useImageStore.getState().getSemanticTextQueryScopeSnapshot();
+        if (!isSemanticQuerySnapshotCurrent(
+          generation,
+          queryGeneration,
+          queryScope.revision,
+          scopeAfterExpansion.revision
+        )) {
+          discardedQueryCount += 1;
+          if (includeDiagnostics) {
+            console.info('[visual-search][diagnostics] discarded query', {
+              generation,
+              discardedQueryCount,
+              stage: 'visual-expansion',
+            });
+          }
+          void get().runQuery(trimmed);
+          return;
+        }
+      }
+
+      const expansion = applyCorroboratedVisualExpansion(
+        hits,
+        expansionNeighbors?.hits ?? [],
+        precision,
+        DEFAULT_RESULT_LIMIT
+      );
+
       if (includeDiagnostics) {
+        lastTextDiagnostic = {
+          generation,
+          candidates: diagnostics?.candidates ?? [],
+        };
         const percentiles = summarizeScorePercentiles(
           (diagnostics?.candidates ?? []).map((candidate) => candidate.score)
         );
@@ -455,11 +515,19 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
           stats.topScore >= stats.sanityFloor;
         console.info('[visual-search][diagnostics] text query', {
           generation,
-          libraryRows: library.imageIds.size,
+          queryScopeRows: queryScope.imageIds.size,
           indexedRows: index.stats.liveRows,
           scannedRows: stats.scannedRows,
           candidateCount: stats.candidateCount ?? 0,
           acceptedCount: hits.length,
+          resultCount: expansion.hits.length,
+          expansionApplied: expansion.applied,
+          expansionSeedId: expansion.seedImageId
+            ? diagnosticIds.get(expansion.seedImageId)
+            : null,
+          expansionCorroboratingCount: expansion.corroboratingImageIds.length,
+          expansionAddedCount: expansion.expandedImageIds.length,
+          expansionWorkerMs: expansionNeighbors?.stats.durationMs ?? 0,
           mean: stats.scoreMean ?? null,
           std: stats.scoreStd ?? null,
           topScore: stats.topScore ?? null,
@@ -487,10 +555,21 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
                 ? 'relative-cutoff'
                 : 'result-limit',
         })));
+        if (expansion.applied) {
+          console.table(expansion.hits
+            .filter((hit) => hit.visualSimilarity !== null)
+            .map((hit) => ({
+              candidateId: diagnosticIds.get(hit.imageId),
+              source: hit.source,
+              visualSimilarity: hit.visualSimilarity,
+              propagatedScore: hit.score,
+              corroborating: expansion.corroboratingImageIds.includes(hit.imageId),
+            })));
+        }
       }
 
       const scoreById = new Map<string, number>();
-      for (const hit of hits) scoreById.set(hit.imageId, hit.score);
+      for (const hit of expansion.hits) scoreById.set(hit.imageId, hit.score);
       const result: SemanticSearchResult = { generation, query: trimmed, scoreById };
       useImageStore.getState().applySemanticResult(result);
       const visible = summarizeVisibleSemanticResults(
@@ -580,9 +659,19 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
 
       if (includeDiagnostics) {
         const percentiles = summarizeScorePercentiles(result.hits.map((hit) => hit.score));
+        const textContext = lastTextDiagnostic;
+        const sourceText = textContext?.candidates.find((candidate) => candidate.imageId === image.id);
+        const correlatedNeighbors = correlateVisualNeighborsWithText(
+          result.hits,
+          textContext?.candidates ?? []
+        );
         console.info('[visual-search][diagnostics] image query', {
           generation,
           sourceId: diagnosticIds.get(image.id),
+          priorTextGeneration: textContext?.generation ?? null,
+          sourceTextScore: sourceText?.score ?? null,
+          sourceTextRelativeToBest: sourceText?.relativeToBest ?? null,
+          sourceTextAccepted: sourceText?.accepted ?? null,
           scopeRows: scope.imageIds.size,
           indexedRows: getIndex()?.stats.liveRows ?? 0,
           scannedRows: result.stats.scannedRows,
@@ -597,9 +686,13 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
           totalMs: performance.now() - queryStartedAt,
           discardedQueryCount,
         });
-        console.table(result.hits.map((hit) => ({
+        console.table(correlatedNeighbors.map((hit) => ({
           candidateId: diagnosticIds.get(hit.imageId),
           similarity: hit.score,
+          textRank: hit.textRank,
+          textScore: hit.textScore,
+          textRelativeToBest: hit.textRelativeToBest,
+          textAccepted: hit.textAccepted,
         })));
       }
 
@@ -653,6 +746,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     closeLibrary();
     stopEmbeddingWorker();
     diagnosticIds.reset();
+    lastTextDiagnostic = null;
     set({
       indexProgress: null,
       coverage: null,
@@ -705,7 +799,7 @@ let scopeRerunQueued = false;
 
 const currentRequestRevision = (request: ActiveSemanticRequest): string => (
   request.kind === 'text'
-    ? currentLibrarySnapshot().revision
+    ? useImageStore.getState().getSemanticTextQueryScopeSnapshot().revision
     : useImageStore.getState().getSemanticSearchScopeSnapshot().revision
 );
 

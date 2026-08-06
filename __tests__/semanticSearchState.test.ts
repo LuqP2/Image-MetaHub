@@ -1,11 +1,46 @@
 import { describe, expect, it } from 'vitest';
 import {
+  correlateVisualNeighborsWithText,
   createDiagnosticIdMapper,
   isSemanticQuerySnapshotCurrent,
   semanticSearchScopeRevision,
   summarizeScorePercentiles,
   summarizeVisibleSemanticResults,
 } from '../store/semanticSearchState';
+
+describe('correlateVisualNeighborsWithText', () => {
+  it('joins technical text and image scores without requiring metadata', () => {
+    const correlated = correlateVisualNeighborsWithText(
+      [
+        { imageId: 'neighbor-a', score: 0.96 },
+        { imageId: 'neighbor-missing', score: 0.92 },
+      ],
+      [
+        { imageId: 'seed', score: 0.06, relativeToBest: 1, accepted: true },
+        { imageId: 'neighbor-a', score: 0.03, relativeToBest: 0.5, accepted: false },
+      ]
+    );
+
+    expect(correlated).toEqual([
+      {
+        imageId: 'neighbor-a',
+        score: 0.96,
+        textRank: 2,
+        textScore: 0.03,
+        textRelativeToBest: 0.5,
+        textAccepted: false,
+      },
+      {
+        imageId: 'neighbor-missing',
+        score: 0.92,
+        textRank: null,
+        textScore: null,
+        textRelativeToBest: null,
+        textAccepted: null,
+      },
+    ]);
+  });
+});
 
 describe('semanticSearchScopeRevision', () => {
   it('is stable for the same ordered IDs and changes with scope membership', () => {

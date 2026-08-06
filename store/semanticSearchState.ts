@@ -65,6 +65,47 @@ export const createDiagnosticIdMapper = (): DiagnosticIdMapper => {
   };
 };
 
+export interface TextCandidateScoreDiagnostic {
+  imageId: string;
+  score: number;
+  relativeToBest: number;
+  accepted: boolean;
+}
+
+export interface VisualNeighborScoreDiagnostic {
+  imageId: string;
+  score: number;
+}
+
+export interface CorrelatedNeighborDiagnostic extends VisualNeighborScoreDiagnostic {
+  textRank: number | null;
+  textScore: number | null;
+  textRelativeToBest: number | null;
+  textAccepted: boolean | null;
+}
+
+/** Joins already-computed technical scores; it never inspects image metadata. */
+export const correlateVisualNeighborsWithText = (
+  neighbors: readonly VisualNeighborScoreDiagnostic[],
+  textCandidates: readonly TextCandidateScoreDiagnostic[]
+): CorrelatedNeighborDiagnostic[] => {
+  const textById = new Map(textCandidates.map((candidate, index) => [
+    candidate.imageId,
+    { ...candidate, rank: index + 1 },
+  ]));
+
+  return neighbors.map((neighbor) => {
+    const text = textById.get(neighbor.imageId);
+    return {
+      ...neighbor,
+      textRank: text?.rank ?? null,
+      textScore: text?.score ?? null,
+      textRelativeToBest: text?.relativeToBest ?? null,
+      textAccepted: text?.accepted ?? null,
+    };
+  });
+};
+
 /** Derives the public query state from the cards that survived every grid filter. */
 export const summarizeVisibleSemanticResults = (
   visibleImages: readonly Pick<IndexedImage, 'id'>[],

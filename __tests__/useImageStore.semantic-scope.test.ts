@@ -70,4 +70,36 @@ describe('visual-search scope snapshot', () => {
     expect(second.revision).not.toBe(first.revision);
     expect(second.images.map((candidate) => candidate.id)).toEqual([wrongNode.id]);
   });
+
+  it('uses folders as the text-query universe while ignoring facet and node filters', () => {
+    const nested = image('nested/dog.png', ['dog-model'], ['KSampler']);
+    useImageStore.setState({
+      images: [included, wrongNode, wrongScope, nested],
+      filteredImages: [nested],
+      selectedFolders: new Set([`${directory.path}/nested`]),
+      includeSubfolders: true,
+      excludedModels: [],
+      selectedNodes: [],
+      activeImageScope: null,
+    });
+
+    const folderScope = useImageStore.getState().getSemanticTextQueryScopeSnapshot();
+    expect(folderScope.images.map((candidate) => candidate.id)).toEqual([nested.id]);
+
+    useImageStore.setState({
+      excludedModels: ['dog-model'],
+      selectedNodes: ['VAEDecode'],
+    });
+    expect(useImageStore.getState().getSemanticTextQueryScopeSnapshot()).toBe(folderScope);
+
+    useImageStore.setState({ selectedFolders: new Set([directory.path]) });
+    const rootScope = useImageStore.getState().getSemanticTextQueryScopeSnapshot();
+    expect(rootScope).not.toBe(folderScope);
+    expect(rootScope.images.map((candidate) => candidate.id)).toEqual([
+      included.id,
+      wrongNode.id,
+      wrongScope.id,
+      nested.id,
+    ]);
+  });
 });
