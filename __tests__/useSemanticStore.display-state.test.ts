@@ -11,14 +11,14 @@ const directory: Directory = {
   visible: true,
 };
 
-const image = (name: string, workflowNodes: string[]): IndexedImage => ({
+const image = (name: string, workflowNodes: string[], models: string[] = []): IndexedImage => ({
   id: `dir-1::${name}`,
   name,
   handle: {} as FileSystemFileHandle,
   metadata: {} as IndexedImage['metadata'],
   metadataString: '',
   lastModified: 1,
-  models: [],
+  models,
   loras: [],
   sampler: '',
   scheduler: '',
@@ -68,5 +68,44 @@ describe('semantic display state', () => {
     useImageStore.getState().setSelectedNodes(['KSampler']);
     expect(useSemanticStore.getState().queryResultCount).toBe(1);
     expect(useSemanticStore.getState().queryTopScore).toBe(0.93);
+  });
+
+  it('lets grid filters subtract accepted text hits without promoting rejected images', () => {
+    const dogA = image('dog-a.png', ['KSampler'], ['dog-checkpoint']);
+    const dogB = image('dog-b.png', ['KSampler'], ['dog-checkpoint']);
+    const rejectedTv = image('tv.png', ['KSampler'], ['other-checkpoint']);
+    useImageStore.setState({
+      images: [dogA, dogB, rejectedTv],
+      filteredImages: [dogA, dogB, rejectedTv],
+      excludedModels: [],
+    });
+
+    useImageStore.getState().applySemanticResult({
+      generation: 2,
+      query: 'black dog',
+      // The TV was rejected by the global query, so filtering dogs must never
+      // make it eligible merely because it is now the best remaining image.
+      scoreById: new Map([
+        [dogA.id, 0.063],
+        [dogB.id, 0.055],
+      ]),
+    });
+    expect(useImageStore.getState().filteredImages.map((candidate) => candidate.id)).toEqual([
+      dogA.id,
+      dogB.id,
+    ]);
+
+    useImageStore.getState().setSelectedFilters({ excludedModels: ['dog-checkpoint'] });
+    expect(useImageStore.getState().filteredImages).toEqual([]);
+    expect(useSemanticStore.getState().queryResultCount).toBe(0);
+    expect(useSemanticStore.getState().queryNotice).toBe('no-results');
+
+    useImageStore.getState().setSelectedFilters({ excludedModels: [] });
+    expect(useImageStore.getState().filteredImages.map((candidate) => candidate.id)).toEqual([
+      dogA.id,
+      dogB.id,
+    ]);
+    expect(useSemanticStore.getState().queryResultCount).toBe(2);
+    expect(useSemanticStore.getState().queryTopScore).toBe(0.063);
   });
 });

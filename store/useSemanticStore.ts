@@ -38,6 +38,7 @@ import { getSemanticSearchTopFraction } from '../services/embeddings/semanticSea
 import {
   createDiagnosticIdMapper,
   isSemanticQuerySnapshotCurrent,
+  semanticSearchScopeRevision,
   summarizeScorePercentiles,
   summarizeVisibleSemanticResults,
 } from './semanticSearchState';
@@ -119,16 +120,25 @@ let activeSemanticRequest: ActiveSemanticRequest | null = null;
 let discardedQueryCount = 0;
 const diagnosticIds = createDiagnosticIdMapper();
 let cachedLibraryImages: readonly IndexedImage[] | null = null;
-let cachedLibraryImageIds = new Set<string>();
+let cachedLibrarySnapshot = {
+  imageIds: new Set<string>() as ReadonlySet<string>,
+  revision: semanticSearchScopeRevision([]),
+};
 
-/** Current fully hydrated library, used only to exclude orphaned index rows. */
-const currentLibraryImageIds = (): ReadonlySet<string> => {
+/** Stable query universe: hydrated images, independent of transient grid filters. */
+const currentLibrarySnapshot = (): {
+  imageIds: ReadonlySet<string>;
+  revision: string;
+} => {
   const images = useImageStore.getState().images;
   if (images !== cachedLibraryImages) {
     cachedLibraryImages = images;
-    cachedLibraryImageIds = new Set(images.map((image) => image.id));
+    cachedLibrarySnapshot = {
+      imageIds: new Set(images.map((image) => image.id)),
+      revision: semanticSearchScopeRevision(images),
+    };
   }
-  return cachedLibraryImageIds;
+  return cachedLibrarySnapshot;
 };
 
 const diagnosticsEnabled = (): boolean => {
@@ -354,12 +364,12 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     }
 
     const generation = ++queryGeneration;
-    const scope = useImageStore.getState().getSemanticSearchScopeSnapshot();
+    const library = currentLibrarySnapshot();
     const queryStartedAt = performance.now();
     activeSemanticRequest = {
       kind: 'text',
       query: trimmed,
-      scopeRevision: scope.revision,
+      scopeRevision: library.revision,
       generation,
     };
     set({ queryRunning: true, queryActive: true, lastError: null, queryNotice: null, similarSourceName: null });
@@ -373,12 +383,12 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
         return;
       }
 
-      const scopeAfterOpen = useImageStore.getState().getSemanticSearchScopeSnapshot();
+      const libraryAfterOpen = currentLibrarySnapshot();
       if (!isSemanticQuerySnapshotCurrent(
         generation,
         queryGeneration,
-        scope.revision,
-        scopeAfterOpen.revision
+        library.revision,
+        libraryAfterOpen.revision
       )) {
         discardedQueryCount += 1;
         if (diagnosticsEnabled()) {
@@ -405,8 +415,8 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
       const includeDiagnostics = diagnosticsEnabled();
       const { hits, stats, diagnostics } = await searchByText(trimmed, {
         topFraction,
-        allowedImageIds: scope.imageIds,
-        calibrationImageIds: currentLibraryImageIds(),
+        allowedImageIds: library.imageIds,
+        calibrationImageIds: library.imageIds,
         includeDiagnostics,
       });
       if (generation !== queryGeneration) {
@@ -414,12 +424,12 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
         return;
       }
 
-      const currentScope = useImageStore.getState().getSemanticSearchScopeSnapshot();
+      const currentLibrary = currentLibrarySnapshot();
       if (!isSemanticQuerySnapshotCurrent(
         generation,
         queryGeneration,
-        scope.revision,
-        currentScope.revision
+        library.revision,
+        currentLibrary.revision
       )) {
         discardedQueryCount += 1;
         if (includeDiagnostics) {
@@ -445,7 +455,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
           stats.topScore >= stats.sanityFloor;
         console.info('[visual-search][diagnostics] text query', {
           generation,
-          scopeRows: scope.imageIds.size,
+          libraryRows: library.imageIds.size,
           indexedRows: index.stats.liveRows,
           scannedRows: stats.scannedRows,
           candidateCount: stats.candidateCount ?? 0,
@@ -523,7 +533,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
       const includeDiagnostics = diagnosticsEnabled();
       const result = await searchSimilarToImage(image, {
         allowedImageIds: scope.imageIds,
-        calibrationImageIds: currentLibraryImageIds(),
+        calibrationImageIds: currentLibrarySnapshot().imageIds,
       });
       if (generation !== queryGeneration) {
         discardedQueryCount += 1;
@@ -693,13 +703,22 @@ const refreshVisibleQueryStats = (): void => {
 
 let scopeRerunQueued = false;
 
+const currentRequestRevision = (request: ActiveSemanticRequest): string => (
+  request.kind === 'text'
+    ? currentLibrarySnapshot().revision
+    : useImageStore.getState().getSemanticSearchScopeSnapshot().revision
+);
+
 const scheduleScopeRerunIfNeeded = (): void => {
   const request = activeSemanticRequest;
   const semanticState = useSemanticStore.getState();
   if (!request || !semanticState.queryActive) return;
 
-  const scope = useImageStore.getState().getSemanticSearchScopeSnapshot();
-  if (scope.revision === request.scopeRevision || semanticState.queryRunning || scopeRerunQueued) {
+  if (
+    currentRequestRevision(request) === request.scopeRevision ||
+    semanticState.queryRunning ||
+    scopeRerunQueued
+  ) {
     return;
   }
 
@@ -710,8 +729,7 @@ const scheduleScopeRerunIfNeeded = (): void => {
     const latestState = useSemanticStore.getState();
     if (!latestRequest || !latestState.queryActive || latestState.queryRunning) return;
 
-    const latestScope = useImageStore.getState().getSemanticSearchScopeSnapshot();
-    if (latestScope.revision === latestRequest.scopeRevision) return;
+    if (currentRequestRevision(latestRequest) === latestRequest.scopeRevision) return;
 
     if (latestRequest.kind === 'text') {
       void latestState.runQuery(latestRequest.query);
