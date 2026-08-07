@@ -19,7 +19,7 @@ type SearchWorkerImage = {
   steps: number | null;
   cfgScale: number | null;
   generationType: 'txt2img' | 'img2img' | null;
-  mediaType: 'image' | 'video' | 'audio';
+  mediaType: 'image' | 'video' | 'audio' | 'model3d';
   generator: string;
   gpuDevice: string | null;
   hasTelemetry: boolean;
@@ -491,7 +491,7 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
     if (advancedFilters.cfg && !numericRangeMatch(image.cfgScale, advancedFilters.cfg)) continue;
 
     if (generationModes) {
-      const type = image.generationType || (image.mediaType !== 'video' && image.mediaType !== 'audio' ? 'txt2img' : null);
+      const type = image.generationType || (image.mediaType === 'image' ? 'txt2img' : null);
       if (!type || !generationModes.has(type as 'txt2img' | 'img2img')) continue;
     }
     if (mediaTypes && !mediaTypes.has(image.mediaType)) continue;

@@ -11,7 +11,7 @@ import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { traceCacheDebug } from '../utils/cacheDebugTrace';
-import { buildSupportedMediaRegex, inferMimeTypeFromName, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { buildSupportedMediaRegex, getFileExtension, inferMimeTypeFromName, isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import { getAvifDimensions, isAvifBuffer, parseAvifMetadata } from '../utils/avifMetadata.mjs';
 import { applyImageMetaHubAvifExtension } from '../utils/imageMetaHubAvifExtension.mjs';
 
@@ -155,7 +155,7 @@ function incrementCounter(counter: Record<string, number>, key: string) {
 }
 
 function resolveCatalogMimeType(fileName: string, ...declaredTypes: Array<string | undefined>): string {
-  return declaredTypes.find((value) => /^(image|video|audio)\//.test(value ?? ''))
+  return declaredTypes.find((value) => /^(image|video|audio|model)\//.test(value ?? ''))
     ?? inferMimeTypeFromName(fileName);
 }
 
@@ -171,6 +171,7 @@ function classifyFileType(source?: CatalogFileEntry): string {
   if (type === 'image/jpeg') return 'jpeg';
   if (type.startsWith('video/')) return 'video';
   if (type.startsWith('audio/')) return 'audio';
+  if (type.startsWith('model/') || isModel3DFileName(source.handle.name, type)) return 'model3d';
   return type || 'unknown';
 }
 
@@ -1403,6 +1404,8 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
         _metahub_pro: payload.imh_pro || null,
         _detection_method: 'metahub_chunk_direct',
         generator: 'ComfyUI',
+        media_type: payload.media_type === 'model3d' ? 'model3d' : undefined,
+        model_3d: payload.model_3d && typeof payload.model_3d === 'object' ? payload.model_3d : undefined,
       };
     }
   }
@@ -1439,6 +1442,64 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
   };
 };
 
+const MODEL_3D_METADATA_MAX_BYTES = 16 * 1024 * 1024;
+
+const parseMaybeJson = (value: unknown): unknown => {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(sanitizeJson(value));
+  } catch {
+    return value;
+  }
+};
+
+const normalizeModel3DAssetExtras = (extras: unknown): ImageMetadata | null => {
+  if (!extras || typeof extras !== 'object' || Array.isArray(extras)) return null;
+  const record = extras as Record<string, unknown>;
+  const imageMetaHubData = parseMaybeJson(record.imagemetahub_data);
+  if (imageMetaHubData && typeof imageMetaHubData === 'object' && !Array.isArray(imageMetaHubData)) {
+    return { imagemetahub_data: imageMetaHubData } as ImageMetadata;
+  }
+  const workflow = parseMaybeJson(record.workflow);
+  const prompt = parseMaybeJson(record.prompt);
+  if ((workflow && typeof workflow === 'object') || (prompt && typeof prompt === 'object')) {
+    return {
+      ...(workflow && typeof workflow === 'object' ? { workflow } : {}),
+      ...(prompt && typeof prompt === 'object' ? { prompt } : {}),
+    } as ImageMetadata;
+  }
+  return null;
+};
+
+export const parseModel3DMetadataFromBuffer = (buffer: ArrayBuffer, extension: string): ImageMetadata | null => {
+  try {
+    if (buffer.byteLength > MODEL_3D_METADATA_MAX_BYTES + 20) return null;
+    if (extension !== '.glb' || buffer.byteLength < 20) return null;
+    const view = new DataView(buffer);
+    if (view.getUint32(0, false) !== 0x676c5446) return null;
+    const jsonLength = view.getUint32(12, true);
+    const jsonType = view.getUint32(16, true);
+    if (jsonType !== 0x4e4f534a || jsonLength <= 0 || jsonLength > MODEL_3D_METADATA_MAX_BYTES || 20 + jsonLength > buffer.byteLength) {
+      return null;
+    }
+    const text = new TextDecoder().decode(buffer.slice(20, 20 + jsonLength)).replace(/[\u0000\s]+$/g, '');
+    const document = JSON.parse(text);
+    return normalizeModel3DAssetExtras(document?.asset?.extras);
+  } catch {
+    return null;
+  }
+};
+
+const readGlbMetadataFromFile = async (file: File): Promise<ImageMetadata | null> => {
+  const header = await file.slice(0, 20).arrayBuffer();
+  if (header.byteLength < 20) return null;
+  const view = new DataView(header);
+  if (view.getUint32(0, false) !== 0x676c5446 || view.getUint32(16, true) !== 0x4e4f534a) return null;
+  const jsonLength = view.getUint32(12, true);
+  if (jsonLength <= 0 || jsonLength > MODEL_3D_METADATA_MAX_BYTES || 20 + jsonLength > file.size) return null;
+  return parseModel3DMetadataFromBuffer(await file.slice(0, 20 + jsonLength).arrayBuffer(), '.glb');
+};
+
 /**
  * Processes a single file entry to extract metadata and create an IndexedImage object.
  * Optimized version that accepts pre-loaded file data to avoid redundant IPC calls.
@@ -1466,10 +1527,25 @@ async function processSingleFileOptimized(
     const inferredType = resolveCatalogMimeType(fileEntry.handle.name, fileEntry.type);
     const isVideo = isVideoFileName(fileEntry.handle.name) || inferredType.startsWith('video/');
     const isAudio = isAudioFileName(fileEntry.handle.name) || inferredType.startsWith('audio/');
+    const isModel3D = isModel3DFileName(fileEntry.handle.name, inferredType);
+    const absolutePath = (fileEntry.handle as ElectronFileHandle)?._filePath;
     let videoInfo: VideoInfo | null = null;
     let audioInfo: AudioInfo | null = null;
 
-    if (isVideo || isAudio) {
+    if (isModel3D) {
+      const extension = getFileExtension(fileEntry.handle.name);
+      const readModel3DMetadata = (window as any).electronAPI?.readModel3DMetadata;
+      if (isElectron && absolutePath && readModel3DMetadata) {
+        const result = await readModel3DMetadata({ filePath: absolutePath });
+        rawMetadata = result?.success && result.metadata ? result.metadata as ImageMetadata : null;
+      } else if (extension !== '.glb') {
+        rawMetadata = null;
+      } else {
+        const file = await fileEntry.handle.getFile();
+        rawMetadata = await readGlbMetadataFromFile(file);
+        fileSizeValue = fileSizeValue ?? file.size;
+      }
+    } else if (isVideo || isAudio) {
       const mediaResult = await readMediaMetadataFromElectron(fileEntry);
       rawMetadata = mediaResult.rawMetadata;
       videoInfo = mediaResult.videoInfo ?? null;
@@ -1532,19 +1608,19 @@ async function processSingleFileOptimized(
     }
 
     // Try to read sidecar JSON for Easy Diffusion (fallback if no embedded metadata)
-    let absolutePath = (fileEntry.handle as ElectronFileHandle)?._filePath;
-    if (!absolutePath && isElectron && (window as any).electronAPI?.joinPaths) {
+    let resolvedAbsolutePath = absolutePath;
+    if (!resolvedAbsolutePath && isElectron && (window as any).electronAPI?.joinPaths) {
       try {
         const joinResult = await (window as any).electronAPI.joinPaths(directoryId, fileEntry.path);
         if (joinResult?.success && joinResult.path) {
-          absolutePath = joinResult.path;
+          resolvedAbsolutePath = joinResult.path;
         }
       } catch {
         // Ignore join failures and keep existing path.
       }
     }
     if (!rawMetadata) {
-      sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, absolutePath);
+      sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, resolvedAbsolutePath);
       if (sidecarJson) {
         rawMetadata = sidecarJson;
       }
@@ -1787,6 +1863,18 @@ if (!normalizedMetadata && isAudio) {
     audio: audioInfo,
   };
 }
+if (!normalizedMetadata && isModel3D) {
+  normalizedMetadata = {
+    prompt: '',
+    model: '',
+    width: 0,
+    height: 0,
+    steps: 0,
+    scheduler: '',
+    media_type: 'model3d',
+    model_3d: { format: getFileExtension(fileEntry.handle.name).slice(1) },
+  };
+}
 if (normalizedMetadata && isAudio) {
   normalizedMetadata.width = normalizedMetadata.width || 0;
   normalizedMetadata.height = normalizedMetadata.height || 0;
@@ -1799,6 +1887,14 @@ if (normalizedMetadata && isVideo) {
   normalizedMetadata.media_type = 'video';
   normalizedMetadata.video = normalizedMetadata.video ?? videoInfo;
   normalizedMetadata.audio = normalizedMetadata.audio ?? audioInfo;
+}
+if (normalizedMetadata && isModel3D) {
+  normalizedMetadata.width = 0;
+  normalizedMetadata.height = 0;
+  normalizedMetadata.media_type = 'model3d';
+  normalizedMetadata.model_3d = normalizedMetadata.model_3d ?? {
+    format: getFileExtension(fileEntry.handle.name).slice(1),
+  };
 }
 
 // ==============================================================================
@@ -1859,7 +1955,7 @@ if (normalizedMetadata && isVideo) {
       cfgScale: normalizedMetadata?.cfgScale ?? normalizedMetadata?.cfg_scale ?? null,
       steps: normalizedMetadata?.steps || null,
       seed: normalizedMetadata?.seed || null,
-      dimensions: normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`,
+      dimensions: isModel3D ? undefined : (normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`),
       workflowNodes,
       fileSize: normalizedFileSize,
       fileType: normalizedFileType,

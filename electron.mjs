@@ -23,6 +23,7 @@ import {
 } from './utils/generatorLauncher.mjs';
 import {
   inferMimeTypeFromName,
+  isModel3DFileName,
   isSupportedMediaFileName,
 } from './utils/mediaTypes.js';
 import {
@@ -89,7 +90,7 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 10; // v10: Parse AVIF XMP/EXIF metadata and compact Image MetaHub extensions
+const PARSER_VERSION = 11; // v11: Index 3D models and bounded GLB/GLTF/sidecar metadata
 
 const logMainPerf = (event, details = {}) => {
   console.log('[main:perf]', { event, ...details });
@@ -114,6 +115,7 @@ const DEFAULT_WINDOW_HEIGHT = 900;
 const MIN_WINDOW_WIDTH = 800;
 const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
+const MODEL_3D_METADATA_MAX_BYTES = 16 * 1024 * 1024;
 const MEDIA_PROTOCOL_SCHEME = 'imh-media';
 const THUMBNAIL_PROTOCOL_SCHEME = 'imh-thumb';
 const THUMBNAIL_CACHE_VERSION = 2;
@@ -145,6 +147,76 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const getMimeTypeFromName = (name) => inferMimeTypeFromName(name);
+
+const parseJsonValue = (value) => {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
+
+const normalizeEmbeddedModel3DExtras = (extras) => {
+  if (!extras || typeof extras !== 'object' || Array.isArray(extras)) return null;
+  const imageMetaHubData = parseJsonValue(extras.imagemetahub_data);
+  if (imageMetaHubData && typeof imageMetaHubData === 'object' && !Array.isArray(imageMetaHubData)) {
+    return { imagemetahub_data: imageMetaHubData };
+  }
+
+  const workflow = parseJsonValue(extras.workflow);
+  const prompt = parseJsonValue(extras.prompt);
+  if (workflow && typeof workflow === 'object' || prompt && typeof prompt === 'object') {
+    return {
+      ...(workflow && typeof workflow === 'object' ? { workflow } : {}),
+      ...(prompt && typeof prompt === 'object' ? { prompt } : {}),
+    };
+  }
+  return null;
+};
+
+const readModel3DMetadata = async (filePath) => {
+  const sidecarPath = `${filePath}.imagemetahub.json`;
+  try {
+    const sidecarStats = await fs.stat(sidecarPath);
+    if (sidecarStats.isFile() && sidecarStats.size <= MODEL_3D_METADATA_MAX_BYTES) {
+      const sidecar = JSON.parse(await fs.readFile(sidecarPath, 'utf8'));
+      if (sidecar && typeof sidecar === 'object' && !Array.isArray(sidecar)) {
+        return { metadata: { imagemetahub_data: sidecar }, source: 'sidecar' };
+      }
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      console.warn('[model3d] Could not read metadata sidecar:', error?.message || error);
+    }
+  }
+
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension !== '.glb') {
+    return { metadata: null, source: 'none' };
+  }
+
+  const handle = await fs.open(filePath, 'r');
+  try {
+    const header = Buffer.alloc(20);
+    const headerRead = await handle.read(header, 0, header.length, 0);
+    if (headerRead.bytesRead < 20 || header.toString('ascii', 0, 4) !== 'glTF') {
+      return { metadata: null, source: 'none' };
+    }
+    const jsonLength = header.readUInt32LE(12);
+    const jsonType = header.readUInt32LE(16);
+    if (jsonType !== 0x4e4f534a || jsonLength <= 0 || jsonLength > MODEL_3D_METADATA_MAX_BYTES) {
+      return { metadata: null, source: 'none' };
+    }
+    const jsonBuffer = Buffer.alloc(jsonLength);
+    const jsonRead = await handle.read(jsonBuffer, 0, jsonLength, 20);
+    if (jsonRead.bytesRead !== jsonLength) return { metadata: null, source: 'none' };
+    const document = JSON.parse(jsonBuffer.toString('utf8').replace(/[\u0000\s]+$/g, ''));
+    return { metadata: normalizeEmbeddedModel3DExtras(document?.asset?.extras), source: 'embedded' };
+  } finally {
+    await handle.close();
+  }
+};
 
 const getSafeFileDetails = async (filePath) => {
   const fileName = path.basename(String(filePath || ''));
@@ -4435,6 +4507,16 @@ function setupFileOperationHandlers() {
 
       console.log('Attempting to trash file:', filePath);
       await shell.trashItem(filePath);
+      if (isModel3DFileName(filePath)) {
+        const metadataSidecarPath = `${filePath}.imagemetahub.json`;
+        try {
+          await shell.trashItem(metadataSidecarPath);
+        } catch (sidecarError) {
+          if (sidecarError?.code !== 'ENOENT') {
+            console.warn('[model3d] Could not trash metadata sidecar:', sidecarError?.message || sidecarError);
+          }
+        }
+      }
       return { success: true };
     } catch (error) {
       console.error('Error trashing file:', error);
@@ -4465,6 +4547,15 @@ function setupFileOperationHandlers() {
       }
 
       await fs.rename(oldPath, newPath);
+      if (isModel3DFileName(oldPath)) {
+        try {
+          await fs.rename(`${oldPath}.imagemetahub.json`, `${newPath}.imagemetahub.json`);
+        } catch (sidecarError) {
+          if (sidecarError?.code !== 'ENOENT') {
+            console.warn('[model3d] Could not rename metadata sidecar:', sidecarError?.message || sidecarError);
+          }
+        }
+      }
 
       const normalizedOldAllowedPath = normalizeAllowedPath(oldPath);
       if (allowedDirectoryPaths.has(normalizedOldAllowedPath)) {
@@ -4990,6 +5081,18 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('read-media-metadata', async (event, args) => handleReadMediaMetadata(args));
   ipcMain.handle('read-video-metadata', async (event, args) => handleReadMediaMetadata(args));
+  ipcMain.handle('read-model3d-metadata', async (_event, { filePath }) => {
+    try {
+      const normalizedPath = path.resolve(filePath || '');
+      if (!filePath || !isModel3DFileName(normalizedPath) || !isPathAllowed(normalizedPath)) {
+        return { success: false, error: 'Access denied' };
+      }
+      const result = await readModel3DMetadata(normalizedPath);
+      return { success: true, ...result };
+    } catch (error) {
+      return { success: false, error: error?.message || String(error) };
+    }
+  });
 
   // Handle getting skipped versions
   ipcMain.handle('get-skipped-versions', () => {
@@ -5841,19 +5944,35 @@ function setupFileOperationHandlers() {
       const workerCount = Math.max(1, Math.min(TRANSFER_CONCURRENCY, plannedTransfers.length));
 
       const executeTransfer = async (task) => {
-        if (mode === 'move') {
+        const transferPath = async (sourcePath, destinationPath) => {
+          if (mode === 'move') {
+            try {
+              await fs.rename(sourcePath, destinationPath);
+            } catch (error) {
+              if (error?.code === 'EXDEV') {
+                await fs.copyFile(sourcePath, destinationPath);
+                await fs.unlink(sourcePath);
+              } else {
+                throw error;
+              }
+            }
+          } else {
+            await fs.copyFile(sourcePath, destinationPath);
+          }
+        };
+
+        await transferPath(task.sourceAbsolutePath, task.destinationAbsolutePath);
+        if (isModel3DFileName(task.sourceAbsolutePath)) {
           try {
-            await fs.rename(task.sourceAbsolutePath, task.destinationAbsolutePath);
-          } catch (error) {
-            if (error?.code === 'EXDEV') {
-              await fs.copyFile(task.sourceAbsolutePath, task.destinationAbsolutePath);
-              await fs.unlink(task.sourceAbsolutePath);
-            } else {
-              throw error;
+            await transferPath(
+              `${task.sourceAbsolutePath}.imagemetahub.json`,
+              `${task.destinationAbsolutePath}.imagemetahub.json`,
+            );
+          } catch (sidecarError) {
+            if (sidecarError?.code !== 'ENOENT') {
+              console.warn('[model3d] Could not transfer metadata sidecar:', sidecarError?.message || sidecarError);
             }
           }
-        } else {
-          await fs.copyFile(task.sourceAbsolutePath, task.destinationAbsolutePath);
         }
 
         const stats = await fs.stat(task.destinationAbsolutePath);

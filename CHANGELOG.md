@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added initial 3D model library support for GLB, GLTF, OBJ, FBX, and STL, including bounded metadata indexing, 3D filters, interactive viewing, lazy thumbnails, and GLB/OBJ/STL/FBX export with Image MetaHub sidecars.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

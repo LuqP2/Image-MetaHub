@@ -40,7 +40,8 @@ import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
-import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { getFileExtension, isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import Model3DThumbnail from './Model3DThumbnail';
 import { groupImages, type ImageGroup, type ImageGroupByMode, type ImageGroupingSortOrder } from '../utils/imageGrouping';
 import {
   beginPerformanceFlow,
@@ -196,6 +197,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   const canDragImage = typeof window !== 'undefined';
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
+  const isModel3D = isModel3DFileName(image.name, image.fileType);
   const audioDuration = formatAudioDuration((image.metadata as any)?.normalizedMetadata?.audio?.duration_seconds);
   const resolvedThumbnailUrl =
 !thumbnailsDisabled && !isAudio && thumbnail?.thumbnailStatus === 'ready'
@@ -219,6 +221,12 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     },
     [cardRef]
   );
+
+  useEffect(() => {
+    if (isModel3D) {
+      onImageLoad(image.id, 1);
+    }
+  }, [image.id, isModel3D, onImageLoad]);
 
   useEffect(() => {
     if (resolvedThumbnailUrl) {
@@ -575,7 +583,9 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           {copied ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
         </motion.button>
 
-        {hasThumbnailError ? (
+        {isModel3D ? (
+          <Model3DThumbnail image={image} directoryPath={directoryPath} />
+        ) : hasThumbnailError ? (
           <div className="w-full h-full flex items-center justify-center bg-gray-900">
             <div className="text-center text-gray-400 px-4">
               <svg className="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1421,6 +1431,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     if (
       isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) ||
       isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) ||
+      isModel3DFileName(contextMenu.image.name, contextMenu.image.fileType) ||
       getFileExtension(contextMenu.image.name) === '.gif'
     ) {
       return;
@@ -1436,6 +1447,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   const selectForComparison = useCallback(() => {
     if (!contextMenu.image) return;
+    if (isModel3DFileName(contextMenu.image.name, contextMenu.image.fileType)) return;
     if (!canUseComparison) {
       showProModal('comparison');
       hideContextMenu();
@@ -1473,12 +1485,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   }, [hideContextMenu, onBatchExport]);
 
   const contextImagePrompt = contextMenu.image?.prompt || contextMenu.image?.metadata?.normalizedMetadata?.prompt;
+  const isContextModel3D = Boolean(contextMenu.image && isModel3DFileName(contextMenu.image.name, contextMenu.image.fileType));
   const canFindSimilar = Boolean(contextImagePrompt) && Boolean(onFindSimilar);
   const canOpenContextImageEditor = Boolean(
     onOpenImageEditor &&
     contextMenu.image &&
     !isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) &&
     !isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) &&
+    !isModel3DFileName(contextMenu.image.name, contextMenu.image.fileType) &&
     getFileExtension(contextMenu.image.name) !== '.gif',
   );
 
@@ -2349,17 +2363,19 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
           <div className="border-t border-gray-600 my-1"></div>
 
-          <button
-            onClick={selectForComparison}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            title={!canUseComparison && initialized ? 'Pro feature - start trial' : undefined}
-          >
-            <GitCompare className="w-4 h-4" />
-            <span className="flex-1">
-              Add to Compare {canUseComparison && comparisonCount > 0 ? `(${comparisonCount}/4)` : ''}
-            </span>
-            {!canUseComparison && <ProBadge size="sm" variant="subtle" tooltip="Pro feature - start trial" />}
-          </button>
+          {!isContextModel3D && (
+            <button
+              onClick={selectForComparison}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              title={!canUseComparison && initialized ? 'Pro feature - start trial' : undefined}
+            >
+              <GitCompare className="w-4 h-4" />
+              <span className="flex-1">
+                Add to Compare {canUseComparison && comparisonCount > 0 ? `(${comparisonCount}/4)` : ''}
+              </span>
+              {!canUseComparison && <ProBadge size="sm" variant="subtle" tooltip="Pro feature - start trial" />}
+            </button>
+          )}
 
           <button
             onClick={openFindSimilar}
@@ -2445,6 +2461,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           })()}
 
           {(() => {
+            if (isContextModel3D) {
+              if (!onOpenComfyUIWorkspace || !isComfyUIProviderVisible) return null;
+              return (
+                <>
+                  <div className="border-t border-gray-600 my-1"></div>
+                  <ContextMenuButton
+                    onClick={openComfyUIWorkspace}
+                    icon={<Workflow className="w-4 h-4" />}
+                    label="Open in ComfyUI Workspace"
+                    showProBadge={!canUseComfyUI}
+                    proBadgeTooltip="Pro feature - start trial"
+                  />
+                </>
+              );
+            }
             const hasPromptMetadata = Boolean(contextMenu.image?.metadata?.normalizedMetadata?.prompt);
             const generateMenuItems: Array<{
               key: string;

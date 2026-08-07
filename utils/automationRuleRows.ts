@@ -464,9 +464,9 @@ const applyRowToFilters = (row: AutomationConditionRow, filters: AutomationRuleF
         ...filters.advancedFilters,
         mediaTypes: Array.from(new Set([
           ...(filters.advancedFilters?.mediaTypes ?? []),
-          row.value.trim() as 'image' | 'video' | 'audio',
-        ])).filter((value): value is 'image' | 'video' | 'audio' =>
-          value === 'image' || value === 'video' || value === 'audio'
+          row.value.trim() as 'image' | 'video' | 'audio' | 'model3d',
+        ])).filter((value): value is 'image' | 'video' | 'audio' | 'model3d' =>
+          value === 'image' || value === 'video' || value === 'audio' || value === 'model3d'
         ),
       };
       break;
@@ -544,7 +544,7 @@ export function getConditionValueOptions(
     case 'autoTag': return source.availableAutoTags.map((tag) => tag.name);
     case 'dimension': return source.availableDimensions;
     case 'generationMode': return ['txt2img', 'img2img'];
-    case 'mediaType': return ['image', 'video', 'audio'];
+    case 'mediaType': return ['image', 'video', 'audio', 'model3d'];
     case 'rating': return ['1', '2', '3', '4', '5'];
     case 'favorite': return ['true'];
     case 'prompt':

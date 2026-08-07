@@ -23,8 +23,9 @@ import RatingStars from './RatingStars';
 import TagInputCombobox from './TagInputCombobox';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getRecentTagChips } from '../utils/tagSuggestions';
-import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import AudioPlayer from './AudioPlayer';
+import Model3DViewer from './Model3DViewer';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
 import { bulkSaveShadowMetadata } from '../services/imageAnnotationsStorage';
 import { copyEditableMetadata, readEditableMetadataClipboard } from '../services/metadataClipboard';
@@ -214,11 +215,12 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const thumbnail = useResolvedThumbnail(activeImage);
   const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
   const isAudio = !!activeImage && isAudioFileName(activeImage.name, activeImage.fileType);
+  const isModel3D = !!activeImage && isModel3DFileName(activeImage.name, activeImage.fileType);
   const activeImageDirectoryPath = activeImage
     ? directories.find((directory) => directory.id === activeImage.directoryId)?.path
     : undefined;
-  const showA1111Actions = !isVideo && !isAudio && a1111Enabled;
-  const showComfyUIActions = !isVideo && !isAudio && comfyUIEnabled;
+  const showA1111Actions = !isVideo && !isAudio && !isModel3D && a1111Enabled;
+  const showComfyUIActions = !isVideo && !isAudio && !isModel3D && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
@@ -250,7 +252,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     }
 
     const hasPreview = Boolean(preferredThumbnailUrl);
-    setImageUrl(isVideo || isAudio ? null : preferredThumbnailUrl);
+    setImageUrl(isVideo || isAudio || isModel3D ? null : preferredThumbnailUrl);
 
     const loadImage = async () => {
       if (!isMounted) return;
@@ -270,12 +272,12 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
       }
     };
 
-    loadImage();
+    if (!isModel3D) loadImage();
 
     return () => {
       isMounted = false;
     };
-  }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl, isVideo, isAudio]);
+  }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl, isVideo, isAudio, isModel3D]);
 
   useEffect(() => {
     if (!contextMenu.visible) {
@@ -548,7 +550,11 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
       >
         {/* Image */}
         <div className="bg-black flex items-center justify-center rounded-lg">
-          {imageUrl ? (
+          {isModel3D ? (
+            <div className="h-80 w-full overflow-hidden rounded-lg">
+              <Model3DViewer image={activeImage} directoryPath={activeImageDirectoryPath} compact />
+            </div>
+          ) : imageUrl ? (
             isAudio ? (
               <AudioPlayer
                 src={imageUrl}
@@ -775,6 +781,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               </div>
             </div>
             <div className="space-y-3">
+              {isModel3D && (
+                <h3 className="border-b border-gray-700 pb-2 text-xs font-semibold uppercase tracking-wider text-violet-300">3D Generation</h3>
+              )}
               <ImageLineageSection
                 image={activeImage}
                 metadata={nMeta}
@@ -803,6 +812,16 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                     <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
                   )}
               </div>
+              {nMeta.model_3d && (
+                <div className="grid grid-cols-2 gap-2 border-t border-gray-700/50 pt-3 text-sm">
+                  <MetadataItem label="3D Format" value={nMeta.model_3d.format?.toUpperCase()} />
+                  <MetadataItem label="Vertices" value={nMeta.model_3d.vertexCount} />
+                  <MetadataItem label="Faces" value={nMeta.model_3d.faceCount} />
+                  <MetadataItem label="Materials" value={nMeta.model_3d.materialCount} />
+                  <MetadataItem label="Textures" value={nMeta.model_3d.hasTextures == null ? undefined : (nMeta.model_3d.hasTextures ? 'Yes' : 'No')} />
+                  <MetadataItem label="Source Node" value={nMeta.model_3d.sourceNodeClass} />
+                </div>
+              )}
               {videoInfo && (
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <MetadataItem label="Frames" value={videoInfo.frame_count} />

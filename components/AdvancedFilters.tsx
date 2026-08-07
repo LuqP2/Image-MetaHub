@@ -343,6 +343,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                         ['image', 'Images'],
                         ['video', 'Videos'],
                         ['audio', 'Audio'],
+                        ['model3d', '3D Models'],
                       ] as const).map(([value, label]) => (
                         <label key={value} className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
                           <input

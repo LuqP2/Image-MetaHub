@@ -415,6 +415,7 @@ export interface ElectronAPI {
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
   readFilesBatch: (args: string[] | ElectronReadFilesBatchArgs) => Promise<{ success: boolean; files?: ElectronReadFilesBatchItem[]; error?: string }>;
   readMediaMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
+  readModel3DMetadata: (args: { filePath: string }) => Promise<{ success: boolean; metadata?: Record<string, unknown> | null; source?: 'sidecar' | 'embedded' | 'none'; error?: string }>;
   readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
@@ -743,7 +744,8 @@ export interface MetaHubAttribution {
 
 export interface BaseMetadata extends SharedBaseMetadata {
   clip_skip?: number;
-  media_type?: 'image' | 'video' | 'audio';
+  media_type?: 'image' | 'video' | 'audio' | 'model3d';
+  model_3d?: Model3DMetadata | null;
   video?: VideoInfo | null;
   audio?: AudioInfo | null;
   motion_model?: MotionModelInfo | null;
@@ -762,6 +764,21 @@ export interface BaseMetadata extends SharedBaseMetadata {
     python_version?: string | null;
     generation_time?: number | null;
   };
+}
+
+export interface Model3DBounds {
+  min: [number, number, number];
+  max: [number, number, number];
+}
+
+export interface Model3DMetadata {
+  format: string;
+  vertexCount?: number;
+  faceCount?: number;
+  materialCount?: number;
+  hasTextures?: boolean;
+  bounds?: Model3DBounds;
+  sourceNodeClass?: string;
 }
 
 // Type guard functions
@@ -824,7 +841,7 @@ export interface AdvancedFilters {
   cfg?: NumericRangeFilter;
   date?: DateRangeFilter;
   generationModes?: Array<'txt2img' | 'img2img'>;
-  mediaTypes?: Array<'image' | 'video' | 'audio'>;
+  mediaTypes?: Array<'image' | 'video' | 'audio' | 'model3d'>;
   telemetryState?: 'present' | 'missing';
   hasVerifiedTelemetry?: boolean;
   generationTimeMs?: NumericRangeFilter;
