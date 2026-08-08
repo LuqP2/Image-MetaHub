@@ -7,6 +7,7 @@ import { useImageSelection } from './hooks/useImageSelection';
 import { useClusterCacheRestore } from './hooks/useClusterCacheRestore';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useFeatureAccess } from './hooks/useFeatureAccess';
+import { useTrialExpiryWatcher } from './hooks/useTrialExpiryWatcher';
 import { Directory } from './types';
 import { Image as ImageIcon, X, Search } from 'lucide-react';
 
@@ -31,6 +32,7 @@ import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
+import TrialExpiredBanner from './components/TrialExpiredBanner';
 import ExploreWorkspace from './components/ExploreWorkspace';
 import { buildWorkflowNodeCatalog, filterImagesByWorkflowNodes } from './services/comfyUIWorkflowNodes';
 import FindSimilarModal from './components/FindSimilarModal';
@@ -817,6 +819,9 @@ export default function App() {
 
     initializeLicense();
   }, []);
+
+  // Flip the status the moment the trial lapses, without waiting for a restart.
+  useTrialExpiryWatcher();
 
   // --- Effects ---
   useEffect(() => {
@@ -3414,6 +3419,8 @@ export default function App() {
             }
           }}
         />
+
+        <TrialExpiredBanner />
 
         <CollectionFormModal
           isOpen={isSaveFilteredCollectionModalOpen}
