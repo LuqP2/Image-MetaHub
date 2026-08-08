@@ -38,6 +38,15 @@ describe('creator attribution', () => {
     );
   });
 
+  it('supports the post-trial recovery context', () => {
+    expect(buildProLicenseUrl(null, 'trial_expired')).toBe(
+      'https://www.imagemetahub.com/pro?src=app&ctx=trial_expired'
+    );
+    expect(buildProLicenseUrl('imhcrt_x', 'trial_expired')).toBe(
+      'https://www.imagemetahub.com/pro?src=app&ctx=trial_expired&imh_ref=imhcrt_x'
+    );
+  });
+
   it('selects the newest attributed image token', () => {
     const token = findLatestCreatorAttributionToken([
       createImage('old', 100, 'imhcrt_old'),

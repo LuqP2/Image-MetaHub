@@ -31,6 +31,7 @@ import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
+import TrialExpiredBanner from './components/TrialExpiredBanner';
 import ExploreWorkspace from './components/ExploreWorkspace';
 import { buildWorkflowNodeCatalog, filterImagesByWorkflowNodes } from './services/comfyUIWorkflowNodes';
 import FindSimilarModal from './components/FindSimilarModal';
@@ -3414,6 +3415,8 @@ export default function App() {
             }
           }}
         />
+
+        <TrialExpiredBanner />
 
         <CollectionFormModal
           isOpen={isSaveFilteredCollectionModalOpen}
