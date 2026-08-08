@@ -6,6 +6,7 @@ import {
   Link2,
   Palette,
   Shield,
+  Sparkles,
   X,
 } from 'lucide-react';
 import { AppearanceSettingsPanel } from './settings/AppearanceSettingsPanel';
@@ -16,6 +17,7 @@ import { PrivacySettingsPanel } from './settings/PrivacySettingsPanel';
 import { SettingsSidebarNav } from './settings/SettingsSidebarNav';
 import { ShortcutsSettingsPanel } from './settings/ShortcutsSettingsPanel';
 import { ViewerSettingsPanel } from './settings/ViewerSettingsPanel';
+import { VisualSearchSettingsPanel } from './settings/VisualSearchSettingsPanel';
 import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './settings/types';
 
 interface SettingsModalProps {
@@ -50,6 +52,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       { id: 'library' as const, label: 'Library', icon: BookOpen },
       { id: 'viewer' as const, label: 'Viewer', icon: Eye },
       { id: 'integrations' as const, label: 'Integrations', icon: Link2 },
+      { id: 'visual-search' as const, label: 'Visual Search', icon: Sparkles },
       { id: 'appearance' as const, label: 'Appearance', icon: Palette },
       { id: 'privacy' as const, label: 'Privacy', icon: Shield },
       { id: 'shortcuts' as const, label: 'Shortcuts', icon: Keyboard },
@@ -65,6 +68,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         return <ViewerSettingsPanel />;
       case 'integrations':
         return <IntegrationsSettingsPanel />;
+      case 'visual-search':
+        return <VisualSearchSettingsPanel />;
       case 'appearance':
         return <AppearanceSettingsPanel />;
       case 'privacy':

@@ -2,7 +2,9 @@ import type { IndexedImage } from '../types';
 import { formatLocalDateKey } from './dateFilterUtils';
 
 export type ImageGroupByMode = 'none' | 'date' | 'name' | 'session' | 'model' | 'cluster';
-export type ImageGroupingSortOrder = 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random';
+// 'relevance' only appears while a visual search is active; it orders by the
+// search score, so like 'random' it has no groupable buckets.
+export type ImageGroupingSortOrder = 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random' | 'relevance';
 
 export interface ImageGroupingOptions {
   sortOrder?: ImageGroupingSortOrder;

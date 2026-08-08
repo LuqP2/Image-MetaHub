@@ -87,6 +87,13 @@ if (disabledChromiumFeatures.size > 0) {
 
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 
+// WebGPU powers the optional GPU backend for local visual search. Several
+// Electron builds keep navigator.gpu behind this switch even when hardware
+// acceleration is on, so enable it unless the user disabled the GPU entirely.
+if (!gpuMitigationEnabled) {
+  app.commandLine.appendSwitch('enable-unsafe-webgpu');
+}
+
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
 const PARSER_VERSION = 10; // v10: Parse AVIF XMP/EXIF metadata and compact Image MetaHub extensions
@@ -116,6 +123,7 @@ const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
 const MEDIA_PROTOCOL_SCHEME = 'imh-media';
 const THUMBNAIL_PROTOCOL_SCHEME = 'imh-thumb';
+const MODEL_PROTOCOL_SCHEME = 'imh-model';
 const THUMBNAIL_CACHE_VERSION = 2;
 const THUMBNAIL_MANIFEST_VERSION = 1;
 const THUMBNAIL_MANIFEST_FILE = 'thumbnail-manifest-v1.json';
@@ -134,6 +142,19 @@ protocol.registerSchemesAsPrivileged([
   },
   {
     scheme: THUMBNAIL_PROTOCOL_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
+  {
+    // Serves the downloaded CLIP weights to the embedding worker. transformers.js
+    // fetches model files by URL, and the worker has no preload bridge to read
+    // them through, so they need a fetchable origin.
+    scheme: MODEL_PROTOCOL_SCHEME,
     privileges: {
       standard: true,
       secure: true,
@@ -296,6 +317,63 @@ const registerThumbnailProtocol = () => {
     } catch (error) {
       console.error('Error serving thumbnail protocol request:', request.url, error);
       callback({ error: -2 });
+    }
+  });
+};
+
+const getEmbeddingModelsRoot = () => path.join(app.getPath('userData'), 'models');
+
+// Models are app-scoped, not library-scoped, so they stay in userData even when
+// the user points the cache at another drive. The Hugging Face `org/name`
+// layout is preserved on disk so imh-model:// URLs map straight to files.
+const getEmbeddingModelDir = (modelId) => {
+  const safeModelId = String(modelId || '').replace(/[^a-zA-Z0-9-_./]/g, '_');
+  const modelsRoot = getEmbeddingModelsRoot();
+  const resolved = path.resolve(modelsRoot, safeModelId);
+  if (!isSameOrChildPath(normalizeAllowedPath(resolved), normalizeAllowedPath(modelsRoot))) {
+    throw new Error(`Rejected model id: ${modelId}`);
+  }
+  return resolved;
+};
+
+// Individual file entries (`files`) come from the renderer's model descriptor and
+// are joined onto modelDir with no validation elsewhere; unlike modelId above and
+// every cache-sidecar path in this file, a `file` was never checked for escaping
+// its directory. path.resolve neutralizes both `../..` segments and an absolute
+// `file`, and isSameOrChildPath is the final gate.
+const resolveEmbeddingModelFilePath = (modelDir, file) => {
+  if (typeof file !== 'string' || !file) {
+    throw new Error(`Rejected model file: ${file}`);
+  }
+  const resolved = path.resolve(modelDir, file);
+  if (!isSameOrChildPath(normalizeAllowedPath(resolved), normalizeAllowedPath(modelDir))) {
+    throw new Error(`Rejected model file: ${file}`);
+  }
+  return resolved;
+};
+
+let embeddingModelDownload = null;
+
+const registerModelProtocol = () => {
+  protocol.registerFileProtocol(MODEL_PROTOCOL_SCHEME, async (request, callback) => {
+    try {
+      const requestUrl = new URL(request.url);
+      const relativePath = decodeURIComponent(requestUrl.pathname).replace(/^\/+/, '');
+      const modelsRoot = getEmbeddingModelsRoot();
+      const filePath = path.resolve(modelsRoot, relativePath);
+
+      if (!isSameOrChildPath(normalizeAllowedPath(filePath), normalizeAllowedPath(modelsRoot))) {
+        console.error('SECURITY VIOLATION: Attempted to load a model file outside of the models directory.');
+        console.error('  [imh-model] Requested path:', relativePath);
+        callback({ error: -10 });
+        return;
+      }
+
+      await fs.access(filePath);
+      callback({ path: filePath });
+    } catch (error) {
+      console.error('Error serving model protocol request:', request.url, error);
+      callback({ error: -6 });
     }
   });
 };
@@ -2348,6 +2426,7 @@ app.whenReady().then(async () => {
   registerProcessDiagnostics();
   registerMediaProtocol();
   registerThumbnailProtocol();
+  registerModelProtocol();
 
   // Listen for theme changes and notify renderer
   nativeTheme.on('updated', () => {
@@ -3903,6 +3982,317 @@ function setupFileOperationHandlers() {
         return { success: true };
     } catch (error) {
         return { success: false, error: error.message };
+    }
+  });
+
+
+  // --- Visual search (embedding) sidecar IPC Handlers ---
+  // These live in json_cache next to the metadata chunks and are named
+  // `${safeCacheId}_emb*`, so clear-cache-data's prefix sweep already removes
+  // them and no separate cleanup path is needed.
+  const getEmbeddingCacheDir = async () => {
+    const rootPath = await getCacheRootPath();
+    const cacheDir = path.join(rootPath, 'json_cache');
+    await fs.mkdir(cacheDir, { recursive: true });
+    return cacheDir;
+  };
+
+  const toSafeCacheId = (cacheId) => String(cacheId ?? '').replace(/[^a-zA-Z0-9-_]/g, '_');
+
+  // Sidecar names are built in the renderer from a whitelisted pattern; reject
+  // anything else so a malformed id cannot escape the cache directory.
+  const isSafeEmbeddingFileName = (fileName) =>
+    typeof fileName === 'string' && /^[a-zA-Z0-9-_]+_emb_(manifest\.json|rows_\d+\.json|seg_\d+\.bin)$/.test(fileName);
+
+  const resolveEmbeddingFilePath = async (fileName) => {
+    if (!isSafeEmbeddingFileName(fileName)) {
+      throw new Error(`Rejected embedding sidecar name: ${fileName}`);
+    }
+    return path.join(await getEmbeddingCacheDir(), fileName);
+  };
+
+  ipcMain.handle('read-embedding-file', async (event, { fileName, binary = false } = {}) => {
+    try {
+      const filePath = await resolveEmbeddingFilePath(fileName);
+      const contents = await fs.readFile(filePath).catch((error) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (contents === null) {
+        return { success: true, data: null };
+      }
+      if (binary) {
+        // Copy out of Node's Buffer pool so the renderer receives exactly the
+        // file's bytes rather than a view into a shared allocation.
+        const copy = contents.buffer.slice(
+          contents.byteOffset,
+          contents.byteOffset + contents.byteLength
+        );
+        return { success: true, data: copy };
+      }
+      return { success: true, data: JSON.parse(contents.toString('utf8')) };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('write-embedding-file', async (event, { fileName, data, binary = false } = {}) => {
+    try {
+      const filePath = await resolveEmbeddingFilePath(fileName);
+      const payload = binary ? Buffer.from(data) : Buffer.from(JSON.stringify(data), 'utf8');
+      // Temp+rename so a crash mid-write cannot leave a half-parsed manifest.
+      const tempPath = `${filePath}.tmp`;
+      await fs.writeFile(tempPath, payload);
+      await renameCacheChunkWithRetry(tempPath, filePath);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Appending is the hot path during backfill: segments grow one flush at a
+  // time and rewriting a 4MB segment per flush would dominate the job's IO.
+  ipcMain.handle('append-embedding-segment', async (event, { fileName, data } = {}) => {
+    try {
+      const filePath = await resolveEmbeddingFilePath(fileName);
+      await fs.appendFile(filePath, Buffer.from(data));
+      const stats = await fs.stat(filePath);
+      return { success: true, byteLength: stats.size };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('stat-embedding-index', async (event, { cacheId } = {}) => {
+    try {
+      const safeCacheId = toSafeCacheId(cacheId);
+      const cacheDir = await getEmbeddingCacheDir();
+      const files = await fs.readdir(cacheDir).catch((error) => {
+        if (error.code === 'ENOENT') return [];
+        throw error;
+      });
+      const prefix = `${safeCacheId}_emb_`;
+      let totalBytes = 0;
+      let fileCount = 0;
+      for (const file of files) {
+        if (!file.startsWith(prefix)) continue;
+        const stats = await fs.stat(path.join(cacheDir, file)).catch(() => null);
+        if (!stats) continue;
+        totalBytes += stats.size;
+        fileCount += 1;
+      }
+      return { success: true, totalBytes, fileCount };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // --- Visual search model download ---
+  // The model is ~155MB and only a subset of users enable visual search, so it
+  // is fetched on first opt-in instead of shipping in the installer. This is the
+  // only network request the feature ever makes; nothing is uploaded.
+  ipcMain.handle('get-embedding-model-status', async (event, { modelId, files } = {}) => {
+    try {
+      const modelDir = getEmbeddingModelDir(modelId);
+      const missing = [];
+      let totalBytes = 0;
+      for (const file of Array.isArray(files) ? files : []) {
+        const filePath = resolveEmbeddingModelFilePath(modelDir, file);
+        const stats = await fs.stat(filePath).catch(() => null);
+        if (!stats || stats.size === 0) {
+          missing.push(file);
+        } else {
+          totalBytes += stats.size;
+        }
+      }
+      return { success: true, installed: missing.length === 0, modelDir, missing, totalBytes };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Hashes a file on disk without holding the whole thing in memory — the ONNX
+  // towers run 80-150MB each.
+  const sha256File = (filePath) => new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fsSync.createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+
+  // Hugging Face reports the LFS object's sha256 as the `x-linked-etag`
+  // response header (quoted). Non-LFS files (the small config/tokenizer JSON)
+  // don't carry one, so verification is best-effort: it catches a corrupted or
+  // tampered download of the files that actually matter — the multi-hundred-MB
+  // ONNX weights — without requiring hashes to be pinned in source ahead of a
+  // `main`-tracking revision.
+  const expectedSha256FromHeaders = (headers) => {
+    const raw = headers.get('x-linked-etag') || headers.get('x-linked-etag'.toUpperCase());
+    if (!raw) return null;
+    const value = raw.replace(/^"|"$/g, '').trim().toLowerCase();
+    return /^[a-f0-9]{64}$/.test(value) ? value : null;
+  };
+
+  ipcMain.handle('download-embedding-model', async (event, { modelId, revision, files, baseUrl } = {}) => {
+    if (embeddingModelDownload) {
+      return { success: false, error: 'A model download is already running' };
+    }
+
+    const controller = new AbortController();
+    embeddingModelDownload = controller;
+    const sender = event.sender;
+    const modelDir = getEmbeddingModelDir(modelId);
+    const host = baseUrl || 'https://huggingface.co';
+
+    const emit = (payload) => {
+      if (!sender.isDestroyed()) {
+        sender.send('embedding-model-progress', payload);
+      }
+    };
+
+    try {
+      const list = Array.isArray(files) ? files : [];
+      let completed = 0;
+
+      for (const file of list) {
+        const destination = resolveEmbeddingModelFilePath(modelDir, file);
+        await fs.mkdir(path.dirname(destination), { recursive: true });
+
+        const existing = await fs.stat(destination).catch(() => null);
+        if (existing && existing.size > 0) {
+          completed += 1;
+          emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: existing.size, totalBytes: existing.size });
+          continue;
+        }
+
+        const partPath = `${destination}.part`;
+        const partial = await fs.stat(partPath).catch(() => null);
+        const resumeFrom = partial ? partial.size : 0;
+
+        const url = `${host}/${modelId}/resolve/${revision || 'main'}/${file}`;
+        const headers = resumeFrom > 0 ? { Range: `bytes=${resumeFrom}-` } : {};
+        const response = await fetch(url, { headers, signal: controller.signal });
+
+        if (!response.ok && response.status !== 206) {
+          throw new Error(`Download failed for ${file}: HTTP ${response.status}`);
+        }
+        // A server that ignores the Range header restarts the file; drop the
+        // partial rather than concatenating two copies of the same prefix.
+        const appending = response.status === 206 && resumeFrom > 0;
+        if (!appending && resumeFrom > 0) {
+          await fs.rm(partPath, { force: true });
+        }
+
+        const declared = Number(response.headers.get('content-length')) || 0;
+        const totalBytes = appending ? resumeFrom + declared : declared;
+        let received = appending ? resumeFrom : 0;
+        // Only trustworthy for a fresh (non-resumed) download: a resume's hash
+        // header describes just the remaining range being fetched, not the
+        // stitched-together file.
+        const expectedSha256 = !appending ? expectedSha256FromHeaders(response.headers) : null;
+
+        const stream = fsSync.createWriteStream(partPath, { flags: appending ? 'a' : 'w' });
+        // Without an 'error' listener a write failure (disk full, device removed)
+        // is an uncaught exception in the main process instead of surfacing through
+        // this handler's try/catch. Wait on 'close' rather than the end() callback,
+        // since autoDestroy fires 'close' on both the success and error paths —
+        // the end() callback alone would never settle after stream.destroy().
+        let streamError = null;
+        const closed = new Promise((resolve) => stream.once('close', resolve));
+        stream.on('error', (err) => {
+          streamError = err;
+          stream.destroy();
+        });
+        try {
+          const reader = response.body.getReader();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            received += value.byteLength;
+            if (!stream.write(Buffer.from(value))) {
+              await new Promise((resolve) => stream.once('drain', resolve));
+            }
+            emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: received, totalBytes });
+          }
+        } finally {
+          stream.end();
+          await closed;
+        }
+        if (streamError) {
+          throw streamError;
+        }
+
+        if (totalBytes > 0 && received !== totalBytes) {
+          throw new Error(`Truncated download for ${file}: got ${received} of ${totalBytes} bytes`);
+        }
+
+        // Verify the bytes on disk match what the server said we'd get before
+        // this file is ever handed to the runtime. A resumed download that
+        // ends up without a usable header (see above) is not verified here —
+        // a byte-length mismatch would already have thrown above.
+        if (expectedSha256) {
+          const actualSha256 = await sha256File(partPath);
+          if (actualSha256 !== expectedSha256) {
+            await fs.rm(partPath, { force: true });
+            throw new Error(`Checksum mismatch for ${file}: expected ${expectedSha256}, got ${actualSha256}`);
+          }
+        }
+
+        // Only rename once the bytes are complete (and verified, when a hash
+        // was available), so a partial or corrupt file is never visible under
+        // the real name and never fed to the runtime.
+        await fs.rename(partPath, destination);
+        completed += 1;
+        emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: received, totalBytes });
+      }
+
+      emit({ phase: 'complete', completedFiles: completed, totalFiles: list.length });
+      return { success: true, modelDir };
+    } catch (error) {
+      const cancelled = error?.name === 'AbortError';
+      emit({ phase: cancelled ? 'cancelled' : 'error', error: cancelled ? null : error.message });
+      return { success: false, cancelled, error: cancelled ? 'Download cancelled' : error.message };
+    } finally {
+      embeddingModelDownload = null;
+    }
+  });
+
+  ipcMain.handle('cancel-embedding-model-download', async () => {
+    if (!embeddingModelDownload) {
+      return { success: true, running: false };
+    }
+    embeddingModelDownload.abort();
+    return { success: true, running: true };
+  });
+
+  ipcMain.handle('delete-embedding-model', async (event, { modelId } = {}) => {
+    try {
+      await fs.rm(getEmbeddingModelDir(modelId), { recursive: true, force: true });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('delete-embedding-index', async (event, { cacheId } = {}) => {
+    try {
+      const safeCacheId = toSafeCacheId(cacheId);
+      const cacheDir = await getEmbeddingCacheDir();
+      const files = await fs.readdir(cacheDir).catch((error) => {
+        if (error.code === 'ENOENT') return [];
+        throw error;
+      });
+      const prefix = `${safeCacheId}_emb_`;
+      let removed = 0;
+      for (const file of files) {
+        if (!file.startsWith(prefix)) continue;
+        await unlinkCacheChunkWithRetry(path.join(cacheDir, file));
+        removed += 1;
+      }
+      return { success: true, removed };
+    } catch (error) {
+      return { success: false, error: error.message };
     }
   });
 

@@ -73,3 +73,6 @@ packages/license-server/data/test-sqlite.db
 packages/license-server/data/test-sqlite.db-journal
 image-metahub.code-workspace
 .claude/settings.json
+
+# ONNX Runtime binaries staged from node_modules by vite.config.ts (see stageOnnxRuntime)
+public/ort/

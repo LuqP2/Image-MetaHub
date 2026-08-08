@@ -5,6 +5,16 @@ import {
   DEFAULT_TAG_SUGGESTION_LIMIT,
   sanitizeTagUiLimit,
 } from '../utils/tagSuggestions';
+import {
+  DEFAULT_EMBEDDING_MODEL_KEY,
+  getEmbeddingModel,
+  type EmbeddingModelKey,
+} from '../services/embeddings/embeddingModel';
+import {
+  DEFAULT_SEMANTIC_SEARCH_PRECISION,
+  sanitizeSemanticSearchPrecision,
+  type SemanticSearchPrecision,
+} from '../services/embeddings/semanticSearchPrecision';
 
 export const stripLicenseFromSettings = <T extends Record<string, unknown>>(settings: T | null | undefined): Omit<T, 'license'> => {
   if (!settings) {
@@ -149,12 +159,28 @@ interface SettingsState {
   blurSensitiveImages: boolean;
   enableSafeMode: boolean;
   civitaiLookupEnabled: boolean;
+  /** Master switch for local visual search. Off by default: while off, no new
+   *  code path runs and no file is written — the onboarding card is still
+   *  discoverable above the grid, and turning this on there or in Settings is
+   *  what first opens the index (the model download and index build stay
+   *  separate, explicit user actions after that). */
+  semanticSearchEnabled: boolean;
+  /** Inference backend for the CLIP model. WASM (CPU) by default so it never
+   *  competes with an image generator for VRAM. */
+  semanticSearchDevice: 'wasm' | 'webgpu';
+  /** Which CLIP model backs the index. Trades indexing time for search quality;
+   *  each model keeps its own index, so switching back is free. */
+  semanticSearchModel: EmbeddingModelKey;
+  /** How close results must be to the best text-search match. */
+  semanticSearchPrecision: SemanticSearchPrecision;
   enableAnimations: boolean;
   /** Classic mode: show the legacy tabs (Model View / Smart Library / Collections / Node View)
    *  as deep-links into the unified Explore surface. Off by default. */
   classicMode: boolean;
   /** One-time flag so the Explore navigation-change onboarding toast shows only once, ever. */
   hasSeenExploreOnboarding: boolean;
+  /** One-time flag so the visual-search intro card shows only once, ever. */
+  hasSeenVisualSearchOnboarding: boolean;
   performanceDiagnosticsEnabled: boolean;
   slideshowIntervalSeconds: number;
   slideshowShowFilename: boolean;
@@ -211,9 +237,14 @@ interface SettingsState {
   setBlurSensitiveImages: (value: boolean) => void;
   setEnableSafeMode: (value: boolean) => void;
   setCivitaiLookupEnabled: (value: boolean) => void;
+  setSemanticSearchEnabled: (value: boolean) => void;
+  setSemanticSearchDevice: (value: 'wasm' | 'webgpu') => void;
+  setSemanticSearchModel: (value: EmbeddingModelKey) => void;
+  setSemanticSearchPrecision: (value: SemanticSearchPrecision) => void;
   setEnableAnimations: (value: boolean) => void;
   setClassicMode: (value: boolean) => void;
   setHasSeenExploreOnboarding: (value: boolean) => void;
+  setHasSeenVisualSearchOnboarding: (value: boolean) => void;
   setPerformanceDiagnosticsEnabled: (value: boolean) => void;
   setSlideshowIntervalSeconds: (value: number) => void;
   setSlideshowShowFilename: (value: boolean) => void;
@@ -271,9 +302,14 @@ export const useSettingsStore = create<SettingsState>()(
       blurSensitiveImages: true,
       enableSafeMode: true,
       civitaiLookupEnabled: true,
+      semanticSearchEnabled: false,
+      semanticSearchDevice: 'wasm',
+      semanticSearchModel: DEFAULT_EMBEDDING_MODEL_KEY,
+      semanticSearchPrecision: DEFAULT_SEMANTIC_SEARCH_PRECISION,
       enableAnimations: true,
       classicMode: false,
       hasSeenExploreOnboarding: false,
+      hasSeenVisualSearchOnboarding: false,
       performanceDiagnosticsEnabled: false,
       slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
       slideshowShowFilename: true,
@@ -339,9 +375,14 @@ export const useSettingsStore = create<SettingsState>()(
       setBlurSensitiveImages: (value) => set({ blurSensitiveImages: !!value }),
       setEnableSafeMode: (value) => set({ enableSafeMode: !!value }),
       setCivitaiLookupEnabled: (value) => set({ civitaiLookupEnabled: !!value }),
+      setSemanticSearchEnabled: (value) => set({ semanticSearchEnabled: !!value }),
+      setSemanticSearchDevice: (value) => set({ semanticSearchDevice: value === 'webgpu' ? 'webgpu' : 'wasm' }),
+      setSemanticSearchModel: (value) => set({ semanticSearchModel: getEmbeddingModel(value).key }),
+      setSemanticSearchPrecision: (value) => set({ semanticSearchPrecision: sanitizeSemanticSearchPrecision(value) }),
       setEnableAnimations: (value) => set({ enableAnimations: !!value }),
       setClassicMode: (value) => set({ classicMode: !!value }),
       setHasSeenExploreOnboarding: (value) => set({ hasSeenExploreOnboarding: !!value }),
+      setHasSeenVisualSearchOnboarding: (value) => set({ hasSeenVisualSearchOnboarding: !!value }),
       setPerformanceDiagnosticsEnabled: (value) => set({ performanceDiagnosticsEnabled: !!value }),
       setSlideshowIntervalSeconds: (value) =>
         set({ slideshowIntervalSeconds: sanitizeSlideshowIntervalSeconds(value) }),
@@ -422,9 +463,14 @@ export const useSettingsStore = create<SettingsState>()(
         blurSensitiveImages: true,
         enableSafeMode: true,
         civitaiLookupEnabled: true,
+        semanticSearchEnabled: false,
+        semanticSearchDevice: 'wasm',
+        semanticSearchModel: DEFAULT_EMBEDDING_MODEL_KEY,
+        semanticSearchPrecision: DEFAULT_SEMANTIC_SEARCH_PRECISION,
         enableAnimations: true,
         classicMode: false,
         hasSeenExploreOnboarding: false,
+        hasSeenVisualSearchOnboarding: false,
         performanceDiagnosticsEnabled: false,
         slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
         slideshowShowFilename: true,
@@ -523,6 +569,10 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.civitaiLookupEnabled !== 'boolean') {
           state.civitaiLookupEnabled = true;
+        }
+
+        if (state) {
+          state.semanticSearchPrecision = sanitizeSemanticSearchPrecision(state.semanticSearchPrecision);
         }
 
         if (state && typeof state.enableAnimations !== 'boolean') {

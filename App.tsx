@@ -1,6 +1,7 @@
 import React, { startTransition, useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
+import { useSemanticStore } from './store/useSemanticStore';
 import { useLicenseStore } from './store/useLicenseStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
@@ -19,6 +20,8 @@ import BrowserCompatibilityWarning from './components/BrowserCompatibilityWarnin
 import Header from './components/Header';
 import Toast from './components/Toast';
 import SettingsModal from './components/SettingsModal';
+import { OPEN_VISUAL_SEARCH_SETTINGS_EVENT } from './components/SemanticSearchBar';
+import VisualSearchOnboarding from './components/VisualSearchOnboarding';
 import ChangelogModal from './components/ChangelogModal';
 import UpdateNotificationModal, { type UpdateNotificationStatus } from './components/UpdateNotificationModal';
 import ComparisonModal from './components/ComparisonModal';
@@ -739,6 +742,25 @@ export default function App() {
     handleOpenSettings('shortcuts');
   };
 
+  // The visual-search toggle (deep in the sidebar) asks to open Settings for
+  // model setup via a window event, avoiding threading a callback down to it.
+  useEffect(() => {
+    const openVisualSearchSettings = () => handleOpenSettings('visual-search');
+    window.addEventListener(OPEN_VISUAL_SEARCH_SETTINGS_EVENT, openVisualSearchSettings);
+    return () => window.removeEventListener(OPEN_VISUAL_SEARCH_SETTINGS_EVENT, openVisualSearchSettings);
+  }, []);
+
+  // Visual "find similar": reuses the relevance ranking pipeline rather than the
+  // metadata-based FindSimilarModal, so it works on images with no prompt.
+  const semanticSearchEnabled = useSettingsStore((s) => s.semanticSearchEnabled);
+  const semanticModelInstalled = useSemanticStore((s) => s.modelInstalled);
+  const runVisualSimilar = useSemanticStore((s) => s.runVisualSimilar);
+  const semanticSimilarSourceName = useSemanticStore((s) => s.similarSourceName);
+  const semanticQueryRunning = useSemanticStore((s) => s.queryRunning);
+  const semanticResultCount = useSemanticStore((s) => s.queryResultCount);
+  const clearSemanticQuery = useSemanticStore((s) => s.clearQuery);
+  const canFindVisuallySimilar = semanticSearchEnabled && semanticModelInstalled;
+
   const handleOpenLicenseSettings = () => {
     handleOpenSettings('license', 'license');
   };
@@ -1257,7 +1279,9 @@ export default function App() {
   }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, resetLibraryGridScrollPosition, selectedFolders, sortOrder]);
 
   useEffect(() => {
-    if (sortOrder === 'random' && groupBy !== 'none') {
+    // Grouping has no meaning under an ordering with no stable buckets: random
+    // and relevance both order by a per-image key rather than a facet.
+    if ((sortOrder === 'random' || sortOrder === 'relevance') && groupBy !== 'none') {
       setGroupBy('none');
     }
   }, [groupBy, setGroupBy, sortOrder]);
@@ -3592,6 +3616,10 @@ export default function App() {
                   />
                 )}
 
+                {libraryView === 'library' && (
+                  <VisualSearchOnboarding hasImages={safeFilteredImages.length > 0} />
+                )}
+
                 {libraryView === 'library' && findSimilarGridFilter && (
                   <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
                     <div className="min-w-0">
@@ -3610,6 +3638,35 @@ export default function App() {
                         setCurrentPage(1);
                       }}
                       className="inline-flex items-center gap-1 rounded-md border border-cyan-400/40 px-2 py-1 text-xs font-medium text-cyan-100 transition-colors hover:bg-cyan-500/20"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Clear
+                    </button>
+                  </div>
+                )}
+
+                {libraryView === 'library' && semanticSimilarSourceName && (
+                  <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-100">
+                    <div className="min-w-0">
+                      <span className="font-medium">Visually similar</span>
+                      <span className="text-indigo-200/80"> to </span>
+                      <span className="inline-block max-w-[320px] truncate align-bottom" title={semanticSimilarSourceName}>
+                        {semanticSimilarSourceName}
+                      </span>
+                      <span className="text-indigo-200/80">
+                        {semanticQueryRunning
+                          ? ' · searching…'
+                          : ` · ${semanticResultCount} match${semanticResultCount === 1 ? '' : 'es'}`}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearSemanticQuery();
+                        resetLibraryGridScrollPosition();
+                        setCurrentPage(1);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-indigo-400/40 px-2 py-1 text-xs font-medium text-indigo-100 transition-colors hover:bg-indigo-500/20"
                     >
                       <X className="h-3.5 w-3.5" />
                       Clear
@@ -3650,6 +3707,8 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                          onFindVisuallySimilar={runVisualSimilar}
+                          canFindVisuallySimilar={canFindVisuallySimilar}
                           onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                           onOpenComfyUIWorkspace={(image) => openComfyUIWorkflowInWorkspace(image, displayImages)}
                           groupBy={effectiveImageGroupBy}
@@ -3668,6 +3727,8 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                          onFindVisuallySimilar={runVisualSimilar}
+                          canFindVisuallySimilar={canFindVisuallySimilar}
                           onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                           onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                           groupBy={effectiveImageGroupBy}
@@ -3702,6 +3763,8 @@ export default function App() {
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                        onFindVisuallySimilar={runVisualSimilar}
+                        canFindVisuallySimilar={canFindVisuallySimilar}
                         onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         groupBy={effectiveImageGroupBy}
@@ -3722,6 +3785,8 @@ export default function App() {
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
+                        onFindVisuallySimilar={runVisualSimilar}
+                        canFindVisuallySimilar={canFindVisuallySimilar}
                         onOpenImageEditor={(image) => handleOpenImageEditor(image, displayImages)}
                         onOpenComfyUIWorkspace={(image) => handleOpenComfyUIWorkspace(image, displayImages)}
                         groupBy={effectiveImageGroupBy}
@@ -3837,7 +3902,7 @@ export default function App() {
                   sortOrder={sortOrder}
                   onSortOrderChange={imageStoreSetSortOrder}
                   onReshuffle={reshuffle}
-                  groupBy={sortOrder === 'random' ? 'none' : groupBy}
+                  groupBy={sortOrder === 'random' || sortOrder === 'relevance' ? 'none' : groupBy}
                   onGroupByChange={setGroupBy}
                   hidePageSize={isSectionedByEntity}
                 />

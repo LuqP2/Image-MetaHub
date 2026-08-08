@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode, type ImageScope, type ExploreDimension } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode, type ImageScope, type ExploreDimension, type SortOrder, type SemanticSearchResult } from '../types';
 import { resolveScopeImageIds, filterImagesByScope, getScopeToastMessage } from '../utils/imageScope';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
@@ -62,6 +62,7 @@ import {
     recordPerformanceDuration,
 } from '../utils/performanceDiagnostics';
 import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
+import { semanticSearchScopeRevision } from './semanticSearchState';
 
 const RECENT_TAGS_STORAGE_KEY = 'image-metahub-recent-tags';
 const MAX_RECENT_TAGS = MAX_RECENT_TAG_HISTORY;
@@ -845,6 +846,12 @@ const toSearchWorkerImage = (image: IndexedImage): SearchWorkerImage => {
     };
 };
 
+export interface SemanticSearchScopeSnapshot {
+  images: IndexedImage[];
+  imageIds: ReadonlySet<string>;
+  revision: string;
+}
+
 interface ImageState {
   // Core Data
   images: IndexedImage[];
@@ -916,9 +923,18 @@ interface ImageState {
   excludedGenerators: string[];
   selectedGpuDevices: string[];
   excludedGpuDevices: string[];
-  sortOrder: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random';
+  sortOrder: SortOrder;
   randomSeed: number;
   advancedFilters: AdvancedFilters;
+
+  // Visual (semantic) search. Set only while a visual query is active; when
+  // present it replaces the text-search predicate and drives the 'relevance'
+  // sort. Scores live here in a Map keyed by id, never on the image objects, so
+  // the search-text WeakMap caches and the "never persisted" cache contract are
+  // both untouched.
+  semanticResult: SemanticSearchResult | null;
+  /** Sort order to restore when a visual search is cleared. */
+  preSemanticSortOrder: SortOrder | null;
 
   // Annotations State
   annotations: Map<string, ImageAnnotations>;
@@ -1006,8 +1022,13 @@ interface ImageState {
   setSearchQuery: (query: string) => void;
   setFilterOptions: (options: Pick<FilterOptions, 'models' | 'loras' | 'samplers' | 'schedulers' | 'generators' | 'gpuDevices' | 'dimensions'>) => void;
   setSelectedFilters: (filters: SelectedFiltersUpdate) => void;
-  setSortOrder: (order: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random') => void;
+  setSortOrder: (order: SortOrder) => void;
   reshuffle: () => void;
+  /**
+   * Applies visual-search ranking: filters to the scored ids and sorts by
+   * relevance. Passing null clears it and restores the previous sort order.
+   */
+  applySemanticResult: (result: SemanticSearchResult | null) => void;
   setAdvancedFilters: (filters: AdvancedFilters) => void;
   filterAndSortImages: () => void;
   recomputeDerivedState: () => void;
@@ -1021,6 +1042,13 @@ interface ImageState {
   validateActiveImageScope: () => void;
   /** filteredImages intersected with the active scope (or filteredImages when no scope). */
   getScopedFilteredImages: () => IndexedImage[];
+  /**
+   * Cards eligible for a new visual query before any prior semantic/text result
+   * is applied. Includes every grid scope/filter, including node and active scope.
+   */
+  getSemanticSearchScopeSnapshot: () => SemanticSearchScopeSnapshot;
+  /** Folder/directory scope used to calibrate text search before facet filters. */
+  getSemanticTextQueryScopeSnapshot: () => SemanticSearchScopeSnapshot;
   loadCollections: () => Promise<void>;
   loadAutomationRules: () => Promise<void>;
   createCollection: (collection: Omit<SmartCollection, 'id' | 'imageCount' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<SmartCollection>;
@@ -1443,6 +1471,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (payload.criteriaKey !== buildSearchCriteriaKey(currentState)) {
                 return;
             }
+            // A visual search became active while this text query was in flight;
+            // its ranking owns filteredImages now, so drop the stale result.
+            if (currentState.semanticResult) {
+                return;
+            }
 
             // Optimization: Replaced `new Map(currentState.images.map(...))` with a `for` loop
             // to eliminate the O(N) allocation of an intermediate tuple array `[[id, image], ...]`.
@@ -1478,6 +1511,13 @@ export const useImageStore = create<ImageState>((set, get) => {
     };
 
     const runAsyncSearchRecompute = (state: ImageState) => {
+        // The search worker only understands the text/facet predicates; a visual
+        // search is ranked synchronously by filterAndSort. Routing through the
+        // worker here would clobber the relevance order with a text-only result.
+        if (state.semanticResult) {
+            set(prev => ({ ...prev, ...filterAndSort(state) }));
+            return;
+        }
         const worker = ensureSearchWorker();
         const datasetVersion = getSearchDatasetVersion(state);
         const criteria = buildSearchWorkerCriteria(state);
@@ -2167,7 +2207,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             excludedAutoTags,
         } = state;
 
-        const searchTerms = searchQuery
+        // A visual search replaces the text predicate rather than layering on
+        // top of it: the query means "images that look like this", so matching
+        // the same words in the prompt is a different question.
+        const semanticScores = state.semanticResult?.scoreById ?? null;
+        const searchTerms = searchQuery && !semanticScores
             ? searchQuery.toLowerCase().split(/\s+/).filter(Boolean)
             : [];
         const ratingsSet = selectedRatings?.length ? new Set(selectedRatings) : null;
@@ -2234,6 +2278,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                     if (!enrichedText || !searchTerms.every(term => enrichedText.includes(term))) return false;
                 }
             }
+
+            // --- Visual search ---
+            // An image with no score was not ranked: either it has no vector
+            // yet, or it fell below the relevance floor.
+            if (semanticScores && !semanticScores.has(img.id)) return false;
 
             // --- Facet filters ---
             if (selectedModels.length > 0) {
@@ -2378,11 +2427,24 @@ export const useImageStore = create<ImageState>((set, get) => {
     };
 
     // --- Sort comparator factory ---
-    const getActiveComparator = (sortOrder: string, randomSeed: number) => {
+    const getActiveComparator = (
+        sortOrder: string,
+        randomSeed: number,
+        semanticScores?: Map<string, number> | null
+    ) => {
         const compareById = (a: IndexedImage, b: IndexedImage) => accentCollator.compare(a.id, b.id);
         const compareByNameAsc = (a: IndexedImage, b: IndexedImage) => {
             const c = accentCollator.compare(a.name || '', b.name || '');
             return c !== 0 ? c : compareById(a, b);
+        };
+
+        // Relevance reads a score map instead of a field, the same shape as the
+        // random order's derived key. It is a total order over the images the
+        // filter admits, because the visual-search predicate already rejects
+        // anything the ranker did not score.
+        if (sortOrder === 'relevance' && semanticScores) return (a: IndexedImage, b: IndexedImage) => {
+            const d = (semanticScores.get(b.id) ?? -1) - (semanticScores.get(a.id) ?? -1);
+            return d !== 0 ? d : compareById(a, b);
         };
 
         if (sortOrder === 'asc') return compareByNameAsc;
@@ -2587,7 +2649,11 @@ export const useImageStore = create<ImageState>((set, get) => {
     ): Partial<ImageState> => {
         let images = currentState.images;
         let filteredImages = currentState.filteredImages;
-        const comparator = getActiveComparator(currentState.sortOrder, currentState.randomSeed);
+        const comparator = getActiveComparator(
+            currentState.sortOrder,
+            currentState.randomSeed,
+            currentState.semanticResult?.scoreById ?? null
+        );
         const accepts = compileImageFilter(currentState);
 
         if (delta.removed && delta.removed.size > 0) {
@@ -2796,7 +2862,10 @@ export const useImageStore = create<ImageState>((set, get) => {
             enrichedChars: 0,
             matchMs: 0,
         };
-        if (searchQuery) {
+        // Mirrors compileImageFilter: a visual query replaces the text predicate
+        // instead of being ANDed with it.
+        const semanticScores = state.semanticResult?.scoreById ?? null;
+        if (searchQuery && !semanticScores) {
             const searchTerms = searchQuery
                 .toLowerCase()
                 .split(/\s+/)
@@ -2847,6 +2916,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                     return matched;
                 });
             }
+        }
+
+        if (semanticScores) {
+            results = results.filter(image => semanticScores.has(image.id));
         }
         closePhase('search');
 
@@ -3142,7 +3215,13 @@ export const useImageStore = create<ImageState>((set, get) => {
             return accentCollator.compare(a.id, b.id);
         };
 
+        const compareByRelevance = (a: IndexedImage, b: IndexedImage) => {
+            const d = (semanticScores!.get(b.id) ?? -1) - (semanticScores!.get(a.id) ?? -1);
+            return d !== 0 ? d : compareById(a, b);
+        };
+
         const sorted = [...results].sort((a, b) => {
+            if (sortOrder === 'relevance' && semanticScores) return compareByRelevance(a, b);
             if (sortOrder === 'asc') return compareByNameAsc(a, b);
             if (sortOrder === 'desc') return compareByNameDesc(a, b);
             if (sortOrder === 'date-asc') return compareByDateAsc(a, b);
@@ -3175,6 +3254,123 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectionDirectoryCount,
             ...recalculateAvailableFilters(selectionFiltered),
         };
+    };
+
+    let semanticScopeCache: {
+        dependencies: readonly unknown[];
+        snapshot: SemanticSearchScopeSnapshot;
+    } | null = null;
+    let semanticTextQueryScopeCache: {
+        dependencies: readonly unknown[];
+        snapshot: SemanticSearchScopeSnapshot;
+    } | null = null;
+
+    const semanticTextQueryScopeDependencies = (state: ImageState): readonly unknown[] => {
+        const settings = useSettingsStore.getState();
+        return [
+            state.images,
+            state.directories,
+            state.selectedFolders,
+            state.excludedFolders,
+            state.includeSubfolders,
+            settings.enableSafeMode,
+            settings.blurSensitiveImages,
+            settings.sensitiveTags,
+        ];
+    };
+
+    const getSemanticTextQueryScopeSnapshot = (): SemanticSearchScopeSnapshot => {
+        const state = get();
+        const dependencies = semanticTextQueryScopeDependencies(state);
+        if (
+            semanticTextQueryScopeCache &&
+            semanticTextQueryScopeCache.dependencies.length === dependencies.length &&
+            semanticTextQueryScopeCache.dependencies.every(
+                (value, index) => Object.is(value, dependencies[index])
+            )
+        ) {
+            return semanticTextQueryScopeCache.snapshot;
+        }
+
+        const images = getLibraryScopedImages(state);
+        const snapshot: SemanticSearchScopeSnapshot = {
+            images,
+            imageIds: new Set(images.map((image) => image.id)),
+            revision: semanticSearchScopeRevision(images),
+        };
+        semanticTextQueryScopeCache = { dependencies, snapshot };
+        return snapshot;
+    };
+
+    const semanticScopeDependencies = (state: ImageState): readonly unknown[] => {
+        const settings = useSettingsStore.getState();
+        return [
+            state.images,
+            state.directories,
+            state.selectedFolders,
+            state.excludedFolders,
+            state.includeSubfolders,
+            state.favoriteFilterMode,
+            state.selectedRatings,
+            state.selectedTags,
+            state.excludedTags,
+            state.selectedTagsMatchMode,
+            state.selectedAutoTags,
+            state.excludedAutoTags,
+            state.selectedModels,
+            state.excludedModels,
+            state.selectedLoras,
+            state.excludedLoras,
+            state.selectedSamplers,
+            state.excludedSamplers,
+            state.selectedSchedulers,
+            state.excludedSchedulers,
+            state.selectedGenerators,
+            state.excludedGenerators,
+            state.selectedGpuDevices,
+            state.excludedGpuDevices,
+            state.advancedFilters,
+            state.selectedNodes,
+            state.activeImageScope,
+            state.clusters,
+            state.collections,
+            settings.enableSafeMode,
+            settings.blurSensitiveImages,
+            settings.sensitiveTags,
+        ];
+    };
+
+    const getSemanticSearchScopeSnapshot = (): SemanticSearchScopeSnapshot => {
+        const state = get();
+        const dependencies = semanticScopeDependencies(state);
+        if (
+            semanticScopeCache &&
+            semanticScopeCache.dependencies.length === dependencies.length &&
+            semanticScopeCache.dependencies.every((value, index) => Object.is(value, dependencies[index]))
+        ) {
+            return semanticScopeCache.snapshot;
+        }
+
+        // A visual query replaces ordinary text search and must never narrow
+        // itself to the previous semantic result. Every other grid filter stays.
+        const baseState: ImageState = {
+            ...state,
+            searchQuery: '',
+            semanticResult: null,
+        };
+        const matchesBaseFilters = compileImageFilter(baseState);
+        const baseFilteredImages = baseState.images.filter(matchesBaseFilters);
+        const images = resolveDisplayedImages({
+            ...baseState,
+            filteredImages: baseFilteredImages,
+        });
+        const snapshot: SemanticSearchScopeSnapshot = {
+            images,
+            imageIds: new Set(images.map((image) => image.id)),
+            revision: semanticSearchScopeRevision(images),
+        };
+        semanticScopeCache = { dependencies, snapshot };
+        return snapshot;
     };
 
 
@@ -3231,6 +3427,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         sortOrder: 'date-desc',
         randomSeed: Date.now(),
         advancedFilters: {},
+        semanticResult: null,
+        preSemanticSortOrder: null,
         scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') !== 'false', // Default to true
         viewingStackPrompt: null,
         isFullscreenMode: false,
@@ -4095,7 +4293,39 @@ export const useImageStore = create<ImageState>((set, get) => {
         })),
 
         setSortOrder: (order) => set(state => ({ ...filterAndSort({ ...state, sortOrder: order }), sortOrder: order })),
-        
+
+        applySemanticResult: (result) => set(state => {
+            if (result) {
+                // Remember the sort to return to, but only the first time a
+                // visual search becomes active, so re-running a query does not
+                // overwrite it with 'relevance'.
+                const preSemanticSortOrder = state.semanticResult
+                    ? state.preSemanticSortOrder
+                    : state.sortOrder;
+                const changed = {
+                    semanticResult: result,
+                    preSemanticSortOrder,
+                    sortOrder: 'relevance' as SortOrder,
+                };
+                // Only re-add the fields that changed after filterAndSort —
+                // spreading the whole prior state back would clobber the freshly
+                // filtered filteredImages/facets with the stale ones.
+                return { ...filterAndSort({ ...state, ...changed }), ...changed };
+            }
+
+            if (!state.semanticResult) {
+                return state;
+            }
+            // Relevance only makes sense while a result is present; fall back to
+            // whatever the user had before, or a sane default.
+            const changed = {
+                semanticResult: null,
+                preSemanticSortOrder: null,
+                sortOrder: (state.preSemanticSortOrder ?? 'date-desc') as SortOrder,
+            };
+            return { ...filterAndSort({ ...state, ...changed }), ...changed };
+        }),
+
         reshuffle: () => set(state => {
             const newSeed = Date.now();
             return {
@@ -4131,6 +4361,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             return state;
         }),
         getScopedFilteredImages: () => resolveDisplayedImages(get()),
+        getSemanticSearchScopeSnapshot,
+        getSemanticTextQueryScopeSnapshot,
         loadCollections: async () => {
             const persistedCollections = await getAllSmartCollections();
             set((state) => {

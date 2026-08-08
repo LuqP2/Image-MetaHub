@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronLeft, Plus } from 'lucide-react';
-import SearchBar from './SearchBar';
+import SemanticSearchBar from './SemanticSearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
@@ -294,9 +294,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Search Bar */}
       <div className="border-b border-gray-700 px-4 pt-2 pb-3">
-        <SearchBar
-          value={searchQuery}
-          onChange={onSearchChange}
+        <SemanticSearchBar
+          searchQuery={searchQuery}
+          onSearchChange={onSearchChange}
         />
       </div>
 
