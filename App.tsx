@@ -7,6 +7,7 @@ import { useImageSelection } from './hooks/useImageSelection';
 import { useClusterCacheRestore } from './hooks/useClusterCacheRestore';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useFeatureAccess } from './hooks/useFeatureAccess';
+import { useTrialExpiryWatcher } from './hooks/useTrialExpiryWatcher';
 import { Directory } from './types';
 import { Image as ImageIcon, X, Search } from 'lucide-react';
 
@@ -818,6 +819,9 @@ export default function App() {
 
     initializeLicense();
   }, []);
+
+  // Flip the status the moment the trial lapses, without waiting for a restart.
+  useTrialExpiryWatcher();
 
   // --- Effects ---
   useEffect(() => {
