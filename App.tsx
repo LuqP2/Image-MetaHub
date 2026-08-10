@@ -3259,9 +3259,9 @@ export default function App() {
       comparisonCount: imageState.comparisonImages.length,
       comparisonImages: imageState.comparisonImages.map(toImageModalImageDTO),
       collections: imageState.collections,
-      selectedImageIds: Array.from(imageState.selectedImages),
+      selectedImageIds: Array.from(selectedImages),
     };
-  }, [progress, resolveModalNavigationImages, viewerLicenseSyncToken, viewerSettingsSyncToken]);
+  }, [progress, resolveModalNavigationImages, selectedImages, viewerLicenseSyncToken, viewerSettingsSyncToken]);
 
   useEffect(() => {
     const api = window.electronAPI;
