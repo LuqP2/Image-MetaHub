@@ -2238,6 +2238,7 @@ async function createDetachedImageViewer(sessionId, snapshot) {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
+  viewerWindow.setMenu(null);
 
   detachedImageViewerWindows.set(sessionId, viewerWindow);
   detachedImageViewerSnapshots.set(sessionId, snapshot);
