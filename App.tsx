@@ -3504,6 +3504,19 @@ export default function App() {
             }
             break;
           }
+          case 'open-batch-export': {
+            // The viewer cannot describe the export scope from its three-image
+            // slice, so the export runs here against the real library.
+            const image = requireImage(viewerCommand.imageId);
+            const selection = state.selectedImages;
+            openBatchExportModal({
+              imageIds: selection.has(image.id) ? Array.from(selection) : [image.id],
+              preferredSource: 'selected',
+            });
+            await api.imageViewerWindowAction({ sessionId, action: 'minimize' });
+            await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
+            break;
+          }
           case 'image-saved': {
             // The detached window wrote the file; the library store and the folder
             // cache only exist here, so the bookkeeping runs against the real data.
@@ -3590,7 +3603,7 @@ export default function App() {
         respond({ success: true });
       })().catch((error) => respond({ success: false, error: error instanceof Error ? error.message : 'Viewer command failed.' }));
     });
-  }, [directoryPathById, generateWithA1111, generateWithComfyUI, handleImageDeleted, handleImageModalNavigate, handleImageRenamed, handleOpenComfyUIWorkflowFromImageModal, handleOpenImageEditorFromImageModal, handleSlideshowStartAcknowledged, openFindSimilar, openImageModals, reparseViewerImages, resolveModalNavigationImages]);
+  }, [directoryPathById, generateWithA1111, generateWithComfyUI, handleImageDeleted, openBatchExportModal, handleImageModalNavigate, handleImageRenamed, handleOpenComfyUIWorkflowFromImageModal, handleOpenImageEditorFromImageModal, handleSlideshowStartAcknowledged, openFindSimilar, openImageModals, reparseViewerImages, resolveModalNavigationImages]);
 
   const footerWindowItems = useMemo(() => {
     return openImageModals

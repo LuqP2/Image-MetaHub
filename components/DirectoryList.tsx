@@ -57,23 +57,45 @@ const getBasename = (path: string) => path.replace(/\\/g, '/').split('/').filter
 
 /**
  * A recorded native drag may only be applied to the drop it actually belongs to.
- * The drop must carry OS files, and one of them must be the file the drag started
- * with; anything else (an unrelated file from Explorer/Finder, a text drop) is
- * rejected so a stale source can never move the wrong image.
+ * The drop must carry OS files, and one of them must be the exact file the drag
+ * started with. Identity is the absolute path whenever the desktop bridge can
+ * resolve it — matching on the filename alone would let an unrelated `image.png`
+ * dragged in from Explorer/Finder move the recorded library image instead.
  */
 export const dropMatchesNativeDragSource = (
   event: Pick<React.DragEvent, 'dataTransfer'>,
   source: NativeFileDragSource,
+  resolveDroppedFilePath: (file: File) => string = (file) => window.electronAPI?.getPathForFile?.(file) ?? '',
 ): boolean => {
   const dataTransfer = event.dataTransfer;
   if (!dataTransfer) return false;
   if (!Array.from(dataTransfer.types || []).includes('Files')) return false;
 
+  const droppedFiles = Array.from(dataTransfer.files || []);
+  if (droppedFiles.length === 0) return false;
+
+  const expectedPath = normalizePath(`${source.directoryPath}/${source.relativePath}`).toLowerCase();
+  const droppedPaths = droppedFiles
+    .map((file) => {
+      try {
+        return resolveDroppedFilePath(file);
+      } catch {
+        return '';
+      }
+    })
+    .filter((path): path is string => typeof path === 'string' && path.length > 0)
+    .map((path) => normalizePath(path).toLowerCase());
+
+  if (droppedPaths.length > 0) {
+    return droppedPaths.includes(expectedPath);
+  }
+
+  // No absolute path available (browser build, or the bridge could not resolve
+  // it). Fall back to the filename, which is weaker but still rejects drops that
+  // have nothing to do with the recorded drag.
   const expectedName = getBasename(source.relativePath).toLowerCase();
   if (!expectedName) return false;
-
-  const droppedNames = Array.from(dataTransfer.files || []).map((file) => file.name.toLowerCase());
-  return droppedNames.includes(expectedName);
+  return droppedFiles.some((file) => file.name.toLowerCase() === expectedName);
 };
 
 const getRelativePath = (rootPath: string, targetPath: string) => {

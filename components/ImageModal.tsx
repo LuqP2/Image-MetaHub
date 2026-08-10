@@ -174,6 +174,7 @@ interface ImageModalProps {
   onRequestTagSuggestions?: (query: string) => Promise<TagInfo[]>;
   onRequestGenerate?: (request: ImageViewerGenerateRequest) => Promise<{ success: boolean; error?: string }>;
   onImageSaved?: (request: ImageViewerSaveRequest) => Promise<ImageViewerSaveResult>;
+  onRequestBatchExport?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
   isAlwaysOnTop?: boolean;
   onToggleAlwaysOnTop?: () => void;
   currentIndex?: number;
@@ -892,6 +893,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onRequestTagSuggestions,
   onRequestGenerate,
   onImageSaved,
+  onRequestBatchExport,
   isAlwaysOnTop = false,
   onToggleAlwaysOnTop,
   currentIndex = 0,
@@ -2103,13 +2105,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   const openBatchExport = useCallback(() => {
+    // A detached window only mirrors the current image and its two neighbours, so
+    // its store cannot describe the real export scope, selection or directories.
+    // Hand the export to the main renderer, which owns the whole library.
+    if (onRequestBatchExport) {
+      void onRequestBatchExport(liveImage.id);
+      return;
+    }
+
     if (exportSelectionIds.size > 1 && !canUseBatchExport) {
       showProModal('batch_export');
       return;
     }
 
     setIsBatchExportModalOpen(true);
-  }, [canUseBatchExport, exportSelectionIds.size, showProModal]);
+  }, [canUseBatchExport, exportSelectionIds.size, liveImage.id, onRequestBatchExport, showProModal]);
 
   const exportImage = () => {
     hideContextMenu();

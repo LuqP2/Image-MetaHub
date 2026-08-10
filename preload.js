@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const isDevelopment = process.env.NODE_ENV === 'development' || process.defaultApp === true;
 const pendingDeepLinkFiles = [];
@@ -169,6 +169,16 @@ const electronAPI = {
     return () => {
       ipcRenderer.removeListener('fullscreen-state-check', handler);
     };
+  },
+
+  // Resolves the absolute path of a dropped OS file. `File.path` was removed in
+  // Electron 32+, so this is the only way to identify a drop by its real origin.
+  getPathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file) || '';
+    } catch {
+      return '';
+    }
   },
 
   onSettingsUpdated: (callback) => {

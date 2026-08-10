@@ -111,6 +111,7 @@ export type ImageViewerCommand =
   | { type: 'set-search'; query: string }
   | { type: 'generate'; request: ImageViewerGenerateRequest }
   | { type: 'image-saved'; request: ImageViewerSaveRequest }
+  | { type: 'open-batch-export'; imageId: string }
   | { type: 'slideshow-started' };
 
 /** Serialize an inpainting mask for transport to the main renderer. */

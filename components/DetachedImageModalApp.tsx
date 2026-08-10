@@ -165,6 +165,7 @@ const DetachedImageModalApp: React.FC = () => {
       }}
       onRequestReparse={(imageId) => sendCommand({ type: 'reparse-image', imageId })}
       onRequestGenerate={(request) => sendCommand({ type: 'generate', request })}
+      onRequestBatchExport={(imageId) => sendCommand({ type: 'open-batch-export', imageId })}
       onImageSaved={async (request) => {
         const result = await sendCommand({ type: 'image-saved', request });
         return {
