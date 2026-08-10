@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ImageModal from './ImageModal';
+import ProOnlyModal from './ProOnlyModal';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useImageStore } from '../store/useImageStore';
 import type { IndexedImage } from '../types';
 import type { ImageViewerCommand, ImageViewerSnapshot } from '../services/imageViewerContracts';
@@ -16,6 +18,21 @@ const DetachedImageModalApp: React.FC = () => {
   const [snapshot, setSnapshot] = useState<ImageViewerSnapshot | null>(null);
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
   const theme = useSettingsStore((state) => state.theme);
+
+  // ImageModal gates Pro features by writing to the renderer-local pro-modal
+  // store. The main window's ProOnlyModal cannot observe this renderer, so
+  // without mounting it here every Pro-gated action would silently do nothing.
+  const {
+    proModalOpen,
+    proModalFeature,
+    closeProModal,
+    isTrialActive,
+    trialDaysRemaining,
+    canStartTrial,
+    isExpired,
+    isPro,
+    startTrial,
+  } = useFeatureAccess();
 
   useEffect(() => {
     const applyTheme = (systemShouldUseDark: boolean) => {
@@ -60,6 +77,8 @@ const DetachedImageModalApp: React.FC = () => {
         recentTags: next.recentTags,
         comparisonImages: next.comparisonImages.map(asIndexedImage),
         collections: next.collections,
+        // Keeps bulk actions (apply metadata to selected) available in the viewer.
+        selectedImages: new Set(next.selectedImageIds ?? []),
         directories: [{
           id: current.directoryId || next.directoryPath,
           name: next.directoryPath.split(/[\\/]/).filter(Boolean).pop() || next.directoryPath,
@@ -144,6 +163,7 @@ const DetachedImageModalApp: React.FC = () => {
   };
 
   return (
+    <>
     <ImageModal
       hostMode="native-window"
       isAlwaysOnTop={isAlwaysOnTop}
@@ -194,6 +214,18 @@ const DetachedImageModalApp: React.FC = () => {
       onOpenComfyUIWorkflow={(target) => void sendCommand({ type: 'open-comfyui', imageId: target.id })}
       onOpenImageEditor={(target) => void sendCommand({ type: 'open-editor', imageId: target.id })}
     />
+    <ProOnlyModal
+      isOpen={proModalOpen}
+      onClose={closeProModal}
+      feature={proModalFeature}
+      isTrialActive={isTrialActive}
+      daysRemaining={trialDaysRemaining}
+      canStartTrial={canStartTrial}
+      onStartTrial={startTrial}
+      isExpired={isExpired}
+      isPro={isPro}
+    />
+    </>
   );
 };
 

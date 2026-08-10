@@ -34,6 +34,8 @@ export interface ImageViewerSnapshot {
   comparisonCount: number;
   comparisonImages: ImageModalImageDTO[];
   collections: SmartCollection[];
+  /** Ids only: the viewer needs the selection size and membership, not the records. */
+  selectedImageIds: string[];
 }
 
 /**

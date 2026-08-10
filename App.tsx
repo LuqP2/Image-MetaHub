@@ -3259,6 +3259,7 @@ export default function App() {
       comparisonCount: imageState.comparisonImages.length,
       comparisonImages: imageState.comparisonImages.map(toImageModalImageDTO),
       collections: imageState.collections,
+      selectedImageIds: Array.from(imageState.selectedImages),
     };
   }, [progress, resolveModalNavigationImages, viewerLicenseSyncToken, viewerSettingsSyncToken]);
 
@@ -3541,10 +3542,11 @@ export default function App() {
               return;
             }
 
-            const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-            const normalizedSavedPath = normalize(request.savedPath);
+            // Platform-aware matching: on a case-sensitive filesystem /library/A and
+            // /library/a are different roots, and picking the wrong one makes
+            // indexImageFileAtPath reject the path further down.
             const targetDirectory = allDirectories.find((directory) =>
-              normalizedSavedPath.startsWith(`${normalize(directory.path)}/`)
+              isFilesystemPathWithinDirectory(request.savedPath, directory.path)
             );
             if (!targetDirectory) {
               // Saved outside every indexed folder: nothing to index, and that is fine.
@@ -3562,7 +3564,12 @@ export default function App() {
               addImages: state.addImages,
               mergeImages: state.mergeImages,
             });
-            respond({ success: true, savedImageName: savedImage?.name });
+            if (!savedImage) {
+              // Indexing rejected the path, so the image is not in the library:
+              // reporting success here would hide that from the viewer.
+              throw new Error('The image was saved, but it could not be added to the library.');
+            }
+            respond({ success: true, savedImageName: savedImage.name });
             return;
           }
           case 'get-tag-suggestions': {
