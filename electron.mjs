@@ -382,7 +382,6 @@ let mainWindow;
 const detachedImageViewerWindows = new Map();
 const detachedImageViewerSnapshots = new Map();
 const detachedImageViewerRequestResolvers = new Map();
-let detachedImageViewerOpenSequence = 0;
 let comfyUIView = null;
 let comfyUIViewConfiguredUrl = '';
 let comfyUIViewState = {
@@ -2283,7 +2282,12 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   }
 
   const settings = await readSettings();
-  const initialState = resolveDetachedImageViewerState(settings, detachedImageViewerOpenSequence++);
+  // Cascade against the viewers actually on screen, not against a lifetime counter:
+  // the offset is clamped to the work area, so a counter that never decrements makes
+  // every viewer past the first few land on the same clamped spot.
+  const openViewerCount = Array.from(detachedImageViewerWindows.values())
+    .filter((openWindow) => !openWindow.isDestroyed()).length;
+  const initialState = resolveDetachedImageViewerState(settings, openViewerCount);
   const viewerWindow = new BrowserWindow({
     ...initialState.bounds,
     minWidth: MIN_WINDOW_WIDTH,
