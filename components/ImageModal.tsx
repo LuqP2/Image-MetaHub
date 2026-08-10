@@ -28,6 +28,8 @@ import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import cacheManager from '../services/cacheManager';
 import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndexer';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
+import { toImageViewerMaskFileDTO, type ImageViewerGenerateRequest } from '../services/imageViewerContracts';
+import { TEMPORARY_STATUS_TIMEOUT_MS } from '../utils/imageMetadata';
 import {
   DEFAULT_IMAGE_EDIT_RECIPE,
   clampImageEditCropRect,
@@ -245,6 +247,7 @@ interface ImageModalProps {
   onRequestRename?: (imageId: string, newName: string) => Promise<{ success: boolean; error?: string; newImageId?: string; newRelativePath?: string }>;
   onRequestReparse?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
   onRequestTagSuggestions?: (query: string) => Promise<TagInfo[]>;
+  onRequestGenerate?: (request: ImageViewerGenerateRequest) => Promise<{ success: boolean; error?: string }>;
   isAlwaysOnTop?: boolean;
   onToggleAlwaysOnTop?: () => void;
   currentIndex?: number;
@@ -961,6 +964,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onRequestRename,
   onRequestReparse,
   onRequestTagSuggestions,
+  onRequestGenerate,
   isAlwaysOnTop = false,
   onToggleAlwaysOnTop,
   currentIndex = 0,
@@ -1142,10 +1146,62 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
-  const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
+  const { generateWithA1111, isGenerating: isGeneratingLocalA1111, generateStatus: localGenerateStatus } = useGenerateWithA1111();
 
   const { copyToComfyUI, isCopying: isCopyingComfyUI, copyStatus: copyStatusComfyUI } = useCopyToComfyUI();
-  const { generateWithComfyUI, isGenerating: isGeneratingComfyUI, generateStatus: generateStatusComfyUI } = useGenerateWithComfyUI();
+  const {
+    generateWithComfyUI,
+    isGenerating: isGeneratingLocalComfyUI,
+    generateStatus: localGenerateStatusComfyUI,
+  } = useGenerateWithComfyUI();
+
+  // The generation queue runner only lives in the main renderer. When this modal is
+  // hosted in a detached window, `onRequestGenerate` ships the request there instead
+  // of enqueueing into a local store that nothing would ever drain.
+  const [forwardedGenerate, setForwardedGenerate] = useState<{
+    provider: 'a1111' | 'comfyui';
+    isGenerating: boolean;
+    status: { success: boolean; message: string } | null;
+  } | null>(null);
+
+  const runGenerateRequest = useCallback(async (
+    provider: 'a1111' | 'comfyui',
+    // Built lazily so the inline host never pays for serializing the request.
+    buildRequest: () => Promise<ImageViewerGenerateRequest> | ImageViewerGenerateRequest,
+    runLocally: () => Promise<void>,
+  ) => {
+    if (!onRequestGenerate) {
+      await runLocally();
+      return;
+    }
+
+    setForwardedGenerate({ provider, isGenerating: true, status: null });
+    let status: { success: boolean; message: string };
+    try {
+      const result = await onRequestGenerate(await buildRequest());
+      status = result.success
+        ? { success: true, message: 'Generation queued.' }
+        : { success: false, message: result.error || 'Failed to queue generation.' };
+    } catch (error) {
+      status = {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to queue generation.',
+      };
+    }
+    setForwardedGenerate({ provider, isGenerating: false, status });
+    setTimeout(() => setForwardedGenerate(null), TEMPORARY_STATUS_TIMEOUT_MS);
+  }, [onRequestGenerate]);
+
+  const isGenerating = isGeneratingLocalA1111
+    || Boolean(forwardedGenerate?.provider === 'a1111' && forwardedGenerate.isGenerating);
+  const generateStatus = forwardedGenerate?.provider === 'a1111'
+    ? forwardedGenerate.status
+    : localGenerateStatus;
+  const isGeneratingComfyUI = isGeneratingLocalComfyUI
+    || Boolean(forwardedGenerate?.provider === 'comfyui' && forwardedGenerate.isGenerating);
+  const generateStatusComfyUI = forwardedGenerate?.provider === 'comfyui'
+    ? forwardedGenerate.status
+    : localGenerateStatusComfyUI;
 
   const { addImage, comparisonCount } = useImageComparison();
   const { isReparsing, reparseImages } = useReparseMetadata();
@@ -2439,13 +2495,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    await generateWithComfyUI(liveImage, {
-      workflowMode: 'upscale',
-      directoryPath,
-      customMetadata: {
-        prompt: liveImage.prompt || 'ComfyUI upscale',
-      },
-    });
+    const customMetadata = { prompt: liveImage.prompt || 'ComfyUI upscale' };
+    await runGenerateRequest(
+      'comfyui',
+      () => ({
+        provider: 'comfyui',
+        imageId: liveImage.id,
+        workflowMode: 'upscale',
+        customMetadata,
+      }),
+      () => generateWithComfyUI(liveImage, {
+        workflowMode: 'upscale',
+        directoryPath,
+        customMetadata,
+      }),
+    );
   }, [
     canUseComfyUI,
     comfyUIEnabled,
@@ -2453,6 +2517,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     generateWithComfyUI,
     directoryPath,
     liveImage,
+    runGenerateRequest,
     setError,
     showProModal,
   ]);
@@ -4658,7 +4723,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       model: params.model || effectiveMetadata?.model,
                       ...(params.sampler ? { sampler: params.sampler } : {}),
                     };
-                    await generateWithA1111(generationImage, customMetadata, params.numberOfImages);
+                    await runGenerateRequest(
+                      'a1111',
+                      () => ({
+                        provider: 'a1111',
+                        imageId: generationImage.id,
+                        customMetadata,
+                        numberOfImages: params.numberOfImages,
+                      }),
+                      () => generateWithA1111(generationImage, customMetadata, params.numberOfImages),
+                    );
                     setIsGenerateModalOpen(false);
                   }}
                   isGenerating={isGenerating}
@@ -4834,7 +4908,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       ...(params.scheduler ? { scheduler: params.scheduler } : {}),
                     };
 
-                    await generateWithComfyUI(generationImage, {
+                    const generateParams = {
                       customMetadata,
                       overrides: {
                         model: params.model || undefined,
@@ -4844,8 +4918,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       sourceImagePolicy: params.sourceImagePolicy,
                       advancedPromptJson: params.advancedPromptJson,
                       advancedWorkflowJson: params.advancedWorkflowJson,
-                      maskFile: params.maskFile,
-                    });
+                    };
+
+                    await runGenerateRequest(
+                      'comfyui',
+                      async () => ({
+                        provider: 'comfyui',
+                        imageId: generationImage.id,
+                        ...generateParams,
+                        maskFile: await toImageViewerMaskFileDTO(params.maskFile),
+                      }),
+                      () => generateWithComfyUI(generationImage, {
+                        ...generateParams,
+                        maskFile: params.maskFile,
+                      }),
+                    );
                   }}
                   isGenerating={isGeneratingComfyUI}
                   status={generateStatusComfyUI}

@@ -53,6 +53,29 @@ const makeNodeKey = (rootId: string, relativePath: string) => `${rootId}::${rela
 
 type NativeFileDragSource = { directoryPath: string; relativePath: string; imageId?: string };
 
+const getBasename = (path: string) => path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+
+/**
+ * A recorded native drag may only be applied to the drop it actually belongs to.
+ * The drop must carry OS files, and one of them must be the file the drag started
+ * with; anything else (an unrelated file from Explorer/Finder, a text drop) is
+ * rejected so a stale source can never move the wrong image.
+ */
+export const dropMatchesNativeDragSource = (
+  event: Pick<React.DragEvent, 'dataTransfer'>,
+  source: NativeFileDragSource,
+): boolean => {
+  const dataTransfer = event.dataTransfer;
+  if (!dataTransfer) return false;
+  if (!Array.from(dataTransfer.types || []).includes('Files')) return false;
+
+  const expectedName = getBasename(source.relativePath).toLowerCase();
+  if (!expectedName) return false;
+
+  const droppedNames = Array.from(dataTransfer.files || []).map((file) => file.name.toLowerCase());
+  return droppedNames.includes(expectedName);
+};
+
 const getRelativePath = (rootPath: string, targetPath: string) => {
   const normalizedRoot = toForwardSlashes(rootPath);
   const normalizedTarget = toForwardSlashes(targetPath);
@@ -523,7 +546,12 @@ export default function DirectoryList({
       } catch (_) { /* ignore */ }
     }
 
-    if (imageIds.length === 0 && nativeFileDragSourceRef.current) {
+    // Electron native drags (from the image viewer, including detached windows) arrive
+    // as a plain OS file drop with no internal payload. The recorded drag source is only
+    // trustworthy when the dropped file is actually the one that drag started with —
+    // otherwise an unrelated file dropped from Explorer/Finder would move that image.
+    if (imageIds.length === 0 && nativeFileDragSourceRef.current
+      && dropMatchesNativeDragSource(e, nativeFileDragSourceRef.current)) {
       const source = nativeFileDragSourceRef.current;
       nativeFileDragSourceRef.current = null;
       const sourcePath = normalizePath(`${source.directoryPath}/${source.relativePath}`).toLowerCase();

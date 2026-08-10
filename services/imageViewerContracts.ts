@@ -1,4 +1,6 @@
-import type { IndexedImage, ImageRating, SmartCollection } from '../types';
+import type { IndexedImage, ImageRating, SmartCollection, BaseMetadata } from '../types';
+import type { WorkflowOverrides } from './comfyUIApiClient';
+import type { ComfyUISourceImagePolicy, ComfyUIWorkflowMode } from './comfyUIWorkflowBuilder';
 
 export type ImageViewerHost = 'inline' | 'detached';
 export type DetachedImageViewerStatus = 'pending' | 'open' | 'minimized';
@@ -34,6 +36,39 @@ export interface ImageViewerSnapshot {
   collections: SmartCollection[];
 }
 
+/**
+ * A generation request raised from a detached viewer. The queue runner only exists
+ * in the main renderer, so the viewer never enqueues locally — it ships the
+ * parameters over and the main renderer runs the real hook.
+ *
+ * Everything here must survive structured cloning across two IPC hops, so the
+ * inpainting mask travels as raw bytes instead of a `File`.
+ */
+export interface ImageViewerMaskFileDTO {
+  name: string;
+  type: string;
+  data: ArrayBuffer;
+}
+
+export type ImageViewerGenerateRequest =
+  | {
+      provider: 'a1111';
+      imageId: string;
+      customMetadata?: Partial<BaseMetadata>;
+      numberOfImages?: number;
+    }
+  | {
+      provider: 'comfyui';
+      imageId: string;
+      customMetadata?: Partial<BaseMetadata>;
+      overrides?: WorkflowOverrides;
+      workflowMode?: ComfyUIWorkflowMode;
+      sourceImagePolicy?: ComfyUISourceImagePolicy;
+      advancedPromptJson?: string;
+      advancedWorkflowJson?: string;
+      maskFile?: ImageViewerMaskFileDTO | null;
+    };
+
 export type ImageViewerCommand =
   | { type: 'navigate'; direction: 'next' | 'previous' | 'random'; wrap?: boolean }
   | { type: 'close' }
@@ -56,7 +91,28 @@ export type ImageViewerCommand =
   | { type: 'remove-tag'; imageId: string; tag: string }
   | { type: 'remove-auto-tag'; imageId: string; tag: string }
   | { type: 'set-search'; query: string }
+  | { type: 'generate'; request: ImageViewerGenerateRequest }
   | { type: 'slideshow-started' };
+
+/** Serialize an inpainting mask for transport to the main renderer. */
+export const toImageViewerMaskFileDTO = async (
+  maskFile: File | null | undefined,
+): Promise<ImageViewerMaskFileDTO | null> => {
+  if (!maskFile) return null;
+  return {
+    name: maskFile.name,
+    type: maskFile.type,
+    data: await maskFile.arrayBuffer(),
+  };
+};
+
+/** Rebuild the mask on the main-renderer side so the generation hooks are unchanged. */
+export const fromImageViewerMaskFileDTO = (
+  maskFile: ImageViewerMaskFileDTO | null | undefined,
+): File | null => {
+  if (!maskFile) return null;
+  return new File([maskFile.data], maskFile.name, { type: maskFile.type });
+};
 
 /** Build a structured-clone-safe, path-backed viewer record without filesystem handles. */
 export const toImageModalImageDTO = (image: IndexedImage): ImageModalImageDTO => {

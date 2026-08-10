@@ -34,7 +34,7 @@ const root = ReactDOM.createRoot(rootElement);
 const isDetachedImageViewer = new URLSearchParams(window.location.search).get('window') === 'image-modal';
 root.render(
   <React.StrictMode>
-    <AppErrorBoundary>
+    <AppErrorBoundary variant={isDetachedImageViewer ? 'detached-viewer' : 'app'}>
       <A1111ProgressProvider>
         <ComfyUIProgressProvider>
           {isDetachedImageViewer ? <DetachedImageModalApp /> : <App />}

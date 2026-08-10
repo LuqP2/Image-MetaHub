@@ -82,6 +82,7 @@ import { FileOperations } from './services/fileOperations';
 import { renameIndexedImage } from './services/imageRenameService';
 import { useReparseMetadata } from './hooks/useReparseMetadata';
 import {
+  fromImageViewerMaskFileDTO,
   resolveEffectiveImageViewerHost,
   toImageModalImageDTO,
   type DetachedImageViewerStatus,
@@ -2095,13 +2096,20 @@ export default function App() {
   }, [getImageByIdFromStore, openImageModals, setSelectedImage]);
 
   const handleMinimizeImageModal = useCallback((modalId: string) => {
-    setOpenImageModals((current) =>
-      current.map((modal) =>
+    setOpenImageModals((current) => {
+      const target = current.find((modal) => modal.modalId === modalId);
+      // Native minimize events can arrive for a window we already consider
+      // minimized; returning the same array keeps the sync effect quiet.
+      if (!target || target.isMinimized) {
+        return current;
+      }
+
+      return current.map((modal) =>
         modal.modalId === modalId
           ? { ...modal, isMinimized: true, nativeStatus: modal.host === 'detached' ? 'minimized' : modal.nativeStatus }
           : modal
-      )
-    );
+      );
+    });
   }, []);
 
   const handleImageModalWindowStateChange = useCallback((
@@ -2153,10 +2161,10 @@ export default function App() {
       return;
     }
 
-    if (targetModal.host === 'detached') {
-      void window.electronAPI?.imageViewerWindowAction({ sessionId: targetModal.sessionId, action: 'close' });
-      return;
-    }
+    // Detached sessions are closed by pruning them from state: the reconciliation
+    // pass then closes the OS window. Firing the IPC and waiting for the `closed`
+    // event instead would strand the footer entry whenever the window is not
+    // registered yet (or already gone without the event reaching us).
     handleCloseImageModal(targetModal.modalId, targetModal.imageId);
   }, [handleCloseImageModal, openImageModals]);
 
@@ -2487,7 +2495,9 @@ export default function App() {
     setOpenImageModals((current) => {
       let changed = false;
       const next = current.map((modal) => {
-        if (modal.isMinimized) {
+        // Detached viewers are independent OS windows: they do not overlap the
+        // workspace, so switching views must leave them alone.
+        if (modal.isMinimized || modal.host === 'detached') {
           return modal;
         }
 
@@ -2507,7 +2517,9 @@ export default function App() {
     setOpenImageModals((current) => {
       let changed = false;
       const next = current.map((modal) => {
-        if (modal.isMinimized) {
+        // See the ComfyUI branch above: detached viewers are not part of the
+        // workspace layout and must keep their OS window state.
+        if (modal.isMinimized || modal.host === 'detached') {
           return modal;
         }
         changed = true;
@@ -3207,6 +3219,18 @@ export default function App() {
 
   const detachedViewerRevisionRef = useRef(new Map<string, number>());
   const detachedViewerOpenedRef = useRef(new Set<string>());
+  const detachedViewerMinimizedRef = useRef(new Set<string>());
+
+  /**
+   * Drop every trace of a detached session. Sessions removed from the tracking set
+   * are what the reconciliation pass uses to decide which OS windows to close, so
+   * these three refs must always be cleared together.
+   */
+  const forgetDetachedViewerSession = useCallback((sessionId: string) => {
+    detachedViewerOpenedRef.current.delete(sessionId);
+    detachedViewerMinimizedRef.current.delete(sessionId);
+    detachedViewerRevisionRef.current.delete(sessionId);
+  }, []);
 
   const buildDetachedViewerSnapshot = useCallback((modal: typeof openImageModalEntries[number]): ImageViewerSnapshot => {
     const navigationImages = resolveModalNavigationImages(modal);
@@ -3238,13 +3262,27 @@ export default function App() {
     const api = window.electronAPI;
     if (!api?.imageViewerOpen || !api.imageViewerUpdate) return;
 
+    const liveDetachedSessions = new Set<string>();
+
     for (const modal of openImageModalEntries) {
-      if (modal.host !== 'detached' || modal.isMinimized) continue;
-      const snapshot = buildDetachedViewerSnapshot(modal);
+      if (modal.host !== 'detached') continue;
+      liveDetachedSessions.add(modal.sessionId);
+
       if (!detachedViewerOpenedRef.current.has(modal.sessionId)) {
+        // Sessions opened in the background stay dormant until the user activates
+        // them; popping an OS window unasked would defeat "open in background".
+        if (modal.isMinimized) continue;
+
+        const snapshot = buildDetachedViewerSnapshot(modal);
         detachedViewerOpenedRef.current.add(modal.sessionId);
         void api.imageViewerOpen({ sessionId: modal.sessionId, snapshot }).then((result) => {
           if (result.success) {
+            // The session can be closed while the window is still being created,
+            // in which case the reconciliation pass ran too early to catch it.
+            if (!detachedViewerOpenedRef.current.has(modal.sessionId)) {
+              void api.imageViewerWindowAction({ sessionId: modal.sessionId, action: 'close' });
+              return;
+            }
             setOpenImageModals((current) => current.map((entry) =>
               entry.sessionId === modal.sessionId
                 ? { ...entry, nativeStatus: 'open', isMinimized: false }
@@ -3252,7 +3290,7 @@ export default function App() {
             ));
             return;
           }
-          detachedViewerOpenedRef.current.delete(modal.sessionId);
+          forgetDetachedViewerSession(modal.sessionId);
           setOpenImageModals((current) => current.map((entry) =>
             entry.sessionId === modal.sessionId
               ? { ...entry, host: 'inline', nativeStatus: undefined, isMinimized: false }
@@ -3260,14 +3298,33 @@ export default function App() {
           ));
           setError(`Could not open a separate viewer window. Opened it inside Image MetaHub instead.${result.error ? ` ${result.error}` : ''}`);
         });
-      } else {
-        void api.imageViewerUpdate({ sessionId: modal.sessionId, snapshot });
-        if (modal.nativeStatus === 'minimized') {
-          void api.imageViewerWindowAction({ sessionId: modal.sessionId, action: 'restore' });
-        }
+        continue;
+      }
+
+      void api.imageViewerUpdate({ sessionId: modal.sessionId, snapshot: buildDetachedViewerSnapshot(modal) });
+
+      // Mirror the logical minimized state onto the OS window, so state changes that
+      // do not go through the viewer itself (workspace switches, footer actions)
+      // cannot leave a window visible while the app believes it is minimized.
+      const wasMinimized = detachedViewerMinimizedRef.current.has(modal.sessionId);
+      if (modal.isMinimized && !wasMinimized) {
+        detachedViewerMinimizedRef.current.add(modal.sessionId);
+        void api.imageViewerWindowAction({ sessionId: modal.sessionId, action: 'minimize' });
+      } else if (!modal.isMinimized && wasMinimized) {
+        detachedViewerMinimizedRef.current.delete(modal.sessionId);
+        void api.imageViewerWindowAction({ sessionId: modal.sessionId, action: 'restore' });
       }
     }
-  }, [buildDetachedViewerSnapshot, openImageModalEntries, setError]);
+
+    // Any window whose session was pruned from state (image deleted, directory
+    // removed, footer close) has to be closed too, otherwise it lingers with a
+    // stale snapshot and every action it sends is rejected as an unknown session.
+    for (const sessionId of Array.from(detachedViewerOpenedRef.current)) {
+      if (liveDetachedSessions.has(sessionId)) continue;
+      forgetDetachedViewerSession(sessionId);
+      void api.imageViewerWindowAction({ sessionId, action: 'close' });
+    }
+  }, [buildDetachedViewerSnapshot, forgetDetachedViewerSession, openImageModalEntries, setError]);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -3276,19 +3333,18 @@ export default function App() {
       const target = openImageModals.find((modal) => modal.sessionId === event.sessionId);
       if (!target) return;
       if (event.type === 'closed') {
-        detachedViewerOpenedRef.current.delete(event.sessionId);
-        detachedViewerRevisionRef.current.delete(event.sessionId);
+        forgetDetachedViewerSession(event.sessionId);
         handleCloseImageModal(target.modalId, target.imageId);
         return;
       }
       if (event.type === 'render-process-gone') {
-        detachedViewerOpenedRef.current.delete(event.sessionId);
+        forgetDetachedViewerSession(event.sessionId);
         setOpenImageModals((current) => current.filter((modal) => modal.sessionId !== event.sessionId));
         setError('The detached image viewer stopped unexpectedly. Reopen the image to continue.');
         return;
       }
       if (event.type === 'load-failed') {
-        detachedViewerOpenedRef.current.delete(event.sessionId);
+        forgetDetachedViewerSession(event.sessionId);
         setOpenImageModals((current) => current.map((modal) =>
           modal.sessionId === event.sessionId
             ? { ...modal, host: 'inline', nativeStatus: undefined, isMinimized: false }
@@ -3303,7 +3359,7 @@ export default function App() {
         handleMinimizeImageModal(target.modalId);
       }
     });
-  }, [handleActivateImageModal, handleCloseImageModal, handleMinimizeImageModal, openImageModals, setError]);
+  }, [forgetDetachedViewerSession, handleActivateImageModal, handleCloseImageModal, handleMinimizeImageModal, openImageModals, setError]);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -3410,6 +3466,36 @@ export default function App() {
             respond({ success: true, collection });
             return;
           }
+          case 'generate': {
+            // Run the real hook here: the queue runner is mounted by App only, so a
+            // job enqueued inside the detached window would never be executed.
+            const request = viewerCommand.request;
+            const image = requireImage(request.imageId);
+            // The hooks report validation failures through their own status state,
+            // which the detached window cannot see. A job that never reached the
+            // queue is the observable signal that the request was rejected.
+            const queuedBefore = useGenerationQueueStore.getState().items.length;
+            if (request.provider === 'a1111') {
+              await generateWithA1111(image, request.customMetadata, request.numberOfImages);
+            } else {
+              await generateWithComfyUI(image, {
+                customMetadata: request.customMetadata,
+                overrides: request.overrides,
+                workflowMode: request.workflowMode,
+                sourceImagePolicy: request.sourceImagePolicy,
+                advancedPromptJson: request.advancedPromptJson,
+                advancedWorkflowJson: request.advancedWorkflowJson,
+                maskFile: fromImageViewerMaskFileDTO(request.maskFile),
+                directoryPath: image.directoryId ? directoryPathById.get(image.directoryId) : undefined,
+              });
+            }
+            if (useGenerationQueueStore.getState().items.length === queuedBefore) {
+              throw new Error(
+                `Could not queue the ${request.provider === 'a1111' ? 'A1111' : 'ComfyUI'} job. Check the provider settings and the image metadata in Image MetaHub.`
+              );
+            }
+            break;
+          }
           case 'get-tag-suggestions': {
             const query = viewerCommand.query.trim().toLowerCase();
             const limit = useSettingsStore.getState().tagSuggestionLimit;
@@ -3448,7 +3534,7 @@ export default function App() {
         respond({ success: true });
       })().catch((error) => respond({ success: false, error: error instanceof Error ? error.message : 'Viewer command failed.' }));
     });
-  }, [handleImageDeleted, handleImageModalNavigate, handleImageRenamed, handleOpenComfyUIWorkflowFromImageModal, handleOpenImageEditorFromImageModal, handleSlideshowStartAcknowledged, openFindSimilar, openImageModals, reparseViewerImages, resolveModalNavigationImages]);
+  }, [directoryPathById, generateWithA1111, generateWithComfyUI, handleImageDeleted, handleImageModalNavigate, handleImageRenamed, handleOpenComfyUIWorkflowFromImageModal, handleOpenImageEditorFromImageModal, handleSlideshowStartAcknowledged, openFindSimilar, openImageModals, reparseViewerImages, resolveModalNavigationImages]);
 
   const footerWindowItems = useMemo(() => {
     return openImageModals

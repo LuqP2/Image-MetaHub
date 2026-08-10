@@ -2179,11 +2179,24 @@ function resolveDetachedImageViewerState(settings, sequence = 0) {
   return { bounds: { x, y, width, height }, isMaximized: Boolean(saved?.isMaximized) };
 }
 
-let persistDetachedViewerStateTimer = null;
+// One debounce timer per viewer window: a shared timer would let the most recent
+// window cancel another window's pending write and silently drop its geometry.
+// Keyed by window id rather than the window object: `closed` fires after the
+// native object is gone, when reading `viewerWindow.id` would throw.
+const persistDetachedViewerStateTimers = new Map();
+function cancelDetachedViewerStatePersist(windowId) {
+  const timer = persistDetachedViewerStateTimers.get(windowId);
+  if (timer) {
+    clearTimeout(timer);
+    persistDetachedViewerStateTimers.delete(windowId);
+  }
+}
 function queueDetachedViewerStatePersist(viewerWindow) {
   if (!viewerWindow || viewerWindow.isDestroyed()) return;
-  if (persistDetachedViewerStateTimer) clearTimeout(persistDetachedViewerStateTimer);
-  persistDetachedViewerStateTimer = setTimeout(() => {
+  const windowId = viewerWindow.id;
+  cancelDetachedViewerStatePersist(windowId);
+  persistDetachedViewerStateTimers.set(windowId, setTimeout(() => {
+    persistDetachedViewerStateTimers.delete(windowId);
     if (viewerWindow.isDestroyed()) return;
     const bounds = viewerWindow.isMaximized() || viewerWindow.isFullScreen()
       ? viewerWindow.getNormalBounds()
@@ -2197,12 +2210,54 @@ function queueDetachedViewerStatePersist(viewerWindow) {
         isMaximized: viewerWindow.isMaximized(),
       },
     })).catch(() => {});
-  }, 200);
+  }, 200));
 }
 
 function sendDetachedViewerEvent(sessionId, type, details = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send('image-viewer-event', { sessionId, type, ...details });
+}
+
+function openDetachedViewerUrlExternally(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return;
+  }
+  // Only hand http(s) to the OS handler: file:/javascript:/custom schemes must
+  // never be forwarded to the shell from renderer-controlled input.
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+  shell.openExternal(parsed.toString()).catch((error) => {
+    console.warn('Failed to open external viewer URL:', error);
+  });
+}
+
+// The detached viewer runs the same preload as the main window, so a popup or a
+// navigation away from the viewer document would hand `window.electronAPI` to an
+// arbitrary origin. Mirror (and tighten) the main window's hardening.
+function configureDetachedViewerNavigationHandlers(viewerWindow, baseUrl) {
+  const isSameDocument = (url) => {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === baseUrl.protocol
+        && parsed.host === baseUrl.host
+        && parsed.pathname === baseUrl.pathname;
+    } catch {
+      return false;
+    }
+  };
+
+  viewerWindow.webContents.setWindowOpenHandler(({ url }) => {
+    openDetachedViewerUrlExternally(url);
+    return { action: 'deny' };
+  });
+
+  viewerWindow.webContents.on('will-navigate', (event, url) => {
+    if (isSameDocument(url)) return;
+    event.preventDefault();
+    openDetachedViewerUrlExternally(url);
+  });
 }
 
 async function createDetachedImageViewer(sessionId, snapshot) {
@@ -2239,6 +2294,14 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     },
   });
   viewerWindow.setMenu(null);
+  const viewerWindowId = viewerWindow.id;
+
+  const viewerUrl = isDev
+    ? new URL('http://localhost:5173')
+    : new URL(`file://${path.join(__dirname, 'dist', 'index.html')}`);
+  viewerUrl.searchParams.set('window', 'image-modal');
+  viewerUrl.searchParams.set('sessionId', sessionId);
+  configureDetachedViewerNavigationHandlers(viewerWindow, viewerUrl);
 
   detachedImageViewerWindows.set(sessionId, viewerWindow);
   detachedImageViewerSnapshots.set(sessionId, snapshot);
@@ -2264,7 +2327,10 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     clearTimeout(rendererReadyTimeout);
     showWhenReady();
   };
-  viewerWindow.webContents.on('did-fail-load', (_event, _code, description) => {
+  viewerWindow.webContents.on('did-fail-load', (_event, errorCode, description, _validatedURL, isMainFrame) => {
+    // Sub-frame failures and aborted loads (ERR_ABORTED, fired whenever a load is
+    // superseded — e.g. a dev-server reload) must not tear the whole window down.
+    if (!isMainFrame || errorCode === -3) return;
     if (rendererReady || viewerWindow.isDestroyed()) return;
     viewerWindow.__suppressImageViewerClosedEvent = true;
     sendDetachedViewerEvent(sessionId, 'load-failed', { reason: description || 'Viewer failed to load.' });
@@ -2291,16 +2357,12 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   });
   viewerWindow.on('closed', () => {
     clearTimeout(rendererReadyTimeout);
+    cancelDetachedViewerStatePersist(viewerWindowId);
     detachedImageViewerWindows.delete(sessionId);
     detachedImageViewerSnapshots.delete(sessionId);
     if (!viewerWindow.__suppressImageViewerClosedEvent) sendDetachedViewerEvent(sessionId, 'closed');
   });
 
-  const viewerUrl = isDev
-    ? new URL('http://localhost:5173')
-    : new URL(`file://${path.join(__dirname, 'dist', 'index.html')}`);
-  viewerUrl.searchParams.set('window', 'image-modal');
-  viewerUrl.searchParams.set('sessionId', sessionId);
   try {
     await viewerWindow.loadURL(viewerUrl.toString());
     return { success: true };
