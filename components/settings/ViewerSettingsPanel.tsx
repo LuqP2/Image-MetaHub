@@ -34,10 +34,24 @@ export const ViewerSettingsPanel: React.FC = () => {
   const setSlideshowIntervalSeconds = useSettingsStore((state) => state.setSlideshowIntervalSeconds);
   const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
   const setSlideshowShowFilename = useSettingsStore((state) => state.setSlideshowShowFilename);
+  const imageViewerMode = useSettingsStore((state) => state.imageViewerMode);
+  const setImageViewerMode = useSettingsStore((state) => state.setImageViewerMode);
+  const isDesktop = typeof window !== 'undefined' && Boolean(window.electronAPI);
 
   return (
     <SettingsPanel title="Viewer">
       <SettingsSectionCard title="Behavior">
+        <SettingRow
+          label="Open images in separate windows"
+          className={!isDesktop ? 'opacity-50' : ''}
+          control={
+            <SettingSwitch
+              checked={isDesktop && imageViewerMode === 'detached'}
+              onChange={(checked) => setImageViewerMode(checked ? 'detached' : 'inline')}
+              disabled={!isDesktop}
+            />
+          }
+        />
         <SettingRow
           label="Show filenames on grid"
           control={<SettingSwitch checked={showFilenames} onChange={setShowFilenames} />}

@@ -344,3 +344,12 @@ export const useLicenseStore = create<LicenseState>()(
     }
   )
 );
+
+// License data shares the settings file across every renderer. When another
+// window activates a trial or license, rehydrate this renderer so its Pro state
+// updates immediately instead of remaining stale until the app is reloaded.
+if (typeof window !== 'undefined') {
+  window.electronAPI?.onSettingsUpdated?.(() => {
+    void useLicenseStore.persist.rehydrate();
+  });
+}

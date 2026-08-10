@@ -471,7 +471,8 @@ export interface ElectronAPI {
   joinPathsBatch: (args: { basePath: string; fileNames: string[] }) => Promise<{ success: boolean; paths?: string[]; error?: string }>;
   dirname: (filePath: string) => Promise<{ success: boolean; path?: string; error?: string }>;
   resolveMediaUrl: (filePath: string) => Promise<{ success: boolean; url?: string; error?: string; errorType?: string; errorCode?: string }>;
-  startFileDrag: (args: { directoryPath: string; relativePath: string }) => void;
+  startFileDrag: (args: { directoryPath: string; relativePath: string; imageId?: string }) => void;
+  onNativeFileDragStarted: (callback: (args: { directoryPath: string; relativePath: string; imageId?: string }) => void) => () => void;
   copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   copyTextToClipboard: (text: string) => Promise<{ success: boolean; error?: string }>;
   
@@ -534,6 +535,17 @@ export interface ElectronAPI {
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   getFullscreenState: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   setFullscreen: (isFullscreen: boolean) => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
+  imageViewerOpen: (payload: { sessionId: string; snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot }) => Promise<{ success: boolean; existing?: boolean; error?: string }>;
+  imageViewerUpdate: (payload: { sessionId: string; snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot }) => Promise<{ success: boolean; ignored?: boolean; error?: string }>;
+  imageViewerReady: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
+  imageViewerWindowAction: (payload: { sessionId: string; action: 'focus' | 'restore' | 'minimize' | 'close' | 'focus-main' | 'toggle-always-on-top' }) => Promise<{ success: boolean; isAlwaysOnTop?: boolean; error?: string }>;
+  imageViewerCommand: (payload: { sessionId: string; command: import('./services/imageViewerContracts').ImageViewerCommand }) => Promise<{ success: boolean; error?: string; [key: string]: unknown }>;
+  imageViewerRespond: (payload: { requestId: string; response: { success: boolean; error?: string; [key: string]: unknown } }) => void;
+  getPathForFile: (file: File) => string;
+  onSettingsUpdated: (callback: () => void) => () => void;
+  onImageViewerSnapshot: (callback: (snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot) => void) => () => void;
+  onImageViewerEvent: (callback: (event: { sessionId: string; type: string; reason?: string }) => void) => () => void;
+  onImageViewerCommand: (callback: (payload: { sessionId: string; requestId: string; command: import('./services/imageViewerContracts').ImageViewerCommand }) => void) => () => void;
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onFullscreenStateCheck: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onZoomFactorChanged: (callback: (zoomFactor: number) => void) => () => void;

@@ -93,7 +93,7 @@ Image MetaHub is built around fast local curation:
 * **Image editor**: adjust, crop, rotate, flip, resize, sharpen, blur, annotate, and redact from the viewer, then Save As a metadata-preserving copy or overwrite eligible originals on desktop
 * **Startup verification**: choose whether saved folders reopen from cache, reconcile in the background, or verify strictly before startup completes
 * **Shadow metadata**: edit metadata non-destructively and keep the original payload available for inspection or revert
-* **Viewer workflows**: open multiple image windows, minimize them into the footer, and navigate derived/source images through lineage
+* **Viewer workflows**: in the desktop app, open each image in a separate native window above Image MetaHub while the ComfyUI Workspace stays alive; minimize and restore viewers from the footer, or select the legacy in-app viewer in Settings
 * **Auto-watch**: keep output folders in sync while A1111 or ComfyUI is generating
 
 ## Explore
