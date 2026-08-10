@@ -31,7 +31,8 @@ const DetachedImageModalApp: React.FC = () => {
   }, [theme]);
 
   useEffect(() => {
-    void useLicenseStore.persist.rehydrate().then(() => useLicenseStore.getState().checkLicenseStatus());
+    void Promise.resolve(useLicenseStore.persist.rehydrate())
+      .then(() => useLicenseStore.getState().checkLicenseStatus());
   }, []);
 
   const sendCommand = useCallback(async (command: ImageViewerCommand) => {

@@ -3325,9 +3325,10 @@ export default function App() {
           if (!image) throw new Error('Image is no longer available in the library.');
           return image;
         };
-        switch ((command as ImageViewerCommand).type) {
+        const viewerCommand = command as ImageViewerCommand;
+        switch (viewerCommand.type) {
           case 'navigate':
-            handleImageModalNavigate(session.modalId, command.direction, { wrap: command.wrap });
+            handleImageModalNavigate(session.modalId, viewerCommand.direction, { wrap: viewerCommand.wrap });
             break;
           case 'close':
             await api.imageViewerWindowAction({ sessionId, action: 'close' });
@@ -3336,45 +3337,45 @@ export default function App() {
             await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
             break;
           case 'find-similar': {
-            const image = requireImage(command.imageId);
+            const image = requireImage(viewerCommand.imageId);
             openFindSimilar(image, resolveModalNavigationImages(session));
             await api.imageViewerWindowAction({ sessionId, action: 'minimize' });
             await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
             break;
           }
           case 'open-comfyui': {
-            const image = requireImage(command.imageId);
+            const image = requireImage(viewerCommand.imageId);
             handleOpenComfyUIWorkflowFromImageModal(session.modalId, image, resolveModalNavigationImages(session));
             await api.imageViewerWindowAction({ sessionId, action: 'close' });
             await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
             break;
           }
           case 'open-editor': {
-            const image = requireImage(command.imageId);
+            const image = requireImage(viewerCommand.imageId);
             handleOpenImageEditorFromImageModal(session.modalId, image, resolveModalNavigationImages(session));
             await api.imageViewerWindowAction({ sessionId, action: 'close' });
             await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
             break;
           }
           case 'image-deleted':
-            requireImage(command.imageId);
-            handleImageDeleted(command.imageId);
+            requireImage(viewerCommand.imageId);
+            handleImageDeleted(viewerCommand.imageId);
             break;
           case 'image-renamed':
-            requireImage(command.oldImageId);
-            state.renameImageRecord(command.oldImageId, command.newRelativePath);
-            handleImageRenamed(command.oldImageId, command.newImageId);
+            requireImage(viewerCommand.oldImageId);
+            state.renameImageRecord(viewerCommand.oldImageId, viewerCommand.newRelativePath);
+            handleImageRenamed(viewerCommand.oldImageId, viewerCommand.newImageId);
             break;
           case 'delete-image': {
-            const image = requireImage(command.imageId);
+            const image = requireImage(viewerCommand.imageId);
             const result = await FileOperations.deleteFile(image);
             if (!result.success) throw new Error(result.error || 'Failed to delete image.');
             handleImageDeleted(image.id);
             break;
           }
           case 'rename-image': {
-            const image = requireImage(command.imageId);
-            const result = await renameIndexedImage(image, command.newName);
+            const image = requireImage(viewerCommand.imageId);
+            const result = await renameIndexedImage(image, viewerCommand.newName);
             if (!result.success) throw new Error(result.error || 'Failed to rename image.');
             handleImageRenamed(image.id, result.newImageId || image.id);
             respond({
@@ -3385,10 +3386,10 @@ export default function App() {
             return;
           }
           case 'reparse-image':
-            await reparseViewerImages([requireImage(command.imageId)]);
+            await reparseViewerImages([requireImage(viewerCommand.imageId)]);
             break;
           case 'add-comparison': {
-            const image = requireImage(command.imageId);
+            const image = requireImage(viewerCommand.imageId);
             const beforeCount = state.comparisonImages.length;
             state.addImageToComparison(image);
             if (beforeCount + 1 >= 2) {
@@ -3399,18 +3400,18 @@ export default function App() {
             break;
           }
           case 'add-to-collection': {
-            command.imageIds.forEach(requireImage);
-            const collection = await state.addImagesToCollection(command.collectionId, command.imageIds);
+            viewerCommand.imageIds.forEach(requireImage);
+            const collection = await state.addImagesToCollection(viewerCommand.collectionId, viewerCommand.imageIds);
             respond({ success: true, collection });
             return;
           }
           case 'create-collection': {
-            const collection = await state.createCollection(command.collection as never);
+            const collection = await state.createCollection(viewerCommand.collection as never);
             respond({ success: true, collection });
             return;
           }
           case 'get-tag-suggestions': {
-            const query = command.query.trim().toLowerCase();
+            const query = viewerCommand.query.trim().toLowerCase();
             const limit = useSettingsStore.getState().tagSuggestionLimit;
             const suggestions = state.availableTags
               .filter((tag) => !query || tag.name.toLowerCase().includes(query))
@@ -3419,22 +3420,22 @@ export default function App() {
             return;
           }
           case 'toggle-favorite':
-            await state.toggleFavorite(requireImage(command.imageId).id);
+            await state.toggleFavorite(requireImage(viewerCommand.imageId).id);
             break;
           case 'set-rating':
-            await state.setImageRating(requireImage(command.imageId).id, command.rating);
+            await state.setImageRating(requireImage(viewerCommand.imageId).id, viewerCommand.rating);
             break;
           case 'add-tag':
-            await state.addTagToImage(requireImage(command.imageId).id, command.tag);
+            await state.addTagToImage(requireImage(viewerCommand.imageId).id, viewerCommand.tag);
             break;
           case 'remove-tag':
-            await state.removeTagFromImage(requireImage(command.imageId).id, command.tag);
+            await state.removeTagFromImage(requireImage(viewerCommand.imageId).id, viewerCommand.tag);
             break;
           case 'remove-auto-tag':
-            state.removeAutoTagFromImage(requireImage(command.imageId).id, command.tag);
+            state.removeAutoTagFromImage(requireImage(viewerCommand.imageId).id, viewerCommand.tag);
             break;
           case 'set-search':
-            state.setSearchQuery(command.query);
+            state.setSearchQuery(viewerCommand.query);
             await api.imageViewerWindowAction({ sessionId, action: 'minimize' });
             await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
             break;
