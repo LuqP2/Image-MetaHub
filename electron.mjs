@@ -2212,6 +2212,28 @@ function queueDetachedViewerStatePersist(viewerWindow) {
   }, 200));
 }
 
+/**
+ * Pick the lowest cascade slot no open viewer is using.
+ *
+ * The offset is clamped to the work area, so slots must be reused as viewers
+ * close: deriving it from a counter (or from how many viewers are open) makes a
+ * new viewer land exactly on top of an existing one once any earlier viewer in
+ * the cascade has been closed.
+ */
+function pickDetachedViewerCascadeSlot() {
+  const usedSlots = new Set();
+  for (const openWindow of detachedImageViewerWindows.values()) {
+    if (openWindow.isDestroyed()) continue;
+    if (typeof openWindow.__imageViewerCascadeSlot === 'number') {
+      usedSlots.add(openWindow.__imageViewerCascadeSlot);
+    }
+  }
+
+  let slot = 0;
+  while (usedSlots.has(slot)) slot += 1;
+  return slot;
+}
+
 /** Notify every renderer except the one that just wrote settings. */
 function broadcastSettingsUpdated(senderWebContents) {
   const targets = [mainWindow, ...detachedImageViewerWindows.values()];
@@ -2282,12 +2304,8 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   }
 
   const settings = await readSettings();
-  // Cascade against the viewers actually on screen, not against a lifetime counter:
-  // the offset is clamped to the work area, so a counter that never decrements makes
-  // every viewer past the first few land on the same clamped spot.
-  const openViewerCount = Array.from(detachedImageViewerWindows.values())
-    .filter((openWindow) => !openWindow.isDestroyed()).length;
-  const initialState = resolveDetachedImageViewerState(settings, openViewerCount);
+  const cascadeSlot = pickDetachedViewerCascadeSlot();
+  const initialState = resolveDetachedImageViewerState(settings, cascadeSlot);
   const viewerWindow = new BrowserWindow({
     ...initialState.bounds,
     minWidth: MIN_WINDOW_WIDTH,
@@ -2308,6 +2326,7 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     },
   });
   viewerWindow.setMenu(null);
+  viewerWindow.__imageViewerCascadeSlot = cascadeSlot;
   const viewerWindowId = viewerWindow.id;
 
   const viewerUrl = isDev

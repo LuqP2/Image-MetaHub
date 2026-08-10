@@ -6,6 +6,7 @@ import { transferIndexedImages } from '../services/fileTransferService';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { getActiveDragImageIds, clearActiveDragImageIds } from './ImageGrid';
 import { INTERNAL_IMAGE_DRAG_TYPE } from '../utils/internalImageDrag';
+import { getFilesystemPathComparisonKey } from '../utils/filesystemPath';
 
 interface DirectoryListProps {
   directories: Directory[];
@@ -65,8 +66,15 @@ const getBasename = (path: string) => path.replace(/\\/g, '/').split('/').filter
 export const dropMatchesNativeDragSource = (
   event: Pick<React.DragEvent, 'dataTransfer'>,
   source: NativeFileDragSource,
-  resolveDroppedFilePath: (file: File) => string = (file) => window.electronAPI?.getPathForFile?.(file) ?? '',
+  options: {
+    resolveDroppedFilePath?: (file: File) => string;
+    /** Overridable for tests; defaults to the running platform. */
+    platform?: string;
+  } = {},
 ): boolean => {
+  const resolveDroppedFilePath = options.resolveDroppedFilePath
+    ?? ((file: File) => window.electronAPI?.getPathForFile?.(file) ?? '');
+
   const dataTransfer = event.dataTransfer;
   if (!dataTransfer) return false;
   if (!Array.from(dataTransfer.types || []).includes('Files')) return false;
@@ -74,8 +82,13 @@ export const dropMatchesNativeDragSource = (
   const droppedFiles = Array.from(dataTransfer.files || []);
   if (droppedFiles.length === 0) return false;
 
-  const expectedPath = normalizePath(`${source.directoryPath}/${source.relativePath}`).toLowerCase();
-  const droppedPaths = droppedFiles
+  // Case folding is platform-dependent: on a case-sensitive filesystem
+  // /library/A/render.png and /library/a/render.png are different files, and
+  // treating them as equal would move the wrong one.
+  const comparisonKey = (value: string) => getFilesystemPathComparisonKey(value, options.platform);
+
+  const expectedKey = comparisonKey(`${source.directoryPath}/${source.relativePath}`);
+  const droppedKeys = droppedFiles
     .map((file) => {
       try {
         return resolveDroppedFilePath(file);
@@ -84,18 +97,19 @@ export const dropMatchesNativeDragSource = (
       }
     })
     .filter((path): path is string => typeof path === 'string' && path.length > 0)
-    .map((path) => normalizePath(path).toLowerCase());
+    .map(comparisonKey);
 
-  if (droppedPaths.length > 0) {
-    return droppedPaths.includes(expectedPath);
+  if (droppedKeys.length > 0) {
+    return droppedKeys.includes(expectedKey);
   }
 
   // No absolute path available (browser build, or the bridge could not resolve
   // it). Fall back to the filename, which is weaker but still rejects drops that
   // have nothing to do with the recorded drag.
-  const expectedName = getBasename(source.relativePath).toLowerCase();
+  const expectedName = getBasename(source.relativePath);
   if (!expectedName) return false;
-  return droppedFiles.some((file) => file.name.toLowerCase() === expectedName);
+  const expectedNameKey = comparisonKey(expectedName);
+  return droppedFiles.some((file) => comparisonKey(file.name) === expectedNameKey);
 };
 
 const getRelativePath = (rootPath: string, targetPath: string) => {
@@ -576,7 +590,9 @@ export default function DirectoryList({
       && dropMatchesNativeDragSource(e, nativeFileDragSourceRef.current)) {
       const source = nativeFileDragSourceRef.current;
       nativeFileDragSourceRef.current = null;
-      const sourcePath = normalizePath(`${source.directoryPath}/${source.relativePath}`).toLowerCase();
+      // Same platform-aware comparison as the drag/drop match above: folding case
+      // unconditionally would collide distinct files on a case-sensitive filesystem.
+      const sourcePath = getFilesystemPathComparisonKey(`${source.directoryPath}/${source.relativePath}`);
       const indexedImages = useImageStore.getState().images;
       imageIds = source.imageId && indexedImages.some((image) => image.id === source.imageId)
         ? [source.imageId]
@@ -584,7 +600,7 @@ export default function DirectoryList({
           const imageDirectoryPath = directories.find((directory) => directory.id === image.directoryId)?.path
             ?? image.directoryId;
           const relativePath = image.id.split('::').slice(1).join('::') || image.name;
-          return normalizePath(`${imageDirectoryPath}/${relativePath}`).toLowerCase() === sourcePath;
+          return getFilesystemPathComparisonKey(`${imageDirectoryPath}/${relativePath}`) === sourcePath;
         })
         .map((image) => image.id);
     }
