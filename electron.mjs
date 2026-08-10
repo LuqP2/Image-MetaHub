@@ -4815,7 +4815,10 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('show-save-dialog', async (event, options = {}) => {
     try {
-      const result = await dialog.showSaveDialog(mainWindow, options);
+      const parentWindow = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
+      const result = parentWindow
+        ? await dialog.showSaveDialog(parentWindow, options)
+        : await dialog.showSaveDialog(options);
       if (result.canceled) {
         return { success: true, canceled: true };
       }
