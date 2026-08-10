@@ -34,10 +34,26 @@ export const ViewerSettingsPanel: React.FC = () => {
   const setSlideshowIntervalSeconds = useSettingsStore((state) => state.setSlideshowIntervalSeconds);
   const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
   const setSlideshowShowFilename = useSettingsStore((state) => state.setSlideshowShowFilename);
+  const imageViewerMode = useSettingsStore((state) => state.imageViewerMode);
+  const setImageViewerMode = useSettingsStore((state) => state.setImageViewerMode);
+  const isDesktop = typeof window !== 'undefined' && Boolean(window.electronAPI);
 
   return (
     <SettingsPanel title="Viewer" description="Control what appears in the library and how images open.">
       <SettingsSectionCard title="Behavior">
+        <SettingRow
+          label="Open images in separate windows"
+          description={isDesktop
+            ? 'Opens each image in its own desktop window. Turn off to use the legacy in-app viewer.'
+            : 'Desktop app only'}
+          control={
+            <SettingSwitch
+              checked={isDesktop && imageViewerMode === 'detached'}
+              onChange={(checked) => setImageViewerMode(checked ? 'detached' : 'inline')}
+              disabled={!isDesktop}
+            />
+          }
+        />
         <SettingRow
           label="Show filenames"
           description="Display the image filename under thumbnails."

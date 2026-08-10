@@ -17,6 +17,7 @@ interface GenerationQueueSidebarProps {
   isResizing: boolean;
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   onOpenGeneratedOutputs?: (item: GenerationQueueItem) => void;
+  onOpenGeneratedOutputImage?: (item: GenerationQueueItem) => void;
 }
 
 const statusStyles: Record<string, string> = {
@@ -67,6 +68,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
   isResizing,
   onResizeStart,
   onOpenGeneratedOutputs,
+  onOpenGeneratedOutputImage,
 }) => {
   const items = useGenerationQueueStore((state) => state.items);
   const hasFinishedItems = items.some(item => ['done', 'failed', 'canceled'].includes(item.status));
@@ -499,6 +501,14 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                 <div
                   className="group relative overflow-hidden rounded border border-gray-700/60 bg-black"
                   style={{ height: previewHeight }}
+                  onClick={canOpenResult ? (event) => event.stopPropagation() : undefined}
+                  onDoubleClick={canOpenResult && onOpenGeneratedOutputImage
+                    ? (event) => {
+                        event.stopPropagation();
+                        onOpenGeneratedOutputImage(item);
+                      }
+                    : undefined}
+                  title={canOpenResult ? 'Double-click to open image' : undefined}
                 >
                   <img
                     src={firstOutput.url}

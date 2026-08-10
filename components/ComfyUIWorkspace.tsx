@@ -230,8 +230,8 @@ const WorkspaceThumbnailButton: React.FC<{
                 ? 'border-purple-400 ring-1 ring-purple-400/60'
                 : 'border-gray-700 hover:border-gray-500'
           }`}
-          title={`Preview ${image.name}`}
-          aria-label={`Preview ${image.name}`}
+          title={`Open ${image.name}`}
+          aria-label={`Open ${image.name}`}
           draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
           onDragStart={(event) => onDragStart(event, image, directoryPath)}
         >
@@ -1106,7 +1106,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
     event.preventDefault();
     event.dataTransfer.effectAllowed = 'copy';
-    window.electronAPI.startFileDrag({ directoryPath: dragDirectoryPath, relativePath });
+    window.electronAPI.startFileDrag({ directoryPath: dragDirectoryPath, relativePath, imageId: dragImage.id });
   }, []);
 
   const copyInspectorValue = useCallback((label: string, value: string) => {
@@ -1197,14 +1197,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     onInspectImage?.(nextImage);
   }, [onInspectImage]);
 
-  const openWorkspacePreview = useCallback((visibleIndex: number) => {
-    const selectedImage = visibleNavigationImages[visibleIndex];
-    if (selectedImage) {
-      inspectWorkspaceImage(selectedImage);
-      setWorkspacePreviewIndex(visibleIndex);
-    }
-  }, [inspectWorkspaceImage, visibleNavigationImages]);
-
   const updateThumbSelection = useCallback((event: React.MouseEvent, contextImage: IndexedImage, visibleIndex: number) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1231,8 +1223,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       return;
     }
 
-    openWorkspacePreview(visibleIndex);
-  }, [openWorkspacePreview, updateThumbSelection]);
+    inspectWorkspaceImage(contextImage);
+    onViewFullMetadata?.(contextImage);
+  }, [inspectWorkspaceImage, onViewFullMetadata, updateThumbSelection]);
 
   const getContextTargetImages = useCallback((contextImage?: IndexedImage | null) => {
     if (contextImage && selectedImages.has(contextImage.id) && selectedWorkspaceImages.length > 0) {

@@ -379,6 +379,10 @@ async function readMediaMetadataWithFfprobe(filePath) {
 }
 
 let mainWindow;
+const detachedImageViewerWindows = new Map();
+const detachedImageViewerSnapshots = new Map();
+const detachedImageViewerRequestResolvers = new Map();
+let detachedImageViewerOpenSequence = 0;
 let comfyUIView = null;
 let comfyUIViewConfiguredUrl = '';
 let comfyUIViewState = {
@@ -2141,6 +2145,180 @@ function resolveInitialWindowState(settings) {
   };
 }
 
+function resolveDetachedImageViewerState(settings, sequence = 0) {
+  const saved = settings?.detachedImageViewerWindowState;
+  const mainBounds = mainWindow && !mainWindow.isDestroyed()
+    ? mainWindow.getBounds()
+    : screen.getPrimaryDisplay().bounds;
+  const displays = screen.getAllDisplays();
+  const savedDisplay = typeof saved?.displayId === 'number'
+    ? displays.find((display) => display.id === saved.displayId)
+    : null;
+  const matchedSavedDisplay = saved?.bounds ? screen.getDisplayMatching(saved.bounds) : null;
+  const targetDisplay = savedDisplay ?? matchedSavedDisplay ?? screen.getDisplayMatching(mainBounds);
+  const workArea = targetDisplay.workArea;
+  const margin = 20;
+  const defaultBounds = {
+    x: workArea.x + Math.round(workArea.width * 0.075),
+    y: workArea.y + Math.round(workArea.height * 0.075),
+    width: Math.max(MIN_WINDOW_WIDTH, Math.round(workArea.width * 0.85)),
+    height: Math.max(MIN_WINDOW_HEIGHT, Math.round(workArea.height * 0.85)),
+  };
+  const baseBounds = saved?.bounds ?? defaultBounds;
+  const offset = sequence * 28;
+  const width = Math.min(Math.max(MIN_WINDOW_WIDTH, baseBounds.width), Math.max(MIN_WINDOW_WIDTH, workArea.width - margin * 2));
+  const height = Math.min(Math.max(MIN_WINDOW_HEIGHT, baseBounds.height), Math.max(MIN_WINDOW_HEIGHT, workArea.height - margin * 2));
+  const x = Math.min(
+    Math.max(baseBounds.x + offset, workArea.x + margin),
+    workArea.x + workArea.width - width - margin,
+  );
+  const y = Math.min(
+    Math.max(baseBounds.y + offset, workArea.y + margin),
+    workArea.y + workArea.height - height - margin,
+  );
+  return { bounds: { x, y, width, height }, isMaximized: Boolean(saved?.isMaximized) };
+}
+
+let persistDetachedViewerStateTimer = null;
+function queueDetachedViewerStatePersist(viewerWindow) {
+  if (!viewerWindow || viewerWindow.isDestroyed()) return;
+  if (persistDetachedViewerStateTimer) clearTimeout(persistDetachedViewerStateTimer);
+  persistDetachedViewerStateTimer = setTimeout(() => {
+    if (viewerWindow.isDestroyed()) return;
+    const bounds = viewerWindow.isMaximized() || viewerWindow.isFullScreen()
+      ? viewerWindow.getNormalBounds()
+      : viewerWindow.getBounds();
+    const display = screen.getDisplayMatching(bounds);
+    queueSettingsUpdate((currentSettings) => ({
+      ...currentSettings,
+      detachedImageViewerWindowState: {
+        bounds,
+        displayId: display?.id ?? null,
+        isMaximized: viewerWindow.isMaximized(),
+      },
+    })).catch(() => {});
+  }, 200);
+}
+
+function sendDetachedViewerEvent(sessionId, type, details = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('image-viewer-event', { sessionId, type, ...details });
+}
+
+async function createDetachedImageViewer(sessionId, snapshot) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { success: false, error: 'Main window is not available.' };
+  }
+  const existing = detachedImageViewerWindows.get(sessionId);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    existing.show();
+    existing.focus();
+    return { success: true, existing: true };
+  }
+
+  const settings = await readSettings();
+  const initialState = resolveDetachedImageViewerState(settings, detachedImageViewerOpenSequence++);
+  const viewerWindow = new BrowserWindow({
+    ...initialState.bounds,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
+    modal: false,
+    alwaysOnTop: false,
+    skipTaskbar: false,
+    show: false,
+    title: 'Image MetaHub',
+    icon: getIconPath(),
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      enableRemoteModule: false,
+      webSecurity: true,
+      backgroundThrottling: false,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+
+  detachedImageViewerWindows.set(sessionId, viewerWindow);
+  detachedImageViewerSnapshots.set(sessionId, snapshot);
+  let rendererReady = false;
+  let nativeReady = false;
+  const rendererReadyTimeout = setTimeout(() => {
+    if (rendererReady || viewerWindow.isDestroyed()) return;
+    viewerWindow.__suppressImageViewerClosedEvent = true;
+    sendDetachedViewerEvent(sessionId, 'load-failed', { reason: 'Viewer renderer did not become ready.' });
+    viewerWindow.destroy();
+  }, 15000);
+  const showWhenReady = () => {
+    if (!rendererReady || !nativeReady || viewerWindow.isDestroyed()) return;
+    if (initialState.isMaximized) viewerWindow.maximize();
+    viewerWindow.show();
+  };
+  viewerWindow.once('ready-to-show', () => { nativeReady = true; showWhenReady(); });
+  viewerWindow.webContents.on('did-finish-load', () => {
+    // The explicit renderer handshake remains authoritative; this only marks native loading.
+  });
+  viewerWindow.__markImageViewerRendererReady = () => {
+    rendererReady = true;
+    clearTimeout(rendererReadyTimeout);
+    showWhenReady();
+  };
+  viewerWindow.webContents.on('did-fail-load', (_event, _code, description) => {
+    if (rendererReady || viewerWindow.isDestroyed()) return;
+    viewerWindow.__suppressImageViewerClosedEvent = true;
+    sendDetachedViewerEvent(sessionId, 'load-failed', { reason: description || 'Viewer failed to load.' });
+    viewerWindow.destroy();
+  });
+
+  viewerWindow.on('focus', () => sendDetachedViewerEvent(sessionId, 'focus'));
+  viewerWindow.on('minimize', () => sendDetachedViewerEvent(sessionId, 'minimize'));
+  viewerWindow.on('restore', () => sendDetachedViewerEvent(sessionId, 'restore'));
+  viewerWindow.on('maximize', () => sendDetachedViewerEvent(sessionId, 'maximize'));
+  viewerWindow.on('unmaximize', () => sendDetachedViewerEvent(sessionId, 'unmaximize'));
+  viewerWindow.on('enter-full-screen', () => {
+    if (!viewerWindow.isDestroyed()) viewerWindow.webContents.send('fullscreen-changed', { isFullscreen: true });
+  });
+  viewerWindow.on('leave-full-screen', () => {
+    if (!viewerWindow.isDestroyed()) viewerWindow.webContents.send('fullscreen-changed', { isFullscreen: false });
+  });
+  viewerWindow.on('move', () => queueDetachedViewerStatePersist(viewerWindow));
+  viewerWindow.on('resize', () => queueDetachedViewerStatePersist(viewerWindow));
+  viewerWindow.webContents.on('render-process-gone', (_event, details) => {
+    viewerWindow.__suppressImageViewerClosedEvent = true;
+    sendDetachedViewerEvent(sessionId, rendererReady ? 'render-process-gone' : 'load-failed', { reason: details?.reason || 'unknown' });
+    if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
+  });
+  viewerWindow.on('closed', () => {
+    clearTimeout(rendererReadyTimeout);
+    detachedImageViewerWindows.delete(sessionId);
+    detachedImageViewerSnapshots.delete(sessionId);
+    if (!viewerWindow.__suppressImageViewerClosedEvent) sendDetachedViewerEvent(sessionId, 'closed');
+  });
+
+  const viewerUrl = isDev
+    ? new URL('http://localhost:5173')
+    : new URL(`file://${path.join(__dirname, 'dist', 'index.html')}`);
+  viewerUrl.searchParams.set('window', 'image-modal');
+  viewerUrl.searchParams.set('sessionId', sessionId);
+  try {
+    await viewerWindow.loadURL(viewerUrl.toString());
+    return { success: true };
+  } catch (error) {
+    detachedImageViewerWindows.delete(sessionId);
+    detachedImageViewerSnapshots.delete(sessionId);
+    if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
+    return { success: false, error: error?.message || 'Failed to load detached viewer.' };
+  }
+}
+
+function closeAllDetachedImageViewers() {
+  for (const viewerWindow of detachedImageViewerWindows.values()) {
+    if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
+  }
+  detachedImageViewerWindows.clear();
+  detachedImageViewerSnapshots.clear();
+}
+
 async function persistWindowState() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
@@ -2282,6 +2460,7 @@ async function createWindow(startupDirectory = null) {
   });
 
   mainWindow.on('closed', () => {
+    closeAllDetachedImageViewers();
     disposeComfyUIView('main-window-closed');
     mainWindow = null;
   });
@@ -2351,10 +2530,14 @@ app.whenReady().then(async () => {
 
   // Listen for theme changes and notify renderer
   nativeTheme.on('updated', () => {
+    const themePayload = {
+      shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
+    };
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('theme-updated', {
-        shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
-      });
+      mainWindow.webContents.send('theme-updated', themePayload);
+    }
+    for (const viewerWindow of detachedImageViewerWindows.values()) {
+      if (!viewerWindow.isDestroyed()) viewerWindow.webContents.send('theme-updated', themePayload);
     }
   });
 
@@ -2392,10 +2575,121 @@ app.whenReady().then(async () => {
   }
 
   // Setup IPC handlers for file operations BEFORE creating window
+  setupImageViewerHandlers();
   setupFileOperationHandlers();
   
   await createWindow(startupDirectory);
 });
+
+function setupImageViewerHandlers() {
+  const isMainSender = (event) => Boolean(
+    mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents
+  );
+  const resolveViewerSender = (event, sessionId) => {
+    const viewerWindow = detachedImageViewerWindows.get(sessionId);
+    return viewerWindow && !viewerWindow.isDestroyed() && event.sender === viewerWindow.webContents
+      ? viewerWindow
+      : null;
+  };
+
+  ipcMain.handle('image-viewer-open', async (event, payload) => {
+    if (!isMainSender(event) || typeof payload?.sessionId !== 'string' || !payload?.snapshot) {
+      return { success: false, error: 'Unauthorized image viewer request.' };
+    }
+    return createDetachedImageViewer(payload.sessionId, payload.snapshot);
+  });
+
+  ipcMain.handle('image-viewer-update', (event, payload) => {
+    if (!isMainSender(event) || typeof payload?.sessionId !== 'string' || !payload?.snapshot) {
+      return { success: false, error: 'Unauthorized image viewer update.' };
+    }
+    const viewerWindow = detachedImageViewerWindows.get(payload.sessionId);
+    if (!viewerWindow || viewerWindow.isDestroyed()) {
+      return { success: false, error: 'Image viewer is not open.' };
+    }
+    const previous = detachedImageViewerSnapshots.get(payload.sessionId);
+    if (previous && Number(previous.revision) >= Number(payload.snapshot.revision)) {
+      return { success: true, ignored: true };
+    }
+    detachedImageViewerSnapshots.set(payload.sessionId, payload.snapshot);
+    viewerWindow.webContents.send('image-viewer-snapshot', payload.snapshot);
+    return { success: true };
+  });
+
+  ipcMain.handle('image-viewer-ready', (event, sessionId) => {
+    const viewerWindow = resolveViewerSender(event, sessionId);
+    if (!viewerWindow) return { success: false, error: 'Unknown image viewer.' };
+    const snapshot = detachedImageViewerSnapshots.get(sessionId);
+    if (!snapshot) return { success: false, error: 'Image viewer snapshot is unavailable.' };
+    viewerWindow.webContents.send('image-viewer-snapshot', snapshot);
+    viewerWindow.__markImageViewerRendererReady?.();
+    return { success: true };
+  });
+
+  ipcMain.handle('image-viewer-window-action', (event, payload) => {
+    const sessionId = payload?.sessionId;
+    const action = payload?.action;
+    const viewerWindow = isMainSender(event)
+      ? detachedImageViewerWindows.get(sessionId)
+      : resolveViewerSender(event, sessionId);
+    if (!viewerWindow || viewerWindow.isDestroyed()) {
+      return { success: false, error: 'Unknown image viewer.' };
+    }
+    if (action === 'focus' || action === 'restore') {
+      if (viewerWindow.isMinimized()) viewerWindow.restore();
+      viewerWindow.show();
+      viewerWindow.focus();
+    } else if (action === 'minimize') {
+      viewerWindow.minimize();
+    } else if (action === 'close') {
+      viewerWindow.close();
+    } else if (action === 'focus-main') {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    } else if (action === 'toggle-always-on-top') {
+      const isAlwaysOnTop = !viewerWindow.isAlwaysOnTop();
+      viewerWindow.setAlwaysOnTop(isAlwaysOnTop);
+      return { success: true, isAlwaysOnTop };
+    } else {
+      return { success: false, error: 'Unsupported image viewer action.' };
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('image-viewer-command', (event, payload) => {
+    const sessionId = payload?.sessionId;
+    if (!resolveViewerSender(event, sessionId) || !payload?.command || !mainWindow || mainWindow.isDestroyed()) {
+      return Promise.resolve({ success: false, error: 'Unauthorized image viewer command.' });
+    }
+    const requestId = `${sessionId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        detachedImageViewerRequestResolvers.delete(requestId);
+        resolve({ success: false, error: 'Image viewer command timed out.' });
+      }, 15000);
+      detachedImageViewerRequestResolvers.set(requestId, (response) => {
+        clearTimeout(timeout);
+        resolve(response);
+      });
+      mainWindow.webContents.send('image-viewer-command', {
+        sessionId,
+        requestId,
+        command: payload.command,
+      });
+    });
+  });
+
+  ipcMain.on('image-viewer-command-response', (event, payload) => {
+    if (!isMainSender(event) || typeof payload?.requestId !== 'string') return;
+    const resolve = detachedImageViewerRequestResolvers.get(payload.requestId);
+    if (!resolve) return;
+    detachedImageViewerRequestResolvers.delete(payload.requestId);
+    resolve(payload.response ?? { success: true });
+  });
+}
 
 // Setup IPC handlers for file operations
 // Store allowed directory paths for security
@@ -4376,6 +4670,13 @@ function setupFileOperationHandlers() {
         ? fileIcon
         : nativeImage.createFromPath(getIconPath());
 
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('native-file-drag-started', {
+          directoryPath,
+          relativePath,
+          imageId: typeof payload?.imageId === 'string' ? payload.imageId : undefined,
+        });
+      }
       event.sender.startDrag({ file: fullPath, icon: dragIcon });
     } catch (error) {
       console.error('Error starting file drag:', error);
@@ -5015,28 +5316,31 @@ function setupFileOperationHandlers() {
   });
 
   // Handle toggling fullscreen
-  ipcMain.handle('toggle-fullscreen', () => {
-    if (mainWindow) {
-      mainWindow.setFullScreen(!mainWindow.isFullScreen());
-      return { success: true, isFullscreen: mainWindow.isFullScreen() };
+  ipcMain.handle('toggle-fullscreen', (event) => {
+    const targetWindow = BrowserWindow.fromWebContents(event.sender);
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.setFullScreen(!targetWindow.isFullScreen());
+      return { success: true, isFullscreen: targetWindow.isFullScreen() };
     }
     return { success: false, error: 'Main window not available' };
   });
 
-  ipcMain.handle('get-fullscreen-state', () => {
-    if (mainWindow) {
-      return { success: true, isFullscreen: mainWindow.isFullScreen() };
+  ipcMain.handle('get-fullscreen-state', (event) => {
+    const targetWindow = BrowserWindow.fromWebContents(event.sender);
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      return { success: true, isFullscreen: targetWindow.isFullScreen() };
     }
     return { success: false, error: 'Main window not available' };
   });
 
   ipcMain.handle('set-fullscreen', (event, isFullscreen) => {
-    if (mainWindow) {
+    const targetWindow = BrowserWindow.fromWebContents(event.sender);
+    if (targetWindow && !targetWindow.isDestroyed()) {
       const nextFullscreenState = Boolean(isFullscreen);
-      if (mainWindow.isFullScreen() !== nextFullscreenState) {
-        mainWindow.setFullScreen(nextFullscreenState);
+      if (targetWindow.isFullScreen() !== nextFullscreenState) {
+        targetWindow.setFullScreen(nextFullscreenState);
       }
-      return { success: true, isFullscreen: mainWindow.isFullScreen() };
+      return { success: true, isFullscreen: targetWindow.isFullScreen() };
     }
     return { success: false, error: 'Main window not available' };
   });

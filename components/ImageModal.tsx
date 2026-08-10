@@ -1,10 +1,10 @@
 import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
-import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageEditRecipe } from '../types';
+import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageEditRecipe, type TagInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, copyTextToClipboard, showInExplorer } from '../utils/imageUtils';
 import { motion } from 'framer-motion';
-import { AlertTriangle, Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Copy, Pencil, Pin, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -232,6 +232,7 @@ const scheduleEditedImageCacheUpsert = (
 };
 
 interface ImageModalProps {
+  hostMode?: 'inline' | 'native-window';
   modalId?: string;
   image: IndexedImage;
   onClose: () => void;
@@ -240,6 +241,12 @@ interface ImageModalProps {
   onOpenImageEditor?: (image: IndexedImage) => void;
   onImageDeleted?: (imageId: string) => void;
   onImageRenamed?: (oldImageId: string, newImageId: string, newRelativePath: string) => void;
+  onRequestDelete?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
+  onRequestRename?: (imageId: string, newName: string) => Promise<{ success: boolean; error?: string; newImageId?: string; newRelativePath?: string }>;
+  onRequestReparse?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
+  onRequestTagSuggestions?: (query: string) => Promise<TagInfo[]>;
+  isAlwaysOnTop?: boolean;
+  onToggleAlwaysOnTop?: () => void;
   currentIndex?: number;
   totalImages?: number;
   onNavigateNext?: () => void;
@@ -941,6 +948,7 @@ const VideoPlayer: React.FC<{
 
 
 const ImageModal: React.FC<ImageModalProps> = ({
+  hostMode = 'inline',
   modalId,
   image,
   onClose,
@@ -949,6 +957,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onOpenImageEditor,
   onImageDeleted,
   onImageRenamed,
+  onRequestDelete,
+  onRequestRename,
+  onRequestReparse,
+  onRequestTagSuggestions,
+  isAlwaysOnTop = false,
+  onToggleAlwaysOnTop,
   currentIndex = 0,
   totalImages = 0,
   onNavigateNext,
@@ -1069,7 +1083,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const hasMarkedModalShellRef = useRef(false);
   const hasMarkedPreviewVisibleRef = useRef(false);
   const hasMarkedFullMediaReadyRef = useRef(false);
+  const isNativeWindow = hostMode === 'native-window';
   const isFullViewportModal = isFullscreen || isSlideshowMode;
+
+  useEffect(() => {
+    if (!isNativeWindow) {
+      return;
+    }
+    document.title = `${image.name} — Image MetaHub`;
+  }, [image.name, isNativeWindow]);
 
   useEffect(() => {
     if (!isMinimized) {
@@ -1219,6 +1241,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [liveImage.id, selectedImages]);
 
   const [tagInput, setTagInput] = useState('');
+  const [remoteAvailableTags, setRemoteAvailableTags] = useState<TagInfo[]>([]);
   const [isMediaOverlayVisible, setIsMediaOverlayVisible] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
@@ -1470,7 +1493,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [contextMenu.visible]);
 
   const applyModalWindowStyles = useCallback((windowState: ModalWindowState) => {
-    if (isFullViewportModal || !modalShellRef.current) {
+    if (isFullViewportModal || isNativeWindow || !modalShellRef.current) {
       return;
     }
 
@@ -1478,7 +1501,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     modalShellRef.current.style.top = `${windowState.y}px`;
     modalShellRef.current.style.width = `${windowState.width}px`;
     modalShellRef.current.style.height = `${windowState.height}px`;
-  }, [isFullViewportModal]);
+  }, [isFullViewportModal, isNativeWindow]);
 
   const scheduleModalWindowPaint = useCallback((windowState: ModalWindowState) => {
     liveModalWindowRef.current = windowState;
@@ -1657,7 +1680,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isFullViewportModal) {
+    if (isFullViewportModal || isNativeWindow) {
       return;
     }
 
@@ -1672,7 +1695,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isFullViewportModal, isWindowMaximized]);
+  }, [isFullViewportModal, isNativeWindow, isWindowMaximized]);
 
   useEffect(() => {
     if (isFullViewportModal || modalInteraction.mode === 'idle') {
@@ -2088,6 +2111,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const handleReparseMetadata = async () => {
     hideContextMenu();
+    if (onRequestReparse) {
+      const result = await onRequestReparse(liveImage.id);
+      if (!result.success) alert(result.error || 'Failed to reparse metadata.');
+      return;
+    }
     await reparseImages([liveImage]);
   };
 
@@ -2332,7 +2360,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'copy';
     }
-    window.electronAPI?.startFileDrag({ directoryPath, relativePath });
+    window.electronAPI?.startFileDrag({ directoryPath, relativePath, imageId: image.id });
   }, [canDragExternally, directoryPath, image.id, image.name]);
 
   useEffect(() => {
@@ -3063,9 +3091,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
         }
       }
 
-      const result = await FileOperations.deleteFile(imageToDelete);
+      const result = onRequestDelete
+        ? await onRequestDelete(imageToDelete.id)
+        : await FileOperations.deleteFile(imageToDelete);
       if (result.success) {
-        if (!shouldAwaitWatcherRemoval) {
+        if (!onRequestDelete && !shouldAwaitWatcherRemoval) {
           onImageDeleted?.(idToDelete);
         }
         
@@ -3076,7 +3106,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         alert(`Failed to delete file: ${result.error}`);
       }
     }
-  }, [currentIndex, directories, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, totalImages]);
+  }, [currentIndex, directories, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, onRequestDelete, totalImages]);
 
   // Navigation the user asked for explicitly: it ends any repeat-all/shuffle chain, so the item we
   // land on obeys the auto-play setting again.
@@ -3359,9 +3389,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const confirmRename = async () => {
     const oldImageId = image.id;
-    const result = await renameIndexedImage(image, newName);
+    const result = onRequestRename
+      ? await onRequestRename(image.id, newName)
+      : await renameIndexedImage(image, newName);
     if (result.success) {
-      onImageRenamed?.(oldImageId, result.newImageId || oldImageId, result.newRelativePath || image.name);
+      if (!onRequestRename) {
+        onImageRenamed?.(oldImageId, result.newImageId || oldImageId, result.newRelativePath || image.name);
+      }
       setIsRenaming(false);
     } else {
       alert(`Failed to rename file: ${result.error}`);
@@ -3435,7 +3469,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     <React.Profiler id="ImageModal" onRender={modalProfilerOnRender}>
     <div
       className={`fixed inset-0 transition-all duration-300 ${
-        isFullViewportModal ? 'pointer-events-auto bg-black' : 'pointer-events-none'
+        isFullViewportModal || isNativeWindow ? 'pointer-events-auto bg-black' : 'pointer-events-none'
       }`}
       style={{ zIndex: isFullViewportModal ? Math.max(zIndex, 9999) : zIndex }}
       onClick={isFullscreen && !isSlideshowMode ? onClose : undefined}
@@ -3446,7 +3480,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         aria-modal={isFullViewportModal ? 'true' : 'false'}
         aria-label={`Image viewer: ${image.name}`}
         className={`${
-          isFullViewportModal
+          isFullViewportModal || isNativeWindow
             ? 'fixed inset-0 z-[9999] h-screen w-screen rounded-none bg-black'
             : `fixed bg-gray-900 border rounded-2xl overflow-hidden ${modalShellStateClass}`
         } pointer-events-auto flex flex-col ${modalEntryAnimationClass} ${isWindowInteractionActive ? 'select-none' : ''}`}
@@ -3456,7 +3490,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           hideContextMenu();
         }}
         style={
-          isFullViewportModal
+          isFullViewportModal || isNativeWindow
             ? undefined
             : {
                 left: `${modalWindow.x}px`,
@@ -3469,9 +3503,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
       >
         {!isFullViewportModal && (
           <div
-            className={`flex items-center justify-between gap-3 border-b px-4 py-1.5 backdrop-blur-sm cursor-move transition-colors duration-150 ${titleBarStateClass}`}
-            onPointerDown={handleWindowSurfacePointerDown}
-            onDoubleClick={toggleWindowMaximize}
+            className={`flex items-center justify-between gap-3 border-b px-4 py-1.5 backdrop-blur-sm transition-colors duration-150 ${isNativeWindow ? '' : 'cursor-move'} ${titleBarStateClass}`}
+            onPointerDown={isNativeWindow ? undefined : handleWindowSurfacePointerDown}
+            onDoubleClick={isNativeWindow ? undefined : toggleWindowMaximize}
           >
             <div className="min-w-0 flex-1">
               {isRenaming ? (
@@ -3514,14 +3548,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     Cancel
                   </button>
                 </div>
-              ) : (
+              ) : !isNativeWindow ? (
                 <div className={`truncate text-sm font-semibold ${titleTextClass}`} title={image.name}>
                   {image.name}
                 </div>
-              )}
+              ) : null}
               <div className={`flex items-center gap-2 text-[11px] ${titleMetaClass}`}>
                 <span className="min-w-0 truncate" title={imageFullPath}>
-                  {imageFullPath}
+                  {isNativeWindow ? (directoryPath || imageFullPath) : imageFullPath}
                 </span>
                 {hasVerifiedTelemetry(liveImage) && (
                   <span
@@ -3547,6 +3581,22 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              {isNativeWindow && onToggleAlwaysOnTop && (
+                <motion.button
+                  onClick={onToggleAlwaysOnTop}
+                  whileTap={{ scale: 0.9 }}
+                  className={`rounded-lg border p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    isAlwaysOnTop
+                      ? 'border-blue-400/50 bg-blue-500/20 text-blue-300'
+                      : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-600 hover:bg-gray-700 hover:text-white'
+                  }`}
+                  aria-pressed={isAlwaysOnTop}
+                  aria-label={isAlwaysOnTop ? 'Disable always on top' : 'Enable always on top'}
+                  title={isAlwaysOnTop ? 'Stop keeping this window on top' : 'Keep this window on top'}
+                >
+                  <Pin className={`h-3.5 w-3.5 ${isAlwaysOnTop ? 'fill-current' : ''}`} />
+                </motion.button>
+              )}
               <motion.button
                 onClick={handleDelete}
                 whileTap={{ scale: 0.9 }}
@@ -3569,34 +3619,38 @@ const ImageModal: React.FC<ImageModalProps> = ({
               >
                 <Pencil className="w-3.5 h-3.5" />
               </motion.button>
-              <motion.button
-                onClick={() => void handleMinimizeWithAnimation()}
-                whileTap={{ scale: 0.9 }}
-                onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                title="Minimize window"
-              >
-                <Minus className="w-3.5 h-3.5" />
-              </motion.button>
-              <motion.button
-                onClick={toggleWindowMaximize}
-                whileTap={{ scale: 0.9 }}
-                onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
-              >
-                {isWindowMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-              </motion.button>
-              <motion.button
-                onClick={onClose}
-                whileTap={{ scale: 0.9 }}
-                onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                aria-label="Close image"
-                title="Close (Esc)"
-              >
-                <X className="w-3.5 h-3.5" />
-              </motion.button>
+              {!isNativeWindow && (
+                <>
+                  <motion.button
+                    onClick={() => void handleMinimizeWithAnimation()}
+                    whileTap={{ scale: 0.9 }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    title="Minimize window"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </motion.button>
+                  <motion.button
+                    onClick={toggleWindowMaximize}
+                    whileTap={{ scale: 0.9 }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
+                  >
+                    {isWindowMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                  </motion.button>
+                  <motion.button
+                    onClick={onClose}
+                    whileTap={{ scale: 0.9 }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    aria-label="Close image"
+                    title="Close (Esc)"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </motion.button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -3613,7 +3667,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               : showSidebarOnBottom
                 ? 'min-h-[280px] flex-1'
                 : 'h-full flex-1 min-w-0'
-          } bg-black flex items-center justify-center ${isFullViewportModal ? 'p-0' : 'p-2'} relative group overflow-hidden`}
+          } bg-black flex items-center justify-center ${isFullViewportModal || isNativeWindow ? 'p-0' : 'p-2'} relative group overflow-hidden`}
           onPointerDown={handleImageContainerPointerDown}
           onPointerMove={revealMediaOverlay}
           onMouseDown={isPlayableMedia ? undefined : handleMouseDown}
@@ -3873,14 +3927,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 >
                   <Minimize2 className="h-4 w-4" />
                 </button>
-                <button
-                  onClick={onClose}
-                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
-                  aria-label="Close image"
-                  title="Close (Esc)"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                {!isNativeWindow && (
+                  <button
+                    onClick={onClose}
+                    className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
+                    aria-label="Close image"
+                    title="Close (Esc)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             ) : (
               <div className="flex flex-row items-center gap-2">
@@ -4075,10 +4131,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <TagInputCombobox
                   ref={tagInputRef}
                   value={tagInput}
-                  onValueChange={setTagInput}
+                  onValueChange={(value) => {
+                    setTagInput(value);
+                    if (onRequestTagSuggestions && value.trim()) {
+                      void onRequestTagSuggestions(value).then(setRemoteAvailableTags);
+                    }
+                  }}
                   onSubmit={handleAddTag}
                   recentTags={recentTags}
-                  availableTags={availableTags}
+                  availableTags={onRequestTagSuggestions ? remoteAvailableTags : availableTags}
                   excludedTags={currentTags}
                   suggestionLimit={tagSuggestionLimit}
                   placeholder="Add tag..."
@@ -4800,7 +4861,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         )}
         </div>
 
-        {!isFullViewportModal && (
+        {!isFullViewportModal && !isNativeWindow && (
           <>
             <div
               className="absolute inset-x-5 top-0 h-1.5 cursor-ns-resize bg-transparent"
@@ -5138,6 +5199,9 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.initialWindowState?.width === nextProps.initialWindowState?.width &&
     prevProps.initialWindowState?.height === nextProps.initialWindowState?.height &&
     prevProps.isMinimized === nextProps.isMinimized &&
+    prevProps.hostMode === nextProps.hostMode &&
+    prevProps.isAlwaysOnTop === nextProps.isAlwaysOnTop &&
+    prevProps.onToggleAlwaysOnTop === nextProps.onToggleAlwaysOnTop &&
     prevProps.startSlideshow === nextProps.startSlideshow &&
     prevProps.closeOnSlideshowExit === nextProps.closeOnSlideshowExit &&
     prevProps.diagnosticsFlowId === nextProps.diagnosticsFlowId &&

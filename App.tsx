@@ -78,12 +78,26 @@ import {
   normalizeFilesystemPath,
 } from './utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from './utils/directoryActivity';
+import { FileOperations } from './services/fileOperations';
+import { renameIndexedImage } from './services/imageRenameService';
+import { useReparseMetadata } from './hooks/useReparseMetadata';
+import {
+  resolveEffectiveImageViewerHost,
+  toImageModalImageDTO,
+  type DetachedImageViewerStatus,
+  type ImageViewerCommand,
+  type ImageViewerNavigationSource,
+  type ImageViewerSnapshot,
+} from './services/imageViewerContracts';
 
 interface OpenImageModalState {
+  sessionId: string;
   modalId: string;
   imageId: string;
   navigationImageIds: string[];
-  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow' | 'comfyui' | 'find-similar';
+  navigationSource: ImageViewerNavigationSource;
+  host: 'inline' | 'detached';
+  nativeStatus?: DetachedImageViewerStatus;
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
@@ -418,6 +432,7 @@ export default function App() {
     comfyUIWorkspaceAutoOpenSelectedImage,
     creatorAttributionToken,
     setCreatorAttributionToken,
+    imageViewerMode,
   } = useSettingsStore();
 
   useEffect(() => {
@@ -541,10 +556,29 @@ export default function App() {
   const watchedRemovalCacheDeltaQueueRef = useRef<Map<string, PendingWatchedRemovalCacheDelta>>(new Map());
   const startupHydrationPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const appProfilerOnRender = useMemo(() => createProfilerOnRender('App'), []);
+  const resolveViewerHost = useCallback(
+    () => resolveEffectiveImageViewerHost(imageViewerMode, Boolean(window.electronAPI?.imageViewerOpen)),
+    [imageViewerMode]
+  );
+  const viewerSettingsSyncToken = useSettingsStore((state) => JSON.stringify({
+    theme: state.theme,
+    enableAnimations: state.enableAnimations,
+    slideshowIntervalSeconds: state.slideshowIntervalSeconds,
+    slideshowShowFilename: state.slideshowShowFilename,
+    autoPlayMedia: state.autoPlayMedia,
+    videoRepeatMode: state.videoRepeatMode,
+    videoShuffle: state.videoShuffle,
+    tagSuggestionLimit: state.tagSuggestionLimit,
+    recentTagChipLimit: state.recentTagChipLimit,
+    a1111Enabled: state.a1111Enabled,
+    comfyUIEnabled: state.comfyUIEnabled,
+  }));
+  const viewerLicenseSyncToken = useLicenseStore((state) => `${state.initialized}:${state.licenseStatus}:${state.trialActivated}:${state.trialStartDate ?? ''}`);
 
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+  const { reparseImages: reparseViewerImages } = useReparseMetadata();
 
   const resetLibraryGridScrollPosition = useCallback(() => {
     libraryGridScrollTopRef.current = 0;
@@ -1827,10 +1861,13 @@ export default function App() {
       return [
         ...current,
         {
+          sessionId: selectedModalId,
           modalId: selectedModalId,
           imageId: selectedImage.id,
           navigationImageIds,
           navigationSource: navigationSourceType,
+          host: resolveViewerHost(),
+          nativeStatus: resolveViewerHost() === 'detached' ? 'pending' : undefined,
           zIndex: highestZIndex + 1,
           initialWindowOffset: current.length * 28,
           isMinimized: false,
@@ -1838,7 +1875,7 @@ export default function App() {
         },
       ];
     });
-  }, [beginModalOpenFlow, clusterNavigationContext, openImageModals, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [beginModalOpenFlow, clusterNavigationContext, openImageModals, resolveViewerHost, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
 
   const filteredNavigationImageIds = useMemo(
     () => safeFilteredImages.map((image) => image.id),
@@ -2031,6 +2068,10 @@ export default function App() {
   }, []);
 
   const handleActivateImageModal = useCallback((modalId: string) => {
+    const requestedModal = openImageModals.find((modal) => modal.modalId === modalId);
+    if (requestedModal?.host === 'detached') {
+      void window.electronAPI?.imageViewerWindowAction({ sessionId: requestedModal.sessionId, action: 'restore' });
+    }
     setOpenImageModals((current) => {
       const targetModal = current.find((modal) => modal.modalId === modalId);
       if (!targetModal) {
@@ -2039,7 +2080,9 @@ export default function App() {
 
       const nextZIndex = Math.max(...current.map((modal) => modal.zIndex)) + 1;
       return current.map((modal) =>
-        modal.modalId === modalId ? { ...modal, zIndex: nextZIndex, isMinimized: false } : modal
+        modal.modalId === modalId
+          ? { ...modal, zIndex: nextZIndex, isMinimized: false, nativeStatus: modal.host === 'detached' ? 'open' : modal.nativeStatus }
+          : modal
       );
     });
     setActiveImageModalId(modalId);
@@ -2054,7 +2097,9 @@ export default function App() {
   const handleMinimizeImageModal = useCallback((modalId: string) => {
     setOpenImageModals((current) =>
       current.map((modal) =>
-        modal.modalId === modalId ? { ...modal, isMinimized: true } : modal
+        modal.modalId === modalId
+          ? { ...modal, isMinimized: true, nativeStatus: modal.host === 'detached' ? 'minimized' : modal.nativeStatus }
+          : modal
       )
     );
   }, []);
@@ -2108,6 +2153,10 @@ export default function App() {
       return;
     }
 
+    if (targetModal.host === 'detached') {
+      void window.electronAPI?.imageViewerWindowAction({ sessionId: targetModal.sessionId, action: 'close' });
+      return;
+    }
     handleCloseImageModal(targetModal.modalId, targetModal.imageId);
   }, [handleCloseImageModal, openImageModals]);
 
@@ -2221,13 +2270,18 @@ export default function App() {
         });
       }
 
+      const modalId = `image-modal-${Date.now()}-${image.id}`;
+      const host = resolveViewerHost();
       return [
         ...current,
         {
-          modalId: `image-modal-${Date.now()}-${image.id}`,
+          sessionId: modalId,
+          modalId,
           imageId: image.id,
           navigationImageIds,
           navigationSource: navigationSourceType,
+          host,
+          nativeStatus: host === 'detached' ? 'minimized' : undefined,
           zIndex: nextZIndex,
           initialWindowOffset: current.length * 28,
           isMinimized: true,
@@ -2235,7 +2289,7 @@ export default function App() {
         },
       ];
     });
-  }, [beginModalOpenFlow, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
+  }, [beginModalOpenFlow, resolveViewerHost, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
 
   const handleOpenImageModalFromGeneratedOutput = useCallback((imageId: string) => {
     const image = getImageByIdFromStore(imageId);
@@ -2271,10 +2325,13 @@ export default function App() {
       return [
         ...current,
         {
+          sessionId: modalId,
           modalId,
           imageId: image.id,
           navigationImageIds,
           navigationSource: safeActiveImageScope ? 'scope' : 'filtered',
+          host: resolveViewerHost(),
+          nativeStatus: resolveViewerHost() === 'detached' ? 'pending' : undefined,
           zIndex: nextZIndex,
           initialWindowOffset: current.length * 28,
           isMinimized: false,
@@ -2285,11 +2342,12 @@ export default function App() {
 
     setActiveImageModalId(activeModalId);
     setSelectedImage(image);
-    if (libraryView === 'comfyui') {
+    const openingHost = existingModalForImage?.host ?? resolveViewerHost();
+    if (libraryView === 'comfyui' && openingHost === 'inline') {
       setLibraryView('library');
     }
     setGeneratedOutputPreview(null);
-  }, [beginModalOpenFlow, getImageByIdFromStore, libraryView, openImageModals, safeActiveImageScope, safeFilteredImages, setSelectedImage]);
+  }, [beginModalOpenFlow, getImageByIdFromStore, libraryView, openImageModals, resolveViewerHost, safeActiveImageScope, safeFilteredImages, setSelectedImage]);
 
   const resolveGeneratedOutputImageId = useCallback((output: GeneratedQueueOutput): string | undefined => {
     if (output.imageId && getImageByIdFromStore(output.imageId)) {
@@ -2847,10 +2905,13 @@ export default function App() {
       return [
         ...current,
         {
+          sessionId: modalId,
           modalId,
           imageId: image.id,
           navigationImageIds,
           navigationSource: 'find-similar',
+          host: resolveViewerHost(),
+          nativeStatus: resolveViewerHost() === 'detached' ? 'pending' : undefined,
           zIndex: nextZIndex,
           initialWindowOffset: current.length * 28,
           isMinimized: false,
@@ -2862,7 +2923,7 @@ export default function App() {
     setActiveImageModalId(modalId);
     suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
-  }, [beginModalOpenFlow, openImageModals, setSelectedImage]);
+  }, [beginModalOpenFlow, openImageModals, resolveViewerHost, setSelectedImage]);
 
   const openModelPromptPicker = useCallback((modelName: string) => {
     setModelPromptPickerState({
@@ -2938,8 +2999,11 @@ export default function App() {
   const handleComfyUIWorkspaceViewFullMetadata = useCallback((image: IndexedImage) => {
     setComfyUIWorkspaceImageId(image.id);
     setSelectedImage(image);
-    setLibraryView('library');
-  }, [setSelectedImage]);
+    const existing = openImageModals.find((modal) => modal.imageId === image.id);
+    if ((existing?.host ?? resolveViewerHost()) === 'inline') {
+      setLibraryView('library');
+    }
+  }, [openImageModals, resolveViewerHost, setSelectedImage]);
   const handleComfyUIWorkspaceNavigate = useCallback((direction: 'next' | 'previous') => {
     if (comfyUIWorkspaceCurrentIndex === -1) {
       return;
@@ -3018,10 +3082,13 @@ export default function App() {
       return [
         ...current,
         {
+          sessionId: slideshowModalId,
           modalId: slideshowModalId,
           imageId: firstImage.id,
           navigationImageIds,
           navigationSource: 'slideshow',
+          host: resolveViewerHost(),
+          nativeStatus: resolveViewerHost() === 'detached' ? 'pending' : undefined,
           zIndex: highestZIndex + 1,
           initialWindowOffset: current.length * 28,
           isMinimized: false,
@@ -3031,7 +3098,7 @@ export default function App() {
         },
       ];
     });
-  }, [beginModalOpenFlow, openImageModals, setError, setSelectedImage, slideshowPlaylistPreview.images]);
+  }, [beginModalOpenFlow, openImageModals, resolveViewerHost, setError, setSelectedImage, slideshowPlaylistPreview.images]);
 
   useEffect(() => {
     const scopedTotalPages = Math.ceil(displayImages.length / itemsPerPage);
@@ -3138,6 +3205,250 @@ export default function App() {
       }>;
   }, [directoryPathById, getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, resolveModalNavigationIndex]);
 
+  const detachedViewerRevisionRef = useRef(new Map<string, number>());
+  const detachedViewerOpenedRef = useRef(new Set<string>());
+
+  const buildDetachedViewerSnapshot = useCallback((modal: typeof openImageModalEntries[number]): ImageViewerSnapshot => {
+    const navigationImages = resolveModalNavigationImages(modal);
+    const previousImage = modal.currentIndex > 0 ? navigationImages[modal.currentIndex - 1] : null;
+    const nextImage = modal.currentIndex < navigationImages.length - 1 ? navigationImages[modal.currentIndex + 1] : null;
+    const revision = (detachedViewerRevisionRef.current.get(modal.sessionId) ?? 0) + 1;
+    detachedViewerRevisionRef.current.set(modal.sessionId, revision);
+    const imageState = useImageStore.getState();
+    return {
+      sessionId: modal.sessionId,
+      revision,
+      image: toImageModalImageDTO(modal.image),
+      previousImage: previousImage ? toImageModalImageDTO(previousImage) : null,
+      nextImage: nextImage ? toImageModalImageDTO(nextImage) : null,
+      currentIndex: modal.currentIndex,
+      totalImages: modal.totalImages,
+      directoryPath: modal.directoryPath,
+      isIndexing: Boolean(progress && progress.total > 0 && progress.current < progress.total),
+      startSlideshow: Boolean(modal.startSlideshow),
+      closeOnSlideshowExit: Boolean(modal.closeOnSlideshowExit),
+      recentTags: imageState.recentTags,
+      comparisonCount: imageState.comparisonImages.length,
+      comparisonImages: imageState.comparisonImages.map(toImageModalImageDTO),
+      collections: imageState.collections,
+    };
+  }, [progress, resolveModalNavigationImages, viewerLicenseSyncToken, viewerSettingsSyncToken]);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.imageViewerOpen || !api.imageViewerUpdate) return;
+
+    for (const modal of openImageModalEntries) {
+      if (modal.host !== 'detached' || modal.isMinimized) continue;
+      const snapshot = buildDetachedViewerSnapshot(modal);
+      if (!detachedViewerOpenedRef.current.has(modal.sessionId)) {
+        detachedViewerOpenedRef.current.add(modal.sessionId);
+        void api.imageViewerOpen({ sessionId: modal.sessionId, snapshot }).then((result) => {
+          if (result.success) {
+            setOpenImageModals((current) => current.map((entry) =>
+              entry.sessionId === modal.sessionId
+                ? { ...entry, nativeStatus: 'open', isMinimized: false }
+                : entry
+            ));
+            return;
+          }
+          detachedViewerOpenedRef.current.delete(modal.sessionId);
+          setOpenImageModals((current) => current.map((entry) =>
+            entry.sessionId === modal.sessionId
+              ? { ...entry, host: 'inline', nativeStatus: undefined, isMinimized: false }
+              : entry
+          ));
+          setError(`Could not open a separate viewer window. Opened it inside Image MetaHub instead.${result.error ? ` ${result.error}` : ''}`);
+        });
+      } else {
+        void api.imageViewerUpdate({ sessionId: modal.sessionId, snapshot });
+        if (modal.nativeStatus === 'minimized') {
+          void api.imageViewerWindowAction({ sessionId: modal.sessionId, action: 'restore' });
+        }
+      }
+    }
+  }, [buildDetachedViewerSnapshot, openImageModalEntries, setError]);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.onImageViewerEvent) return;
+    return api.onImageViewerEvent((event) => {
+      const target = openImageModals.find((modal) => modal.sessionId === event.sessionId);
+      if (!target) return;
+      if (event.type === 'closed') {
+        detachedViewerOpenedRef.current.delete(event.sessionId);
+        detachedViewerRevisionRef.current.delete(event.sessionId);
+        handleCloseImageModal(target.modalId, target.imageId);
+        return;
+      }
+      if (event.type === 'render-process-gone') {
+        detachedViewerOpenedRef.current.delete(event.sessionId);
+        setOpenImageModals((current) => current.filter((modal) => modal.sessionId !== event.sessionId));
+        setError('The detached image viewer stopped unexpectedly. Reopen the image to continue.');
+        return;
+      }
+      if (event.type === 'load-failed') {
+        detachedViewerOpenedRef.current.delete(event.sessionId);
+        setOpenImageModals((current) => current.map((modal) =>
+          modal.sessionId === event.sessionId
+            ? { ...modal, host: 'inline', nativeStatus: undefined, isMinimized: false }
+            : modal
+        ));
+        setError('Could not load the separate viewer window. Opened it inside Image MetaHub instead.');
+        return;
+      }
+      if (event.type === 'focus' || event.type === 'restore') {
+        handleActivateImageModal(target.modalId);
+      } else if (event.type === 'minimize') {
+        handleMinimizeImageModal(target.modalId);
+      }
+    });
+  }, [handleActivateImageModal, handleCloseImageModal, handleMinimizeImageModal, openImageModals, setError]);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.onImageViewerCommand || !api.imageViewerRespond) return;
+    return api.onImageViewerCommand(({ sessionId, requestId, command }) => {
+      const respond = (response: { success: boolean; error?: string; [key: string]: unknown }) =>
+        api.imageViewerRespond({ requestId, response });
+      const session = openImageModals.find((modal) => modal.sessionId === sessionId && modal.host === 'detached');
+      if (!session) {
+        respond({ success: false, error: 'Unknown image viewer session.' });
+        return;
+      }
+
+      void (async () => {
+        const state = useImageStore.getState();
+        const resolveImage = (imageId: string) => state.images.find((image) => image.id === imageId);
+        const requireImage = (imageId: string) => {
+          const image = resolveImage(imageId);
+          if (!image) throw new Error('Image is no longer available in the library.');
+          return image;
+        };
+        switch ((command as ImageViewerCommand).type) {
+          case 'navigate':
+            handleImageModalNavigate(session.modalId, command.direction, { wrap: command.wrap });
+            break;
+          case 'close':
+            await api.imageViewerWindowAction({ sessionId, action: 'close' });
+            break;
+          case 'focus-main':
+            await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
+            break;
+          case 'find-similar': {
+            const image = requireImage(command.imageId);
+            openFindSimilar(image, resolveModalNavigationImages(session));
+            await api.imageViewerWindowAction({ sessionId, action: 'minimize' });
+            await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
+            break;
+          }
+          case 'open-comfyui': {
+            const image = requireImage(command.imageId);
+            handleOpenComfyUIWorkflowFromImageModal(session.modalId, image, resolveModalNavigationImages(session));
+            await api.imageViewerWindowAction({ sessionId, action: 'close' });
+            await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
+            break;
+          }
+          case 'open-editor': {
+            const image = requireImage(command.imageId);
+            handleOpenImageEditorFromImageModal(session.modalId, image, resolveModalNavigationImages(session));
+            await api.imageViewerWindowAction({ sessionId, action: 'close' });
+            await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
+            break;
+          }
+          case 'image-deleted':
+            requireImage(command.imageId);
+            handleImageDeleted(command.imageId);
+            break;
+          case 'image-renamed':
+            requireImage(command.oldImageId);
+            state.renameImageRecord(command.oldImageId, command.newRelativePath);
+            handleImageRenamed(command.oldImageId, command.newImageId);
+            break;
+          case 'delete-image': {
+            const image = requireImage(command.imageId);
+            const result = await FileOperations.deleteFile(image);
+            if (!result.success) throw new Error(result.error || 'Failed to delete image.');
+            handleImageDeleted(image.id);
+            break;
+          }
+          case 'rename-image': {
+            const image = requireImage(command.imageId);
+            const result = await renameIndexedImage(image, command.newName);
+            if (!result.success) throw new Error(result.error || 'Failed to rename image.');
+            handleImageRenamed(image.id, result.newImageId || image.id);
+            respond({
+              success: true,
+              newImageId: result.newImageId || image.id,
+              newRelativePath: result.newRelativePath || image.name,
+            });
+            return;
+          }
+          case 'reparse-image':
+            await reparseViewerImages([requireImage(command.imageId)]);
+            break;
+          case 'add-comparison': {
+            const image = requireImage(command.imageId);
+            const beforeCount = state.comparisonImages.length;
+            state.addImageToComparison(image);
+            if (beforeCount + 1 >= 2) {
+              state.openComparisonModal();
+              await api.imageViewerWindowAction({ sessionId, action: 'close' });
+              await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
+            }
+            break;
+          }
+          case 'add-to-collection': {
+            command.imageIds.forEach(requireImage);
+            const collection = await state.addImagesToCollection(command.collectionId, command.imageIds);
+            respond({ success: true, collection });
+            return;
+          }
+          case 'create-collection': {
+            const collection = await state.createCollection(command.collection as never);
+            respond({ success: true, collection });
+            return;
+          }
+          case 'get-tag-suggestions': {
+            const query = command.query.trim().toLowerCase();
+            const limit = useSettingsStore.getState().tagSuggestionLimit;
+            const suggestions = state.availableTags
+              .filter((tag) => !query || tag.name.toLowerCase().includes(query))
+              .slice(0, limit);
+            respond({ success: true, suggestions });
+            return;
+          }
+          case 'toggle-favorite':
+            await state.toggleFavorite(requireImage(command.imageId).id);
+            break;
+          case 'set-rating':
+            await state.setImageRating(requireImage(command.imageId).id, command.rating);
+            break;
+          case 'add-tag':
+            await state.addTagToImage(requireImage(command.imageId).id, command.tag);
+            break;
+          case 'remove-tag':
+            await state.removeTagFromImage(requireImage(command.imageId).id, command.tag);
+            break;
+          case 'remove-auto-tag':
+            state.removeAutoTagFromImage(requireImage(command.imageId).id, command.tag);
+            break;
+          case 'set-search':
+            state.setSearchQuery(command.query);
+            await api.imageViewerWindowAction({ sessionId, action: 'minimize' });
+            await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
+            break;
+          case 'slideshow-started':
+            handleSlideshowStartAcknowledged(session.modalId);
+            break;
+          default:
+            throw new Error('Unsupported image viewer command.');
+        }
+        respond({ success: true });
+      })().catch((error) => respond({ success: false, error: error instanceof Error ? error.message : 'Viewer command failed.' }));
+    });
+  }, [handleImageDeleted, handleImageModalNavigate, handleImageRenamed, handleOpenComfyUIWorkflowFromImageModal, handleOpenImageEditorFromImageModal, handleSlideshowStartAcknowledged, openFindSimilar, openImageModals, reparseViewerImages, resolveModalNavigationImages]);
+
   const footerWindowItems = useMemo(() => {
     return openImageModals
       .map((modal) => {
@@ -3163,10 +3474,10 @@ export default function App() {
       }>;
   }, [activeImageModalId, getImageByIdFromStore, openImageModals]);
   const hasActiveVisibleImageModal = openImageModalEntries.some(
-    (modal) => !modal.isMinimized && modal.modalId === activeImageModalId
+    (modal) => modal.host === 'inline' && !modal.isMinimized && modal.modalId === activeImageModalId
   );
-  const hasVisibleImageModal = openImageModalEntries.some(
-    (modal) => !modal.isMinimized
+  const hasVisibleInlineImageModal = openImageModalEntries.some(
+    (modal) => modal.host === 'inline' && !modal.isMinimized
   );
   const shouldShowEmbeddedComfyUIView =
     libraryView === 'comfyui' &&
@@ -3181,7 +3492,7 @@ export default function App() {
     !isSaveFilteredCollectionModalOpen &&
     !isA1111GenerateModalOpen &&
     !isComfyUIGenerateModalOpen &&
-    !hasVisibleImageModal &&
+    !hasVisibleInlineImageModal &&
     !generatedOutputPreview &&
     !proModalOpen;
   const libraryContentFocusClass = hasActiveVisibleImageModal
@@ -3372,6 +3683,20 @@ export default function App() {
           onResizeStart={handleRightSidebarResizeStart}
           onOpenGeneratedOutputs={(item) => {
             const outputs = enrichGeneratedOutputs(item.generatedOutputs || []);
+            setGeneratedOutputPreview({
+              itemId: item.id,
+              outputs,
+              initialIndex: 0,
+              jobName: item.imageName,
+            });
+          }}
+          onOpenGeneratedOutputImage={(item) => {
+            const outputs = enrichGeneratedOutputs(item.generatedOutputs || []);
+            const [output] = outputs;
+            if (output?.imageId) {
+              handleOpenImageModalFromGeneratedOutput(output.imageId);
+              return;
+            }
             setGeneratedOutputPreview({
               itemId: item.id,
               outputs,
@@ -3827,7 +4152,8 @@ export default function App() {
                   customText={libraryView === 'comfyui' ? 'ComfyUI Workspace' : libraryView === 'editor' ? 'Image Editor' : undefined}
                   windowItems={footerWindowItems}
                   onWindowSelect={(modalId) => {
-                    if (libraryView === 'comfyui' || libraryView === 'editor') {
+                    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+                    if (targetModal?.host === 'inline' && (libraryView === 'comfyui' || libraryView === 'editor')) {
                       setLibraryView('library');
                     }
                     handleActivateImageModal(modalId);
@@ -3846,7 +4172,7 @@ export default function App() {
           )}
         </main>
 
-        {openImageModalEntries.map((modal) => (
+        {openImageModalEntries.filter((modal) => modal.host === 'inline').map((modal) => (
           <ImageModal
             key={modal.modalId}
             modalId={modal.modalId}

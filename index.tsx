@@ -10,6 +10,8 @@ import { useLicenseStore } from './store/useLicenseStore';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { initializePerformanceDiagnostics } from './utils/performanceDiagnostics';
+import DetachedImageModalApp from './components/DetachedImageModalApp';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 
 // Expose stores globally for debugging
 if (process.env.NODE_ENV === 'development') {
@@ -29,12 +31,15 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+const isDetachedImageViewer = new URLSearchParams(window.location.search).get('window') === 'image-modal';
 root.render(
   <React.StrictMode>
-    <A1111ProgressProvider>
-      <ComfyUIProgressProvider>
-        <App />
-      </ComfyUIProgressProvider>
-    </A1111ProgressProvider>
+    <AppErrorBoundary>
+      <A1111ProgressProvider>
+        <ComfyUIProgressProvider>
+          {isDetachedImageViewer ? <DetachedImageModalApp /> : <App />}
+        </ComfyUIProgressProvider>
+      </A1111ProgressProvider>
+    </AppErrorBoundary>
   </React.StrictMode>
 );

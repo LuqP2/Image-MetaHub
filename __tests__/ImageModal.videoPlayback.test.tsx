@@ -169,6 +169,23 @@ describe('ImageModal video playback controls', () => {
     expect(useSettingsStore.getState().videoRepeatMode).toBe('off');
   });
 
+  it('uses the native window frame instead of inline window controls and resize handles', async () => {
+    const onToggleAlwaysOnTop = vi.fn();
+    const { container } = await renderVideoModal({ hostMode: 'native-window', onToggleAlwaysOnTop });
+    expect(container.querySelector('[data-resize-handle="true"]')).toBeNull();
+    expect(screen.queryByTitle('Minimize window')).toBeNull();
+    expect(screen.queryByTitle('Maximize window')).toBeNull();
+    expect(screen.queryByTitle('Close (Esc)')).toBeNull();
+    const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog.className).toContain('inset-0');
+    expect(dialog.style.left).toBe('');
+    expect(dialog.style.top).toBe('');
+    expect(dialog.style.width).toBe('');
+    expect(dialog.style.height).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Enable always on top' }));
+    expect(onToggleAlwaysOnTop).toHaveBeenCalledTimes(1);
+  });
+
   it('only loops the media element natively in repeat one', async () => {
     const { video } = await renderVideoModal();
     expect(video.loop).toBe(false);

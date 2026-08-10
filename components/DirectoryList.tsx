@@ -51,6 +51,8 @@ const normalizePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/,
 const toForwardSlashes = (path: string) => normalizePath(path);
 const makeNodeKey = (rootId: string, relativePath: string) => `${rootId}::${relativePath === '' ? '.' : relativePath}`;
 
+type NativeFileDragSource = { directoryPath: string; relativePath: string; imageId?: string };
+
 const getRelativePath = (rootPath: string, targetPath: string) => {
   const normalizedRoot = toForwardSlashes(rootPath);
   const normalizedTarget = toForwardSlashes(targetPath);
@@ -294,6 +296,28 @@ export default function DirectoryList({
   const treeRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const treeKeyboardActiveRef = useRef(false);
+  const nativeFileDragSourceRef = useRef<NativeFileDragSource | null>(null);
+  const nativeFileDragClearTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onNativeFileDragStarted?.((source) => {
+      nativeFileDragSourceRef.current = source;
+      if (nativeFileDragClearTimeoutRef.current !== null) {
+        window.clearTimeout(nativeFileDragClearTimeoutRef.current);
+      }
+      nativeFileDragClearTimeoutRef.current = window.setTimeout(() => {
+        nativeFileDragSourceRef.current = null;
+        nativeFileDragClearTimeoutRef.current = null;
+      }, 30_000);
+    });
+
+    return () => {
+      unsubscribe?.();
+      if (nativeFileDragClearTimeoutRef.current !== null) {
+        window.clearTimeout(nativeFileDragClearTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Focus input when prompt opens
   useEffect(() => {
@@ -497,6 +521,22 @@ export default function DirectoryList({
           imageIds = payload.imageIds || [];
         }
       } catch (_) { /* ignore */ }
+    }
+
+    if (imageIds.length === 0 && nativeFileDragSourceRef.current) {
+      const source = nativeFileDragSourceRef.current;
+      nativeFileDragSourceRef.current = null;
+      const sourcePath = normalizePath(`${source.directoryPath}/${source.relativePath}`).toLowerCase();
+      const indexedImages = useImageStore.getState().images;
+      imageIds = source.imageId && indexedImages.some((image) => image.id === source.imageId)
+        ? [source.imageId]
+        : indexedImages.filter((image) => {
+          const imageDirectoryPath = directories.find((directory) => directory.id === image.directoryId)?.path
+            ?? image.directoryId;
+          const relativePath = image.id.split('::').slice(1).join('::') || image.name;
+          return normalizePath(`${imageDirectoryPath}/${relativePath}`).toLowerCase() === sourcePath;
+        })
+        .map((image) => image.id);
     }
 
     if (imageIds.length === 0) return;

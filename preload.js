@@ -171,6 +171,22 @@ const electronAPI = {
     };
   },
 
+  onImageViewerSnapshot: (callback) => {
+    const handler = (_event, snapshot) => callback(snapshot);
+    ipcRenderer.on('image-viewer-snapshot', handler);
+    return () => ipcRenderer.removeListener('image-viewer-snapshot', handler);
+  },
+  onImageViewerEvent: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('image-viewer-event', handler);
+    return () => ipcRenderer.removeListener('image-viewer-event', handler);
+  },
+  onImageViewerCommand: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('image-viewer-command', handler);
+    return () => ipcRenderer.removeListener('image-viewer-command', handler);
+  },
+
   onZoomFactorChanged: (callback) => {
     const handler = (event, ...args) => callback(...args);
     ipcRenderer.on('zoom-factor-changed', handler);
@@ -259,7 +275,18 @@ const electronAPI = {
   toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
   getFullscreenState: () => ipcRenderer.invoke('get-fullscreen-state'),
   setFullscreen: (isFullscreen) => ipcRenderer.invoke('set-fullscreen', isFullscreen),
+  imageViewerOpen: (payload) => ipcRenderer.invoke('image-viewer-open', payload),
+  imageViewerUpdate: (payload) => ipcRenderer.invoke('image-viewer-update', payload),
+  imageViewerReady: (sessionId) => ipcRenderer.invoke('image-viewer-ready', sessionId),
+  imageViewerWindowAction: (payload) => ipcRenderer.invoke('image-viewer-window-action', payload),
+  imageViewerCommand: (payload) => ipcRenderer.invoke('image-viewer-command', payload),
+  imageViewerRespond: (payload) => ipcRenderer.send('image-viewer-command-response', payload),
   startFileDrag: (args) => ipcRenderer.send('start-file-drag', args),
+  onNativeFileDragStarted: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('native-file-drag-started', handler);
+    return () => ipcRenderer.removeListener('native-file-drag-started', handler);
+  },
 
   // --- Caching ---
   copyImageToClipboard: (filePath) => ipcRenderer.invoke('copy-image-to-clipboard', filePath),
