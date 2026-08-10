@@ -82,6 +82,10 @@ import { FileOperations } from './services/fileOperations';
 import { renameIndexedImage } from './services/imageRenameService';
 import { useReparseMetadata } from './hooks/useReparseMetadata';
 import {
+  indexSavedEditedImageCopy,
+  reindexOverwrittenEditedImage,
+} from './services/editedImageIndexing';
+import {
   fromImageViewerMaskFileDTO,
   resolveEffectiveImageViewerHost,
   toImageModalImageDTO,
@@ -3474,7 +3478,9 @@ export default function App() {
             // The hooks report validation failures through their own status state,
             // which the detached window cannot see. A job that never reached the
             // queue is the observable signal that the request was rejected.
-            const queuedBefore = useGenerationQueueStore.getState().items.length;
+            // Compare job identities, not the queue length: the queue is capped at
+            // MAX_ITEMS and drops its oldest entry, so a full queue keeps its size.
+            const queuedIdsBefore = new Set(useGenerationQueueStore.getState().items.map((item) => item.id));
             if (request.provider === 'a1111') {
               await generateWithA1111(image, request.customMetadata, request.numberOfImages);
             } else {
@@ -3489,12 +3495,62 @@ export default function App() {
                 directoryPath: image.directoryId ? directoryPathById.get(image.directoryId) : undefined,
               });
             }
-            if (useGenerationQueueStore.getState().items.length === queuedBefore) {
+            const queued = useGenerationQueueStore.getState().items
+              .some((item) => !queuedIdsBefore.has(item.id));
+            if (!queued) {
               throw new Error(
                 `Could not queue the ${request.provider === 'a1111' ? 'A1111' : 'ComfyUI'} job. Check the provider settings and the image metadata in Image MetaHub.`
               );
             }
             break;
+          }
+          case 'image-saved': {
+            // The detached window wrote the file; the library store and the folder
+            // cache only exist here, so the bookkeeping runs against the real data.
+            const request = viewerCommand.request;
+            const sourceImage = requireImage(request.sourceImageId);
+            const sourceMetadata = request.sourceMetadata ?? undefined;
+            const scanSubfolders = useSettingsStore.getState().scanSubfolders;
+            const allDirectories = state.directories;
+
+            if (request.mode === 'overwrite') {
+              const sourceDirectory = allDirectories.find((directory) => directory.id === sourceImage.directoryId);
+              if (!sourceDirectory) throw new Error('The source directory is no longer available.');
+              await reindexOverwrittenEditedImage({
+                sourceImage,
+                sourceDirectory,
+                sourceMetadata,
+                scanSubfolders,
+                mergeImages: state.mergeImages,
+                setImageThumbnail: state.setImageThumbnail,
+              });
+              respond({ success: true });
+              return;
+            }
+
+            const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+            const normalizedSavedPath = normalize(request.savedPath);
+            const targetDirectory = allDirectories.find((directory) =>
+              normalizedSavedPath.startsWith(`${normalize(directory.path)}/`)
+            );
+            if (!targetDirectory) {
+              // Saved outside every indexed folder: nothing to index, and that is fine.
+              respond({ success: true });
+              return;
+            }
+
+            const savedImage = await indexSavedEditedImageCopy({
+              savedPath: request.savedPath,
+              targetDirectory,
+              sourceImage,
+              sourceMetadata,
+              scanSubfolders,
+              allImages: state.images,
+              addImages: state.addImages,
+              mergeImages: state.mergeImages,
+            });
+            respond({ success: true, savedImageName: savedImage?.name });
+            return;
           }
           case 'get-tag-suggestions': {
             const query = viewerCommand.query.trim().toLowerCase();

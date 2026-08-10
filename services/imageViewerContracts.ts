@@ -69,6 +69,24 @@ export type ImageViewerGenerateRequest =
       maskFile?: ImageViewerMaskFileDTO | null;
     };
 
+/**
+ * The image editor writes the file from whichever window is showing it, but the
+ * library store and folder cache only exist in the main renderer — a detached
+ * viewer forwards the result so the grid does not keep stale data.
+ */
+export interface ImageViewerSaveRequest {
+  mode: 'save-as' | 'overwrite';
+  savedPath: string;
+  sourceImageId: string;
+  sourceMetadata: BaseMetadata | null;
+}
+
+export interface ImageViewerSaveResult {
+  success: boolean;
+  error?: string;
+  savedImageName?: string;
+}
+
 export type ImageViewerCommand =
   | { type: 'navigate'; direction: 'next' | 'previous' | 'random'; wrap?: boolean }
   | { type: 'close' }
@@ -92,6 +110,7 @@ export type ImageViewerCommand =
   | { type: 'remove-auto-tag'; imageId: string; tag: string }
   | { type: 'set-search'; query: string }
   | { type: 'generate'; request: ImageViewerGenerateRequest }
+  | { type: 'image-saved'; request: ImageViewerSaveRequest }
   | { type: 'slideshow-started' };
 
 /** Serialize an inpainting mask for transport to the main renderer. */

@@ -171,6 +171,12 @@ const electronAPI = {
     };
   },
 
+  onSettingsUpdated: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('settings-updated', handler);
+    return () => ipcRenderer.removeListener('settings-updated', handler);
+  },
+
   onImageViewerSnapshot: (callback) => {
     const handler = (_event, snapshot) => callback(snapshot);
     ipcRenderer.on('image-viewer-snapshot', handler);

@@ -620,3 +620,13 @@ export const useSettingsStore = create<SettingsState>()(
     }
   )
 );
+
+// Settings live in a single file on disk, but every window keeps its own copy and
+// persists that whole copy on any change. Without this, a window that missed an
+// update (for example a detached image viewer left open while the main window
+// changes a preference) would silently revert the newer value on its next write.
+if (typeof window !== 'undefined') {
+  window.electronAPI?.onSettingsUpdated?.(() => {
+    void useSettingsStore.persist.rehydrate();
+  });
+}

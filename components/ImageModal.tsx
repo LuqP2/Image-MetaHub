@@ -25,10 +25,17 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { getElectronAbsoluteMediaPath, mediaSourceCache } from '../services/mediaSourceCache';
 import { mediaDecodeCache } from '../services/mediaDecodeCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
-import cacheManager from '../services/cacheManager';
-import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndexer';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
-import { toImageViewerMaskFileDTO, type ImageViewerGenerateRequest } from '../services/imageViewerContracts';
+import {
+  toImageViewerMaskFileDTO,
+  type ImageViewerGenerateRequest,
+  type ImageViewerSaveRequest,
+  type ImageViewerSaveResult,
+} from '../services/imageViewerContracts';
+import {
+  indexSavedEditedImageCopy,
+  reindexOverwrittenEditedImage,
+} from '../services/editedImageIndexing';
 import { TEMPORARY_STATUS_TIMEOUT_MS } from '../utils/imageMetadata';
 import {
   DEFAULT_IMAGE_EDIT_RECIPE,
@@ -151,88 +158,6 @@ const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefi
   };
 };
 
-const firstNonBlankString = (...values: Array<string | undefined | null>): string | undefined => {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value;
-    }
-  }
-  return undefined;
-};
-
-const firstNonEmptyArray = <T,>(...values: Array<T[] | undefined | null>): T[] | undefined => {
-  for (const value of values) {
-    if (Array.isArray(value) && value.length > 0) {
-      return value;
-    }
-  }
-  return undefined;
-};
-
-const firstDefined = <T,>(...values: Array<T | undefined | null>): T | undefined => {
-  for (const value of values) {
-    if (value !== undefined && value !== null) {
-      return value;
-    }
-  }
-  return undefined;
-};
-
-const mergeEditedNormalizedMetadata = (
-  parsedMetadata?: BaseMetadata,
-  sourceMetadata?: BaseMetadata,
-): BaseMetadata | undefined => {
-  if (!parsedMetadata) {
-    return sourceMetadata;
-  }
-  if (!sourceMetadata) {
-    return parsedMetadata;
-  }
-
-  const merged: BaseMetadata = {
-    ...sourceMetadata,
-    ...parsedMetadata,
-    prompt: firstNonBlankString(parsedMetadata.prompt, sourceMetadata.prompt) || '',
-    negativePrompt: firstNonBlankString(parsedMetadata.negativePrompt, sourceMetadata.negativePrompt) || '',
-    model: firstNonBlankString(parsedMetadata.model, sourceMetadata.model) || '',
-    models: firstNonEmptyArray(parsedMetadata.models, sourceMetadata.models) || [],
-    loras: firstNonEmptyArray(parsedMetadata.loras, sourceMetadata.loras) || [],
-    sampler: firstNonBlankString(parsedMetadata.sampler, sourceMetadata.sampler) || '',
-    scheduler: firstNonBlankString(parsedMetadata.scheduler, sourceMetadata.scheduler) || '',
-    board: firstNonBlankString(parsedMetadata.board, sourceMetadata.board),
-    cfgScale: firstDefined(parsedMetadata.cfgScale, parsedMetadata.cfg_scale, sourceMetadata.cfgScale, sourceMetadata.cfg_scale),
-    cfg_scale: firstDefined(parsedMetadata.cfg_scale, parsedMetadata.cfgScale, sourceMetadata.cfg_scale, sourceMetadata.cfgScale),
-    steps: firstDefined(parsedMetadata.steps, sourceMetadata.steps) || 0,
-    seed: firstDefined(parsedMetadata.seed, sourceMetadata.seed),
-  };
-
-  return merged;
-};
-
-const scheduleEditedImageCacheUpsert = (
-  directory: { path: string; name: string },
-  image: IndexedImage,
-  scanSubfolders: boolean,
-) => {
-  window.setTimeout(() => {
-    const cacheModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
-    Promise.all(
-      cacheModes.map((scanSubfoldersMode) =>
-        cacheManager.applyChunkedCacheDelta(
-          directory.path,
-          directory.name,
-          [image],
-          [],
-          [],
-          scanSubfoldersMode,
-        )
-      )
-    ).catch((error) => {
-      console.error('Failed to update cache after edited image save:', error);
-    });
-  }, 0);
-};
-
 interface ImageModalProps {
   hostMode?: 'inline' | 'native-window';
   modalId?: string;
@@ -248,6 +173,7 @@ interface ImageModalProps {
   onRequestReparse?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
   onRequestTagSuggestions?: (query: string) => Promise<TagInfo[]>;
   onRequestGenerate?: (request: ImageViewerGenerateRequest) => Promise<{ success: boolean; error?: string }>;
+  onImageSaved?: (request: ImageViewerSaveRequest) => Promise<ImageViewerSaveResult>;
   isAlwaysOnTop?: boolean;
   onToggleAlwaysOnTop?: () => void;
   currentIndex?: number;
@@ -965,6 +891,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onRequestReparse,
   onRequestTagSuggestions,
   onRequestGenerate,
+  onImageSaved,
   isAlwaysOnTop = false,
   onToggleAlwaysOnTop,
   currentIndex = 0,
@@ -2600,45 +2527,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const sourceRawMetadata = sourceImageWithMetadata.metadata as Record<string, unknown>;
       await writeEditedImage(saveResult.path, sourceMetadata, sourceRawMetadata);
 
+      // A detached window only holds a three-image slice of the library, so the
+      // authoritative indexing has to happen in the main renderer.
+      if (onImageSaved) {
+        const result = await onImageSaved({
+          mode: 'save-as',
+          savedPath: saveResult.path,
+          sourceImageId: liveImage.id,
+          sourceMetadata: sourceMetadata ?? null,
+        });
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to index the saved image.');
+        }
+        setSuccess(result.savedImageName ? `Saved edited image as ${result.savedImageName}.` : 'Saved edited image.');
+        return;
+      }
+
       const targetDirectory = findDirectoryForAbsolutePath(saveResult.path);
       if (targetDirectory) {
-        const indexedImage = await indexImageFileAtPath(saveResult.path, targetDirectory);
-        if (indexedImage) {
-          const savedNormalizedMetadata = mergeEditedNormalizedMetadata(
-            indexedImage.metadata?.normalizedMetadata as BaseMetadata | undefined,
-            sourceMetadata,
-          );
-          const savedMetadata = savedNormalizedMetadata
-            ? { ...indexedImage.metadata, normalizedMetadata: savedNormalizedMetadata }
-            : indexedImage.metadata;
-          const savedImage: IndexedImage = {
-            ...indexedImage,
-            metadata: savedMetadata,
-            metadataString: savedNormalizedMetadata ? JSON.stringify(savedMetadata) : liveImage.metadataString,
-            models: savedNormalizedMetadata?.models || liveImage.models,
-            loras: savedNormalizedMetadata?.loras || liveImage.loras,
-            sampler: savedNormalizedMetadata?.sampler || liveImage.sampler,
-            scheduler: savedNormalizedMetadata?.scheduler || liveImage.scheduler,
-            board: savedNormalizedMetadata?.board || liveImage.board,
-            prompt: savedNormalizedMetadata?.prompt || liveImage.prompt,
-            negativePrompt: savedNormalizedMetadata?.negativePrompt || liveImage.negativePrompt,
-            cfgScale: savedNormalizedMetadata?.cfgScale ?? savedNormalizedMetadata?.cfg_scale ?? liveImage.cfgScale,
-            steps: savedNormalizedMetadata?.steps || liveImage.steps,
-            seed: savedNormalizedMetadata?.seed ?? liveImage.seed,
-            workflowNodes: liveImage.workflowNodes,
-            enrichmentState: 'enriched',
-          };
-          const targetAlreadyIndexed = allImages.some((candidate) => candidate.id === savedImage.id);
-          if (targetAlreadyIndexed) {
-            mergeImages([savedImage]);
-          } else {
-            addImages([savedImage]);
-          }
-          scheduleEditedImageCacheUpsert(targetDirectory, savedImage, scanSubfolders);
-          setSuccess(`Saved edited image as ${savedImage.name}.`);
-        } else {
-          setSuccess('Saved edited image.');
-        }
+        const savedImage = await indexSavedEditedImageCopy({
+          savedPath: saveResult.path,
+          targetDirectory,
+          sourceImage: liveImage,
+          sourceMetadata,
+          scanSubfolders,
+          allImages,
+          addImages,
+          mergeImages,
+        });
+        setSuccess(savedImage ? `Saved edited image as ${savedImage.name}.` : 'Saved edited image.');
       } else {
         setSuccess('Saved edited image.');
       }
@@ -2659,6 +2576,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     isSavingEditedImage,
     liveImage,
     mergeImages,
+    onImageSaved,
     scanSubfolders,
     setError,
     setSuccess,
@@ -2710,59 +2628,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const sourceRawMetadata = sourceImageWithMetadata.metadata as Record<string, unknown>;
       await writeEditedImage(joined.path, sourceMetadata, sourceRawMetadata);
 
-      const reparsed = await reparseIndexedImage(liveImage, sourceDirectory.path);
-      if (!reparsed) {
-        throw new Error('The edited image was saved, but metadata reparsing returned no image.');
+      if (onImageSaved) {
+        // See Save As: the real library lives in the main renderer.
+        const result = await onImageSaved({
+          mode: 'overwrite',
+          savedPath: joined.path,
+          sourceImageId: liveImage.id,
+          sourceMetadata: sourceMetadata ?? null,
+        });
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to reindex the overwritten image.');
+        }
+      } else {
+        await reindexOverwrittenEditedImage({
+          sourceImage: liveImage,
+          sourceDirectory,
+          sourceMetadata,
+          scanSubfolders,
+          mergeImages,
+          setImageThumbnail,
+        });
       }
-
-      const preservedNormalizedMetadata = mergeEditedNormalizedMetadata(
-        reparsed.metadata?.normalizedMetadata as BaseMetadata | undefined,
-        sourceMetadata,
-      );
-      const preservedMetadata = preservedNormalizedMetadata
-        ? { ...reparsed.metadata, normalizedMetadata: preservedNormalizedMetadata }
-        : reparsed.metadata;
-      const preservedMetadataImage: IndexedImage = {
-        ...liveImage,
-        ...reparsed,
-        metadata: preservedMetadata,
-        metadataString: preservedNormalizedMetadata ? JSON.stringify(preservedMetadata) : liveImage.metadataString,
-        models: preservedNormalizedMetadata?.models || liveImage.models,
-        loras: preservedNormalizedMetadata?.loras || liveImage.loras,
-        sampler: preservedNormalizedMetadata?.sampler || liveImage.sampler,
-        scheduler: preservedNormalizedMetadata?.scheduler || liveImage.scheduler,
-        board: preservedNormalizedMetadata?.board || liveImage.board,
-        prompt: preservedNormalizedMetadata?.prompt || liveImage.prompt,
-        negativePrompt: preservedNormalizedMetadata?.negativePrompt || liveImage.negativePrompt,
-        cfgScale: preservedNormalizedMetadata?.cfgScale ?? preservedNormalizedMetadata?.cfg_scale ?? liveImage.cfgScale,
-        steps: preservedNormalizedMetadata?.steps || liveImage.steps,
-        seed: preservedNormalizedMetadata?.seed ?? liveImage.seed,
-        workflowNodes: liveImage.workflowNodes,
-        handle: liveImage.handle,
-        thumbnailHandle: liveImage.thumbnailHandle,
-        thumbnailUrl: undefined,
-        thumbnailStatus: 'pending',
-        thumbnailError: null,
-        directoryId: liveImage.directoryId,
-        directoryName: liveImage.directoryName,
-        isFavorite: liveImage.isFavorite,
-        tags: liveImage.tags,
-        rating: liveImage.rating,
-        clusterId: liveImage.clusterId,
-        clusterPosition: liveImage.clusterPosition,
-        autoTags: liveImage.autoTags,
-        autoTagsGeneratedAt: liveImage.autoTagsGeneratedAt,
-        enrichmentState: 'enriched',
-      };
-
-      mergeImages([preservedMetadataImage]);
-      setImageThumbnail(liveImage.id, {
-        thumbnailUrl: null,
-        thumbnailHandle: null,
-        status: 'pending',
-        error: null,
-      });
-      scheduleEditedImageCacheUpsert(sourceDirectory, preservedMetadataImage, scanSubfolders);
       setImageEditRecipe(DEFAULT_IMAGE_EDIT_RECIPE);
       setSuccess('Overwrote original image with edits.');
     } catch (error) {
@@ -2780,6 +2666,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     isSavingEditedImage,
     liveImage,
     mergeImages,
+    onImageSaved,
     scanSubfolders,
     setError,
     setImageThumbnail,

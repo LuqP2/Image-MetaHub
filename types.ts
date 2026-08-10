@@ -541,6 +541,7 @@ export interface ElectronAPI {
   imageViewerWindowAction: (payload: { sessionId: string; action: 'focus' | 'restore' | 'minimize' | 'close' | 'focus-main' | 'toggle-always-on-top' }) => Promise<{ success: boolean; isAlwaysOnTop?: boolean; error?: string }>;
   imageViewerCommand: (payload: { sessionId: string; command: import('./services/imageViewerContracts').ImageViewerCommand }) => Promise<{ success: boolean; error?: string; [key: string]: unknown }>;
   imageViewerRespond: (payload: { requestId: string; response: { success: boolean; error?: string; [key: string]: unknown } }) => void;
+  onSettingsUpdated: (callback: () => void) => () => void;
   onImageViewerSnapshot: (callback: (snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot) => void) => () => void;
   onImageViewerEvent: (callback: (event: { sessionId: string; type: string; reason?: string }) => void) => () => void;
   onImageViewerCommand: (callback: (payload: { sessionId: string; requestId: string; command: import('./services/imageViewerContracts').ImageViewerCommand }) => void) => () => void;

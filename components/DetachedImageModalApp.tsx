@@ -165,6 +165,14 @@ const DetachedImageModalApp: React.FC = () => {
       }}
       onRequestReparse={(imageId) => sendCommand({ type: 'reparse-image', imageId })}
       onRequestGenerate={(request) => sendCommand({ type: 'generate', request })}
+      onImageSaved={async (request) => {
+        const result = await sendCommand({ type: 'image-saved', request });
+        return {
+          success: result.success,
+          error: result.error,
+          savedImageName: typeof result.savedImageName === 'string' ? result.savedImageName : undefined,
+        };
+      }}
       onRequestTagSuggestions={async (query) => {
         const result = await sendCommand({ type: 'get-tag-suggestions', query });
         return Array.isArray(result.suggestions) ? result.suggestions as never : [];

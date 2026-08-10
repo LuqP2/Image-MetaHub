@@ -2213,6 +2213,16 @@ function queueDetachedViewerStatePersist(viewerWindow) {
   }, 200));
 }
 
+/** Notify every renderer except the one that just wrote settings. */
+function broadcastSettingsUpdated(senderWebContents) {
+  const targets = [mainWindow, ...detachedImageViewerWindows.values()];
+  for (const targetWindow of targets) {
+    if (!targetWindow || targetWindow.isDestroyed()) continue;
+    if (targetWindow.webContents === senderWebContents) continue;
+    targetWindow.webContents.send('settings-updated');
+  }
+}
+
 function sendDetachedViewerEvent(sessionId, type, details = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send('image-viewer-event', { sessionId, type, ...details });
@@ -3492,6 +3502,10 @@ function setupFileOperationHandlers() {
   ipcMain.handle('save-settings', async (event, newSettings) => {
     try {
       await queueSettingsUpdate((currentSettings) => mergeSettingsUpdate(currentSettings, newSettings));
+      // Every window persists its *whole* settings state, so a window holding a
+      // stale copy would revert another window's newer values on the next write.
+      // Tell the other windows to rehydrate so none of them can go stale.
+      broadcastSettingsUpdated(event.sender);
       return { success: true };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to save settings.' };
@@ -3508,6 +3522,9 @@ function setupFileOperationHandlers() {
         ...currentSettings,
         lastViewedVersion: versionToPersist,
       }));
+      // `lastViewedVersion` is part of the renderer settings store, so the other
+      // windows have to pick it up or they would write the old value back.
+      broadcastSettingsUpdated(event.sender);
 
       return { success: true };
     } catch (error) {
