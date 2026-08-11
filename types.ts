@@ -419,6 +419,7 @@ export interface ElectronAPI {
   readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
+  writeModel3DExport: (args: { filePath: string; modelData: Uint8Array; sidecarData?: Uint8Array }) => Promise<{ success: boolean; error?: string }>;
   exportBatchToFolder: (args: ExportBatchRequest & { destDir: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   exportBatchToZip: (args: ExportBatchRequest & { destZipPath: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   cancelBatchExport: (args: { exportId: string }) => Promise<{ success: boolean; error?: string }>;

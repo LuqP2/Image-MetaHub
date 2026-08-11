@@ -113,4 +113,18 @@ describe('3D viewer utilities', () => {
       '1': { class_type: 'LoadImage', inputs: { image: 'source.png' } },
     });
   });
+
+  it('maps normalized sampling fields to the exported metadata schema', () => {
+    const payload = getModel3DExportMetadataPayload({
+      metadata: {
+        normalizedMetadata: {
+          cfgScale: 6.5,
+          sampler: 'euler_ancestral',
+        },
+      } as unknown as import('../types').IndexedImage['metadata'],
+    });
+
+    expect(payload.cfg).toBe(6.5);
+    expect(payload.sampler_name).toBe('euler_ancestral');
+  });
 });

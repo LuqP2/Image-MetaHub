@@ -4,6 +4,7 @@ import {
   renameModel3DWithSidecar,
   trashModel3DWithSidecar,
   transferModel3DWithSidecar,
+  writeModel3DExportDataWithSidecar,
   writeModel3DExportWithSidecar,
 } from '../utils/model3DFileOperations.mjs';
 
@@ -74,6 +75,52 @@ describe('3D model file operations', () => {
       ['export/model.stl.imagemetahub.json'],
       ['export/model.stl'],
     ]);
+  });
+
+  it('removes viewer model exports when writing sidecar data fails', async () => {
+    const fsApi = {
+      writeFile: vi.fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('sidecar locked')),
+      unlink: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await expect(writeModel3DExportDataWithSidecar(
+      fsApi,
+      'export/model.obj',
+      new Uint8Array([1]),
+      new Uint8Array([2]),
+    )).rejects.toThrow('incomplete output was removed');
+    expect(fsApi.unlink.mock.calls).toEqual([
+      ['export/model.obj.imagemetahub.json'],
+      ['export/model.obj'],
+    ]);
+  });
+
+  it('rejects orphaned destination sidecars for sidecarless transfers', async () => {
+    const fsApi = {
+      lstat: vi.fn()
+        .mockRejectedValueOnce(missingFileError())
+        .mockResolvedValueOnce({ isFile: () => true }),
+      copyFile: vi.fn(),
+    };
+
+    await expect(transferModel3DWithSidecar(fsApi, 'old.glb', 'new.glb', 'copy'))
+      .rejects.toThrow('sidecar already exists at the destination');
+    expect(fsApi.copyFile).not.toHaveBeenCalled();
+  });
+
+  it('rejects orphaned destination sidecars for sidecarless renames', async () => {
+    const fsApi = {
+      lstat: vi.fn()
+        .mockRejectedValueOnce(missingFileError())
+        .mockResolvedValueOnce({ isFile: () => true }),
+      rename: vi.fn(),
+    };
+
+    await expect(renameModel3DWithSidecar(fsApi, 'old.glb', 'new.glb'))
+      .rejects.toThrow('sidecar with that name already exists');
+    expect(fsApi.rename).not.toHaveBeenCalled();
   });
 
   it('copies a model and its metadata sidecar together', async () => {

@@ -61,14 +61,14 @@ export const trashModel3DWithSidecar = async (fsApi, trashItem, modelPath) => {
   }
 };
 
-export const writeModel3DExportWithSidecar = async (fsApi, destinationPath, modelData, sourceSidecarPath) => {
+const writeModel3DExportPair = async (fsApi, destinationPath, modelData, writeSidecar) => {
   const destinationSidecarPath = `${destinationPath}.imagemetahub.json`;
   let sidecarCopyStarted = false;
   try {
     await fsApi.writeFile(destinationPath, modelData);
-    if (sourceSidecarPath) {
+    if (writeSidecar) {
       sidecarCopyStarted = true;
-      await fsApi.copyFile(sourceSidecarPath, destinationSidecarPath);
+      await writeSidecar(destinationSidecarPath);
     }
   } catch (exportError) {
     const cleanupErrors = [];
@@ -91,17 +91,36 @@ export const writeModel3DExportWithSidecar = async (fsApi, destinationPath, mode
   }
 };
 
+export const writeModel3DExportWithSidecar = async (fsApi, destinationPath, modelData, sourceSidecarPath) =>
+  writeModel3DExportPair(
+    fsApi,
+    destinationPath,
+    modelData,
+    sourceSidecarPath
+      ? (destinationSidecarPath) => fsApi.copyFile(sourceSidecarPath, destinationSidecarPath)
+      : null,
+  );
+
+export const writeModel3DExportDataWithSidecar = async (fsApi, destinationPath, modelData, sidecarData) =>
+  writeModel3DExportPair(
+    fsApi,
+    destinationPath,
+    modelData,
+    sidecarData
+      ? (destinationSidecarPath) => fsApi.writeFile(destinationSidecarPath, sidecarData)
+      : null,
+  );
+
 export const transferModel3DWithSidecar = async (fsApi, sourcePath, destinationPath, mode) => {
   const sourceSidecarPath = await getModel3DSidecarPathIfPresent(fsApi, sourcePath);
-  if (!sourceSidecarPath) {
-    await transferPath(fsApi, sourcePath, destinationPath, mode);
-    return;
-  }
-
   const destinationSidecarPath = `${destinationPath}.imagemetahub.json`;
   const destinationSidecarStats = await lstatIfPresent(fsApi, destinationSidecarPath);
   if (destinationSidecarStats) {
     throw new Error('A metadata sidecar already exists at the destination.');
+  }
+  if (!sourceSidecarPath) {
+    await transferPath(fsApi, sourcePath, destinationPath, mode);
+    return;
   }
 
   await transferPath(fsApi, sourcePath, destinationPath, mode);
@@ -141,15 +160,15 @@ export const renameModel3DWithSidecar = async (fsApi, oldPath, newPath) => {
   const oldSidecarPath = `${oldPath}.imagemetahub.json`;
   const newSidecarPath = `${newPath}.imagemetahub.json`;
   const oldSidecarStats = await lstatIfPresent(fsApi, oldSidecarPath);
+  const newSidecarStats = await lstatIfPresent(fsApi, newSidecarPath);
+
+  if (newSidecarStats && (!oldSidecarStats || !isSameFile(oldSidecarStats, newSidecarStats))) {
+    throw new Error('A metadata sidecar with that name already exists.');
+  }
 
   if (!oldSidecarStats) {
     await fsApi.rename(oldPath, newPath);
     return;
-  }
-
-  const newSidecarStats = await lstatIfPresent(fsApi, newSidecarPath);
-  if (newSidecarStats && !isSameFile(oldSidecarStats, newSidecarStats)) {
-    throw new Error('A metadata sidecar with that name already exists.');
   }
 
   await fsApi.rename(oldPath, newPath);

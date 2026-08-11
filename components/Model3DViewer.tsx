@@ -248,6 +248,18 @@ export const getModel3DExportMetadataPayload = (
   const rawMetadata = image.metadata as Record<string, unknown> | undefined;
   const normalizedMetadata = parseMetadataRecord(rawMetadata?.normalizedMetadata) || {};
   const embedded = parseMetadataRecord(rawMetadata?.imagemetahub_data);
+  const cfg = typeof normalizedMetadata.cfg === 'number'
+    ? normalizedMetadata.cfg
+    : typeof normalizedMetadata.cfgScale === 'number'
+      ? normalizedMetadata.cfgScale
+      : typeof normalizedMetadata.cfg_scale === 'number'
+        ? normalizedMetadata.cfg_scale
+        : undefined;
+  const samplerName = typeof normalizedMetadata.sampler_name === 'string'
+    ? normalizedMetadata.sampler_name
+    : typeof normalizedMetadata.sampler === 'string'
+      ? normalizedMetadata.sampler
+      : undefined;
   const payload: Record<string, unknown> = embedded
     ? { ...embedded }
     : {
@@ -255,6 +267,8 @@ export const getModel3DExportMetadataPayload = (
         media_type: 'model3d',
         generator: normalizedMetadata.generator || 'Image MetaHub',
         ...normalizedMetadata,
+        cfg,
+        sampler_name: samplerName,
       };
 
   const workflow = parseMetadataRecord(rawMetadata?.workflow);
@@ -689,7 +703,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
 
   const saveExport = useCallback(async (blob: Blob, filename: string, exportMetadata: Record<string, unknown>, includeSidecar = true) => {
     const sidecar = new Blob([JSON.stringify(exportMetadata, null, 2)], { type: 'application/json' });
-    if (window.electronAPI?.showSaveDialog && window.electronAPI?.writeFile) {
+    if (window.electronAPI?.showSaveDialog && window.electronAPI?.writeModel3DExport) {
       const extensionName = filename.split('.').pop() || '';
       const result = await window.electronAPI.showSaveDialog({
         title: 'Export 3D Model',
@@ -697,12 +711,12 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         filters: [{ name: extensionName.toUpperCase(), extensions: [extensionName] }],
       });
       if (!result.success || !result.path) return;
-      const modelWrite = await window.electronAPI.writeFile(result.path, new Uint8Array(await blob.arrayBuffer()));
-      if (!modelWrite.success) throw new Error(modelWrite.error || 'Could not write exported 3D model.');
-      if (includeSidecar) {
-        const sidecarWrite = await window.electronAPI.writeFile(`${result.path}.imagemetahub.json`, new Uint8Array(await sidecar.arrayBuffer()));
-        if (!sidecarWrite.success) throw new Error(sidecarWrite.error || 'Could not write exported metadata sidecar.');
-      }
+      const writeResult = await window.electronAPI.writeModel3DExport({
+        filePath: result.path,
+        modelData: new Uint8Array(await blob.arrayBuffer()),
+        sidecarData: includeSidecar ? new Uint8Array(await sidecar.arrayBuffer()) : undefined,
+      });
+      if (!writeResult.success) throw new Error(writeResult.error || 'Could not write exported 3D model.');
     } else {
       downloadBlob(blob, filename);
       if (includeSidecar) downloadBlob(sidecar, `${filename}.imagemetahub.json`);

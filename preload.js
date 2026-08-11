@@ -235,6 +235,7 @@ const electronAPI = {
   readVideoMetadata: (args) => ipcRenderer.invoke('read-video-metadata', args),
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
   writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
+  writeModel3DExport: (args) => ipcRenderer.invoke('write-model3d-export', args),
   exportBatchToFolder: (args) => ipcRenderer.invoke('export-images-batch', args),
   exportBatchToZip: (args) => ipcRenderer.invoke('export-images-zip', args),
   cancelBatchExport: (args) => ipcRenderer.invoke('cancel-export-batch', args),

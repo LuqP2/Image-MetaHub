@@ -39,6 +39,7 @@ import {
   renameModel3DWithSidecar,
   trashModel3DWithSidecar,
   transferModel3DWithSidecar,
+  writeModel3DExportDataWithSidecar,
   writeModel3DExportWithSidecar,
 } from './utils/model3DFileOperations.mjs';
 
@@ -6001,6 +6002,26 @@ function setupFileOperationHandlers() {
       return { success: true };
     } catch (error) {
       console.error('Error writing file:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('write-model3d-export', async (_event, { filePath, modelData, sidecarData } = {}) => {
+    try {
+      if (!filePath || !modelData) {
+        return { success: false, error: 'Model export path and data are required.' };
+      }
+      const normalizedFilePath = path.normalize(filePath);
+      if (
+        !isModel3DFileName(normalizedFilePath)
+        || (!isAllowedOrInternal(normalizedFilePath) && !isApprovedWritePath(normalizedFilePath))
+      ) {
+        return { success: false, error: 'Access denied: Cannot write the 3D export outside approved directories.' };
+      }
+      await writeModel3DExportDataWithSidecar(fs, normalizedFilePath, modelData, sidecarData);
+      return { success: true };
+    } catch (error) {
+      console.error('Error writing 3D model export:', error);
       return { success: false, error: error.message };
     }
   });
