@@ -1025,7 +1025,18 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
     >
       <div className="px-3 py-2">
         <div className="relative w-12 h-12 bg-gray-700 rounded overflow-hidden flex items-center justify-center">
-          {isModel3D ? (
+          {thumbnailsDisabled || !enableThumbnail ? (
+            <>
+              <Package className="h-4 w-4 text-gray-500" aria-label="Preview disabled" />
+              <button
+                onClick={handlePreviewClick}
+                className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"
+                title="Show details"
+              >
+                <Info className="h-4 w-4 text-white" />
+              </button>
+            </>
+          ) : isModel3D ? (
             <Model3DThumbnail image={image} directoryPath={directoryPath} variant="table" />
           ) : isLoading ? (
             <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
@@ -1065,17 +1076,6 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
                   </div>
                 </div>
               )}
-              <button
-                onClick={handlePreviewClick}
-                className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"
-                title="Show details"
-              >
-                <Info className="h-4 w-4 text-white" />
-              </button>
-            </>
-          ) : thumbnailsDisabled || !enableThumbnail ? (
-            <>
-              <Package className="h-4 w-4 text-gray-500" />
               <button
                 onClick={handlePreviewClick}
                 className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"

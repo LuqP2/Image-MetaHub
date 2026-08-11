@@ -14,6 +14,7 @@ import { Heart, Info, Copy, CheckCircle, Folder, Clipboard, Sparkles, GitCompare
   EyeOff,
   Play,
   Music,
+  Package,
   Tag,
   RefreshCw,
   Image as ImageIcon,
@@ -583,7 +584,12 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           {copied ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
         </motion.button>
 
-        {isModel3D ? (
+        {thumbnailsDisabled ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-900 text-gray-500">
+            <Package className="h-8 w-8" />
+            <span className="text-xs">Preview disabled</span>
+          </div>
+        ) : isModel3D ? (
           <Model3DThumbnail image={image} directoryPath={directoryPath} />
         ) : hasThumbnailError ? (
           <div className="w-full h-full flex items-center justify-center bg-gray-900">

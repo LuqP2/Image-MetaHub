@@ -33,6 +33,7 @@ import {
 import { rewriteAvifMetadata, stripAvifMetadata } from './utils/avifMetadata.mjs';
 import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTombstones.mjs';
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
+import { renameModel3DWithSidecar } from './utils/model3DFileOperations.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -4964,15 +4965,10 @@ function setupFileOperationHandlers() {
         }
       }
 
-      await fs.rename(oldPath, newPath);
       if (isModel3DFileName(oldPath)) {
-        try {
-          await fs.rename(`${oldPath}.imagemetahub.json`, `${newPath}.imagemetahub.json`);
-        } catch (sidecarError) {
-          if (sidecarError?.code !== 'ENOENT') {
-            console.warn('[model3d] Could not rename metadata sidecar:', sidecarError?.message || sidecarError);
-          }
-        }
+        await renameModel3DWithSidecar(fs, oldPath, newPath);
+      } else {
+        await fs.rename(oldPath, newPath);
       }
 
       const normalizedOldAllowedPath = normalizeAllowedPath(oldPath);
