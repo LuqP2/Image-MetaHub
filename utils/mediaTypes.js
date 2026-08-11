@@ -2,7 +2,7 @@ export const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gi
 export const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
 export const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.flac', '.ogg', '.oga', '.m4a', '.aac', '.opus', '.aiff', '.aif', '.wma'];
 export const MODEL_3D_EXTENSIONS = ['.glb', '.gltf', '.obj', '.fbx', '.stl'];
-export const EXTERNAL_RESOURCE_MODEL_3D_EXTENSIONS = ['.gltf', '.obj'];
+export const EXTERNAL_RESOURCE_MODEL_3D_EXTENSIONS = ['.gltf', '.obj', '.fbx'];
 
 export const SUPPORTED_MEDIA_EXTENSIONS = [
   ...IMAGE_EXTENSIONS,

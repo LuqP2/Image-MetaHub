@@ -9,7 +9,7 @@ export const getUnsupportedModel3DTransferError = (
 ): string | null => {
   if (!hasExternalResourceModel(images)) return null;
 
-  return 'GLTF and OBJ transfers are not available because these models can depend on sibling buffers, materials, and textures. Move or copy the containing folder in your system file manager to preserve all required files.';
+  return 'GLTF, OBJ, and FBX transfers are not available because these models can depend on sibling buffers, materials, and textures. Move or copy the containing folder in your system file manager to preserve all required files.';
 };
 
 export const getUnsupportedModel3DBatchExportError = (
@@ -17,5 +17,5 @@ export const getUnsupportedModel3DBatchExportError = (
 ): string | null => {
   if (!hasExternalResourceModel(images)) return null;
 
-  return 'GLTF and OBJ batch export is not available because these models can depend on sibling buffers, materials, and textures. Export or copy the containing folder in your system file manager to preserve all required files.';
+  return 'GLTF, OBJ, and FBX batch export is not available because these models can depend on sibling buffers, materials, and textures. Export or copy the containing folder in your system file manager to preserve all required files.';
 };

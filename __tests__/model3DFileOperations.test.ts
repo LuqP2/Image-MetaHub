@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getModel3DSidecarPathIfPresent,
   renameModel3DWithSidecar,
+  transferModel3DWithSidecar,
 } from '../utils/model3DFileOperations.mjs';
 
 const missingFileError = () => Object.assign(new Error('missing'), { code: 'ENOENT' });
@@ -22,6 +23,61 @@ describe('3D model file operations', () => {
     };
 
     await expect(getModel3DSidecarPathIfPresent(fsApi, 'model.glb')).resolves.toBeNull();
+  });
+
+  it('copies a model and its metadata sidecar together', async () => {
+    const fsApi = {
+      lstat: vi.fn()
+        .mockResolvedValueOnce({ isFile: () => true })
+        .mockRejectedValueOnce(missingFileError()),
+      copyFile: vi.fn().mockResolvedValue(undefined),
+      unlink: vi.fn(),
+    };
+
+    await transferModel3DWithSidecar(fsApi, 'old.glb', 'new.glb', 'copy');
+
+    expect(fsApi.copyFile.mock.calls).toEqual([
+      ['old.glb', 'new.glb'],
+      ['old.glb.imagemetahub.json', 'new.glb.imagemetahub.json'],
+    ]);
+  });
+
+  it('removes a copied model when its sidecar transfer fails', async () => {
+    const sidecarError = Object.assign(new Error('locked'), { code: 'EACCES' });
+    const fsApi = {
+      lstat: vi.fn()
+        .mockResolvedValueOnce({ isFile: () => true })
+        .mockRejectedValueOnce(missingFileError()),
+      copyFile: vi.fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(sidecarError),
+      unlink: vi.fn()
+        .mockRejectedValueOnce(missingFileError())
+        .mockResolvedValueOnce(undefined),
+    };
+
+    await expect(transferModel3DWithSidecar(fsApi, 'old.glb', 'new.glb', 'copy'))
+      .rejects.toThrow('model transfer was rolled back');
+    expect(fsApi.unlink).toHaveBeenLastCalledWith('new.glb');
+  });
+
+  it('moves a model back when its sidecar transfer fails', async () => {
+    const sidecarError = Object.assign(new Error('locked'), { code: 'EACCES' });
+    const fsApi = {
+      lstat: vi.fn()
+        .mockResolvedValueOnce({ isFile: () => true })
+        .mockRejectedValueOnce(missingFileError()),
+      rename: vi.fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(sidecarError)
+        .mockResolvedValueOnce(undefined),
+      copyFile: vi.fn(),
+      unlink: vi.fn().mockRejectedValue(missingFileError()),
+    };
+
+    await expect(transferModel3DWithSidecar(fsApi, 'old.glb', 'new.glb', 'move'))
+      .rejects.toThrow('model transfer was rolled back');
+    expect(fsApi.rename.mock.calls[2]).toEqual(['new.glb', 'old.glb']);
   });
 
   it('renames a model normally when no sidecar exists', async () => {

@@ -34,7 +34,11 @@ import {
 import { rewriteAvifMetadata, stripAvifMetadata } from './utils/avifMetadata.mjs';
 import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTombstones.mjs';
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
-import { getModel3DSidecarPathIfPresent, renameModel3DWithSidecar } from './utils/model3DFileOperations.mjs';
+import {
+  getModel3DSidecarPathIfPresent,
+  renameModel3DWithSidecar,
+  transferModel3DWithSidecar,
+} from './utils/model3DFileOperations.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -6012,7 +6016,7 @@ function setupFileOperationHandlers() {
       if (files.some((file) => isExternalResourceModel3DFileName(file?.relativePath))) {
         return {
           success: false,
-          error: 'GLTF and OBJ batch export is not available because these models can depend on sibling files. Export or copy the containing folder instead.',
+          error: 'GLTF, OBJ, and FBX batch export is not available because these models can depend on sibling files. Export or copy the containing folder instead.',
           exportedCount: 0,
           failedCount: files.length,
         };
@@ -6144,7 +6148,7 @@ function setupFileOperationHandlers() {
       if (files.some((file) => isExternalResourceModel3DFileName(file?.relativePath))) {
         return {
           success: false,
-          error: 'GLTF and OBJ ZIP export is not available because these models can depend on sibling files. Export or copy the containing folder instead.',
+          error: 'GLTF, OBJ, and FBX ZIP export is not available because these models can depend on sibling files. Export or copy the containing folder instead.',
           exportedCount: 0,
           failedCount: files.length,
         };
@@ -6303,6 +6307,14 @@ function setupFileOperationHandlers() {
       if (mode !== 'copy' && mode !== 'move') {
         return { success: false, transferred: [], failedCount: 0, error: 'Invalid transfer mode.' };
       }
+      if (files.some((file) => isExternalResourceModel3DFileName(file?.relativePath))) {
+        return {
+          success: false,
+          transferred: [],
+          failedCount: files.length,
+          error: 'GLTF, OBJ, and FBX transfers are not available because these models can depend on sibling files. Move or copy the containing folder instead.',
+        };
+      }
       if (!isPathAllowed(destDir)) {
         return { success: false, transferred: [], failedCount: 0, error: 'Access denied: Destination must be an indexed folder.' };
       }
@@ -6407,18 +6419,15 @@ function setupFileOperationHandlers() {
           }
         };
 
-        await transferPath(task.sourceAbsolutePath, task.destinationAbsolutePath);
         if (isModel3DFileName(task.sourceAbsolutePath)) {
-          try {
-            await transferPath(
-              `${task.sourceAbsolutePath}.imagemetahub.json`,
-              `${task.destinationAbsolutePath}.imagemetahub.json`,
-            );
-          } catch (sidecarError) {
-            if (sidecarError?.code !== 'ENOENT') {
-              console.warn('[model3d] Could not transfer metadata sidecar:', sidecarError?.message || sidecarError);
-            }
-          }
+          await transferModel3DWithSidecar(
+            fs,
+            task.sourceAbsolutePath,
+            task.destinationAbsolutePath,
+            mode,
+          );
+        } else {
+          await transferPath(task.sourceAbsolutePath, task.destinationAbsolutePath);
         }
 
         const stats = await fs.stat(task.destinationAbsolutePath);

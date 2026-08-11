@@ -17,6 +17,75 @@ export const getModel3DSidecarPathIfPresent = async (fsApi, modelPath) => {
   return stats?.isFile?.() === false ? null : stats ? sidecarPath : null;
 };
 
+const transferPath = async (fsApi, sourcePath, destinationPath, mode) => {
+  if (mode === 'move') {
+    try {
+      await fsApi.rename(sourcePath, destinationPath);
+    } catch (error) {
+      if (error?.code !== 'EXDEV') throw error;
+      await fsApi.copyFile(sourcePath, destinationPath);
+      await fsApi.unlink(sourcePath);
+    }
+    return;
+  }
+
+  await fsApi.copyFile(sourcePath, destinationPath);
+};
+
+const removeIfPresent = async (fsApi, filePath) => {
+  try {
+    await fsApi.unlink(filePath);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+};
+
+export const transferModel3DWithSidecar = async (fsApi, sourcePath, destinationPath, mode) => {
+  const sourceSidecarPath = await getModel3DSidecarPathIfPresent(fsApi, sourcePath);
+  if (!sourceSidecarPath) {
+    await transferPath(fsApi, sourcePath, destinationPath, mode);
+    return;
+  }
+
+  const destinationSidecarPath = `${destinationPath}.imagemetahub.json`;
+  const destinationSidecarStats = await lstatIfPresent(fsApi, destinationSidecarPath);
+  if (destinationSidecarStats) {
+    throw new Error('A metadata sidecar already exists at the destination.');
+  }
+
+  await transferPath(fsApi, sourcePath, destinationPath, mode);
+  try {
+    await transferPath(fsApi, sourceSidecarPath, destinationSidecarPath, mode);
+  } catch (sidecarError) {
+    let cleanupError = null;
+    try {
+      await removeIfPresent(fsApi, destinationSidecarPath);
+    } catch (error) {
+      cleanupError = error;
+    }
+
+    try {
+      if (mode === 'move') {
+        await transferPath(fsApi, destinationPath, sourcePath, 'move');
+      } else {
+        await removeIfPresent(fsApi, destinationPath);
+      }
+    } catch (rollbackError) {
+      throw new Error(
+        `Could not transfer the metadata sidecar (${getErrorMessage(sidecarError)}), and the model transfer could not be rolled back (${getErrorMessage(rollbackError)}).`,
+      );
+    }
+
+    if (cleanupError) {
+      throw new Error(
+        `Could not transfer the metadata sidecar; the model transfer was rolled back, but the incomplete destination sidecar could not be removed (${getErrorMessage(cleanupError)}).`,
+      );
+    }
+
+    throw new Error(`Could not transfer the metadata sidecar; the model transfer was rolled back (${getErrorMessage(sidecarError)}).`);
+  }
+};
+
 export const renameModel3DWithSidecar = async (fsApi, oldPath, newPath) => {
   const oldSidecarPath = `${oldPath}.imagemetahub.json`;
   const newSidecarPath = `${newPath}.imagemetahub.json`;
