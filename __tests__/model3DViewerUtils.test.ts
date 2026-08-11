@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { embedMetadataInGlb, safeModel3DAssetPath } from '../components/Model3DViewer';
 
-const encodeMinimalGlb = (): ArrayBuffer => {
+const encodeMinimalGlb = (paddingByte = 0x20): ArrayBuffer => {
   const encoded = new TextEncoder().encode(JSON.stringify({ asset: { version: '2.0' } }));
   const paddedLength = Math.ceil(encoded.byteLength / 4) * 4;
   const result = new Uint8Array(20 + paddedLength);
@@ -12,7 +12,7 @@ const encodeMinimalGlb = (): ArrayBuffer => {
   view.setUint32(12, paddedLength, true);
   view.setUint32(16, 0x4e4f534a, true);
   result.set(encoded, 20);
-  result.fill(0x20, 20 + encoded.byteLength);
+  result.fill(paddingByte, 20 + encoded.byteLength);
   return result.buffer;
 };
 
@@ -33,7 +33,7 @@ describe('3D viewer utilities', () => {
 
   it('embeds Image MetaHub metadata while keeping a valid GLB header', () => {
     const payload = { schema_version: 1, media_type: 'model3d', prompt: 'synthetic' };
-    const output = embedMetadataInGlb(encodeMinimalGlb(), payload);
+    const output = embedMetadataInGlb(encodeMinimalGlb(0x00), payload);
     const view = new DataView(output);
     const jsonLength = view.getUint32(12, true);
     const document = JSON.parse(new TextDecoder().decode(output.slice(20, 20 + jsonLength)).trim());

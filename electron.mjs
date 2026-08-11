@@ -123,6 +123,16 @@ const THUMBNAIL_MANIFEST_VERSION = 1;
 const THUMBNAIL_MANIFEST_FILE = 'thumbnail-manifest-v1.json';
 const THUMBNAIL_ALLOWED_EXTENSIONS = new Set(['webp', 'png', 'jpg', 'jpeg']);
 
+const trimJsonChunkPadding = (value) => {
+  let end = value.length;
+  while (end > 0) {
+    const character = value[end - 1];
+    if (character.charCodeAt(0) !== 0 && character.trim() !== '') break;
+    end -= 1;
+  }
+  return value.slice(0, end);
+};
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: MEDIA_PROTOCOL_SCHEME,
@@ -211,7 +221,7 @@ const readModel3DMetadata = async (filePath) => {
     const jsonBuffer = Buffer.alloc(jsonLength);
     const jsonRead = await handle.read(jsonBuffer, 0, jsonLength, 20);
     if (jsonRead.bytesRead !== jsonLength) return { metadata: null, source: 'none' };
-    const document = JSON.parse(jsonBuffer.toString('utf8').replace(/[\u0000\s]+$/g, ''));
+    const document = JSON.parse(trimJsonChunkPadding(jsonBuffer.toString('utf8')));
     return { metadata: normalizeEmbeddedModel3DExtras(document?.asset?.extras), source: 'embedded' };
   } finally {
     await handle.close();

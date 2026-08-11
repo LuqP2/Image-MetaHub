@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildNormalizedMetadataFromMetaHubChunk, parseModel3DMetadataFromBuffer } from '../services/fileIndexer';
 
-const encodeGlb = (document: Record<string, unknown>): ArrayBuffer => {
+const encodeGlb = (document: Record<string, unknown>, paddingByte = 0x20): ArrayBuffer => {
   const encoded = new TextEncoder().encode(JSON.stringify(document));
   const paddedLength = Math.ceil(encoded.byteLength / 4) * 4;
   const result = new Uint8Array(20 + paddedLength);
@@ -12,7 +12,7 @@ const encodeGlb = (document: Record<string, unknown>): ArrayBuffer => {
   view.setUint32(12, paddedLength, true);
   view.setUint32(16, 0x4e4f534a, true);
   result.set(encoded, 20);
-  result.fill(0x20, 20 + encoded.byteLength);
+  result.fill(paddingByte, 20 + encoded.byteLength);
   return result.buffer;
 };
 
@@ -31,7 +31,7 @@ describe('3D metadata parsing', () => {
           },
         },
       },
-    }), '.glb');
+    }, 0x00), '.glb');
 
     expect(parsed?.imagemetahub_data?.prompt).toBe('synthetic prompt');
     expect(parsed?.imagemetahub_data?.model_3d).toEqual({ format: 'glb', vertexCount: 8, faceCount: 12 });

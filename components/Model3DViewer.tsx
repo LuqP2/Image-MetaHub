@@ -109,6 +109,16 @@ const disposeRenderer = (renderer: import('three').WebGLRenderer) => {
   renderer.dispose();
 };
 
+const trimJsonChunkPadding = (value: string): string => {
+  let end = value.length;
+  while (end > 0) {
+    const character = value[end - 1];
+    if (character.charCodeAt(0) !== 0 && character.trim() !== '') break;
+    end -= 1;
+  }
+  return value.slice(0, end);
+};
+
 export const safeModel3DAssetPath = (directoryPath: string, relativeModelPath: string, resourceUrl: string): string | null => {
   if (/^(?:[a-z]+:|\/|\\)/i.test(resourceUrl)) return null;
   let cleanResource: string;
@@ -149,7 +159,7 @@ export const embedMetadataInGlb = (buffer: ArrayBuffer, metadata: Record<string,
   const view = new DataView(buffer);
   const jsonLength = view.getUint32(12, true);
   if (view.getUint32(16, true) !== 0x4e4f534a || 20 + jsonLength > source.byteLength) return buffer;
-  const document = JSON.parse(new TextDecoder().decode(source.slice(20, 20 + jsonLength)).replace(/[\u0000\s]+$/g, ''));
+  const document = JSON.parse(trimJsonChunkPadding(new TextDecoder().decode(source.slice(20, 20 + jsonLength))));
   document.asset = document.asset || { version: '2.0' };
   document.asset.extras = typeof document.asset.extras === 'object' && document.asset.extras ? document.asset.extras : {};
   document.asset.extras.imagemetahub_data = metadata;

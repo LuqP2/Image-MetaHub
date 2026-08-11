@@ -118,6 +118,16 @@ function sanitizeJson(jsonString: string): string {
     return jsonString.replace(/:\s*NaN/g, ': null');
 }
 
+const trimJsonChunkPadding = (value: string): string => {
+  let end = value.length;
+  while (end > 0) {
+    const character = value[end - 1];
+    if (character.charCodeAt(0) !== 0 && character.trim() !== '') break;
+    end -= 1;
+  }
+  return value.slice(0, end);
+};
+
 // Electron detection for optimized batch reading
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 const isProduction = Boolean(
@@ -1491,7 +1501,7 @@ export const parseModel3DMetadataFromBuffer = (buffer: ArrayBuffer, extension: s
     if (jsonType !== 0x4e4f534a || jsonLength <= 0 || jsonLength > MODEL_3D_METADATA_MAX_BYTES || 20 + jsonLength > buffer.byteLength) {
       return null;
     }
-    const text = new TextDecoder().decode(buffer.slice(20, 20 + jsonLength)).replace(/[\u0000\s]+$/g, '');
+    const text = trimJsonChunkPadding(new TextDecoder().decode(buffer.slice(20, 20 + jsonLength)));
     const document = JSON.parse(text);
     return normalizeModel3DAssetExtras(document?.asset?.extras);
   } catch {
