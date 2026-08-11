@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canNativeDragIndexedFile,
   getUnsupportedModel3DBatchExportError,
+  getUnsupportedModel3DRenameError,
   getUnsupportedModel3DTransferError,
 } from '../utils/model3DTransfer';
 
@@ -23,5 +25,14 @@ describe('3D model transfers', () => {
       { name: 'model.stl' },
       { name: 'image.png' },
     ])).toBeNull();
+  });
+
+  it('blocks rename and native drag for dependency-backed formats', () => {
+    expect(getUnsupportedModel3DRenameError({ name: 'model.obj' })).toContain('Renaming');
+    expect(getUnsupportedModel3DRenameError({ name: 'model.glb' })).toBeNull();
+    expect(canNativeDragIndexedFile('model.gltf')).toBe(false);
+    expect(canNativeDragIndexedFile('model.obj')).toBe(false);
+    expect(canNativeDragIndexedFile('model.fbx')).toBe(false);
+    expect(canNativeDragIndexedFile('model.glb')).toBe(true);
   });
 });

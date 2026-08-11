@@ -4,6 +4,7 @@ import { transferImagePersistence } from './imageAnnotationsStorage';
 import { FileOperations } from './fileOperations';
 import { useImageStore } from '../store/useImageStore';
 import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
+import { getUnsupportedModel3DRenameError } from '../utils/model3DTransfer';
 
 export interface RenameImageResult {
   success: boolean;
@@ -50,6 +51,11 @@ export async function renameIndexedImage(
   const newRelativePath = buildRenamedRelativePath(image, normalizedName);
   if (newRelativePath === oldRelativePath) {
     return { success: true, newImageId: oldImageId, newRelativePath, image };
+  }
+
+  const unsupportedModelRenameError = getUnsupportedModel3DRenameError(image);
+  if (unsupportedModelRenameError) {
+    return { success: false, error: unsupportedModelRenameError };
   }
 
   if (image.directoryId) {

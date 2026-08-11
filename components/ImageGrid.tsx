@@ -54,6 +54,7 @@ import {
 } from '../utils/performanceDiagnostics';
 import { clearInternalImageDragData, setInternalImageDragData } from '../utils/internalImageDrag';
 import { isMacPlatform } from '../utils/platform';
+import { canNativeDragIndexedFile } from '../utils/model3DTransfer';
 
 // macOS ignores Electron's startDrag() unless it is invoked synchronously from the
 // dragstart handler, so native external drag has to be kicked off differently there
@@ -194,7 +195,9 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   const doubleClickToOpen = useSettingsStore((state) => state.doubleClickToOpen);
   const [copied, setCopied] = useState(false);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
-  const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
+  const canDragExternally = typeof window !== 'undefined'
+    && !!window.electronAPI?.startFileDrag
+    && canNativeDragIndexedFile(image.name);
   const canDragImage = typeof window !== 'undefined';
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);

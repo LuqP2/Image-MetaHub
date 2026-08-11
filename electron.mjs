@@ -4973,6 +4973,15 @@ function setupFileOperationHandlers() {
       }
       
       console.log('Attempting to rename file:', oldPath, 'to', newPath);
+      if (
+        path.normalize(oldPath) !== path.normalize(newPath)
+        && isExternalResourceModel3DFileName(oldPath)
+      ) {
+        return {
+          success: false,
+          error: 'Renaming GLTF, OBJ, and FBX files is not available because these models can depend on sibling files.',
+        };
+      }
       const oldStats = await fs.lstat(oldPath);
       try {
         const targetStats = await fs.lstat(newPath);

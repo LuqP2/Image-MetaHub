@@ -12,6 +12,17 @@ export const getUnsupportedModel3DTransferError = (
   return 'GLTF, OBJ, and FBX transfers are not available because these models can depend on sibling buffers, materials, and textures. Move or copy the containing folder in your system file manager to preserve all required files.';
 };
 
+export const getUnsupportedModel3DRenameError = (
+  image: Pick<IndexedImage, 'name'>,
+): string | null => {
+  if (!isExternalResourceModel3DFileName(image.name)) return null;
+
+  return 'Renaming GLTF, OBJ, and FBX files is not available because these models can depend on sibling buffers, materials, and textures.';
+};
+
+export const canNativeDragIndexedFile = (fileName: string): boolean =>
+  !isExternalResourceModel3DFileName(fileName);
+
 export const getUnsupportedModel3DBatchExportError = (
   images: Array<Pick<IndexedImage, 'name'>>,
 ): string | null => {
