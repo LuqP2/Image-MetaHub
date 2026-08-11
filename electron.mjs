@@ -172,7 +172,11 @@ const parseJsonValue = (value) => {
   try {
     return JSON.parse(value);
   } catch {
-    return value;
+    try {
+      return JSON.parse(value.replace(/:\s*NaN/g, ': null'));
+    } catch {
+      return value;
+    }
   }
 };
 

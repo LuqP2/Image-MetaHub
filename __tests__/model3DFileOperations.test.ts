@@ -205,6 +205,26 @@ describe('3D model file operations', () => {
     expect(fsApi.rename.mock.calls[2]).toEqual(['new.glb', 'old.glb']);
   });
 
+  it('removes a cross-volume destination copy when deleting the source fails', async () => {
+    const crossVolumeError = Object.assign(new Error('cross-volume'), { code: 'EXDEV' });
+    const sourceDeleteError = Object.assign(new Error('source locked'), { code: 'EACCES' });
+    const fsApi = {
+      lstat: vi.fn().mockRejectedValue(missingFileError()),
+      rename: vi.fn().mockRejectedValue(crossVolumeError),
+      copyFile: vi.fn().mockResolvedValue(undefined),
+      unlink: vi.fn()
+        .mockRejectedValueOnce(sourceDeleteError)
+        .mockResolvedValueOnce(undefined),
+    };
+
+    await expect(transferModel3DWithSidecar(fsApi, 'old.glb', 'new.glb', 'move'))
+      .rejects.toThrow('source locked');
+    expect(fsApi.unlink.mock.calls).toEqual([
+      ['old.glb'],
+      ['new.glb'],
+    ]);
+  });
+
   it('renames a model normally when no sidecar exists', async () => {
     const fsApi = {
       lstat: vi.fn().mockRejectedValue(missingFileError()),

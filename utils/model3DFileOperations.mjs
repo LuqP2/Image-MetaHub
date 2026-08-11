@@ -24,7 +24,18 @@ const transferPath = async (fsApi, sourcePath, destinationPath, mode) => {
     } catch (error) {
       if (error?.code !== 'EXDEV') throw error;
       await fsApi.copyFile(sourcePath, destinationPath);
-      await fsApi.unlink(sourcePath);
+      try {
+        await fsApi.unlink(sourcePath);
+      } catch (unlinkError) {
+        try {
+          await removeIfPresent(fsApi, destinationPath);
+        } catch (cleanupError) {
+          throw new Error(
+            `Could not remove the source after a cross-volume copy (${getErrorMessage(unlinkError)}), and the destination copy could not be removed (${getErrorMessage(cleanupError)}).`,
+          );
+        }
+        throw unlinkError;
+      }
     }
     return;
   }
