@@ -120,7 +120,7 @@ const trimJsonChunkPadding = (value: string): string => {
 };
 
 export const safeModel3DAssetPath = (directoryPath: string, relativeModelPath: string, resourceUrl: string): string | null => {
-  if (/^(?:[a-z]+:|\/|\\)/i.test(resourceUrl)) return null;
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/|\\)/i.test(resourceUrl)) return null;
   let cleanResource: string;
   try {
     cleanResource = decodeURIComponent(resourceUrl.split(/[?#]/, 1)[0] || '').replace(/\\/g, '/');
@@ -139,6 +139,56 @@ export const safeModel3DAssetPath = (directoryPath: string, relativeModelPath: s
 
 const buildProtocolUrl = (absolutePath: string) =>
   `imh-media://local/?path=${encodeURIComponent(absolutePath)}`;
+
+const VIRTUAL_LOCAL_RESOURCE_PREFIX = 'imh-media://local/';
+
+export const resolveModel3DResourceUrl = (
+  directoryPath: string | undefined,
+  relativeModelPath: string,
+  sourceUrl: string,
+  resourceUrl: string,
+): string | null => {
+  if (resourceUrl === sourceUrl || /^(?:blob:|data:)/i.test(resourceUrl)) {
+    return resourceUrl;
+  }
+  if (!directoryPath) return null;
+
+  const isVirtualLocalResource = resourceUrl.startsWith(VIRTUAL_LOCAL_RESOURCE_PREFIX)
+    && !resourceUrl.slice(VIRTUAL_LOCAL_RESOURCE_PREFIX.length).startsWith('?');
+  const relativeUrl = isVirtualLocalResource
+    ? resourceUrl.slice(VIRTUAL_LOCAL_RESOURCE_PREFIX.length)
+    : resourceUrl;
+  const resolved = safeModel3DAssetPath(directoryPath, relativeModelPath, relativeUrl);
+  return resolved ? buildProtocolUrl(resolved) : null;
+};
+
+export const extractObjMaterialLibraries = (objText: string): string[] => {
+  const libraries: string[] = [];
+  const seen = new Set<string>();
+
+  for (const line of objText.split(/\r?\n/)) {
+    const match = /^\s*mtllib\s+(.+?)\s*$/i.exec(line);
+    if (!match) continue;
+
+    const tokens = match[1].match(/"[^"]+"|'[^']+'|\S+/g) || [];
+    for (const token of tokens) {
+      if (token.startsWith('#')) break;
+      const library = token.replace(/^(?:"|')|(?:"|')$/g, '');
+      if (library && !seen.has(library)) {
+        seen.add(library);
+        libraries.push(library);
+      }
+    }
+  }
+
+  return libraries;
+};
+
+const getVirtualResourceDirectory = (resourcePath: string): string => {
+  const parts = resourcePath.replace(/\\/g, '/').split('/');
+  parts.pop();
+  return parts.length > 0 ? `${VIRTUAL_LOCAL_RESOURCE_PREFIX}${parts.join('/')}/` : VIRTUAL_LOCAL_RESOURCE_PREFIX;
+};
 
 const getMetadataPayload = (image: IndexedImage): Record<string, unknown> => {
   const embedded = (image.metadata as Record<string, unknown> | undefined)?.imagemetahub_data;
@@ -363,14 +413,15 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         const sourceUrl = await mediaSourceCache.getOrLoad(image, directoryPath);
         const manager = new THREE.LoadingManager();
         const relativeModelPath = getRelativeImagePath(image);
-        if (window.electronAPI && directoryPath) {
+        const trustedLocalResourceUrls = new Set([sourceUrl]);
+        if (window.electronAPI) {
           manager.setURLModifier((url) => {
-            if (url === sourceUrl || /^(?:blob:|data:|https?:)/i.test(url) || (/^imh-media:/i.test(url) && url.includes('?path='))) return url;
-            const relativeUrl = url.startsWith('imh-media://local/')
-              ? url.slice('imh-media://local/'.length)
-              : url;
-            const resolved = safeModel3DAssetPath(directoryPath, relativeModelPath, relativeUrl);
-            return resolved ? buildProtocolUrl(resolved) : url;
+            if (trustedLocalResourceUrls.has(url)) return url;
+            const resolved = resolveModel3DResourceUrl(directoryPath, relativeModelPath, sourceUrl, url);
+            if (!resolved) {
+              throw new Error(`Blocked external or unsafe 3D resource: ${url}`);
+            }
+            return resolved;
           });
         }
 
@@ -382,19 +433,34 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
           animations = gltf.animations;
         } else if (extension === 'obj') {
           const loader = new OBJLoader(manager);
+          const response = await fetch(sourceUrl);
+          if (!response.ok) throw new Error(`Could not load OBJ (${response.status})`);
+          const objText = await response.text();
           if (window.electronAPI && directoryPath) {
-            const materialPath = safeModel3DAssetPath(directoryPath, relativeModelPath, `${modelBaseName(image.name)}.mtl`);
-            if (materialPath) {
+            const declaredLibraries = extractObjMaterialLibraries(objText);
+            const materialLibraries = declaredLibraries.length > 0
+              ? declaredLibraries
+              : [`${modelBaseName(image.name)}.mtl`];
+
+            for (const materialLibrary of materialLibraries) {
+              const materialPath = safeModel3DAssetPath(directoryPath, relativeModelPath, materialLibrary);
+              if (!materialPath) continue;
+
               try {
-                const materials = await new MTLLoader(manager).loadAsync(buildProtocolUrl(materialPath));
+                const materialUrl = buildProtocolUrl(materialPath);
+                trustedLocalResourceUrls.add(materialUrl);
+                const materialLoader = new MTLLoader(manager);
+                materialLoader.setResourcePath(getVirtualResourceDirectory(materialLibrary));
+                const materials = await materialLoader.loadAsync(materialUrl);
                 materials.preload();
                 loader.setMaterials(materials);
+                break;
               } catch {
-                // OBJ remains usable when no sibling MTL exists.
+                // Try the next declared library; geometry remains usable without materials.
               }
             }
           }
-          model = await loader.loadAsync(sourceUrl);
+          model = loader.parse(objText);
         } else if (extension === 'fbx') {
           model = await new FBXLoader(manager).loadAsync(sourceUrl);
           animations = model.animations;

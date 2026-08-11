@@ -37,8 +37,19 @@ describe('thumbnail cache keys', () => {
   });
 
   it('keeps table and grid 3D previews in separate cache entries', () => {
-    expect(getModel3DThumbnailId(image, 'table')).toBe(`${getVersionedThumbnailId(image)}:model3d:table`);
-    expect(getModel3DThumbnailId(image, 'grid')).toBe(`${getVersionedThumbnailId(image)}:model3d:grid`);
+    expect(getModel3DThumbnailId(image, 'table')).toBe(`${getVersionedThumbnailId(image)}:model3d:table:${image.contentModifiedMs}:${image.fileSize}`);
+    expect(getModel3DThumbnailId(image, 'grid')).toBe(`${getVersionedThumbnailId(image)}:model3d:grid:${image.contentModifiedMs}:${image.fileSize}`);
     expect(getModel3DThumbnailId(image, 'table')).not.toBe(getModel3DThumbnailId(image, 'grid'));
+  });
+
+  it('invalidates 3D previews when model content changes in place', () => {
+    expect(getModel3DThumbnailId(image, 'grid')).not.toBe(getModel3DThumbnailId({
+      ...image,
+      contentModifiedMs: image.contentModifiedMs + 1,
+    }, 'grid'));
+    expect(getModel3DThumbnailId(image, 'grid')).not.toBe(getModel3DThumbnailId({
+      ...image,
+      fileSize: image.fileSize + 1,
+    }, 'grid'));
   });
 });

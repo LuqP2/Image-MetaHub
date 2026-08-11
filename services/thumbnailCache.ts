@@ -12,9 +12,13 @@ export const getVersionedThumbnailId = (image: Pick<IndexedImage, 'id' | 'lastMo
 export type Model3DThumbnailVariant = 'grid' | 'table';
 
 export const getModel3DThumbnailId = (
-  image: Pick<IndexedImage, 'id' | 'lastModified'>,
+  image: Pick<IndexedImage, 'id' | 'lastModified' | 'contentModifiedMs' | 'fileSize'>,
   variant: Model3DThumbnailVariant
-): string => `${getVersionedThumbnailId(image)}:model3d:${variant}`;
+): string => {
+  const contentModifiedMs = image.contentModifiedMs ?? image.lastModified;
+  const fileSize = image.fileSize ?? 'unknown';
+  return `${getVersionedThumbnailId(image)}:model3d:${variant}:${contentModifiedMs}:${fileSize}`;
+};
 
 export const getThumbnailCacheCandidate = (
   image: Pick<IndexedImage, 'id' | 'name' | 'lastModified' | 'contentModifiedMs' | 'fileSize'>

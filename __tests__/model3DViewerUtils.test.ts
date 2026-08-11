@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { embedMetadataInGlb, safeModel3DAssetPath } from '../components/Model3DViewer';
+import {
+  embedMetadataInGlb,
+  extractObjMaterialLibraries,
+  resolveModel3DResourceUrl,
+  safeModel3DAssetPath,
+} from '../components/Model3DViewer';
 
 const encodeMinimalGlb = (paddingByte = 0x20): ArrayBuffer => {
   const encoded = new TextEncoder().encode(JSON.stringify({ asset: { version: '2.0' } }));
@@ -29,6 +34,30 @@ describe('3D viewer utilities', () => {
     expect(safeModel3DAssetPath('D:\\Library', '../cube.gltf', 'texture.png')).toBeNull();
     expect(safeModel3DAssetPath('D:\\Library', 'models/cube.gltf', 'C:\\secret.png')).toBeNull();
     expect(safeModel3DAssetPath('D:\\Library', 'models/cube.gltf', 'https://example.com/texture.png')).toBeNull();
+  });
+
+  it('allows embedded and rooted resources while blocking remote dependencies', () => {
+    const sourceUrl = 'imh-media://local/?path=model';
+    expect(resolveModel3DResourceUrl('D:\\Library', 'models/cube.gltf', sourceUrl, sourceUrl)).toBe(sourceUrl);
+    expect(resolveModel3DResourceUrl('D:\\Library', 'models/cube.gltf', sourceUrl, 'data:image/png;base64,AA=='))
+      .toBe('data:image/png;base64,AA==');
+    expect(resolveModel3DResourceUrl('D:\\Library', 'models/cube.gltf', sourceUrl, 'textures/albedo.png'))
+      .toBe('imh-media://local/?path=D%3A%5CLibrary%5Cmodels%5Ctextures%5Calbedo.png');
+    expect(resolveModel3DResourceUrl('D:\\Library', 'models/cube.gltf', sourceUrl, 'https://example.com/albedo.png'))
+      .toBeNull();
+    expect(resolveModel3DResourceUrl('D:\\Library', 'models/cube.gltf', sourceUrl, 'imh-media://local/?path=C%3A%5Csecret.png'))
+      .toBeNull();
+    expect(resolveModel3DResourceUrl(undefined, 'models/cube.gltf', sourceUrl, 'textures/albedo.png'))
+      .toBeNull();
+  });
+
+  it('reads material libraries declared by OBJ files', () => {
+    expect(extractObjMaterialLibraries([
+      '# synthetic fixture',
+      'mtllib materials.mtl',
+      'mtllib "nested/paint set.mtl"',
+      'mtllib materials.mtl # duplicate',
+    ].join('\n'))).toEqual(['materials.mtl', 'nested/paint set.mtl']);
   });
 
   it('embeds Image MetaHub metadata while keeping a valid GLB header', () => {

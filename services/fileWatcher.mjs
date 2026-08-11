@@ -44,22 +44,32 @@ const isTransientVanishError = (error) => {
 
 const isMediaFile = (filePath) => SUPPORTED_MEDIA_EXTENSIONS.includes(path.extname(filePath).toLowerCase());
 
+const IMAGE_METAHUB_SIDECAR_SUFFIX = '.imagemetahub.json';
+
+export const sidecarMatchesMediaFile = (sidecarFileName, mediaFileName) => {
+  const mediaExt = path.extname(mediaFileName);
+  if (!SUPPORTED_MEDIA_EXTENSIONS.includes(mediaExt.toLowerCase())) {
+    return false;
+  }
+
+  if (sidecarFileName.toLowerCase().endsWith(IMAGE_METAHUB_SIDECAR_SUFFIX)) {
+    return mediaFileName === sidecarFileName.slice(0, -IMAGE_METAHUB_SIDECAR_SUFFIX.length);
+  }
+
+  const sidecarExt = path.extname(sidecarFileName);
+  const sidecarBaseName = path.basename(sidecarFileName, sidecarExt);
+  return mediaFileName.slice(0, -mediaExt.length) === sidecarBaseName;
+};
+
 const findMediaFilesForSidecar = (sidecarPath) => {
-  const sidecarExt = path.extname(sidecarPath);
-  const sidecarBaseName = path.basename(sidecarPath, sidecarExt);
+  const sidecarFileName = path.basename(sidecarPath);
   const sidecarDir = path.dirname(sidecarPath);
 
   try {
     return fs.readdirSync(sidecarDir, { withFileTypes: true })
       .filter((entry) => entry.isFile() || entry.isSymbolicLink())
       .map((entry) => entry.name)
-      .filter((fileName) => {
-        const mediaExt = path.extname(fileName);
-        if (!SUPPORTED_MEDIA_EXTENSIONS.includes(mediaExt.toLowerCase())) {
-          return false;
-        }
-        return fileName.slice(0, -mediaExt.length) === sidecarBaseName;
-      })
+      .filter((fileName) => sidecarMatchesMediaFile(sidecarFileName, fileName))
       .map((fileName) => path.join(sidecarDir, fileName));
   } catch {
     return [];
