@@ -2,6 +2,7 @@ export const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gi
 export const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
 export const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.flac', '.ogg', '.oga', '.m4a', '.aac', '.opus', '.aiff', '.aif', '.wma'];
 export const MODEL_3D_EXTENSIONS = ['.glb', '.gltf', '.obj', '.fbx', '.stl'];
+export const EXTERNAL_RESOURCE_MODEL_3D_EXTENSIONS = ['.gltf', '.obj'];
 
 export const SUPPORTED_MEDIA_EXTENSIONS = [
   ...IMAGE_EXTENSIONS,
@@ -61,6 +62,8 @@ export const isAudioFileName = (name, fileType) =>
   Boolean(fileType?.startsWith?.('audio/')) || hasExtension(name, AUDIO_EXTENSIONS);
 export const isModel3DFileName = (name, fileType) =>
   Boolean(fileType?.startsWith?.('model/')) || hasExtension(name, MODEL_3D_EXTENSIONS);
+export const isExternalResourceModel3DFileName = (name) =>
+  hasExtension(name, EXTERNAL_RESOURCE_MODEL_3D_EXTENSIONS);
 export const isSupportedMediaFileName = (name) => hasExtension(name, SUPPORTED_MEDIA_EXTENSIONS);
 
 export const resolveMediaType = (name, fileType) => {

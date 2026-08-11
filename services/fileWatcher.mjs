@@ -61,7 +61,7 @@ export const sidecarMatchesMediaFile = (sidecarFileName, mediaFileName) => {
   return mediaFileName.slice(0, -mediaExt.length) === sidecarBaseName;
 };
 
-const findMediaFilesForSidecar = (sidecarPath) => {
+export const findMediaFilesForSidecar = (sidecarPath) => {
   const sidecarFileName = path.basename(sidecarPath);
   const sidecarDir = path.dirname(sidecarPath);
 
@@ -242,6 +242,10 @@ export function startWatching(directoryId, dirPath, mainWindow) {
     };
 
     watcher.on('unlink', (filePath) => {
+      if (path.extname(filePath).toLowerCase() === '.json') {
+        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true));
+        return;
+      }
       if (!isMediaFile(filePath)) {
         return;
       }

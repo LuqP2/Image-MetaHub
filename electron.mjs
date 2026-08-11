@@ -23,6 +23,7 @@ import {
 } from './utils/generatorLauncher.mjs';
 import {
   inferMimeTypeFromName,
+  isExternalResourceModel3DFileName,
   isModel3DFileName,
   isSupportedMediaFileName,
 } from './utils/mediaTypes.js';
@@ -33,7 +34,7 @@ import {
 import { rewriteAvifMetadata, stripAvifMetadata } from './utils/avifMetadata.mjs';
 import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTombstones.mjs';
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
-import { renameModel3DWithSidecar } from './utils/model3DFileOperations.mjs';
+import { getModel3DSidecarPathIfPresent, renameModel3DWithSidecar } from './utils/model3DFileOperations.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -6008,6 +6009,14 @@ function setupFileOperationHandlers() {
       if (!destDir) {
         return { success: false, error: 'No destination directory provided.', exportedCount: 0, failedCount: 0 };
       }
+      if (files.some((file) => isExternalResourceModel3DFileName(file?.relativePath))) {
+        return {
+          success: false,
+          error: 'GLTF and OBJ batch export is not available because these models can depend on sibling files. Export or copy the containing folder instead.',
+          exportedCount: 0,
+          failedCount: files.length,
+        };
+      }
 
       await fs.mkdir(destDir, { recursive: true });
       const usedNames = new Set();
@@ -6070,6 +6079,12 @@ function setupFileOperationHandlers() {
           const uniqueName = getUniqueName(artifact.fileName, usedNames);
           const destPath = path.resolve(destDir, uniqueName);
           await fs.writeFile(destPath, artifact.buffer);
+          if (metadataPolicy === 'preserve' && isModel3DFileName(sourcePath)) {
+            const sidecarPath = await getModel3DSidecarPathIfPresent(fs, sourcePath);
+            if (sidecarPath) {
+              await fs.copyFile(sidecarPath, `${destPath}.imagemetahub.json`);
+            }
+          }
           exportedCount += 1;
         } catch (error) {
           console.warn('[Electron] Failed to export file to folder:', file?.relativePath, error);
@@ -6125,6 +6140,14 @@ function setupFileOperationHandlers() {
       }
       if (!destZipPath) {
         return { success: false, error: 'No ZIP destination provided.', exportedCount: 0, failedCount: 0 };
+      }
+      if (files.some((file) => isExternalResourceModel3DFileName(file?.relativePath))) {
+        return {
+          success: false,
+          error: 'GLTF and OBJ ZIP export is not available because these models can depend on sibling files. Export or copy the containing folder instead.',
+          exportedCount: 0,
+          failedCount: files.length,
+        };
       }
 
       await fs.mkdir(path.dirname(destZipPath), { recursive: true });
@@ -6195,6 +6218,12 @@ function setupFileOperationHandlers() {
           if (metadataPolicy === 'preserve') {
             const uniqueName = getUniqueName(path.basename(file.relativePath), usedNames);
             archive.file(sourcePath, { name: uniqueName });
+            if (isModel3DFileName(sourcePath)) {
+              const sidecarPath = await getModel3DSidecarPathIfPresent(fs, sourcePath);
+              if (sidecarPath) {
+                archive.file(sidecarPath, { name: `${uniqueName}.imagemetahub.json` });
+              }
+            }
           } else {
             // For rewritten artifacts (strip, metahub_standard), process through createExportArtifact
             const artifact = await createExportArtifact({

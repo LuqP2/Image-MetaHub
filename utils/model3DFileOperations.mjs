@@ -11,6 +11,12 @@ const lstatIfPresent = async (fsApi, filePath) => {
 
 const isSameFile = (left, right) => left.dev === right.dev && left.ino === right.ino;
 
+export const getModel3DSidecarPathIfPresent = async (fsApi, modelPath) => {
+  const sidecarPath = `${modelPath}.imagemetahub.json`;
+  const stats = await lstatIfPresent(fsApi, sidecarPath);
+  return stats?.isFile?.() === false ? null : stats ? sidecarPath : null;
+};
+
 export const renameModel3DWithSidecar = async (fsApi, oldPath, newPath) => {
   const oldSidecarPath = `${oldPath}.imagemetahub.json`;
   const newSidecarPath = `${newPath}.imagemetahub.json`;

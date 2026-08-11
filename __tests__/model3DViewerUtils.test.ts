@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   embedMetadataInGlb,
   extractObjMaterialLibraries,
+  getModel3DExportMetadataPayload,
   resolveModel3DResourceUrl,
   safeModel3DAssetPath,
 } from '../components/Model3DViewer';
@@ -70,5 +71,24 @@ describe('3D viewer utilities', () => {
     expect(new TextDecoder().decode(output.slice(0, 4))).toBe('glTF');
     expect(view.getUint32(8, true)).toBe(output.byteLength);
     expect(document.asset.extras.imagemetahub_data).toEqual(payload);
+  });
+
+  it('retains raw ComfyUI workflow graphs in the export payload', () => {
+    const payload = getModel3DExportMetadataPayload({
+      metadata: {
+        normalizedMetadata: {
+          generator: 'ComfyUI',
+          prompt: 'curated positive prompt',
+        },
+        workflow: JSON.stringify({ nodes: [{ id: 1, type: 'LoadImage' }] }),
+        prompt: { '1': { class_type: 'LoadImage', inputs: { image: 'source.png' } } },
+      } as unknown as import('../types').IndexedImage['metadata'],
+    });
+
+    expect(payload.prompt).toBe('curated positive prompt');
+    expect(payload.workflow).toEqual({ nodes: [{ id: 1, type: 'LoadImage' }] });
+    expect(payload.prompt_api).toEqual({
+      '1': { class_type: 'LoadImage', inputs: { image: 'source.png' } },
+    });
   });
 });

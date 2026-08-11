@@ -190,17 +190,45 @@ const getVirtualResourceDirectory = (resourcePath: string): string => {
   return parts.length > 0 ? `${VIRTUAL_LOCAL_RESOURCE_PREFIX}${parts.join('/')}/` : VIRTUAL_LOCAL_RESOURCE_PREFIX;
 };
 
-const getMetadataPayload = (image: IndexedImage): Record<string, unknown> => {
-  const embedded = (image.metadata as Record<string, unknown> | undefined)?.imagemetahub_data;
-  if (embedded && typeof embedded === 'object' && !Array.isArray(embedded)) {
-    return embedded as Record<string, unknown>;
+const parseMetadataRecord = (value: unknown): Record<string, unknown> | null => {
+  if (typeof value === 'string') {
+    try {
+      return parseMetadataRecord(JSON.parse(value));
+    } catch {
+      return null;
+    }
   }
-  return {
-    schema_version: 1,
-    media_type: 'model3d',
-    generator: image.metadata?.normalizedMetadata?.generator || 'Image MetaHub',
-    ...image.metadata?.normalizedMetadata,
-  };
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+};
+
+export const getModel3DExportMetadataPayload = (
+  image: Pick<IndexedImage, 'metadata'>,
+): Record<string, unknown> => {
+  const rawMetadata = image.metadata as Record<string, unknown> | undefined;
+  const normalizedMetadata = parseMetadataRecord(rawMetadata?.normalizedMetadata) || {};
+  const embedded = parseMetadataRecord(rawMetadata?.imagemetahub_data);
+  const payload: Record<string, unknown> = embedded
+    ? { ...embedded }
+    : {
+        schema_version: 1,
+        media_type: 'model3d',
+        generator: normalizedMetadata.generator || 'Image MetaHub',
+        ...normalizedMetadata,
+      };
+
+  const workflow = parseMetadataRecord(rawMetadata?.workflow);
+  const promptApi = parseMetadataRecord(rawMetadata?.prompt_api)
+    || parseMetadataRecord(rawMetadata?.prompt);
+  if (workflow && !parseMetadataRecord(payload.workflow)) {
+    payload.workflow = workflow;
+  }
+  if (promptApi && !parseMetadataRecord(payload.prompt_api)) {
+    payload.prompt_api = promptApi;
+  }
+
+  return payload;
 };
 
 export const embedMetadataInGlb = (buffer: ArrayBuffer, metadata: Record<string, unknown>): ArrayBuffer => {
@@ -277,7 +305,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
     onErrorRef.current = onError;
   }, [onError]);
 
-  const metadataPayload = useMemo(() => getMetadataPayload(image), [image]);
+  const metadataPayload = useMemo(() => getModel3DExportMetadataPayload(image), [image]);
   const extension = getFileExtension(image.name).slice(1).toLowerCase();
 
   const updatePreference = useCallback(<K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => {
@@ -611,7 +639,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
   const resolveExportMetadata = useCallback(async () => {
     if (!hasCompactedRuntimeMetadata(image)) return metadataPayload;
     const hydrated = await hydrateImageRawMetadata(image, directoryPath);
-    return getMetadataPayload(hydrated);
+    return getModel3DExportMetadataPayload(hydrated);
   }, [directoryPath, image, metadataPayload]);
 
   const saveExport = useCallback(async (blob: Blob, filename: string, exportMetadata: Record<string, unknown>, includeSidecar = true) => {

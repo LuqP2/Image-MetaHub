@@ -1,9 +1,29 @@
 import { describe, expect, it, vi } from 'vitest';
-import { renameModel3DWithSidecar } from '../utils/model3DFileOperations.mjs';
+import {
+  getModel3DSidecarPathIfPresent,
+  renameModel3DWithSidecar,
+} from '../utils/model3DFileOperations.mjs';
 
 const missingFileError = () => Object.assign(new Error('missing'), { code: 'ENOENT' });
 
 describe('3D model file operations', () => {
+  it('finds an existing metadata sidecar for export', async () => {
+    const fsApi = {
+      lstat: vi.fn().mockResolvedValue({ isFile: () => true }),
+    };
+
+    await expect(getModel3DSidecarPathIfPresent(fsApi, 'model.glb'))
+      .resolves.toBe('model.glb.imagemetahub.json');
+  });
+
+  it('ignores missing metadata sidecars during export', async () => {
+    const fsApi = {
+      lstat: vi.fn().mockRejectedValue(missingFileError()),
+    };
+
+    await expect(getModel3DSidecarPathIfPresent(fsApi, 'model.glb')).resolves.toBeNull();
+  });
+
   it('renames a model normally when no sidecar exists', async () => {
     const fsApi = {
       lstat: vi.fn().mockRejectedValue(missingFileError()),

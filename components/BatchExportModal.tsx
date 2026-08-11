@@ -8,6 +8,7 @@ import {
   type IndexedImage,
   type MetadataExportPolicy,
 } from '../types';
+import { getUnsupportedModel3DBatchExportError } from '../utils/model3DTransfer';
 
 interface BatchExportModalProps {
   isOpen: boolean;
@@ -203,6 +204,12 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
     if (restrictToRequestedSelection && source !== 'selected') {
       setStatus({ type: 'error', message: 'This export entry is limited to the requested image.' });
+      return;
+    }
+
+    const unsupportedModelError = getUnsupportedModel3DBatchExportError(imagesToExport);
+    if (unsupportedModelError) {
+      setStatus({ type: 'error', message: unsupportedModelError });
       return;
     }
 
