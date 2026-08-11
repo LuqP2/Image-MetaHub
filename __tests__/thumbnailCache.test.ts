@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getLegacyThumbnailId,
+  getModel3DThumbnailId,
   getThumbnailCacheCandidate,
   getVersionedThumbnailId,
   THUMBNAIL_ALGORITHM_VERSION,
@@ -33,5 +34,11 @@ describe('thumbnail cache keys', () => {
       legacyThumbnailId: getLegacyThumbnailId(image),
       algorithmVersion: THUMBNAIL_ALGORITHM_VERSION,
     });
+  });
+
+  it('keeps table and grid 3D previews in separate cache entries', () => {
+    expect(getModel3DThumbnailId(image, 'table')).toBe(`${getVersionedThumbnailId(image)}:model3d:table`);
+    expect(getModel3DThumbnailId(image, 'grid')).toBe(`${getVersionedThumbnailId(image)}:model3d:grid`);
+    expect(getModel3DThumbnailId(image, 'table')).not.toBe(getModel3DThumbnailId(image, 'grid'));
   });
 });

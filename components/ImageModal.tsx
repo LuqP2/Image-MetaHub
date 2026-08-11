@@ -1842,10 +1842,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const motionModel = (nMeta as any)?.motion_model;
 
   useEffect(() => {
-    if (!showComfyUIActions || !nMeta) {
+    if (!showComfyUIContext || !nMeta) {
       setSidebarTab('details');
     }
-  }, [nMeta, showComfyUIActions]);
+  }, [nMeta, showComfyUIContext]);
 
   const beginWindowDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (isFullViewportModal || isWindowMaximized || event.button !== 0) {

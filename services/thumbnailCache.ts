@@ -9,6 +9,13 @@ export const getLegacyThumbnailId = (image: Pick<IndexedImage, 'id' | 'lastModif
 export const getVersionedThumbnailId = (image: Pick<IndexedImage, 'id' | 'lastModified'>): string =>
   `${THUMBNAIL_ALGORITHM_VERSION}:${getLegacyThumbnailId(image)}`;
 
+export type Model3DThumbnailVariant = 'grid' | 'table';
+
+export const getModel3DThumbnailId = (
+  image: Pick<IndexedImage, 'id' | 'lastModified'>,
+  variant: Model3DThumbnailVariant
+): string => `${getVersionedThumbnailId(image)}:model3d:${variant}`;
+
 export const getThumbnailCacheCandidate = (
   image: Pick<IndexedImage, 'id' | 'name' | 'lastModified' | 'contentModifiedMs' | 'fileSize'>
 ): ThumbnailCacheCandidate => ({

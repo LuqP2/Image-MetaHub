@@ -4510,6 +4510,7 @@ function setupFileOperationHandlers() {
       if (isModel3DFileName(filePath)) {
         const metadataSidecarPath = `${filePath}.imagemetahub.json`;
         try {
+          await fs.access(metadataSidecarPath);
           await shell.trashItem(metadataSidecarPath);
         } catch (sidecarError) {
           if (sidecarError?.code !== 'ENOENT') {

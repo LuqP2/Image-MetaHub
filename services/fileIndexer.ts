@@ -1300,12 +1300,19 @@ async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata
   return { metadata: null, buffer };
 }
 
-const buildNormalizedMetadataFromMetaHubChunk = async (
+export const buildNormalizedMetadataFromMetaHubChunk = async (
   metaHubData: unknown,
   fallbackDims?: { width?: number; height?: number }
 ): Promise<BaseMetadata> => {
-  if (metaHubData && typeof metaHubData === 'object') {
-    const payload = metaHubData as Record<string, any>;
+  const payload = metaHubData && typeof metaHubData === 'object'
+    ? metaHubData as Record<string, any>
+    : null;
+  const mediaType = payload?.media_type === 'model3d' ? 'model3d' : undefined;
+  const model3DMetadata = payload?.model_3d && typeof payload.model_3d === 'object'
+    ? payload.model_3d
+    : undefined;
+
+  if (payload) {
     if (payload.generator === 'ComfyUI') {
       const rawTags = payload.imh_pro?.user_tags;
       // Optimization: Replace chained array methods with single loops
@@ -1404,8 +1411,8 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
         _metahub_pro: payload.imh_pro || null,
         _detection_method: 'metahub_chunk_direct',
         generator: 'ComfyUI',
-        media_type: payload.media_type === 'model3d' ? 'model3d' : undefined,
-        model_3d: payload.model_3d && typeof payload.model_3d === 'object' ? payload.model_3d : undefined,
+        media_type: mediaType,
+        model_3d: model3DMetadata,
       };
     }
   }
@@ -1439,6 +1446,8 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
     _metahub_pro: enhancedResult._metahub_pro || null,
     _detection_method: enhancedResult._detection_method,
     generator: 'ComfyUI',
+    media_type: mediaType,
+    model_3d: model3DMetadata,
   };
 };
 

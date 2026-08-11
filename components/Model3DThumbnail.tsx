@@ -3,7 +3,7 @@ import { Box } from 'lucide-react';
 import type { IndexedImage } from '../types';
 import Model3DViewer from './Model3DViewer';
 import cacheManager from '../services/cacheManager';
-import { getVersionedThumbnailId } from '../services/thumbnailCache';
+import { getModel3DThumbnailId, type Model3DThumbnailVariant } from '../services/thumbnailCache';
 
 const MAX_CONCURRENT_RENDERS = 2;
 const MAX_CACHED_THUMBNAILS = 120;
@@ -45,10 +45,11 @@ interface Model3DThumbnailProps {
   image: IndexedImage;
   directoryPath?: string;
   className?: string;
+  variant?: Model3DThumbnailVariant;
 }
 
-const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPath, className = '' }) => {
-  const cacheKey = `${image.id}:${image.lastModified}`;
+const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPath, className = '', variant = 'grid' }) => {
+  const cacheKey = getModel3DThumbnailId(image, variant);
   const rootRef = useRef<HTMLDivElement>(null);
   const releaseRef = useRef<(() => void) | null>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState(() => thumbnailCache.get(cacheKey) || null);
@@ -72,7 +73,7 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
   useEffect(() => {
     if (thumbnailUrl || cacheChecked) return;
     let cancelled = false;
-    void cacheManager.getCachedThumbnail(getVersionedThumbnailId(image)).then((blob) => {
+    void cacheManager.getCachedThumbnail(cacheKey).then((blob) => {
       if (!cancelled && blob) setThumbnailUrl(rememberThumbnail(cacheKey, blob));
     }).finally(() => {
       if (!cancelled) setCacheChecked(true);
@@ -80,7 +81,7 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
     return () => {
       cancelled = true;
     };
-  }, [cacheChecked, cacheKey, image, thumbnailUrl]);
+  }, [cacheChecked, cacheKey, thumbnailUrl]);
 
   useEffect(() => {
     const node = rootRef.current;
@@ -118,9 +119,9 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
 
   const handleSnapshot = useCallback((blob: Blob) => {
     setThumbnailUrl(rememberThumbnail(cacheKey, blob));
-    void cacheManager.cacheThumbnail(getVersionedThumbnailId(image), blob);
+    void cacheManager.cacheThumbnail(cacheKey, blob);
     release();
-  }, [cacheKey, image, release]);
+  }, [cacheKey, release]);
 
   const handleError = useCallback(() => {
     setFailed(true);

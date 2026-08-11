@@ -20,6 +20,8 @@ describe('3D viewer utilities', () => {
   it('resolves sibling resources within the indexed root', () => {
     expect(safeModel3DAssetPath('D:\\Library', 'models/cube.gltf', 'textures/albedo.png'))
       .toBe('D:\\Library\\models\\textures\\albedo.png');
+    expect(safeModel3DAssetPath('/home/user/Library', 'models/cube.gltf', 'textures/albedo.png'))
+      .toBe('/home/user/Library/models/textures/albedo.png');
   });
 
   it('blocks traversal, absolute paths, and external URLs', () => {

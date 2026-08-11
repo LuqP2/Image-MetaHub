@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseModel3DMetadataFromBuffer } from '../services/fileIndexer';
+import { buildNormalizedMetadataFromMetaHubChunk, parseModel3DMetadataFromBuffer } from '../services/fileIndexer';
 
 const encodeGlb = (document: Record<string, unknown>): ArrayBuffer => {
   const encoded = new TextEncoder().encode(JSON.stringify(document));
@@ -35,6 +35,23 @@ describe('3D metadata parsing', () => {
 
     expect(parsed?.imagemetahub_data?.prompt).toBe('synthetic prompt');
     expect(parsed?.imagemetahub_data?.model_3d).toEqual({ format: 'glb', vertexCount: 8, faceCount: 12 });
+  });
+
+  it('preserves 3D details when the embedded payload has no generator marker', async () => {
+    const model3D = {
+      format: 'glb',
+      vertexCount: 24576,
+      faceCount: 49152,
+      bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+    };
+    const normalized = await buildNormalizedMetadataFromMetaHubChunk({
+      schema_version: 1,
+      media_type: 'model3d',
+      model_3d: model3D,
+    });
+
+    expect(normalized.media_type).toBe('model3d');
+    expect(normalized.model_3d).toEqual(model3D);
   });
 
   it('accepts official Save 3D Model extras when no MetaHub payload exists', () => {

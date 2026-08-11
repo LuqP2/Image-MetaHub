@@ -104,6 +104,11 @@ const disposeMaterial = (material: import('three').Material) => {
   material.dispose();
 };
 
+const disposeRenderer = (renderer: import('three').WebGLRenderer) => {
+  renderer.forceContextLoss();
+  renderer.dispose();
+};
+
 export const safeModel3DAssetPath = (directoryPath: string, relativeModelPath: string, resourceUrl: string): string | null => {
   if (/^(?:[a-z]+:|\/|\\)/i.test(resourceUrl)) return null;
   let cleanResource: string;
@@ -118,7 +123,8 @@ export const safeModel3DAssetPath = (directoryPath: string, relativeModelPath: s
   if (modelParts.some((part) => part === '..')) return null;
   modelParts.pop();
   const base = directoryPath.replace(/[\\/]$/, '');
-  return [base, ...modelParts, ...segments].join('\\');
+  const separator = directoryPath.startsWith('/') ? '/' : directoryPath.includes('\\') ? '\\' : '/';
+  return [base, ...modelParts, ...segments].join(separator);
 };
 
 const buildProtocolUrl = (absolutePath: string) =>
@@ -398,7 +404,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
             const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
             materials.forEach(disposeMaterial);
           });
-          renderer.dispose();
+          disposeRenderer(renderer);
           return;
         }
         scene.add(model);
@@ -458,7 +464,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         render();
         setLoading(false);
       } catch (loadError) {
-        pendingRenderer?.dispose();
+        if (pendingRenderer) disposeRenderer(pendingRenderer);
         if (!disposed) {
           setLoading(false);
           const message = loadError instanceof Error ? loadError.message : 'Unable to load this 3D model.';
@@ -494,7 +500,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         if (runtime.scene.background && 'isTexture' in runtime.scene.background) {
           runtime.scene.background.dispose();
         }
-        runtime.renderer.dispose();
+        disposeRenderer(runtime.renderer);
       }
       if (backgroundUrlRef.current) {
         URL.revokeObjectURL(backgroundUrlRef.current);
@@ -599,9 +605,10 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
   const controlsPosition = modalControls
     ? 'left-20 right-20 top-14 z-30 justify-center lg:left-28 lg:right-28'
     : 'left-2 top-2 z-30 max-w-[calc(100%-1rem)]';
+  const minimumHeightClass = compact || !showControls ? 'min-h-0' : 'min-h-[180px]';
 
   return (
-    <div ref={containerRef} className={`relative h-full min-h-[180px] w-full overflow-hidden bg-black ${className}`} data-no-window-drag="true">
+    <div ref={containerRef} className={`relative h-full ${minimumHeightClass} w-full overflow-hidden bg-black ${className}`} data-no-window-drag="true">
       <canvas ref={canvasRef} className="block h-full w-full" />
       {loading && <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-sm text-gray-300">Loading 3D model…</div>}
       {error && <div className="absolute inset-x-4 top-4 rounded-lg border border-red-500/40 bg-red-950/90 p-3 text-sm text-red-100">{error}</div>}
