@@ -100,6 +100,10 @@ export const sanitizeSlideshowIntervalSeconds = (value: number): number => {
 };
 
 export type VideoRepeatMode = 'off' | 'one' | 'all';
+export type ImageViewerMode = 'detached' | 'inline';
+
+export const sanitizeImageViewerMode = (value: unknown): ImageViewerMode =>
+  value === 'inline' || value === 'detached' ? value : 'detached';
 
 const VALID_VIDEO_REPEAT_MODES: VideoRepeatMode[] = ['off', 'one', 'all'];
 const isValidVideoRepeatMode = (value: unknown): value is VideoRepeatMode =>
@@ -164,6 +168,8 @@ interface SettingsState {
   videoRepeatMode: VideoRepeatMode;
   /** Video player shuffle: when a video ends, jump to a random item instead of the next one. */
   videoShuffle: boolean;
+  /** Desktop viewer host. Web builds always resolve this preference to inline. */
+  imageViewerMode: ImageViewerMode;
   creatorAttributionToken: string | null;
   creatorAttributionUpdatedAt: number | null;
 
@@ -220,6 +226,7 @@ interface SettingsState {
   setAutoPlayMedia: (value: boolean) => void;
   setVideoRepeatMode: (value: VideoRepeatMode) => void;
   setVideoShuffle: (value: boolean) => void;
+  setImageViewerMode: (value: ImageViewerMode) => void;
   setCreatorAttributionToken: (token: string | null) => void;
   setA1111Enabled: (value: boolean) => void;
   setA1111ServerUrl: (url: string) => void;
@@ -280,6 +287,7 @@ export const useSettingsStore = create<SettingsState>()(
       autoPlayMedia: true,
       videoRepeatMode: readLegacyVideoRepeatMode(),
       videoShuffle: false,
+      imageViewerMode: 'detached',
       creatorAttributionToken: null,
       creatorAttributionUpdatedAt: null,
 
@@ -350,6 +358,7 @@ export const useSettingsStore = create<SettingsState>()(
       setVideoRepeatMode: (value) =>
         set({ videoRepeatMode: isValidVideoRepeatMode(value) ? value : 'off' }),
       setVideoShuffle: (value) => set({ videoShuffle: !!value }),
+      setImageViewerMode: (value) => set({ imageViewerMode: sanitizeImageViewerMode(value) }),
       setCreatorAttributionToken: (token) => {
         const normalizedToken = typeof token === 'string' ? token.trim() : '';
         set({
@@ -431,6 +440,7 @@ export const useSettingsStore = create<SettingsState>()(
         autoPlayMedia: true,
         videoRepeatMode: 'off',
         videoShuffle: false,
+        imageViewerMode: 'detached',
         creatorAttributionToken: null,
         creatorAttributionUpdatedAt: null,
         a1111Enabled: true,
@@ -553,6 +563,10 @@ export const useSettingsStore = create<SettingsState>()(
           state.videoShuffle = false;
         }
 
+        if (state) {
+          state.imageViewerMode = sanitizeImageViewerMode(state.imageViewerMode);
+        }
+
         if (state && typeof state.creatorAttributionToken !== 'string') {
           state.creatorAttributionToken = null;
         } else if (state) {
@@ -606,3 +620,13 @@ export const useSettingsStore = create<SettingsState>()(
     }
   )
 );
+
+// Settings live in a single file on disk, but every window keeps its own copy and
+// persists that whole copy on any change. Without this, a window that missed an
+// update (for example a detached image viewer left open while the main window
+// changes a preference) would silently revert the newer value on its next write.
+if (typeof window !== 'undefined') {
+  window.electronAPI?.onSettingsUpdated?.(() => {
+    void useSettingsStore.persist.rehydrate();
+  });
+}

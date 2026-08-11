@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - Unreleased
+
+### Added
+
+- **Native Image Viewer Windows**: Images now open in separate native desktop windows with an optional always-on-top toggle and drag-and-drop support. Settings → Viewer → Behavior can restore the legacy in-app viewer. Generating with A1111 or ComfyUI from a separate window queues the job in the main window, so it runs normally, and dragging a file out of a viewer window no longer risks moving the wrong image if you later drop an unrelated file onto a folder.
+
 ## [0.18.1] - 2026-08-01
 
 ### Added

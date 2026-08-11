@@ -19,6 +19,7 @@ const resetLicenseState = () => {
     licenseStatus: 'free',
     licenseKey: null,
     licenseEmail: null,
+    trialExpiredNoticeDismissed: false,
   });
 };
 
@@ -238,5 +239,59 @@ describe('useLicenseStore trial policy', () => {
     expect(nextState.licenseEmail).toBe('test@example.com');
     expect(nextState.licenseKey).toBe('ABCD-EFGH-IJKL-MNOP');
     expect(nextState.nextReleaseTrialResetApplied).toBe(true);
+  });
+});
+
+describe('post-trial notice dismissal', () => {
+  beforeEach(() => {
+    resetLicenseState();
+    vi.mocked(validateLicenseKey).mockReset();
+  });
+
+  it('records the dismissal without touching the license status', () => {
+    useLicenseStore.setState({ initialized: true, licenseStatus: 'expired', trialActivated: true });
+
+    useLicenseStore.getState().dismissTrialExpiredNotice();
+
+    const nextState = useLicenseStore.getState();
+    expect(nextState.trialExpiredNoticeDismissed).toBe(true);
+    expect(nextState.licenseStatus).toBe('expired');
+    expect(nextState.trialActivated).toBe(true);
+  });
+
+  it('re-arms the notice when a fresh trial is activated', () => {
+    useLicenseStore.setState({ trialExpiredNoticeDismissed: true });
+
+    useLicenseStore.getState().activateTrial();
+
+    const nextState = useLicenseStore.getState();
+    expect(nextState.licenseStatus).toBe('trial');
+    expect(nextState.trialExpiredNoticeDismissed).toBe(false);
+  });
+
+  it('leaves the dismissal untouched when a license is activated', async () => {
+    vi.mocked(validateLicenseKey).mockResolvedValue(true);
+    useLicenseStore.setState({ licenseStatus: 'expired', trialExpiredNoticeDismissed: true });
+
+    await useLicenseStore.getState().activateLicense('ABCD-EFGH-IJKL-MNOP', 'test@example.com');
+
+    const nextState = useLicenseStore.getState();
+    expect(nextState.licenseStatus).toBe('pro');
+    expect(nextState.trialExpiredNoticeDismissed).toBe(true);
+  });
+
+  it('derives expired status without auto-dismissing the notice', async () => {
+    useLicenseStore.setState({
+      initialized: false,
+      trialStartDate: Date.now() - (TRIAL_DURATION_DAYS + 1) * 24 * 60 * 60 * 1000,
+      trialActivated: true,
+      licenseStatus: 'trial',
+    });
+
+    await useLicenseStore.getState().checkLicenseStatus();
+
+    const nextState = useLicenseStore.getState();
+    expect(nextState.licenseStatus).toBe('expired');
+    expect(nextState.trialExpiredNoticeDismissed).toBe(false);
   });
 });

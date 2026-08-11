@@ -58,10 +58,17 @@ interface LicenseState {
   licenseKey: string | null;
   licenseEmail: string | null;
 
+  /**
+   * One-time dismissal of the post-trial notice. Set once the user closes it, so the
+   * surface never comes back on its own. Re-armed only when a new trial is activated.
+   */
+  trialExpiredNoticeDismissed: boolean;
+
   // Actions
   activateTrial: () => void;
   checkLicenseStatus: () => Promise<void>;
   activateLicense: (key: string, email: string) => Promise<boolean>;
+  dismissTrialExpiredNotice: () => void;
   _resetLicense: () => void;
 }
 
@@ -102,6 +109,7 @@ export const useLicenseStore = create<LicenseState>()(
       licenseStatus: 'free',
       licenseKey: null,
       licenseEmail: null,
+      trialExpiredNoticeDismissed: false,
 
       // Activate trial (only works once)
       activateTrial: () => {
@@ -121,6 +129,8 @@ export const useLicenseStore = create<LicenseState>()(
           trialActivated: true,
           licenseStatus: 'trial',
           initialized: true,
+          // A fresh trial re-arms the post-trial notice for when this one ends.
+          trialExpiredNoticeDismissed: false,
         });
 
         console.log(`[IMH] Trial activated! ${TRIAL_DURATION_DAYS} days of Pro features unlocked.`);
@@ -299,6 +309,11 @@ export const useLicenseStore = create<LicenseState>()(
         return true;
       },
 
+      // Dismiss the post-trial notice for good (until a new trial is activated)
+      dismissTrialExpiredNotice: () => {
+        set({ trialExpiredNoticeDismissed: true });
+      },
+
       // Dev only: reset license
       _resetLicense: () => {
         if (process.env.NODE_ENV !== 'development') {
@@ -317,6 +332,7 @@ export const useLicenseStore = create<LicenseState>()(
           licenseStatus: 'free',
           licenseKey: null,
           licenseEmail: null,
+          trialExpiredNoticeDismissed: false,
         });
 
         console.log('[IMH] License reset');
@@ -328,3 +344,12 @@ export const useLicenseStore = create<LicenseState>()(
     }
   )
 );
+
+// License data shares the settings file across every renderer. When another
+// window activates a trial or license, rehydrate this renderer so its Pro state
+// updates immediately instead of remaining stale until the app is reloaded.
+if (typeof window !== 'undefined') {
+  window.electronAPI?.onSettingsUpdated?.(() => {
+    void useLicenseStore.persist.rehydrate();
+  });
+}

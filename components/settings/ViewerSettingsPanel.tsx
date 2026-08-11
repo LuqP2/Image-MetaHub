@@ -34,28 +34,47 @@ export const ViewerSettingsPanel: React.FC = () => {
   const setSlideshowIntervalSeconds = useSettingsStore((state) => state.setSlideshowIntervalSeconds);
   const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
   const setSlideshowShowFilename = useSettingsStore((state) => state.setSlideshowShowFilename);
+  const imageViewerMode = useSettingsStore((state) => state.imageViewerMode);
+  const setImageViewerMode = useSettingsStore((state) => state.setImageViewerMode);
+  const isDesktop = typeof window !== 'undefined' && Boolean(window.electronAPI);
 
   return (
-    <SettingsPanel title="Viewer" description="Control what appears in the library and how images open.">
+    <SettingsPanel title="Viewer">
       <SettingsSectionCard title="Behavior">
         <SettingRow
-          label="Show filenames"
-          description="Display the image filename under thumbnails."
+          label="Open images in separate windows"
+          className={!isDesktop ? 'opacity-50' : ''}
+          control={
+            <SettingSwitch
+              checked={isDesktop && imageViewerMode === 'detached'}
+              onChange={(checked) => setImageViewerMode(checked ? 'detached' : 'inline')}
+              disabled={!isDesktop}
+            />
+          }
+        />
+        <SettingRow
+          label="Show filenames on grid"
           control={<SettingSwitch checked={showFilenames} onChange={setShowFilenames} />}
         />
         <SettingRow
           label="Show full path"
-          description="Show folder path context instead of only the filename."
-          control={<SettingSwitch checked={showFullFilePath} onChange={setShowFullFilePath} />}
+          className={!showFilenames ? 'opacity-50' : ''}
+          control={
+            <input
+              type="checkbox"
+              checked={showFullFilePath}
+              disabled={!showFilenames}
+              onChange={(event) => setShowFullFilePath(event.target.checked)}
+              className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed"
+            />
+          }
         />
         <SettingRow
           label="Double-click to open"
-          description="Keep single click for selection and open details on double click."
           control={<SettingSwitch checked={doubleClickToOpen} onChange={setDoubleClickToOpen} />}
         />
         <SettingRow
           label="Skip delete confirmation"
-          description="Bypass the confirmation dialog when deleting files to the trash."
           control={<SettingSwitch checked={skipDeleteConfirmation} onChange={setSkipDeleteConfirmation} />}
         />
       </SettingsSectionCard>
@@ -63,15 +82,13 @@ export const ViewerSettingsPanel: React.FC = () => {
       <SettingsSectionCard title="Playback">
         <SettingRow
           label="Auto-play video and audio"
-          description="Start playback automatically when a video or audio file opens. When off, press Play to start."
           control={<SettingSwitch checked={autoPlayMedia} onChange={setAutoPlayMedia} />}
         />
       </SettingsSectionCard>
 
       <SettingsSectionCard title="Slideshow">
         <SettingRow
-          label="Default interval"
-          description={`Seconds between slides. Range ${MIN_SLIDESHOW_INTERVAL_SECONDS}-${MAX_SLIDESHOW_INTERVAL_SECONDS}.`}
+          label="Default interval (seconds)"
           control={
             <input
               type="number"
