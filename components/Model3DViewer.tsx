@@ -184,6 +184,27 @@ export const extractObjMaterialLibraries = (objText: string): string[] => {
   return libraries;
 };
 
+type ObjMaterialLibrary<T> = {
+  materialsInfo: Record<string, unknown>;
+  create: (materialName: string) => T | undefined;
+};
+
+export const combineObjMaterialLibraries = <T,>(
+  libraries: Array<ObjMaterialLibrary<T>>,
+): Pick<ObjMaterialLibrary<T>, 'create'> => ({
+  create: (materialName: string) => {
+    // Later mtllib declarations take precedence when material names overlap,
+    // while each creator keeps its own base path for relative textures.
+    for (let index = libraries.length - 1; index >= 0; index -= 1) {
+      const library = libraries[index];
+      if (Object.prototype.hasOwnProperty.call(library.materialsInfo, materialName)) {
+        return library.create(materialName);
+      }
+    }
+    return undefined;
+  },
+});
+
 const getVirtualResourceDirectory = (resourcePath: string): string => {
   const parts = resourcePath.replace(/\\/g, '/').split('/');
   parts.pop();
@@ -469,6 +490,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
             const materialLibraries = declaredLibraries.length > 0
               ? declaredLibraries
               : [`${modelBaseName(image.name)}.mtl`];
+            const loadedMaterialLibraries: Array<ObjMaterialLibrary<import('three').Material>> = [];
 
             for (const materialLibrary of materialLibraries) {
               const materialPath = safeModel3DAssetPath(directoryPath, relativeModelPath, materialLibrary);
@@ -481,11 +503,16 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
                 materialLoader.setResourcePath(getVirtualResourceDirectory(materialLibrary));
                 const materials = await materialLoader.loadAsync(materialUrl);
                 materials.preload();
-                loader.setMaterials(materials);
-                break;
+                loadedMaterialLibraries.push(materials);
               } catch {
                 // Try the next declared library; geometry remains usable without materials.
               }
+            }
+
+            if (loadedMaterialLibraries.length > 0) {
+              loader.setMaterials(
+                combineObjMaterialLibraries(loadedMaterialLibraries) as Parameters<typeof loader.setMaterials>[0],
+              );
             }
           }
           model = loader.parse(objText);

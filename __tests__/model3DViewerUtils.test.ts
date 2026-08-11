@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  combineObjMaterialLibraries,
   embedMetadataInGlb,
   extractObjMaterialLibraries,
   getModel3DExportMetadataPayload,
@@ -59,6 +60,22 @@ describe('3D viewer utilities', () => {
       'mtllib "nested/paint set.mtl"',
       'mtllib materials.mtl # duplicate',
     ].join('\n'))).toEqual(['materials.mtl', 'nested/paint set.mtl']);
+  });
+
+  it('uses materials from every declared OBJ library without losing their creators', () => {
+    const firstCreate = vi.fn((name: string) => `first:${name}`);
+    const secondCreate = vi.fn((name: string) => `second:${name}`);
+    const combined = combineObjMaterialLibraries([
+      { materialsInfo: { body: {}, shared: {} }, create: firstCreate },
+      { materialsInfo: { paint: {}, shared: {} }, create: secondCreate },
+    ]);
+
+    expect(combined.create('body')).toBe('first:body');
+    expect(combined.create('paint')).toBe('second:paint');
+    expect(combined.create('shared')).toBe('second:shared');
+    expect(combined.create('missing')).toBeUndefined();
+    expect(firstCreate).toHaveBeenCalledOnce();
+    expect(secondCreate).toHaveBeenCalledTimes(2);
   });
 
   it('embeds Image MetaHub metadata while keeping a valid GLB header', () => {
