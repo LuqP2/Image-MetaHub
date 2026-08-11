@@ -40,6 +40,9 @@ const removeIfPresent = async (fsApi, filePath) => {
   }
 };
 
+const createExportStagingPath = (destinationPath, label) =>
+  `${destinationPath}.imagemetahub-${label}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
+
 export const trashModel3DWithSidecar = async (fsApi, trashItem, modelPath) => {
   const sidecarPath = await getModel3DSidecarPathIfPresent(fsApi, modelPath);
   await trashItem(modelPath);
@@ -63,31 +66,85 @@ export const trashModel3DWithSidecar = async (fsApi, trashItem, modelPath) => {
 
 const writeModel3DExportPair = async (fsApi, destinationPath, modelData, writeSidecar) => {
   const destinationSidecarPath = `${destinationPath}.imagemetahub.json`;
-  let sidecarCopyStarted = false;
+  const stagedModelPath = createExportStagingPath(destinationPath, 'model');
+  const stagedSidecarPath = createExportStagingPath(destinationSidecarPath, 'sidecar');
+  const backupModelPath = createExportStagingPath(destinationPath, 'backup');
+  const backupSidecarPath = createExportStagingPath(destinationSidecarPath, 'backup');
+  let modelBackedUp = false;
+  let sidecarBackedUp = false;
+  let modelPromoted = false;
+  let sidecarPromoted = false;
+
   try {
-    await fsApi.writeFile(destinationPath, modelData);
+    await fsApi.writeFile(stagedModelPath, modelData);
     if (writeSidecar) {
-      sidecarCopyStarted = true;
-      await writeSidecar(destinationSidecarPath);
+      await writeSidecar(stagedSidecarPath);
+    }
+
+    const destinationStats = await lstatIfPresent(fsApi, destinationPath);
+    const destinationSidecarStats = await lstatIfPresent(fsApi, destinationSidecarPath);
+    if (destinationStats) {
+      await fsApi.rename(destinationPath, backupModelPath);
+      modelBackedUp = true;
+    }
+    if (destinationSidecarStats) {
+      await fsApi.rename(destinationSidecarPath, backupSidecarPath);
+      sidecarBackedUp = true;
+    }
+
+    await fsApi.rename(stagedModelPath, destinationPath);
+    modelPromoted = true;
+    if (writeSidecar) {
+      await fsApi.rename(stagedSidecarPath, destinationSidecarPath);
+      sidecarPromoted = true;
     }
   } catch (exportError) {
-    const cleanupErrors = [];
-    const cleanupPaths = sidecarCopyStarted
-      ? [destinationSidecarPath, destinationPath]
-      : [destinationPath];
-    for (const cleanupPath of cleanupPaths) {
+    const recoveryErrors = [];
+    for (const cleanupPath of [
+      ...(sidecarPromoted ? [destinationSidecarPath] : []),
+      ...(modelPromoted ? [destinationPath] : []),
+      stagedSidecarPath,
+      stagedModelPath,
+    ]) {
       try {
         await removeIfPresent(fsApi, cleanupPath);
       } catch (cleanupError) {
-        cleanupErrors.push(getErrorMessage(cleanupError));
+        recoveryErrors.push(getErrorMessage(cleanupError));
       }
     }
-    if (cleanupErrors.length > 0) {
+
+    for (const [wasBackedUp, backupPath, originalPath] of [
+      [sidecarBackedUp, backupSidecarPath, destinationSidecarPath],
+      [modelBackedUp, backupModelPath, destinationPath],
+    ]) {
+      if (!wasBackedUp) continue;
+      try {
+        await fsApi.rename(backupPath, originalPath);
+      } catch (restoreError) {
+        recoveryErrors.push(getErrorMessage(restoreError));
+      }
+    }
+
+    if (recoveryErrors.length > 0) {
       throw new Error(
-        `Could not export the model (${getErrorMessage(exportError)}), and incomplete output cleanup failed (${cleanupErrors.join('; ')}).`,
+        `Could not export the model (${getErrorMessage(exportError)}), and existing output recovery failed (${recoveryErrors.join('; ')}).`,
       );
     }
-    throw new Error(`Could not export the model and metadata sidecar; incomplete output was removed (${getErrorMessage(exportError)}).`);
+    const recoveryMessage = modelBackedUp || sidecarBackedUp
+      ? 'existing output was restored'
+      : 'incomplete output was removed';
+    throw new Error(`Could not export the model and metadata sidecar; ${recoveryMessage} (${getErrorMessage(exportError)}).`);
+  }
+
+  for (const backupPath of [
+    ...(sidecarBackedUp ? [backupSidecarPath] : []),
+    ...(modelBackedUp ? [backupModelPath] : []),
+  ]) {
+    try {
+      await removeIfPresent(fsApi, backupPath);
+    } catch (cleanupError) {
+      console.warn('[model3d] Could not remove replaced export backup:', getErrorMessage(cleanupError));
+    }
   }
 };
 

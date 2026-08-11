@@ -62,7 +62,9 @@ describe('3D model file operations', () => {
     const fsApi = {
       writeFile: vi.fn().mockResolvedValue(undefined),
       copyFile: vi.fn().mockRejectedValue(sidecarError),
-      unlink: vi.fn().mockResolvedValue(undefined),
+      lstat: vi.fn().mockRejectedValue(missingFileError()),
+      rename: vi.fn(),
+      unlink: vi.fn().mockRejectedValue(missingFileError()),
     };
 
     await expect(writeModel3DExportWithSidecar(
@@ -71,10 +73,8 @@ describe('3D model file operations', () => {
       new Uint8Array([1, 2, 3]),
       'source/model.stl.imagemetahub.json',
     )).rejects.toThrow('incomplete output was removed');
-    expect(fsApi.unlink.mock.calls).toEqual([
-      ['export/model.stl.imagemetahub.json'],
-      ['export/model.stl'],
-    ]);
+    expect(fsApi.rename).not.toHaveBeenCalled();
+    expect(fsApi.writeFile.mock.calls[0][0]).not.toBe('export/model.stl');
   });
 
   it('removes viewer model exports when writing sidecar data fails', async () => {
@@ -82,7 +82,9 @@ describe('3D model file operations', () => {
       writeFile: vi.fn()
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(new Error('sidecar locked')),
-      unlink: vi.fn().mockResolvedValue(undefined),
+      lstat: vi.fn().mockRejectedValue(missingFileError()),
+      rename: vi.fn(),
+      unlink: vi.fn().mockRejectedValue(missingFileError()),
     };
 
     await expect(writeModel3DExportDataWithSidecar(
@@ -91,10 +93,35 @@ describe('3D model file operations', () => {
       new Uint8Array([1]),
       new Uint8Array([2]),
     )).rejects.toThrow('incomplete output was removed');
-    expect(fsApi.unlink.mock.calls).toEqual([
-      ['export/model.obj.imagemetahub.json'],
-      ['export/model.obj'],
-    ]);
+    expect(fsApi.rename).not.toHaveBeenCalled();
+    expect(fsApi.writeFile.mock.calls[0][0]).not.toBe('export/model.obj');
+    expect(fsApi.writeFile.mock.calls[1][0]).not.toBe('export/model.obj.imagemetahub.json');
+  });
+
+  it('restores existing model exports when sidecar promotion fails', async () => {
+    const fsApi = {
+      writeFile: vi.fn().mockResolvedValue(undefined),
+      lstat: vi.fn().mockResolvedValue({ isFile: () => true }),
+      rename: vi.fn()
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('sidecar locked'))
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined),
+      unlink: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await expect(writeModel3DExportDataWithSidecar(
+      fsApi,
+      'export/model.glb',
+      new Uint8Array([1]),
+      new Uint8Array([2]),
+    )).rejects.toThrow('existing output was restored');
+
+    const restoreCalls = fsApi.rename.mock.calls.slice(-2);
+    expect(restoreCalls[0]?.[1]).toBe('export/model.glb.imagemetahub.json');
+    expect(restoreCalls[1]?.[1]).toBe('export/model.glb');
   });
 
   it('rejects orphaned destination sidecars for sidecarless transfers', async () => {
