@@ -5,7 +5,7 @@ import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager'
 import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { getFilesystemPathComparisonKey, normalizeFilesystemPath } from '../utils/filesystemPath';
 import { parse } from 'exifr';
-import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './parsers/comfyUIParser';
+import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph } from './parsers/comfyUIParser';
 import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
@@ -1757,6 +1757,9 @@ if (rawMetadata) {
       prompt = rawMetadata as any;
     }
     const resolvedParams = resolvePromptFromGraph(workflow, prompt);
+    const model3DLineage = isModel3D
+      ? resolveModel3DLineageFromGraph(workflow, prompt)
+      : null;
     normalizedMetadata = {
       prompt: resolvedParams.prompt || '',
       negativePrompt: resolvedParams.negativePrompt || '',
@@ -1773,8 +1776,8 @@ if (rawMetadata) {
       loras: normalizeComfyLoras(resolvedParams),
       vae: resolvedParams.vae || resolvedParams.vaes?.[0]?.name,
       denoise: resolvedParams.denoise,
-      generationType: resolvedParams.generationType,
-      lineage: resolvedParams.lineage,
+      generationType: model3DLineage?.generationType || resolvedParams.generationType,
+      lineage: model3DLineage?.lineage || resolvedParams.lineage,
     };
   }
 

@@ -552,7 +552,15 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
         <div className="bg-black flex items-center justify-center rounded-lg">
           {isModel3D ? (
             <div className="h-80 w-full overflow-hidden rounded-lg">
-              <Model3DViewer image={activeImage} directoryPath={activeImageDirectoryPath} compact />
+              <Model3DViewer
+                image={activeImage}
+                directoryPath={activeImageDirectoryPath}
+                compact
+                onOpenSourceImage={(targetImage) => {
+                  setPreviewImage(targetImage);
+                  setSelectedImage(targetImage);
+                }}
+              />
             </div>
           ) : imageUrl ? (
             isAudio ? (

@@ -9,6 +9,7 @@ import {
   getLineageStatusMessage,
   type ResolvedLineageEntry,
 } from '../services/lineageRegistry';
+import { resolveMediaType } from '../utils/mediaTypes.js';
 
 interface ImageLineageSectionProps {
   image: IndexedImage;
@@ -23,6 +24,10 @@ const detailClassName =
   'rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs text-gray-600 dark:border-gray-700/60 dark:bg-gray-900/40 dark:text-gray-300';
 
 const EMPTY_DERIVED_IDS: string[] = [];
+
+const isModel3D = (image: IndexedImage): boolean =>
+  image.metadata?.normalizedMetadata?.media_type === 'model3d'
+  || resolveMediaType(image.name, image.fileType) === 'model3d';
 
 const LineagePreviewCard: React.FC<{
   image: IndexedImage;
@@ -116,6 +121,11 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
     resolvedLineage?.lineage.workflowSourceImage?.relativePath ||
     resolvedLineage?.lineage.workflowSourceImage?.absolutePath ||
     null;
+  const derivedSectionLabel = derivedImages.every(isModel3D)
+    ? 'Derived 3D Models'
+    : derivedImages.some(isModel3D)
+      ? 'Derived Media'
+      : 'Derived Images';
 
   return (
     <div className="space-y-3 rounded-lg border border-blue-200/70 bg-blue-50/60 p-3 dark:border-blue-500/20 dark:bg-blue-500/5">
@@ -180,14 +190,14 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
       {derivedImages.length > 0 && (
         <div className="space-y-2">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-            Derived Images
+            {derivedSectionLabel}
           </div>
           <div className="grid gap-2">
             {derivedImages.map((derivedImage) => (
               <LineagePreviewCard
                 key={derivedImage.id}
                 image={derivedImage}
-                label="Derived Image"
+                label={isModel3D(derivedImage) ? 'Derived 3D Model' : 'Derived Image'}
                 onOpenImage={onOpenImage}
               />
             ))}

@@ -134,6 +134,46 @@ describe('lineage registry', () => {
     expect(snapshot.resolvedByImageId[derived.id]?.sourceImageId).toBe(sourceB.id);
   });
 
+  it('links an image source to an image-to-3D model', () => {
+    const source = createImage(
+      'dir-a::source.png',
+      'source.png',
+      'dir-a',
+      { width: 1024, height: 1024, prompt: 'source', model: 'm', steps: 20, scheduler: 'normal' }
+    );
+    const model = createImage(
+      'dir-a::model.glb',
+      'model.glb',
+      'dir-a',
+      {
+        width: 0,
+        height: 0,
+        prompt: '',
+        model: 'm',
+        steps: 0,
+        scheduler: '',
+        media_type: 'model3d',
+        generationType: 'image2model3d',
+        lineage: {
+          sourceImage: { fileName: 'source.png' },
+        },
+      }
+    );
+
+    const pathMap = createLineageDirectoryPathMap(directories);
+    const snapshot = buildLineageRegistrySnapshot(
+      [source, model].map((image) => toLightweightLineageImage(image, pathMap)),
+      'signature-model3d'
+    );
+
+    expect(snapshot.resolvedByImageId[model.id]).toMatchObject({
+      generationType: 'image2model3d',
+      sourceStatus: 'linked',
+      sourceImageId: source.id,
+    });
+    expect(snapshot.derivedIdsBySourceId[source.id]).toEqual([model.id]);
+  });
+
   it('builds a deterministic library signature from cache summaries', () => {
     const signatureA = buildLineageLibrarySignature([
       {

@@ -3,6 +3,7 @@ import { Box, Camera, Download, Grid3X3, Image as ImageIcon, Maximize2, Palette,
 import type { IndexedImage } from '../types';
 import { getRelativeImagePath, mediaSourceCache } from '../services/mediaSourceCache';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
+import { useImageStore } from '../store/useImageStore';
 import { getFileExtension } from '../utils/mediaTypes.js';
 
 type MaterialMode = 'original' | 'normal' | 'wireframe';
@@ -22,7 +23,9 @@ interface Model3DViewerProps {
   directoryPath?: string;
   compact?: boolean;
   showControls?: boolean;
+  modalControls?: boolean;
   className?: string;
+  onOpenSourceImage?: (image: IndexedImage) => void;
   onSnapshot?: (blob: Blob) => void;
   onError?: (message: string) => void;
 }
@@ -166,7 +169,9 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
   directoryPath,
   compact = false,
   showControls = true,
+  modalControls = false,
   className = '',
+  onOpenSourceImage,
   onSnapshot,
   onError,
 }) => {
@@ -181,6 +186,18 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
   const preferencesRef = useRef(preferences);
   const onSnapshotRef = useRef(onSnapshot);
   const onErrorRef = useRef(onError);
+  const resolvedLineage = useImageStore(
+    useCallback((state) => state.getResolvedLineage(image.id), [image.id])
+  );
+  const sourceImage = useImageStore(
+    useCallback((state) => {
+      const sourceImageId = state.lineageResolvedByImageId[image.id]?.sourceImageId;
+      if (!sourceImageId) return null;
+      return state.images.find((candidate) => candidate.id === sourceImageId)
+        ?? state.filteredImages.find((candidate) => candidate.id === sourceImageId)
+        ?? null;
+    }, [image.id])
+  );
 
   useEffect(() => {
     preferencesRef.current = preferences;
@@ -244,7 +261,13 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
       if (mode === 'original') {
         mesh.material = runtime.originals.get(mesh) || mesh.material;
       } else if (mode === 'normal') {
-        mesh.material = new runtime.THREE.MeshNormalMaterial();
+        mesh.material = new runtime.THREE.MeshNormalMaterial({
+          // Flat shading derives face normals in the fragment shader, so models
+          // with missing or invalid vertex normals do not render black.
+          flatShading: true,
+          side: runtime.THREE.DoubleSide,
+          toneMapped: false,
+        });
       } else {
         mesh.material = new runtime.THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true });
       }
@@ -569,6 +592,13 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
   }, [applyMaterialMode, exporting, image.name, resolveExportMetadata, saveExport]);
 
   const controlButton = 'inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-700 bg-gray-950/85 px-2 text-xs text-gray-200 hover:bg-gray-800';
+  const sourceReferenceName = resolvedLineage?.sourceReference?.fileName
+    || resolvedLineage?.sourceReference?.relativePath
+    || resolvedLineage?.sourceReference?.absolutePath
+    || null;
+  const controlsPosition = modalControls
+    ? 'left-20 right-20 top-14 z-30 justify-center lg:left-28 lg:right-28'
+    : 'left-2 top-2 z-30 max-w-[calc(100%-1rem)]';
 
   return (
     <div ref={containerRef} className={`relative h-full min-h-[180px] w-full overflow-hidden bg-black ${className}`} data-no-window-drag="true">
@@ -576,7 +606,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
       {loading && <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-sm text-gray-300">Loading 3D model…</div>}
       {error && <div className="absolute inset-x-4 top-4 rounded-lg border border-red-500/40 bg-red-950/90 p-3 text-sm text-red-100">{error}</div>}
       {showControls && !loading && (
-        <div className={`absolute left-2 top-2 flex max-w-[calc(100%-1rem)] flex-wrap gap-1.5 ${compact ? 'scale-90 origin-top-left' : ''}`}>
+        <div className={`absolute flex flex-wrap gap-1.5 ${controlsPosition} ${compact ? 'scale-90 origin-top-left' : ''}`}>
           <button type="button" className={controlButton} onClick={() => updatePreference('showGrid', !preferences.showGrid)} title="Toggle grid">
             <Grid3X3 size={14} /> Grid
           </button>
@@ -590,10 +620,10 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
           </label>
           <label className={controlButton} title="Material mode">
             <Box size={14} />
-            <select value={preferences.materialMode} onChange={(event) => updatePreference('materialMode', event.target.value as MaterialMode)} className="bg-transparent outline-none">
-              <option value="original">Original</option>
-              <option value="normal">Normal</option>
-              <option value="wireframe">Wireframe</option>
+            <select value={preferences.materialMode} onChange={(event) => updatePreference('materialMode', event.target.value as MaterialMode)} className="rounded bg-gray-950 text-gray-100 outline-none [color-scheme:dark]">
+              <option value="original" className="bg-gray-950 text-gray-100">Original</option>
+              <option value="normal" className="bg-gray-950 text-gray-100">Normal</option>
+              <option value="wireframe" className="bg-gray-950 text-gray-100">Wireframe</option>
             </select>
           </label>
           <button type="button" className={controlButton} onClick={() => updatePreference('cameraType', preferences.cameraType === 'perspective' ? 'orthographic' : 'perspective')} title="Switch camera">
@@ -611,15 +641,34 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
           <button type="button" className={controlButton} onClick={fitCamera} title="Reset camera"><RotateCcw size={14} /></button>
           <label className={controlButton} title="OBJ/STL may not preserve materials, textures, or animations">
             <Download size={14} />
-            <select disabled={exporting} defaultValue="" onChange={(event) => { const value = event.target.value as 'glb' | 'obj' | 'stl' | 'fbx'; if (value) void exportModel(value); event.target.value = ''; }} className="bg-transparent outline-none">
-              <option value="">{exporting ? 'Exporting…' : 'Export'}</option>
-              <option value="glb">GLB</option>
-              <option value="obj">OBJ</option>
-              <option value="stl">STL</option>
-              <option value="fbx">FBX</option>
+            <select disabled={exporting} defaultValue="" onChange={(event) => { const value = event.target.value as 'glb' | 'obj' | 'stl' | 'fbx'; if (value) void exportModel(value); event.target.value = ''; }} className="rounded bg-gray-950 text-gray-100 outline-none [color-scheme:dark]">
+              <option value="" className="bg-gray-950 text-gray-100">{exporting ? 'Exporting…' : 'Export'}</option>
+              <option value="glb" className="bg-gray-950 text-gray-100">GLB</option>
+              <option value="obj" className="bg-gray-950 text-gray-100">OBJ</option>
+              <option value="stl" className="bg-gray-950 text-gray-100">STL</option>
+              <option value="fbx" className="bg-gray-950 text-gray-100">FBX</option>
             </select>
           </label>
         </div>
+      )}
+      {!loading && (sourceImage || sourceReferenceName) && (
+        sourceImage && onOpenSourceImage ? (
+          <button
+            type="button"
+            onClick={() => onOpenSourceImage(sourceImage)}
+            className="absolute bottom-9 left-1/2 z-30 max-w-[70%] -translate-x-1/2 truncate rounded-md border border-blue-400/30 bg-black/75 px-2.5 py-1 text-xs text-blue-200 backdrop-blur-sm hover:bg-blue-950/90"
+            title={`Open source image: ${sourceImage.name}`}
+          >
+            Generated from: {sourceImage.name}
+          </button>
+        ) : (
+          <div
+            className="pointer-events-none absolute bottom-9 left-1/2 z-30 max-w-[70%] -translate-x-1/2 truncate rounded-md border border-blue-400/20 bg-black/70 px-2.5 py-1 text-xs text-blue-200 backdrop-blur-sm"
+            title={sourceImage?.name || sourceReferenceName || undefined}
+          >
+            Generated from: {sourceImage?.name || sourceReferenceName}
+          </div>
+        )
       )}
       <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 font-mono text-[10px] text-gray-300">X <span className="text-red-400">●</span> Y <span className="text-green-400">●</span> Z <span className="text-blue-400">●</span></div>
       {showControls && !compact && (

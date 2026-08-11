@@ -76,6 +76,7 @@ import {
   normalizeFilesystemPath,
 } from './utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from './utils/directoryActivity';
+import { resolveMediaType } from './utils/mediaTypes.js';
 
 interface OpenImageModalState {
   modalId: string;
@@ -146,6 +147,21 @@ interface PendingWatchedRemovalCacheDelta {
 }
 
 const getImageTimestamp = (image: IndexedImage): number => image.contentModifiedMs ?? image.lastModified ?? 0;
+
+const getDetectedMediaLabel = (
+  files: Array<{ name: string; type: string }>,
+): string => {
+  const mediaTypes = new Set(files.map((file) => resolveMediaType(file.name, file.type)));
+  const plural = files.length !== 1;
+
+  if (mediaTypes.size !== 1) return plural ? 'media files' : 'media file';
+  switch (mediaTypes.values().next().value) {
+    case 'model3d': return plural ? '3D models' : '3D model';
+    case 'video': return plural ? 'videos' : 'video';
+    case 'audio': return plural ? 'audio files' : 'audio file';
+    default: return plural ? 'images' : 'image';
+  }
+};
 
 const areStringArraysEqual = (left: string[] | null, right: string[]): boolean =>
   Array.isArray(left) &&
@@ -1201,7 +1217,7 @@ export default function App() {
 
       // Show toast notification
       setNewImagesToast({
-        message: `${files.length} new image${files.length !== 1 ? 's' : ''} detected in ${directory.name}`,
+        message: `${files.length} new ${getDetectedMediaLabel(files)} detected in ${directory.name}`,
       });
 
       // Processar novos arquivos usando a função do useImageLoader

@@ -3627,7 +3627,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
         >
           {isModel3D ? (
             <div data-no-window-drag="true" className="h-full min-h-0 w-full min-w-0">
-              <Model3DViewer key={liveImage.id} image={liveImage} directoryPath={directoryPath} />
+              <Model3DViewer
+                key={liveImage.id}
+                image={liveImage}
+                directoryPath={directoryPath}
+                modalControls
+                onOpenSourceImage={(targetImage) => {
+                  setPreviewImage(targetImage);
+                  setSelectedImage(targetImage);
+                }}
+              />
             </div>
           ) : imageUrl ? (
             isAudio ? (
@@ -3797,7 +3806,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             )}
           </div>
 
-          {!isPlayableMedia && (
+          {!isPlayableMedia && !isModel3D && (
             <div data-no-window-drag="true" className={`absolute bottom-4 left-4 z-30 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
               <button
                 onClick={handleZoomIn}

@@ -711,7 +711,7 @@ export interface MotionModelInfo {
   hash?: string | null;
 }
 
-export type GenerationType = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint';
+export type GenerationType = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'image2model3d';
 
 export interface SourceImageReference {
   fileName?: string | null;
