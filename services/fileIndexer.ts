@@ -1994,7 +1994,14 @@ export async function reparseIndexedImage(
   directoryPath: string,
   options: { compactRawMetadata?: boolean } = {}
 ): Promise<IndexedImage | null> {
-  if (!window.electronAPI?.joinPaths || !window.electronAPI?.readFile) {
+  const isModel3D = isModel3DFileName(
+    image.name,
+    image.fileType ?? inferMimeTypeFromName(image.name)
+  );
+  if (
+    !window.electronAPI?.joinPaths
+    || (isModel3D ? !window.electronAPI.readModel3DMetadata : !window.electronAPI.readFile)
+  ) {
     throw new Error('Metadata reparsing is only available in the desktop app.');
   }
 
@@ -2005,17 +2012,20 @@ export async function reparseIndexedImage(
   }
 
   const absolutePath = joined.path;
-  const readResult = await window.electronAPI.readFile(absolutePath);
-  if (!readResult.success || !readResult.data) {
-    throw new Error(readResult.error || 'Failed to read the image file.');
+  let fileData: ArrayBuffer | undefined;
+  if (!isModel3D) {
+    const readResult = await window.electronAPI.readFile(absolutePath);
+    if (!readResult.success || !readResult.data) {
+      throw new Error(readResult.error || 'Failed to read the image file.');
+    }
+    const bytes = new Uint8Array(readResult.data);
+    fileData = bytes.slice().buffer;
   }
 
   const statsResult = window.electronAPI.getFileStats
     ? await window.electronAPI.getFileStats(absolutePath)
     : { success: false } as { success: boolean; stats?: any; error?: string };
   const stats = statsResult.success ? statsResult.stats : undefined;
-  const bytes = new Uint8Array(readResult.data);
-  const fileData = bytes.slice().buffer;
 
   const fileEntry: CatalogFileEntry = {
     handle: {

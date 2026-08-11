@@ -127,14 +127,32 @@ export const safeModel3DAssetPath = (directoryPath: string, relativeModelPath: s
   } catch {
     return null;
   }
-  const segments = cleanResource.split('/').filter(Boolean);
-  if (segments.some((part) => part === '..')) return null;
-  const modelParts = relativeModelPath.replace(/\\/g, '/').split('/');
-  if (modelParts.some((part) => part === '..')) return null;
+  const cleanModelPath = relativeModelPath.replace(/\\/g, '/');
+  if (!cleanResource || /^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(cleanResource)) return null;
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(cleanModelPath)) return null;
+
+  const normalizeWithinRoot = (parts: string[]): string[] | null => {
+    const normalized: string[] = [];
+    for (const part of parts) {
+      if (!part || part === '.') continue;
+      if (part === '..') {
+        if (normalized.length === 0) return null;
+        normalized.pop();
+      } else {
+        normalized.push(part);
+      }
+    }
+    return normalized;
+  };
+
+  const modelParts = normalizeWithinRoot(cleanModelPath.split('/'));
+  if (!modelParts) return null;
   modelParts.pop();
+  const resolvedParts = normalizeWithinRoot([...modelParts, ...cleanResource.split('/')]);
+  if (!resolvedParts) return null;
   const base = directoryPath.replace(/[\\/]$/, '');
   const separator = directoryPath.startsWith('/') ? '/' : directoryPath.includes('\\') ? '\\' : '/';
-  return [base, ...modelParts, ...segments].join(separator);
+  return [base, ...resolvedParts].join(separator);
 };
 
 const buildProtocolUrl = (absolutePath: string) =>

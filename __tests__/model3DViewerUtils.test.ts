@@ -29,10 +29,15 @@ describe('3D viewer utilities', () => {
       .toBe('D:\\Library\\models\\textures\\albedo.png');
     expect(safeModel3DAssetPath('/home/user/Library', 'models/cube.gltf', 'textures/albedo.png'))
       .toBe('/home/user/Library/models/textures/albedo.png');
+    expect(safeModel3DAssetPath('D:\\Library', 'models/vehicle/cube.gltf', '../textures/albedo.png'))
+      .toBe('D:\\Library\\models\\textures\\albedo.png');
+    expect(safeModel3DAssetPath('/home/user/Library', 'models/vehicle/cube.gltf', '../materials/body.mtl'))
+      .toBe('/home/user/Library/models/materials/body.mtl');
   });
 
   it('blocks traversal, absolute paths, and external URLs', () => {
-    expect(safeModel3DAssetPath('D:\\Library', 'models/cube.gltf', '../secret.png')).toBeNull();
+    expect(safeModel3DAssetPath('D:\\Library', 'cube.gltf', '../secret.png')).toBeNull();
+    expect(safeModel3DAssetPath('D:\\Library', 'models/cube.gltf', '../../secret.png')).toBeNull();
     expect(safeModel3DAssetPath('D:\\Library', '../cube.gltf', 'texture.png')).toBeNull();
     expect(safeModel3DAssetPath('D:\\Library', 'models/cube.gltf', 'C:\\secret.png')).toBeNull();
     expect(safeModel3DAssetPath('D:\\Library', 'models/cube.gltf', 'https://example.com/texture.png')).toBeNull();
