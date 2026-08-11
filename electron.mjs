@@ -39,6 +39,7 @@ import {
   renameModel3DWithSidecar,
   trashModel3DWithSidecar,
   transferModel3DWithSidecar,
+  writeModel3DExportWithSidecar,
 } from './utils/model3DFileOperations.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -209,6 +210,22 @@ const readModel3DMetadata = async (filePath) => {
   }
 
   const extension = path.extname(filePath).toLowerCase();
+  if (extension === '.gltf') {
+    const handle = await fs.open(filePath, 'r');
+    try {
+      const stats = await handle.stat();
+      if (!stats.isFile() || stats.size <= 0 || stats.size > MODEL_3D_METADATA_MAX_BYTES) {
+        return { metadata: null, source: 'none' };
+      }
+      const jsonBuffer = Buffer.alloc(stats.size);
+      const jsonRead = await handle.read(jsonBuffer, 0, stats.size, 0);
+      if (jsonRead.bytesRead !== stats.size) return { metadata: null, source: 'none' };
+      const document = JSON.parse(jsonBuffer.toString('utf8'));
+      return { metadata: normalizeEmbeddedModel3DExtras(document?.asset?.extras), source: 'embedded' };
+    } finally {
+      await handle.close();
+    }
+  }
   if (extension !== '.glb') {
     return { metadata: null, source: 'none' };
   }
@@ -6080,12 +6097,11 @@ function setupFileOperationHandlers() {
           });
           const uniqueName = getUniqueName(artifact.fileName, usedNames);
           const destPath = path.resolve(destDir, uniqueName);
-          await fs.writeFile(destPath, artifact.buffer);
           if (metadataPolicy === 'preserve' && isModel3DFileName(sourcePath)) {
             const sidecarPath = await getModel3DSidecarPathIfPresent(fs, sourcePath);
-            if (sidecarPath) {
-              await fs.copyFile(sidecarPath, `${destPath}.imagemetahub.json`);
-            }
+            await writeModel3DExportWithSidecar(fs, destPath, artifact.buffer, sidecarPath);
+          } else {
+            await fs.writeFile(destPath, artifact.buffer);
           }
           exportedCount += 1;
         } catch (error) {

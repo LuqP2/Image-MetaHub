@@ -4,6 +4,7 @@ import {
   renameModel3DWithSidecar,
   trashModel3DWithSidecar,
   transferModel3DWithSidecar,
+  writeModel3DExportWithSidecar,
 } from '../utils/model3DFileOperations.mjs';
 
 const missingFileError = () => Object.assign(new Error('missing'), { code: 'ENOENT' });
@@ -41,7 +42,7 @@ describe('3D model file operations', () => {
     ]);
   });
 
-  it('reports and removes a staged sidecar when trashing it fails', async () => {
+  it('reports and removes an orphaned sidecar when trashing it fails', async () => {
     const fsApi = {
       lstat: vi.fn().mockResolvedValue({ isFile: () => true }),
       unlink: vi.fn().mockResolvedValue(undefined),
@@ -53,6 +54,26 @@ describe('3D model file operations', () => {
     await expect(trashModel3DWithSidecar(fsApi, trashItem, 'model.glb'))
       .rejects.toThrow('permanently removed');
     expect(fsApi.unlink).toHaveBeenCalledWith('model.glb.imagemetahub.json');
+  });
+
+  it('removes incomplete model exports when sidecar copying fails', async () => {
+    const sidecarError = Object.assign(new Error('disk full'), { code: 'ENOSPC' });
+    const fsApi = {
+      writeFile: vi.fn().mockResolvedValue(undefined),
+      copyFile: vi.fn().mockRejectedValue(sidecarError),
+      unlink: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await expect(writeModel3DExportWithSidecar(
+      fsApi,
+      'export/model.stl',
+      new Uint8Array([1, 2, 3]),
+      'source/model.stl.imagemetahub.json',
+    )).rejects.toThrow('incomplete output was removed');
+    expect(fsApi.unlink.mock.calls).toEqual([
+      ['export/model.stl.imagemetahub.json'],
+      ['export/model.stl'],
+    ]);
   });
 
   it('copies a model and its metadata sidecar together', async () => {

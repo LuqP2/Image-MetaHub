@@ -61,6 +61,36 @@ export const trashModel3DWithSidecar = async (fsApi, trashItem, modelPath) => {
   }
 };
 
+export const writeModel3DExportWithSidecar = async (fsApi, destinationPath, modelData, sourceSidecarPath) => {
+  const destinationSidecarPath = `${destinationPath}.imagemetahub.json`;
+  let sidecarCopyStarted = false;
+  try {
+    await fsApi.writeFile(destinationPath, modelData);
+    if (sourceSidecarPath) {
+      sidecarCopyStarted = true;
+      await fsApi.copyFile(sourceSidecarPath, destinationSidecarPath);
+    }
+  } catch (exportError) {
+    const cleanupErrors = [];
+    const cleanupPaths = sidecarCopyStarted
+      ? [destinationSidecarPath, destinationPath]
+      : [destinationPath];
+    for (const cleanupPath of cleanupPaths) {
+      try {
+        await removeIfPresent(fsApi, cleanupPath);
+      } catch (cleanupError) {
+        cleanupErrors.push(getErrorMessage(cleanupError));
+      }
+    }
+    if (cleanupErrors.length > 0) {
+      throw new Error(
+        `Could not export the model (${getErrorMessage(exportError)}), and incomplete output cleanup failed (${cleanupErrors.join('; ')}).`,
+      );
+    }
+    throw new Error(`Could not export the model and metadata sidecar; incomplete output was removed (${getErrorMessage(exportError)}).`);
+  }
+};
+
 export const transferModel3DWithSidecar = async (fsApi, sourcePath, destinationPath, mode) => {
   const sourceSidecarPath = await getModel3DSidecarPathIfPresent(fsApi, sourcePath);
   if (!sourceSidecarPath) {
