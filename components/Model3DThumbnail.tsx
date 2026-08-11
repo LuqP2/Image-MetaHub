@@ -3,7 +3,11 @@ import { Box } from 'lucide-react';
 import type { IndexedImage } from '../types';
 import Model3DViewer from './Model3DViewer';
 import cacheManager from '../services/cacheManager';
-import { getModel3DThumbnailId, type Model3DThumbnailVariant } from '../services/thumbnailCache';
+import {
+  getModel3DThumbnailId,
+  isModel3DThumbnailCacheSafe,
+  type Model3DThumbnailVariant,
+} from '../services/thumbnailCache';
 
 const MAX_CONCURRENT_RENDERS = 2;
 const MAX_CACHED_THUMBNAILS = 120;
@@ -50,10 +54,12 @@ interface Model3DThumbnailProps {
 
 const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPath, className = '', variant = 'grid' }) => {
   const cacheKey = getModel3DThumbnailId(image, variant);
+  const cacheSafe = isModel3DThumbnailCacheSafe(image.name);
   const rootRef = useRef<HTMLDivElement>(null);
   const releaseRef = useRef<(() => void) | null>(null);
-  const [thumbnailUrl, setThumbnailUrl] = useState(() => thumbnailCache.get(cacheKey) || null);
-  const [cacheChecked, setCacheChecked] = useState(() => Boolean(thumbnailCache.get(cacheKey)) || !window.electronAPI);
+  const localThumbnailUrlRef = useRef<string | null>(null);
+  const [thumbnailUrl, setThumbnailUrl] = useState(() => cacheSafe ? thumbnailCache.get(cacheKey) || null : null);
+  const [cacheChecked, setCacheChecked] = useState(() => !cacheSafe || Boolean(thumbnailCache.get(cacheKey)) || !window.electronAPI);
   const [shouldRender, setShouldRender] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -64,14 +70,25 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
   }, []);
 
   useEffect(() => {
-    const cached = thumbnailCache.get(cacheKey) || null;
+    if (localThumbnailUrlRef.current) {
+      URL.revokeObjectURL(localThumbnailUrlRef.current);
+      localThumbnailUrlRef.current = null;
+    }
+    const cached = cacheSafe ? thumbnailCache.get(cacheKey) || null : null;
     setThumbnailUrl(cached);
-    setCacheChecked(Boolean(cached) || !window.electronAPI);
+    setCacheChecked(!cacheSafe || Boolean(cached) || !window.electronAPI);
     setFailed(false);
-  }, [cacheKey]);
+  }, [cacheKey, cacheSafe]);
+
+  useEffect(() => () => {
+    if (localThumbnailUrlRef.current) {
+      URL.revokeObjectURL(localThumbnailUrlRef.current);
+      localThumbnailUrlRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
-    if (thumbnailUrl || cacheChecked) return;
+    if (!cacheSafe || thumbnailUrl || cacheChecked) return;
     let cancelled = false;
     void cacheManager.getCachedThumbnail(cacheKey).then((blob) => {
       if (!cancelled && blob) setThumbnailUrl(rememberThumbnail(cacheKey, blob));
@@ -81,7 +98,7 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
     return () => {
       cancelled = true;
     };
-  }, [cacheChecked, cacheKey, thumbnailUrl]);
+  }, [cacheChecked, cacheKey, cacheSafe, thumbnailUrl]);
 
   useEffect(() => {
     const node = rootRef.current;
@@ -118,10 +135,17 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
   }, [release, shouldRender]);
 
   const handleSnapshot = useCallback((blob: Blob) => {
-    setThumbnailUrl(rememberThumbnail(cacheKey, blob));
-    void cacheManager.cacheThumbnail(cacheKey, blob);
+    if (cacheSafe) {
+      setThumbnailUrl(rememberThumbnail(cacheKey, blob));
+      void cacheManager.cacheThumbnail(cacheKey, blob);
+    } else {
+      if (localThumbnailUrlRef.current) URL.revokeObjectURL(localThumbnailUrlRef.current);
+      const localUrl = URL.createObjectURL(blob);
+      localThumbnailUrlRef.current = localUrl;
+      setThumbnailUrl(localUrl);
+    }
     release();
-  }, [cacheKey, release]);
+  }, [cacheKey, cacheSafe, release]);
 
   const handleError = useCallback(() => {
     setFailed(true);

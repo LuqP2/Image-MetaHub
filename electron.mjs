@@ -37,6 +37,7 @@ import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtensio
 import {
   getModel3DSidecarPathIfPresent,
   renameModel3DWithSidecar,
+  trashModel3DWithSidecar,
   transferModel3DWithSidecar,
 } from './utils/model3DFileOperations.mjs';
 
@@ -4929,17 +4930,14 @@ function setupFileOperationHandlers() {
       }
 
       console.log('Attempting to trash file:', filePath);
-      await shell.trashItem(filePath);
       if (isModel3DFileName(filePath)) {
-        const metadataSidecarPath = `${filePath}.imagemetahub.json`;
-        try {
-          await fs.access(metadataSidecarPath);
-          await shell.trashItem(metadataSidecarPath);
-        } catch (sidecarError) {
-          if (sidecarError?.code !== 'ENOENT') {
-            console.warn('[model3d] Could not trash metadata sidecar:', sidecarError?.message || sidecarError);
-          }
-        }
+        await trashModel3DWithSidecar(
+          fs,
+          (targetPath) => shell.trashItem(targetPath),
+          filePath,
+        );
+      } else {
+        await shell.trashItem(filePath);
       }
       return { success: true };
     } catch (error) {

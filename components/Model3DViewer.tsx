@@ -656,7 +656,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         backgroundUrlRef.current = null;
       }
     };
-  }, [applyMaterialMode, directoryPath, extension, fitCamera, image.handle, image.id, image.name, image.lastModified]);
+  }, [applyMaterialMode, directoryPath, extension, fitCamera, image.contentModifiedMs, image.handle, image.id, image.name, image.lastModified]);
 
   const setBackgroundImage = useCallback(async (file: File | null) => {
     const runtime = runtimeRef.current;

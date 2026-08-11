@@ -1,4 +1,5 @@
 import type { IndexedImage, ThumbnailCacheCandidate } from '../types';
+import { isExternalResourceModel3DFileName } from '../utils/mediaTypes.js';
 
 export const THUMBNAIL_CACHE_VERSION = 2;
 export const THUMBNAIL_ALGORITHM_VERSION = `v${THUMBNAIL_CACHE_VERSION}`;
@@ -10,6 +11,9 @@ export const getVersionedThumbnailId = (image: Pick<IndexedImage, 'id' | 'lastMo
   `${THUMBNAIL_ALGORITHM_VERSION}:${getLegacyThumbnailId(image)}`;
 
 export type Model3DThumbnailVariant = 'grid' | 'table';
+
+export const isModel3DThumbnailCacheSafe = (fileName: string): boolean =>
+  !isExternalResourceModel3DFileName(fileName);
 
 export const getModel3DThumbnailId = (
   image: Pick<IndexedImage, 'id' | 'lastModified' | 'contentModifiedMs' | 'fileSize'>,

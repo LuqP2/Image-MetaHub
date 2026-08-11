@@ -4,6 +4,7 @@ import {
   getModel3DThumbnailId,
   getThumbnailCacheCandidate,
   getVersionedThumbnailId,
+  isModel3DThumbnailCacheSafe,
   THUMBNAIL_ALGORITHM_VERSION,
 } from '../services/thumbnailCache';
 
@@ -51,5 +52,13 @@ describe('thumbnail cache keys', () => {
       ...image,
       fileSize: image.fileSize + 1,
     }, 'grid'));
+  });
+
+  it('bypasses thumbnail caches for formats with external resources', () => {
+    expect(isModel3DThumbnailCacheSafe('model.glb')).toBe(true);
+    expect(isModel3DThumbnailCacheSafe('model.stl')).toBe(true);
+    expect(isModel3DThumbnailCacheSafe('model.gltf')).toBe(false);
+    expect(isModel3DThumbnailCacheSafe('model.obj')).toBe(false);
+    expect(isModel3DThumbnailCacheSafe('model.fbx')).toBe(false);
   });
 });

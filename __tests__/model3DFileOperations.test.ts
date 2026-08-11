@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getModel3DSidecarPathIfPresent,
   renameModel3DWithSidecar,
+  trashModel3DWithSidecar,
   transferModel3DWithSidecar,
 } from '../utils/model3DFileOperations.mjs';
 
@@ -23,6 +24,35 @@ describe('3D model file operations', () => {
     };
 
     await expect(getModel3DSidecarPathIfPresent(fsApi, 'model.glb')).resolves.toBeNull();
+  });
+
+  it('trashes a model sidecar with its model', async () => {
+    const fsApi = {
+      lstat: vi.fn().mockResolvedValue({ isFile: () => true }),
+      unlink: vi.fn(),
+    };
+    const trashItem = vi.fn().mockResolvedValue(undefined);
+
+    await trashModel3DWithSidecar(fsApi, trashItem, 'model.glb');
+
+    expect(trashItem.mock.calls).toEqual([
+      ['model.glb'],
+      ['model.glb.imagemetahub.json'],
+    ]);
+  });
+
+  it('reports and removes a staged sidecar when trashing it fails', async () => {
+    const fsApi = {
+      lstat: vi.fn().mockResolvedValue({ isFile: () => true }),
+      unlink: vi.fn().mockResolvedValue(undefined),
+    };
+    const trashItem = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('trash failed'));
+
+    await expect(trashModel3DWithSidecar(fsApi, trashItem, 'model.glb'))
+      .rejects.toThrow('permanently removed');
+    expect(fsApi.unlink).toHaveBeenCalledWith('model.glb.imagemetahub.json');
   });
 
   it('copies a model and its metadata sidecar together', async () => {

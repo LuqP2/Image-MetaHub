@@ -40,6 +40,27 @@ const removeIfPresent = async (fsApi, filePath) => {
   }
 };
 
+export const trashModel3DWithSidecar = async (fsApi, trashItem, modelPath) => {
+  const sidecarPath = await getModel3DSidecarPathIfPresent(fsApi, modelPath);
+  await trashItem(modelPath);
+  if (!sidecarPath) return;
+
+  try {
+    await trashItem(sidecarPath);
+  } catch (sidecarError) {
+    try {
+      await removeIfPresent(fsApi, sidecarPath);
+    } catch (cleanupError) {
+      throw new Error(
+        `The model was moved to trash, but its metadata sidecar could not be trashed or removed (${getErrorMessage(cleanupError)}).`,
+      );
+    }
+    throw new Error(
+      `The model was moved to trash, but its metadata sidecar could not be moved to trash and was permanently removed (${getErrorMessage(sidecarError)}).`,
+    );
+  }
+};
+
 export const transferModel3DWithSidecar = async (fsApi, sourcePath, destinationPath, mode) => {
   const sourceSidecarPath = await getModel3DSidecarPathIfPresent(fsApi, sourcePath);
   if (!sourceSidecarPath) {
