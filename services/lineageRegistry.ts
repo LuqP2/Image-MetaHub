@@ -66,6 +66,7 @@ const TRANSFORMATION_TYPES = new Set<Exclude<GenerationType, 'txt2img'>>([
   'img2img',
   'inpaint',
   'outpaint',
+  'image2model3d',
 ]);
 
 const buildDimensionKey = (fileName: string, width: number, height: number): string =>

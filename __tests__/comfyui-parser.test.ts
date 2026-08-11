@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseComfyUIMetadataEnhanced, resolvePromptFromGraph, resolveWorkflowFactsFromGraph } from '../services/parsers/comfyUIParser';
+import { parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph, resolvePromptFromGraph, resolveWorkflowFactsFromGraph } from '../services/parsers/comfyUIParser';
 import { parseImageMetadata } from '../services/parsers/metadataParserFactory';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1249,6 +1249,56 @@ describe('ComfyUI Parser - MetaHub lineage metadata', () => {
     expect(result.lineage?.detection).toBe('inferred');
     expect(result.lineage?.sourceImage?.fileName).toBe('base.png');
     expect(result.lineage?.sourceImage?.relativePath).toBe('inputs/base.png');
+  });
+
+  it('infers image-to-3D lineage through the model input path', async () => {
+    const result = await parseComfyUIMetadataEnhanced({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        media_type: 'model3d',
+        prompt: '',
+        workflow: { nodes: [] },
+        prompt_api: {
+          '1': {
+            class_type: 'LoadImage',
+            inputs: { image: 'inputs/source.png' },
+          },
+          '2': {
+            class_type: 'SyntheticImageToMesh',
+            inputs: { image: ['1', 0] },
+          },
+          '3': {
+            class_type: 'MetaHubSave3DModel',
+            inputs: { model_3d: ['2', 0] },
+          },
+        },
+      },
+    });
+
+    expect(result.generationType).toBe('image2model3d');
+    expect(result.lineage?.detection).toBe('inferred');
+    expect(result.lineage?.sourceImage?.fileName).toBe('source.png');
+    expect(result.lineage?.sourceImage?.relativePath).toBe('inputs/source.png');
+  });
+
+  it('infers image-to-3D lineage from official Save 3D workflow extras', () => {
+    const result = resolveModel3DLineageFromGraph({ nodes: [] }, {
+      '1': {
+        class_type: 'LoadImage',
+        inputs: { image: 'inputs/official-source.png' },
+      },
+      '2': {
+        class_type: 'SyntheticImageToMesh',
+        inputs: { image: ['1', 0] },
+      },
+      '3': {
+        class_type: 'SaveGLB',
+        inputs: { mesh: ['2', 0] },
+      },
+    });
+
+    expect(result.generationType).toBe('image2model3d');
+    expect(result.lineage?.sourceImage?.fileName).toBe('official-source.png');
   });
 });
 

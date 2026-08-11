@@ -196,7 +196,7 @@ const matchesAdvancedFilters = (image: IndexedImage, filters: AutomationRuleFilt
     const resolvedGenerationMode =
       explicitGenerationType === 'txt2img' || explicitGenerationType === 'img2img'
         ? explicitGenerationType
-        : mediaType === 'video' || mediaType === 'audio'
+        : mediaType === 'video' || mediaType === 'audio' || mediaType === 'model3d'
           ? null
           : 'txt2img';
 
@@ -209,9 +209,9 @@ const matchesAdvancedFilters = (image: IndexedImage, filters: AutomationRuleFilt
     const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
     const inferredMediaType = resolveMediaType(image.name, image.fileType);
     const resolvedMediaType =
-      metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'image'
+      metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'model3d' || metadataMediaType === 'image'
         ? metadataMediaType
-        : inferredMediaType === 'video' || inferredMediaType === 'audio'
+        : inferredMediaType === 'video' || inferredMediaType === 'audio' || inferredMediaType === 'model3d'
           ? inferredMediaType
           : 'image';
     if (!advanced.mediaTypes.includes(resolvedMediaType)) {
@@ -380,13 +380,13 @@ const matchesFacetRow = (values: Set<string>, row: AutomationConditionRow): bool
   return row.operator === 'not_includes' || row.operator === 'not_equals' ? !hasValue : hasValue;
 };
 
-const getImageMediaType = (image: IndexedImage): 'image' | 'video' | 'audio' => {
+const getImageMediaType = (image: IndexedImage): 'image' | 'video' | 'audio' | 'model3d' => {
   const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
   const inferredMediaType = resolveMediaType(image.name, image.fileType);
-  if (metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'image') {
+  if (metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'model3d' || metadataMediaType === 'image') {
     return metadataMediaType;
   }
-  if (inferredMediaType === 'video' || inferredMediaType === 'audio') {
+  if (inferredMediaType === 'video' || inferredMediaType === 'audio' || inferredMediaType === 'model3d') {
     return inferredMediaType;
   }
   return 'image';
@@ -398,7 +398,7 @@ const getImageGenerationMode = (image: IndexedImage): 'txt2img' | 'img2img' | nu
     return explicitGenerationType;
   }
   const mediaType = getImageMediaType(image);
-  if (mediaType === 'video' || mediaType === 'audio') {
+  if (mediaType === 'video' || mediaType === 'audio' || mediaType === 'model3d') {
     return null;
   }
   return 'txt2img';

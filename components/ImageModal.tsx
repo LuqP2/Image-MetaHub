@@ -65,8 +65,9 @@ import { getRecentTagChips } from '../utils/tagSuggestions';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import AudioPlayer from './AudioPlayer';
 import ImageAdjustmentPanel from './ImageAdjustmentPanel';
+import Model3DViewer from './Model3DViewer';
 import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
-import { getFileExtension, isAudioFileName, isVideoFileName, SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
+import { getFileExtension, isAudioFileName, isModel3DFileName, isVideoFileName, SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 import { type MediaDiagnosticsContext, useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
 import {
   createProfilerOnRender,
@@ -1180,11 +1181,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const thumbnail = useResolvedThumbnail(liveImage);
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
-  const isPlayableMedia = isVideo || isAudio;
+  const isModel3D = isModel3DFileName(image.name, image.fileType);
+  const isPlayableMedia = isVideo || isAudio || isModel3D;
   const canEditImage = !isPlayableMedia && getFileExtension(liveImage.name) !== '.gif';
   const canOverwriteEditedImage = canEditImage && getFileExtension(liveImage.name) === '.png';
   const showA1111Actions = !isPlayableMedia && a1111Enabled;
   const showComfyUIActions = !isPlayableMedia && comfyUIEnabled;
+  const showComfyUIContext = !isVideo && !isAudio && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const currentTags = liveImage.tags || [];
@@ -1847,10 +1850,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const motionModel = (nMeta as any)?.motion_model;
 
   useEffect(() => {
-    if (!showComfyUIActions || !nMeta) {
+    if (!showComfyUIContext || !nMeta) {
       setSidebarTab('details');
     }
-  }, [nMeta, showComfyUIActions]);
+  }, [nMeta, showComfyUIContext]);
 
   const beginWindowDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (isFullViewportModal || isWindowMaximized || event.button !== 0) {
@@ -3638,7 +3641,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
           onMouseLeave={isPlayableMedia ? undefined : handleMouseUp}
           style={{ cursor: !isPlayableMedia && zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
         >
-          {imageUrl ? (
+          {isModel3D ? (
+            <div data-no-window-drag="true" className="h-full min-h-0 w-full min-w-0">
+              <Model3DViewer
+                key={liveImage.id}
+                image={liveImage}
+                directoryPath={directoryPath}
+                modalControls
+                onOpenSourceImage={(targetImage) => {
+                  setPreviewImage(targetImage);
+                  setSelectedImage(targetImage);
+                }}
+              />
+            </div>
+          ) : imageUrl ? (
             isAudio ? (
               <div data-no-window-drag="true" className="h-full w-full" onContextMenu={handleContextMenu}>
                 <AudioPlayer
@@ -3806,7 +3822,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             )}
           </div>
 
-          {!isPlayableMedia && (
+          {!isPlayableMedia && !isModel3D && (
             <div data-no-window-drag="true" className={`absolute bottom-4 left-4 z-30 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
               <button
                 onClick={handleZoomIn}
@@ -4178,7 +4194,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           </div>
 
-          {nMeta && showComfyUIActions && (
+          {nMeta && showComfyUIContext && (
             <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-2">
               <div className="flex gap-2">
                 <button
@@ -4276,7 +4292,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   whileTap={{ scale: 0.99 }}
                   className="text-gray-600 dark:text-gray-300 text-sm w-full text-left py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between hover:text-gray-900 dark:hover:text-white transition-colors"
                 >
-                  <span className="font-semibold">Generation Details</span>
+                  <span className="font-semibold">{isModel3D ? '3D Generation' : 'Generation Details'}</span>
                   {showDetails ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 </motion.button>
                 {showDetails && (
@@ -4331,6 +4347,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
                       )}
                     </div>
+                    {nMeta.model_3d && (
+                      <div className="grid grid-cols-2 gap-2 border-t border-gray-700/50 pt-3">
+                        <MetadataItem label="3D Format" value={nMeta.model_3d.format?.toUpperCase()} />
+                        <MetadataItem label="Vertices" value={nMeta.model_3d.vertexCount} />
+                        <MetadataItem label="Faces" value={nMeta.model_3d.faceCount} />
+                        <MetadataItem label="Materials" value={nMeta.model_3d.materialCount} />
+                        <MetadataItem label="Textures" value={nMeta.model_3d.hasTextures == null ? undefined : (nMeta.model_3d.hasTextures ? 'Yes' : 'No')} />
+                        <MetadataItem label="Source Node" value={nMeta.model_3d.sourceNodeClass} />
+                      </div>
+                    )}
                     {videoInfo && (
                       <div className="grid grid-cols-2 gap-2">
                         <MetadataItem label="Frames" value={videoInfo.frame_count} />
@@ -4785,7 +4811,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             )}
           </div>
             </div>
-          ) : sidebarTab === 'workflow' && nMeta && showComfyUIActions ? (
+          ) : sidebarTab === 'workflow' && nMeta && showComfyUIContext ? (
             <div className="space-y-4">
               <ComfyUIWorkflowWorkspace
                 image={image}

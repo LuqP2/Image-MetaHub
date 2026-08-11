@@ -131,6 +131,10 @@ vi.mock('../components/TransferImagesModal', () => ({
   default: () => null,
 }));
 
+vi.mock('../components/Model3DThumbnail', () => ({
+  default: () => <div data-testid="model3d-thumbnail" />,
+}));
+
 const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
   id: overrides.id ?? 'dir-1::image.png',
   name: overrides.name ?? 'image.png',
@@ -241,6 +245,17 @@ describe('ImageGrid context menu', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('does not mount 3D thumbnail renderers when thumbnails are disabled', () => {
+    const images = [createImage({ id: 'model-1', name: 'model.glb', fileType: 'model/gltf-binary' })];
+    setupImageGridState(images);
+    useSettingsStore.setState({ disableThumbnails: true });
+
+    render(<Harness images={images} />);
+
+    expect(screen.getByText('Preview disabled')).toBeTruthy();
+    expect(screen.queryByTestId('model3d-thumbnail')).toBeNull();
   });
 
   it('keeps multi-selection when right-clicking an image and opens the context menu', () => {

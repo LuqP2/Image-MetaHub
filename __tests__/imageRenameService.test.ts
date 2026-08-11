@@ -77,4 +77,15 @@ describe('imageRenameService', () => {
     expect(renameSpy).not.toHaveBeenCalled();
     expect(useImageStore.getState().images.map((entry) => entry.id)).toEqual(['dir::nested/old.png', 'dir::nested/target.png']);
   });
+
+  it('rejects renaming models that may depend on sibling files', async () => {
+    const source = createImage('dir::model.obj', 'model.obj');
+    const renameSpy = vi.spyOn(FileOperations, 'renameFile').mockResolvedValue({ success: true });
+
+    const result = await renameIndexedImage(source, 'renamed');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Renaming GLTF, OBJ, and FBX');
+    expect(renameSpy).not.toHaveBeenCalled();
+  });
 });

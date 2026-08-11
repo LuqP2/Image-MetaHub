@@ -23,6 +23,8 @@ import {
 } from './utils/generatorLauncher.mjs';
 import {
   inferMimeTypeFromName,
+  isExternalResourceModel3DFileName,
+  isModel3DFileName,
   isSupportedMediaFileName,
 } from './utils/mediaTypes.js';
 import {
@@ -32,6 +34,14 @@ import {
 import { rewriteAvifMetadata, stripAvifMetadata } from './utils/avifMetadata.mjs';
 import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTombstones.mjs';
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
+import {
+  getModel3DSidecarPathIfPresent,
+  renameModel3DWithSidecar,
+  trashModel3DWithSidecar,
+  transferModel3DWithSidecar,
+  writeModel3DExportDataWithSidecar,
+  writeModel3DExportWithSidecar,
+} from './utils/model3DFileOperations.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -89,7 +99,7 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 10; // v10: Parse AVIF XMP/EXIF metadata and compact Image MetaHub extensions
+const PARSER_VERSION = 11; // v11: Index 3D models and bounded GLB/GLTF/sidecar metadata
 
 const logMainPerf = (event, details = {}) => {
   console.log('[main:perf]', { event, ...details });
@@ -114,12 +124,23 @@ const DEFAULT_WINDOW_HEIGHT = 900;
 const MIN_WINDOW_WIDTH = 800;
 const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
+const MODEL_3D_METADATA_MAX_BYTES = 16 * 1024 * 1024;
 const MEDIA_PROTOCOL_SCHEME = 'imh-media';
 const THUMBNAIL_PROTOCOL_SCHEME = 'imh-thumb';
 const THUMBNAIL_CACHE_VERSION = 2;
 const THUMBNAIL_MANIFEST_VERSION = 1;
 const THUMBNAIL_MANIFEST_FILE = 'thumbnail-manifest-v1.json';
 const THUMBNAIL_ALLOWED_EXTENSIONS = new Set(['webp', 'png', 'jpg', 'jpeg']);
+
+const trimJsonChunkPadding = (value) => {
+  let end = value.length;
+  while (end > 0) {
+    const character = value[end - 1];
+    if (character.charCodeAt(0) !== 0 && character.trim() !== '') break;
+    end -= 1;
+  }
+  return value.slice(0, end);
+};
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -145,6 +166,96 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const getMimeTypeFromName = (name) => inferMimeTypeFromName(name);
+
+const parseJsonValue = (value) => {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    try {
+      return JSON.parse(value.replace(/:\s*NaN/g, ': null'));
+    } catch {
+      return value;
+    }
+  }
+};
+
+const normalizeEmbeddedModel3DExtras = (extras) => {
+  if (!extras || typeof extras !== 'object' || Array.isArray(extras)) return null;
+  const imageMetaHubData = parseJsonValue(extras.imagemetahub_data);
+  if (imageMetaHubData && typeof imageMetaHubData === 'object' && !Array.isArray(imageMetaHubData)) {
+    return { imagemetahub_data: imageMetaHubData };
+  }
+
+  const workflow = parseJsonValue(extras.workflow);
+  const prompt = parseJsonValue(extras.prompt);
+  if (workflow && typeof workflow === 'object' || prompt && typeof prompt === 'object') {
+    return {
+      ...(workflow && typeof workflow === 'object' ? { workflow } : {}),
+      ...(prompt && typeof prompt === 'object' ? { prompt } : {}),
+    };
+  }
+  return null;
+};
+
+const readModel3DMetadata = async (filePath) => {
+  const sidecarPath = `${filePath}.imagemetahub.json`;
+  try {
+    const sidecarStats = await fs.stat(sidecarPath);
+    if (sidecarStats.isFile() && sidecarStats.size <= MODEL_3D_METADATA_MAX_BYTES) {
+      const sidecar = JSON.parse(await fs.readFile(sidecarPath, 'utf8'));
+      if (sidecar && typeof sidecar === 'object' && !Array.isArray(sidecar)) {
+        return { metadata: { imagemetahub_data: sidecar }, source: 'sidecar' };
+      }
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      console.warn('[model3d] Could not read metadata sidecar:', error?.message || error);
+    }
+  }
+
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension === '.gltf') {
+    const handle = await fs.open(filePath, 'r');
+    try {
+      const stats = await handle.stat();
+      if (!stats.isFile() || stats.size <= 0 || stats.size > MODEL_3D_METADATA_MAX_BYTES) {
+        return { metadata: null, source: 'none' };
+      }
+      const jsonBuffer = Buffer.alloc(stats.size);
+      const jsonRead = await handle.read(jsonBuffer, 0, stats.size, 0);
+      if (jsonRead.bytesRead !== stats.size) return { metadata: null, source: 'none' };
+      const document = JSON.parse(jsonBuffer.toString('utf8'));
+      return { metadata: normalizeEmbeddedModel3DExtras(document?.asset?.extras), source: 'embedded' };
+    } finally {
+      await handle.close();
+    }
+  }
+  if (extension !== '.glb') {
+    return { metadata: null, source: 'none' };
+  }
+
+  const handle = await fs.open(filePath, 'r');
+  try {
+    const header = Buffer.alloc(20);
+    const headerRead = await handle.read(header, 0, header.length, 0);
+    if (headerRead.bytesRead < 20 || header.toString('ascii', 0, 4) !== 'glTF') {
+      return { metadata: null, source: 'none' };
+    }
+    const jsonLength = header.readUInt32LE(12);
+    const jsonType = header.readUInt32LE(16);
+    if (jsonType !== 0x4e4f534a || jsonLength <= 0 || jsonLength > MODEL_3D_METADATA_MAX_BYTES) {
+      return { metadata: null, source: 'none' };
+    }
+    const jsonBuffer = Buffer.alloc(jsonLength);
+    const jsonRead = await handle.read(jsonBuffer, 0, jsonLength, 20);
+    if (jsonRead.bytesRead !== jsonLength) return { metadata: null, source: 'none' };
+    const document = JSON.parse(trimJsonChunkPadding(jsonBuffer.toString('utf8')));
+    return { metadata: normalizeEmbeddedModel3DExtras(document?.asset?.extras), source: 'embedded' };
+  } finally {
+    await handle.close();
+  }
+};
 
 const getSafeFileDetails = async (filePath) => {
   const fileName = path.basename(String(filePath || ''));
@@ -4841,7 +4952,15 @@ function setupFileOperationHandlers() {
       }
 
       console.log('Attempting to trash file:', filePath);
-      await shell.trashItem(filePath);
+      if (isModel3DFileName(filePath)) {
+        await trashModel3DWithSidecar(
+          fs,
+          (targetPath) => shell.trashItem(targetPath),
+          filePath,
+        );
+      } else {
+        await shell.trashItem(filePath);
+      }
       return { success: true };
     } catch (error) {
       console.error('Error trashing file:', error);
@@ -4858,6 +4977,15 @@ function setupFileOperationHandlers() {
       }
       
       console.log('Attempting to rename file:', oldPath, 'to', newPath);
+      if (
+        path.normalize(oldPath) !== path.normalize(newPath)
+        && isExternalResourceModel3DFileName(oldPath)
+      ) {
+        return {
+          success: false,
+          error: 'Renaming GLTF, OBJ, and FBX files is not available because these models can depend on sibling files.',
+        };
+      }
       const oldStats = await fs.lstat(oldPath);
       try {
         const targetStats = await fs.lstat(newPath);
@@ -4871,7 +4999,11 @@ function setupFileOperationHandlers() {
         }
       }
 
-      await fs.rename(oldPath, newPath);
+      if (isModel3DFileName(oldPath)) {
+        await renameModel3DWithSidecar(fs, oldPath, newPath);
+      } else {
+        await fs.rename(oldPath, newPath);
+      }
 
       const normalizedOldAllowedPath = normalizeAllowedPath(oldPath);
       if (allowedDirectoryPaths.has(normalizedOldAllowedPath)) {
@@ -5397,6 +5529,18 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('read-media-metadata', async (event, args) => handleReadMediaMetadata(args));
   ipcMain.handle('read-video-metadata', async (event, args) => handleReadMediaMetadata(args));
+  ipcMain.handle('read-model3d-metadata', async (_event, { filePath }) => {
+    try {
+      const normalizedPath = path.resolve(filePath || '');
+      if (!filePath || !isModel3DFileName(normalizedPath) || !isPathAllowed(normalizedPath)) {
+        return { success: false, error: 'Access denied' };
+      }
+      const result = await readModel3DMetadata(normalizedPath);
+      return { success: true, ...result };
+    } catch (error) {
+      return { success: false, error: error?.message || String(error) };
+    }
+  });
 
   // Handle getting skipped versions
   ipcMain.handle('get-skipped-versions', () => {
@@ -5875,6 +6019,26 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('write-model3d-export', async (_event, { filePath, modelData, sidecarData } = {}) => {
+    try {
+      if (!filePath || !modelData) {
+        return { success: false, error: 'Model export path and data are required.' };
+      }
+      const normalizedFilePath = path.normalize(filePath);
+      if (
+        !isModel3DFileName(normalizedFilePath)
+        || (!isAllowedOrInternal(normalizedFilePath) && !isApprovedWritePath(normalizedFilePath))
+      ) {
+        return { success: false, error: 'Access denied: Cannot write the 3D export outside approved directories.' };
+      }
+      await writeModel3DExportDataWithSidecar(fs, normalizedFilePath, modelData, sidecarData);
+      return { success: true };
+    } catch (error) {
+      console.error('Error writing 3D model export:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('cancel-export-batch', async (event, { exportId } = {}) => {
     if (!exportId) {
       return { success: false, error: 'No export ID provided.' };
@@ -5897,6 +6061,14 @@ function setupFileOperationHandlers() {
       }
       if (!destDir) {
         return { success: false, error: 'No destination directory provided.', exportedCount: 0, failedCount: 0 };
+      }
+      if (files.some((file) => isExternalResourceModel3DFileName(file?.relativePath))) {
+        return {
+          success: false,
+          error: 'GLTF, OBJ, and FBX batch export is not available because these models can depend on sibling files. Export or copy the containing folder instead.',
+          exportedCount: 0,
+          failedCount: files.length,
+        };
       }
 
       await fs.mkdir(destDir, { recursive: true });
@@ -5959,7 +6131,12 @@ function setupFileOperationHandlers() {
           });
           const uniqueName = getUniqueName(artifact.fileName, usedNames);
           const destPath = path.resolve(destDir, uniqueName);
-          await fs.writeFile(destPath, artifact.buffer);
+          if (metadataPolicy === 'preserve' && isModel3DFileName(sourcePath)) {
+            const sidecarPath = await getModel3DSidecarPathIfPresent(fs, sourcePath);
+            await writeModel3DExportWithSidecar(fs, destPath, artifact.buffer, sidecarPath);
+          } else {
+            await fs.writeFile(destPath, artifact.buffer);
+          }
           exportedCount += 1;
         } catch (error) {
           console.warn('[Electron] Failed to export file to folder:', file?.relativePath, error);
@@ -6015,6 +6192,14 @@ function setupFileOperationHandlers() {
       }
       if (!destZipPath) {
         return { success: false, error: 'No ZIP destination provided.', exportedCount: 0, failedCount: 0 };
+      }
+      if (files.some((file) => isExternalResourceModel3DFileName(file?.relativePath))) {
+        return {
+          success: false,
+          error: 'GLTF, OBJ, and FBX ZIP export is not available because these models can depend on sibling files. Export or copy the containing folder instead.',
+          exportedCount: 0,
+          failedCount: files.length,
+        };
       }
 
       await fs.mkdir(path.dirname(destZipPath), { recursive: true });
@@ -6085,6 +6270,12 @@ function setupFileOperationHandlers() {
           if (metadataPolicy === 'preserve') {
             const uniqueName = getUniqueName(path.basename(file.relativePath), usedNames);
             archive.file(sourcePath, { name: uniqueName });
+            if (isModel3DFileName(sourcePath)) {
+              const sidecarPath = await getModel3DSidecarPathIfPresent(fs, sourcePath);
+              if (sidecarPath) {
+                archive.file(sidecarPath, { name: `${uniqueName}.imagemetahub.json` });
+              }
+            }
           } else {
             // For rewritten artifacts (strip, metahub_standard), process through createExportArtifact
             const artifact = await createExportArtifact({
@@ -6163,6 +6354,14 @@ function setupFileOperationHandlers() {
       }
       if (mode !== 'copy' && mode !== 'move') {
         return { success: false, transferred: [], failedCount: 0, error: 'Invalid transfer mode.' };
+      }
+      if (files.some((file) => isExternalResourceModel3DFileName(file?.relativePath))) {
+        return {
+          success: false,
+          transferred: [],
+          failedCount: files.length,
+          error: 'GLTF, OBJ, and FBX transfers are not available because these models can depend on sibling files. Move or copy the containing folder instead.',
+        };
       }
       if (!isPathAllowed(destDir)) {
         return { success: false, transferred: [], failedCount: 0, error: 'Access denied: Destination must be an indexed folder.' };
@@ -6251,19 +6450,32 @@ function setupFileOperationHandlers() {
       const workerCount = Math.max(1, Math.min(TRANSFER_CONCURRENCY, plannedTransfers.length));
 
       const executeTransfer = async (task) => {
-        if (mode === 'move') {
-          try {
-            await fs.rename(task.sourceAbsolutePath, task.destinationAbsolutePath);
-          } catch (error) {
-            if (error?.code === 'EXDEV') {
-              await fs.copyFile(task.sourceAbsolutePath, task.destinationAbsolutePath);
-              await fs.unlink(task.sourceAbsolutePath);
-            } else {
-              throw error;
+        const transferPath = async (sourcePath, destinationPath) => {
+          if (mode === 'move') {
+            try {
+              await fs.rename(sourcePath, destinationPath);
+            } catch (error) {
+              if (error?.code === 'EXDEV') {
+                await fs.copyFile(sourcePath, destinationPath);
+                await fs.unlink(sourcePath);
+              } else {
+                throw error;
+              }
             }
+          } else {
+            await fs.copyFile(sourcePath, destinationPath);
           }
+        };
+
+        if (isModel3DFileName(task.sourceAbsolutePath)) {
+          await transferModel3DWithSidecar(
+            fs,
+            task.sourceAbsolutePath,
+            task.destinationAbsolutePath,
+            mode,
+          );
         } else {
-          await fs.copyFile(task.sourceAbsolutePath, task.destinationAbsolutePath);
+          await transferPath(task.sourceAbsolutePath, task.destinationAbsolutePath);
         }
 
         const stats = await fs.stat(task.destinationAbsolutePath);

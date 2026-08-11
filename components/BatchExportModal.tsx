@@ -8,6 +8,8 @@ import {
   type IndexedImage,
   type MetadataExportPolicy,
 } from '../types';
+import { getUnsupportedModel3DBatchExportError } from '../utils/model3DTransfer';
+import { getRelativeImagePath } from '../utils/imagePaths';
 
 interface BatchExportModalProps {
   isOpen: boolean;
@@ -206,6 +208,12 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       return;
     }
 
+    const unsupportedModelError = getUnsupportedModel3DBatchExportError(imagesToExport);
+    if (unsupportedModelError) {
+      setStatus({ type: 'error', message: unsupportedModelError });
+      return;
+    }
+
     const directoryMap = new Map(directories.map(dir => [dir.id, dir.path]));
     const files = (await Promise.all(imagesToExport.map(async (image) => {
         const dirPath = directoryMap.get(image.directoryId || '');
@@ -221,7 +229,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
         return {
           imageId: image.id,
           directoryPath: dirPath,
-          relativePath: image.name,
+          relativePath: getRelativeImagePath(image),
           effectiveMetadata,
         };
       })))

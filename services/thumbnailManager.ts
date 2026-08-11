@@ -1,6 +1,6 @@
 import { IndexedImage, ThumbnailStatus } from '../types';
 import cacheManager from './cacheManager';
-import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { getFileExtension, isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import {
   getLegacyThumbnailId,
   getThumbnailCacheCandidate,
@@ -50,6 +50,10 @@ const isVideoAsset = (image: IndexedImage, file?: File): boolean => {
 
 const isAudioAsset = (image: IndexedImage, file?: File): boolean => {
   return isAudioFileName(image.name, image.fileType) || (file ? isAudioFileName(file.name, file.type) : false);
+};
+
+const isModel3DAsset = (image: IndexedImage, file?: File): boolean => {
+  return isModel3DFileName(image.name, image.fileType) || (file ? isModel3DFileName(file.name, file.type) : false);
 };
 
 const waitForVideoEvent = (video: HTMLVideoElement, eventName: string): Promise<void> =>
@@ -497,6 +501,12 @@ class ThumbnailManager {
       return;
     }
 
+    // 3D previews are rendered lazily by Model3DThumbnail so the raster thumbnail
+    // pipeline never attempts to decode model bytes as an image.
+    if (isModel3DAsset(image)) {
+      return;
+    }
+
     const activeState = this.getActiveRuntimeState(image);
     if (activeState?.thumbnailStatus === 'ready' && activeState.thumbnailUrl) {
       this.touchObjectUrl(image.id);
@@ -566,7 +576,7 @@ class ThumbnailManager {
     detail: { priority: 'visible' | 'overscan' | 'single' }
   ): Promise<IndexedImage[]> {
     const candidates = this.dedupeImages(images)
-      .filter((image) => !this.hasReadyThumbnail(image) && !isAudioAsset(image))
+      .filter((image) => !this.hasReadyThumbnail(image) && !isAudioAsset(image) && !isModel3DAsset(image))
       .map((image) => getThumbnailCacheCandidate(image));
 
     if (candidates.length === 0) {
