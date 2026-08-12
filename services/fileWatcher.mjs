@@ -2,6 +2,7 @@ import chokidar from 'chokidar';
 import path from 'path';
 import fs from 'fs';
 import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
+import { normalizeBirthtimeMs, resolveFileSortDate } from '../utils/fileTimestamps.js';
 
 // Active watchers: directoryId -> watcher instance
 const activeWatchers = new Map();
@@ -349,7 +350,7 @@ function processBatch(directoryId, dirPath, mainWindow) {
       return {
         name: path.basename(filePath),
         path: filePath,
-        lastModified: stats.birthtimeMs ?? stats.mtimeMs,
+        lastModified: resolveFileSortDate(normalizeBirthtimeMs(stats.birthtimeMs), stats.mtimeMs),
         contentModifiedMs: stats.mtimeMs,
         size: stats.size,
         type: path.extname(filePath).slice(1),

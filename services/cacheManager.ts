@@ -5,6 +5,7 @@ import {
   type ThumbnailCacheResolveResult,
   type ThumbnailGenerateToCacheRequest,
 } from '../types';
+import { isUsableTimestamp } from '../utils/fileTimestamps.js';
 
 /**
  * Parser version - increment when parser logic changes significantly
@@ -159,7 +160,21 @@ const warnParserVersionMismatch = (cacheId: string, parserVersion: number | unde
   );
 };
 
-function compactCacheMetadataEntry(entry: CacheImageMetadata): CacheImageMetadata {
+/**
+ * Repairs entries indexed before birth times of 0 were rejected (SMB/CIFS shares
+ * report one, which dated every image 1970-01-01 UTC). The cache diff only looks
+ * at contentModifiedMs, which stayed correct, so these entries would never be
+ * reindexed on their own.
+ */
+export function healCachedSortDate(entry: CacheImageMetadata): CacheImageMetadata {
+  if (isUsableTimestamp(entry.lastModified) || !isUsableTimestamp(entry.contentModifiedMs)) {
+    return entry;
+  }
+  return { ...entry, lastModified: entry.contentModifiedMs as number };
+}
+
+function compactCacheMetadataEntry(rawEntry: CacheImageMetadata): CacheImageMetadata {
+  const entry = healCachedSortDate(rawEntry);
   const metadataString = typeof entry.metadataString === 'string' ? entry.metadataString : '';
   if (metadataString.length <= MAX_INLINE_RAW_METADATA_BYTES) {
     return entry;
