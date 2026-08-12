@@ -8,6 +8,7 @@ import fsSync from 'fs';
 export const PORTABLE_MARKER_FILE_NAMES = ['portable.txt', '.portable'];
 export const PORTABLE_DATA_DIR_NAME = 'data';
 const WRITE_PROBE_FILE_NAME = '.imh-portable-write-test';
+const PORTABLE_PROFILE_DIRECTORY_NAMES = ['IndexedDB', 'Local Storage'];
 
 const TRUTHY_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSY_VALUES = new Set(['0', 'false', 'no', 'off']);
@@ -113,11 +114,12 @@ export function readPortableMarker(baseDir, { fs = fsSync } = {}) {
 
 /**
  * Creates the marker file that turns portable mode on for the next launch.
- * Existing marker contents (a custom data folder) are preserved.
+ * Existing marker contents (a custom data folder) are preserved unless the
+ * caller is recovering from a failed marker-based activation.
  */
-export function writePortableMarker(baseDir, { fs = fsSync } = {}) {
+export function writePortableMarker(baseDir, { fs = fsSync, replaceExisting = false } = {}) {
   const existing = readPortableMarker(baseDir, { fs });
-  if (existing) return existing.markerPath;
+  if (existing && !replaceExisting) return existing.markerPath;
 
   const markerPath = path.join(baseDir, PORTABLE_MARKER_FILE_NAMES[0]);
   fs.writeFileSync(
@@ -214,15 +216,32 @@ export function resolvePortableStorageTarget({
  * "Reset app data" wipes everything inside the data directory, so it must never
  * be a folder that contains the application itself.
  */
-export function isUnsafePortableDataDir(dataDir, execPath = process.execPath) {
+export function isUnsafePortableDataDir(
+  dataDir,
+  execPath = process.execPath,
+  { fs = fsSync, platform = process.platform } = {}
+) {
   if (!dataDir || !execPath) return false;
 
-  const normalizedDataDir = path.normalize(dataDir);
-  const normalizedExecPath = path.normalize(execPath);
-  const comparableDataDir = process.platform === 'win32' ? normalizedDataDir.toLowerCase() : normalizedDataDir;
-  const comparableExecPath = process.platform === 'win32' ? normalizedExecPath.toLowerCase() : normalizedExecPath;
+  const resolveRealPath = (candidate) => {
+    const realpathSync = fs?.realpathSync?.native || fs?.realpathSync;
+    if (typeof realpathSync !== 'function') return path.resolve(candidate);
 
-  return comparableExecPath.startsWith(comparableDataDir.replace(/[\\/]+$/, '') + path.sep);
+    try {
+      return realpathSync.call(fs.realpathSync, candidate);
+    } catch (error) {
+      if (error?.code === 'ENOENT') return path.resolve(candidate);
+      throw error;
+    }
+  };
+
+  const normalizedDataDir = path.normalize(resolveRealPath(dataDir));
+  const normalizedExecPath = path.normalize(resolveRealPath(execPath));
+  const comparableDataDir = platform === 'win32' ? normalizedDataDir.toLowerCase() : normalizedDataDir;
+  const comparableExecPath = platform === 'win32' ? normalizedExecPath.toLowerCase() : normalizedExecPath;
+  const relativeExecPath = path.relative(comparableDataDir, comparableExecPath);
+
+  return relativeExecPath === '' || (!relativeExecPath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativeExecPath));
 }
 
 function assertDirectoryIsWritable(dataDir, fs) {
@@ -241,7 +260,11 @@ function assertDirectoryIsWritable(dataDir, fs) {
  * setting on fails loudly instead of silently falling back on the next launch.
  */
 export function ensurePortableDataDirIsUsable(dataDir, { execPath = process.execPath, fs = fsSync } = {}) {
-  if (isUnsafePortableDataDir(dataDir, execPath)) {
+  // Creating the directory first lets realpath resolve every symlink in the
+  // configured path before the folder is accepted for destructive reset operations.
+  fs.mkdirSync(dataDir, { recursive: true });
+
+  if (isUnsafePortableDataDir(dataDir, execPath, { fs })) {
     throw new Error(`The folder "${dataDir}" contains the application itself. Choose a subfolder instead.`);
   }
 
@@ -249,29 +272,101 @@ export function ensurePortableDataDirIsUsable(dataDir, { execPath = process.exec
 }
 
 /**
- * First time an installation switches to portable mode, carry over the existing
- * settings file so the user does not have to reconfigure their library.
- * Only settings.json is copied - cache data is rebuilt on demand.
+ * Copies a file or directory through a sibling temporary path so a failed
+ * migration never leaves a partial target that would be mistaken for complete.
  */
-function seedPortableSettings(dataDir, defaultUserDataDir, fs, logger) {
-  if (!defaultUserDataDir || path.normalize(defaultUserDataDir) === path.normalize(dataDir)) {
-    return false;
-  }
+function copyPortableEntryAtomically(sourcePath, targetPath, fs) {
+  if (fs.existsSync(targetPath)) return false;
 
+  const temporaryPath = `${targetPath}.portable-migration`;
   try {
-    const targetSettings = path.join(dataDir, 'settings.json');
-    if (fs.existsSync(targetSettings)) return false;
-
-    const sourceSettings = path.join(defaultUserDataDir, 'settings.json');
-    if (!fs.existsSync(sourceSettings)) return false;
-
-    fs.copyFileSync(sourceSettings, targetSettings);
-    logger?.log?.('[Portable] Copied existing settings.json into the portable data folder.');
+    fs.rmSync(temporaryPath, { recursive: true, force: true });
+    fs.cpSync(sourcePath, temporaryPath, { recursive: true });
+    fs.renameSync(temporaryPath, targetPath);
     return true;
   } catch (error) {
-    logger?.warn?.('[Portable] Failed to copy existing settings into the portable data folder:', error);
-    return false;
+    try {
+      fs.rmSync(temporaryPath, { recursive: true, force: true });
+    } catch {
+      // Preserve the original migration error.
+    }
+    throw error;
   }
+}
+
+function seedPortableSettings(dataDir, defaultUserDataDir, fs) {
+  if (!defaultUserDataDir || path.normalize(defaultUserDataDir) === path.normalize(dataDir)) return false;
+
+  const targetSettings = path.join(dataDir, 'settings.json');
+  if (fs.existsSync(targetSettings)) return false;
+
+  const sourceSettings = path.join(defaultUserDataDir, 'settings.json');
+  if (!fs.existsSync(sourceSettings)) return false;
+
+  const settings = JSON.parse(fs.readFileSync(sourceSettings, 'utf-8'));
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    throw new Error('Existing settings.json does not contain a settings object.');
+  }
+
+  // A host-specific custom cache would defeat portable mode. Null selects the
+  // redirected userData folder while leaving every other setting intact.
+  settings.cachePath = null;
+
+  const temporarySettings = `${targetSettings}.portable-migration`;
+  try {
+    fs.rmSync(temporarySettings, { force: true });
+    fs.writeFileSync(temporarySettings, JSON.stringify(settings, null, 2), 'utf-8');
+    fs.renameSync(temporarySettings, targetSettings);
+    return true;
+  } catch (error) {
+    try {
+      fs.rmSync(temporarySettings, { force: true });
+    } catch {
+      // Preserve the original migration error.
+    }
+    throw error;
+  }
+}
+
+/**
+ * First time an installation switches to portable mode, carry over settings
+ * plus the Chromium stores that hold renderer localStorage and IndexedDB data.
+ * Rebuildable image caches and thumbnails are intentionally not copied.
+ */
+function migratePortableData(dataDir, defaultUserDataDir, defaultSessionDataDir, fs, logger) {
+  const migratedEntries = [];
+
+  try {
+    if (seedPortableSettings(dataDir, defaultUserDataDir, fs)) {
+      migratedEntries.push('settings.json');
+    }
+
+    if (
+      defaultSessionDataDir
+      && path.normalize(defaultSessionDataDir) !== path.normalize(dataDir)
+    ) {
+      for (const directoryName of PORTABLE_PROFILE_DIRECTORY_NAMES) {
+        const sourcePath = path.join(defaultSessionDataDir, directoryName);
+        if (!fs.existsSync(sourcePath)) continue;
+
+        const sourceStats = fs.statSync(sourcePath);
+        if (!sourceStats.isDirectory()) continue;
+
+        if (copyPortableEntryAtomically(sourcePath, path.join(dataDir, directoryName), fs)) {
+          migratedEntries.push(directoryName);
+        }
+      }
+    }
+  } catch (error) {
+    logger?.error?.('[Portable] Failed to migrate existing app data into the portable folder:', error);
+    throw error;
+  }
+
+  if (migratedEntries.length > 0) {
+    logger?.log?.(`[Portable] Migrated existing app data: ${migratedEntries.join(', ')}.`);
+  }
+
+  return migratedEntries.length > 0;
 }
 
 let portableStorageStatus = {
@@ -323,13 +418,37 @@ export function activatePortableStorage({
   }
 
   let defaultUserDataDir = null;
+  let defaultSessionDataDir = null;
   try {
     defaultUserDataDir = app.getPath('userData');
   } catch {
     defaultUserDataDir = null;
   }
+  try {
+    defaultSessionDataDir = app.getPath('sessionData') || defaultUserDataDir;
+  } catch {
+    defaultSessionDataDir = defaultUserDataDir;
+  }
 
-  if (isUnsafePortableDataDir(target.dataDir, execPath)) {
+  try {
+    fs.mkdirSync(target.dataDir, { recursive: true });
+  } catch (error) {
+    const message = error?.message || String(error);
+    logger?.error?.(
+      `[Portable] Cannot create "${target.dataDir}". Falling back to the default app data folder.`,
+      error
+    );
+    portableStorageStatus = {
+      ...target,
+      enabled: false,
+      source: 'unwritable',
+      dataDir: defaultUserDataDir,
+      error: message,
+    };
+    return getPortableStorageStatus();
+  }
+
+  if (isUnsafePortableDataDir(target.dataDir, execPath, { fs, platform })) {
     const message = `The portable data folder "${target.dataDir}" contains the application itself. Choose a subfolder instead.`;
     logger?.error?.(`[Portable] ${message}`);
     portableStorageStatus = {
@@ -360,7 +479,19 @@ export function activatePortableStorage({
     return getPortableStorageStatus();
   }
 
-  seedPortableSettings(target.dataDir, defaultUserDataDir, fs, logger);
+  try {
+    migratePortableData(target.dataDir, defaultUserDataDir, defaultSessionDataDir, fs, logger);
+  } catch (error) {
+    const message = error?.message || String(error);
+    portableStorageStatus = {
+      ...target,
+      enabled: false,
+      source: 'migration-failed',
+      dataDir: defaultUserDataDir,
+      error: message,
+    };
+    return getPortableStorageStatus();
+  }
 
   // appData is what electron-updater and similar helpers derive their own folders from.
   try {

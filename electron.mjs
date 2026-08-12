@@ -4049,7 +4049,9 @@ function setupFileOperationHandlers() {
       if (enabled) {
         const dataDir = path.join(status.baseDir, PORTABLE_DATA_DIR_NAME);
         ensurePortableDataDirIsUsable(dataDir);
-        const markerPath = writePortableMarker(status.baseDir);
+        // Settings always enables the default portable data folder. Replacing
+        // an existing marker lets users recover from a bad custom marker.
+        const markerPath = writePortableMarker(status.baseDir, { replaceExisting: true });
         return { success: true, needsRestart: true, dataDir, markerPath };
       }
 

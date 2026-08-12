@@ -195,6 +195,17 @@ describe('marker file writes', () => {
     expect(await fs.readFile(path.join(baseDir, 'portable.txt'), 'utf-8')).toBe('custom-folder');
   });
 
+  it('replaces a failed custom marker when Settings enables the default portable folder', async () => {
+    const baseDir = await makeTempDir();
+    await fs.writeFile(path.join(baseDir, 'portable.txt'), 'missing-or-unsafe-folder');
+
+    writePortableMarker(baseDir, { replaceExisting: true });
+
+    expect(
+      resolvePortableStorageTarget({ env: {}, execPath: path.join(baseDir, 'Image MetaHub.exe') })
+    ).toMatchObject({ enabled: true, dataDir: path.join(baseDir, PORTABLE_DATA_DIR_NAME) });
+  });
+
   it('removes every marker so the next launch uses the default location', async () => {
     const baseDir = await makeTempDir();
     await fs.writeFile(path.join(baseDir, 'portable.txt'), '');
@@ -247,6 +258,23 @@ describe('isUnsafePortableDataDir', () => {
   it('accepts a subfolder of the installation', () => {
     expect(isUnsafePortableDataDir(path.join(INSTALL_DIR, PORTABLE_DATA_DIR_NAME), EXEC_PATH)).toBe(false);
   });
+
+  it('rejects a symlink whose resolved target contains the executable', () => {
+    const linkedDataDir = path.join(INSTALL_DIR, 'linked-data');
+    const realpathSync = vi.fn((candidate: fsSync.PathLike) => {
+      const normalized = path.normalize(String(candidate));
+      if (normalized === path.normalize(linkedDataDir)) return INSTALL_DIR;
+      return normalized;
+    });
+    Object.assign(realpathSync, { native: realpathSync });
+
+    expect(
+      isUnsafePortableDataDir(linkedDataDir, EXEC_PATH, {
+        platform: 'win32',
+        fs: { realpathSync } as unknown as typeof fsSync,
+      })
+    ).toBe(true);
+  });
 });
 
 describe('activatePortableStorage', () => {
@@ -258,7 +286,7 @@ describe('activatePortableStorage', () => {
   };
 
   const makeFakeApp = (defaultUserData: string) => {
-    const paths: Record<string, string> = { userData: defaultUserData };
+    const paths: Record<string, string> = { userData: defaultUserData, sessionData: defaultUserData };
     return {
       isPackaged: true,
       getPath: (name: string) => paths[name],
@@ -317,11 +345,18 @@ describe('activatePortableStorage', () => {
     expect(getPortableStorageStatus().dataDir).toBe(dataDir);
   });
 
-  it('copies existing settings into an empty portable folder', async () => {
+  it('migrates settings and persistent renderer stores into an empty portable folder', async () => {
     const installDir = await makeTempDir('imh-portable-install-');
     const defaultUserData = await makeTempDir('imh-portable-default-');
     await fs.writeFile(path.join(installDir, 'portable.txt'), '');
-    await fs.writeFile(path.join(defaultUserData, 'settings.json'), '{"cachePath":"K:\\\\cache"}');
+    await fs.writeFile(path.join(defaultUserData, 'settings.json'), '{"cachePath":"K:\\\\cache","theme":"dark"}');
+    await fs.mkdir(path.join(defaultUserData, 'Local Storage', 'leveldb'), { recursive: true });
+    await fs.writeFile(path.join(defaultUserData, 'Local Storage', 'leveldb', 'renderer-state'), 'directories');
+    await fs.mkdir(path.join(defaultUserData, 'IndexedDB', 'file__0.indexeddb.leveldb'), { recursive: true });
+    await fs.writeFile(
+      path.join(defaultUserData, 'IndexedDB', 'file__0.indexeddb.leveldb', 'preferences'),
+      'annotations'
+    );
 
     activatePortableStorage({
       app: makeFakeApp(defaultUserData),
@@ -330,8 +365,15 @@ describe('activatePortableStorage', () => {
       execPath: path.join(installDir, 'Image MetaHub.exe'),
     });
 
-    const copied = await fs.readFile(path.join(installDir, PORTABLE_DATA_DIR_NAME, 'settings.json'), 'utf-8');
-    expect(copied).toBe('{"cachePath":"K:\\\\cache"}');
+    const dataDir = path.join(installDir, PORTABLE_DATA_DIR_NAME);
+    const copiedSettings = JSON.parse(await fs.readFile(path.join(dataDir, 'settings.json'), 'utf-8'));
+    expect(copiedSettings).toEqual({ cachePath: null, theme: 'dark' });
+    expect(await fs.readFile(path.join(dataDir, 'Local Storage', 'leveldb', 'renderer-state'), 'utf-8')).toBe(
+      'directories'
+    );
+    expect(
+      await fs.readFile(path.join(dataDir, 'IndexedDB', 'file__0.indexeddb.leveldb', 'preferences'), 'utf-8')
+    ).toBe('annotations');
   });
 
   it('keeps portable settings that already exist', async () => {
@@ -395,6 +437,32 @@ describe('activatePortableStorage', () => {
 
     expect(status).toMatchObject({ enabled: false, source: 'unwritable', dataDir: defaultUserData });
     expect(status.error).toContain('EROFS');
+    expect(app.paths.userData).toBe(defaultUserData);
+  });
+
+  it('does not redirect Electron paths when persistent profile migration fails', async () => {
+    const installDir = await makeTempDir('imh-portable-install-');
+    const defaultUserData = await makeTempDir('imh-portable-default-');
+    await fs.writeFile(path.join(installDir, 'portable.txt'), '');
+    await fs.mkdir(path.join(defaultUserData, 'IndexedDB'));
+    const app = makeFakeApp(defaultUserData);
+    const failingFs = {
+      ...fsSync,
+      cpSync: () => {
+        throw new Error('profile copy failed');
+      },
+    };
+
+    const status = activatePortableStorage({
+      app,
+      env: {},
+      logger: silentLogger,
+      execPath: path.join(installDir, 'Image MetaHub.exe'),
+      fs: failingFs,
+    });
+
+    expect(status).toMatchObject({ enabled: false, source: 'migration-failed', dataDir: defaultUserData });
+    expect(status.error).toContain('profile copy failed');
     expect(app.paths.userData).toBe(defaultUserData);
   });
 });
