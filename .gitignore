@@ -77,3 +77,4 @@ image-metahub.code-workspace
 # Portable mode artifacts (created at the repo root when testing portable mode in dev)
 /data
 /portable.txt
+/.image-metahub-return-to-default.json

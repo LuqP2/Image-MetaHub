@@ -12,10 +12,12 @@ import {
   isPortableStorageManagedByEnvironment,
   isUnsafePortableDataDir,
   readPortableMarker,
+  removePortableReturnMigration,
   removePortableMarkers,
   resetPortableStorageStatusForTests,
   resolvePortableBaseDir,
   resolvePortableStorageTarget,
+  schedulePortableReturnMigration,
   writePortableMarker,
 } from '../utils/portableStorage.mjs';
 
@@ -226,6 +228,26 @@ describe('marker file writes', () => {
 
     expect(removePortableMarkers(baseDir)).toEqual([]);
   });
+
+  it('keeps portable data active until a scheduled return migration runs', async () => {
+    const baseDir = await makeTempDir();
+    const dataDir = path.join(baseDir, PORTABLE_DATA_DIR_NAME);
+    writePortableMarker(baseDir);
+
+    schedulePortableReturnMigration(baseDir, dataDir);
+
+    expect(resolvePortableStorageTarget({ env: {}, execPath: path.join(baseDir, 'Image MetaHub.exe') })).toMatchObject({
+      enabled: false,
+      source: 'return-to-default',
+    });
+    expect(readPortableMarker(baseDir)).not.toBeNull();
+
+    removePortableReturnMigration(baseDir);
+    expect(resolvePortableStorageTarget({ env: {}, execPath: path.join(baseDir, 'Image MetaHub.exe') })).toMatchObject({
+      enabled: true,
+      source: 'marker',
+    });
+  });
 });
 
 describe('ensurePortableDataDirIsUsable', () => {
@@ -386,6 +408,15 @@ describe('activatePortableStorage', () => {
       path.join(defaultUserData, 'IndexedDB', 'file__0.indexeddb.leveldb', 'preferences'),
       'annotations'
     );
+    const comfyStorageDir = path.join(
+      defaultUserData,
+      'Partitions',
+      'imagemetahub-comfyui',
+      'Local Storage',
+      'leveldb'
+    );
+    await fs.mkdir(comfyStorageDir, { recursive: true });
+    await fs.writeFile(path.join(comfyStorageDir, 'frontend-settings'), 'comfy-state');
 
     activatePortableStorage({
       app: makeFakeApp(defaultUserData),
@@ -403,6 +434,74 @@ describe('activatePortableStorage', () => {
     expect(
       await fs.readFile(path.join(dataDir, 'IndexedDB', 'file__0.indexeddb.leveldb', 'preferences'), 'utf-8')
     ).toBe('annotations');
+    expect(
+      await fs.readFile(
+        path.join(dataDir, 'Partitions', 'imagemetahub-comfyui', 'Local Storage', 'leveldb', 'frontend-settings'),
+        'utf-8'
+      )
+    ).toBe('comfy-state');
+  });
+
+  it('migrates portable settings and renderer stores back before using the standard profile', async () => {
+    const installDir = await makeTempDir('imh-portable-install-');
+    const defaultUserData = await makeTempDir('imh-portable-default-');
+    const portableDataDir = path.join(installDir, PORTABLE_DATA_DIR_NAME);
+    await fs.mkdir(path.join(portableDataDir, 'Local Storage', 'leveldb'), { recursive: true });
+    await fs.mkdir(
+      path.join(portableDataDir, 'Partitions', 'imagemetahub-comfyui', 'IndexedDB', 'comfy.indexeddb.leveldb'),
+      { recursive: true }
+    );
+    await fs.writeFile(path.join(portableDataDir, 'settings.json'), '{"theme":"portable"}');
+    await fs.writeFile(path.join(portableDataDir, 'Local Storage', 'leveldb', 'renderer-state'), 'portable-state');
+    await fs.writeFile(
+      path.join(
+        portableDataDir,
+        'Partitions',
+        'imagemetahub-comfyui',
+        'IndexedDB',
+        'comfy.indexeddb.leveldb',
+        'settings'
+      ),
+      'portable-comfy-state'
+    );
+    await fs.writeFile(path.join(defaultUserData, 'settings.json'), '{"theme":"standard"}');
+    await fs.mkdir(path.join(defaultUserData, 'Local Storage', 'leveldb'), { recursive: true });
+    await fs.writeFile(path.join(defaultUserData, 'Local Storage', 'leveldb', 'renderer-state'), 'old-state');
+    writePortableMarker(installDir);
+    schedulePortableReturnMigration(installDir, portableDataDir);
+    const app = makeFakeApp(defaultUserData);
+
+    const status = activatePortableStorage({
+      app,
+      env: {},
+      logger: silentLogger,
+      execPath: path.join(installDir, 'Image MetaHub.exe'),
+    });
+
+    expect(status).toMatchObject({ enabled: false, source: 'return-to-default', error: null });
+    expect(app.paths.userData).toBe(defaultUserData);
+    expect(await fs.readFile(path.join(defaultUserData, 'settings.json'), 'utf-8')).toBe('{"theme":"portable"}');
+    expect(await fs.readFile(path.join(defaultUserData, 'Local Storage', 'leveldb', 'renderer-state'), 'utf-8')).toBe(
+      'portable-state'
+    );
+    expect(
+      await fs.readFile(
+        path.join(
+          defaultUserData,
+          'Partitions',
+          'imagemetahub-comfyui',
+          'IndexedDB',
+          'comfy.indexeddb.leveldb',
+          'settings'
+        ),
+        'utf-8'
+      )
+    ).toBe('portable-comfy-state');
+    expect(readPortableMarker(installDir)).toBeNull();
+    expect(resolvePortableStorageTarget({ env: {}, execPath: path.join(installDir, 'Image MetaHub.exe') })).toMatchObject({
+      enabled: false,
+      source: 'not-configured',
+    });
   });
 
   it('keeps portable settings that already exist', async () => {

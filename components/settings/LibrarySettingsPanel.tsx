@@ -133,6 +133,12 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         return;
       }
 
+      if (result.needsRestart === false) {
+        const refreshed = await window.electronAPI?.getPortableStorageStatus?.();
+        if (refreshed?.success) setPortableStatus(refreshed);
+        return;
+      }
+
       const restartNow = window.confirm('App data location updated. Restart Image MetaHub now?');
       if (restartNow) {
         await window.electronAPI?.restartApp?.();

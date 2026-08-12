@@ -37,8 +37,12 @@ import {
   ensurePortableDataDirIsUsable,
   getPortableStorageStatus,
   isPortableStorageManagedByEnvironment,
+  readPortableMarker,
+  readPortableReturnMigration,
   removePortableMarkers,
+  removePortableReturnMigration,
   resolvePortableStorageTarget,
+  schedulePortableReturnMigration,
   writePortableMarker,
   PORTABLE_DATA_DIR_NAME,
   PORTABLE_DATA_OWNER_FILE_NAME,
@@ -4057,15 +4061,33 @@ function setupFileOperationHandlers() {
       }
 
       if (enabled) {
+        const pendingReturn = readPortableReturnMigration(status.baseDir);
+        if (status.enabled && pendingReturn) {
+          removePortableReturnMigration(status.baseDir);
+          const existingMarker = readPortableMarker(status.baseDir);
+          return {
+            success: true,
+            needsRestart: false,
+            dataDir: status.dataDir,
+            markerPath: existingMarker?.markerPath || status.markerPath,
+          };
+        }
+
         const dataDir = path.join(status.baseDir, PORTABLE_DATA_DIR_NAME);
         ensurePortableDataDirIsUsable(dataDir);
+        removePortableReturnMigration(status.baseDir);
         // Settings always enables the default portable data folder. Replacing
         // an existing marker lets users recover from a bad custom marker.
         const markerPath = writePortableMarker(status.baseDir, { replaceExisting: true });
         return { success: true, needsRestart: true, dataDir, markerPath };
       }
 
-      removePortableMarkers(status.baseDir);
+      if (status.enabled && status.dataDir) {
+        schedulePortableReturnMigration(status.baseDir, status.dataDir);
+      } else {
+        removePortableReturnMigration(status.baseDir);
+        removePortableMarkers(status.baseDir);
+      }
       return { success: true, needsRestart: true, dataDir: null, markerPath: null };
     } catch (error) {
       console.error('Failed to update portable storage mode:', error);

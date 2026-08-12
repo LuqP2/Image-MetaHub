@@ -8,8 +8,14 @@ import fsSync from 'fs';
 export const PORTABLE_MARKER_FILE_NAMES = ['portable.txt', '.portable'];
 export const PORTABLE_DATA_DIR_NAME = 'data';
 export const PORTABLE_DATA_OWNER_FILE_NAME = '.image-metahub-portable-data';
+export const PORTABLE_RETURN_MIGRATION_FILE_NAME = '.image-metahub-return-to-default.json';
 const WRITE_PROBE_FILE_NAME = '.imh-portable-write-test';
-const PORTABLE_PROFILE_DIRECTORY_NAMES = ['IndexedDB', 'Local Storage'];
+const PORTABLE_PROFILE_PATHS = [
+  'IndexedDB',
+  'Local Storage',
+  path.join('Partitions', 'imagemetahub-comfyui', 'IndexedDB'),
+  path.join('Partitions', 'imagemetahub-comfyui', 'Local Storage'),
+];
 const PORTABLE_DATA_OWNER_CONTENTS = 'Image MetaHub portable data directory\n';
 const ENV_MANAGED_PORTABLE_SOURCES = new Set(['env-flag', 'env-path', 'env-disabled']);
 
@@ -159,6 +165,47 @@ export function removePortableMarkers(baseDir, { fs = fsSync } = {}) {
   return removed;
 }
 
+export function readPortableReturnMigration(baseDir, { fs = fsSync } = {}) {
+  const markerPath = path.join(baseDir, PORTABLE_RETURN_MIGRATION_FILE_NAME);
+  try {
+    if (!fs.existsSync(markerPath) || fs.statSync(markerPath).isDirectory()) return null;
+    const payload = JSON.parse(fs.readFileSync(markerPath, 'utf-8'));
+    if (!payload || typeof payload.sourceDataDir !== 'string' || !payload.sourceDataDir.trim()) return null;
+    return {
+      markerPath,
+      sourceDataDir: resolveAgainstBase(baseDir, payload.sourceDataDir.trim()),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function schedulePortableReturnMigration(baseDir, sourceDataDir, { fs = fsSync } = {}) {
+  if (!sourceDataDir) throw new Error('Cannot return to the standard profile without the portable data folder.');
+
+  const markerPath = path.join(baseDir, PORTABLE_RETURN_MIGRATION_FILE_NAME);
+  const temporaryPath = `${markerPath}.tmp`;
+  try {
+    fs.rmSync(temporaryPath, { force: true });
+    fs.writeFileSync(temporaryPath, JSON.stringify({ sourceDataDir: path.resolve(sourceDataDir) }, null, 2), 'utf-8');
+    fs.rmSync(markerPath, { force: true });
+    fs.renameSync(temporaryPath, markerPath);
+    return markerPath;
+  } catch (error) {
+    try {
+      fs.rmSync(temporaryPath, { force: true });
+    } catch {
+      // Preserve the original scheduling error.
+    }
+    throw error;
+  }
+}
+
+export function removePortableReturnMigration(baseDir, { fs = fsSync } = {}) {
+  const markerPath = path.join(baseDir, PORTABLE_RETURN_MIGRATION_FILE_NAME);
+  fs.rmSync(markerPath, { force: true });
+}
+
 /**
  * Decides whether portable storage is requested and where it should live.
  * Resolution order: IMH_PORTABLE_DATA_DIR > IMH_PORTABLE > marker file next to the app.
@@ -199,6 +246,18 @@ export function resolvePortableStorageTarget({
       baseDir,
       markerPath: marker?.markerPath || null,
       dataDir: markerDataDir || path.join(baseDir, PORTABLE_DATA_DIR_NAME),
+    };
+  }
+
+  const returnMigration = readPortableReturnMigration(baseDir, { fs });
+  if (returnMigration) {
+    return {
+      enabled: false,
+      source: 'return-to-default',
+      baseDir,
+      markerPath: marker?.markerPath || null,
+      dataDir: null,
+      returnMigration,
     };
   }
 
@@ -285,18 +344,38 @@ export function ensurePortableDataDirIsUsable(dataDir, { execPath = process.exec
  * Copies a file or directory through a sibling temporary path so a failed
  * migration never leaves a partial target that would be mistaken for complete.
  */
-function copyPortableEntryAtomically(sourcePath, targetPath, fs) {
-  if (fs.existsSync(targetPath)) return false;
-
+function copyPortableEntryAtomically(sourcePath, targetPath, fs, { replaceExisting = false } = {}) {
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
   const temporaryPath = `${targetPath}.portable-migration`;
+  const backupPath = `${targetPath}.portable-backup`;
+  if (fs.existsSync(backupPath)) {
+    if (!fs.existsSync(targetPath)) {
+      fs.renameSync(backupPath, targetPath);
+    } else {
+      fs.rmSync(backupPath, { recursive: true, force: true });
+    }
+  }
+
+  const targetExists = fs.existsSync(targetPath);
+  if (targetExists && !replaceExisting) return false;
+
+  let movedTargetToBackup = false;
   try {
     fs.rmSync(temporaryPath, { recursive: true, force: true });
     fs.cpSync(sourcePath, temporaryPath, { recursive: true });
+    if (targetExists) {
+      fs.renameSync(targetPath, backupPath);
+      movedTargetToBackup = true;
+    }
     fs.renameSync(temporaryPath, targetPath);
+    fs.rmSync(backupPath, { recursive: true, force: true });
     return true;
   } catch (error) {
     try {
       fs.rmSync(temporaryPath, { recursive: true, force: true });
+      if (movedTargetToBackup && !fs.existsSync(targetPath) && fs.existsSync(backupPath)) {
+        fs.renameSync(backupPath, targetPath);
+      }
     } catch {
       // Preserve the original migration error.
     }
@@ -376,15 +455,15 @@ function migratePortableData(dataDir, defaultUserDataDir, defaultSessionDataDir,
       defaultSessionDataDir
       && path.normalize(defaultSessionDataDir) !== path.normalize(dataDir)
     ) {
-      for (const directoryName of PORTABLE_PROFILE_DIRECTORY_NAMES) {
-        const sourcePath = path.join(defaultSessionDataDir, directoryName);
+      for (const relativePath of PORTABLE_PROFILE_PATHS) {
+        const sourcePath = path.join(defaultSessionDataDir, relativePath);
         if (!fs.existsSync(sourcePath)) continue;
 
         const sourceStats = fs.statSync(sourcePath);
         if (!sourceStats.isDirectory()) continue;
 
-        if (copyPortableEntryAtomically(sourcePath, path.join(dataDir, directoryName), fs)) {
-          migratedEntries.push(directoryName);
+        if (copyPortableEntryAtomically(sourcePath, path.join(dataDir, relativePath), fs)) {
+          migratedEntries.push(relativePath);
         }
       }
     }
@@ -397,6 +476,40 @@ function migratePortableData(dataDir, defaultUserDataDir, defaultSessionDataDir,
     logger?.log?.(`[Portable] Migrated existing app data: ${migratedEntries.join(', ')}.`);
   }
 
+  return migratedEntries.length > 0;
+}
+
+function migratePortableDataToDefault(
+  sourceDataDir,
+  defaultUserDataDir,
+  defaultSessionDataDir,
+  fs,
+  logger
+) {
+  if (!sourceDataDir || !defaultUserDataDir || !defaultSessionDataDir) {
+    throw new Error('Could not resolve both portable and standard profile folders for migration.');
+  }
+
+  const migratedEntries = [];
+  const sourceSettings = path.join(sourceDataDir, 'settings.json');
+  if (fs.existsSync(sourceSettings)) {
+    copyPortableEntryAtomically(sourceSettings, path.join(defaultUserDataDir, 'settings.json'), fs, {
+      replaceExisting: true,
+    });
+    migratedEntries.push('settings.json');
+  }
+
+  for (const relativePath of PORTABLE_PROFILE_PATHS) {
+    const sourcePath = path.join(sourceDataDir, relativePath);
+    if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isDirectory()) continue;
+
+    copyPortableEntryAtomically(sourcePath, path.join(defaultSessionDataDir, relativePath), fs, {
+      replaceExisting: true,
+    });
+    migratedEntries.push(relativePath);
+  }
+
+  logger?.log?.(`[Portable] Migrated app data back to the standard profile: ${migratedEntries.join(', ')}.`);
   return migratedEntries.length > 0;
 }
 
@@ -439,7 +552,7 @@ export function activatePortableStorage({
     return getPortableStorageStatus();
   }
 
-  const target = resolvePortableStorageTarget({
+  let target = resolvePortableStorageTarget({
     platform,
     execPath,
     env,
@@ -447,11 +560,6 @@ export function activatePortableStorage({
     appRootDir,
     fs,
   });
-
-  if (!target.enabled) {
-    portableStorageStatus = { ...target, error: null };
-    return getPortableStorageStatus();
-  }
 
   let defaultUserDataDir = null;
   let defaultSessionDataDir = null;
@@ -464,6 +572,43 @@ export function activatePortableStorage({
     defaultSessionDataDir = app.getPath('sessionData') || defaultUserDataDir;
   } catch {
     defaultSessionDataDir = defaultUserDataDir;
+  }
+
+  let activationError = null;
+  const returnMigration = readPortableReturnMigration(target.baseDir, { fs });
+  if (!target.enabled && returnMigration) {
+    try {
+      migratePortableDataToDefault(
+        returnMigration.sourceDataDir,
+        defaultUserDataDir,
+        defaultSessionDataDir,
+        fs,
+        logger
+      );
+      removePortableReturnMigration(target.baseDir, { fs });
+      removePortableMarkers(target.baseDir, { fs });
+      portableStorageStatus = { ...target, markerPath: null, error: null };
+      return getPortableStorageStatus();
+    } catch (error) {
+      activationError = error?.message || String(error);
+      logger?.error?.(
+        '[Portable] Failed to migrate app data back to the standard profile. Continuing with portable data.',
+        error
+      );
+      target = {
+        enabled: true,
+        source: 'return-migration-failed',
+        requestedSource: target.source,
+        baseDir: target.baseDir,
+        markerPath: readPortableMarker(target.baseDir, { fs })?.markerPath || null,
+        dataDir: returnMigration.sourceDataDir,
+      };
+    }
+  }
+
+  if (!target.enabled) {
+    portableStorageStatus = { ...target, error: null };
+    return getPortableStorageStatus();
   }
 
   if (isUnsafePortableDataDir(target.dataDir, execPath, { fs, platform, resolveSymlinks: false })) {
@@ -574,7 +719,7 @@ export function activatePortableStorage({
     }
   }
 
-  portableStorageStatus = { ...target, error: null };
+  portableStorageStatus = { ...target, error: activationError };
   logger?.log?.(`[Portable] App data directory: ${target.dataDir} (source: ${target.source})`);
   return getPortableStorageStatus();
 }
