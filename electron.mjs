@@ -4002,13 +4002,7 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('get-default-cache-path', () => {
     try {
-      if (desktopRuntime.isPortable) {
-        return { success: true, path: app.getPath('userData') };
-      }
-
-      // Define a specific subfolder for the cache
-      const cachePath = path.join(app.getPath('userData'), 'ImageMetaHubCache');
-      return { success: true, path: cachePath };
+      return { success: true, path: app.getPath('userData') };
     } catch (error) {
       return { success: false, error: error.message };
     }

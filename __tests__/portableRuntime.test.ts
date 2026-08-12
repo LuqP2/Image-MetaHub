@@ -115,4 +115,14 @@ describe('portable runtime', () => {
     );
     expect(source).toContain('if (!portableRuntime.isPortable)');
   });
+
+  it('reports userData as the default cache root', () => {
+    const source = readFileSync(path.join(process.cwd(), 'electron.mjs'), 'utf8');
+    const handlerStart = source.indexOf("ipcMain.handle('get-default-cache-path'");
+    const handlerEnd = source.indexOf("ipcMain.handle('get-user-data-path'", handlerStart);
+    const handlerSource = source.slice(handlerStart, handlerEnd);
+
+    expect(handlerSource).toContain("path: app.getPath('userData')");
+    expect(handlerSource).not.toContain('ImageMetaHubCache');
+  });
 });
