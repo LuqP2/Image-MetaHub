@@ -4855,7 +4855,14 @@ function setupFileOperationHandlers() {
   ipcMain.handle('restart-app', async () => {
     try {
       console.log('🔄 Restarting application...');
-      app.relaunch();
+      if (desktopRuntime.isPortable) {
+        if (!desktopRuntime.portableExecutableFile) {
+          throw new Error('Portable launcher path is unavailable.');
+        }
+        app.relaunch({ execPath: desktopRuntime.portableExecutableFile });
+      } else {
+        app.relaunch();
+      }
       app.quit();
       return { success: true };
     } catch (error) {

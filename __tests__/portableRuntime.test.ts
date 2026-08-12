@@ -10,10 +10,14 @@ describe('portable runtime', () => {
   it('resolves the portable profile from the electron-builder environment on Windows', () => {
     expect(resolvePortableRuntime({
       platform: 'win32',
-      env: { PORTABLE_EXECUTABLE_DIR: 'D:\\Apps\\ImageMetaHub' },
+      env: {
+        PORTABLE_EXECUTABLE_DIR: 'D:\\Apps\\ImageMetaHub',
+        PORTABLE_EXECUTABLE_FILE: 'D:\\Apps\\ImageMetaHub\\ImageMetaHub-Portable.exe',
+      },
     })).toEqual({
       isPortable: true,
       portableExecutableDir: 'D:\\Apps\\ImageMetaHub',
+      portableExecutableFile: 'D:\\Apps\\ImageMetaHub\\ImageMetaHub-Portable.exe',
       userDataPath: 'D:\\Apps\\ImageMetaHub\\ImageMetaHubData',
       autoUpdateSupported: false,
     });
@@ -22,10 +26,14 @@ describe('portable runtime', () => {
   it('normalizes the portable executable directory', () => {
     const runtime = resolvePortableRuntime({
       platform: 'win32',
-      env: { PORTABLE_EXECUTABLE_DIR: 'D:\\Apps\\Nested\\..\\ImageMetaHub\\' },
+      env: {
+        PORTABLE_EXECUTABLE_DIR: 'D:\\Apps\\Nested\\..\\ImageMetaHub\\',
+        PORTABLE_EXECUTABLE_FILE: 'D:\\Apps\\Nested\\..\\ImageMetaHub\\ImageMetaHub.exe',
+      },
     });
 
     expect(runtime.portableExecutableDir).toBe('D:\\Apps\\ImageMetaHub');
+    expect(runtime.portableExecutableFile).toBe('D:\\Apps\\ImageMetaHub\\ImageMetaHub.exe');
     expect(runtime.userDataPath).toBe('D:\\Apps\\ImageMetaHub\\ImageMetaHubData');
   });
 
@@ -33,6 +41,7 @@ describe('portable runtime', () => {
     expect(resolvePortableRuntime({ platform: 'win32', env: {} })).toEqual({
       isPortable: false,
       portableExecutableDir: null,
+      portableExecutableFile: null,
       userDataPath: null,
       autoUpdateSupported: true,
     });
@@ -124,5 +133,17 @@ describe('portable runtime', () => {
 
     expect(handlerSource).toContain("path: app.getPath('userData')");
     expect(handlerSource).not.toContain('ImageMetaHubCache');
+  });
+
+  it('relaunches the portable wrapper instead of the extracted executable', () => {
+    const source = readFileSync(path.join(process.cwd(), 'electron.mjs'), 'utf8');
+    const handlerStart = source.indexOf("ipcMain.handle('restart-app'");
+    const handlerEnd = source.indexOf('// --- End Thumbnail Cache IPC Handlers', handlerStart);
+    const handlerSource = source.slice(handlerStart, handlerEnd);
+
+    expect(handlerSource).toContain(
+      'app.relaunch({ execPath: desktopRuntime.portableExecutableFile })',
+    );
+    expect(handlerSource.indexOf('app.relaunch')).toBeLessThan(handlerSource.indexOf('app.quit'));
   });
 });

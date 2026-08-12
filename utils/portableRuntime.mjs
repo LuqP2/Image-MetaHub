@@ -10,12 +10,16 @@ export function resolvePortableRuntime({
   const rawExecutableDirectory = typeof env?.PORTABLE_EXECUTABLE_DIR === 'string'
     ? env.PORTABLE_EXECUTABLE_DIR.trim()
     : '';
+  const rawExecutableFile = typeof env?.PORTABLE_EXECUTABLE_FILE === 'string'
+    ? env.PORTABLE_EXECUTABLE_FILE.trim()
+    : '';
   const isPortable = platform === 'win32' && rawExecutableDirectory.length > 0;
 
   if (!isPortable) {
     return {
       isPortable: false,
       portableExecutableDir: null,
+      portableExecutableFile: null,
       userDataPath: null,
       autoUpdateSupported: true,
     };
@@ -26,6 +30,9 @@ export function resolvePortableRuntime({
   return {
     isPortable: true,
     portableExecutableDir,
+    portableExecutableFile: rawExecutableFile
+      ? path.win32.resolve(rawExecutableFile)
+      : null,
     userDataPath: path.win32.join(portableExecutableDir, PORTABLE_DATA_DIRECTORY_NAME),
     autoUpdateSupported: false,
   };
