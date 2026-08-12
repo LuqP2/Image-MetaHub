@@ -93,6 +93,24 @@ export function resolvePortableBaseDir({
 }
 
 /**
+ * Acquires Electron's process singleton while userData still points at the
+ * standard profile. Every launch uses that same lock even when portable mode
+ * redirects the profile immediately afterwards.
+ */
+export function requestStablePortableInstanceLock({ app } = {}) {
+  if (!app) throw new Error('requestStablePortableInstanceLock requires the Electron app instance.');
+
+  const defaultUserDataDir = app.getPath('userData');
+  const defaultSessionDataDir = app.getPath('sessionData') || defaultUserDataDir;
+
+  return {
+    acquired: app.requestSingleInstanceLock(),
+    defaultUserDataDir,
+    defaultSessionDataDir,
+  };
+}
+
+/**
  * Looks for a portable marker file next to the installation.
  * An optional first non-comment line inside the marker overrides the data directory.
  */
@@ -245,7 +263,7 @@ export function resolvePortableStorageTarget({
       source: 'env-flag',
       baseDir,
       markerPath: marker?.markerPath || null,
-      dataDir: markerDataDir || path.join(baseDir, PORTABLE_DATA_DIR_NAME),
+      dataDir: path.join(baseDir, PORTABLE_DATA_DIR_NAME),
     };
   }
 
@@ -533,7 +551,7 @@ export function isPortableStorageManagedByEnvironment(status = portableStorageSt
 
 /**
  * Redirects Electron's writable paths into the portable data folder.
- * Must run before anything reads app.getPath('userData'), i.e. at the very top of startup.
+ * Must run before application modules resolve app.getPath('userData').
  */
 export function activatePortableStorage({
   app,
@@ -543,6 +561,8 @@ export function activatePortableStorage({
   appRootDir = null,
   platform = process.platform,
   execPath = process.execPath,
+  defaultUserDataDir: providedDefaultUserDataDir = null,
+  defaultSessionDataDir: providedDefaultSessionDataDir = null,
 } = {}) {
   if (!app) {
     throw new Error('activatePortableStorage requires the Electron app instance.');
@@ -561,17 +581,21 @@ export function activatePortableStorage({
     fs,
   });
 
-  let defaultUserDataDir = null;
-  let defaultSessionDataDir = null;
-  try {
-    defaultUserDataDir = app.getPath('userData');
-  } catch {
-    defaultUserDataDir = null;
+  let defaultUserDataDir = providedDefaultUserDataDir;
+  let defaultSessionDataDir = providedDefaultSessionDataDir;
+  if (!defaultUserDataDir) {
+    try {
+      defaultUserDataDir = app.getPath('userData');
+    } catch {
+      defaultUserDataDir = null;
+    }
   }
-  try {
-    defaultSessionDataDir = app.getPath('sessionData') || defaultUserDataDir;
-  } catch {
-    defaultSessionDataDir = defaultUserDataDir;
+  if (!defaultSessionDataDir) {
+    try {
+      defaultSessionDataDir = app.getPath('sessionData') || defaultUserDataDir;
+    } catch {
+      defaultSessionDataDir = defaultUserDataDir;
+    }
   }
 
   let activationError = null;

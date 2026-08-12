@@ -14,6 +14,7 @@ import {
   readPortableMarker,
   removePortableReturnMigration,
   removePortableMarkers,
+  requestStablePortableInstanceLock,
   resetPortableStorageStatusForTests,
   resolvePortableBaseDir,
   resolvePortableStorageTarget,
@@ -150,6 +151,19 @@ describe('resolvePortableStorageTarget', () => {
     const target = resolveTarget({ env: { IMH_PORTABLE: 'true' } });
 
     expect(target).toMatchObject({ enabled: true, source: 'env-flag', dataDir: path.join(INSTALL_DIR, PORTABLE_DATA_DIR_NAME) });
+  });
+
+  it('lets IMH_PORTABLE ignore a custom path from the marker', () => {
+    const target = resolveTarget(
+      { env: { IMH_PORTABLE: 'true' } },
+      { [markerPath('portable.txt')]: 'from-marker' }
+    );
+
+    expect(target).toMatchObject({
+      enabled: true,
+      source: 'env-flag',
+      dataDir: path.join(INSTALL_DIR, PORTABLE_DATA_DIR_NAME),
+    });
   });
 
   it('lets IMH_PORTABLE_DATA_DIR win over a marker file', () => {
@@ -620,5 +634,28 @@ describe('activatePortableStorage', () => {
     expect(status).toMatchObject({ enabled: false, source: 'migration-failed', dataDir: defaultUserData });
     expect(status.error).toContain('profile copy failed');
     expect(app.paths.userData).toBe(defaultUserData);
+  });
+});
+
+describe('requestStablePortableInstanceLock', () => {
+  it('acquires the singleton before portable storage changes Electron paths', () => {
+    const paths: Record<string, string> = {
+      userData: path.join(INSTALL_DIR, 'standard-profile'),
+      sessionData: path.join(INSTALL_DIR, 'standard-session'),
+    };
+    const requestSingleInstanceLock = vi.fn(() => true);
+    const app = {
+      getPath: (name: string) => paths[name],
+      requestSingleInstanceLock,
+    };
+
+    const result = requestStablePortableInstanceLock({ app });
+
+    expect(requestSingleInstanceLock).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      acquired: true,
+      defaultUserDataDir: paths.userData,
+      defaultSessionDataDir: paths.sessionData,
+    });
   });
 });

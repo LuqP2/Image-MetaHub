@@ -1,16 +1,17 @@
 import electron from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { activatePortableStorage } from './utils/portableStorage.mjs';
+import { activatePortableStorage, requestStablePortableInstanceLock } from './utils/portableStorage.mjs';
 
 const { app, BrowserWindow } = electron;
 const SCHEME = 'imagemetahub';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Must happen before anything resolves app.getPath('userData') - including the
-// single instance lock and the electron.mjs module scope.
-activatePortableStorage({ app, appRootDir: __dirname });
+// Acquire the singleton before portable mode redirects Chromium's profile.
+// Otherwise standard and portable launches use different singleton keys and
+// can mutate the same profile migration concurrently.
+const instanceLock = requestStablePortableInstanceLock({ app });
 
 function isDeepLink(value) {
   return typeof value === 'string' && value.toLowerCase().startsWith(`${SCHEME}://`);
@@ -121,11 +122,17 @@ function registerProtocol() {
   }
 }
 
-const lock = app.requestSingleInstanceLock();
-
-if (!lock) {
+if (!instanceLock.acquired) {
   app.quit();
 } else {
+  // Must happen before electron.mjs resolves app.getPath('userData').
+  activatePortableStorage({
+    app,
+    appRootDir: __dirname,
+    defaultUserDataDir: instanceLock.defaultUserDataDir,
+    defaultSessionDataDir: instanceLock.defaultSessionDataDir,
+  });
+
   registerProtocol();
 
   const startupTarget = getTargetFromLink(findDeepLink(process.argv));
