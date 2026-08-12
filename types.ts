@@ -396,6 +396,12 @@ export interface CivitaiLookupQuery {
   versionId?: number;
 }
 
+export interface DesktopRuntimeInfo {
+  isPortable: boolean;
+  userDataPath: string;
+  autoUpdateSupported: boolean;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -437,11 +443,12 @@ export interface ElectronAPI {
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   ensureDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   getUserDataPath: () => Promise<string>;
+  getRuntimeInfo: () => Promise<DesktopRuntimeInfo>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   markChangelogViewed: (version: string) => Promise<{ success: boolean; error?: string }>;
-  downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
-  installUpdate: () => Promise<{ success: boolean; error?: string }>;
+  downloadUpdate: () => Promise<{ success: boolean; error?: string; errorCode?: string }>;
+  installUpdate: () => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   skipUpdateVersion: (version: string) => Promise<{ success: boolean; error?: string }>;
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;

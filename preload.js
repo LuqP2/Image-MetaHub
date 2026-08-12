@@ -243,6 +243,7 @@ const electronAPI = {
   deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
   ensureDirectory: (dirPath) => ipcRenderer.invoke('ensure-directory', dirPath),
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
+  getRuntimeInfo: () => ipcRenderer.invoke('get-runtime-info'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   markChangelogViewed: (version) => ipcRenderer.invoke('mark-changelog-viewed', version),

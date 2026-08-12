@@ -35,6 +35,7 @@ import {
 import { rewriteAvifMetadata, stripAvifMetadata } from './utils/avifMetadata.mjs';
 import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTombstones.mjs';
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
+import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
 import {
   getModel3DSidecarPathIfPresent,
   renameModel3DWithSidecar,
@@ -46,6 +47,9 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const desktopRuntime = resolvePortableRuntime();
+const LATEST_RELEASE_URL = 'https://github.com/LuqP2/Image-MetaHub/releases/latest';
+const PORTABLE_UPDATE_ERROR = 'PORTABLE_UPDATE_UNSUPPORTED';
 
 // Simple development check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
@@ -818,6 +822,10 @@ function mergeSettingsUpdate(currentSettings, newSettings) {
 
 
 async function getCacheRootPath() {
+  if (desktopRuntime.isPortable) {
+    return app.getPath('userData');
+  }
+
   const settings = await readSettings();
   if (settings && typeof settings.cachePath === 'string' && settings.cachePath.trim().length > 0) {
     return settings.cachePath;
@@ -1916,6 +1924,45 @@ async function launchGeneratorCommand({ command, workingDirectory }) {
 
 // --- Application Menu ---
 function createApplicationMenu() {
+  const updateMenuItem = desktopRuntime.isPortable
+    ? {
+        label: 'Download Latest Release...',
+        click: async () => {
+          await shell.openExternal(LATEST_RELEASE_URL);
+        },
+      }
+    : {
+        label: 'Check for Updates...',
+        click: async () => {
+          if (autoUpdater) {
+            try {
+              console.log('Manually checking for updates...');
+              isManualUpdateCheck = true;
+              await autoUpdater.checkForUpdates();
+            } catch (error) {
+              isManualUpdateCheck = false;
+              console.error('Error checking for updates:', error);
+              if (mainWindow) {
+                dialog.showMessageBox(mainWindow, {
+                  type: 'info',
+                  title: 'Update Check',
+                  message: 'Failed to check for updates.',
+                  detail: error.message || 'Please try again later.',
+                  buttons: ['OK']
+                });
+              }
+            }
+          } else if (mainWindow) {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'Update Check',
+              message: 'Auto-updater is not available in development mode.',
+              buttons: ['OK']
+            });
+          }
+        },
+      };
+
   const template = [
     {
       label: 'File',
@@ -2012,39 +2059,7 @@ function createApplicationMenu() {
           }
         },
         { type: 'separator' },
-        {
-          label: 'Check for Updates...',
-          click: async () => {
-            if (autoUpdater) {
-              try {
-                console.log('Manually checking for updates...');
-                isManualUpdateCheck = true;
-                await autoUpdater.checkForUpdates();
-              } catch (error) {
-                isManualUpdateCheck = false;
-                console.error('Error checking for updates:', error);
-                if (mainWindow) {
-                  dialog.showMessageBox(mainWindow, {
-                    type: 'info',
-                    title: 'Update Check',
-                    message: 'Failed to check for updates.',
-                    detail: error.message || 'Please try again later.',
-                    buttons: ['OK']
-                  });
-                }
-              }
-            } else {
-              if (mainWindow) {
-                dialog.showMessageBox(mainWindow, {
-                  type: 'info',
-                  title: 'Update Check',
-                  message: 'Auto-updater is not available in development mode.',
-                  buttons: ['OK']
-                });
-              }
-            }
-          }
-        },
+        updateMenuItem,
         { type: 'separator' },
         {
           label: 'Documentation',
@@ -2089,7 +2104,7 @@ function createApplicationMenu() {
 // --- End Application Menu ---
 
 // Configure auto-updater
-if (autoUpdater) {
+if (autoUpdater && desktopRuntime.autoUpdateSupported) {
   autoUpdater.autoDownload = false; // CRITICAL: Disable automatic downloads
 
   // Configure for macOS specifically
@@ -2115,12 +2130,14 @@ if (autoUpdater) {
       console.log('Auto-update is disabled by user settings.');
     }
   }, 3000); // Wait 3 seconds after app start
+} else if (desktopRuntime.isPortable) {
+  console.log('Portable mode: automatic updates are disabled.');
 } else {
   console.log('⚠️ Auto-updater not available, skipping update configuration');
 }
 
 // Auto-updater events
-if (autoUpdater) {
+if (autoUpdater && desktopRuntime.autoUpdateSupported) {
   autoUpdater.on('checking-for-update', () => {
     // console.log('Checking for update...');
   });
@@ -3985,6 +4002,10 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('get-default-cache-path', () => {
     try {
+      if (desktopRuntime.isPortable) {
+        return { success: true, path: app.getPath('userData') };
+      }
+
       // Define a specific subfolder for the cache
       const cachePath = path.join(app.getPath('userData'), 'ImageMetaHubCache');
       return { success: true, path: cachePath };
@@ -3996,6 +4017,12 @@ function setupFileOperationHandlers() {
   ipcMain.handle('get-user-data-path', () => {
     return app.getPath('userData');
   });
+
+  ipcMain.handle('get-runtime-info', () => ({
+    isPortable: desktopRuntime.isPortable,
+    userDataPath: app.getPath('userData'),
+    autoUpdateSupported: desktopRuntime.autoUpdateSupported,
+  }));
 
   ipcMain.handle('get-theme', () => {
     return {
@@ -5064,11 +5091,12 @@ function setupFileOperationHandlers() {
   ipcMain.handle('open-cache-location', async (event, cachePath) => {
     try {
       const normalizedCachePath = path.normalize(cachePath);
-      const parentPath = path.dirname(normalizedCachePath);
-      console.log('📂 Opening cache parent directory:', parentPath);
+      console.log('📂 Opening cache directory:', normalizedCachePath);
 
-      shell.showItemInFolder(parentPath);
-      console.log('✅ shell.showItemInFolder called for:', parentPath);
+      const openError = await shell.openPath(normalizedCachePath);
+      if (openError) {
+        return { success: false, error: openError };
+      }
 
       return { success: true };
     } catch (error) {
@@ -5236,6 +5264,13 @@ function setupFileOperationHandlers() {
 
   // Handle manual update check
   ipcMain.handle('check-for-updates', async () => {
+    if (!desktopRuntime.autoUpdateSupported) {
+      return {
+        success: false,
+        errorCode: PORTABLE_UPDATE_ERROR,
+        error: 'Portable builds must be updated manually from GitHub Releases.',
+      };
+    }
     if (!autoUpdater) {
       return { success: false, error: 'Auto-updater not available' };
     }
@@ -5254,6 +5289,13 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('download-update', async () => {
+    if (!desktopRuntime.autoUpdateSupported) {
+      return {
+        success: false,
+        errorCode: PORTABLE_UPDATE_ERROR,
+        error: 'Portable builds must be updated manually from GitHub Releases.',
+      };
+    }
     if (!autoUpdater) {
       return { success: false, error: 'Auto-updater not available' };
     }
@@ -5271,6 +5313,13 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('install-update', async () => {
+    if (!desktopRuntime.autoUpdateSupported) {
+      return {
+        success: false,
+        errorCode: PORTABLE_UPDATE_ERROR,
+        error: 'Portable builds must be updated manually from GitHub Releases.',
+      };
+    }
     if (!autoUpdater) {
       return { success: false, error: 'Auto-updater not available' };
     }
