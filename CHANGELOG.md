@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Native Image Viewer Windows**: Images now open in separate native desktop windows with an optional always-on-top toggle and drag-and-drop support. Settings → Viewer → Behavior can restore the legacy in-app viewer. Generating with A1111 or ComfyUI from a separate window queues the job in the main window, so it runs normally, and dragging a file out of a viewer window no longer risks moving the wrong image if you later drop an unrelated file onto a folder.
 
+### Fixed
+
+- **Dates on Network Shares (SMB/CIFS)**: Fixed every image on an SMB/CIFS share being dated December 31, 1969, which collapsed date grouping into a single group and made sorting by newest or oldest meaningless. These mounts report no creation time, and MetaHub was storing that missing value as a date instead of falling back to the file's modification time. Sorting, date grouping, session grouping and the date shown in the viewer now use the modification time whenever a creation time isn't available. Folders already indexed are corrected on load — no reindex needed — though the affected thumbnails are regenerated once.
+
 ## [0.18.1] - 2026-08-01
 
 ### Added

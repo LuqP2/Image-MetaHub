@@ -12,6 +12,7 @@ import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { traceCacheDebug } from '../utils/cacheDebugTrace';
 import { buildSupportedMediaRegex, getFileExtension, inferMimeTypeFromName, isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { normalizeBirthtimeMs, resolveFileSortDate } from '../utils/fileTimestamps.js';
 import { getAvifDimensions, isAvifBuffer, parseAvifMetadata } from '../utils/avifMetadata.mjs';
 import { applyImageMetaHubAvifExtension } from '../utils/imageMetaHubAvifExtension.mjs';
 
@@ -1946,7 +1947,11 @@ if (normalizedMetadata && isModel3D) {
     const workflowNodes = extractWorkflowNodeTypesFromMetadata(rawMetadata);
 
     // Determine the best date for sorting (generation date vs file date)
-    const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? Date.now();
+    const sortDate = resolveFileSortDate(
+      fileEntry.birthtimeMs,
+      fileEntry.contentModifiedMs,
+      fileEntry.lastModified
+    );
 
     if (profile) {
       profile.totalMs = performance.now() - totalStart;
@@ -2040,7 +2045,7 @@ export async function reparseIndexedImage(
       : (image.contentModifiedMs ?? image.lastModified),
     size: typeof stats?.size === 'number' ? stats.size : image.fileSize,
     type: image.fileType ?? inferMimeTypeFromName(image.name),
-    birthtimeMs: typeof stats?.birthtimeMs === 'number' ? stats.birthtimeMs : undefined,
+    birthtimeMs: normalizeBirthtimeMs(stats?.birthtimeMs),
   };
 
   return processSingleFileOptimized(
@@ -2104,7 +2109,7 @@ export async function indexImageFileAtPath(
     contentModifiedMs: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : undefined,
     size: typeof stats?.size === 'number' ? stats.size : fileData.byteLength,
     type: inferMimeTypeFromName(fileName),
-    birthtimeMs: typeof stats?.birthtimeMs === 'number' ? stats.birthtimeMs : undefined,
+    birthtimeMs: normalizeBirthtimeMs(stats?.birthtimeMs),
   };
 
   const indexed = await processSingleFileOptimized(fileEntry, directory.id, fileData);
@@ -2603,7 +2608,11 @@ export async function processFiles(
     const stat = statsLookup.get(entry.path);
     const fileSize = entry.size ?? stat?.size;
     const inferredType = resolveCatalogMimeType(entry.handle.name, entry.type, stat?.type);
-    const sortDate = entry.birthtimeMs ?? stat?.birthtimeMs ?? entry.lastModified;
+    const sortDate = resolveFileSortDate(
+      normalizeBirthtimeMs(entry.birthtimeMs) ?? normalizeBirthtimeMs(stat?.birthtimeMs),
+      entry.contentModifiedMs,
+      entry.lastModified
+    );
     const catalogMetadata = {
       phase: 'catalog',
       fileSize,

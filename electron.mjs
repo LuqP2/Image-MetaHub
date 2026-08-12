@@ -27,6 +27,7 @@ import {
   isModel3DFileName,
   isSupportedMediaFileName,
 } from './utils/mediaTypes.js';
+import { normalizeBirthtimeMs, resolveFileSortDate } from './utils/fileTimestamps.js';
 import {
   isComfyUIViewUrlAllowed,
   normalizeComfyUIViewUrl,
@@ -2997,13 +2998,14 @@ async function statMediaEntries(directory, entries, baseDirectory) {
     const lowerName = entry.name.toLowerCase();
     const fullPath = path.join(directory, entry.name);
     const stats = await fs.stat(fullPath);
+    const birthtimeMs = normalizeBirthtimeMs(stats.birthtimeMs);
     return {
       name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
-      lastModified: stats.birthtimeMs ?? stats.mtimeMs,
+      lastModified: resolveFileSortDate(birthtimeMs, stats.mtimeMs),
       contentModifiedMs: stats.mtimeMs,
       size: stats.size,
       type: getMimeTypeFromName(lowerName),
-      birthtimeMs: stats.birthtimeMs,
+      birthtimeMs,
     };
   });
 
