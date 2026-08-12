@@ -38,6 +38,7 @@ import {
   getPortableStorageStatus,
   isPortableStorageManagedByEnvironment,
   removePortableMarkers,
+  resolvePortableStorageTarget,
   writePortableMarker,
   PORTABLE_DATA_DIR_NAME,
   PORTABLE_DATA_OWNER_FILE_NAME,
@@ -4007,9 +4008,18 @@ function setupFileOperationHandlers() {
 
   const buildPortableStorageStatusPayload = () => {
     const status = getPortableStorageStatus();
+    const nextLaunchTarget = resolvePortableStorageTarget({
+      platform: process.platform,
+      execPath: process.execPath,
+      env: process.env,
+      isPackaged: app.isPackaged,
+      appRootDir: __dirname,
+      fs: fsSync,
+    });
     return {
       success: true,
       enabled: status.enabled,
+      nextLaunchEnabled: nextLaunchTarget.enabled,
       source: status.source,
       baseDir: status.baseDir,
       markerPath: status.markerPath,

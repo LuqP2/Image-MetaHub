@@ -30,6 +30,8 @@ export interface PortableStorageStatus {
   success: boolean;
   /** True when app data is stored next to the installation instead of the user profile. */
   enabled: boolean;
+  /** Mode configured for the next launch, which may differ until the app restarts. */
+  nextLaunchEnabled: boolean;
   /** How portable mode was resolved, or why it is inactive. */
   source: string;
   /** Folder the installation lives in. */

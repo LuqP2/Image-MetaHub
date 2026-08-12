@@ -56,7 +56,6 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   const [defaultCachePath, setDefaultCachePath] = useState('');
   const [portableStatus, setPortableStatus] = useState<PortableStorageStatus | null>(null);
   const [portableUpdating, setPortableUpdating] = useState(false);
-  const [portablePendingRestart, setPortablePendingRestart] = useState(false);
 
   const hardwareConcurrency =
     typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
@@ -66,6 +65,11 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
     ? Math.max(1, Math.min(16, Math.floor(hardwareConcurrency)))
     : 16;
   const selectedStartupVerificationMode = startupVerificationModeDetails[startupVerificationMode];
+  const portablePendingRestart = Boolean(
+    portableStatus
+    && !portableStatus.managedByEnv
+    && portableStatus.nextLaunchEnabled !== portableStatus.enabled
+  );
 
   useEffect(() => {
     window.electronAPI?.getDefaultCachePath()
@@ -139,7 +143,6 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
       if (refreshed?.success) {
         setPortableStatus(refreshed);
       }
-      setPortablePendingRestart(true);
     } catch (error) {
       console.error('Failed to change portable storage mode:', error);
       alert('Could not change the app data location. Check console for details.');
@@ -289,7 +292,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           description="Keep settings and cache with the installation, so a copy on a USB drive carries them between computers and leaves nothing on the host."
           control={
             <SettingSwitch
-              checked={Boolean(portableStatus?.enabled)}
+              checked={Boolean(portableStatus?.nextLaunchEnabled ?? portableStatus?.enabled)}
               disabled={!portableStatus || portableStatus.managedByEnv || portableUpdating}
               onChange={handleTogglePortableStorage}
             />
