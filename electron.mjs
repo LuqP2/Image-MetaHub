@@ -33,7 +33,14 @@ import {
 } from './utils/comfyUIViewSecurity.mjs';
 import { rewriteAvifMetadata, stripAvifMetadata } from './utils/avifMetadata.mjs';
 import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTombstones.mjs';
-import { getPortableStorageStatus, PORTABLE_MARKER_FILE_NAMES } from './utils/portableStorage.mjs';
+import {
+  ensurePortableDataDirIsUsable,
+  getPortableStorageStatus,
+  removePortableMarkers,
+  writePortableMarker,
+  PORTABLE_DATA_DIR_NAME,
+  PORTABLE_MARKER_FILE_NAMES,
+} from './utils/portableStorage.mjs';
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
 import {
   getModel3DSidecarPathIfPresent,
@@ -3996,7 +4003,9 @@ function setupFileOperationHandlers() {
     return app.getPath('userData');
   });
 
-  ipcMain.handle('get-portable-storage-status', () => {
+  const ENV_MANAGED_PORTABLE_SOURCES = new Set(['env-flag', 'env-path', 'env-disabled']);
+
+  const buildPortableStorageStatusPayload = () => {
     const status = getPortableStorageStatus();
     return {
       success: true,
@@ -4005,9 +4014,51 @@ function setupFileOperationHandlers() {
       baseDir: status.baseDir,
       markerPath: status.markerPath,
       dataDir: status.enabled ? status.dataDir : app.getPath('userData'),
+      // Where the data would go if portable mode is turned on from Settings.
+      candidateDataDir: status.enabled
+        ? status.dataDir
+        : status.baseDir
+          ? path.join(status.baseDir, PORTABLE_DATA_DIR_NAME)
+          : null,
+      // Environment variables win over the marker file, so the toggle cannot change anything.
+      managedByEnv: ENV_MANAGED_PORTABLE_SOURCES.has(status.source),
       markerFileNames: PORTABLE_MARKER_FILE_NAMES,
       error: status.error,
     };
+  };
+
+  ipcMain.handle('get-portable-storage-status', () => {
+    return buildPortableStorageStatusPayload();
+  });
+
+  ipcMain.handle('set-portable-storage-enabled', async (event, enabled) => {
+    try {
+      const status = getPortableStorageStatus();
+
+      if (ENV_MANAGED_PORTABLE_SOURCES.has(status.source)) {
+        return {
+          success: false,
+          error: 'Portable mode is controlled by the IMH_PORTABLE environment variables on this launch.',
+        };
+      }
+
+      if (!status.baseDir) {
+        return { success: false, error: 'Could not determine the installation folder.' };
+      }
+
+      if (enabled) {
+        const dataDir = path.join(status.baseDir, PORTABLE_DATA_DIR_NAME);
+        ensurePortableDataDirIsUsable(dataDir);
+        const markerPath = writePortableMarker(status.baseDir);
+        return { success: true, needsRestart: true, dataDir, markerPath };
+      }
+
+      removePortableMarkers(status.baseDir);
+      return { success: true, needsRestart: true, dataDir: null, markerPath: null };
+    } catch (error) {
+      console.error('Failed to update portable storage mode:', error);
+      return { success: false, error: error?.message || String(error) };
+    }
   });
 
   ipcMain.handle('get-theme', () => {

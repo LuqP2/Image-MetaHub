@@ -244,6 +244,7 @@ const electronAPI = {
   ensureDirectory: (dirPath) => ipcRenderer.invoke('ensure-directory', dirPath),
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
   getPortableStorageStatus: () => ipcRenderer.invoke('get-portable-storage-status'),
+  setPortableStorageEnabled: (enabled) => ipcRenderer.invoke('set-portable-storage-enabled', enabled),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   markChangelogViewed: (version) => ipcRenderer.invoke('mark-changelog-viewed', version),

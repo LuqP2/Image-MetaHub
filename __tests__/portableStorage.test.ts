@@ -6,12 +6,15 @@ import path from 'path';
 import {
   PORTABLE_DATA_DIR_NAME,
   activatePortableStorage,
+  ensurePortableDataDirIsUsable,
   getPortableStorageStatus,
   isUnsafePortableDataDir,
   readPortableMarker,
+  removePortableMarkers,
   resetPortableStorageStatusForTests,
   resolvePortableBaseDir,
   resolvePortableStorageTarget,
+  writePortableMarker,
 } from '../utils/portableStorage.mjs';
 
 type FakeFileMap = Record<string, string>;
@@ -158,6 +161,81 @@ describe('resolvePortableStorageTarget', () => {
     const target = resolveTarget({ env: { IMH_PORTABLE: '0' } }, { [markerPath('portable.txt')]: '' });
 
     expect(target).toMatchObject({ enabled: false, source: 'env-disabled', dataDir: null });
+  });
+});
+
+describe('marker file writes', () => {
+  const created: string[] = [];
+  const makeTempDir = async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-portable-marker-'));
+    created.push(dir);
+    return dir;
+  };
+
+  afterEach(async () => {
+    await Promise.all(created.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
+  });
+
+  it('writes a marker that turns portable mode on for the next launch', async () => {
+    const baseDir = await makeTempDir();
+    const written = writePortableMarker(baseDir);
+
+    expect(written).toBe(path.join(baseDir, 'portable.txt'));
+    expect(
+      resolvePortableStorageTarget({ env: {}, execPath: path.join(baseDir, 'Image MetaHub.exe') })
+    ).toMatchObject({ enabled: true, source: 'marker', dataDir: path.join(baseDir, PORTABLE_DATA_DIR_NAME) });
+  });
+
+  it('keeps a custom data folder already written in the marker', async () => {
+    const baseDir = await makeTempDir();
+    await fs.writeFile(path.join(baseDir, 'portable.txt'), 'custom-folder');
+
+    writePortableMarker(baseDir);
+
+    expect(await fs.readFile(path.join(baseDir, 'portable.txt'), 'utf-8')).toBe('custom-folder');
+  });
+
+  it('removes every marker so the next launch uses the default location', async () => {
+    const baseDir = await makeTempDir();
+    await fs.writeFile(path.join(baseDir, 'portable.txt'), '');
+    await fs.writeFile(path.join(baseDir, '.portable'), '');
+
+    const removed = removePortableMarkers(baseDir);
+
+    expect(removed).toHaveLength(2);
+    expect(
+      resolvePortableStorageTarget({ env: {}, execPath: path.join(baseDir, 'Image MetaHub.exe') })
+    ).toMatchObject({ enabled: false, source: 'not-configured' });
+  });
+
+  it('is a no-op when there is no marker to remove', async () => {
+    const baseDir = await makeTempDir();
+
+    expect(removePortableMarkers(baseDir)).toEqual([]);
+  });
+});
+
+describe('ensurePortableDataDirIsUsable', () => {
+  const created: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(created.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
+  });
+
+  it('creates the folder when it can be written to', async () => {
+    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-portable-usable-'));
+    created.push(baseDir);
+    const dataDir = path.join(baseDir, PORTABLE_DATA_DIR_NAME);
+
+    ensurePortableDataDirIsUsable(dataDir, { execPath: path.join(baseDir, 'Image MetaHub.exe') });
+
+    expect(fsSync.existsSync(dataDir)).toBe(true);
+  });
+
+  it('rejects a folder that contains the app', () => {
+    expect(() => ensurePortableDataDirIsUsable(INSTALL_DIR, { execPath: EXEC_PATH })).toThrow(
+      /contains the application itself/
+    );
   });
 });
 

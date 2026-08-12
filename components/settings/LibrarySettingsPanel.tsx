@@ -55,6 +55,8 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   const [currentCachePath, setCurrentCachePath] = useState('');
   const [defaultCachePath, setDefaultCachePath] = useState('');
   const [portableStatus, setPortableStatus] = useState<PortableStorageStatus | null>(null);
+  const [portableUpdating, setPortableUpdating] = useState(false);
+  const [portablePendingRestart, setPortablePendingRestart] = useState(false);
 
   const hardwareConcurrency =
     typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
@@ -90,7 +92,61 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
       });
   }, []);
 
-  const portableMarkerName = portableStatus?.markerFileNames?.[0] || 'portable.txt';
+  const handleTogglePortableStorage = async (nextEnabled: boolean) => {
+    if (!portableStatus || portableUpdating) return;
+
+    const confirmed = window.confirm(
+      nextEnabled
+        ? [
+            'Store app data next to the app?',
+            '',
+            `Settings, tags, ratings, thumbnails and cache will move to:`,
+            portableStatus.candidateDataDir || 'a folder next to the app',
+            '',
+            'Your current settings are copied over. Thumbnails and indexed metadata rebuild as you browse.',
+            'Nothing is written to this computer\'s user profile.',
+            '',
+            'Image MetaHub needs to restart to apply this.',
+          ].join('\n')
+        : [
+            'Store app data in the normal location?',
+            '',
+            'Image MetaHub will go back to storing settings and cache in this computer\'s user profile.',
+            'The portable folder is left untouched, so you can turn this back on later.',
+            '',
+            'Image MetaHub needs to restart to apply this.',
+          ].join('\n')
+    );
+
+    if (!confirmed) return;
+
+    setPortableUpdating(true);
+    try {
+      const result = await window.electronAPI?.setPortableStorageEnabled?.(nextEnabled);
+
+      if (!result?.success) {
+        alert(`Could not change the app data location.\n\n${result?.error || 'Unknown error.'}`);
+        return;
+      }
+
+      const restartNow = window.confirm('App data location updated. Restart Image MetaHub now?');
+      if (restartNow) {
+        await window.electronAPI?.restartApp?.();
+        return;
+      }
+
+      const refreshed = await window.electronAPI?.getPortableStorageStatus?.();
+      if (refreshed?.success) {
+        setPortableStatus(refreshed);
+      }
+      setPortablePendingRestart(true);
+    } catch (error) {
+      console.error('Failed to change portable storage mode:', error);
+      alert('Could not change the app data location. Check console for details.');
+    } finally {
+      setPortableUpdating(false);
+    }
+  };
 
   const handleSelectCacheDirectory = async () => {
     const result = await window.electronAPI?.showDirectoryDialog();
@@ -228,18 +284,43 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         title="App data location"
         description="Where settings, tags, ratings and cache data are stored."
       >
+        <SettingRow
+          label="Store app data next to the app"
+          description="Keep settings and cache with the installation, so a copy on a USB drive carries them between computers and leaves nothing on the host."
+          control={
+            <SettingSwitch
+              checked={Boolean(portableStatus?.enabled)}
+              disabled={!portableStatus || portableStatus.managedByEnv || portableUpdating}
+              onChange={handleTogglePortableStorage}
+            />
+          }
+        />
+
         <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
           <p className="truncate text-sm text-gray-200">{portableStatus?.dataDir || 'Loading app data location...'}</p>
           <p className="mt-2 text-xs text-gray-500">
             {portableStatus?.enabled
-              ? 'Portable mode is on: nothing is written to this computer\'s user profile.'
-              : `Standard mode. To keep everything with the installation instead, create an empty file named ${portableMarkerName} next to the app and restart. Add a folder path inside that file to store the data somewhere else.`}
+              ? 'Nothing is written to this computer\'s user profile.'
+              : 'Standard per-user location.'}
           </p>
         </div>
+
+        {portablePendingRestart ? (
+          <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-100 light:text-blue-900">
+            <p>Restart Image MetaHub to start using the new location.</p>
+          </div>
+        ) : null}
+
+        {portableStatus?.managedByEnv ? (
+          <p className="text-xs text-gray-500">
+            Controlled by the IMH_PORTABLE environment variables on this launch, so this switch is unavailable.
+          </p>
+        ) : null}
+
         {portableStatus?.error ? (
           <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>Portable mode could not be used, so the default location is active instead. {portableStatus.error}</p>
+            <p>App data could not be stored next to the app, so the default location is active instead. {portableStatus.error}</p>
           </div>
         ) : null}
       </SettingsSectionCard>

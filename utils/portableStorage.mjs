@@ -112,6 +112,49 @@ export function readPortableMarker(baseDir, { fs = fsSync } = {}) {
 }
 
 /**
+ * Creates the marker file that turns portable mode on for the next launch.
+ * Existing marker contents (a custom data folder) are preserved.
+ */
+export function writePortableMarker(baseDir, { fs = fsSync } = {}) {
+  const existing = readPortableMarker(baseDir, { fs });
+  if (existing) return existing.markerPath;
+
+  const markerPath = path.join(baseDir, PORTABLE_MARKER_FILE_NAMES[0]);
+  fs.writeFileSync(
+    markerPath,
+    [
+      '# Image MetaHub portable mode.',
+      '# Delete this file to store app data in the normal per-user location again.',
+      '# Optional: write a folder path below to store the data somewhere else.',
+      '',
+    ].join('\n'),
+    'utf-8'
+  );
+
+  return markerPath;
+}
+
+/**
+ * Removes every marker file, so the next launch uses the normal per-user location.
+ */
+export function removePortableMarkers(baseDir, { fs = fsSync } = {}) {
+  const removed = [];
+
+  for (const fileName of PORTABLE_MARKER_FILE_NAMES) {
+    const markerPath = path.join(baseDir, fileName);
+    try {
+      if (!fs.existsSync(markerPath)) continue;
+      fs.unlinkSync(markerPath);
+      removed.push(markerPath);
+    } catch (error) {
+      throw new Error(`Failed to remove "${markerPath}": ${error?.message || error}`);
+    }
+  }
+
+  return removed;
+}
+
+/**
  * Decides whether portable storage is requested and where it should live.
  * Resolution order: IMH_PORTABLE_DATA_DIR > IMH_PORTABLE > marker file next to the app.
  */
@@ -191,6 +234,18 @@ function assertDirectoryIsWritable(dataDir, fs) {
   } catch {
     // Leaving the probe behind is harmless; the write itself is what we needed to verify.
   }
+}
+
+/**
+ * Checks upfront that a folder can actually host portable data, so turning the
+ * setting on fails loudly instead of silently falling back on the next launch.
+ */
+export function ensurePortableDataDirIsUsable(dataDir, { execPath = process.execPath, fs = fsSync } = {}) {
+  if (isUnsafePortableDataDir(dataDir, execPath)) {
+    throw new Error(`The folder "${dataDir}" contains the application itself. Choose a subfolder instead.`);
+  }
+
+  assertDirectoryIsWritable(dataDir, fs);
 }
 
 /**

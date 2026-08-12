@@ -71,19 +71,15 @@ The repository is MPL 2.0 and the core app remains open-source. Some workflow-he
 
 ### Portable installation
 
-By default Image MetaHub stores settings, tags, ratings, thumbnails, and cache in the per-user application data folder (`%APPDATA%\image-metahub` on Windows). To keep everything with the installation itself — for example on a USB drive that moves between machines — turn on portable mode:
+By default Image MetaHub stores settings, tags, ratings, thumbnails, and cache in the per-user application data folder (`%APPDATA%\image-metahub` on Windows). To keep everything with the installation itself — for example on a USB drive that moves between machines — turn on **Settings → Library → App data location → Store app data next to the app** and restart.
 
-1. Extract the release (the `.zip` build on Windows, the `.AppImage` on Linux, or the `.app` bundle on macOS).
-2. Create an empty file named `portable.txt` next to the app (beside `Image MetaHub.exe`, beside the `.AppImage`, or beside the `.app` bundle).
-3. Start Image MetaHub.
+App data then lives in a `data` folder next to the app, and nothing is written to the host machine's user profile. Your current settings are copied over on the first start, so the library configuration carries across; thumbnails and indexed metadata rebuild as you browse. The same panel always shows which folder is in use.
 
-All app data now lives in a `data` folder next to the app, and nothing is written to the host machine's user profile. Settings → Library → App data location shows the folder currently in use.
+Advanced options, for preparing a drive before the first launch or for scripted deployments:
 
-Extra options:
-
+* Creating an empty file named `portable.txt` next to the app (beside `Image MetaHub.exe`, beside the `.AppImage`, or beside the `.app` bundle) does the same thing as the setting — it is the file the setting writes.
 * To store the data somewhere else, write that folder path on the first line of `portable.txt`. Relative paths are resolved against the installation folder, absolute paths are used as-is.
-* `IMH_PORTABLE=1` enables portable mode without a marker file, `IMH_PORTABLE=0` disables it even when the marker exists, and `IMH_PORTABLE_DATA_DIR=<path>` sets the folder directly.
-* The first time portable mode starts, an existing `settings.json` from the standard location is copied over so your library configuration carries across. Cache and thumbnails are rebuilt on demand.
+* `IMH_PORTABLE=1` enables portable mode without a marker file, `IMH_PORTABLE=0` disables it even when the marker exists, and `IMH_PORTABLE_DATA_DIR=<path>` sets the folder directly. These override the setting for that launch.
 * If the chosen folder cannot be written to (a read-only drive, for example), the app falls back to the standard location and reports why in Settings → Library.
 
 Note that library folders are stored as absolute paths, so a USB drive that gets a different drive letter on another machine will need those folders re-added.

@@ -37,6 +37,10 @@ export interface PortableStorageStatus {
   markerPath: string | null;
   /** Folder currently used for settings, cache and logs. */
   dataDir: string | null;
+  /** Folder portable mode would use if it were turned on. */
+  candidateDataDir: string | null;
+  /** True when IMH_PORTABLE env vars decide the mode, so the setting cannot change it. */
+  managedByEnv: boolean;
   markerFileNames: string[];
   error: string | null;
 }
@@ -453,6 +457,13 @@ export interface ElectronAPI {
   ensureDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   getUserDataPath: () => Promise<string>;
   getPortableStorageStatus: () => Promise<PortableStorageStatus>;
+  setPortableStorageEnabled: (enabled: boolean) => Promise<{
+    success: boolean;
+    needsRestart?: boolean;
+    dataDir?: string | null;
+    markerPath?: string | null;
+    error?: string;
+  }>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   markChangelogViewed: (version: string) => Promise<{ success: boolean; error?: string }>;
