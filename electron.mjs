@@ -36,9 +36,11 @@ import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTomb
 import {
   ensurePortableDataDirIsUsable,
   getPortableStorageStatus,
+  isPortableStorageManagedByEnvironment,
   removePortableMarkers,
   writePortableMarker,
   PORTABLE_DATA_DIR_NAME,
+  PORTABLE_DATA_OWNER_FILE_NAME,
   PORTABLE_MARKER_FILE_NAMES,
 } from './utils/portableStorage.mjs';
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
@@ -4003,8 +4005,6 @@ function setupFileOperationHandlers() {
     return app.getPath('userData');
   });
 
-  const ENV_MANAGED_PORTABLE_SOURCES = new Set(['env-flag', 'env-path', 'env-disabled']);
-
   const buildPortableStorageStatusPayload = () => {
     const status = getPortableStorageStatus();
     return {
@@ -4021,7 +4021,7 @@ function setupFileOperationHandlers() {
           ? path.join(status.baseDir, PORTABLE_DATA_DIR_NAME)
           : null,
       // Environment variables win over the marker file, so the toggle cannot change anything.
-      managedByEnv: ENV_MANAGED_PORTABLE_SOURCES.has(status.source),
+      managedByEnv: isPortableStorageManagedByEnvironment(status),
       markerFileNames: PORTABLE_MARKER_FILE_NAMES,
       error: status.error,
     };
@@ -4035,7 +4035,7 @@ function setupFileOperationHandlers() {
     try {
       const status = getPortableStorageStatus();
 
-      if (ENV_MANAGED_PORTABLE_SOURCES.has(status.source)) {
+      if (isPortableStorageManagedByEnvironment(status)) {
         return {
           success: false,
           error: 'Portable mode is controlled by the IMH_PORTABLE environment variables on this launch.',
@@ -4859,6 +4859,8 @@ function setupFileOperationHandlers() {
   ipcMain.handle('delete-cache-folder', async (event, options = {}) => {
     try {
       const userDataDir = app.getPath('userData');
+      const portableStatus = getPortableStorageStatus();
+      const preservePortableOwner = portableStatus.enabled && portableStatus.dataDir === userDataDir;
       const settingsBeforeDelete = await readSettings();
       const preservedLicense = options?.preserveLicense === true ? settingsBeforeDelete?.license : undefined;
 
@@ -4867,6 +4869,8 @@ function setupFileOperationHandlers() {
 
         // Delete each file/folder inside userData
         for (const file of files) {
+          if (preservePortableOwner && file === PORTABLE_DATA_OWNER_FILE_NAME) continue;
+
           const filePath = path.join(userDataDir, file);
           const stat = await fs.stat(filePath);
 

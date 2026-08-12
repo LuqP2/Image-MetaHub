@@ -7,8 +7,11 @@ import fsSync from 'fs';
 // nothing behind on the host.
 export const PORTABLE_MARKER_FILE_NAMES = ['portable.txt', '.portable'];
 export const PORTABLE_DATA_DIR_NAME = 'data';
+export const PORTABLE_DATA_OWNER_FILE_NAME = '.image-metahub-portable-data';
 const WRITE_PROBE_FILE_NAME = '.imh-portable-write-test';
 const PORTABLE_PROFILE_DIRECTORY_NAMES = ['IndexedDB', 'Local Storage'];
+const PORTABLE_DATA_OWNER_CONTENTS = 'Image MetaHub portable data directory\n';
+const ENV_MANAGED_PORTABLE_SOURCES = new Set(['env-flag', 'env-path', 'env-disabled']);
 
 const TRUTHY_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSY_VALUES = new Set(['0', 'false', 'no', 'off']);
@@ -219,11 +222,13 @@ export function resolvePortableStorageTarget({
 export function isUnsafePortableDataDir(
   dataDir,
   execPath = process.execPath,
-  { fs = fsSync, platform = process.platform } = {}
+  { fs = fsSync, platform = process.platform, resolveSymlinks = true } = {}
 ) {
   if (!dataDir || !execPath) return false;
 
   const resolveRealPath = (candidate) => {
+    if (!resolveSymlinks) return path.resolve(candidate);
+
     const realpathSync = fs?.realpathSync?.native || fs?.realpathSync;
     if (typeof realpathSync !== 'function') return path.resolve(candidate);
 
@@ -260,14 +265,19 @@ function assertDirectoryIsWritable(dataDir, fs) {
  * setting on fails loudly instead of silently falling back on the next launch.
  */
 export function ensurePortableDataDirIsUsable(dataDir, { execPath = process.execPath, fs = fsSync } = {}) {
-  // Creating the directory first lets realpath resolve every symlink in the
-  // configured path before the folder is accepted for destructive reset operations.
+  // Reject an obviously unsafe lexical path before creating anything. Once the
+  // directory exists, repeat the check with real paths to catch symlinks.
+  if (isUnsafePortableDataDir(dataDir, execPath, { fs, resolveSymlinks: false })) {
+    throw new Error(`The folder "${dataDir}" contains the application itself. Choose a subfolder instead.`);
+  }
+
   fs.mkdirSync(dataDir, { recursive: true });
 
   if (isUnsafePortableDataDir(dataDir, execPath, { fs })) {
     throw new Error(`The folder "${dataDir}" contains the application itself. Choose a subfolder instead.`);
   }
 
+  ensurePortableDataDirOwnership(dataDir, fs);
   assertDirectoryIsWritable(dataDir, fs);
 }
 
@@ -292,6 +302,27 @@ function copyPortableEntryAtomically(sourcePath, targetPath, fs) {
     }
     throw error;
   }
+}
+
+function ensurePortableDataDirOwnership(dataDir, fs) {
+  const ownerPath = path.join(dataDir, PORTABLE_DATA_OWNER_FILE_NAME);
+
+  if (fs.existsSync(ownerPath)) {
+    const ownerStats = fs.statSync(ownerPath);
+    const ownerContents = ownerStats.isDirectory() ? '' : fs.readFileSync(ownerPath, 'utf-8');
+    if (!ownerStats.isDirectory() && ownerContents === PORTABLE_DATA_OWNER_CONTENTS) return;
+
+    throw new Error(`The folder "${dataDir}" has an invalid Image MetaHub ownership marker.`);
+  }
+
+  const entries = fs.readdirSync(dataDir);
+  if (entries.length > 0) {
+    throw new Error(
+      `The folder "${dataDir}" is not empty and is not owned by Image MetaHub. Choose an empty dedicated folder instead.`
+    );
+  }
+
+  fs.writeFileSync(ownerPath, PORTABLE_DATA_OWNER_CONTENTS, { encoding: 'utf-8', flag: 'wx' });
 }
 
 function seedPortableSettings(dataDir, defaultUserDataDir, fs) {
@@ -372,6 +403,7 @@ function migratePortableData(dataDir, defaultUserDataDir, defaultSessionDataDir,
 let portableStorageStatus = {
   enabled: false,
   source: 'not-initialized',
+  requestedSource: null,
   baseDir: null,
   markerPath: null,
   dataDir: null,
@@ -380,6 +412,10 @@ let portableStorageStatus = {
 
 export function getPortableStorageStatus() {
   return { ...portableStorageStatus };
+}
+
+export function isPortableStorageManagedByEnvironment(status = portableStorageStatus) {
+  return ENV_MANAGED_PORTABLE_SOURCES.has(status?.requestedSource || status?.source);
 }
 
 /**
@@ -430,6 +466,20 @@ export function activatePortableStorage({
     defaultSessionDataDir = defaultUserDataDir;
   }
 
+  if (isUnsafePortableDataDir(target.dataDir, execPath, { fs, platform, resolveSymlinks: false })) {
+    const message = `The portable data folder "${target.dataDir}" contains the application itself. Choose a subfolder instead.`;
+    logger?.error?.(`[Portable] ${message}`);
+    portableStorageStatus = {
+      ...target,
+      enabled: false,
+      source: 'unsafe-location',
+      requestedSource: target.source,
+      dataDir: defaultUserDataDir,
+      error: message,
+    };
+    return getPortableStorageStatus();
+  }
+
   try {
     fs.mkdirSync(target.dataDir, { recursive: true });
   } catch (error) {
@@ -442,6 +492,7 @@ export function activatePortableStorage({
       ...target,
       enabled: false,
       source: 'unwritable',
+      requestedSource: target.source,
       dataDir: defaultUserDataDir,
       error: message,
     };
@@ -455,6 +506,7 @@ export function activatePortableStorage({
       ...target,
       enabled: false,
       source: 'unsafe-location',
+      requestedSource: target.source,
       dataDir: defaultUserDataDir,
       error: message,
     };
@@ -462,6 +514,7 @@ export function activatePortableStorage({
   }
 
   try {
+    ensurePortableDataDirOwnership(target.dataDir, fs);
     assertDirectoryIsWritable(target.dataDir, fs);
   } catch (error) {
     const message = error?.message || String(error);
@@ -473,6 +526,7 @@ export function activatePortableStorage({
       ...target,
       enabled: false,
       source: 'unwritable',
+      requestedSource: target.source,
       dataDir: defaultUserDataDir,
       error: message,
     };
@@ -487,6 +541,7 @@ export function activatePortableStorage({
       ...target,
       enabled: false,
       source: 'migration-failed',
+      requestedSource: target.source,
       dataDir: defaultUserDataDir,
       error: message,
     };
@@ -529,6 +584,7 @@ export function resetPortableStorageStatusForTests() {
   portableStorageStatus = {
     enabled: false,
     source: 'not-initialized',
+    requestedSource: null,
     baseDir: null,
     markerPath: null,
     dataDir: null,

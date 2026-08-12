@@ -5,9 +5,11 @@ import os from 'os';
 import path from 'path';
 import {
   PORTABLE_DATA_DIR_NAME,
+  PORTABLE_DATA_OWNER_FILE_NAME,
   activatePortableStorage,
   ensurePortableDataDirIsUsable,
   getPortableStorageStatus,
+  isPortableStorageManagedByEnvironment,
   isUnsafePortableDataDir,
   readPortableMarker,
   removePortableMarkers,
@@ -241,12 +243,39 @@ describe('ensurePortableDataDirIsUsable', () => {
     ensurePortableDataDirIsUsable(dataDir, { execPath: path.join(baseDir, 'Image MetaHub.exe') });
 
     expect(fsSync.existsSync(dataDir)).toBe(true);
+    expect(fsSync.existsSync(path.join(dataDir, PORTABLE_DATA_OWNER_FILE_NAME))).toBe(true);
   });
 
   it('rejects a folder that contains the app', () => {
     expect(() => ensurePortableDataDirIsUsable(INSTALL_DIR, { execPath: EXEC_PATH })).toThrow(
       /contains the application itself/
     );
+  });
+
+  it('rejects a non-empty directory without an Image MetaHub ownership marker', async () => {
+    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-portable-unowned-'));
+    created.push(baseDir);
+    const dataDir = path.join(baseDir, PORTABLE_DATA_DIR_NAME);
+    await fs.mkdir(dataDir);
+    await fs.writeFile(path.join(dataDir, 'unrelated-file.txt'), 'keep me');
+
+    expect(() => ensurePortableDataDirIsUsable(dataDir, { execPath: path.join(baseDir, 'Image MetaHub.exe') })).toThrow(
+      /not empty and is not owned by Image MetaHub/
+    );
+    expect(await fs.readFile(path.join(dataDir, 'unrelated-file.txt'), 'utf-8')).toBe('keep me');
+  });
+
+  it('accepts a non-empty directory with a valid Image MetaHub ownership marker', async () => {
+    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-portable-owned-'));
+    created.push(baseDir);
+    const dataDir = path.join(baseDir, PORTABLE_DATA_DIR_NAME);
+    await fs.mkdir(dataDir);
+    await fs.writeFile(path.join(dataDir, PORTABLE_DATA_OWNER_FILE_NAME), 'Image MetaHub portable data directory\n');
+    await fs.writeFile(path.join(dataDir, 'settings.json'), '{}');
+
+    expect(() =>
+      ensurePortableDataDirIsUsable(dataDir, { execPath: path.join(baseDir, 'Image MetaHub.exe') })
+    ).not.toThrow();
   });
 });
 
@@ -381,6 +410,10 @@ describe('activatePortableStorage', () => {
     const defaultUserData = await makeTempDir('imh-portable-default-');
     await fs.writeFile(path.join(installDir, 'portable.txt'), '');
     await fs.mkdir(path.join(installDir, PORTABLE_DATA_DIR_NAME));
+    await fs.writeFile(
+      path.join(installDir, PORTABLE_DATA_DIR_NAME, PORTABLE_DATA_OWNER_FILE_NAME),
+      'Image MetaHub portable data directory\n'
+    );
     await fs.writeFile(path.join(installDir, PORTABLE_DATA_DIR_NAME, 'settings.json'), '{"portable":true}');
     await fs.writeFile(path.join(defaultUserData, 'settings.json'), '{"portable":false}');
 
@@ -419,6 +452,7 @@ describe('activatePortableStorage', () => {
     const readOnlyFs = {
       ...makeFakeFs({ [markerPath('portable.txt')]: '' }),
       mkdirSync: () => undefined,
+      readdirSync: () => [],
       writeFileSync: () => {
         throw Object.assign(new Error('EROFS: read-only file system'), { code: 'EROFS' });
       },
@@ -438,6 +472,29 @@ describe('activatePortableStorage', () => {
     expect(status).toMatchObject({ enabled: false, source: 'unwritable', dataDir: defaultUserData });
     expect(status.error).toContain('EROFS');
     expect(app.paths.userData).toBe(defaultUserData);
+  });
+
+  it('preserves environment ownership when an environment-managed target fails', async () => {
+    const defaultUserData = await makeTempDir('imh-portable-default-');
+    const app = makeFakeApp(defaultUserData);
+    const readOnlyFs = {
+      ...makeFakeFs({}),
+      mkdirSync: () => {
+        throw Object.assign(new Error('EROFS: read-only file system'), { code: 'EROFS' });
+      },
+    };
+
+    const status = activatePortableStorage({
+      app,
+      env: { IMH_PORTABLE: 'true' },
+      logger: silentLogger,
+      platform: 'win32',
+      execPath: EXEC_PATH,
+      fs: readOnlyFs as unknown as typeof fsSync,
+    });
+
+    expect(status).toMatchObject({ enabled: false, source: 'unwritable', requestedSource: 'env-flag' });
+    expect(isPortableStorageManagedByEnvironment(status)).toBe(true);
   });
 
   it('does not redirect Electron paths when persistent profile migration fails', async () => {
