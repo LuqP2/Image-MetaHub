@@ -1,11 +1,16 @@
 import electron from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { activatePortableStorage } from './utils/portableStorage.mjs';
 
 const { app, BrowserWindow } = electron;
 const SCHEME = 'imagemetahub';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Must happen before anything resolves app.getPath('userData') - including the
+// single instance lock and the electron.mjs module scope.
+activatePortableStorage({ app, appRootDir: __dirname });
 
 function isDeepLink(value) {
   return typeof value === 'string' && value.toLowerCase().startsWith(`${SCHEME}://`);

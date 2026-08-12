@@ -33,6 +33,7 @@ import {
 } from './utils/comfyUIViewSecurity.mjs';
 import { rewriteAvifMetadata, stripAvifMetadata } from './utils/avifMetadata.mjs';
 import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTombstones.mjs';
+import { getPortableStorageStatus, PORTABLE_MARKER_FILE_NAMES } from './utils/portableStorage.mjs';
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
 import {
   getModel3DSidecarPathIfPresent,
@@ -3993,6 +3994,20 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('get-user-data-path', () => {
     return app.getPath('userData');
+  });
+
+  ipcMain.handle('get-portable-storage-status', () => {
+    const status = getPortableStorageStatus();
+    return {
+      success: true,
+      enabled: status.enabled,
+      source: status.source,
+      baseDir: status.baseDir,
+      markerPath: status.markerPath,
+      dataDir: status.enabled ? status.dataDir : app.getPath('userData'),
+      markerFileNames: PORTABLE_MARKER_FILE_NAMES,
+      error: status.error,
+    };
   });
 
   ipcMain.handle('get-theme', () => {

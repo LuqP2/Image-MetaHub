@@ -26,6 +26,21 @@ import type {
 
 import * as sharedCoreTypes from './packages/metadata-engine/src/core/types';
 
+export interface PortableStorageStatus {
+  success: boolean;
+  /** True when app data is stored next to the installation instead of the user profile. */
+  enabled: boolean;
+  /** How portable mode was resolved, or why it is inactive. */
+  source: string;
+  /** Folder the installation lives in. */
+  baseDir: string | null;
+  markerPath: string | null;
+  /** Folder currently used for settings, cache and logs. */
+  dataDir: string | null;
+  markerFileNames: string[];
+  error: string | null;
+}
+
 export interface ExportBatchProgress {
   exportId: string | null;
   mode: 'folder' | 'zip';
@@ -437,6 +452,7 @@ export interface ElectronAPI {
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   ensureDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   getUserDataPath: () => Promise<string>;
+  getPortableStorageStatus: () => Promise<PortableStorageStatus>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   markChangelogViewed: (version: string) => Promise<{ success: boolean; error?: string }>;

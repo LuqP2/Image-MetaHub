@@ -69,6 +69,25 @@ The repository is MPL 2.0 and the core app remains open-source. Some workflow-he
 4. Wait for the first indexing pass to finish.
 5. Use search, sidebar facets, tags, and advanced filters to explore the library.
 
+### Portable installation
+
+By default Image MetaHub stores settings, tags, ratings, thumbnails, and cache in the per-user application data folder (`%APPDATA%\image-metahub` on Windows). To keep everything with the installation itself — for example on a USB drive that moves between machines — turn on portable mode:
+
+1. Extract the release (the `.zip` build on Windows, the `.AppImage` on Linux, or the `.app` bundle on macOS).
+2. Create an empty file named `portable.txt` next to the app (beside `Image MetaHub.exe`, beside the `.AppImage`, or beside the `.app` bundle).
+3. Start Image MetaHub.
+
+All app data now lives in a `data` folder next to the app, and nothing is written to the host machine's user profile. Settings → Library → App data location shows the folder currently in use.
+
+Extra options:
+
+* To store the data somewhere else, write that folder path on the first line of `portable.txt`. Relative paths are resolved against the installation folder, absolute paths are used as-is.
+* `IMH_PORTABLE=1` enables portable mode without a marker file, `IMH_PORTABLE=0` disables it even when the marker exists, and `IMH_PORTABLE_DATA_DIR=<path>` sets the folder directly.
+* The first time portable mode starts, an existing `settings.json` from the standard location is copied over so your library configuration carries across. Cache and thumbnails are rebuilt on demand.
+* If the chosen folder cannot be written to (a read-only drive, for example), the app falls back to the standard location and reports why in Settings → Library.
+
+Note that library folders are stored as absolute paths, so a USB drive that gets a different drive letter on another machine will need those folders re-added.
+
 ### macOS unsigned builds
 
 Current GitHub release builds are not signed with an Apple Developer ID yet. If macOS blocks the app after you download and move it to Applications, remove the quarantine flag from Terminal:

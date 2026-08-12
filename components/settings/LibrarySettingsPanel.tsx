@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import type { PortableStorageStatus } from '../../types';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { clearLibraryCaches, resetAllCaches } from '../../utils/cacheReset';
 import { AdvancedSection } from './AdvancedSection';
@@ -53,6 +54,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
 
   const [currentCachePath, setCurrentCachePath] = useState('');
   const [defaultCachePath, setDefaultCachePath] = useState('');
+  const [portableStatus, setPortableStatus] = useState<PortableStorageStatus | null>(null);
 
   const hardwareConcurrency =
     typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
@@ -75,6 +77,20 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         console.error('Failed to get default cache path:', error);
       });
   }, [cachePath]);
+
+  useEffect(() => {
+    window.electronAPI?.getPortableStorageStatus?.()
+      .then((result) => {
+        if (result?.success) {
+          setPortableStatus(result);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to get portable storage status:', error);
+      });
+  }, []);
+
+  const portableMarkerName = portableStatus?.markerFileNames?.[0] || 'portable.txt';
 
   const handleSelectCacheDirectory = async () => {
     const result = await window.electronAPI?.showDirectoryDialog();
@@ -205,6 +221,26 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         />
         {hardwareConcurrency ? (
           <p className="text-sm text-gray-500">Detected {hardwareConcurrency} logical cores.</p>
+        ) : null}
+      </SettingsSectionCard>
+
+      <SettingsSectionCard
+        title="App data location"
+        description="Where settings, tags, ratings and cache data are stored."
+      >
+        <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
+          <p className="truncate text-sm text-gray-200">{portableStatus?.dataDir || 'Loading app data location...'}</p>
+          <p className="mt-2 text-xs text-gray-500">
+            {portableStatus?.enabled
+              ? 'Portable mode is on: nothing is written to this computer\'s user profile.'
+              : `Standard mode. To keep everything with the installation instead, create an empty file named ${portableMarkerName} next to the app and restart. Add a folder path inside that file to store the data somewhere else.`}
+          </p>
+        </div>
+        {portableStatus?.error ? (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>Portable mode could not be used, so the default location is active instead. {portableStatus.error}</p>
+          </div>
         ) : null}
       </SettingsSectionCard>
 
