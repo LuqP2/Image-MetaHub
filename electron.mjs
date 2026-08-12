@@ -5088,11 +5088,16 @@ function setupFileOperationHandlers() {
     }
   });
 
-  // Handle open cache location (without security restrictions since it's app's internal cache)
-  ipcMain.handle('open-cache-location', async (event, cachePath) => {
+  // Resolve the configured cache root in the trusted main process.
+  ipcMain.handle('open-cache-location', async () => {
     try {
-      const normalizedCachePath = path.normalize(cachePath);
+      const normalizedCachePath = path.normalize(await getCacheRootPath());
       console.log('📂 Opening cache directory:', normalizedCachePath);
+
+      const stats = await fs.stat(normalizedCachePath);
+      if (!stats.isDirectory()) {
+        return { success: false, error: 'Configured cache path is not a directory.' };
+      }
 
       const openError = await shell.openPath(normalizedCachePath);
       if (openError) {

@@ -135,6 +135,18 @@ describe('portable runtime', () => {
     expect(handlerSource).not.toContain('ImageMetaHubCache');
   });
 
+  it('opens only the configured cache directory resolved by the main process', () => {
+    const source = readFileSync(path.join(process.cwd(), 'electron.mjs'), 'utf8');
+    const handlerStart = source.indexOf("ipcMain.handle('open-cache-location'");
+    const handlerEnd = source.indexOf("ipcMain.handle('list-subfolders'", handlerStart);
+    const handlerSource = source.slice(handlerStart, handlerEnd);
+
+    expect(handlerSource).toContain('await getCacheRootPath()');
+    expect(handlerSource).toContain('await fs.stat(normalizedCachePath)');
+    expect(handlerSource).toContain('stats.isDirectory()');
+    expect(handlerSource).not.toContain('cachePath) =>');
+  });
+
   it('relaunches the portable wrapper instead of the extracted executable', () => {
     const source = readFileSync(path.join(process.cwd(), 'electron.mjs'), 'utf8');
     const handlerStart = source.indexOf("ipcMain.handle('restart-app'");

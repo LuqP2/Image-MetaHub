@@ -410,7 +410,7 @@ export interface ElectronAPI {
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
   showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
-  openCacheLocation: (cachePath: string) => Promise<{ success: boolean; error?: string }>;
+  openCacheLocation: () => Promise<{ success: boolean; error?: string }>;
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string; realPath?: string }[]; error?: string }>;
   createSubfolder: (parentPath: string, folderName: string) => Promise<{ success: boolean; folder?: { name: string; path: string; realPath?: string }; error?: string }>;
   listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{

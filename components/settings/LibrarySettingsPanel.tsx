@@ -102,7 +102,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
 
   const handleOpenCacheLocation = async () => {
     if (currentCachePath) {
-      await window.electronAPI?.openCacheLocation(currentCachePath);
+      await window.electronAPI?.openCacheLocation();
     }
   };
 
