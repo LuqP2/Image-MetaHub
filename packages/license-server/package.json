@@ -1,0 +1,17 @@
+{
+  "name": "@image-metahub/license-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "d1:migrate:local": "wrangler d1 migrations apply image-metahub-licenses --local",
+    "d1:migrate:remote": "wrangler d1 migrations apply image-metahub-licenses --remote",
+    "test": "vitest run __tests__"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "wrangler": "^4.28.1"
+  }
+}

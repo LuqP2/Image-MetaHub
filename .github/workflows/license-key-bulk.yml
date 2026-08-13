@@ -1,10 +1,10 @@
-name: Generate legacy license map
+name: Import issued legacy licenses
 
 on:
   workflow_dispatch:
     inputs:
       emails:
-        description: "One customer email per line"
+        description: "Historical purchaser emails, one per line"
         required: true
         type: string
 
@@ -12,32 +12,26 @@ permissions:
   contents: read
 
 jobs:
-  generate-map:
+  import-legacy:
     runs-on: ubuntu-latest
     env:
+      # This historical secret is intentionally restricted to the one-time
+      # migration job. The v2 Worker and desktop application never receive it.
       IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
       IMH_LEGACY_EMAILS: ${{ inputs.emails }}
-      IMH_LEGACY_OUTPUT_PATH: legacy-license-map.csv
+      IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
+      LICENSE_SERVER_ADMIN_TOKEN: ${{ secrets.LICENSE_SERVER_ADMIN_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Generate legacy license map
+      - name: Validate migration configuration
         shell: bash
         run: |
           set -euo pipefail
+          test -n "${IMH_LICENSE_SECRET:-}" || { echo "Historical migration secret is missing." >&2; exit 1; }
+          test -n "${IMH_LICENSE_SERVER_URL:-}" || { echo "LICENSE_SERVER_URL repository variable is missing." >&2; exit 1; }
+          test -n "${LICENSE_SERVER_ADMIN_TOKEN:-}" || { echo "LICENSE_SERVER_ADMIN_TOKEN repository secret is missing." >&2; exit 1; }
 
-          if [ -z "${IMH_LICENSE_SECRET:-}" ]; then
-            echo "IMH_LICENSE_SECRET is missing in repository secrets." >&2
-            exit 1
-          fi
-
-          node scripts/generateLegacyLicenseMap.mjs
-
-      - name: Upload legacy license map artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: legacy-license-map
-          path: legacy-license-map.csv
-          if-no-files-found: error
-          retention-days: 1
+      - name: Reconstruct and import issued licenses directly
+        run: node scripts/generateLegacyLicenseMap.mjs

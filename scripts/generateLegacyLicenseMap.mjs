@@ -1,48 +1,84 @@
-import crypto from 'crypto';
-import fs from 'fs/promises';
+import crypto from 'node:crypto';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const LICENSE_SECRET = process.env.IMH_LICENSE_SECRET || '';
-const emailsInput = process.env.IMH_LEGACY_EMAILS || '';
-const outputPath = process.env.IMH_LEGACY_OUTPUT_PATH || 'legacy-license-map.csv';
+export const normalizeLegacyEmail = (email) => String(email || '').trim().toLowerCase();
 
-if (!LICENSE_SECRET) {
-  console.error('IMH_LICENSE_SECRET is missing.');
-  process.exit(1);
-}
-
-const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
-const normalizeKey = (key) => String(key || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-const isLikelyEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
-
-const generateLicenseKeyFromEmail = (email) => {
-  const normalizedEmail = normalizeEmail(email);
+export function generateLegacyLicenseKey(email, secret) {
   const hmac = crypto
-    .createHmac('sha256', LICENSE_SECRET)
-    .update(normalizedEmail)
+    .createHmac('sha256', secret)
+    .update(normalizeLegacyEmail(email))
     .digest('hex')
-    .toUpperCase();
+    .toUpperCase()
+    .slice(0, 20);
+  return hmac.match(/.{1,4}/g).join('-');
+}
 
-  return normalizeKey(hmac.slice(0, 20));
-};
+export async function importLegacyLicenses({ emailsInput, secret, serverUrl, adminToken, fetchImpl = fetch }) {
+  if (!secret || !serverUrl || !adminToken) {
+    throw new Error('Legacy secret, license server URL and admin token are required.');
+  }
 
-const emails = Array.from(
-  new Set(
-    emailsInput
+  const candidates = Array.from(new Set(
+    String(emailsInput || '')
       .split(/[\r\n,;]+/)
-      .map((value) => normalizeEmail(value))
-      .filter((value) => isLikelyEmail(value))
-  )
-);
+      .map(normalizeLegacyEmail)
+      .filter(Boolean),
+  ));
+  if (candidates.length === 0) throw new Error('No customer emails were provided.');
 
-if (emails.length === 0) {
-  console.error('No valid emails were provided.');
-  process.exit(1);
+  const summary = { imported: 0, alreadyExisted: 0, failed: 0 };
+  for (const email of candidates) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      summary.failed += 1;
+      continue;
+    }
+    const licenseKey = generateLegacyLicenseKey(email, secret);
+    try {
+      const response = await fetchImpl(`${serverUrl.replace(/\/$/, '')}/v1/admin/licenses/import-legacy`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${adminToken}`,
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({ email, licenseKey }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        summary.failed += 1;
+      } else if (data?.created === true) {
+        summary.imported += 1;
+      } else {
+        summary.alreadyExisted += 1;
+      }
+    } catch {
+      summary.failed += 1;
+    }
+  }
+  return summary;
 }
 
-const lines = ['email,licenseKey'];
-for (const email of emails) {
-  lines.push(`${email},${generateLicenseKeyFromEmail(email)}`);
+async function main() {
+  const summary = await importLegacyLicenses({
+    emailsInput: process.env.IMH_LEGACY_EMAILS,
+    secret: process.env.IMH_LICENSE_SECRET,
+    serverUrl: process.env.IMH_LICENSE_SERVER_URL,
+    adminToken: process.env.LICENSE_SERVER_ADMIN_TOKEN,
+  });
+  const summaryLine = `Imported: ${summary.imported}; already existed: ${summary.alreadyExisted}; failed: ${summary.failed}.`;
+  console.log(summaryLine);
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const fs = await import('node:fs/promises');
+    await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, `## Legacy license migration\n\n${summaryLine}\n`, 'utf8');
+  }
+  if (summary.failed > 0) process.exitCode = 1;
 }
 
-await fs.writeFile(outputPath, `${lines.join('\n')}\n`, 'utf8');
-console.log(`Generated ${emails.length} legacy keys to ${outputPath}`);
+const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : '';
+if (import.meta.url === invokedPath) {
+  main().catch((error) => {
+    console.error(error?.message || 'Legacy migration failed.');
+    process.exit(1);
+  });
+}

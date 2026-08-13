@@ -396,6 +396,19 @@ export interface CivitaiLookupQuery {
   versionId?: number;
 }
 
+export type LicensePlan = 'lifetime' | 'monthly' | 'annual';
+
+export interface LicenseClientStatus {
+  authorized: boolean;
+  licenseStatus: 'free' | 'pro' | 'lifetime';
+  plan: LicensePlan | null;
+  licenseEmail: string | null;
+  expiresAt: string | null;
+  refreshAfter: string | null;
+  migrationRequired: boolean;
+  message: string | null;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -439,6 +452,10 @@ export interface ElectronAPI {
   getUserDataPath: () => Promise<string>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  getLicenseStatus: () => Promise<LicenseClientStatus>;
+  activateLicense: (key: string, email: string) => Promise<LicenseClientStatus>;
+  refreshLicense: () => Promise<LicenseClientStatus>;
+  deactivateLicense: () => Promise<LicenseClientStatus>;
   markChangelogViewed: (version: string) => Promise<{ success: boolean; error?: string }>;
   downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
   installUpdate: () => Promise<{ success: boolean; error?: string }>;

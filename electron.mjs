@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol, WebContentsView } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol, WebContentsView, safeStorage } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -35,6 +35,8 @@ import {
 import { rewriteAvifMetadata, stripAvifMetadata } from './utils/avifMetadata.mjs';
 import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTombstones.mjs';
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
+import { createLicenseManager } from './electron/licenseManager.mjs';
+import { licenseClientConfig } from './electron/licenseClientConfig.generated.mjs';
 import {
   getModel3DSidecarPathIfPresent,
   renameModel3DWithSidecar,
@@ -491,6 +493,7 @@ async function readMediaMetadataWithFfprobe(filePath) {
 }
 
 let mainWindow;
+let licenseManager;
 const detachedImageViewerWindows = new Map();
 const detachedImageViewerSnapshots = new Map();
 const detachedImageViewerRequestResolvers = new Map();
@@ -2736,6 +2739,25 @@ app.whenReady().then(async () => {
   registerMediaProtocol();
   registerThumbnailProtocol();
 
+  licenseManager = createLicenseManager({
+    userDataPath: app.getPath('userData'),
+    serverUrl: isDev && process.env.IMH_LICENSE_SERVER_URL
+      ? process.env.IMH_LICENSE_SERVER_URL
+      : licenseClientConfig.serverUrl,
+    publicKey: isDev && process.env.IMH_LICENSE_PUBLIC_KEY
+      ? process.env.IMH_LICENSE_PUBLIC_KEY
+      : licenseClientConfig.publicKey,
+    safeStorage,
+    readSettings,
+    updateSettings: async (updater) => {
+      await queueSettingsUpdate(updater);
+      broadcastSettingsUpdated(null);
+    },
+    appVersion: app.getVersion(),
+    platform: process.platform,
+  });
+  await licenseManager.initialize();
+
   // Listen for theme changes and notify renderer
   nativeTheme.on('updated', () => {
     const themePayload = {
@@ -2783,11 +2805,19 @@ app.whenReady().then(async () => {
   }
 
   // Setup IPC handlers for file operations BEFORE creating window
+  setupLicenseHandlers();
   setupImageViewerHandlers();
   setupFileOperationHandlers();
   
   await createWindow(startupDirectory);
 });
+
+function setupLicenseHandlers() {
+  ipcMain.handle('license:get-status', () => licenseManager.getStatus());
+  ipcMain.handle('license:activate', (_event, { key, email } = {}) => licenseManager.activate(key, email));
+  ipcMain.handle('license:refresh', () => licenseManager.refresh());
+  ipcMain.handle('license:deactivate', () => licenseManager.deactivate());
+}
 
 function setupImageViewerHandlers() {
   const isMainSender = (event) => Boolean(
