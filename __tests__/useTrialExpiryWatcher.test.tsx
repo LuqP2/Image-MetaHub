@@ -3,10 +3,6 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { TRIAL_DURATION_DAYS, useLicenseStore } from '../store/useLicenseStore';
 import { useTrialExpiryWatcher } from '../hooks/useTrialExpiryWatcher';
 
-vi.mock('../utils/licenseKey', () => ({
-  validateLicenseKey: vi.fn(),
-}));
-
 const TRIAL_DURATION_MS = TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000;
 
 const setLicense = (overrides: Partial<ReturnType<typeof useLicenseStore.getState>>) => {

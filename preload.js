@@ -187,6 +187,12 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('settings-updated', handler);
   },
 
+  onLicenseStatusChanged: (callback) => {
+    const handler = (_event, status) => callback(status);
+    ipcRenderer.on('license-status-changed', handler);
+    return () => ipcRenderer.removeListener('license-status-changed', handler);
+  },
+
   onImageViewerSnapshot: (callback) => {
     const handler = (_event, snapshot) => callback(snapshot);
     ipcRenderer.on('image-viewer-snapshot', handler);
@@ -245,6 +251,10 @@ const electronAPI = {
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  getLicenseStatus: () => ipcRenderer.invoke('license:get-status'),
+  activateLicense: (key, email) => ipcRenderer.invoke('license:activate', { key, email }),
+  refreshLicense: () => ipcRenderer.invoke('license:refresh'),
+  deactivateLicense: () => ipcRenderer.invoke('license:deactivate'),
   markChangelogViewed: (version) => ipcRenderer.invoke('mark-changelog-viewed', version),
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   installUpdate: () => ipcRenderer.invoke('install-update'),

@@ -25,7 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.platform == 'linux' || github.event.inputs.platform == 'all' }}
     env:
-      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+      IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
+      IMH_LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
 
     steps:
       - name: Checkout repository
@@ -42,6 +43,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Configure public license client
+        run: node scripts/configureLicenseClient.mjs
 
       - name: Build Linux AppImage
         run: |
@@ -65,7 +69,8 @@ jobs:
     runs-on: windows-latest
     if: ${{ github.event.inputs.platform == 'windows' || github.event.inputs.platform == 'all' }}
     env:
-      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+      IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
+      IMH_LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
 
     steps:
       - name: Checkout repository
@@ -82,6 +87,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Configure public license client
+        run: node scripts/configureLicenseClient.mjs
 
       - name: Build Windows installer
         shell: bash
@@ -107,7 +115,8 @@ jobs:
     runs-on: macos-latest
     if: ${{ github.event.inputs.platform == 'macos' || github.event.inputs.platform == 'all' }}
     env:
-      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+      IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
+      IMH_LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
 
     steps:
       - name: Checkout repository
@@ -124,6 +133,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Configure public license client
+        run: node scripts/configureLicenseClient.mjs
 
       - name: Build macOS App
         run: |

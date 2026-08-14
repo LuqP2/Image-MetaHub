@@ -14,13 +14,13 @@ jobs:
     runs-on: macos-latest
 
     env:
-      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+      IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
+      IMH_LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: 0.16.0
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -31,6 +31,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Configure public license client
+        run: node scripts/configureLicenseClient.mjs
 
       - name: Set RC version
         run: npm version "${{ inputs.version }}" --no-git-tag-version
@@ -53,13 +56,13 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+      IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
+      IMH_LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: 0.16.0
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -70,6 +73,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Configure public license client
+        run: node scripts/configureLicenseClient.mjs
 
       - name: Set RC version
         run: npm version "${{ inputs.version }}" --no-git-tag-version

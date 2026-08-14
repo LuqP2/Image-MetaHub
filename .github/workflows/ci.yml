@@ -32,5 +32,3 @@ jobs:
 
       - name: Build
         run: npm run build
-        env:
-          IMH_LICENSE_SECRET: ci-only-not-for-release
