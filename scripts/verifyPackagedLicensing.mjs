@@ -22,11 +22,23 @@ const sensitiveIdentifiers = [
   'LICENSE_SIGNING_PRIVATE_KEY',
   'LICENSE_SERVER_ADMIN_TOKEN',
   'EMAIL_LOOKUP_PEPPER',
+  'CLOUDFLARE_API_TOKEN',
 ];
 
 const forbiddenMarkers = [
   '-----BEGIN PRIVATE KEY-----',
 ];
+
+export function getConfiguredSensitiveValues(env = process.env) {
+  return [
+    env.IMH_LICENSE_SECRET,
+    env.VITE_IMH_LICENSE_SECRET,
+    env.LICENSE_SIGNING_PRIVATE_KEY,
+    env.LICENSE_SERVER_ADMIN_TOKEN,
+    env.EMAIL_LOOKUP_PEPPER,
+    env.CLOUDFLARE_API_TOKEN,
+  ].filter((value) => typeof value === 'string' && value.length >= 8);
+}
 
 async function findAppAsar(root) {
   const candidates = [];
@@ -49,13 +61,7 @@ export async function verifyPackagedLicensing(appAsarPath) {
   const missing = requiredEntries.filter((entry) => !entries.has(entry));
   if (missing.length > 0) throw new Error(`Packaged licensing files are missing: ${missing.join(', ')}`);
 
-  const actualSecretValues = [
-    process.env.IMH_LICENSE_SECRET,
-    process.env.VITE_IMH_LICENSE_SECRET,
-    process.env.LICENSE_SIGNING_PRIVATE_KEY,
-    process.env.LICENSE_SERVER_ADMIN_TOKEN,
-    process.env.EMAIL_LOOKUP_PEPPER,
-  ].filter((value) => typeof value === 'string' && value.length >= 8);
+  const actualSecretValues = getConfiguredSensitiveValues();
   const findings = [];
   const runtimeIdentifierFindings = [];
   const documentationIdentifierFindings = [];

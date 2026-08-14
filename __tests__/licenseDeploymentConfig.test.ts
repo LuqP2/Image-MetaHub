@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { prepareLicenseServerDeployment } from '../scripts/prepareLicenseServerDeployment.mjs';
+import { getConfiguredSensitiveValues } from '../scripts/verifyPackagedLicensing.mjs';
 import { createEd25519TestKeys } from './licenseCryptoTestHelpers';
 
 const tempDirectories: string[] = [];
@@ -12,6 +13,13 @@ afterEach(async () => {
 });
 
 describe('license server deployment preflight', () => {
+  it('includes the Cloudflare deployment token in packaged secret-value scans', () => {
+    expect(getConfiguredSensitiveValues({
+      CLOUDFLARE_API_TOKEN: 'production-cloudflare-token',
+      LICENSE_SERVER_ADMIN_TOKEN: 'production-admin-token',
+    })).toEqual(['production-admin-token', 'production-cloudflare-token']);
+  });
+
   it('fails before generating deployment configuration when a placeholder remains', async () => {
     await expect(prepareLicenseServerDeployment({
       outputPath: 'unused.json',
