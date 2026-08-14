@@ -25,7 +25,7 @@ jobs:
         working-directory: packages/license-server
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       LICENSE_D1_DATABASE_ID: ${{ vars.LICENSE_D1_DATABASE_ID }}
       LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
       LICENSE_SIGNING_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}

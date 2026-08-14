@@ -104,6 +104,7 @@ Store the canonical UUID returned by Wrangler as `LICENSE_D1_DATABASE_ID` before
 
 Repository/environment variables (public configuration):
 
+- `CLOUDFLARE_ACCOUNT_ID`
 - `LICENSE_D1_DATABASE_ID`
 - `LICENSE_SERVER_URL`
 - `LICENSE_SERVER_PUBLIC_KEY` (passed to the Worker as `LICENSE_SIGNING_PUBLIC_KEY` and to release packaging as `IMH_LICENSE_PUBLIC_KEY`)
@@ -111,7 +112,6 @@ Repository/environment variables (public configuration):
 Protected secrets:
 
 - `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
 - `LICENSE_SIGNING_PRIVATE_KEY`
 - `LICENSE_SERVER_ADMIN_TOKEN`
 - `EMAIL_LOOKUP_PEPPER`
