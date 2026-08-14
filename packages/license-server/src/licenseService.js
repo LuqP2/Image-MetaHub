@@ -3,14 +3,14 @@ import {
   emailLookup,
   generateRandomLicenseKey,
   normalizeEmail,
-  normalizeLicenseKey,
+  normalizeImh2LicenseKey,
   sha256Hex,
 } from './cryptoHelpers.js';
 import { LicenseError, requireValue } from './errors.js';
 
 const PLANS = new Set(['lifetime', 'monthly', 'annual']);
 const STATUSES = new Set(['active', 'revoked', 'cancelled', 'expired']);
-const SOURCES = new Set(['legacy', 'manual', 'stripe']);
+const SOURCES = new Set(['legacy_reissue', 'manual', 'stripe']);
 const REFRESH_INTERVAL_MS = {
   lifetime: 7 * 24 * 60 * 60 * 1000,
   monthly: 24 * 60 * 60 * 1000,
@@ -69,20 +69,21 @@ export class LicenseService {
     const expiresAt = plan === 'lifetime'
       ? null
       : isoTimestamp(input.expiresAt, 'expiresAt', { nullable: false, future: true, nowMs: now.getTime() });
-    const maxActivations = input.maxActivations === undefined || input.maxActivations === null
+    const requestedMaxActivations = input.maxActivations === undefined || input.maxActivations === null
       ? null
       : Number(input.maxActivations);
     requireValue(
-      maxActivations === null || (Number.isInteger(maxActivations) && maxActivations >= 1),
+      requestedMaxActivations === null || (Number.isInteger(requestedMaxActivations) && requestedMaxActivations >= 1),
       'invalid_request',
       'maxActivations must be a positive integer or null.',
     );
+    const maxActivations = plan === 'lifetime' ? null : requestedMaxActivations;
     const status = input.status ?? 'active';
     requireValue(STATUSES.has(status), 'invalid_request', 'Unsupported license status.');
 
     return {
       id: this.cryptoApi.randomUUID(),
-      keyHash: await sha256Hex(normalizeLicenseKey(plaintextKey), this.cryptoApi),
+      keyHash: await sha256Hex(normalizeImh2LicenseKey(plaintextKey), this.cryptoApi),
       emailLookup: await emailLookup(normalizeEmail(input.email), this.emailPepper, this.cryptoApi),
       plan,
       status,
@@ -100,6 +101,7 @@ export class LicenseService {
   }
 
   async createLicense(input) {
+    requireValue(input.source !== 'legacy_reissue', 'invalid_request', 'Historical reissues must use the dedicated reissue operation.');
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const plaintextKey = generateRandomLicenseKey(this.cryptoApi);
       const record = await this.buildLicenseRecord({ ...input, source: input.source ?? 'manual' }, plaintextKey);
@@ -113,28 +115,37 @@ export class LicenseService {
     throw new Error('Unable to create a unique license key.');
   }
 
-  async importLegacyLicense({ email, licenseKey }) {
-    const normalizedKey = normalizeLicenseKey(licenseKey);
-    const keyHash = await sha256Hex(normalizedKey, this.cryptoApi);
-    const lookup = await emailLookup(normalizeEmail(email), this.emailPepper, this.cryptoApi);
-    const existing = await this.repository.findLicenseByKeyHash(keyHash);
+  async reissueHistoricalLicense({ email, licenseKey }) {
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedKey = normalizeImh2LicenseKey(licenseKey);
+    const [lookup, keyHash] = await Promise.all([
+      emailLookup(normalizedEmail, this.emailPepper, this.cryptoApi),
+      sha256Hex(normalizedKey, this.cryptoApi),
+    ]);
+    const existing = await this.repository.findLicenseBySourceAndEmailLookup('legacy_reissue', lookup);
     if (existing) {
-      if (existing.emailLookup === lookup && existing.source === 'legacy') {
-        return { license: existing, created: false };
-      }
-      throw new LicenseError('license_conflict', 'License could not be imported.', 409);
+      if (existing.keyHash === keyHash) return { license: existing, created: false };
+      throw new LicenseError('license_conflict', 'Historical license was already reissued.', 409);
     }
+    const existingKey = await this.repository.findLicenseByKeyHash(keyHash);
+    if (existingKey) throw new LicenseError('license_conflict', 'License could not be reissued.', 409);
 
     const record = await this.buildLicenseRecord({
-      email,
+      email: normalizedEmail,
       plan: 'lifetime',
       status: 'active',
-      source: 'legacy',
+      source: 'legacy_reissue',
       expiresAt: null,
       maxActivations: null,
     }, normalizedKey);
-    await this.repository.createLicense(record);
-    return { license: record, created: true };
+    try {
+      await this.repository.createLicense(record);
+      return { license: record, created: true };
+    } catch (error) {
+      const concurrent = await this.repository.findLicenseBySourceAndEmailLookup('legacy_reissue', lookup);
+      if (concurrent?.keyHash === keyHash) return { license: concurrent, created: false };
+      throw error;
+    }
   }
 
   async issueCertificate(license, installationId, issuedAt = this.nowDate()) {
@@ -155,7 +166,7 @@ export class LicenseService {
   async activate({ email, licenseKey, installationId, appVersion, platform }) {
     requireValue(typeof installationId === 'string' && installationId.length >= 8 && installationId.length <= 200, 'invalid_request', 'Invalid request.');
     const [keyHash, lookup, installationHash] = await Promise.all([
-      sha256Hex(normalizeLicenseKey(licenseKey), this.cryptoApi),
+      sha256Hex(normalizeImh2LicenseKey(licenseKey), this.cryptoApi),
       emailLookup(normalizeEmail(email), this.emailPepper, this.cryptoApi),
       sha256Hex(installationId, this.cryptoApi),
     ]);
@@ -244,7 +255,9 @@ export class LicenseService {
         ? null
         : isoTimestamp(input.expiresAt ?? current.expiresAt, 'expiresAt', { nullable: false, nowMs: now.getTime() });
     }
-    if (input.maxActivations !== undefined) {
+    if (nextPlan === 'lifetime') {
+      patch.maxActivations = null;
+    } else if (input.maxActivations !== undefined) {
       const value = input.maxActivations === null ? null : Number(input.maxActivations);
       requireValue(value === null || (Number.isInteger(value) && value >= 1), 'invalid_request', 'Invalid activation limit.');
       patch.maxActivations = value;

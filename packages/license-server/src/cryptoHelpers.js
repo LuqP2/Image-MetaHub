@@ -19,6 +19,14 @@ export function normalizeLicenseKey(key) {
   return normalized;
 }
 
+export function normalizeImh2LicenseKey(key) {
+  const normalized = normalizeLicenseKey(key);
+  if (!/^IMH2[A-Z2-9]{32}$/.test(normalized)) {
+    throw new LicenseError('invalid_credentials', 'Invalid email or license key.', 401);
+  }
+  return normalized;
+}
+
 export async function sha256Hex(value, cryptoApi = globalThis.crypto) {
   const digest = await cryptoApi.subtle.digest('SHA-256', encoder.encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');

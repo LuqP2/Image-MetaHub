@@ -398,10 +398,28 @@ export const useLicenseStore = create<LicenseState>()(
   )
 );
 
+export const applyLicenseAuthorityStatus = (status: LicenseClientStatus) => {
+  if (status.authorized) {
+    useLicenseStore.setState(stateFromAuthority(status));
+    return;
+  }
+  useLicenseStore.setState((currentState) => (
+    currentState.licenseStatus === 'trial' || currentState.licenseStatus === 'expired'
+      ? { initialized: true, licenseMessage: status.message }
+      : {
+          ...clearStoredLicenseState(),
+          initialized: true,
+          licenseEmail: status.licenseEmail,
+          licenseMessage: status.message,
+        }
+  ));
+};
+
 // License data shares the settings file across every renderer. When another
 // window activates a trial or license, rehydrate this renderer so its Pro state
 // updates immediately instead of remaining stale until the app is reloaded.
 if (typeof window !== 'undefined') {
+  window.electronAPI?.onLicenseStatusChanged?.(applyLicenseAuthorityStatus);
   window.electronAPI?.onSettingsUpdated?.(() => {
     suppressElectronStorageWrites = true;
     void Promise.resolve(useLicenseStore.persist.rehydrate())

@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { verifyActivationCertificate } from '../../../utils/licenseCertificate.mjs';
 import { createEd25519TestKeys, testCrypto } from '../../../__tests__/licenseCryptoTestHelpers';
@@ -27,6 +26,12 @@ class InMemoryRepository {
   async findLicenseForActivation(keyHash: string, emailLookup: string) {
     return [...this.licenses.values()].find(
       (license) => license.keyHash === keyHash && license.emailLookup === emailLookup,
+    ) ?? null;
+  }
+
+  async findLicenseBySourceAndEmailLookup(source: string, emailLookup: string) {
+    return [...this.licenses.values()].find(
+      (license) => license.source === source && license.emailLookup === emailLookup,
     ) ?? null;
   }
 
@@ -96,7 +101,7 @@ describe('license server entitlement service', () => {
   });
 
   it('creates and activates a random lifetime license', async () => {
-    const created = await service.createLicense({ email: 'Buyer@Example.com', plan: 'lifetime' });
+    const created = await service.createLicense({ email: 'Buyer@Example.com', plan: 'lifetime', maxActivations: 1 });
     expect(created.licenseKey).toMatch(/^IMH2-(?:[A-Z2-9]{4}-){7}[A-Z2-9]{4}$/);
     expect(created.license.keyHash).not.toContain(created.licenseKey);
 
@@ -113,6 +118,12 @@ describe('license server entitlement service', () => {
     );
     expect(payload.plan).toBe('lifetime');
     expect(payload.expiresAt).toBeNull();
+    expect(created.license.maxActivations).toBeNull();
+    await expect(service.activate({
+      email: 'buyer@example.com',
+      licenseKey: created.licenseKey,
+      installationId: 'installation-two',
+    })).resolves.toHaveProperty('certificate');
   });
 
   it('rejects an invalid key and a wrong email with the same public error', async () => {
@@ -129,8 +140,13 @@ describe('license server entitlement service', () => {
     })).rejects.toMatchObject({ code: 'invalid_credentials', status: 401 });
   });
 
-  it('enforces activation limits while keeping the same installation idempotent', async () => {
-    const created = await service.createLicense({ email: 'buyer@example.com', plan: 'lifetime', maxActivations: 1 });
+  it('retains generic activation limits for time-bounded products', async () => {
+    const created = await service.createLicense({
+      email: 'buyer@example.com',
+      plan: 'monthly',
+      expiresAt: '2026-09-13T12:00:00.000Z',
+      maxActivations: 1,
+    });
     await service.activate({ email: 'buyer@example.com', licenseKey: created.licenseKey, installationId: 'installation-one' });
     await expect(service.activate({
       email: 'buyer@example.com',
@@ -145,7 +161,12 @@ describe('license server entitlement service', () => {
   });
 
   it('supports deactivation and reactivation', async () => {
-    const created = await service.createLicense({ email: 'buyer@example.com', plan: 'lifetime', maxActivations: 1 });
+    const created = await service.createLicense({
+      email: 'buyer@example.com',
+      plan: 'monthly',
+      expiresAt: '2026-09-13T12:00:00.000Z',
+      maxActivations: 1,
+    });
     const first = await service.activate({ email: 'buyer@example.com', licenseKey: created.licenseKey, installationId: 'installation-one' });
     await expect(service.deactivate({ certificate: first.certificate })).resolves.toEqual({ deactivated: true });
     await expect(service.activate({
@@ -187,31 +208,41 @@ describe('license server entitlement service', () => {
     await expect(service.refresh({ certificate: activation.certificate })).rejects.toMatchObject({ code: 'entitlement_expired' });
   });
 
-  it('imports legacy licenses idempotently with unlimited lifetime activation', async () => {
-    const legacyKey = 'ABCD-EFGH-IJKL-MNOP-QRST';
-    const first = await service.importLegacyLicense({ email: 'legacy@example.com', licenseKey: legacyKey });
-    const duplicate = await service.importLegacyLicense({ email: 'legacy@example.com', licenseKey: legacyKey });
+  it('reissues historical licenses idempotently as fresh unlimited IMH2 lifetime entitlements', async () => {
+    const reissuedKey = 'IMH2-2222-2222-2222-2222-2222-2222-2222-2222';
+    const first = await service.reissueHistoricalLicense({ email: 'legacy@example.com', licenseKey: reissuedKey });
+    const duplicate = await service.reissueHistoricalLicense({ email: 'legacy@example.com', licenseKey: reissuedKey });
     expect(first.created).toBe(true);
     expect(duplicate.created).toBe(false);
-    expect(first.license).toMatchObject({ plan: 'lifetime', source: 'legacy', maxActivations: null, expiresAt: null });
+    expect(first.license).toMatchObject({ plan: 'lifetime', source: 'legacy_reissue', maxActivations: null, expiresAt: null });
     await expect(service.activate({
       email: 'legacy@example.com',
-      licenseKey: legacyKey,
+      licenseKey: reissuedKey,
       installationId: 'legacy-installation',
     })).resolves.toHaveProperty('certificate');
+    await expect(service.activate({
+      email: 'legacy@example.com',
+      licenseKey: reissuedKey,
+      installationId: 'legacy-installation-two',
+    })).resolves.toHaveProperty('certificate');
+    await expect(service.reissueHistoricalLicense({
+      email: 'legacy@example.com',
+      licenseKey: 'IMH2-3333-3333-3333-3333-3333-3333-3333-3333',
+    })).rejects.toMatchObject({ code: 'license_conflict' });
   });
 
-  it('rejects a mathematically valid legacy HMAC key that was never imported', async () => {
-    const fabricated = createHmac('sha256', 'old-test-secret')
-      .update('not-issued@example.com')
-      .digest('hex')
-      .toUpperCase()
-      .slice(0, 20)
-      .match(/.{1,4}/g)!
-      .join('-');
+  it('requires the dedicated operation for the legacy_reissue source', async () => {
+    await expect(service.createLicense({
+      email: 'legacy@example.com',
+      plan: 'lifetime',
+      source: 'legacy_reissue',
+    })).rejects.toMatchObject({ code: 'invalid_request' });
+  });
+
+  it('rejects HMAC-era credentials at the public activation boundary', async () => {
     await expect(service.activate({
       email: 'not-issued@example.com',
-      licenseKey: fabricated,
+      licenseKey: 'ABCD-EFGH-IJKL-MNOP-QRST',
       installationId: 'fabricated-installation',
     })).rejects.toMatchObject({ code: 'invalid_credentials' });
   });

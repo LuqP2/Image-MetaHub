@@ -1,12 +1,13 @@
-import fs from 'node:fs/promises';
-
 const serverUrl = String(process.env.IMH_LICENSE_SERVER_URL || '').trim().replace(/\/$/, '');
 const adminToken = String(process.env.LICENSE_SERVER_ADMIN_TOKEN || '').trim();
 const email = String(process.env.LICENSE_EMAIL || process.argv[2] || '').trim();
 const plan = String(process.env.LICENSE_PLAN || process.argv[3] || 'lifetime').trim();
 const expiresAt = String(process.env.LICENSE_EXPIRES_AT || process.argv[4] || '').trim();
-const outputPath = String(process.env.LICENSE_OUTPUT_PATH || 'license.txt').trim();
 
+if (process.env.GITHUB_ACTIONS === 'true') {
+  console.error('Manual license issuance is local-only and must not run in GitHub Actions.');
+  process.exit(1);
+}
 if (!serverUrl || !adminToken || !email) {
   console.error('License server URL, admin token and purchaser email are required.');
   process.exit(1);
@@ -41,11 +42,10 @@ if (!response.ok || typeof data?.licenseKey !== 'string') {
   process.exit(1);
 }
 
-const artifact = [
+console.log([
+  'License created. Deliver these credentials through a private channel:',
   `Email: ${email.toLowerCase()}`,
   `License: ${data.licenseKey}`,
   `Plan: ${data.license?.plan ?? plan}`,
   `Expires: ${data.license?.expiresAt ?? 'never'}`,
-].join('\n');
-await fs.writeFile(outputPath, `${artifact}\n`, { encoding: 'utf8', mode: 0o600 });
-console.log('License created and written to the short-lived artifact.');
+].join('\n'));

@@ -127,11 +127,11 @@ In Electron, this store persists through the settings IPC bridge rather than pla
 
 **`store/useLicenseStore.ts`**
 
-Owns the offline license and trial state:
+Owns renderer-side trial state and the license status received from Electron main:
 
 * free / trial / expired / pro / lifetime status
-* 3-day trial activation
-* offline license key validation
+* 7-day trial activation
+* authority-derived paid status; license keys and signed activation certificates are validated by `electron/licenseManager.mjs`, not by the renderer
 
 **`store/useGenerationQueueStore.ts`**
 

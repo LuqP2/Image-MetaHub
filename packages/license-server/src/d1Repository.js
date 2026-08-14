@@ -73,6 +73,12 @@ export class D1LicenseRepository {
     ).bind(keyHash, emailLookupValue).first());
   }
 
+  async findLicenseBySourceAndEmailLookup(source, emailLookupValue) {
+    return mapLicense(await this.database.prepare(
+      'SELECT * FROM licenses WHERE source = ? AND email_lookup = ?',
+    ).bind(source, emailLookupValue).first());
+  }
+
   async updateLicense(id, patch) {
     const columns = {
       plan: 'plan',

@@ -32,7 +32,7 @@ async function requireAdmin(request, env) {
 }
 
 function createService(env) {
-  if (!env.DB || !env.EMAIL_LOOKUP_PEPPER || !env.LICENSE_SIGNING_PRIVATE_KEY || !env.LICENSE_SIGNING_PUBLIC_KEY) {
+  if (!env.DB || !env.EMAIL_LOOKUP_PEPPER || !env.LICENSE_SIGNING_PRIVATE_KEY || !env.LICENSE_SIGNING_PUBLIC_KEY || !env.LICENSE_SERVER_ADMIN_TOKEN) {
     throw new Error('License server environment is incomplete.');
   }
   return new LicenseService({
@@ -82,9 +82,18 @@ export async function handleRequest(request, env) {
         licenseKey: result.licenseKey,
       }, 201);
     }
-    if (request.method === 'POST' && url.pathname === '/v1/admin/licenses/import-legacy') {
-      const result = await service.importLegacyLicense(body);
-      return json({ created: result.created, licenseId: result.license.id }, result.created ? 201 : 200);
+    if (request.method === 'POST' && url.pathname === '/v1/admin/licenses/reissue-historical') {
+      const result = await service.reissueHistoricalLicense(body);
+      return json({
+        created: result.created,
+        license: {
+          id: result.license.id,
+          plan: result.license.plan,
+          source: result.license.source,
+          expiresAt: result.license.expiresAt,
+          maxActivations: result.license.maxActivations,
+        },
+      }, result.created ? 201 : 200);
     }
     const revokeMatch = url.pathname.match(/^\/v1\/admin\/licenses\/([^/]+)\/revoke$/);
     if (request.method === 'POST' && revokeMatch) {

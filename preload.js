@@ -187,6 +187,12 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('settings-updated', handler);
   },
 
+  onLicenseStatusChanged: (callback) => {
+    const handler = (_event, status) => callback(status);
+    ipcRenderer.on('license-status-changed', handler);
+    return () => ipcRenderer.removeListener('license-status-changed', handler);
+  },
+
   onImageViewerSnapshot: (callback) => {
     const handler = (_event, snapshot) => callback(snapshot);
     ipcRenderer.on('image-viewer-snapshot', handler);

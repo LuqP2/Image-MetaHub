@@ -3,8 +3,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { verifyActivationCertificate } from '../utils/licenseCertificate.mjs';
 
-const ACTIVATION_FILE_VERSION = 1;
+const ACTIVATION_FILE_VERSION = 2;
+const LEGACY_ACTIVATION_FILE_VERSION = 1;
 const NETWORK_TIMEOUT_MS = 10_000;
+const REFRESH_RETRY_MS = 15 * 60 * 1000;
+const SCHEDULER_SAFETY_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const CLOCK_ROLLBACK_TOLERANCE_MS = 5 * 60 * 1000;
+const IMH2_KEY_PATTERN = /^IMH2-(?:[A-Z2-9]{4}-){7}[A-Z2-9]{4}$/i;
 
 const emptyStatus = (overrides = {}) => ({
   authorized: false,
@@ -23,6 +28,17 @@ const normalizeDisplayEmail = (value) => {
   return normalized && normalized.length <= 320 ? normalized : null;
 };
 
+const comparableStatus = (status) => JSON.stringify({
+  authorized: status.authorized,
+  licenseStatus: status.licenseStatus,
+  plan: status.plan,
+  licenseEmail: status.licenseEmail,
+  expiresAt: status.expiresAt,
+  refreshAfter: status.refreshAfter,
+  migrationRequired: status.migrationRequired,
+  message: status.message,
+});
+
 export class LicenseManager {
   constructor({
     userDataPath,
@@ -34,9 +50,12 @@ export class LicenseManager {
     randomUUID = crypto.randomUUID,
     readSettings = async () => ({}),
     updateSettings = async () => {},
+    onStatusChanged = async () => {},
     appVersion = 'unknown',
     platform = process.platform,
     now = () => new Date(),
+    setTimer = setTimeout,
+    clearTimer = clearTimeout,
   }) {
     this.userDataPath = userDataPath;
     this.serverUrl = String(serverUrl || '').replace(/\/$/, '');
@@ -47,48 +66,64 @@ export class LicenseManager {
     this.randomUUID = randomUUID;
     this.readSettings = readSettings;
     this.updateSettings = updateSettings;
+    this.onStatusChanged = onStatusChanged;
     this.appVersion = appVersion;
     this.platform = platform;
     this.now = now;
+    this.setTimer = setTimer;
+    this.clearTimer = clearTimer;
     this.installationIdPath = path.join(userDataPath, 'license-installation-id');
     this.activationPath = path.join(userDataPath, 'license-activation.dat');
     this.installationId = null;
     this.certificate = null;
     this.licenseEmail = null;
+    this.lastKnownGoodTimeMs = 0;
+    this.clockRollbackDetected = false;
     this.lastMessage = null;
     this.migrationRequired = false;
+    this.schedulerTimer = null;
+    this.nextRefreshAttemptAtMs = 0;
+    this.lastPublishedStatus = null;
+    this.refreshPromise = null;
+    this.disposed = false;
   }
 
   async initialize() {
+    this.disposed = false;
     await fs.mkdir(this.userDataPath, { recursive: true });
     this.installationId = await this.loadOrCreateInstallationId();
     const settings = await this.readSettings();
-    const legacy = settings?.license && typeof settings.license === 'object' ? settings.license : {};
-    this.licenseEmail = normalizeDisplayEmail(legacy.licenseEmail);
-    this.certificate = await this.loadCertificate();
+    const storedLicense = settings?.license && typeof settings.license === 'object' ? settings.license : {};
+    this.licenseEmail = normalizeDisplayEmail(storedLicense.licenseEmail);
+    await this.loadActivationState();
 
     const cached = await this.getStatus();
-    if (cached.authorized) {
-      if (Date.parse(cached.refreshAfter) <= this.nowDate().getTime()) {
-        void this.refresh();
-      }
-      return cached;
+    if (!cached.authorized && storedLicense.licenseEmail && storedLicense.licenseKey) {
+      this.migrationRequired = true;
+      this.lastMessage = 'Historical licenses require a reissued IMH2 key. Existing license details were preserved.';
     }
 
-    if (legacy.licenseEmail && legacy.licenseKey) {
-      this.migrationRequired = true;
-      const result = await this.activate(legacy.licenseKey, legacy.licenseEmail, { migration: true });
-      if (!result.authorized && result.message === null) {
-        this.lastMessage = 'Connect to the internet once to migrate this license.';
-      }
-      return this.getStatus();
-    }
-    return cached;
+    const status = await this.getStatus();
+    if (status.authorized) await this.applyStatusToSettings(status);
+    await this.publishStatus(status, { force: true });
+    await this.scheduleNextCheck();
+    return status;
   }
 
   nowDate() {
     const value = this.now();
     return value instanceof Date ? value : new Date(value);
+  }
+
+  effectiveNowDate() {
+    const wallClockMs = this.nowDate().getTime();
+    if (!Number.isFinite(wallClockMs)) return new Date(this.lastKnownGoodTimeMs || Date.now());
+    this.clockRollbackDetected = this.lastKnownGoodTimeMs > 0
+      && wallClockMs + CLOCK_ROLLBACK_TOLERANCE_MS < this.lastKnownGoodTimeMs;
+    if (!this.clockRollbackDetected && wallClockMs > this.lastKnownGoodTimeMs) {
+      this.lastKnownGoodTimeMs = wallClockMs;
+    }
+    return new Date(Math.max(wallClockMs, this.lastKnownGoodTimeMs));
   }
 
   async loadOrCreateInstallationId() {
@@ -118,40 +153,51 @@ export class LicenseManager {
     }
   }
 
+  buildActivationEnvelope(certificate) {
+    const envelope = this.encryptionAvailable()
+      ? {
+          version: ACTIVATION_FILE_VERSION,
+          storage: 'safeStorage',
+          data: this.safeStorage.encryptString(certificate).toString('base64'),
+        }
+      : {
+          version: ACTIVATION_FILE_VERSION,
+          storage: 'plain',
+          data: certificate,
+        };
+    return {
+      ...envelope,
+      lastKnownGoodTime: new Date(this.lastKnownGoodTimeMs || this.nowDate().getTime()).toISOString(),
+    };
+  }
+
   async persistCertificate(certificate) {
-    let envelope;
-    if (this.encryptionAvailable()) {
-      envelope = {
-        version: ACTIVATION_FILE_VERSION,
-        storage: 'safeStorage',
-        data: this.safeStorage.encryptString(certificate).toString('base64'),
-      };
-    } else {
-      // The fallback contains only a signed certificate, never the license key.
-      // File permissions plus signature verification protect it from casual edits.
-      envelope = { version: ACTIVATION_FILE_VERSION, storage: 'plain', data: certificate };
-    }
-    await this.atomicWrite(this.activationPath, JSON.stringify(envelope));
+    this.effectiveNowDate();
+    await this.atomicWrite(this.activationPath, JSON.stringify(this.buildActivationEnvelope(certificate)));
     this.certificate = certificate;
   }
 
-  async loadCertificate() {
+  async loadActivationState() {
     try {
       const envelope = JSON.parse(await fs.readFile(this.activationPath, 'utf8'));
-      if (envelope?.version !== ACTIVATION_FILE_VERSION || typeof envelope.data !== 'string') return null;
-      if (envelope.storage === 'plain') return envelope.data;
-      if (envelope.storage === 'safeStorage' && this.encryptionAvailable()) {
-        return this.safeStorage.decryptString(Buffer.from(envelope.data, 'base64'));
+      if (![LEGACY_ACTIVATION_FILE_VERSION, ACTIVATION_FILE_VERSION].includes(envelope?.version) || typeof envelope.data !== 'string') {
+        return;
       }
-      return null;
+      const persistedTime = Date.parse(envelope.lastKnownGoodTime);
+      if (Number.isFinite(persistedTime)) this.lastKnownGoodTimeMs = persistedTime;
+      if (envelope.storage === 'plain') {
+        this.certificate = envelope.data;
+      } else if (envelope.storage === 'safeStorage' && this.encryptionAvailable()) {
+        this.certificate = this.safeStorage.decryptString(Buffer.from(envelope.data, 'base64'));
+      }
     } catch (error) {
       if (error?.code !== 'ENOENT') this.lastMessage = 'Saved activation could not be read.';
-      return null;
     }
   }
 
   async removeCertificate() {
     this.certificate = null;
+    this.lastKnownGoodTimeMs = 0;
     try {
       await fs.rm(this.activationPath, { force: true });
     } catch {
@@ -159,13 +205,17 @@ export class LicenseManager {
     }
   }
 
-  async verifiedPayload({ allowExpired = false } = {}) {
-    if (!this.certificate) return null;
+  getPreservedStateFileNames() {
+    return new Set([path.basename(this.installationIdPath), path.basename(this.activationPath)]);
+  }
+
+  async storedPayload() {
+    if (!this.certificate || !this.installationId) return null;
     try {
       return await verifyActivationCertificate(
         this.certificate,
         this.publicKey,
-        { installationId: this.installationId, now: this.nowDate(), allowExpired },
+        { installationId: this.installationId, now: this.effectiveNowDate(), allowExpired: true },
         this.cryptoApi,
       );
     } catch {
@@ -187,8 +237,20 @@ export class LicenseManager {
   }
 
   async getStatus() {
-    const payload = await this.verifiedPayload();
-    if (payload) return this.statusFromPayload(payload);
+    const payload = await this.storedPayload();
+    if (payload) {
+      const nowMs = this.effectiveNowDate().getTime();
+      if (payload.plan !== 'lifetime' && this.clockRollbackDetected) {
+        return emptyStatus({
+          licenseEmail: this.licenseEmail,
+          message: 'System clock rollback detected. Reconnect and refresh the license.',
+        });
+      }
+      if (payload.plan !== 'lifetime' && Date.parse(payload.expiresAt) <= nowMs) {
+        return emptyStatus({ licenseEmail: this.licenseEmail, message: 'License has expired.' });
+      }
+      return this.statusFromPayload(payload);
+    }
     return emptyStatus({
       licenseEmail: this.licenseEmail,
       migrationRequired: this.migrationRequired,
@@ -229,42 +291,122 @@ export class LicenseManager {
     }
   }
 
-  async applyAuthorizedSettings(payload) {
+  async applyStatusToSettings(status) {
     await this.updateSettings((currentSettings) => ({
       ...currentSettings,
       license: {
         ...(currentSettings?.license ?? {}),
-        licenseStatus: payload.plan === 'lifetime' ? 'lifetime' : 'pro',
-        licensePlan: payload.plan,
+        licenseStatus: status.authorized ? status.licenseStatus : 'free',
+        licensePlan: status.authorized ? status.plan : null,
         licenseEmail: this.licenseEmail,
-        licenseKey: null,
+        licenseKey: this.migrationRequired ? currentSettings?.license?.licenseKey ?? null : null,
         activationManagedByMain: true,
       },
     }));
   }
 
-  async activate(licenseKey, email, options = {}) {
+  async publishStatus(status, { force = false } = {}) {
+    const serialized = comparableStatus(status);
+    if (!force && serialized === this.lastPublishedStatus) return;
+    this.lastPublishedStatus = serialized;
+    try {
+      await this.onStatusChanged(status);
+    } catch {
+      // Renderer notification failure never changes licensing authority.
+    }
+  }
+
+  clearScheduledCheck() {
+    if (this.schedulerTimer !== null) {
+      this.clearTimer(this.schedulerTimer);
+      this.schedulerTimer = null;
+    }
+  }
+
+  async scheduleNextCheck() {
+    this.clearScheduledCheck();
+    if (this.disposed) return;
+    const payload = await this.storedPayload();
+    if (!payload) return;
+
+    const nowMs = this.effectiveNowDate().getTime();
+    const candidates = [nowMs + SCHEDULER_SAFETY_INTERVAL_MS];
+    const refreshAfterMs = Date.parse(payload.refreshAfter);
+    if (Number.isFinite(refreshAfterMs)) {
+      candidates.push(Math.max(refreshAfterMs, this.nextRefreshAttemptAtMs || 0));
+    }
+    if (payload.plan !== 'lifetime') {
+      const expiresAtMs = Date.parse(payload.expiresAt);
+      if (Number.isFinite(expiresAtMs) && expiresAtMs > nowMs) candidates.push(expiresAtMs);
+    }
+
+    const targetMs = Math.min(...candidates.filter(Number.isFinite));
+    const delay = Math.max(0, Math.min(targetMs - nowMs, SCHEDULER_SAFETY_INTERVAL_MS));
+    this.schedulerTimer = this.setTimer(() => this.handleScheduledCheck(), delay);
+    this.schedulerTimer?.unref?.();
+  }
+
+  async handleScheduledCheck() {
+    this.schedulerTimer = null;
+    if (this.disposed) return;
+    const payload = await this.storedPayload();
+    if (!payload) {
+      const status = await this.getStatus();
+      await this.publishStatus(status);
+      return;
+    }
+
+    const nowMs = this.effectiveNowDate().getTime();
+    const status = await this.getStatus();
+    if (!status.authorized) {
+      await this.applyStatusToSettings(status);
+      await this.publishStatus(status);
+      if (!this.nextRefreshAttemptAtMs) this.nextRefreshAttemptAtMs = nowMs + REFRESH_RETRY_MS;
+      if (nowMs >= this.nextRefreshAttemptAtMs) {
+        await this.refresh();
+        return;
+      }
+      await this.scheduleNextCheck();
+      return;
+    }
+
+    const refreshDue = Date.parse(payload.refreshAfter) <= nowMs
+      || (this.nextRefreshAttemptAtMs > 0 && this.nextRefreshAttemptAtMs <= nowMs);
+    if (refreshDue) {
+      await this.refresh();
+      return;
+    }
+
+    await this.persistCertificate(this.certificate);
+    await this.publishStatus(status);
+    await this.scheduleNextCheck();
+  }
+
+  async activate(licenseKey, email) {
     const normalizedEmail = normalizeDisplayEmail(email);
-    if (!normalizedEmail || typeof licenseKey !== 'string' || !licenseKey.trim()) {
+    const normalizedKey = typeof licenseKey === 'string' ? licenseKey.trim() : '';
+    if (!normalizedEmail || !IMH2_KEY_PATTERN.test(normalizedKey)) {
       this.lastMessage = 'Invalid license for this email.';
-      return this.getStatus();
+      const status = await this.getStatus();
+      await this.publishStatus(status);
+      return status;
     }
 
     const response = await this.request('/v1/activate', {
       email: normalizedEmail,
-      licenseKey: licenseKey.trim(),
+      licenseKey: normalizedKey,
       installationId: this.installationId,
       appVersion: this.appVersion,
       platform: this.platform,
     });
     if (!response.ok) {
-      this.migrationRequired = Boolean(options.migration);
-      this.lastMessage = response.transient && options.migration
-        ? 'Connect to the internet once to migrate this license.'
-        : response.transient
-          ? 'License service is temporarily unavailable.'
-          : 'Invalid license for this email.';
-      return this.getStatus();
+      this.lastMessage = response.transient
+        ? 'License service is temporarily unavailable.'
+        : 'Invalid license for this email.';
+      const status = await this.getStatus();
+      await this.publishStatus(status);
+      await this.scheduleNextCheck();
+      return status;
     }
 
     const certificate = response.data?.activation?.certificate;
@@ -272,31 +414,52 @@ export class LicenseManager {
       const payload = await verifyActivationCertificate(
         certificate,
         this.publicKey,
-        { installationId: this.installationId, now: this.nowDate() },
+        { installationId: this.installationId, now: this.effectiveNowDate() },
         this.cryptoApi,
       );
       await this.persistCertificate(certificate);
       this.licenseEmail = normalizedEmail;
       this.migrationRequired = false;
+      this.nextRefreshAttemptAtMs = 0;
       this.lastMessage = null;
-      await this.applyAuthorizedSettings(payload);
-      return this.statusFromPayload(payload);
+      const status = this.statusFromPayload(payload);
+      await this.applyStatusToSettings(status);
+      await this.publishStatus(status);
+      await this.scheduleNextCheck();
+      return status;
     } catch {
       this.lastMessage = 'License service returned an invalid activation.';
-      return this.getStatus();
+      const status = await this.getStatus();
+      await this.publishStatus(status);
+      return status;
     }
   }
 
   async refresh() {
-    const currentPayload = await this.verifiedPayload();
+    if (this.refreshPromise) return this.refreshPromise;
+    this.refreshPromise = this.performRefresh().finally(() => {
+      this.refreshPromise = null;
+    });
+    return this.refreshPromise;
+  }
+
+  async performRefresh() {
+    const currentPayload = await this.storedPayload();
     if (!currentPayload) return this.getStatus();
     const response = await this.request('/v1/refresh', { certificate: this.certificate });
     if (!response.ok) {
       if (['entitlement_revoked', 'entitlement_cancelled', 'entitlement_expired', 'activation_inactive'].includes(response.code)) {
         await this.removeCertificate();
         this.lastMessage = response.code === 'entitlement_expired' ? 'License has expired.' : 'License is not active.';
+      } else {
+        this.nextRefreshAttemptAtMs = this.effectiveNowDate().getTime() + REFRESH_RETRY_MS;
+        this.lastMessage = 'License service is temporarily unavailable.';
       }
-      return this.getStatus();
+      const status = await this.getStatus();
+      await this.applyStatusToSettings(status);
+      await this.publishStatus(status);
+      await this.scheduleNextCheck();
+      return status;
     }
 
     const certificate = response.data?.activation?.certificate;
@@ -304,23 +467,33 @@ export class LicenseManager {
       const payload = await verifyActivationCertificate(
         certificate,
         this.publicKey,
-        { installationId: this.installationId, now: this.nowDate() },
+        { installationId: this.installationId, now: this.effectiveNowDate() },
         this.cryptoApi,
       );
       await this.persistCertificate(certificate);
+      this.nextRefreshAttemptAtMs = 0;
       this.lastMessage = null;
-      await this.applyAuthorizedSettings(payload);
-      return this.statusFromPayload(payload);
+      const status = this.statusFromPayload(payload);
+      await this.applyStatusToSettings(status);
+      await this.publishStatus(status);
+      await this.scheduleNextCheck();
+      return status;
     } catch {
-      return this.statusFromPayload(currentPayload);
+      this.nextRefreshAttemptAtMs = this.effectiveNowDate().getTime() + REFRESH_RETRY_MS;
+      const status = await this.getStatus();
+      await this.publishStatus(status);
+      await this.scheduleNextCheck();
+      return status;
     }
   }
 
   async deactivate() {
-    const payload = await this.verifiedPayload({ allowExpired: true });
+    const payload = await this.storedPayload();
     if (!payload) {
       await this.removeCertificate();
-      return emptyStatus({ licenseEmail: this.licenseEmail });
+      const status = emptyStatus({ licenseEmail: this.licenseEmail });
+      await this.publishStatus(status);
+      return status;
     }
     const response = await this.request('/v1/deactivate', { certificate: this.certificate });
     if (!response.ok && response.transient) return this.getStatus();
@@ -330,18 +503,17 @@ export class LicenseManager {
     this.licenseEmail = null;
     this.lastMessage = null;
     this.migrationRequired = false;
-    await this.updateSettings((currentSettings) => ({
-      ...currentSettings,
-      license: {
-        ...(currentSettings?.license ?? {}),
-        licenseStatus: 'free',
-        licensePlan: null,
-        licenseEmail: null,
-        licenseKey: null,
-        activationManagedByMain: true,
-      },
-    }));
-    return emptyStatus();
+    this.nextRefreshAttemptAtMs = 0;
+    const status = emptyStatus();
+    await this.applyStatusToSettings(status);
+    await this.publishStatus(status);
+    this.clearScheduledCheck();
+    return status;
+  }
+
+  dispose() {
+    this.disposed = true;
+    this.clearScheduledCheck();
   }
 }
 

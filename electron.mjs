@@ -37,6 +37,8 @@ import { applyCacheTombstones, readCacheTombstonesFile } from './utils/cacheTomb
 import { buildImageMetaHubAvifExtension } from './utils/imageMetaHubAvifExtension.mjs';
 import { createLicenseManager } from './electron/licenseManager.mjs';
 import { licenseClientConfig } from './electron/licenseClientConfig.generated.mjs';
+import { resolveLicenseRuntimeConfig } from './electron/licenseRuntimeConfig.mjs';
+import { resetUserDataContents } from './electron/cacheReset.mjs';
 import {
   getModel3DSidecarPathIfPresent,
   renameModel3DWithSidecar,
@@ -50,7 +52,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Simple development check
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+const isDev = !app.isPackaged;
 const gpuMitigationEnabled = process.env.IMH_DISABLE_GPU === '1' || process.env.IMH_DISABLE_GPU === 'true';
 const mediaSafeModeEnabled = process.platform === 'darwin' && (process.env.IMH_MEDIA_SAFE_MODE === '1' || process.env.IMH_MEDIA_SAFE_MODE === 'true');
 const audioDiagnosticModeEnabled = process.platform === 'darwin' && (process.env.IMH_AUDIO_DIAGNOSTIC_MODE === '1' || process.env.IMH_AUDIO_DIAGNOSTIC_MODE === 'true');
@@ -2739,20 +2741,22 @@ app.whenReady().then(async () => {
   registerMediaProtocol();
   registerThumbnailProtocol();
 
+  const licenseRuntimeConfig = resolveLicenseRuntimeConfig({
+    isPackaged: app.isPackaged,
+    env: process.env,
+    bakedConfig: licenseClientConfig,
+  });
   licenseManager = createLicenseManager({
     userDataPath: app.getPath('userData'),
-    serverUrl: isDev && process.env.IMH_LICENSE_SERVER_URL
-      ? process.env.IMH_LICENSE_SERVER_URL
-      : licenseClientConfig.serverUrl,
-    publicKey: isDev && process.env.IMH_LICENSE_PUBLIC_KEY
-      ? process.env.IMH_LICENSE_PUBLIC_KEY
-      : licenseClientConfig.publicKey,
+    serverUrl: licenseRuntimeConfig.serverUrl,
+    publicKey: licenseRuntimeConfig.publicKey,
     safeStorage,
     readSettings,
     updateSettings: async (updater) => {
       await queueSettingsUpdate(updater);
       broadcastSettingsUpdated(null);
     },
+    onStatusChanged: (status) => broadcastLicenseStatusChanged(status),
     appVersion: app.getVersion(),
     platform: process.platform,
   });
@@ -2817,6 +2821,14 @@ function setupLicenseHandlers() {
   ipcMain.handle('license:activate', (_event, { key, email } = {}) => licenseManager.activate(key, email));
   ipcMain.handle('license:refresh', () => licenseManager.refresh());
   ipcMain.handle('license:deactivate', () => licenseManager.deactivate());
+}
+
+function broadcastLicenseStatusChanged(status) {
+  const targets = [mainWindow, ...detachedImageViewerWindows.values()];
+  for (const targetWindow of targets) {
+    if (!targetWindow || targetWindow.isDestroyed()) continue;
+    targetWindow.webContents.send('license-status-changed', status);
+  }
 }
 
 function setupImageViewerHandlers() {
@@ -4825,29 +4837,10 @@ function setupFileOperationHandlers() {
       const userDataDir = app.getPath('userData');
       const settingsBeforeDelete = await readSettings();
       const preservedLicense = options?.preserveLicense === true ? settingsBeforeDelete?.license : undefined;
-
-      try {
-        const files = await fs.readdir(userDataDir);
-
-        // Delete each file/folder inside userData
-        for (const file of files) {
-          const filePath = path.join(userDataDir, file);
-          const stat = await fs.stat(filePath);
-
-          if (stat.isDirectory()) {
-            // Recursively delete directories
-            await fs.rm(filePath, { recursive: true, force: true });
-          } else {
-            // Delete files
-            await fs.unlink(filePath);
-          }
-        }
-      } catch (error) {
-        // If userData doesn't exist or can't be read, that's fine (already clean)
-        if (error.code !== 'ENOENT') {
-          throw error;
-        }
-      }
+      const preservedFileNames = options?.preserveLicense === true
+        ? licenseManager.getPreservedStateFileNames()
+        : new Set();
+      await resetUserDataContents({ userDataDir, preservedFileNames });
 
       if (preservedLicense) {
         await saveSettings({ license: preservedLicense });
@@ -6606,6 +6599,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   // Stop all file watchers before quitting
   fileWatcher.stopAllWatchers();
+  licenseManager?.dispose?.();
 });
 
 app.on('activate', () => {

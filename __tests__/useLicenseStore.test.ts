@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TRIAL_DURATION_DAYS, useLicenseStore } from '../store/useLicenseStore';
+import { applyLicenseAuthorityStatus, TRIAL_DURATION_DAYS, useLicenseStore } from '../store/useLicenseStore';
 
 const resetLicenseState = () => {
   localStorage.clear();
@@ -176,6 +176,45 @@ describe('useLicenseStore trial policy', () => {
 describe('post-trial notice dismissal', () => {
   beforeEach(() => {
     resetLicenseState();
+  });
+
+  it('applies an authoritative runtime expiry update from Electron main', () => {
+    useLicenseStore.setState({ initialized: true, licenseStatus: 'pro', licensePlan: 'monthly' });
+    applyLicenseAuthorityStatus({
+      authorized: false,
+      licenseStatus: 'free',
+      plan: null,
+      licenseEmail: 'buyer@example.com',
+      expiresAt: null,
+      refreshAfter: null,
+      migrationRequired: false,
+      message: 'License has expired.',
+    });
+    expect(useLicenseStore.getState()).toMatchObject({
+      initialized: true,
+      licenseStatus: 'free',
+      licensePlan: null,
+      licenseMessage: 'License has expired.',
+    });
+  });
+
+  it('does not erase an active local trial when a paid activation attempt fails', () => {
+    useLicenseStore.setState({ initialized: true, licenseStatus: 'trial', trialActivated: true, trialStartDate: Date.now() });
+    applyLicenseAuthorityStatus({
+      authorized: false,
+      licenseStatus: 'free',
+      plan: null,
+      licenseEmail: null,
+      expiresAt: null,
+      refreshAfter: null,
+      migrationRequired: false,
+      message: 'Invalid license for this email.',
+    });
+    expect(useLicenseStore.getState()).toMatchObject({
+      licenseStatus: 'trial',
+      trialActivated: true,
+      licenseMessage: 'Invalid license for this email.',
+    });
   });
 
   it('records the dismissal without touching the license status', () => {

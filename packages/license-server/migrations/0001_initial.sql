@@ -6,7 +6,7 @@ CREATE TABLE licenses (
   email_lookup TEXT NOT NULL,
   plan TEXT NOT NULL CHECK (plan IN ('lifetime', 'monthly', 'annual')),
   status TEXT NOT NULL CHECK (status IN ('active', 'revoked', 'cancelled', 'expired')),
-  source TEXT NOT NULL CHECK (source IN ('legacy', 'manual', 'stripe')),
+  source TEXT NOT NULL CHECK (source IN ('legacy_reissue', 'manual', 'stripe')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   expires_at TEXT,
@@ -32,6 +32,8 @@ CREATE INDEX idx_licenses_stripe_customer_id
   ON licenses(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
 CREATE INDEX idx_licenses_external_reference
   ON licenses(external_reference) WHERE external_reference IS NOT NULL;
+CREATE UNIQUE INDEX idx_licenses_historical_reissue_email
+  ON licenses(email_lookup) WHERE source = 'legacy_reissue';
 
 CREATE TABLE activations (
   id TEXT PRIMARY KEY,

@@ -26,6 +26,9 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      LICENSE_D1_DATABASE_ID: ${{ vars.LICENSE_D1_DATABASE_ID }}
+      LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
+      LICENSE_SIGNING_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
       LICENSE_SIGNING_PRIVATE_KEY: ${{ secrets.LICENSE_SIGNING_PRIVATE_KEY }}
       LICENSE_SERVER_ADMIN_TOKEN: ${{ secrets.LICENSE_SERVER_ADMIN_TOKEN }}
       EMAIL_LOOKUP_PEPPER: ${{ secrets.EMAIL_LOOKUP_PEPPER }}
@@ -41,22 +44,13 @@ jobs:
       - name: Install Worker tooling
         run: npm install --ignore-scripts
 
-      - name: Validate deployment credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID LICENSE_SIGNING_PRIVATE_KEY LICENSE_SERVER_ADMIN_TOKEN EMAIL_LOOKUP_PEPPER; do
-            test -n "${!name:-}" || { echo "$name is missing." >&2; exit 1; }
-          done
+      - name: Validate all production configuration before deployment
+        run: node ../../scripts/prepareLicenseServerDeployment.mjs wrangler.production.generated.json
 
-      - name: Apply D1 migrations
-        if: ${{ inputs.apply_migrations }}
-        run: npx wrangler d1 migrations apply image-metahub-licenses --remote
+      - name: Validate Worker bundle without deploying
+        run: npx wrangler deploy --dry-run --config wrangler.production.generated.json
 
-      - name: Deploy Worker code
-        run: npx wrangler deploy
-
-      - name: Configure Worker secrets without logging values
+      - name: Configure required Worker secrets
         shell: bash
         run: |
           set -euo pipefail
@@ -67,4 +61,19 @@ jobs:
             --arg emailPepper "$EMAIL_LOOKUP_PEPPER" \
             '{LICENSE_SIGNING_PRIVATE_KEY: $signingKey, LICENSE_SERVER_ADMIN_TOKEN: $adminToken, EMAIL_LOOKUP_PEPPER: $emailPepper}' \
             > .production-secrets.json
-          npx wrangler secret bulk .production-secrets.json
+          npx wrangler secret bulk .production-secrets.json --config wrangler.production.generated.json
+
+      - name: Apply D1 migrations
+        if: ${{ inputs.apply_migrations }}
+        run: npx wrangler d1 migrations apply image-metahub-licenses --remote --config wrangler.production.generated.json
+
+      - name: Deploy validated Worker code and public configuration
+        run: npx wrangler deploy --config wrangler.production.generated.json
+
+      - name: Mandatory post-deploy entitlement smoke test
+        run: node ../../scripts/smokeTestLicenseServer.mjs
+
+      - name: Remove generated deployment configuration
+        if: ${{ always() }}
+        shell: bash
+        run: rm -f wrangler.production.generated.json .production-secrets.json
