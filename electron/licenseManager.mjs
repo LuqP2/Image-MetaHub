@@ -389,7 +389,7 @@ export class LicenseManager {
       this.lastMessage = 'Invalid license for this email.';
       const status = await this.getStatus();
       await this.publishStatus(status);
-      return status;
+      return { activated: false, status };
     }
 
     const response = await this.request('/v1/activate', {
@@ -406,7 +406,7 @@ export class LicenseManager {
       const status = await this.getStatus();
       await this.publishStatus(status);
       await this.scheduleNextCheck();
-      return status;
+      return { activated: false, status };
     }
 
     const certificate = response.data?.activation?.certificate;
@@ -426,12 +426,12 @@ export class LicenseManager {
       await this.applyStatusToSettings(status);
       await this.publishStatus(status);
       await this.scheduleNextCheck();
-      return status;
+      return { activated: true, status };
     } catch {
       this.lastMessage = 'License service returned an invalid activation.';
       const status = await this.getStatus();
       await this.publishStatus(status);
-      return status;
+      return { activated: false, status };
     }
   }
 

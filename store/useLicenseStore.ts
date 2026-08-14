@@ -115,6 +115,38 @@ const checkIfTrialExpired = (trialStartDate: number | null): boolean => {
   return now > trialEnd;
 };
 
+export const mergePersistedLicenseState = (
+  persistedState: unknown,
+  currentState: LicenseState,
+): LicenseState => {
+  const persisted = (persistedState ?? {}) as Partial<LicenseState>;
+  const persistedMigrationStatus = persisted.licenseStatus === 'trial' || persisted.licenseStatus === 'expired'
+    ? persisted.licenseStatus
+    : 'free';
+
+  if (currentState.initialized) {
+    return {
+      ...currentState,
+      ...persisted,
+      initialized: true,
+      licenseStatus: currentState.licenseStatus,
+      licenseKey: currentState.licenseKey,
+      licenseEmail: currentState.licenseEmail,
+      licensePlan: currentState.licensePlan,
+      licenseMessage: currentState.licenseMessage,
+    };
+  }
+
+  return {
+    ...currentState,
+    ...persisted,
+    initialized: false,
+    licenseStatus: persistedMigrationStatus,
+    licensePlan: null,
+    licenseMessage: null,
+  };
+};
+
 export const useLicenseStore = create<LicenseState>()(
   persist(
     (set, get) => ({
@@ -176,9 +208,12 @@ export const useLicenseStore = create<LicenseState>()(
               return;
             }
 
+            const localTrialStatus = state.licenseStatus === 'trial' || state.licenseStatus === 'expired'
+              ? state.licenseStatus
+              : 'free';
             set({
               initialized: true,
-              licenseStatus: 'free',
+              licenseStatus: localTrialStatus,
               licenseKey: authorityStatus.migrationRequired ? state.licenseKey : null,
               licenseEmail: authorityStatus.licenseEmail ?? (authorityStatus.migrationRequired ? state.licenseEmail : null),
               licensePlan: null,
@@ -309,11 +344,10 @@ export const useLicenseStore = create<LicenseState>()(
 
         try {
           const result = await window.electronAPI.activateLicense(key, email);
-          if (!result.authorized) {
-            set({ licenseMessage: result.message });
+          applyLicenseAuthorityStatus(result.status);
+          if (!result.activated) {
             return false;
           }
-          set(stateFromAuthority(result));
           return true;
         } catch {
           set({ licenseMessage: 'License service is temporarily unavailable.' });
@@ -386,14 +420,7 @@ export const useLicenseStore = create<LicenseState>()(
         trialActivated: state.trialActivated,
         trialExpiredNoticeDismissed: state.trialExpiredNoticeDismissed,
       }),
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        ...(persistedState as Partial<LicenseState>),
-        initialized: false,
-        licenseStatus: 'free',
-        licensePlan: null,
-        licenseMessage: null,
-      }),
+      merge: mergePersistedLicenseState,
     }
   )
 );

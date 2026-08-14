@@ -70,7 +70,10 @@ describe('Electron license manager', () => {
       now: () => initialNow,
     });
     await first.initialize();
-    expect(await first.activate(validLicenseKey, 'buyer@example.com')).toMatchObject({ authorized: true, licenseStatus: 'lifetime' });
+    expect(await first.activate(validLicenseKey, 'buyer@example.com')).toMatchObject({
+      activated: true,
+      status: { authorized: true, licenseStatus: 'lifetime' },
+    });
     first.dispose();
 
     const reloaded = new LicenseManager({
@@ -181,7 +184,10 @@ describe('Electron license manager', () => {
       },
     });
     await manager.initialize();
-    expect(await manager.activate(validLicenseKey, `${plan}@example.com`)).toMatchObject({ authorized: true, licenseStatus: 'pro' });
+    expect(await manager.activate(validLicenseKey, `${plan}@example.com`)).toMatchObject({
+      activated: true,
+      status: { authorized: true, licenseStatus: 'pro' },
+    });
     expect(scheduledCallback).not.toBeNull();
     expect(scheduledDelays.at(-1)).toBe(60 * 60 * 1000);
 
@@ -221,6 +227,48 @@ describe('Electron license manager', () => {
     await manager.initialize();
     await manager.activate(validLicenseKey, 'lifetime@example.com');
     expect(await manager.refresh()).toMatchObject({ authorized: true, licenseStatus: 'lifetime' });
+    manager.dispose();
+  });
+
+  it('reports a failed replacement activation separately from the cached entitlement', async () => {
+    const directory = await makeDirectory();
+    let calls = 0;
+    const manager = new LicenseManager({
+      userDataPath: directory,
+      serverUrl: 'https://licenses.example.test',
+      publicKey: keys.publicKey,
+      safeStorage: plainStorage,
+      cryptoApi: testCrypto,
+      randomUUID: () => 'replacement-installation',
+      now: () => initialNow,
+      fetchImpl: async (_url: string, init: RequestInit) => {
+        calls += 1;
+        if (calls === 1) {
+          const request = JSON.parse(String(init.body));
+          return new Response(JSON.stringify({ activation: { certificate: await certificate({ installationId: request.installationId }) } }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify({ error: { code: 'activation_limit', message: 'Activation limit reached.' } }), {
+          status: 409,
+          headers: { 'content-type': 'application/json' },
+        });
+      },
+    });
+    await manager.initialize();
+    expect((await manager.activate(validLicenseKey, 'buyer@example.com')).activated).toBe(true);
+
+    const replacement = await manager.activate(validLicenseKey, 'other@example.com');
+
+    expect(replacement).toMatchObject({
+      activated: false,
+      status: {
+        authorized: true,
+        licenseStatus: 'lifetime',
+        message: 'Invalid license for this email.',
+      },
+    });
     manager.dispose();
   });
 

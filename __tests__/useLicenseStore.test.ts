@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { applyLicenseAuthorityStatus, TRIAL_DURATION_DAYS, useLicenseStore } from '../store/useLicenseStore';
+import { applyLicenseAuthorityStatus, mergePersistedLicenseState, TRIAL_DURATION_DAYS, useLicenseStore } from '../store/useLicenseStore';
 
 const resetLicenseState = () => {
   localStorage.clear();
@@ -27,6 +27,53 @@ describe('useLicenseStore trial policy', () => {
 
   it('uses a 7-day trial duration', () => {
     expect(TRIAL_DURATION_DAYS).toBe(7);
+  });
+
+  it('preserves an initialized authoritative status across arbitrary rehydration', () => {
+    const current = useLicenseStore.getState();
+    const merged = mergePersistedLicenseState({ licenseStatus: 'free', licensePlan: null }, {
+      ...current,
+      initialized: true,
+      licenseStatus: 'pro',
+      licenseEmail: 'buyer@example.com',
+      licensePlan: 'monthly',
+    });
+
+    expect(merged).toMatchObject({
+      initialized: true,
+      licenseStatus: 'pro',
+      licenseEmail: 'buyer@example.com',
+      licensePlan: 'monthly',
+    });
+  });
+
+  it.each(['trial', 'expired'] as const)('preserves persisted %s status for pending migrations', (licenseStatus) => {
+    const merged = mergePersistedLicenseState({
+      licenseStatus,
+      trialActivated: true,
+      trialStartDate: Date.now() - 24 * 60 * 60 * 1000,
+      trialDurationV2ResetApplied: false,
+    }, useLicenseStore.getState());
+
+    expect(merged).toMatchObject({
+      initialized: false,
+      licenseStatus,
+      trialActivated: true,
+      trialDurationV2ResetApplied: false,
+    });
+  });
+
+  it('does not trust a paid status from persisted renderer state', () => {
+    const merged = mergePersistedLicenseState({
+      licenseStatus: 'pro',
+      licensePlan: 'monthly',
+    }, useLicenseStore.getState());
+
+    expect(merged).toMatchObject({
+      initialized: false,
+      licenseStatus: 'free',
+      licensePlan: null,
+    });
   });
 
   it('resets previously expired trials so users can start a fresh trial', async () => {
