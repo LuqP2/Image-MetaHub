@@ -74,7 +74,10 @@ describe('cache reset licensing preservation', () => {
       fetchImpl: context.fetchImpl,
     });
     await first.initialize();
-    expect(await first.activate(licenseKey, 'buyer@example.com')).toMatchObject({ authorized: true });
+    expect(await first.activate(licenseKey, 'buyer@example.com')).toMatchObject({
+      activated: true,
+      status: { authorized: true },
+    });
     const settingsBeforeReset = await context.readSettings();
     expect(settingsBeforeReset.license.licenseKey).toBeNull();
     await fs.writeFile(path.join(context.directory, 'large-cache.json'), '{}', 'utf8');
