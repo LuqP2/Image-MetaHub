@@ -221,6 +221,7 @@ const electronAPI = {
   getTheme: () => ipcRenderer.invoke('get-theme'),
   getZoomFactor: () => ipcRenderer.invoke('get-zoom-factor'),
   trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
+  confirmPermanentDelete: (args) => ipcRenderer.invoke('confirm-permanent-delete', args),
   renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),
   updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),

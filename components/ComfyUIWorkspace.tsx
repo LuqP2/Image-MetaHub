@@ -975,7 +975,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       }
     }
 
-    const results = await Promise.all(targetImages.map((candidate) => FileOperations.deleteFile(candidate)));
+    const results = await FileOperations.deleteFiles(targetImages);
     const deletedIds = targetImages
       .filter((_, index) => results[index]?.success)
       .map((candidate) => candidate.id);

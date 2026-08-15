@@ -42,6 +42,10 @@ import { resolveLicenseRuntimeConfig } from './electron/licenseRuntimeConfig.mjs
 import { resetUserDataContents } from './electron/cacheReset.mjs';
 import { openAuthorizedCacheDirectory } from './electron/cacheDirectory.mjs';
 import { appendEmbeddingSegmentAtOffset } from './electron/embeddingSegmentFile.mjs';
+import {
+  createPermanentDeleteGrantStore,
+  requestPermanentDeleteConfirmation,
+} from './electron/permanentDeletePolicy.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
 import {
   buildEmbeddingModelDownloadUrl,
@@ -66,6 +70,9 @@ const __dirname = path.dirname(__filename);
 const desktopRuntime = resolvePortableRuntime();
 const LATEST_RELEASE_URL = 'https://github.com/LuqP2/Image-MetaHub/releases/latest';
 const PORTABLE_UPDATE_ERROR = 'PORTABLE_UPDATE_UNSUPPORTED';
+const permanentDeleteGrants = createPermanentDeleteGrantStore({
+  createToken: () => crypto.randomUUID(),
+});
 
 // Simple development check
 const isDev = !app.isPackaged;
@@ -5434,6 +5441,7 @@ function setupFileOperationHandlers() {
 
   // Handle file deletion (move to trash)
   ipcMain.handle('trash-file', async (event, filePath) => {
+    let trashAttempted = false;
     try {
       if (!isPathAllowed(filePath)) {
         console.error('SECURITY VIOLATION: Attempted to trash file outside of allowed directories.');
@@ -5448,12 +5456,126 @@ function setupFileOperationHandlers() {
           filePath,
         );
       } else {
+        trashAttempted = true;
         await shell.trashItem(filePath);
       }
       return { success: true };
     } catch (error) {
       console.error('Error trashing file:', error);
-      return { success: false, error: error.message };
+      if (!trashAttempted && error?.trashAttempted !== true) {
+        return { success: false, error: error.message };
+      }
+      const remainingPaths = Array.isArray(error?.remainingPaths)
+        ? error.remainingPaths
+        : [filePath];
+      const safeRemainingPaths = remainingPaths.filter((targetPath) => isPathAllowed(targetPath));
+      if (safeRemainingPaths.length !== remainingPaths.length || safeRemainingPaths.length === 0) {
+        return { success: false, error: error.message };
+      }
+      let targetFiles;
+      try {
+        targetFiles = await Promise.all(safeRemainingPaths.map(async (targetPath) => {
+          const stats = await fs.lstat(targetPath);
+          return { path: targetPath, dev: stats.dev, ino: stats.ino };
+        }));
+      } catch (identityError) {
+        return {
+          success: false,
+          error: `${error.message}. The preserved file scope could not be verified (${identityError.message}).`,
+        };
+      }
+      const permanentDeleteToken = permanentDeleteGrants.issue(
+        event.sender.id,
+        filePath,
+        targetFiles,
+        error?.primaryDeleted === true,
+      );
+      return {
+        success: false,
+        error: error.message,
+        permanentDeleteToken,
+        primaryDeleted: error?.primaryDeleted === true,
+        remainingFileCount: safeRemainingPaths.length,
+      };
+    }
+  });
+
+  ipcMain.handle('confirm-permanent-delete', async (event, { tokens } = {}) => {
+    try {
+      const grants = permanentDeleteGrants.inspect(tokens, event.sender.id);
+      const targetPaths = [...new Set(grants.flatMap(
+        (grant) => grant.targetFiles.map((target) => target.path),
+      ))];
+      if (targetPaths.some((targetPath) => !isPathAllowed(targetPath))) {
+        throw new Error('Permanent-delete scope is no longer allowed');
+      }
+      const scopeLabel = grants.length === 1
+        ? path.basename(grants[0].requestedPath)
+        : `${grants.length} selected items (${targetPaths.length} files)`;
+      const parentWindow = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
+      const showMessageBox = (options) => parentWindow
+        ? dialog.showMessageBox(parentWindow, options)
+        : dialog.showMessageBox(options);
+      const confirmed = await requestPermanentDeleteConfirmation(showMessageBox, {
+        itemCount: grants.length,
+        fileCount: targetPaths.length,
+        scopeLabel,
+      });
+      if (!confirmed) {
+        return { success: false, cancelled: true, deletedTokens: [], failedTokens: [] };
+      }
+
+      const authorizedGrants = permanentDeleteGrants.consume(tokens, event.sender.id);
+      const deletedTokens = [];
+      const failedTokens = [];
+      const errors = [];
+      for (const grant of authorizedGrants) {
+        let failed = false;
+        for (const target of grant.targetFiles) {
+          try {
+            const currentStats = await fs.lstat(target.path);
+            if (currentStats.dev !== target.dev || currentStats.ino !== target.ino) {
+              throw new Error('File changed after the Recycle Bin failure');
+            }
+            await fs.unlink(target.path);
+          } catch (error) {
+            if (error?.code !== 'ENOENT') {
+              failed = true;
+              errors.push(`${path.basename(target.path)}: ${error.message}`);
+            }
+          }
+        }
+        (failed ? failedTokens : deletedTokens).push(grant.token);
+      }
+      if (failedTokens.length > 0) {
+        await showMessageBox({
+          type: 'error',
+          title: 'Permanent deletion failed',
+          message: failedTokens.length === 1
+            ? 'One item could not be permanently deleted.'
+            : `${failedTokens.length} items could not be permanently deleted.`,
+          detail: `Files that could not be deleted were preserved.\n\n${errors.join('\n')}`,
+          buttons: ['OK'],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        });
+      }
+      return {
+        success: failedTokens.length === 0,
+        cancelled: false,
+        deletedTokens,
+        failedTokens,
+        error: errors.length > 0 ? errors.join('; ') : undefined,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        cancelled: false,
+        deletedTokens: [],
+        failedTokens: Array.isArray(tokens) ? tokens : [],
+        error: error.message,
+      };
     }
   });
 

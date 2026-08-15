@@ -3040,7 +3040,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     const { skipDeleteConfirmation } = useSettingsStore.getState();
-    if (skipDeleteConfirmation || window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
+    if (skipDeleteConfirmation || window.confirm('Move this image to the Recycle Bin?')) {
       const idToDelete = image.id;
       const imageToDelete = image;
       const sourceDirectory = directories.find((directory) => directory.id === imageToDelete.directoryId);
@@ -3048,18 +3048,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       const hasMoreImages = totalImages > 1;
       
-      if (hasMoreImages) {
-        if (currentIndex < totalImages - 1) {
-          onNavigateNext?.();
-        } else {
-          onNavigatePrevious?.();
-        }
-      }
-
       const result = onRequestDelete
         ? await onRequestDelete(imageToDelete.id)
         : await FileOperations.deleteFile(imageToDelete);
       if (result.success) {
+        if (hasMoreImages) {
+          if (currentIndex < totalImages - 1) {
+            onNavigateNext?.();
+          } else {
+            onNavigatePrevious?.();
+          }
+        }
         if (!onRequestDelete && !shouldAwaitWatcherRemoval) {
           onImageDeleted?.(idToDelete);
         }

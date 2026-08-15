@@ -88,7 +88,7 @@ export function useImageSelection() {
 
         try {
             if (!skipDeleteConfirmation) {
-                const confirmMessage = `Are you sure you want to delete ${selectedImages.size} image(s)?`;
+                const confirmMessage = `Move ${selectedImages.size} selected image(s) to the Recycle Bin?`;
                 if (!window.confirm(confirmMessage)) return;
             }
 
@@ -99,20 +99,16 @@ export function useImageSelection() {
             // watcher: removeImages is a no-op when the ids are already gone (see
             // useImageStore), so removing locally right away and letting a later
             // watcher event land as a harmless no-op is strictly faster than waiting.
-            const deletions = await Promise.all(imagesToDelete.map(async (imageId) => {
-                const image = imageById.get(imageId);
-                if (!image) return null;
-                try {
-                    const result = await FileOperations.deleteFile(image);
-                    if (result.success) {
-                        return imageId;
-                    }
-                    setError(`Failed to delete ${image.name}: ${result.error}`);
-                } catch (err) {
-                    setError(`Error deleting ${image.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
-                }
+            const validTargets = imagesToDelete
+                .map((imageId) => imageById.get(imageId))
+                .filter((image): image is IndexedImage => Boolean(image));
+            const results = await FileOperations.deleteFiles(validTargets);
+            const deletions = validTargets.map((image, index) => {
+                const result = results[index];
+                if (result?.success) return image.id;
+                setError(`Failed to delete ${image.name}: ${result?.error || 'Unknown error'}`);
                 return null;
-            }));
+            });
 
             const deletedIds = deletions.filter((id): id is string => id !== null);
             if (deletedIds.length > 0) {
@@ -144,13 +140,11 @@ export function useImageSelection() {
                         .removeCachedImages(directory.path, directory.name, ids, [], scanSubfolders)
                         .catch((err) => console.error('Failed to update cache after delete:', err));
                 }
-            } else {
-                clearImageSelection();
             }
         } finally {
             isDeletingSelectedImages = false;
         }
-    }, [removeImages, setError, clearImageSelection]);
+    }, [removeImages, setError]);
 
     return { handleImageSelection, handleDeleteSelectedImages, clearSelection: clearImageSelection };
 }

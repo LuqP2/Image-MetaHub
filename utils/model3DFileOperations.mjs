@@ -58,21 +58,23 @@ const createExportStagingPath = (destinationPath, label) =>
 
 export const trashModel3DWithSidecar = async (fsApi, trashItem, modelPath) => {
   const sidecarPath = await getModel3DSidecarPathIfPresent(fsApi, modelPath);
-  await trashItem(modelPath);
+  try {
+    await trashItem(modelPath);
+  } catch (error) {
+    throw Object.assign(new Error(getErrorMessage(error)), {
+      remainingPaths: [modelPath, ...(sidecarPath ? [sidecarPath] : [])],
+      primaryDeleted: false,
+      trashAttempted: true,
+    });
+  }
   if (!sidecarPath) return;
 
   try {
     await trashItem(sidecarPath);
   } catch (sidecarError) {
-    try {
-      await removeIfPresent(fsApi, sidecarPath);
-    } catch (cleanupError) {
-      throw new Error(
-        `The model was moved to trash, but its metadata sidecar could not be trashed or removed (${getErrorMessage(cleanupError)}).`,
-      );
-    }
-    throw new Error(
-      `The model was moved to trash, but its metadata sidecar could not be moved to trash and was permanently removed (${getErrorMessage(sidecarError)}).`,
+    throw Object.assign(
+      new Error(`The model was moved to trash, but its metadata sidecar could not be moved (${getErrorMessage(sidecarError)}).`),
+      { remainingPaths: [sidecarPath], primaryDeleted: true, trashAttempted: true },
     );
   }
 };
