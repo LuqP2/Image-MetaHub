@@ -60,6 +60,7 @@ describe('EmbeddingIndex.flush', () => {
     const writeEmbeddingFile = vi.fn().mockResolvedValue({ success: true });
 
     window.electronAPI = {
+      getEmbeddingCacheIdentity: vi.fn().mockResolvedValue({ success: true, identity: 'cache-root' }),
       readEmbeddingFile: vi.fn(async ({ fileName }: { fileName: string }) => {
         if (fileName === manifestFileName(cacheId)) {
           return { success: true, data: seedManifest };
@@ -93,11 +94,19 @@ describe('EmbeddingIndex.flush', () => {
     expect(index.stats.totalRows).toBe(SEGMENT_ROWS);
     expect(appendEmbeddingSegment).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ fileName: segmentFileName(cacheId, 0) })
+      expect.objectContaining({
+        fileName: segmentFileName(cacheId, 0),
+        expectedOffset: (SEGMENT_ROWS - 2) * (dim + 4),
+        cacheRootIdentity: 'cache-root',
+      })
     );
     expect(appendEmbeddingSegment).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ fileName: segmentFileName(cacheId, 1) })
+      expect.objectContaining({
+        fileName: segmentFileName(cacheId, 1),
+        expectedOffset: 0,
+        cacheRootIdentity: 'cache-root',
+      })
     );
 
     // Retry: the two vectors that never made it to disk are still buffered.
@@ -108,7 +117,11 @@ describe('EmbeddingIndex.flush', () => {
     // not segment 0 again — which is what a stale totalRows would cause.
     expect(appendEmbeddingSegment).toHaveBeenNthCalledWith(
       3,
-      expect.objectContaining({ fileName: segmentFileName(cacheId, 1) })
+      expect.objectContaining({
+        fileName: segmentFileName(cacheId, 1),
+        expectedOffset: 0,
+        cacheRootIdentity: 'cache-root',
+      })
     );
     expect(index.stats.totalRows).toBe(SEGMENT_ROWS + 2);
   });

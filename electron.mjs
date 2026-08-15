@@ -40,6 +40,7 @@ import { licenseClientConfig } from './electron/licenseClientConfig.generated.mj
 import { resolveLicenseRuntimeConfig } from './electron/licenseRuntimeConfig.mjs';
 import { resetUserDataContents } from './electron/cacheReset.mjs';
 import { openAuthorizedCacheDirectory } from './electron/cacheDirectory.mjs';
+import { appendEmbeddingSegmentAtOffset } from './electron/embeddingSegmentFile.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
 import {
   buildEmbeddingModelDownloadUrl,
@@ -4580,6 +4581,22 @@ function setupFileOperationHandlers() {
     return cacheDir;
   };
 
+  // Each opened renderer index is bound to the root from which its manifest
+  // was read. Keep issued roots allowlisted so a later Settings change cannot
+  // redirect that index's writes into a different cache tree.
+  const issuedEmbeddingCacheRoots = new Set();
+  const issueEmbeddingCacheRoot = async () => {
+    const cacheDir = path.resolve(await getEmbeddingCacheDir());
+    issuedEmbeddingCacheRoots.add(cacheDir);
+    return cacheDir;
+  };
+  const resolveIssuedEmbeddingCacheRoot = (cacheRootIdentity) => {
+    if (typeof cacheRootIdentity !== 'string' || !issuedEmbeddingCacheRoots.has(cacheRootIdentity)) {
+      throw new Error('Embedding cache location is missing or no longer authorized');
+    }
+    return cacheRootIdentity;
+  };
+
   const toSafeCacheId = (cacheId) => String(cacheId ?? '').replace(/[^a-zA-Z0-9-_]/g, '_');
 
   // Sidecar names are built in the renderer from a whitelisted pattern; reject
@@ -4587,16 +4604,24 @@ function setupFileOperationHandlers() {
   const isSafeEmbeddingFileName = (fileName) =>
     typeof fileName === 'string' && /^[a-zA-Z0-9-_]+_emb_(manifest\.json|rows_\d+\.json|seg_\d+\.bin)$/.test(fileName);
 
-  const resolveEmbeddingFilePath = async (fileName) => {
+  const resolveEmbeddingFilePath = (fileName, cacheRootIdentity) => {
     if (!isSafeEmbeddingFileName(fileName)) {
       throw new Error(`Rejected embedding sidecar name: ${fileName}`);
     }
-    return path.join(await getEmbeddingCacheDir(), fileName);
+    return path.join(resolveIssuedEmbeddingCacheRoot(cacheRootIdentity), fileName);
   };
 
-  ipcMain.handle('read-embedding-file', async (event, { fileName, binary = false } = {}) => {
+  ipcMain.handle('get-embedding-cache-identity', async () => {
     try {
-      const filePath = await resolveEmbeddingFilePath(fileName);
+      return { success: true, identity: await issueEmbeddingCacheRoot() };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('read-embedding-file', async (event, { fileName, binary = false, cacheRootIdentity } = {}) => {
+    try {
+      const filePath = resolveEmbeddingFilePath(fileName, cacheRootIdentity);
       const contents = await fs.readFile(filePath).catch((error) => {
         if (error.code === 'ENOENT') return null;
         throw error;
@@ -4619,9 +4644,9 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('write-embedding-file', async (event, { fileName, data, binary = false } = {}) => {
+  ipcMain.handle('write-embedding-file', async (event, { fileName, data, binary = false, cacheRootIdentity } = {}) => {
     try {
-      const filePath = await resolveEmbeddingFilePath(fileName);
+      const filePath = resolveEmbeddingFilePath(fileName, cacheRootIdentity);
       const payload = binary ? Buffer.from(data) : Buffer.from(JSON.stringify(data), 'utf8');
       // Temp+rename so a crash mid-write cannot leave a half-parsed manifest.
       const tempPath = `${filePath}.tmp`;
@@ -4635,21 +4660,20 @@ function setupFileOperationHandlers() {
 
   // Appending is the hot path during backfill: segments grow one flush at a
   // time and rewriting a 4MB segment per flush would dominate the job's IO.
-  ipcMain.handle('append-embedding-segment', async (event, { fileName, data } = {}) => {
+  ipcMain.handle('append-embedding-segment', async (event, { fileName, data, expectedOffset, cacheRootIdentity } = {}) => {
     try {
-      const filePath = await resolveEmbeddingFilePath(fileName);
-      await fs.appendFile(filePath, Buffer.from(data));
-      const stats = await fs.stat(filePath);
-      return { success: true, byteLength: stats.size };
+      const filePath = resolveEmbeddingFilePath(fileName, cacheRootIdentity);
+      const byteLength = await appendEmbeddingSegmentAtOffset(filePath, data, expectedOffset);
+      return { success: true, byteLength };
     } catch (error) {
       return { success: false, error: error.message };
     }
   });
 
-  ipcMain.handle('stat-embedding-index', async (event, { cacheId } = {}) => {
+  ipcMain.handle('stat-embedding-index', async (event, { cacheId, cacheRootIdentity } = {}) => {
     try {
       const safeCacheId = toSafeCacheId(cacheId);
-      const cacheDir = await getEmbeddingCacheDir();
+      const cacheDir = resolveIssuedEmbeddingCacheRoot(cacheRootIdentity);
       const files = await fs.readdir(cacheDir).catch((error) => {
         if (error.code === 'ENOENT') return [];
         throw error;
@@ -4869,10 +4893,10 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('delete-embedding-index', async (event, { cacheId } = {}) => {
+  ipcMain.handle('delete-embedding-index', async (event, { cacheId, cacheRootIdentity } = {}) => {
     try {
       const safeCacheId = toSafeCacheId(cacheId);
-      const cacheDir = await getEmbeddingCacheDir();
+      const cacheDir = resolveIssuedEmbeddingCacheRoot(cacheRootIdentity);
       const files = await fs.readdir(cacheDir).catch((error) => {
         if (error.code === 'ENOENT') return [];
         throw error;

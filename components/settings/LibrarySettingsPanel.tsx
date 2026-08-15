@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { DesktopRuntimeInfo } from '../../types';
+import { useSemanticStore } from '../../store/useSemanticStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { clearLibraryCaches, resetAllCaches } from '../../utils/cacheReset';
 import { AdvancedSection } from './AdvancedSection';
@@ -91,12 +92,14 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   const handleSelectCacheDirectory = async () => {
     const result = await window.electronAPI?.showDirectoryDialog();
     if (result && result.success && result.path) {
+      await useSemanticStore.getState().teardown();
       setCachePath(result.path);
       setCurrentCachePath(result.path);
     }
   };
 
-  const handleResetCacheDirectory = () => {
+  const handleResetCacheDirectory = async () => {
+    await useSemanticStore.getState().teardown();
     setCachePath(defaultCachePath);
     setCurrentCachePath(defaultCachePath);
   };

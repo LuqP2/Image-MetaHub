@@ -333,6 +333,7 @@ const electronAPI = {
   writeCacheIndex: (args) => ipcRenderer.invoke('write-cache-index', args),
   readCacheIndex: (args) => ipcRenderer.invoke('read-cache-index', args),
   readCacheTombstones: (args) => ipcRenderer.invoke('read-cache-tombstones', args),
+  getEmbeddingCacheIdentity: () => ipcRenderer.invoke('get-embedding-cache-identity'),
   readEmbeddingFile: (args) => ipcRenderer.invoke('read-embedding-file', args),
   writeEmbeddingFile: (args) => ipcRenderer.invoke('write-embedding-file', args),
   appendEmbeddingSegment: (args) => ipcRenderer.invoke('append-embedding-segment', args),

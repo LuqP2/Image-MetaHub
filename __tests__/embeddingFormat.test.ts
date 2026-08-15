@@ -220,12 +220,13 @@ describe('centroidFrom', () => {
 });
 
 describe('manifest compatibility', () => {
-  it('rejects a manifest from a different model or dim', () => {
+  it('rejects a manifest from a different model, revision, or dim', () => {
     const manifest = createEmptyManifest('model-a', 'main', 512);
-    expect(isManifestCompatible(manifest, 'model-a', 512)).toBe(true);
-    expect(isManifestCompatible(manifest, 'model-b', 512)).toBe(false);
-    expect(isManifestCompatible(manifest, 'model-a', 768)).toBe(false);
-    expect(isManifestCompatible(null, 'model-a', 512)).toBe(false);
+    expect(isManifestCompatible(manifest, 'model-a', 'main', 512)).toBe(true);
+    expect(isManifestCompatible(manifest, 'model-b', 'main', 512)).toBe(false);
+    expect(isManifestCompatible(manifest, 'model-a', 'new-revision', 512)).toBe(false);
+    expect(isManifestCompatible(manifest, 'model-a', 'main', 768)).toBe(false);
+    expect(isManifestCompatible(null, 'model-a', 'main', 512)).toBe(false);
   });
 });
 

@@ -83,6 +83,36 @@ export const selectPendingImages = (
   return pending.slice(0, Math.max(0, remainingCapacity));
 };
 
+export interface CappedIndexWindow {
+  images: IndexedImage[];
+  evictImageIds: string[];
+}
+
+/**
+ * Chooses the exact newest free-tier window and identifies live rows that no
+ * longer belong to it. Changed rows are also evicted first so their replacement
+ * has capacity even when the index is already full.
+ */
+export const selectCappedIndexWindow = (
+  images: IndexedImage[],
+  embedded: Map<string, string>,
+  cap: number,
+): CappedIndexWindow => {
+  const selected = [...images]
+    .sort((left, right) => recencyOf(right) - recencyOf(left))
+    .slice(0, Math.max(0, cap));
+  const selectedKeys = new Map(
+    selected.map((image) => [image.id, contentKeyForImage(image)]),
+  );
+  const evictImageIds: string[] = [];
+  for (const [imageId, storedKey] of embedded) {
+    if (selectedKeys.get(imageId) !== storedKey) {
+      evictImageIds.push(imageId);
+    }
+  }
+  return { images: selected, evictImageIds };
+};
+
 export const runBackfill = async (options: BackfillOptions): Promise<BackfillResult> => {
   const {
     model,
@@ -100,9 +130,18 @@ export const runBackfill = async (options: BackfillOptions): Promise<BackfillRes
   // image array, unlike the mount-time open — the only safe place to sweep
   // vectors for images that have left the library.
   await reconcileWithImages(new Set(images.map((image) => image.id)));
+  let candidates = images;
+  if (cap !== null && images.length > 0) {
+    const window = selectCappedIndexWindow(images, index.liveEntries(), cap);
+    candidates = window.images;
+    if (window.evictImageIds.length > 0) {
+      index.tombstone(window.evictImageIds);
+      await index.flush();
+    }
+  }
   const embedded = index.liveEntries();
   const remainingCapacity = cap === null ? null : cap - index.stats.liveRows;
-  const pending = selectPendingImages(images, embedded, remainingCapacity);
+  const pending = selectPendingImages(candidates, embedded, remainingCapacity);
 
   const result: BackfillResult = {
     embedded: 0,
