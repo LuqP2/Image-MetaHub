@@ -279,6 +279,7 @@ export interface IndexedImageTransferResultItem {
   fileName: string;
   size?: number;
   lastModified?: number;
+  birthtimeMs?: number;
   type?: string;
 }
 

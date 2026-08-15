@@ -32,7 +32,12 @@ import { RATING_VALUES, RatingValueIcons, getRatingChipClasses, getRatingLabel }
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import ProBadge from './ProBadge';
-import { ContextMenuButton, ContextMenuSubmenu, buildFileMenuItems } from './contextMenu/ContextMenuPrimitives';
+import {
+  ContextMenuButton,
+  ContextMenuSubmenu,
+  ShowInFolderContextAction,
+  buildFileMenuItems,
+} from './contextMenu/ContextMenuPrimitives';
 import { useImageStacking } from '../hooks/useImageStacking';
 import TagManagerModal from './TagManagerModal';
 import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
@@ -2458,12 +2463,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
           <div className="border-t border-gray-600 my-1"></div>
 
+          <ShowInFolderContextAction onClick={showInFolder} />
+
           {(() => {
             const fileMenuItems = buildFileMenuItems({
               onRename: () => openInlineRename(contextMenu.image),
               onCopyTo: () => openTransferModal('copy'),
               onMoveTo: () => openTransferModal('move'),
-              onShowInFolder: showInFolder,
               onExport: exportImage,
               onBatchExport: handleBatchExport,
               selectedCount,

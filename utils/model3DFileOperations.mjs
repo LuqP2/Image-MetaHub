@@ -1,3 +1,5 @@
+import { copyFilePreservingTimestamps } from './fileCopy.mjs';
+
 const getErrorMessage = (error) => error?.message || String(error || 'Unknown error');
 
 const lstatIfPresent = async (fsApi, filePath) => {
@@ -23,7 +25,7 @@ const transferPath = async (fsApi, sourcePath, destinationPath, mode) => {
       await fsApi.rename(sourcePath, destinationPath);
     } catch (error) {
       if (error?.code !== 'EXDEV') throw error;
-      await fsApi.copyFile(sourcePath, destinationPath);
+      await copyFilePreservingTimestamps(fsApi, sourcePath, destinationPath);
       try {
         await fsApi.unlink(sourcePath);
       } catch (unlinkError) {
@@ -40,7 +42,7 @@ const transferPath = async (fsApi, sourcePath, destinationPath, mode) => {
     return;
   }
 
-  await fsApi.copyFile(sourcePath, destinationPath);
+  await copyFilePreservingTimestamps(fsApi, sourcePath, destinationPath);
 };
 
 const removeIfPresent = async (fsApi, filePath) => {

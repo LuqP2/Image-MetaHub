@@ -107,7 +107,6 @@ export interface BuildFileMenuItemsArgs {
   onRename: () => void;
   onCopyTo: () => void;
   onMoveTo: () => void;
-  onShowInFolder: () => void;
   onExport: () => void;
   onBatchExport: () => void;
   selectedCount: number;
@@ -116,15 +115,14 @@ export interface BuildFileMenuItemsArgs {
 }
 
 /**
- * Shared File submenu contents (Rename/Copy To/Move To/Show in Folder/
- * Export/Batch Export) used identically by ImageGrid and ImageTable so the
+ * Shared File submenu contents (Rename/Copy To/Move To/Export/Batch Export)
+ * used identically by ImageGrid and ImageTable so the
  * two menus can't drift out of sync.
  */
 export const buildFileMenuItems = ({
   onRename,
   onCopyTo,
   onMoveTo,
-  onShowInFolder,
   onExport,
   onBatchExport,
   selectedCount,
@@ -153,13 +151,6 @@ export const buildFileMenuItems = ({
     isPro: !canUseFileManagement,
   },
   {
-    key: 'show-in-folder',
-    icon: <Folder className="w-4 h-4" />,
-    label: 'Show in Folder',
-    onClick: onShowInFolder,
-    isPro: false,
-  },
-  {
     key: 'export',
     icon: <Download className="w-4 h-4" />,
     label: 'Export Image',
@@ -176,3 +167,11 @@ export const buildFileMenuItems = ({
       }]
     : []),
 ];
+
+export const ShowInFolderContextAction: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+  <ContextMenuButton
+    onClick={onClick}
+    icon={<Folder className="w-4 h-4" />}
+    label="Show in Folder"
+  />
+);

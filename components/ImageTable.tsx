@@ -12,7 +12,12 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import ProBadge from './ProBadge';
-import { ContextMenuButton, ContextMenuSubmenu, buildFileMenuItems } from './contextMenu/ContextMenuPrimitives';
+import {
+  ContextMenuButton,
+  ContextMenuSubmenu,
+  ShowInFolderContextAction,
+  buildFileMenuItems,
+} from './contextMenu/ContextMenuPrimitives';
 import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { RATING_VALUES, RatingValueIcons, getRatingBadgeClasses, getRatingChipClasses, getRatingLabel } from './RatingStars';
@@ -877,12 +882,13 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
           <div className="border-t border-gray-600 my-1"></div>
 
+          <ShowInFolderContextAction onClick={showInFolder} />
+
           {(() => {
             const fileMenuItems = buildFileMenuItems({
               onRename: () => openRenameModal(contextMenu.image),
               onCopyTo: () => openTransferModal('copy'),
               onMoveTo: () => openTransferModal('move'),
-              onShowInFolder: showInFolder,
               onExport: exportImage,
               onBatchExport: handleBatchExport,
               selectedCount,

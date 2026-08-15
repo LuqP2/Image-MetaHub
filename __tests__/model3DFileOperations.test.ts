@@ -151,11 +151,17 @@ describe('3D model file operations', () => {
   });
 
   it('copies a model and its metadata sidecar together', async () => {
+    const modelTime = new Date('2020-01-01T00:00:00.000Z');
+    const sidecarTime = new Date('2020-01-02T00:00:00.000Z');
     const fsApi = {
       lstat: vi.fn()
         .mockResolvedValueOnce({ isFile: () => true })
         .mockRejectedValueOnce(missingFileError()),
       copyFile: vi.fn().mockResolvedValue(undefined),
+      stat: vi.fn()
+        .mockResolvedValueOnce({ atime: modelTime, mtime: modelTime })
+        .mockResolvedValueOnce({ atime: sidecarTime, mtime: sidecarTime }),
+      utimes: vi.fn().mockResolvedValue(undefined),
       unlink: vi.fn(),
     };
 
@@ -164,6 +170,10 @@ describe('3D model file operations', () => {
     expect(fsApi.copyFile.mock.calls).toEqual([
       ['old.glb', 'new.glb'],
       ['old.glb.imagemetahub.json', 'new.glb.imagemetahub.json'],
+    ]);
+    expect(fsApi.utimes.mock.calls).toEqual([
+      ['new.glb', modelTime, modelTime],
+      ['new.glb.imagemetahub.json', sidecarTime, sidecarTime],
     ]);
   });
 
@@ -176,6 +186,8 @@ describe('3D model file operations', () => {
       copyFile: vi.fn()
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(sidecarError),
+      stat: vi.fn().mockResolvedValue({ atime: new Date(1), mtime: new Date(2) }),
+      utimes: vi.fn().mockResolvedValue(undefined),
       unlink: vi.fn()
         .mockRejectedValueOnce(missingFileError())
         .mockResolvedValueOnce(undefined),
@@ -212,6 +224,8 @@ describe('3D model file operations', () => {
       lstat: vi.fn().mockRejectedValue(missingFileError()),
       rename: vi.fn().mockRejectedValue(crossVolumeError),
       copyFile: vi.fn().mockResolvedValue(undefined),
+      stat: vi.fn().mockResolvedValue({ atime: new Date(1), mtime: new Date(2) }),
+      utimes: vi.fn().mockResolvedValue(undefined),
       unlink: vi.fn()
         .mockRejectedValueOnce(sourceDeleteError)
         .mockResolvedValueOnce(undefined),
