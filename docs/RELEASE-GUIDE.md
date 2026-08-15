@@ -131,7 +131,7 @@ Keep your CHANGELOG.md following this structure:
 
 ## Customization
 
-You can customize the release template by editing `generate-release.js`:
+You can customize the release template by editing `scripts/generate-release.js`:
 
 - **Download links**: Update file naming patterns
 - **System requirements**: Modify technical specifications
