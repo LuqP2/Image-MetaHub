@@ -536,9 +536,14 @@ export const searchByImageId = async (
  * This is what lets Find Similar work on an image with no metadata that a
  * capped or partial backfill never reached.
  */
+export const canReuseImageEmbedding = (
+  index: Pick<EmbeddingIndex, 'hasVector' | 'contentKeyFor'>,
+  image: IndexedImage
+): boolean => index.hasVector(image.id) && index.contentKeyFor(image.id) === contentKeyForImage(image);
+
 export const ensureImageEmbedded = async (image: IndexedImage): Promise<boolean> => {
   const activeIndex = await openLibrary();
-  if (activeIndex.hasVector(image.id)) return true;
+  if (canReuseImageEmbedding(activeIndex, image)) return true;
 
   const items = await buildEmbedItems([image]);
   const [vector] = await embedImages(items);
