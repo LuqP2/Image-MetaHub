@@ -71,6 +71,12 @@ The repository is MPL 2.0 and the core app remains open-source. Some workflow-he
 4. Wait for the first indexing pass to finish.
 5. Use search, sidebar facets, tags, and advanced filters to explore the library.
 
+### Windows installer and portable build
+
+Windows releases provide a standard Setup executable and a separate Portable executable. The portable build keeps its settings, browser data, metadata cache and thumbnails in an `ImageMetaHubData` folder beside the executable, without using the Image MetaHub profile in AppData.
+
+To update the portable build, close Image MetaHub, replace only the Portable executable, and keep the existing `ImageMetaHubData` folder beside it.
+
 ### macOS unsigned builds
 
 Current GitHub release builds are not signed with an Apple Developer ID yet. If macOS blocks the app after you download and move it to Applications, remove the quarantine flag from Terminal:
