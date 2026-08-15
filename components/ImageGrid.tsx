@@ -1055,6 +1055,9 @@ interface ImageGridProps {
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
   onFindSimilar?: (image: IndexedImage) => void;
+  onFindVisuallySimilar?: (image: IndexedImage) => void;
+  /** Whether the visual-similar action is usable (feature on + model installed). */
+  canFindVisuallySimilar?: boolean;
   onOpenImageEditor?: (image: IndexedImage) => void;
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   groupBy?: ImageGroupByMode;
@@ -1082,6 +1085,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   isCollectionsView = false,
   onImageRenamed,
   onFindSimilar,
+  onFindVisuallySimilar,
+  canFindVisuallySimilar = false,
   onOpenImageEditor,
   onOpenComfyUIWorkspace,
   groupBy = 'none',
@@ -1487,6 +1492,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     onFindSimilar(contextMenu.image);
     hideContextMenu();
   }, [contextMenu.image, hideContextMenu, onFindSimilar]);
+
+  const openFindVisuallySimilar = useCallback(() => {
+    if (!contextMenu.image || !onFindVisuallySimilar) {
+      return;
+    }
+
+    onFindVisuallySimilar(contextMenu.image);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, onFindVisuallySimilar]);
 
   const handleBatchExport = useCallback(() => {
     hideContextMenu();
@@ -2393,8 +2407,22 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
           >
             <Search className="w-4 h-4" />
-            <span className="flex-1">Find similar...</span>
+            <span className="flex-1">Find by metadata...</span>
           </button>
+
+          {onFindVisuallySimilar && (
+            <button
+              onClick={openFindVisuallySimilar}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!canFindVisuallySimilar}
+              title={canFindVisuallySimilar
+                ? 'Find images that look like this one'
+                : 'Enable Visual Search and download the model in Settings first'}
+            >
+              <Sparkles className="w-4 h-4 text-indigo-400" />
+              <span className="flex-1">Find Similar</span>
+            </button>
+          )}
 
           {canOpenContextImageEditor && (
             <button

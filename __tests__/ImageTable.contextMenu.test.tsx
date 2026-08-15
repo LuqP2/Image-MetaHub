@@ -260,8 +260,36 @@ describe('ImageTable context menu', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText('Find similar...'));
+    fireEvent.click(screen.getByText('Find by metadata...'));
     expect(onFindSimilar).toHaveBeenCalledWith(image);
+  });
+
+  it('runs Find Similar for an image with no prompt or metadata', () => {
+    const onFindVisuallySimilar = vi.fn();
+    const image = createImage({ id: 'img-1', name: 'plain.png', prompt: undefined, metadata: undefined });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      collections: [],
+      transferProgress: null,
+    } as any);
+
+    render(
+      <ImageTable
+        images={[image]}
+        onImageClick={vi.fn()}
+        selectedImages={new Set()}
+        onBatchExport={vi.fn()}
+        onFindVisuallySimilar={onFindVisuallySimilar}
+        canFindVisuallySimilar
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Find Similar'));
+    expect(onFindVisuallySimilar).toHaveBeenCalledWith(image);
   });
 });
 

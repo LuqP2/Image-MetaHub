@@ -56,6 +56,16 @@ describe('useSettingsStore persistence helpers', () => {
     expect(useSettingsStore.getState().comfyUIQueueMonitoringEnabled).toBe(false);
   });
 
+  it('keeps Local Visual Search opt-in off by default', () => {
+    useSettingsStore.getState().resetState();
+
+    expect(useSettingsStore.getState()).toMatchObject({
+      semanticSearchEnabled: false,
+      semanticSearchDevice: 'wasm',
+      semanticSearchModel: 'clip-b32',
+    });
+  });
+
   it('does not notify subscribers when generator connection status is unchanged', () => {
     useSettingsStore.getState().resetState();
     useSettingsStore.getState().setComfyUIConnectionStatus('connected');

@@ -158,7 +158,12 @@ const createImages = (count: number): IndexedImage[] =>
     }),
   );
 
-const Harness = ({ images, onFindSimilar }: { images: IndexedImage[]; onFindSimilar?: (image: IndexedImage) => void }) => {
+const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisuallySimilar = false }: {
+  images: IndexedImage[];
+  onFindSimilar?: (image: IndexedImage) => void;
+  onFindVisuallySimilar?: (image: IndexedImage) => void;
+  canFindVisuallySimilar?: boolean;
+}) => {
   const selectedImages = useImageStore((state) => state.selectedImages);
 
   return (
@@ -171,6 +176,8 @@ const Harness = ({ images, onFindSimilar }: { images: IndexedImage[]; onFindSimi
       onPageChange={vi.fn()}
       onBatchExport={vi.fn()}
       onFindSimilar={onFindSimilar}
+      onFindVisuallySimilar={onFindVisuallySimilar}
+      canFindVisuallySimilar={canFindVisuallySimilar}
     />
   );
 };
@@ -595,8 +602,27 @@ describe('ImageGrid context menu', () => {
 
     render(<Harness images={[image]} onFindSimilar={onFindSimilar} />);
 
-    fireEvent.click(screen.getByText('Find similar...'));
+    fireEvent.click(screen.getByText('Find by metadata...'));
     expect(onFindSimilar).toHaveBeenCalledWith(image);
+  });
+
+  it('runs Find Similar for an image with no prompt or metadata', () => {
+    const onFindVisuallySimilar = vi.fn();
+    const image = createImage({ id: 'img-1', name: 'plain.png', prompt: undefined, metadata: undefined });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+    setupImageGridState([image]);
+
+    render(
+      <Harness
+        images={[image]}
+        onFindVisuallySimilar={onFindVisuallySimilar}
+        canFindVisuallySimilar
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Find Similar'));
+    expect(onFindVisuallySimilar).toHaveBeenCalledWith(image);
   });
 
   it('adds selected images explicitly even for collections with auto-add tags', () => {

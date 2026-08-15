@@ -3,11 +3,16 @@ import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { useLicenseStore, TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
-export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging' | 'file_management' | 'image_editor';
+export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging' | 'file_management' | 'image_editor' | 'semantic_search';
 
 
 export const CLUSTERING_FREE_TIER_LIMIT = 300;
 export const CLUSTERING_PREVIEW_LIMIT = 500; // Process extra for blurred preview
+
+// Free tier embeds the most recent N images. Larger than the clustering cap on
+// purpose: visual search needs volume to be useful, ~2k embeds run in a few
+// minutes on CPU, and the Pro pitch grows with the library rather than the cap.
+export const SEMANTIC_FREE_TIER_LIMIT = 2000;
 
 const isDevelopmentBuild =
   (typeof import.meta !== 'undefined' && Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV)) ||
@@ -35,6 +40,7 @@ const EMPTY_BLOCKED_ATTEMPTS: ProModalBlockedAttempts = {
   bulk_tagging: 0,
   file_management: 0,
   image_editor: 0,
+  semantic_search: 0,
 };
 
 // --- Electron IPC-based storage for the Pro modal's blocked-attempt counters ---
@@ -163,6 +169,9 @@ export const useFeatureAccess = () => {
   const canUseBatchExport = allowDuringInit || canUseDuringTrialOrPro;
   const canUseFileManagement = allowDuringInit || canUseDuringTrialOrPro;
   const canUseImageEditor = allowDuringInit || canUseDuringTrialOrPro;
+  // Semantic search itself is available on Free; only the number of images it
+  // indexes is capped, so the flag gates the *unlimited* index, not the feature.
+  const canUseUnlimitedSemanticSearch = allowDuringInit || canUseDuringTrialOrPro;
 
   // Trial countdown
   const trialDaysRemaining = isInitialized
@@ -210,6 +219,10 @@ export const useFeatureAccess = () => {
     canUseFullClustering: canUseDuringTrialOrPro,
     canUseDuringTrialOrPro,
     clusteringImageLimit: canUseDuringTrialOrPro ? Infinity : CLUSTERING_FREE_TIER_LIMIT,
+
+    // Visual search: available to all, capped for Free.
+    canUseUnlimitedSemanticSearch,
+    semanticSearchImageLimit: canUseUnlimitedSemanticSearch ? Infinity : SEMANTIC_FREE_TIER_LIMIT,
 
     // Status
     isTrialActive,

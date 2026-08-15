@@ -144,6 +144,17 @@ Tracks generation jobs across providers:
 
 The queue is synchronized by `hooks/useGenerationQueueSync.ts`.
 
+**`store/useSemanticStore.ts`**
+
+Orchestrates the opt-in local visual-search feature, kept out of `useImageStore` so its heavy, opt-in machinery does not weigh on the hot filter/render path:
+
+* CLIP model download and installed/GPU-installed status
+* the resumable backfill job (progress, pause/resume/cancel)
+* running a text or "find similar" query and publishing the score map
+* backend selection (WASM/CPU baseline vs. opt-in WebGPU/fp16)
+
+The only thing it pushes into `useImageStore` is the finished result, via `applySemanticResult(scoreById)`. See [Visual (Semantic) Search](#visual-semantic-search) below.
+
 ## Indexing and Metadata Pipeline
 
 ### Discovery and File Scanning
@@ -320,6 +331,38 @@ Clusters dimension and the sidebar's Navigate → Clusters section.
 
 Clustering and auto-tagging are deliberately offloaded to workers because they are CPU-heavy and operate over the full filtered image set.
 
+## Local Visual Search
+
+Find Similar (image-to-image retrieval) is the primary supported Local Visual Search path for v0.19. It reuses an image embedding to find visually related files, including images with no prompt, workflow, or normalized metadata. The text encoder is retained only for experimental text-to-image queries.
+
+The implementation uses `Xenova/clip-vit-base-patch32` by default, with `Xenova/clip-vit-base-patch16` as the higher-detail option. The master switch (`settings.semanticSearchEnabled`) defaults **off**: while off, no model status check runs, no index is opened, and no file is written. Enabling the feature is consent to initialize the local index, but the model download remains a separate explicit action.
+
+**Storage**
+
+* `services/embeddings/embeddingFormat.ts` defines the on-disk layout: vectors are int8-quantized with a per-vector scale, written into append-only binary segments (`${safeCacheId}_emb_seg_*.bin`, ~4MB each), JSON row-index chunks, and a manifest that is the durability source of truth. These files are separate from the metadata cache even though both live under the authorized cache root.
+* `services/embeddings/embeddingStore.ts` (`EmbeddingIndex`) owns one library-wide index per model. It handles append-only segment writes, flush, tombstone, and rename. Row-index chunks and the manifest use temp-file + rename replacement; the manifest is committed last. If a write is interrupted, the last committed manifest bounds valid rows and trailing, uncommitted segment bytes or row entries are ignored on recovery.
+* A manifest from a different model, vector dimension, or embedding format is invalidated and rebuilt rather than migrated. Embeddings are derived, reconstructible data; index format changes do not require a `PARSER_VERSION` bump because parser output and the metadata cache contract are independent.
+* Reconciling the index against images that have left the library (tombstoning their vectors) happens **only** from the backfill job below, which is the only caller holding the authoritative, fully-hydrated image array. It deliberately does not run from a mount effect, where a still-loading (empty or partial) image list would otherwise read as "the library is empty" and wipe every live vector.
+
+**Indexing**
+
+* `services/embeddings/embeddingIndexer.ts` (`runBackfill`) is a resumable, newest-first backfill: pause/resume/cancel, periodic flush so a crash costs at most one flush window, and a Free-tier cap (`SEMANTIC_FREE_TIER_LIMIT` = 2,000 most-recent images, `hooks/useFeatureAccess.ts`) that Pro removes.
+* `services/workers/embeddingWorker.ts` + `services/embeddings/embeddingService.ts` run the CLIP towers (`@huggingface/transformers`) off the main thread. WASM/q8 is the always-present CPU baseline so the app never competes with an image generator for VRAM by default; an opt-in WebGPU/fp16 accelerator (`settings.semanticSearchDevice`) falls back to CPU automatically on adapter or `shader-f16` load failure.
+* Model weights are downloaded from Hugging Face only after the user presses the explicit download action (`download-embedding-model` IPC handler in `electron.mjs`). LFS weight files are verified with SHA-256 against the object hash reported in the `x-linked-etag` header before they are accepted under `<userData>/models/`; corrupt or adulterated payloads are removed. The main process accepts only the supported model catalog and fixed Hugging Face origin. After that download, embedding and retrieval remain local and work offline.
+* Electron owns model download, integrity verification, cache-sidecar I/O, and the `imh-model://` protocol; preload exposes narrow IPC methods; the renderer orchestrates consent, indexing, and queries without receiving arbitrary filesystem authority. Electron packaging must include the renderer worker chunks, transformers.js runtime, ONNX/WASM assets, and the model protocol code. Model files themselves remain user-downloaded data, not bundled application payloads.
+
+**Search**
+
+* `services/embeddings/semanticSearchEngine.ts` + `services/workers/vectorSearchWorker.ts`: a long-lived dedicated worker holds the quantized vector matrix in memory and ranks it by brute-force cosine, returning top-K results through a fixed-size min-heap. Only segments whose row count changed since the last sync are re-read and re-sent.
+* Relevance is decided by a z-score cutoff over the query's own score distribution rather than a fixed cosine threshold — CLIP text↔image cosines are compressed and query-dependent (roughly 0.22–0.25 regardless of the query), so an absolute floor cannot separate a real match from noise.
+* Experimental text queries may use negative terms (`beach -people`) to push the query embedding away from unwanted concepts before ranking. CLIP text queries are approximate visual retrieval and do not replace the deterministic metadata, prompt, model, LoRA, and workflow search paths.
+* Find Similar (grid/table/viewer entry points) reuses the selected image's embedding with the same ranking worker. If the source has no stored vector, it is embedded on demand, which also supports files beyond a partial or Free-tier backfill.
+
+**UI and store integration**
+
+* `components/SemanticSearchBar.tsx` (sidebar toggle + query input), `components/settings/VisualSearchSettingsPanel.tsx` (model download, index build/pause/resume, GPU toggle), `components/VisualSearchOnboarding.tsx` (dismissible intro card).
+* An active Local Visual Search result lives in `useImageStore.semanticResult.scoreById` — a `Map`, never written onto `IndexedImage` — and drives a `'relevance'` sort order. Traditional metadata search retains its existing deterministic semantics; the experimental visual-text mode is explicitly separate and never replaces that implementation.
+
 ## Comparison and Analytics
 
 ### Comparison
@@ -404,6 +447,7 @@ The current behavior supports:
 * metadata-preserving edited image save/overwrite operations
 * video metadata reading via `ffprobe`
 * clipboard and drag-and-drop helpers
+* visual-search embedding sidecar IPC (read/write/append segment, stat, delete) and CLIP model download/status/delete, plus the `imh-model://` protocol that serves the downloaded weights to the embedding worker
 
 ### Preload Bridge
 
@@ -415,6 +459,7 @@ The current behavior supports:
 * watcher events
 * settings persistence
 * export, transfer, and drag/drop helpers
+* visual-search embedding storage and model download/progress
 
 The renderer does not access Node APIs directly.
 

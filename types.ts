@@ -528,6 +528,30 @@ export interface ElectronAPI {
   writeCacheIndex: (args: { cacheId: string; data: { lastScan?: number; chunkCount: number; ids: Record<string, number> } }) => Promise<{ success: boolean; error?: string }>;
   readCacheIndex: (args: { cacheId: string }) => Promise<{ success: boolean; data?: { lastScan?: number; chunkCount: number; ids: Record<string, number> } | null; error?: string }>;
   readCacheTombstones: (args: { cacheId: string }) => Promise<{ success: boolean; data?: { chunkCount: number; ids: string[] } | null; error?: string }>;
+  // Visual-search vector sidecars. `fileName` must match the whitelist in the
+  // main-process handler; build it with the helpers in embeddingFormat.ts.
+  readEmbeddingFile: (args: { fileName: string; binary?: boolean }) => Promise<{ success: boolean; data?: any; error?: string }>;
+  writeEmbeddingFile: (args: { fileName: string; data: any; binary?: boolean }) => Promise<{ success: boolean; error?: string }>;
+  appendEmbeddingSegment: (args: { fileName: string; data: ArrayBuffer }) => Promise<{ success: boolean; byteLength?: number; error?: string }>;
+  statEmbeddingIndex: (args: { cacheId: string }) => Promise<{ success: boolean; totalBytes?: number; fileCount?: number; error?: string }>;
+  deleteEmbeddingIndex: (args: { cacheId: string }) => Promise<{ success: boolean; removed?: number; error?: string }>;
+  getEmbeddingModelStatus: (args: { modelId: string; files: string[] }) => Promise<{
+    success: boolean;
+    installed?: boolean;
+    modelDir?: string;
+    missing?: string[];
+    totalBytes?: number;
+    error?: string;
+  }>;
+  downloadEmbeddingModel: (args: { modelId: string; revision: string; files: string[]; baseUrl?: string }) => Promise<{
+    success: boolean;
+    modelDir?: string;
+    cancelled?: boolean;
+    error?: string;
+  }>;
+  cancelEmbeddingModelDownload: () => Promise<{ success: boolean; running?: boolean }>;
+  deleteEmbeddingModel: (args: { modelId: string }) => Promise<{ success: boolean; error?: string }>;
+  onEmbeddingModelProgress: (callback: (payload: EmbeddingModelProgress) => void) => () => void;
   resolveThumbnailCacheBatch: (args: {
     candidates: ThumbnailCacheCandidate[];
   }) => Promise<{
@@ -890,6 +914,57 @@ export interface AdvancedFilters {
   generationTimeMs?: NumericRangeFilter;
   stepsPerSecond?: NumericRangeFilter;
   vramPeakMb?: NumericRangeFilter;
+}
+
+/**
+ * `relevance` only exists while a visual search is active: it reads the score
+ * map produced by the vector search worker rather than a field on the image.
+ */
+export type SortOrder = 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random' | 'relevance';
+
+export interface EmbeddingModelProgress {
+  phase: 'downloading' | 'complete' | 'error' | 'cancelled';
+  file?: string;
+  completedFiles?: number;
+  totalFiles?: number;
+  receivedBytes?: number;
+  totalBytes?: number;
+  error?: string | null;
+}
+
+export type SemanticIndexPhase =
+  | 'disabled'
+  | 'idle'
+  | 'downloading-model'
+  | 'embedding'
+  | 'paused'
+  | 'error'
+  | 'complete';
+
+export interface SemanticIndexProgress {
+  phase: SemanticIndexPhase;
+  current: number;
+  total: number;
+  message: string;
+  imagesPerSecond?: number;
+  etaMs?: number;
+  error?: string | null;
+}
+
+export interface SemanticIndexCoverage {
+  /** Live vectors in the index for the current library. */
+  embedded: number;
+  /** Images in the current library, embedded or not. */
+  total: number;
+  /** Free-tier ceiling, or null when unlimited. */
+  cap: number | null;
+}
+
+export interface SemanticSearchResult {
+  /** Bumped per query so replies from a superseded query can be dropped. */
+  generation: number;
+  query: string;
+  scoreById: Map<string, number>;
 }
 
 export type SimilarSearchScope = 'current-view' | 'all-images' | 'same-folder';

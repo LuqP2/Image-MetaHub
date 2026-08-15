@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download, Tag, Image as ImageIcon, LucideIcon } from 'lucide-react';
-import { ProFeature, CLUSTERING_FREE_TIER_LIMIT, useProModalStore } from '../hooks/useFeatureAccess';
+import { ProFeature, CLUSTERING_FREE_TIER_LIMIT, SEMANTIC_FREE_TIER_LIMIT, useProModalStore } from '../hooks/useFeatureAccess';
 import { TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildProLicenseUrl } from '../utils/creatorAttribution';
@@ -147,6 +147,20 @@ const featureInfo: Record<ProFeature, FeatureCopy> = {
     ],
     alsoUnlocks: 'Pro also unlocks Compare View, ComfyUI generation, and 6 more.',
   },
+
+  semantic_search: {
+    contextLine: 'Searching your whole library?',
+    headline: 'Search every image by what it shows',
+    featureName: 'Visual Search',
+    icon: Sparkles,
+    bullets: [
+      'Find images by their content — even screenshots and downloads with no prompt',
+      'Runs entirely on your machine; nothing is ever uploaded',
+      'Free indexes your 2,000 newest images — Pro indexes the whole library',
+    ],
+    alsoUnlocks: 'Pro also unlocks Compare View, ComfyUI generation, and 6 more.',
+    freeTierNote: `Free indexes your ${SEMANTIC_FREE_TIER_LIMIT.toLocaleString()} most recent images.`,
+  },
 };
 
 const blockedAttemptsCopy: Record<ProFeature, (count: number) => string> = {
@@ -159,6 +173,7 @@ const blockedAttemptsCopy: Record<ProFeature, (count: number) => string> = {
   clustering: (n) => `You've hit the clustering limit ${n} times.`,
   batch_export: (n) => `You've tried to export in bulk ${n} times.`,
   bulk_tagging: (n) => `You've tried to tag in bulk ${n} times.`,
+  semantic_search: (n) => `You've reached the visual search limit ${n} times.`,
 };
 
 const ProOnlyModal: React.FC<ProOnlyModalProps> = ({

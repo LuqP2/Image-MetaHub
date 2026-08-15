@@ -21,6 +21,7 @@ It started as a local browser for InvokeAI outputs and has since grown into a br
 
 * Local-first browsing with no mandatory account, no cloud sync, and no outbound telemetry
 * Fast indexing and thumbnail caching for large libraries
+* **Find Similar — Local Visual Search** for discovering related images even when they have no prompt or generation metadata
 * Metadata parsing for Automatic1111, ComfyUI, InvokeAI, SD.Next, Forge, SwarmUI, Fooocus, Draw Things, Midjourney/Niji, Firefly, DreamStudio, DALL-E, and more
 * Support for PNG, JPG, JPEG, WEBP, AVIF, GIF, MP4, WEBM, MKV, MOV, and AVI
 * Faceted sidebar filters with explicit include/exclude actions for checkpoints, LoRAs, samplers, schedulers, ratings, generation modes, media types, ComfyUI node types.
@@ -60,6 +61,7 @@ The repository is MPL 2.0 and the core app remains open-source. Some workflow-he
 * Bulk tagging
 * In-app file management (copy/move between indexed folders)
 * Unlimited clustering scale
+* Unlimited Local Visual Search indexing
 
 ## Getting Started
 
@@ -101,6 +103,14 @@ Image MetaHub is built around fast local curation:
 * **Shadow metadata**: edit metadata non-destructively and keep the original payload available for inspection or revert
 * **Viewer workflows**: in the desktop app, open each image in a separate native window above Image MetaHub while the ComfyUI Workspace stays alive; minimize and restore viewers from the footer, or select the legacy in-app viewer in Settings
 * **Auto-watch**: keep output folders in sync while A1111 or ComfyUI is generating
+
+## Find Similar — Local Visual Search
+
+Select any image and find visually related results across your library, including files with no prompt or generation metadata. Processing runs locally using an optional on-device model.
+
+Local Visual Search is off by default. Enabling it does not download anything: the model download is a separate, explicit action, and downloaded files are verified before use. Indexing can be paused and resumed, works offline after the model is installed, and uses optional WebGPU acceleration with an automatic WASM fallback.
+
+Find Similar is the primary supported workflow in v0.19. Experimental text-to-image queries are also available, but their results are approximate. They do not replace Image MetaHub's deterministic search across prompts, metadata, models, LoRAs, and workflows.
 
 ## Explore
 
