@@ -28,6 +28,7 @@ import {
   isSupportedMediaFileName,
 } from './utils/mediaTypes.js';
 import { normalizeBirthtimeMs, resolveFileSortDate } from './utils/fileTimestamps.js';
+import { readBasicMp4Metadata } from './utils/mp4Metadata.mjs';
 import {
   isComfyUIViewUrlAllowed,
   normalizeComfyUIViewUrl,
@@ -5576,8 +5577,9 @@ function setupFileOperationHandlers() {
   });
 
   const handleReadMediaMetadata = async (args) => {
+    let filePath;
     try {
-      const filePath = args?.filePath;
+      filePath = args?.filePath;
       if (!filePath) {
         return { success: false, error: 'No file path provided' };
       }
@@ -5594,6 +5596,29 @@ function setupFileOperationHandlers() {
       return { success: true, ...metadata };
     } catch (error) {
       const isBinaryMissing = error?.code === 'ENOENT' || error?.message?.includes('ffprobe');
+      const extension = typeof filePath === 'string' ? path.extname(filePath).toLowerCase() : '';
+      if (extension === '.mp4' || extension === '.mov' || extension === '.m4v') {
+        try {
+          const basic = await readBasicMp4Metadata(filePath);
+          if (basic) {
+            return {
+              success: true,
+              video: {
+                frame_rate: null,
+                frame_count: null,
+                duration_seconds: basic.duration_seconds,
+                width: basic.width,
+                height: basic.height,
+                codec: null,
+                format: 'mp4',
+              },
+              audio: null,
+            };
+          }
+        } catch {
+          // Return the original ffprobe failure below.
+        }
+      }
       return {
         success: false,
         error: isBinaryMissing ? 'FFPROBE_NOT_FOUND' : (error?.message || String(error)),

@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createHash } from 'crypto';
 import { execFile } from 'child_process';
+import { readBasicMp4Metadata } from '../utils/mp4Metadata.mjs';
 import { promisify } from 'util';
 import exifr from 'exifr';
 import { BaseMetadata, ImageMetadata, type AudioInfo, type VideoInfo, isEasyDiffusionJson } from '../types';
@@ -529,7 +530,25 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
 
   if (isVideo || isAudio) {
     rawSource = isAudio ? 'audio' : 'video';
-    const mediaMetadata = await readMediaMetadataWithFfprobe(absolutePath);
+    let mediaMetadata = await readMediaMetadataWithFfprobe(absolutePath);
+    const extension = path.extname(absolutePath).toLowerCase();
+    if (!mediaMetadata && isVideo && (extension === '.mp4' || extension === '.mov' || extension === '.m4v')) {
+      const basic = await readBasicMp4Metadata(absolutePath).catch(() => null);
+      if (basic) {
+        mediaMetadata = {
+          video: {
+            frame_rate: null,
+            frame_count: null,
+            duration_seconds: basic.duration_seconds,
+            width: basic.width,
+            height: basic.height,
+            codec: null,
+            format: 'mp4',
+          },
+          audio: null,
+        };
+      }
+    }
     if (mediaMetadata) {
       const raw: MetadataRecord = {
         description: mediaMetadata.description,
