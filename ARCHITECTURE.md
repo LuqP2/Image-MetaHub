@@ -456,7 +456,7 @@ Both commands reuse the same metadata engine as the desktop app.
 
 Top-level release automation lives in:
 
-* `generate-release.js`
+* `scripts/generate-release.js`
 * `scripts/auto-release.js`
 * `scripts/release-workflow.js`
 * `scripts/sync-changelog.js`
