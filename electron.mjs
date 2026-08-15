@@ -28,6 +28,7 @@ import {
   isSupportedMediaFileName,
 } from './utils/mediaTypes.js';
 import { normalizeBirthtimeMs, resolveFileSortDate } from './utils/fileTimestamps.js';
+import { copyFilePreservingTimestamps } from './utils/fileCopy.mjs';
 import {
   isComfyUIViewUrlAllowed,
   normalizeComfyUIViewUrl,
@@ -6530,14 +6531,14 @@ function setupFileOperationHandlers() {
               await fs.rename(sourcePath, destinationPath);
             } catch (error) {
               if (error?.code === 'EXDEV') {
-                await fs.copyFile(sourcePath, destinationPath);
+                await copyFilePreservingTimestamps(fs, sourcePath, destinationPath);
                 await fs.unlink(sourcePath);
               } else {
                 throw error;
               }
             }
           } else {
-            await fs.copyFile(sourcePath, destinationPath);
+            await copyFilePreservingTimestamps(fs, sourcePath, destinationPath);
           }
         };
 
@@ -6562,6 +6563,7 @@ function setupFileOperationHandlers() {
           fileName: task.fileName,
           size: stats.size,
           lastModified: stats.mtimeMs,
+          birthtimeMs: normalizeBirthtimeMs(stats.birthtimeMs),
           type: getMimeTypeFromName(task.fileName),
         });
       };
