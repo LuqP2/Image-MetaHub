@@ -73,6 +73,10 @@ vi.mock('../components/TransferImagesModal', () => ({
   default: () => null,
 }));
 
+vi.mock('../components/Model3DThumbnail', () => ({
+  default: () => <div data-testid="model3d-thumbnail" />,
+}));
+
 vi.mock('../components/CollectionFormModal', () => ({
   default: ({ isOpen }: { isOpen: boolean }) => (isOpen ? <div>Create Collection Modal</div> : null),
 }));
@@ -118,6 +122,30 @@ describe('ImageTable context menu', () => {
       disableThumbnails: false,
       showFullFilePath: false,
     } as any);
+  });
+
+  it('does not mount 3D thumbnail renderers when thumbnails are disabled', () => {
+    const image = createImage({ id: 'model-1', name: 'model.glb', fileType: 'model/gltf-binary' });
+    useSettingsStore.setState({ disableThumbnails: true });
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(),
+      transferProgress: null,
+    } as any);
+
+    render(
+      <ImageTable
+        images={[image]}
+        onImageClick={vi.fn()}
+        selectedImages={new Set()}
+        onBatchExport={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Preview disabled')).toBeTruthy();
+    expect(screen.queryByTestId('model3d-thumbnail')).toBeNull();
   });
 
   it('shows collection actions in the image-table context menu', () => {
@@ -232,8 +260,36 @@ describe('ImageTable context menu', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText('Find similar...'));
+    fireEvent.click(screen.getByText('Find by metadata...'));
     expect(onFindSimilar).toHaveBeenCalledWith(image);
+  });
+
+  it('runs Find Similar for an image with no prompt or metadata', () => {
+    const onFindVisuallySimilar = vi.fn();
+    const image = createImage({ id: 'img-1', name: 'plain.png', prompt: undefined, metadata: undefined });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      collections: [],
+      transferProgress: null,
+    } as any);
+
+    render(
+      <ImageTable
+        images={[image]}
+        onImageClick={vi.fn()}
+        selectedImages={new Set()}
+        onBatchExport={vi.fn()}
+        onFindVisuallySimilar={onFindVisuallySimilar}
+        canFindVisuallySimilar
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Find Similar'));
+    expect(onFindVisuallySimilar).toHaveBeenCalledWith(image);
   });
 });
 

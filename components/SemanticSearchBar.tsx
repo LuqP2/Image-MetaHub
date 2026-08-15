@@ -118,7 +118,7 @@ const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSe
 
   const notice = (() => {
     if (!visualMode) return null;
-    if (queryRunning) return { text: 'Searching by image content…', tone: 'text-indigo-300' };
+    if (queryRunning) return { text: 'Running experimental visual text query…', tone: 'text-indigo-300' };
     if (queryNotice === 'no-index') {
       return { text: 'No images indexed yet — open Settings → Visual Search to build the index.', tone: 'text-amber-300' };
     }
@@ -128,7 +128,7 @@ const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSe
       const best = queryTopScore != null ? ` · best ${queryTopScore.toFixed(2)}` : '';
       return { text: `${queryResultCount.toLocaleString()} visual matches${best}`, tone: 'text-gray-400' };
     }
-    return { text: 'Search by what the image shows. Exclude with a minus, e.g. "beach -people".', tone: 'text-gray-500' };
+    return { text: 'Experimental text-to-image query — approximate results; metadata search remains separate.', tone: 'text-gray-500' };
   })();
 
   return (

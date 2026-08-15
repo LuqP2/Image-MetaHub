@@ -151,6 +151,8 @@ export const useFeatureAccess = () => {
                         !isTrialExpired(licenseStore.trialStartDate);
 
   const isExpired = isInitialized && licenseStore.licenseStatus === 'expired';
+  // Post-trial recovery surface: shown once per trial, until the user dismisses it.
+  const showTrialExpiredNotice = isExpired && !licenseStore.trialExpiredNoticeDismissed;
   const isFree = isInitialized && licenseStore.licenseStatus === 'free';
   const trialUsed = isInitialized && licenseStore.trialActivated;
   const canStartTrial = isInitialized && !hasProLicense && !isTrialActive && !trialUsed;
@@ -225,6 +227,8 @@ export const useFeatureAccess = () => {
     // Status
     isTrialActive,
     isExpired,
+    showTrialExpiredNotice,
+    dismissTrialExpiredNotice: licenseStore.dismissTrialExpiredNotice,
     isFree,
     isPro,
     canStartTrial,

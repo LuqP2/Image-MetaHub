@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   getLegacyThumbnailId,
+  getModel3DThumbnailId,
   getThumbnailCacheCandidate,
   getVersionedThumbnailId,
+  isModel3DThumbnailCacheSafe,
   THUMBNAIL_ALGORITHM_VERSION,
 } from '../services/thumbnailCache';
 
@@ -33,5 +35,30 @@ describe('thumbnail cache keys', () => {
       legacyThumbnailId: getLegacyThumbnailId(image),
       algorithmVersion: THUMBNAIL_ALGORITHM_VERSION,
     });
+  });
+
+  it('keeps table and grid 3D previews in separate cache entries', () => {
+    expect(getModel3DThumbnailId(image, 'table')).toBe(`${getVersionedThumbnailId(image)}:model3d:table:${image.contentModifiedMs}:${image.fileSize}`);
+    expect(getModel3DThumbnailId(image, 'grid')).toBe(`${getVersionedThumbnailId(image)}:model3d:grid:${image.contentModifiedMs}:${image.fileSize}`);
+    expect(getModel3DThumbnailId(image, 'table')).not.toBe(getModel3DThumbnailId(image, 'grid'));
+  });
+
+  it('invalidates 3D previews when model content changes in place', () => {
+    expect(getModel3DThumbnailId(image, 'grid')).not.toBe(getModel3DThumbnailId({
+      ...image,
+      contentModifiedMs: image.contentModifiedMs + 1,
+    }, 'grid'));
+    expect(getModel3DThumbnailId(image, 'grid')).not.toBe(getModel3DThumbnailId({
+      ...image,
+      fileSize: image.fileSize + 1,
+    }, 'grid'));
+  });
+
+  it('bypasses thumbnail caches for formats with external resources', () => {
+    expect(isModel3DThumbnailCacheSafe('model.glb')).toBe(true);
+    expect(isModel3DThumbnailCacheSafe('model.stl')).toBe(true);
+    expect(isModel3DThumbnailCacheSafe('model.gltf')).toBe(false);
+    expect(isModel3DThumbnailCacheSafe('model.obj')).toBe(false);
+    expect(isModel3DThumbnailCacheSafe('model.fbx')).toBe(false);
   });
 });

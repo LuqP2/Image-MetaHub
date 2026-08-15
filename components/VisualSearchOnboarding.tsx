@@ -46,9 +46,9 @@ const VisualSearchOnboarding: React.FC<{ hasImages: boolean }> = ({ hasImages })
       <div className="flex min-w-0 items-start gap-3">
         <Sparkles className="mt-0.5 h-5 w-5 flex-shrink-0 text-indigo-400" />
         <div className="min-w-0">
-          <div className="font-medium text-indigo-50">Search by what your images show</div>
+          <div className="font-medium text-indigo-50">Find Similar — Local Visual Search</div>
           <div className="text-indigo-200/80">
-            Find images by their content — even screenshots and downloads with no prompt. Runs on your machine; nothing is uploaded.
+            Select any image to find visually related files, even without prompts or metadata. After an explicit model download, processing stays on your machine.
           </div>
         </div>
       </div>

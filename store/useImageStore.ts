@@ -131,7 +131,7 @@ type SearchWorkerImage = {
     steps: number | null;
     cfgScale: number | null;
     generationType: 'txt2img' | 'img2img' | null;
-    mediaType: 'image' | 'video' | 'audio';
+    mediaType: 'image' | 'video' | 'audio' | 'model3d';
     generator: string;
     gpuDevice: string | null;
     hasTelemetry: boolean;
@@ -803,9 +803,9 @@ const toSearchWorkerImage = (image: IndexedImage): SearchWorkerImage => {
     const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
     const inferredMediaType = resolveMediaType(image.name, image.fileType);
     const mediaType =
-        metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'image'
+        metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'model3d' || metadataMediaType === 'image'
             ? metadataMediaType
-            : inferredMediaType === 'video' || inferredMediaType === 'audio'
+            : inferredMediaType === 'video' || inferredMediaType === 'audio' || inferredMediaType === 'model3d'
                 ? inferredMediaType
                 : 'image';
 
@@ -2369,7 +2369,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                         if (!advancedFilters.generationModes.includes(explicitGenerationType)) return false;
                     } else {
                         const mediaType = normalizedMetadata?.media_type ?? resolveMediaType(img.name, img.fileType);
-                        const isGeneratedImageCandidate = mediaType !== 'video' && mediaType !== 'audio';
+                        const isGeneratedImageCandidate = mediaType === 'image';
                         if (!isGeneratedImageCandidate || !advancedFilters.generationModes.includes('txt2img')) return false;
                     }
                 }
@@ -2377,9 +2377,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                     const metadataMediaType = img.metadata?.normalizedMetadata?.media_type;
                     const inferredMediaType = resolveMediaType(img.name, img.fileType);
                     const resolvedMediaType =
-                        metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'image'
+                        metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'model3d' || metadataMediaType === 'image'
                             ? metadataMediaType
-                            : inferredMediaType === 'video' || inferredMediaType === 'audio'
+                            : inferredMediaType === 'video' || inferredMediaType === 'audio' || inferredMediaType === 'model3d'
                                 ? inferredMediaType
                                 : 'image';
                     if (!advancedFilters.mediaTypes.includes(resolvedMediaType)) return false;
@@ -3074,7 +3074,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     }
 
                     const mediaType = normalizedMetadata?.media_type ?? resolveMediaType(image.name, image.fileType);
-                    const isGeneratedImageCandidate = mediaType !== 'video' && mediaType !== 'audio';
+                    const isGeneratedImageCandidate = mediaType === 'image';
 
                     return isGeneratedImageCandidate && advancedFilters.generationModes.includes('txt2img');
                 });
@@ -3084,9 +3084,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                     const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
                     const inferredMediaType = resolveMediaType(image.name, image.fileType);
                     const resolvedMediaType =
-                        metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'image'
+                        metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'model3d' || metadataMediaType === 'image'
                             ? metadataMediaType
-                            : inferredMediaType === 'video' || inferredMediaType === 'audio'
+                            : inferredMediaType === 'video' || inferredMediaType === 'audio' || inferredMediaType === 'model3d'
                                 ? inferredMediaType
                                 : 'image';
                     return advancedFilters.mediaTypes.includes(resolvedMediaType);

@@ -6,6 +6,7 @@ import { transferIndexedImages } from '../services/fileTransferService';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { getActiveDragImageIds, clearActiveDragImageIds } from './ImageGrid';
 import { INTERNAL_IMAGE_DRAG_TYPE } from '../utils/internalImageDrag';
+import { getFilesystemPathComparisonKey } from '../utils/filesystemPath';
 
 interface DirectoryListProps {
   directories: Directory[];
@@ -50,6 +51,66 @@ const folderNameCollator = new Intl.Collator(undefined, { sensitivity: 'base', n
 const normalizePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
 const toForwardSlashes = (path: string) => normalizePath(path);
 const makeNodeKey = (rootId: string, relativePath: string) => `${rootId}::${relativePath === '' ? '.' : relativePath}`;
+
+type NativeFileDragSource = { directoryPath: string; relativePath: string; imageId?: string };
+
+const getBasename = (path: string) => path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+
+/**
+ * A recorded native drag may only be applied to the drop it actually belongs to.
+ * The drop must carry OS files, and one of them must be the exact file the drag
+ * started with. Identity is the absolute path whenever the desktop bridge can
+ * resolve it — matching on the filename alone would let an unrelated `image.png`
+ * dragged in from Explorer/Finder move the recorded library image instead.
+ */
+export const dropMatchesNativeDragSource = (
+  event: Pick<React.DragEvent, 'dataTransfer'>,
+  source: NativeFileDragSource,
+  options: {
+    resolveDroppedFilePath?: (file: File) => string;
+    /** Overridable for tests; defaults to the running platform. */
+    platform?: string;
+  } = {},
+): boolean => {
+  const resolveDroppedFilePath = options.resolveDroppedFilePath
+    ?? ((file: File) => window.electronAPI?.getPathForFile?.(file) ?? '');
+
+  const dataTransfer = event.dataTransfer;
+  if (!dataTransfer) return false;
+  if (!Array.from(dataTransfer.types || []).includes('Files')) return false;
+
+  const droppedFiles = Array.from(dataTransfer.files || []);
+  if (droppedFiles.length === 0) return false;
+
+  // Case folding is platform-dependent: on a case-sensitive filesystem
+  // /library/A/render.png and /library/a/render.png are different files, and
+  // treating them as equal would move the wrong one.
+  const comparisonKey = (value: string) => getFilesystemPathComparisonKey(value, options.platform);
+
+  const expectedKey = comparisonKey(`${source.directoryPath}/${source.relativePath}`);
+  const droppedKeys = droppedFiles
+    .map((file) => {
+      try {
+        return resolveDroppedFilePath(file);
+      } catch {
+        return '';
+      }
+    })
+    .filter((path): path is string => typeof path === 'string' && path.length > 0)
+    .map(comparisonKey);
+
+  if (droppedKeys.length > 0) {
+    return droppedKeys.includes(expectedKey);
+  }
+
+  // No absolute path available (browser build, or the bridge could not resolve
+  // it). Fall back to the filename, which is weaker but still rejects drops that
+  // have nothing to do with the recorded drag.
+  const expectedName = getBasename(source.relativePath);
+  if (!expectedName) return false;
+  const expectedNameKey = comparisonKey(expectedName);
+  return droppedFiles.some((file) => comparisonKey(file.name) === expectedNameKey);
+};
 
 const getRelativePath = (rootPath: string, targetPath: string) => {
   const normalizedRoot = toForwardSlashes(rootPath);
@@ -294,6 +355,28 @@ export default function DirectoryList({
   const treeRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const treeKeyboardActiveRef = useRef(false);
+  const nativeFileDragSourceRef = useRef<NativeFileDragSource | null>(null);
+  const nativeFileDragClearTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onNativeFileDragStarted?.((source) => {
+      nativeFileDragSourceRef.current = source;
+      if (nativeFileDragClearTimeoutRef.current !== null) {
+        window.clearTimeout(nativeFileDragClearTimeoutRef.current);
+      }
+      nativeFileDragClearTimeoutRef.current = window.setTimeout(() => {
+        nativeFileDragSourceRef.current = null;
+        nativeFileDragClearTimeoutRef.current = null;
+      }, 30_000);
+    });
+
+    return () => {
+      unsubscribe?.();
+      if (nativeFileDragClearTimeoutRef.current !== null) {
+        window.clearTimeout(nativeFileDragClearTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Focus input when prompt opens
   useEffect(() => {
@@ -497,6 +580,29 @@ export default function DirectoryList({
           imageIds = payload.imageIds || [];
         }
       } catch (_) { /* ignore */ }
+    }
+
+    // Electron native drags (from the image viewer, including detached windows) arrive
+    // as a plain OS file drop with no internal payload. The recorded drag source is only
+    // trustworthy when the dropped file is actually the one that drag started with —
+    // otherwise an unrelated file dropped from Explorer/Finder would move that image.
+    if (imageIds.length === 0 && nativeFileDragSourceRef.current
+      && dropMatchesNativeDragSource(e, nativeFileDragSourceRef.current)) {
+      const source = nativeFileDragSourceRef.current;
+      nativeFileDragSourceRef.current = null;
+      // Same platform-aware comparison as the drag/drop match above: folding case
+      // unconditionally would collide distinct files on a case-sensitive filesystem.
+      const sourcePath = getFilesystemPathComparisonKey(`${source.directoryPath}/${source.relativePath}`);
+      const indexedImages = useImageStore.getState().images;
+      imageIds = source.imageId && indexedImages.some((image) => image.id === source.imageId)
+        ? [source.imageId]
+        : indexedImages.filter((image) => {
+          const imageDirectoryPath = directories.find((directory) => directory.id === image.directoryId)?.path
+            ?? image.directoryId;
+          const relativePath = image.id.split('::').slice(1).join('::') || image.name;
+          return getFilesystemPathComparisonKey(`${imageDirectoryPath}/${relativePath}`) === sourcePath;
+        })
+        .map((image) => image.id);
     }
 
     if (imageIds.length === 0) return;

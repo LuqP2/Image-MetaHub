@@ -22,7 +22,7 @@ execSync(`node update-version.js ${VERSION}`, { stdio: 'inherit' });
 
 // Step 2: Generate release notes
 console.log('📝 Generating release notes...');
-execSync(`node generate-release.js ${VERSION}`, { stdio: 'inherit' });
+execSync(`node scripts/generate-release.js ${VERSION}`, { stdio: 'inherit' });
 
 // Step 3: Commit changes
 console.log('💾 Committing version changes...');

@@ -211,7 +211,7 @@ Metadata sources:
 11. **Image Adjustments**: Brightness, contrast, saturation, and hue adjustments with metadata-preserving PNG Save As / Overwrite desktop workflows
 12. **ComfyUI Workspace**: Embedded ComfyUI browser in Electron with image context, library thumbnails, workflow metadata tabs, and direct grid/table/viewer entry points
 13. **External ComfyUI Queue Monitoring**: Optional detection of ComfyUI jobs started outside Image MetaHub in the shared generation queue
-14. **Local Visual Search**: Opt-in, fully local CLIP-based search by image content ("beach -people"), plus "Find visually similar" — off by default, no model download or index write until the user turns it on
+14. **Local Visual Search**: Opt-in Find Similar for visually related files, including images without metadata. Experimental text-to-image queries are secondary; no model download occurs without a separate explicit action.
 
 ## Smart Library & Auto-Tags
 
@@ -222,7 +222,7 @@ Metadata sources:
 
 ## Local Visual Search
 
-Opt-in, fully local CLIP-based search by image content (`services/embeddings/`, `services/workers/embeddingWorker.ts`, `services/workers/vectorSearchWorker.ts`, `store/useSemanticStore.ts`). A CLIP model runs entirely on-device; the only network request the feature ever makes is a one-time weights download from Hugging Face.
+Find Similar is the primary supported Local Visual Search workflow for v0.19 (`services/embeddings/`, `services/workers/embeddingWorker.ts`, `services/workers/vectorSearchWorker.ts`, `store/useSemanticStore.ts`). Text-to-image queries are experimental and must not be promoted as the main search experience without explicit authorization. Do not alter the traditional deterministic metadata, prompt, model, LoRA, or workflow search paths to accommodate CLIP.
 
 **Key pieces:**
 
@@ -236,6 +236,14 @@ Opt-in, fully local CLIP-based search by image content (`services/embeddings/`, 
 - **Store integration**: a visual query lives in `useImageStore.semanticResult.scoreById` (a `Map`, never on `IndexedImage`) and *replaces* the text-search predicate rather than combining with it, driving a `'relevance'` sort order.
 
 **Defaults and gating:** `settings.semanticSearchEnabled` is **off by default** — while off, no model status check, no index open, no file write. The onboarding card and the Settings tab stay visible regardless, so the feature is still discoverable; turning it on is what first opens the index. Free tier caps the backfill at `SEMANTIC_FREE_TIER_LIMIT` (2,000) most-recent images (`hooks/useFeatureAccess.ts`); Pro is unlimited.
+
+**Invariants for future changes:**
+
+- Model files must never download without an explicit user action, downloads must keep SHA-256 integrity verification, and all processing must remain local after the explicit download.
+- Embeddings and their index are derived, reconstructible cache data. Index format changes must not trigger a `PARSER_VERSION` bump unless parser output itself changed.
+- WebGPU initialization or runtime failures must preserve a functional WASM fallback.
+- Changes to model loading, workers, Electron boundaries, or packaging require a packaged-app smoke test.
+- UI and documentation must not promise retrieval precision that tests do not support. Find Similar stays the supported headline; text-to-image stays clearly experimental.
 
 ## A1111 Integration
 
@@ -862,7 +870,7 @@ Executes complete pipeline:
 - Runs `npm run build` (compile + test)
 - Updates `package.json` version
 - Updates `ARCHITECTURE.md` version
-- Generates release notes via `generate-release.js`
+- Generates release notes via `scripts/generate-release.js`
 - Creates git commit with standardized message
 - Creates git tag `v{VERSION}`
 - Pushes branch and tag to origin
@@ -885,7 +893,7 @@ Same as above but **skips build step** (safe for pre-tested changes):
 
 ```bash
 npm version 0.9.6
-node generate-release.js 0.9.6
+node scripts/generate-release.js 0.9.6
 git tag v0.9.6
 git push origin main v0.9.6
 ```
@@ -939,7 +947,7 @@ All jobs upload to the **same release draft**, ensuring single unified release w
 
 ### Release Notes Generation
 
-**Script:** `generate-release.js`
+**Script:** `scripts/generate-release.js`
 
 Reads `CHANGELOG.md` and generates `release-v{VERSION}.md` with:
 

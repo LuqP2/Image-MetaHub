@@ -2,6 +2,7 @@ import chokidar from 'chokidar';
 import path from 'path';
 import fs from 'fs';
 import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
+import { normalizeBirthtimeMs, resolveFileSortDate } from '../utils/fileTimestamps.js';
 
 // Active watchers: directoryId -> watcher instance
 const activeWatchers = new Map();
@@ -44,22 +45,32 @@ const isTransientVanishError = (error) => {
 
 const isMediaFile = (filePath) => SUPPORTED_MEDIA_EXTENSIONS.includes(path.extname(filePath).toLowerCase());
 
-const findMediaFilesForSidecar = (sidecarPath) => {
-  const sidecarExt = path.extname(sidecarPath);
-  const sidecarBaseName = path.basename(sidecarPath, sidecarExt);
+const IMAGE_METAHUB_SIDECAR_SUFFIX = '.imagemetahub.json';
+
+export const sidecarMatchesMediaFile = (sidecarFileName, mediaFileName) => {
+  const mediaExt = path.extname(mediaFileName);
+  if (!SUPPORTED_MEDIA_EXTENSIONS.includes(mediaExt.toLowerCase())) {
+    return false;
+  }
+
+  if (sidecarFileName.toLowerCase().endsWith(IMAGE_METAHUB_SIDECAR_SUFFIX)) {
+    return mediaFileName === sidecarFileName.slice(0, -IMAGE_METAHUB_SIDECAR_SUFFIX.length);
+  }
+
+  const sidecarExt = path.extname(sidecarFileName);
+  const sidecarBaseName = path.basename(sidecarFileName, sidecarExt);
+  return mediaFileName.slice(0, -mediaExt.length) === sidecarBaseName;
+};
+
+export const findMediaFilesForSidecar = (sidecarPath) => {
+  const sidecarFileName = path.basename(sidecarPath);
   const sidecarDir = path.dirname(sidecarPath);
 
   try {
     return fs.readdirSync(sidecarDir, { withFileTypes: true })
       .filter((entry) => entry.isFile() || entry.isSymbolicLink())
       .map((entry) => entry.name)
-      .filter((fileName) => {
-        const mediaExt = path.extname(fileName);
-        if (!SUPPORTED_MEDIA_EXTENSIONS.includes(mediaExt.toLowerCase())) {
-          return false;
-        }
-        return fileName.slice(0, -mediaExt.length) === sidecarBaseName;
-      })
+      .filter((fileName) => sidecarMatchesMediaFile(sidecarFileName, fileName))
       .map((fileName) => path.join(sidecarDir, fileName));
   } catch {
     return [];
@@ -232,6 +243,10 @@ export function startWatching(directoryId, dirPath, mainWindow) {
     };
 
     watcher.on('unlink', (filePath) => {
+      if (path.extname(filePath).toLowerCase() === '.json') {
+        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true));
+        return;
+      }
       if (!isMediaFile(filePath)) {
         return;
       }
@@ -335,7 +350,7 @@ function processBatch(directoryId, dirPath, mainWindow) {
       return {
         name: path.basename(filePath),
         path: filePath,
-        lastModified: stats.birthtimeMs ?? stats.mtimeMs,
+        lastModified: resolveFileSortDate(normalizeBirthtimeMs(stats.birthtimeMs), stats.mtimeMs),
         contentModifiedMs: stats.mtimeMs,
         size: stats.size,
         type: path.extname(filePath).slice(1),

@@ -74,8 +74,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
         value={currentValue}
         onChange={(e) => handleInputChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={visualMode ? 'Describe what the image shows… (press Enter)' : 'Search by prompt, model, etc...'}
-        aria-label={visualMode ? 'Visual search' : 'Search'}
+        placeholder={visualMode ? 'Experimental visual text query… (press Enter)' : 'Search by prompt, model, etc...'}
+        aria-label={visualMode ? 'Experimental visual text query' : 'Search'}
         className={`peer w-full bg-gray-800/50 backdrop-blur-sm text-gray-200 placeholder-gray-400 py-3 pl-10 ${showVisualToggle ? 'pr-20' : 'pr-10'} rounded-xl border transition-all duration-300 shadow-sm hover:bg-gray-800/70 focus:outline-none focus:ring-2 ${
           visualMode
             ? 'border-indigo-500/50 focus:border-indigo-500/60 focus:ring-indigo-500/20'
@@ -128,9 +128,9 @@ const SearchBar: React.FC<SearchBarProps> = ({
             className={`p-1 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
               visualMode ? 'text-indigo-400 bg-indigo-500/10' : 'text-gray-400 hover:text-indigo-300 hover:bg-gray-700/50'
             }`}
-            aria-label="Toggle visual search"
+            aria-label="Toggle experimental visual text query"
             aria-pressed={visualMode}
-            title={visualMode ? 'Visual search on — searching by image content' : 'Visual search: find images by what they show'}
+            title={visualMode ? 'Experimental visual text query on' : 'Experimental: search the visual index with text'}
           >
             <Sparkles className="h-4 w-4" />
           </button>

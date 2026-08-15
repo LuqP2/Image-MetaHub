@@ -131,6 +131,10 @@ vi.mock('../components/TransferImagesModal', () => ({
   default: () => null,
 }));
 
+vi.mock('../components/Model3DThumbnail', () => ({
+  default: () => <div data-testid="model3d-thumbnail" />,
+}));
+
 const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
   id: overrides.id ?? 'dir-1::image.png',
   name: overrides.name ?? 'image.png',
@@ -154,7 +158,12 @@ const createImages = (count: number): IndexedImage[] =>
     }),
   );
 
-const Harness = ({ images, onFindSimilar }: { images: IndexedImage[]; onFindSimilar?: (image: IndexedImage) => void }) => {
+const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisuallySimilar = false }: {
+  images: IndexedImage[];
+  onFindSimilar?: (image: IndexedImage) => void;
+  onFindVisuallySimilar?: (image: IndexedImage) => void;
+  canFindVisuallySimilar?: boolean;
+}) => {
   const selectedImages = useImageStore((state) => state.selectedImages);
 
   return (
@@ -167,6 +176,8 @@ const Harness = ({ images, onFindSimilar }: { images: IndexedImage[]; onFindSimi
       onPageChange={vi.fn()}
       onBatchExport={vi.fn()}
       onFindSimilar={onFindSimilar}
+      onFindVisuallySimilar={onFindVisuallySimilar}
+      canFindVisuallySimilar={canFindVisuallySimilar}
     />
   );
 };
@@ -241,6 +252,17 @@ describe('ImageGrid context menu', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('does not mount 3D thumbnail renderers when thumbnails are disabled', () => {
+    const images = [createImage({ id: 'model-1', name: 'model.glb', fileType: 'model/gltf-binary' })];
+    setupImageGridState(images);
+    useSettingsStore.setState({ disableThumbnails: true });
+
+    render(<Harness images={images} />);
+
+    expect(screen.getByText('Preview disabled')).toBeTruthy();
+    expect(screen.queryByTestId('model3d-thumbnail')).toBeNull();
   });
 
   it('keeps multi-selection when right-clicking an image and opens the context menu', () => {
@@ -580,8 +602,27 @@ describe('ImageGrid context menu', () => {
 
     render(<Harness images={[image]} onFindSimilar={onFindSimilar} />);
 
-    fireEvent.click(screen.getByText('Find similar...'));
+    fireEvent.click(screen.getByText('Find by metadata...'));
     expect(onFindSimilar).toHaveBeenCalledWith(image);
+  });
+
+  it('runs Find Similar for an image with no prompt or metadata', () => {
+    const onFindVisuallySimilar = vi.fn();
+    const image = createImage({ id: 'img-1', name: 'plain.png', prompt: undefined, metadata: undefined });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+    setupImageGridState([image]);
+
+    render(
+      <Harness
+        images={[image]}
+        onFindVisuallySimilar={onFindVisuallySimilar}
+        canFindVisuallySimilar
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Find Similar'));
+    expect(onFindVisuallySimilar).toHaveBeenCalledWith(image);
   });
 
   it('adds selected images explicitly even for collections with auto-add tags', () => {

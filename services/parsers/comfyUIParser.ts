@@ -481,6 +481,63 @@ function extractSourceReferenceFromNode(node: ParserNode): SourceImageReference 
   };
 }
 
+function detectModel3DLineageFromGraph(
+  graph: Graph
+): { generationType?: Exclude<GenerationType, 'txt2img'>; lineage?: ImageLineage } {
+  const startNodeIds: string[] = [];
+
+  for (const node of Object.values(graph)) {
+    const normalizedClassType = node.class_type?.toLowerCase().replace(/[^a-z0-9]/g, '') || '';
+    const is3DSaveNode = normalizedClassType.includes('save3d')
+      || normalizedClassType.includes('saveglb')
+      || normalizedClassType === 'metahubsavemodel';
+    if (!is3DSaveNode) continue;
+
+    const modelInput = node.inputs?.model_3d ?? node.inputs?.mesh ?? node.inputs?.model;
+    const startNodeId = getConnectionNodeId(modelInput);
+    if (startNodeId) startNodeIds.push(startNodeId);
+  }
+
+  if (startNodeIds.length === 0) return {};
+
+  const queue = [...startNodeIds];
+  const visited = new Set<string>();
+  let queueIndex = 0;
+
+  while (queueIndex < queue.length) {
+    const nodeId = queue[queueIndex++]!;
+    if (visited.has(nodeId)) continue;
+    visited.add(nodeId);
+
+    const node = graph[nodeId];
+    if (!node?.class_type || node.mode === 2 || node.mode === 4) continue;
+    const normalizedClassType = node.class_type.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (normalizedClassType === 'loadimage') {
+      const sourceImage = extractSourceReferenceFromNode(node);
+      if (sourceImage) {
+        return {
+          generationType: 'image2model3d',
+          lineage: {
+            detection: 'inferred',
+            sourceImage,
+          },
+        };
+      }
+    }
+
+    for (const inputValue of Object.values(node.inputs || {})) {
+      const upstreamNodeId = getConnectionNodeId(inputValue);
+      if (upstreamNodeId && !visited.has(upstreamNodeId)) queue.push(upstreamNodeId);
+    }
+  }
+
+  return {};
+}
+
+export function resolveModel3DLineageFromGraph(workflow: any, prompt: any) {
+  return detectModel3DLineageFromGraph(createNodeMap(workflow, prompt));
+}
+
 function detectComfyLineageFromGraph(
   graph: Graph,
   terminalNode: ParserNode | null,
@@ -949,7 +1006,9 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
           ? resolvePromptFromGraph(workflowGraph, promptGraph)
           : {};
         const inferredLineage = graph
-          ? detectComfyLineageFromGraph(graph, findTerminalNode(graph), metahubData.denoise)
+          ? metahubData.media_type === 'model3d'
+            ? detectModel3DLineageFromGraph(graph)
+            : detectComfyLineageFromGraph(graph, findTerminalNode(graph), metahubData.denoise)
           : {};
         const generationType = explicitGenerationType || inferredLineage.generationType;
         const lineage = generationType

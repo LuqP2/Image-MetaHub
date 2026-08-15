@@ -6,7 +6,7 @@
  * Keeps CHANGELOG.md (root) and public/CHANGELOG.md in sync.
  * 
  * Why two files?
- * - Root CHANGELOG.md: Used by release workflow (generate-release.js) for GitHub releases
+ * - Root CHANGELOG.md: Used by release workflow (scripts/generate-release.js) for GitHub releases
  * - public/CHANGELOG.md: Loaded by the app's ChangelogModal component via fetch('/CHANGELOG.md')
  * 
  * Usage:

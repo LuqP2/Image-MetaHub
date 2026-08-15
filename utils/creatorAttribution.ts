@@ -2,7 +2,7 @@ import type { BaseMetadata, IndexedImage, MetaHubAttribution } from '../types';
 
 export const PRO_LICENSE_URL = 'https://www.imagemetahub.com/pro';
 
-export type ProLicenseUrlContext = 'menu' | 'lockedfeature' | 'settings' | 'banner' | 'about';
+export type ProLicenseUrlContext = 'menu' | 'lockedfeature' | 'settings' | 'banner' | 'about' | 'trial_expired';
 
 const normalizeToken = (value: unknown): string | null => {
   if (typeof value !== 'string') {

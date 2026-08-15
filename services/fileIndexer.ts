@@ -5,13 +5,14 @@ import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager'
 import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { getFilesystemPathComparisonKey, normalizeFilesystemPath } from '../utils/filesystemPath';
 import { parse } from 'exifr';
-import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './parsers/comfyUIParser';
+import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph } from './parsers/comfyUIParser';
 import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { traceCacheDebug } from '../utils/cacheDebugTrace';
-import { buildSupportedMediaRegex, inferMimeTypeFromName, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { buildSupportedMediaRegex, getFileExtension, inferMimeTypeFromName, isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { normalizeBirthtimeMs, resolveFileSortDate } from '../utils/fileTimestamps.js';
 import { getAvifDimensions, isAvifBuffer, parseAvifMetadata } from '../utils/avifMetadata.mjs';
 import { applyImageMetaHubAvifExtension } from '../utils/imageMetaHubAvifExtension.mjs';
 
@@ -118,6 +119,16 @@ function sanitizeJson(jsonString: string): string {
     return jsonString.replace(/:\s*NaN/g, ': null');
 }
 
+const trimJsonChunkPadding = (value: string): string => {
+  let end = value.length;
+  while (end > 0) {
+    const character = value[end - 1];
+    if (character.charCodeAt(0) !== 0 && character.trim() !== '') break;
+    end -= 1;
+  }
+  return value.slice(0, end);
+};
+
 // Electron detection for optimized batch reading
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 const isProduction = Boolean(
@@ -155,7 +166,7 @@ function incrementCounter(counter: Record<string, number>, key: string) {
 }
 
 function resolveCatalogMimeType(fileName: string, ...declaredTypes: Array<string | undefined>): string {
-  return declaredTypes.find((value) => /^(image|video|audio)\//.test(value ?? ''))
+  return declaredTypes.find((value) => /^(image|video|audio|model)\//.test(value ?? ''))
     ?? inferMimeTypeFromName(fileName);
 }
 
@@ -171,6 +182,7 @@ function classifyFileType(source?: CatalogFileEntry): string {
   if (type === 'image/jpeg') return 'jpeg';
   if (type.startsWith('video/')) return 'video';
   if (type.startsWith('audio/')) return 'audio';
+  if (type.startsWith('model/') || isModel3DFileName(source.handle.name, type)) return 'model3d';
   return type || 'unknown';
 }
 
@@ -1299,12 +1311,19 @@ async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata
   return { metadata: null, buffer };
 }
 
-const buildNormalizedMetadataFromMetaHubChunk = async (
+export const buildNormalizedMetadataFromMetaHubChunk = async (
   metaHubData: unknown,
   fallbackDims?: { width?: number; height?: number }
 ): Promise<BaseMetadata> => {
-  if (metaHubData && typeof metaHubData === 'object') {
-    const payload = metaHubData as Record<string, any>;
+  const payload = metaHubData && typeof metaHubData === 'object'
+    ? metaHubData as Record<string, any>
+    : null;
+  const mediaType = payload?.media_type === 'model3d' ? 'model3d' : undefined;
+  const model3DMetadata = payload?.model_3d && typeof payload.model_3d === 'object'
+    ? payload.model_3d
+    : undefined;
+
+  if (payload) {
     if (payload.generator === 'ComfyUI') {
       const rawTags = payload.imh_pro?.user_tags;
       // Optimization: Replace chained array methods with single loops
@@ -1403,6 +1422,8 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
         _metahub_pro: payload.imh_pro || null,
         _detection_method: 'metahub_chunk_direct',
         generator: 'ComfyUI',
+        media_type: mediaType,
+        model_3d: model3DMetadata,
       };
     }
   }
@@ -1436,7 +1457,67 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
     _metahub_pro: enhancedResult._metahub_pro || null,
     _detection_method: enhancedResult._detection_method,
     generator: 'ComfyUI',
+    media_type: mediaType,
+    model_3d: model3DMetadata,
   };
+};
+
+const MODEL_3D_METADATA_MAX_BYTES = 16 * 1024 * 1024;
+
+const parseMaybeJson = (value: unknown): unknown => {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(sanitizeJson(value));
+  } catch {
+    return value;
+  }
+};
+
+const normalizeModel3DAssetExtras = (extras: unknown): ImageMetadata | null => {
+  if (!extras || typeof extras !== 'object' || Array.isArray(extras)) return null;
+  const record = extras as Record<string, unknown>;
+  const imageMetaHubData = parseMaybeJson(record.imagemetahub_data);
+  if (imageMetaHubData && typeof imageMetaHubData === 'object' && !Array.isArray(imageMetaHubData)) {
+    return { imagemetahub_data: imageMetaHubData } as ImageMetadata;
+  }
+  const workflow = parseMaybeJson(record.workflow);
+  const prompt = parseMaybeJson(record.prompt);
+  if ((workflow && typeof workflow === 'object') || (prompt && typeof prompt === 'object')) {
+    return {
+      ...(workflow && typeof workflow === 'object' ? { workflow } : {}),
+      ...(prompt && typeof prompt === 'object' ? { prompt } : {}),
+    } as ImageMetadata;
+  }
+  return null;
+};
+
+export const parseModel3DMetadataFromBuffer = (buffer: ArrayBuffer, extension: string): ImageMetadata | null => {
+  try {
+    if (buffer.byteLength > MODEL_3D_METADATA_MAX_BYTES + 20) return null;
+    if (extension !== '.glb' || buffer.byteLength < 20) return null;
+    const view = new DataView(buffer);
+    if (view.getUint32(0, false) !== 0x676c5446) return null;
+    const jsonLength = view.getUint32(12, true);
+    const jsonType = view.getUint32(16, true);
+    if (jsonType !== 0x4e4f534a || jsonLength <= 0 || jsonLength > MODEL_3D_METADATA_MAX_BYTES || 20 + jsonLength > buffer.byteLength) {
+      return null;
+    }
+    const text = trimJsonChunkPadding(new TextDecoder().decode(buffer.slice(20, 20 + jsonLength)));
+    const document = JSON.parse(text);
+    return normalizeModel3DAssetExtras(document?.asset?.extras);
+  } catch {
+    return null;
+  }
+};
+
+const readGlbMetadataFromFile = async (file: File): Promise<ImageMetadata | null> => {
+  const header = await file.slice(0, 20).arrayBuffer();
+  if (header.byteLength < 20) return null;
+  const view = new DataView(header);
+  if (view.getUint32(0, false) !== 0x676c5446 || view.getUint32(16, true) !== 0x4e4f534a) return null;
+  const jsonLength = view.getUint32(12, true);
+  if (jsonLength <= 0 || jsonLength > MODEL_3D_METADATA_MAX_BYTES || 20 + jsonLength > file.size) return null;
+  return parseModel3DMetadataFromBuffer(await file.slice(0, 20 + jsonLength).arrayBuffer(), '.glb');
 };
 
 /**
@@ -1466,10 +1547,25 @@ async function processSingleFileOptimized(
     const inferredType = resolveCatalogMimeType(fileEntry.handle.name, fileEntry.type);
     const isVideo = isVideoFileName(fileEntry.handle.name) || inferredType.startsWith('video/');
     const isAudio = isAudioFileName(fileEntry.handle.name) || inferredType.startsWith('audio/');
+    const isModel3D = isModel3DFileName(fileEntry.handle.name, inferredType);
+    const absolutePath = (fileEntry.handle as ElectronFileHandle)?._filePath;
     let videoInfo: VideoInfo | null = null;
     let audioInfo: AudioInfo | null = null;
 
-    if (isVideo || isAudio) {
+    if (isModel3D) {
+      const extension = getFileExtension(fileEntry.handle.name);
+      const readModel3DMetadata = (window as any).electronAPI?.readModel3DMetadata;
+      if (isElectron && absolutePath && readModel3DMetadata) {
+        const result = await readModel3DMetadata({ filePath: absolutePath });
+        rawMetadata = result?.success && result.metadata ? result.metadata as ImageMetadata : null;
+      } else if (extension !== '.glb') {
+        rawMetadata = null;
+      } else {
+        const file = await fileEntry.handle.getFile();
+        rawMetadata = await readGlbMetadataFromFile(file);
+        fileSizeValue = fileSizeValue ?? file.size;
+      }
+    } else if (isVideo || isAudio) {
       const mediaResult = await readMediaMetadataFromElectron(fileEntry);
       rawMetadata = mediaResult.rawMetadata;
       videoInfo = mediaResult.videoInfo ?? null;
@@ -1532,19 +1628,19 @@ async function processSingleFileOptimized(
     }
 
     // Try to read sidecar JSON for Easy Diffusion (fallback if no embedded metadata)
-    let absolutePath = (fileEntry.handle as ElectronFileHandle)?._filePath;
-    if (!absolutePath && isElectron && (window as any).electronAPI?.joinPaths) {
+    let resolvedAbsolutePath = absolutePath;
+    if (!resolvedAbsolutePath && isElectron && (window as any).electronAPI?.joinPaths) {
       try {
         const joinResult = await (window as any).electronAPI.joinPaths(directoryId, fileEntry.path);
         if (joinResult?.success && joinResult.path) {
-          absolutePath = joinResult.path;
+          resolvedAbsolutePath = joinResult.path;
         }
       } catch {
         // Ignore join failures and keep existing path.
       }
     }
     if (!rawMetadata) {
-      sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, absolutePath);
+      sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, resolvedAbsolutePath);
       if (sidecarJson) {
         rawMetadata = sidecarJson;
       }
@@ -1681,6 +1777,9 @@ if (rawMetadata) {
       prompt = rawMetadata as any;
     }
     const resolvedParams = resolvePromptFromGraph(workflow, prompt);
+    const model3DLineage = isModel3D
+      ? resolveModel3DLineageFromGraph(workflow, prompt)
+      : null;
     normalizedMetadata = {
       prompt: resolvedParams.prompt || '',
       negativePrompt: resolvedParams.negativePrompt || '',
@@ -1697,8 +1796,8 @@ if (rawMetadata) {
       loras: normalizeComfyLoras(resolvedParams),
       vae: resolvedParams.vae || resolvedParams.vaes?.[0]?.name,
       denoise: resolvedParams.denoise,
-      generationType: resolvedParams.generationType,
-      lineage: resolvedParams.lineage,
+      generationType: model3DLineage?.generationType || resolvedParams.generationType,
+      lineage: model3DLineage?.lineage || resolvedParams.lineage,
     };
   }
 
@@ -1787,6 +1886,18 @@ if (!normalizedMetadata && isAudio) {
     audio: audioInfo,
   };
 }
+if (!normalizedMetadata && isModel3D) {
+  normalizedMetadata = {
+    prompt: '',
+    model: '',
+    width: 0,
+    height: 0,
+    steps: 0,
+    scheduler: '',
+    media_type: 'model3d',
+    model_3d: { format: getFileExtension(fileEntry.handle.name).slice(1) },
+  };
+}
 if (normalizedMetadata && isAudio) {
   normalizedMetadata.width = normalizedMetadata.width || 0;
   normalizedMetadata.height = normalizedMetadata.height || 0;
@@ -1799,6 +1910,14 @@ if (normalizedMetadata && isVideo) {
   normalizedMetadata.media_type = 'video';
   normalizedMetadata.video = normalizedMetadata.video ?? videoInfo;
   normalizedMetadata.audio = normalizedMetadata.audio ?? audioInfo;
+}
+if (normalizedMetadata && isModel3D) {
+  normalizedMetadata.width = 0;
+  normalizedMetadata.height = 0;
+  normalizedMetadata.media_type = 'model3d';
+  normalizedMetadata.model_3d = normalizedMetadata.model_3d ?? {
+    format: getFileExtension(fileEntry.handle.name).slice(1),
+  };
 }
 
 // ==============================================================================
@@ -1828,7 +1947,11 @@ if (normalizedMetadata && isVideo) {
     const workflowNodes = extractWorkflowNodeTypesFromMetadata(rawMetadata);
 
     // Determine the best date for sorting (generation date vs file date)
-    const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? Date.now();
+    const sortDate = resolveFileSortDate(
+      fileEntry.birthtimeMs,
+      fileEntry.contentModifiedMs,
+      fileEntry.lastModified
+    );
 
     if (profile) {
       profile.totalMs = performance.now() - totalStart;
@@ -1859,7 +1982,7 @@ if (normalizedMetadata && isVideo) {
       cfgScale: normalizedMetadata?.cfgScale ?? normalizedMetadata?.cfg_scale ?? null,
       steps: normalizedMetadata?.steps || null,
       seed: normalizedMetadata?.seed || null,
-      dimensions: normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`,
+      dimensions: isModel3D ? undefined : (normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`),
       workflowNodes,
       fileSize: normalizedFileSize,
       fileType: normalizedFileType,
@@ -1876,7 +1999,14 @@ export async function reparseIndexedImage(
   directoryPath: string,
   options: { compactRawMetadata?: boolean } = {}
 ): Promise<IndexedImage | null> {
-  if (!window.electronAPI?.joinPaths || !window.electronAPI?.readFile) {
+  const isModel3D = isModel3DFileName(
+    image.name,
+    image.fileType ?? inferMimeTypeFromName(image.name)
+  );
+  if (
+    !window.electronAPI?.joinPaths
+    || (isModel3D ? !window.electronAPI.readModel3DMetadata : !window.electronAPI.readFile)
+  ) {
     throw new Error('Metadata reparsing is only available in the desktop app.');
   }
 
@@ -1887,17 +2017,20 @@ export async function reparseIndexedImage(
   }
 
   const absolutePath = joined.path;
-  const readResult = await window.electronAPI.readFile(absolutePath);
-  if (!readResult.success || !readResult.data) {
-    throw new Error(readResult.error || 'Failed to read the image file.');
+  let fileData: ArrayBuffer | undefined;
+  if (!isModel3D) {
+    const readResult = await window.electronAPI.readFile(absolutePath);
+    if (!readResult.success || !readResult.data) {
+      throw new Error(readResult.error || 'Failed to read the image file.');
+    }
+    const bytes = new Uint8Array(readResult.data);
+    fileData = bytes.slice().buffer;
   }
 
   const statsResult = window.electronAPI.getFileStats
     ? await window.electronAPI.getFileStats(absolutePath)
     : { success: false } as { success: boolean; stats?: any; error?: string };
   const stats = statsResult.success ? statsResult.stats : undefined;
-  const bytes = new Uint8Array(readResult.data);
-  const fileData = bytes.slice().buffer;
 
   const fileEntry: CatalogFileEntry = {
     handle: {
@@ -1912,7 +2045,7 @@ export async function reparseIndexedImage(
       : (image.contentModifiedMs ?? image.lastModified),
     size: typeof stats?.size === 'number' ? stats.size : image.fileSize,
     type: image.fileType ?? inferMimeTypeFromName(image.name),
-    birthtimeMs: typeof stats?.birthtimeMs === 'number' ? stats.birthtimeMs : undefined,
+    birthtimeMs: normalizeBirthtimeMs(stats?.birthtimeMs),
   };
 
   return processSingleFileOptimized(
@@ -1976,7 +2109,7 @@ export async function indexImageFileAtPath(
     contentModifiedMs: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : undefined,
     size: typeof stats?.size === 'number' ? stats.size : fileData.byteLength,
     type: inferMimeTypeFromName(fileName),
-    birthtimeMs: typeof stats?.birthtimeMs === 'number' ? stats.birthtimeMs : undefined,
+    birthtimeMs: normalizeBirthtimeMs(stats?.birthtimeMs),
   };
 
   const indexed = await processSingleFileOptimized(fileEntry, directory.id, fileData);
@@ -2475,7 +2608,11 @@ export async function processFiles(
     const stat = statsLookup.get(entry.path);
     const fileSize = entry.size ?? stat?.size;
     const inferredType = resolveCatalogMimeType(entry.handle.name, entry.type, stat?.type);
-    const sortDate = entry.birthtimeMs ?? stat?.birthtimeMs ?? entry.lastModified;
+    const sortDate = resolveFileSortDate(
+      normalizeBirthtimeMs(entry.birthtimeMs) ?? normalizeBirthtimeMs(stat?.birthtimeMs),
+      entry.contentModifiedMs,
+      entry.lastModified
+    );
     const catalogMetadata = {
       phase: 'catalog',
       fileSize,

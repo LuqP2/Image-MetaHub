@@ -8,6 +8,7 @@ import type {
   IndexedImageTransferResultItem,
 } from '../types';
 import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
+import { getUnsupportedModel3DTransferError } from '../utils/model3DTransfer';
 
 interface TransferIndexedImagesParams {
   images: IndexedImage[];
@@ -106,6 +107,17 @@ export async function transferIndexedImages({
       transferredCount: 0,
       failedCount: 0,
       error,
+    };
+  }
+
+  const unsupportedModelError = getUnsupportedModel3DTransferError(images);
+  if (unsupportedModelError) {
+    setError(unsupportedModelError);
+    return {
+      success: false,
+      transferredCount: 0,
+      failedCount: images.length,
+      error: unsupportedModelError,
     };
   }
 

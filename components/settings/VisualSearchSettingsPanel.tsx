@@ -105,13 +105,13 @@ export const VisualSearchSettingsPanel: React.FC = () => {
 
   return (
     <SettingsPanel
-      title="Visual Search"
-      description="Find images by what they show — including screenshots and downloads with no prompt. Runs entirely on your machine."
+      title="Local Visual Search"
+      description="Build a local visual index for Find Similar, including images with no prompt or generation metadata."
     >
       <SettingsSectionCard title="Local visual search">
         <SettingRow
-          label="Enable visual search"
-          description="Builds a small on-device index of what each image looks like. Nothing is uploaded — the only network request is a one-time model download."
+          label="Enable Local Visual Search"
+          description="Opt in to a rebuildable on-device index. The model downloads only when you explicitly request it; after that, processing works offline and nothing is uploaded."
           control={<SettingSwitch checked={enabled} onChange={setEnabled} />}
         />
 
@@ -128,7 +128,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
             {/* Model choice */}
             <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-3">
               <div>
-                <p className="text-sm font-medium text-gray-100">Search quality</p>
+                <p className="text-sm font-medium text-gray-100">Image embedding model</p>
                 <p className="text-xs text-gray-400">
                   Both run entirely on your machine and produce the same index size and search speed —
                   they differ only in how much detail they look at, and so in how long indexing takes.
@@ -169,9 +169,9 @@ export const VisualSearchSettingsPanel: React.FC = () => {
 
             <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-3">
               <div>
-                <p className="text-sm font-medium text-gray-100">Visual search precision</p>
+                <p className="text-sm font-medium text-gray-100">Experimental text query matching</p>
                 <p className="text-xs text-gray-400">
-                  More results includes weaker matches. Balanced is recommended. More precise only shows results close to the best matches.
+                  Text-to-image results are approximate and do not replace prompt or metadata search. This controls how many weaker visual matches are shown.
                 </p>
               </div>
 

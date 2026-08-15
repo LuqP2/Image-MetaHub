@@ -230,8 +230,8 @@ const WorkspaceThumbnailButton: React.FC<{
                 ? 'border-purple-400 ring-1 ring-purple-400/60'
                 : 'border-gray-700 hover:border-gray-500'
           }`}
-          title={`Preview ${image.name}`}
-          aria-label={`Preview ${image.name}`}
+          title={`Open ${image.name}`}
+          aria-label={`Open ${image.name}`}
           draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
           onDragStart={(event) => onDragStart(event, image, directoryPath)}
         >
@@ -309,314 +309,6 @@ const hasSelectedTextWithin = (container: HTMLElement | null): boolean => {
   return false;
 };
 
-const WorkspaceImagePreviewModal: React.FC<{
-  images: IndexedImage[];
-  initialIndex: number;
-  onClose: () => void;
-  onInspectImage?: (image: IndexedImage) => void;
-  onOpenWorkflow?: (image: IndexedImage) => void;
-  onViewFullMetadata?: (image: IndexedImage) => void;
-}> = ({ images, initialIndex, onClose, onInspectImage, onOpenWorkflow, onViewFullMetadata }) => {
-  const [index, setIndex] = useState(() => Math.min(Math.max(initialIndex, 0), Math.max(images.length - 1, 0)));
-  const [isMetadataExpanded, setIsMetadataExpanded] = useState(false);
-  const [parameterCopyStatus, setParameterCopyStatus] = useState('');
-  const onInspectImageRef = useRef(onInspectImage);
-  const metadataPanelRef = useRef<HTMLDivElement>(null);
-  const current = images[index];
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const hasMultiple = images.length > 1;
-  const currentImageId = current?.id ?? '';
-  const metadata = current?.metadata?.normalizedMetadata as BaseMetadata | undefined;
-  const prompt = current ? getImagePrompt(current) : '';
-  const negativePrompt = metadata?.negativePrompt || '';
-  const dimensionsLabel = current ? getImageDimensionsLabel(current) : '';
-  const seedLabel = hasMetadataValue(metadata?.seed) ? String(metadata?.seed) : '';
-  const stepsLabel = hasMetadataValue(metadata?.steps) ? String(metadata?.steps) : '';
-  const cfgLabel = hasMetadataValue(metadata?.cfg_scale ?? (metadata as any)?.cfgScale)
-    ? String(metadata?.cfg_scale ?? (metadata as any)?.cfgScale)
-    : '';
-  const samplerLabel = (metadata?.sampler || metadata?.scheduler || '').trim();
-  const parameterText = useMemo(() => {
-    const lines = [
-      metadata?.model ? `Model: ${metadata.model}` : '',
-      seedLabel ? `Seed: ${seedLabel}` : '',
-      stepsLabel ? `Steps: ${stepsLabel}` : '',
-      cfgLabel ? `CFG: ${cfgLabel}` : '',
-      samplerLabel ? `Sampler: ${samplerLabel}` : '',
-      dimensionsLabel ? `Size: ${dimensionsLabel}` : '',
-      prompt ? `Prompt: ${prompt}` : '',
-      negativePrompt ? `Negative prompt: ${negativePrompt}` : '',
-    ].filter(Boolean);
-
-    return lines.join('\n');
-  }, [cfgLabel, dimensionsLabel, metadata?.model, negativePrompt, prompt, samplerLabel, seedLabel, stepsLabel]);
-
-  useEffect(() => {
-    onInspectImageRef.current = onInspectImage;
-  }, [onInspectImage]);
-
-  useEffect(() => {
-    if (current) {
-      onInspectImageRef.current?.(current);
-      setParameterCopyStatus('');
-    }
-  }, [current, currentImageId]);
-
-  useEffect(() => {
-    setIndex((currentIndex) => Math.min(Math.max(currentIndex, 0), Math.max(images.length - 1, 0)));
-  }, [images.length]);
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    let isDisposed = false;
-
-    const loadImage = async () => {
-      if (!current?.handle) {
-        setImageUrl(null);
-        return;
-      }
-
-      try {
-        const file = await current.handle.getFile();
-        if (isDisposed) {
-          return;
-        }
-        objectUrl = URL.createObjectURL(file);
-        setImageUrl(objectUrl);
-      } catch {
-        if (!isDisposed) {
-          setImageUrl(null);
-        }
-      }
-    };
-
-    void loadImage();
-
-    return () => {
-      isDisposed = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [current]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-        setIndex((currentIndex) => Math.max(0, currentIndex - 1));
-      }
-      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-        setIndex((currentIndex) => Math.min(images.length - 1, currentIndex + 1));
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [images.length, onClose]);
-
-  if (!current) {
-    return null;
-  }
-
-  const copyParameters = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    if (!parameterText) {
-      return;
-    }
-
-    const result = await copyTextToClipboard(parameterText);
-    if (result.success) {
-      setParameterCopyStatus('Copied');
-    } else {
-      console.error('Failed to copy preview parameters:', result.error);
-      setParameterCopyStatus('Copy failed');
-    }
-  };
-
-  const handleMetadataPanelClick = () => {
-    if (hasSelectedTextWithin(metadataPanelRef.current)) {
-      return;
-    }
-
-    setIsMetadataExpanded((expanded) => !expanded);
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-[90] bg-black/95"
-      onMouseDown={onClose}
-      role="dialog"
-      aria-label="Workspace image preview"
-    >
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-3 sm:p-6">
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={current.name}
-            className="pointer-events-auto max-h-full max-w-full object-contain image-alpha-grid"
-            onMouseDown={(event) => event.stopPropagation()}
-          />
-        ) : (
-          <div
-            className="pointer-events-auto rounded border border-gray-800 bg-gray-950/90 p-8 text-sm text-gray-400"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            Image preview is not available.
-          </div>
-        )}
-      </div>
-
-      {hasMultiple && (
-        <>
-          <button
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => setIndex((currentIndex) => Math.max(0, currentIndex - 1))}
-            disabled={index === 0}
-            className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/55 p-3 text-gray-100 ring-1 ring-white/10 transition-colors hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-35"
-            aria-label="Previous image"
-            title="Previous"
-          >
-            <ChevronLeft size={28} />
-          </button>
-          <button
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => setIndex((currentIndex) => Math.min(images.length - 1, currentIndex + 1))}
-            disabled={index === images.length - 1}
-            className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/55 p-3 text-gray-100 ring-1 ring-white/10 transition-colors hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-35"
-            aria-label="Next image"
-            title="Next"
-          >
-            <ChevronRight size={28} />
-          </button>
-        </>
-      )}
-
-      <div
-        className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-full bg-black/55 px-3 py-1.5 text-xs font-medium text-gray-200 ring-1 ring-white/10 backdrop-blur"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        {hasMultiple && <span>{index + 1}/{images.length}</span>}
-        {hasMultiple && <span className="h-1 w-1 rounded-full bg-gray-500" />}
-        <span className="max-w-[48vw] truncate" title={current.name}>{current.name}</span>
-      </div>
-
-      <div
-        ref={metadataPanelRef}
-        className={`group absolute bottom-4 left-4 z-10 max-w-[min(44rem,calc(100vw-2rem))] rounded-lg border border-white/10 bg-black/55 p-3 text-gray-100 shadow-2xl backdrop-blur transition-colors hover:bg-black/75 ${
-          isMetadataExpanded ? 'bg-black/80' : ''
-        }`}
-        onMouseDown={(event) => event.stopPropagation()}
-        onClick={handleMetadataPanelClick}
-        onKeyDown={(event) => {
-          if (event.target !== event.currentTarget) {
-            return;
-          }
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            event.stopPropagation();
-            handleMetadataPanelClick();
-          }
-        }}
-        tabIndex={0}
-        role="button"
-        aria-label="Toggle metadata"
-        aria-expanded={isMetadataExpanded}
-        title="Toggle metadata"
-      >
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {metadata?.model && (
-            <span className="rounded-full bg-white/10 px-2 py-1 font-medium">{metadata.model}</span>
-          )}
-          {seedLabel && <span className="rounded-full bg-white/10 px-2 py-1 font-mono">Seed {seedLabel}</span>}
-          {dimensionsLabel && <span className="rounded-full bg-white/10 px-2 py-1 font-mono">{dimensionsLabel}</span>}
-          {hasVerifiedTelemetry(current) && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-green-400/30 bg-green-500/15 px-2 py-1 text-green-200">
-              <CheckCircle className="h-3.5 w-3.5" />
-              Verified
-            </span>
-          )}
-        </div>
-        {prompt && (
-          <p className={`mt-2 text-sm leading-5 text-gray-200 ${isMetadataExpanded ? 'line-clamp-none' : 'line-clamp-2'}`}>
-            {prompt}
-          </p>
-        )}
-        {isMetadataExpanded && (
-          <div className="mt-3 space-y-2 border-t border-white/10 pt-3 text-xs text-gray-300">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex flex-wrap gap-2">
-                {stepsLabel && <span>Steps: {stepsLabel}</span>}
-                {cfgLabel && <span>CFG: {cfgLabel}</span>}
-                {samplerLabel && <span>Sampler: {samplerLabel}</span>}
-              </div>
-              {parameterText && (
-                <button
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onClick={copyParameters}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded border border-white/10 px-2 py-1 font-semibold text-gray-200 hover:bg-white/10"
-                  aria-label="Copy preview parameters"
-                  title="Copy parameters"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  {parameterCopyStatus || 'Copy'}
-                </button>
-              )}
-            </div>
-            {negativePrompt && (
-              <p className="max-h-28 overflow-y-auto whitespace-pre-wrap text-gray-400">
-                Negative: {negativePrompt}
-              </p>
-            )}
-            {onViewFullMetadata && (
-              <button
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onViewFullMetadata(current);
-                }}
-                className="inline-flex items-center gap-2 rounded border border-white/10 px-2 py-1 font-semibold text-gray-200 hover:bg-white/10"
-              >
-                <FileText className="h-3.5 w-3.5" />
-                Full metadata
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div
-        onMouseDown={(event) => event.stopPropagation()}
-        className="absolute right-4 top-4 z-10 flex items-center gap-2"
-      >
-        {onOpenWorkflow && (
-          <button
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpenWorkflow(current);
-            }}
-            className="inline-flex items-center gap-2 rounded-full bg-purple-600/80 px-3 py-2 text-sm font-semibold text-white ring-1 ring-purple-300/30 transition-colors hover:bg-purple-500"
-            aria-label="Open workflow in ComfyUI"
-            title="Open workflow in ComfyUI"
-          >
-            <Workflow size={18} />
-            <span className="hidden sm:inline">Open workflow</span>
-          </button>
-        )}
-        <button
-          onClick={onClose}
-          className="rounded-full bg-black/55 p-2 text-gray-200 ring-1 ring-white/10 transition-colors hover:bg-black/80 hover:text-white"
-          aria-label="Close image preview"
-          title="Close"
-        >
-          <X size={22} />
-        </button>
-      </div>
-    </div>
-  );
-};
-
 const getBounds = (element: HTMLElement) => {
   const rect = element.getBoundingClientRect();
   return {
@@ -686,7 +378,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const [viewState, setViewState] = useState<ComfyUIViewState>(DEFAULT_VIEW_STATE);
   const [loadFailure, setLoadFailure] = useState<ComfyUIViewLoadFailure | null>(null);
   const [connectionMessage, setConnectionMessage] = useState<string>('');
-  const [workspacePreviewIndex, setWorkspacePreviewIndex] = useState<number | null>(null);
   const [assetContextMenu, setAssetContextMenu] = useState<WorkspaceAssetContextMenu>(null);
   const [inspectorContextMenu, setInspectorContextMenu] = useState<InspectorContextMenu>(null);
   const [assetActionMessage, setAssetActionMessage] = useState<string>('');
@@ -778,7 +469,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     ? getSameOriginUrl(comfyUIWorkspaceLastUrl, comfyUIServerUrl)
     : comfyUIServerUrl;
   const hasBrowserLoadFailure = Boolean(loadFailure || viewState.lastLoadFailed);
-  const shouldShowBrowser = isActive && !suspendBrowser && workspacePreviewIndex === null && !hasBrowserLoadFailure;
+  const shouldShowBrowser = isActive && !suspendBrowser && !hasBrowserLoadFailure;
   const shouldShowBrowserFallback = suspendBrowser || hasBrowserLoadFailure || !viewState.visible;
 
   useEffect(() => {
@@ -1106,7 +797,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
     event.preventDefault();
     event.dataTransfer.effectAllowed = 'copy';
-    window.electronAPI.startFileDrag({ directoryPath: dragDirectoryPath, relativePath });
+    window.electronAPI.startFileDrag({ directoryPath: dragDirectoryPath, relativePath, imageId: dragImage.id });
   }, []);
 
   const copyInspectorValue = useCallback((label: string, value: string) => {
@@ -1197,14 +888,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     onInspectImage?.(nextImage);
   }, [onInspectImage]);
 
-  const openWorkspacePreview = useCallback((visibleIndex: number) => {
-    const selectedImage = visibleNavigationImages[visibleIndex];
-    if (selectedImage) {
-      inspectWorkspaceImage(selectedImage);
-      setWorkspacePreviewIndex(visibleIndex);
-    }
-  }, [inspectWorkspaceImage, visibleNavigationImages]);
-
   const updateThumbSelection = useCallback((event: React.MouseEvent, contextImage: IndexedImage, visibleIndex: number) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1231,8 +914,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       return;
     }
 
-    openWorkspacePreview(visibleIndex);
-  }, [openWorkspacePreview, updateThumbSelection]);
+    inspectWorkspaceImage(contextImage);
+    onViewFullMetadata?.(contextImage);
+  }, [inspectWorkspaceImage, onViewFullMetadata, updateThumbSelection]);
 
   const getContextTargetImages = useCallback((contextImage?: IndexedImage | null) => {
     if (contextImage && selectedImages.has(contextImage.id) && selectedWorkspaceImages.length > 0) {
@@ -1382,13 +1066,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       setConnectionMessage(error instanceof Error ? error.message : 'Failed to load workflow in ComfyUI.');
     }
   }, [inspectWorkspaceImage, isElectron, setComfyUIConnectionStatus, targetUrl]);
-
-  const handleOpenPreviewWorkflow = useCallback((contextImage: IndexedImage) => {
-    setWorkspacePreviewIndex(null);
-    window.setTimeout(() => {
-      void openWorkflowInComfyUI(contextImage);
-    }, 0);
-  }, [openWorkflowInComfyUI]);
 
   const exportAssetImage = useCallback((contextImage: IndexedImage) => {
     exportImages(getContextTargetImages(contextImage));
@@ -1907,16 +1584,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           )}
         </aside>
       </div>
-      {workspacePreviewIndex !== null && (
-        <WorkspaceImagePreviewModal
-          images={visibleNavigationImages}
-          initialIndex={workspacePreviewIndex}
-          onInspectImage={inspectWorkspaceImage}
-          onOpenWorkflow={handleOpenPreviewWorkflow}
-          onViewFullMetadata={onViewFullMetadata}
-          onClose={() => setWorkspacePreviewIndex(null)}
-        />
-      )}
       {inspectorContextMenu && (
         <div
           className="fixed z-[96] min-w-[160px] overflow-hidden rounded-lg border border-gray-700 bg-gray-900 py-1 text-sm text-gray-100 shadow-2xl"

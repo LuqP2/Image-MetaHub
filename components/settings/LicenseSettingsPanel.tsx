@@ -26,6 +26,7 @@ export const LicenseSettingsPanel: React.FC = () => {
   const licenseStatus = useLicenseStore((state) => state.licenseStatus);
   const licenseEmail = useLicenseStore((state) => state.licenseEmail);
   const licenseKey = useLicenseStore((state) => state.licenseKey);
+  const licenseStoreMessage = useLicenseStore((state) => state.licenseMessage);
   const activateLicense = useLicenseStore((state) => state.activateLicense);
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
   const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'settings');
@@ -43,6 +44,10 @@ export const LicenseSettingsPanel: React.FC = () => {
     setLicenseKeyInput(licenseKey ?? '');
   }, [licenseKey]);
 
+  useEffect(() => {
+    if (licenseStoreMessage) setLicenseMessage(licenseStoreMessage);
+  }, [licenseStoreMessage]);
+
   const handleActivateLicense = async () => {
     setLicenseMessage(null);
     const email = licenseEmailInput.trim();
@@ -56,10 +61,11 @@ export const LicenseSettingsPanel: React.FC = () => {
     try {
       setIsActivatingLicense(true);
       const success = await activateLicense(key, email);
+      const activationMessage = useLicenseStore.getState().licenseMessage;
       setLicenseMessage(
         success
           ? 'License activated. Thank you for supporting the project.'
-          : 'Invalid license for this email. Please double-check both fields.'
+          : activationMessage ?? 'Invalid license for this email. Please double-check both fields.'
       );
     } finally {
       setIsActivatingLicense(false);
@@ -79,7 +85,7 @@ export const LicenseSettingsPanel: React.FC = () => {
 
       <SettingsSectionCard
         title="Activate Pro"
-        description="Paste the email used at checkout and your offline license key."
+        description="Paste the email used at checkout and your license key."
       >
         <div className="grid gap-3 lg:grid-cols-2">
           <div className="space-y-2">

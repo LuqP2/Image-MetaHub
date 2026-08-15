@@ -22,6 +22,7 @@ const TRANSFORMATION_TYPES = new Set<Exclude<GenerationType, 'txt2img'>>([
   'img2img',
   'inpaint',
   'outpaint',
+  'image2model3d',
 ]);
 
 const stripComfyStorageSuffix = (value?: string | null): string => {
@@ -284,6 +285,8 @@ export const getGenerationTypeLabel = (generationType?: GenerationType | null): 
       return 'Outpaint';
     case 'txt2img':
       return 'Txt2Img';
+    case 'image2model3d':
+      return 'Image to 3D';
     default:
       return 'Unknown';
   }

@@ -9,6 +9,7 @@ import { createCacheDebugSnapshot, isCacheDebugEnabled, traceCacheDebug } from '
 import { areFilesystemPathsEqual } from '../utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from '../utils/directoryActivity';
 import { inferMimeTypeFromName, isImageFileName } from '../utils/mediaTypes.js';
+import { normalizeBirthtimeMs } from '../utils/fileTimestamps.js';
 
 // Configure logging level
 const DEBUG = false;
@@ -581,7 +582,7 @@ export function useImageLoader() {
             allCurrentFiles.map(file => [file.name, {
                 size: file.size,
                 type: file.type,
-                birthtimeMs: file.birthtimeMs ?? file.lastModified,
+                birthtimeMs: normalizeBirthtimeMs(file.birthtimeMs ?? file.lastModified),
                 contentModifiedMs: file.contentModifiedMs ?? file.lastModified,
             }])
         );
@@ -654,7 +655,7 @@ export function useImageLoader() {
                             ...file,
                             size: fileStatsMap.get(file.name)?.size ?? file.size,
                             type: fileStatsMap.get(file.name)?.type ?? file.type,
-                            birthtimeMs: fileStatsMap.get(file.name)?.birthtimeMs ?? file.birthtimeMs ?? file.lastModified,
+                            birthtimeMs: normalizeBirthtimeMs(fileStatsMap.get(file.name)?.birthtimeMs ?? file.birthtimeMs ?? file.lastModified),
                             contentModifiedMs: fileStatsMap.get(file.name)?.contentModifiedMs ?? file.contentModifiedMs ?? file.lastModified,
                         }))
                     : [];
@@ -768,7 +769,7 @@ export function useImageLoader() {
                         ...file,
                         size: fileStatsMap.get(file.name)?.size ?? file.size,
                         type: fileStatsMap.get(file.name)?.type ?? file.type,
-                        birthtimeMs: fileStatsMap.get(file.name)?.birthtimeMs ?? file.birthtimeMs ?? file.lastModified,
+                        birthtimeMs: normalizeBirthtimeMs(fileStatsMap.get(file.name)?.birthtimeMs ?? file.birthtimeMs ?? file.lastModified),
                         contentModifiedMs: fileStatsMap.get(file.name)?.contentModifiedMs ?? file.contentModifiedMs ?? file.lastModified,
                     }))
                 : [];
@@ -1152,7 +1153,7 @@ export function useImageLoader() {
                 allCurrentFiles.map(file => [file.name, {
                     size: file.size,
                     type: file.type,
-                    birthtimeMs: file.birthtimeMs ?? file.lastModified,
+                    birthtimeMs: normalizeBirthtimeMs(file.birthtimeMs ?? file.lastModified),
                     contentModifiedMs: file.contentModifiedMs ?? file.lastModified,
                 }])
             );
@@ -1273,7 +1274,7 @@ export function useImageLoader() {
                 ...file,
                 size: fileStatsMap.get(file.name)?.size ?? file.size,
                 type: fileStatsMap.get(file.name)?.type ?? file.type,
-                birthtimeMs: fileStatsMap.get(file.name)?.birthtimeMs ?? file.birthtimeMs ?? file.lastModified,
+                birthtimeMs: normalizeBirthtimeMs(fileStatsMap.get(file.name)?.birthtimeMs ?? file.birthtimeMs ?? file.lastModified),
                 contentModifiedMs: fileStatsMap.get(file.name)?.contentModifiedMs ?? file.contentModifiedMs ?? file.lastModified,
             }));
 
@@ -1828,7 +1829,7 @@ export function useImageLoader() {
                 contentModifiedMs: file.contentModifiedMs ?? file.lastModified,
                 size: file.size,
                 type: file.normalizedType,
-                birthtimeMs: file.lastModified
+                birthtimeMs: normalizeBirthtimeMs(file.lastModified)
             }));
 
             // Criar file stats map
@@ -1836,7 +1837,7 @@ export function useImageLoader() {
                 newFiles.map(f => [f.relativePath || f.normalizedName, {
                     size: f.size,
                     type: f.normalizedType,
-                    birthtimeMs: f.lastModified,
+                    birthtimeMs: normalizeBirthtimeMs(f.lastModified),
                     contentModifiedMs: f.contentModifiedMs ?? f.lastModified,
                 }])
             );

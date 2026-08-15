@@ -100,7 +100,7 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelKey, EmbeddingModelDescripto
     dim: 512,
     cacheId: 'imh-visual-search-b16',
     label: 'Higher quality',
-    description: 'Noticeably better at text searches. Takes about four times as long to index.',
+    description: 'Captures more visual detail. Takes about four times as long to index.',
     relativeIndexingCost: 4,
     baseFiles: CLIP_BASE_FILES,
     onnxByDtype: CLIP_ONNX_BY_DTYPE,

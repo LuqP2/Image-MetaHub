@@ -396,6 +396,24 @@ export interface CivitaiLookupQuery {
   versionId?: number;
 }
 
+export type LicensePlan = 'lifetime' | 'monthly' | 'annual';
+
+export interface LicenseClientStatus {
+  authorized: boolean;
+  licenseStatus: 'free' | 'pro' | 'lifetime';
+  plan: LicensePlan | null;
+  licenseEmail: string | null;
+  expiresAt: string | null;
+  refreshAfter: string | null;
+  migrationRequired: boolean;
+  message: string | null;
+}
+
+export interface LicenseActivationResult {
+  activated: boolean;
+  status: LicenseClientStatus;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -415,9 +433,11 @@ export interface ElectronAPI {
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
   readFilesBatch: (args: string[] | ElectronReadFilesBatchArgs) => Promise<{ success: boolean; files?: ElectronReadFilesBatchItem[]; error?: string }>;
   readMediaMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
+  readModel3DMetadata: (args: { filePath: string }) => Promise<{ success: boolean; metadata?: Record<string, unknown> | null; source?: 'sidecar' | 'embedded' | 'none'; error?: string }>;
   readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
+  writeModel3DExport: (args: { filePath: string; modelData: Uint8Array; sidecarData?: Uint8Array }) => Promise<{ success: boolean; error?: string }>;
   exportBatchToFolder: (args: ExportBatchRequest & { destDir: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   exportBatchToZip: (args: ExportBatchRequest & { destZipPath: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   cancelBatchExport: (args: { exportId: string }) => Promise<{ success: boolean; error?: string }>;
@@ -437,6 +457,10 @@ export interface ElectronAPI {
   getUserDataPath: () => Promise<string>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  getLicenseStatus: () => Promise<LicenseClientStatus>;
+  activateLicense: (key: string, email: string) => Promise<LicenseActivationResult>;
+  refreshLicense: () => Promise<LicenseClientStatus>;
+  deactivateLicense: () => Promise<LicenseClientStatus>;
   markChangelogViewed: (version: string) => Promise<{ success: boolean; error?: string }>;
   downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
   installUpdate: () => Promise<{ success: boolean; error?: string }>;
@@ -471,7 +495,8 @@ export interface ElectronAPI {
   joinPathsBatch: (args: { basePath: string; fileNames: string[] }) => Promise<{ success: boolean; paths?: string[]; error?: string }>;
   dirname: (filePath: string) => Promise<{ success: boolean; path?: string; error?: string }>;
   resolveMediaUrl: (filePath: string) => Promise<{ success: boolean; url?: string; error?: string; errorType?: string; errorCode?: string }>;
-  startFileDrag: (args: { directoryPath: string; relativePath: string }) => void;
+  startFileDrag: (args: { directoryPath: string; relativePath: string; imageId?: string }) => void;
+  onNativeFileDragStarted: (callback: (args: { directoryPath: string; relativePath: string; imageId?: string }) => void) => () => void;
   copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   copyTextToClipboard: (text: string) => Promise<{ success: boolean; error?: string }>;
   
@@ -558,6 +583,18 @@ export interface ElectronAPI {
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   getFullscreenState: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   setFullscreen: (isFullscreen: boolean) => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
+  imageViewerOpen: (payload: { sessionId: string; snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot }) => Promise<{ success: boolean; existing?: boolean; error?: string }>;
+  imageViewerUpdate: (payload: { sessionId: string; snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot }) => Promise<{ success: boolean; ignored?: boolean; error?: string }>;
+  imageViewerReady: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
+  imageViewerWindowAction: (payload: { sessionId: string; action: 'focus' | 'restore' | 'minimize' | 'close' | 'focus-main' | 'toggle-always-on-top' }) => Promise<{ success: boolean; isAlwaysOnTop?: boolean; error?: string }>;
+  imageViewerCommand: (payload: { sessionId: string; command: import('./services/imageViewerContracts').ImageViewerCommand }) => Promise<{ success: boolean; error?: string; [key: string]: unknown }>;
+  imageViewerRespond: (payload: { requestId: string; response: { success: boolean; error?: string; [key: string]: unknown } }) => void;
+  getPathForFile: (file: File) => string;
+  onSettingsUpdated: (callback: () => void) => () => void;
+  onLicenseStatusChanged: (callback: (status: LicenseClientStatus) => void) => () => void;
+  onImageViewerSnapshot: (callback: (snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot) => void) => () => void;
+  onImageViewerEvent: (callback: (event: { sessionId: string; type: string; reason?: string }) => void) => () => void;
+  onImageViewerCommand: (callback: (payload: { sessionId: string; requestId: string; command: import('./services/imageViewerContracts').ImageViewerCommand }) => void) => () => void;
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onFullscreenStateCheck: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onZoomFactorChanged: (callback: (zoomFactor: number) => void) => () => void;
@@ -734,7 +771,7 @@ export interface MotionModelInfo {
   hash?: string | null;
 }
 
-export type GenerationType = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint';
+export type GenerationType = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'image2model3d';
 
 export interface SourceImageReference {
   fileName?: string | null;
@@ -767,7 +804,8 @@ export interface MetaHubAttribution {
 
 export interface BaseMetadata extends SharedBaseMetadata {
   clip_skip?: number;
-  media_type?: 'image' | 'video' | 'audio';
+  media_type?: 'image' | 'video' | 'audio' | 'model3d';
+  model_3d?: Model3DMetadata | null;
   video?: VideoInfo | null;
   audio?: AudioInfo | null;
   motion_model?: MotionModelInfo | null;
@@ -786,6 +824,21 @@ export interface BaseMetadata extends SharedBaseMetadata {
     python_version?: string | null;
     generation_time?: number | null;
   };
+}
+
+export interface Model3DBounds {
+  min: [number, number, number];
+  max: [number, number, number];
+}
+
+export interface Model3DMetadata {
+  format: string;
+  vertexCount?: number;
+  faceCount?: number;
+  materialCount?: number;
+  hasTextures?: boolean;
+  bounds?: Model3DBounds;
+  sourceNodeClass?: string;
 }
 
 // Type guard functions
@@ -848,7 +901,7 @@ export interface AdvancedFilters {
   cfg?: NumericRangeFilter;
   date?: DateRangeFilter;
   generationModes?: Array<'txt2img' | 'img2img'>;
-  mediaTypes?: Array<'image' | 'video' | 'audio'>;
+  mediaTypes?: Array<'image' | 'video' | 'audio' | 'model3d'>;
   telemetryState?: 'present' | 'missing';
   hasVerifiedTelemetry?: boolean;
   generationTimeMs?: NumericRangeFilter;

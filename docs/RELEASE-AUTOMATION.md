@@ -34,7 +34,7 @@ npm run auto-release 0.11.2
 Executa o pipeline completo:
 1. 🧪 Roda `npm run build` (testes + compilação)
 2. 📝 Atualiza versão em todos os arquivos (via `update-version.js`)
-3. 📋 Gera release notes (via `generate-release.js`)
+3. 📋 Gera release notes (via `scripts/generate-release.js`)
 4. 💾 Cria commit com todas as mudanças
 5. 🏷️ Cria tag `v0.11.2`
 6. 🚀 Faz push do branch e tag para o GitHub
@@ -130,7 +130,7 @@ Antes de rodar `npm run auto-release`:
 - Depois tente novamente
 
 ### "Version already exists in CHANGELOG.md"
-- O script `generate-release.js` não encontrou a seção da versão no CHANGELOG
+- O script `scripts/generate-release.js` não encontrou a seção da versão no CHANGELOG
 - Certifique-se que o CHANGELOG tem uma seção: `## [0.11.2] - YYYY-MM-DD`
 
 ### GitHub Actions não iniciou
@@ -143,7 +143,7 @@ Antes de rodar `npm run auto-release`:
 - **`update-version.js`** - Script que atualiza versão em todos os arquivos
 - **`auto-release.js`** - Pipeline completo automatizado
 - **`release-workflow.js`** - Workflow semi-automatizado (sem build)
-- **`generate-release.js`** - Gera release notes a partir do CHANGELOG
+- **`scripts/generate-release.js`** - Gera release notes a partir do CHANGELOG
 - **`.github/workflows/publish.yml`** - GitHub Actions para builds
 
 ## Logs e Debug

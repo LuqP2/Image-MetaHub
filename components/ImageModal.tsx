@@ -1,10 +1,10 @@
 import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
-import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageEditRecipe } from '../types';
+import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageEditRecipe, type TagInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, copyTextToClipboard, showInExplorer } from '../utils/imageUtils';
 import { motion } from 'framer-motion';
-import { AlertTriangle, Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Copy, Pencil, Pin, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -25,9 +25,18 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { getElectronAbsoluteMediaPath, mediaSourceCache } from '../services/mediaSourceCache';
 import { mediaDecodeCache } from '../services/mediaDecodeCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
-import cacheManager from '../services/cacheManager';
-import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndexer';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
+import {
+  toImageViewerMaskFileDTO,
+  type ImageViewerGenerateRequest,
+  type ImageViewerSaveRequest,
+  type ImageViewerSaveResult,
+} from '../services/imageViewerContracts';
+import {
+  indexSavedEditedImageCopy,
+  reindexOverwrittenEditedImage,
+} from '../services/editedImageIndexing';
+import { TEMPORARY_STATUS_TIMEOUT_MS } from '../utils/imageMetadata';
 import {
   DEFAULT_IMAGE_EDIT_RECIPE,
   clampImageEditCropRect,
@@ -56,8 +65,9 @@ import { getRecentTagChips } from '../utils/tagSuggestions';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import AudioPlayer from './AudioPlayer';
 import ImageAdjustmentPanel from './ImageAdjustmentPanel';
+import Model3DViewer from './Model3DViewer';
 import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
-import { getFileExtension, isAudioFileName, isVideoFileName, SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
+import { getFileExtension, isAudioFileName, isModel3DFileName, isVideoFileName, SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 import { type MediaDiagnosticsContext, useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
 import {
   createProfilerOnRender,
@@ -149,89 +159,8 @@ const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefi
   };
 };
 
-const firstNonBlankString = (...values: Array<string | undefined | null>): string | undefined => {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value;
-    }
-  }
-  return undefined;
-};
-
-const firstNonEmptyArray = <T,>(...values: Array<T[] | undefined | null>): T[] | undefined => {
-  for (const value of values) {
-    if (Array.isArray(value) && value.length > 0) {
-      return value;
-    }
-  }
-  return undefined;
-};
-
-const firstDefined = <T,>(...values: Array<T | undefined | null>): T | undefined => {
-  for (const value of values) {
-    if (value !== undefined && value !== null) {
-      return value;
-    }
-  }
-  return undefined;
-};
-
-const mergeEditedNormalizedMetadata = (
-  parsedMetadata?: BaseMetadata,
-  sourceMetadata?: BaseMetadata,
-): BaseMetadata | undefined => {
-  if (!parsedMetadata) {
-    return sourceMetadata;
-  }
-  if (!sourceMetadata) {
-    return parsedMetadata;
-  }
-
-  const merged: BaseMetadata = {
-    ...sourceMetadata,
-    ...parsedMetadata,
-    prompt: firstNonBlankString(parsedMetadata.prompt, sourceMetadata.prompt) || '',
-    negativePrompt: firstNonBlankString(parsedMetadata.negativePrompt, sourceMetadata.negativePrompt) || '',
-    model: firstNonBlankString(parsedMetadata.model, sourceMetadata.model) || '',
-    models: firstNonEmptyArray(parsedMetadata.models, sourceMetadata.models) || [],
-    loras: firstNonEmptyArray(parsedMetadata.loras, sourceMetadata.loras) || [],
-    sampler: firstNonBlankString(parsedMetadata.sampler, sourceMetadata.sampler) || '',
-    scheduler: firstNonBlankString(parsedMetadata.scheduler, sourceMetadata.scheduler) || '',
-    board: firstNonBlankString(parsedMetadata.board, sourceMetadata.board),
-    cfgScale: firstDefined(parsedMetadata.cfgScale, parsedMetadata.cfg_scale, sourceMetadata.cfgScale, sourceMetadata.cfg_scale),
-    cfg_scale: firstDefined(parsedMetadata.cfg_scale, parsedMetadata.cfgScale, sourceMetadata.cfg_scale, sourceMetadata.cfgScale),
-    steps: firstDefined(parsedMetadata.steps, sourceMetadata.steps) || 0,
-    seed: firstDefined(parsedMetadata.seed, sourceMetadata.seed),
-  };
-
-  return merged;
-};
-
-const scheduleEditedImageCacheUpsert = (
-  directory: { path: string; name: string },
-  image: IndexedImage,
-  scanSubfolders: boolean,
-) => {
-  window.setTimeout(() => {
-    const cacheModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
-    Promise.all(
-      cacheModes.map((scanSubfoldersMode) =>
-        cacheManager.applyChunkedCacheDelta(
-          directory.path,
-          directory.name,
-          [image],
-          [],
-          [],
-          scanSubfoldersMode,
-        )
-      )
-    ).catch((error) => {
-      console.error('Failed to update cache after edited image save:', error);
-    });
-  }, 0);
-};
-
 interface ImageModalProps {
+  hostMode?: 'inline' | 'native-window';
   modalId?: string;
   image: IndexedImage;
   onClose: () => void;
@@ -240,6 +169,15 @@ interface ImageModalProps {
   onOpenImageEditor?: (image: IndexedImage) => void;
   onImageDeleted?: (imageId: string) => void;
   onImageRenamed?: (oldImageId: string, newImageId: string, newRelativePath: string) => void;
+  onRequestDelete?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
+  onRequestRename?: (imageId: string, newName: string) => Promise<{ success: boolean; error?: string; newImageId?: string; newRelativePath?: string }>;
+  onRequestReparse?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
+  onRequestTagSuggestions?: (query: string) => Promise<TagInfo[]>;
+  onRequestGenerate?: (request: ImageViewerGenerateRequest) => Promise<{ success: boolean; error?: string }>;
+  onImageSaved?: (request: ImageViewerSaveRequest) => Promise<ImageViewerSaveResult>;
+  onRequestBatchExport?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
+  isAlwaysOnTop?: boolean;
+  onToggleAlwaysOnTop?: () => void;
   currentIndex?: number;
   totalImages?: number;
   onNavigateNext?: () => void;
@@ -941,6 +879,7 @@ const VideoPlayer: React.FC<{
 
 
 const ImageModal: React.FC<ImageModalProps> = ({
+  hostMode = 'inline',
   modalId,
   image,
   onClose,
@@ -949,6 +888,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onOpenImageEditor,
   onImageDeleted,
   onImageRenamed,
+  onRequestDelete,
+  onRequestRename,
+  onRequestReparse,
+  onRequestTagSuggestions,
+  onRequestGenerate,
+  onImageSaved,
+  onRequestBatchExport,
+  isAlwaysOnTop = false,
+  onToggleAlwaysOnTop,
   currentIndex = 0,
   totalImages = 0,
   onNavigateNext,
@@ -1069,7 +1017,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const hasMarkedModalShellRef = useRef(false);
   const hasMarkedPreviewVisibleRef = useRef(false);
   const hasMarkedFullMediaReadyRef = useRef(false);
+  const isNativeWindow = hostMode === 'native-window';
   const isFullViewportModal = isFullscreen || isSlideshowMode;
+
+  useEffect(() => {
+    if (!isNativeWindow) {
+      return;
+    }
+    document.title = `${image.name} — Image MetaHub`;
+  }, [image.name, isNativeWindow]);
 
   useEffect(() => {
     if (!isMinimized) {
@@ -1120,10 +1076,62 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
-  const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
+  const { generateWithA1111, isGenerating: isGeneratingLocalA1111, generateStatus: localGenerateStatus } = useGenerateWithA1111();
 
   const { copyToComfyUI, isCopying: isCopyingComfyUI, copyStatus: copyStatusComfyUI } = useCopyToComfyUI();
-  const { generateWithComfyUI, isGenerating: isGeneratingComfyUI, generateStatus: generateStatusComfyUI } = useGenerateWithComfyUI();
+  const {
+    generateWithComfyUI,
+    isGenerating: isGeneratingLocalComfyUI,
+    generateStatus: localGenerateStatusComfyUI,
+  } = useGenerateWithComfyUI();
+
+  // The generation queue runner only lives in the main renderer. When this modal is
+  // hosted in a detached window, `onRequestGenerate` ships the request there instead
+  // of enqueueing into a local store that nothing would ever drain.
+  const [forwardedGenerate, setForwardedGenerate] = useState<{
+    provider: 'a1111' | 'comfyui';
+    isGenerating: boolean;
+    status: { success: boolean; message: string } | null;
+  } | null>(null);
+
+  const runGenerateRequest = useCallback(async (
+    provider: 'a1111' | 'comfyui',
+    // Built lazily so the inline host never pays for serializing the request.
+    buildRequest: () => Promise<ImageViewerGenerateRequest> | ImageViewerGenerateRequest,
+    runLocally: () => Promise<void>,
+  ) => {
+    if (!onRequestGenerate) {
+      await runLocally();
+      return;
+    }
+
+    setForwardedGenerate({ provider, isGenerating: true, status: null });
+    let status: { success: boolean; message: string };
+    try {
+      const result = await onRequestGenerate(await buildRequest());
+      status = result.success
+        ? { success: true, message: 'Generation queued.' }
+        : { success: false, message: result.error || 'Failed to queue generation.' };
+    } catch (error) {
+      status = {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to queue generation.',
+      };
+    }
+    setForwardedGenerate({ provider, isGenerating: false, status });
+    setTimeout(() => setForwardedGenerate(null), TEMPORARY_STATUS_TIMEOUT_MS);
+  }, [onRequestGenerate]);
+
+  const isGenerating = isGeneratingLocalA1111
+    || Boolean(forwardedGenerate?.provider === 'a1111' && forwardedGenerate.isGenerating);
+  const generateStatus = forwardedGenerate?.provider === 'a1111'
+    ? forwardedGenerate.status
+    : localGenerateStatus;
+  const isGeneratingComfyUI = isGeneratingLocalComfyUI
+    || Boolean(forwardedGenerate?.provider === 'comfyui' && forwardedGenerate.isGenerating);
+  const generateStatusComfyUI = forwardedGenerate?.provider === 'comfyui'
+    ? forwardedGenerate.status
+    : localGenerateStatusComfyUI;
 
   const { addImage, comparisonCount } = useImageComparison();
   const { isReparsing, reparseImages } = useReparseMetadata();
@@ -1173,11 +1181,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const thumbnail = useResolvedThumbnail(liveImage);
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
-  const isPlayableMedia = isVideo || isAudio;
+  const isModel3D = isModel3DFileName(image.name, image.fileType);
+  const isPlayableMedia = isVideo || isAudio || isModel3D;
   const canEditImage = !isPlayableMedia && getFileExtension(liveImage.name) !== '.gif';
   const canOverwriteEditedImage = canEditImage && getFileExtension(liveImage.name) === '.png';
   const showA1111Actions = !isPlayableMedia && a1111Enabled;
   const showComfyUIActions = !isPlayableMedia && comfyUIEnabled;
+  const showComfyUIContext = !isVideo && !isAudio && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const currentTags = liveImage.tags || [];
@@ -1219,6 +1229,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [liveImage.id, selectedImages]);
 
   const [tagInput, setTagInput] = useState('');
+  const [remoteAvailableTags, setRemoteAvailableTags] = useState<TagInfo[]>([]);
   const [isMediaOverlayVisible, setIsMediaOverlayVisible] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
@@ -1470,7 +1481,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [contextMenu.visible]);
 
   const applyModalWindowStyles = useCallback((windowState: ModalWindowState) => {
-    if (isFullViewportModal || !modalShellRef.current) {
+    if (isFullViewportModal || isNativeWindow || !modalShellRef.current) {
       return;
     }
 
@@ -1478,7 +1489,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     modalShellRef.current.style.top = `${windowState.y}px`;
     modalShellRef.current.style.width = `${windowState.width}px`;
     modalShellRef.current.style.height = `${windowState.height}px`;
-  }, [isFullViewportModal]);
+  }, [isFullViewportModal, isNativeWindow]);
 
   const scheduleModalWindowPaint = useCallback((windowState: ModalWindowState) => {
     liveModalWindowRef.current = windowState;
@@ -1657,7 +1668,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isFullViewportModal) {
+    if (isFullViewportModal || isNativeWindow) {
       return;
     }
 
@@ -1672,7 +1683,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isFullViewportModal, isWindowMaximized]);
+  }, [isFullViewportModal, isNativeWindow, isWindowMaximized]);
 
   useEffect(() => {
     if (isFullViewportModal || modalInteraction.mode === 'idle') {
@@ -1839,10 +1850,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const motionModel = (nMeta as any)?.motion_model;
 
   useEffect(() => {
-    if (!showComfyUIActions || !nMeta) {
+    if (!showComfyUIContext || !nMeta) {
       setSidebarTab('details');
     }
-  }, [nMeta, showComfyUIActions]);
+  }, [nMeta, showComfyUIContext]);
 
   const beginWindowDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (isFullViewportModal || isWindowMaximized || event.button !== 0) {
@@ -2088,17 +2099,30 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const handleReparseMetadata = async () => {
     hideContextMenu();
+    if (onRequestReparse) {
+      const result = await onRequestReparse(liveImage.id);
+      if (!result.success) alert(result.error || 'Failed to reparse metadata.');
+      return;
+    }
     await reparseImages([liveImage]);
   };
 
   const openBatchExport = useCallback(() => {
+    // A detached window only mirrors the current image and its two neighbours, so
+    // its store cannot describe the real export scope, selection or directories.
+    // Hand the export to the main renderer, which owns the whole library.
+    if (onRequestBatchExport) {
+      void onRequestBatchExport(liveImage.id);
+      return;
+    }
+
     if (exportSelectionIds.size > 1 && !canUseBatchExport) {
       showProModal('batch_export');
       return;
     }
 
     setIsBatchExportModalOpen(true);
-  }, [canUseBatchExport, exportSelectionIds.size, showProModal]);
+  }, [canUseBatchExport, exportSelectionIds.size, liveImage.id, onRequestBatchExport, showProModal]);
 
   const exportImage = () => {
     hideContextMenu();
@@ -2332,7 +2356,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'copy';
     }
-    window.electronAPI?.startFileDrag({ directoryPath, relativePath });
+    window.electronAPI?.startFileDrag({ directoryPath, relativePath, imageId: image.id });
   }, [canDragExternally, directoryPath, image.id, image.name]);
 
   useEffect(() => {
@@ -2411,13 +2435,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    await generateWithComfyUI(liveImage, {
-      workflowMode: 'upscale',
-      directoryPath,
-      customMetadata: {
-        prompt: liveImage.prompt || 'ComfyUI upscale',
-      },
-    });
+    const customMetadata = { prompt: liveImage.prompt || 'ComfyUI upscale' };
+    await runGenerateRequest(
+      'comfyui',
+      () => ({
+        provider: 'comfyui',
+        imageId: liveImage.id,
+        workflowMode: 'upscale',
+        customMetadata,
+      }),
+      () => generateWithComfyUI(liveImage, {
+        workflowMode: 'upscale',
+        directoryPath,
+        customMetadata,
+      }),
+    );
   }, [
     canUseComfyUI,
     comfyUIEnabled,
@@ -2425,6 +2457,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     generateWithComfyUI,
     directoryPath,
     liveImage,
+    runGenerateRequest,
     setError,
     showProModal,
   ]);
@@ -2507,45 +2540,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const sourceRawMetadata = sourceImageWithMetadata.metadata as Record<string, unknown>;
       await writeEditedImage(saveResult.path, sourceMetadata, sourceRawMetadata);
 
+      // A detached window only holds a three-image slice of the library, so the
+      // authoritative indexing has to happen in the main renderer.
+      if (onImageSaved) {
+        const result = await onImageSaved({
+          mode: 'save-as',
+          savedPath: saveResult.path,
+          sourceImageId: liveImage.id,
+          sourceMetadata: sourceMetadata ?? null,
+        });
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to index the saved image.');
+        }
+        setSuccess(result.savedImageName ? `Saved edited image as ${result.savedImageName}.` : 'Saved edited image.');
+        return;
+      }
+
       const targetDirectory = findDirectoryForAbsolutePath(saveResult.path);
       if (targetDirectory) {
-        const indexedImage = await indexImageFileAtPath(saveResult.path, targetDirectory);
-        if (indexedImage) {
-          const savedNormalizedMetadata = mergeEditedNormalizedMetadata(
-            indexedImage.metadata?.normalizedMetadata as BaseMetadata | undefined,
-            sourceMetadata,
-          );
-          const savedMetadata = savedNormalizedMetadata
-            ? { ...indexedImage.metadata, normalizedMetadata: savedNormalizedMetadata }
-            : indexedImage.metadata;
-          const savedImage: IndexedImage = {
-            ...indexedImage,
-            metadata: savedMetadata,
-            metadataString: savedNormalizedMetadata ? JSON.stringify(savedMetadata) : liveImage.metadataString,
-            models: savedNormalizedMetadata?.models || liveImage.models,
-            loras: savedNormalizedMetadata?.loras || liveImage.loras,
-            sampler: savedNormalizedMetadata?.sampler || liveImage.sampler,
-            scheduler: savedNormalizedMetadata?.scheduler || liveImage.scheduler,
-            board: savedNormalizedMetadata?.board || liveImage.board,
-            prompt: savedNormalizedMetadata?.prompt || liveImage.prompt,
-            negativePrompt: savedNormalizedMetadata?.negativePrompt || liveImage.negativePrompt,
-            cfgScale: savedNormalizedMetadata?.cfgScale ?? savedNormalizedMetadata?.cfg_scale ?? liveImage.cfgScale,
-            steps: savedNormalizedMetadata?.steps || liveImage.steps,
-            seed: savedNormalizedMetadata?.seed ?? liveImage.seed,
-            workflowNodes: liveImage.workflowNodes,
-            enrichmentState: 'enriched',
-          };
-          const targetAlreadyIndexed = allImages.some((candidate) => candidate.id === savedImage.id);
-          if (targetAlreadyIndexed) {
-            mergeImages([savedImage]);
-          } else {
-            addImages([savedImage]);
-          }
-          scheduleEditedImageCacheUpsert(targetDirectory, savedImage, scanSubfolders);
-          setSuccess(`Saved edited image as ${savedImage.name}.`);
-        } else {
-          setSuccess('Saved edited image.');
-        }
+        const savedImage = await indexSavedEditedImageCopy({
+          savedPath: saveResult.path,
+          targetDirectory,
+          sourceImage: liveImage,
+          sourceMetadata,
+          scanSubfolders,
+          allImages,
+          addImages,
+          mergeImages,
+        });
+        setSuccess(savedImage ? `Saved edited image as ${savedImage.name}.` : 'Saved edited image.');
       } else {
         setSuccess('Saved edited image.');
       }
@@ -2566,6 +2589,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     isSavingEditedImage,
     liveImage,
     mergeImages,
+    onImageSaved,
     scanSubfolders,
     setError,
     setSuccess,
@@ -2617,59 +2641,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const sourceRawMetadata = sourceImageWithMetadata.metadata as Record<string, unknown>;
       await writeEditedImage(joined.path, sourceMetadata, sourceRawMetadata);
 
-      const reparsed = await reparseIndexedImage(liveImage, sourceDirectory.path);
-      if (!reparsed) {
-        throw new Error('The edited image was saved, but metadata reparsing returned no image.');
+      if (onImageSaved) {
+        // See Save As: the real library lives in the main renderer.
+        const result = await onImageSaved({
+          mode: 'overwrite',
+          savedPath: joined.path,
+          sourceImageId: liveImage.id,
+          sourceMetadata: sourceMetadata ?? null,
+        });
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to reindex the overwritten image.');
+        }
+      } else {
+        await reindexOverwrittenEditedImage({
+          sourceImage: liveImage,
+          sourceDirectory,
+          sourceMetadata,
+          scanSubfolders,
+          mergeImages,
+          setImageThumbnail,
+        });
       }
-
-      const preservedNormalizedMetadata = mergeEditedNormalizedMetadata(
-        reparsed.metadata?.normalizedMetadata as BaseMetadata | undefined,
-        sourceMetadata,
-      );
-      const preservedMetadata = preservedNormalizedMetadata
-        ? { ...reparsed.metadata, normalizedMetadata: preservedNormalizedMetadata }
-        : reparsed.metadata;
-      const preservedMetadataImage: IndexedImage = {
-        ...liveImage,
-        ...reparsed,
-        metadata: preservedMetadata,
-        metadataString: preservedNormalizedMetadata ? JSON.stringify(preservedMetadata) : liveImage.metadataString,
-        models: preservedNormalizedMetadata?.models || liveImage.models,
-        loras: preservedNormalizedMetadata?.loras || liveImage.loras,
-        sampler: preservedNormalizedMetadata?.sampler || liveImage.sampler,
-        scheduler: preservedNormalizedMetadata?.scheduler || liveImage.scheduler,
-        board: preservedNormalizedMetadata?.board || liveImage.board,
-        prompt: preservedNormalizedMetadata?.prompt || liveImage.prompt,
-        negativePrompt: preservedNormalizedMetadata?.negativePrompt || liveImage.negativePrompt,
-        cfgScale: preservedNormalizedMetadata?.cfgScale ?? preservedNormalizedMetadata?.cfg_scale ?? liveImage.cfgScale,
-        steps: preservedNormalizedMetadata?.steps || liveImage.steps,
-        seed: preservedNormalizedMetadata?.seed ?? liveImage.seed,
-        workflowNodes: liveImage.workflowNodes,
-        handle: liveImage.handle,
-        thumbnailHandle: liveImage.thumbnailHandle,
-        thumbnailUrl: undefined,
-        thumbnailStatus: 'pending',
-        thumbnailError: null,
-        directoryId: liveImage.directoryId,
-        directoryName: liveImage.directoryName,
-        isFavorite: liveImage.isFavorite,
-        tags: liveImage.tags,
-        rating: liveImage.rating,
-        clusterId: liveImage.clusterId,
-        clusterPosition: liveImage.clusterPosition,
-        autoTags: liveImage.autoTags,
-        autoTagsGeneratedAt: liveImage.autoTagsGeneratedAt,
-        enrichmentState: 'enriched',
-      };
-
-      mergeImages([preservedMetadataImage]);
-      setImageThumbnail(liveImage.id, {
-        thumbnailUrl: null,
-        thumbnailHandle: null,
-        status: 'pending',
-        error: null,
-      });
-      scheduleEditedImageCacheUpsert(sourceDirectory, preservedMetadataImage, scanSubfolders);
       setImageEditRecipe(DEFAULT_IMAGE_EDIT_RECIPE);
       setSuccess('Overwrote original image with edits.');
     } catch (error) {
@@ -2687,6 +2679,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     isSavingEditedImage,
     liveImage,
     mergeImages,
+    onImageSaved,
     scanSubfolders,
     setError,
     setImageThumbnail,
@@ -3063,9 +3056,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
         }
       }
 
-      const result = await FileOperations.deleteFile(imageToDelete);
+      const result = onRequestDelete
+        ? await onRequestDelete(imageToDelete.id)
+        : await FileOperations.deleteFile(imageToDelete);
       if (result.success) {
-        if (!shouldAwaitWatcherRemoval) {
+        if (!onRequestDelete && !shouldAwaitWatcherRemoval) {
           onImageDeleted?.(idToDelete);
         }
         
@@ -3076,7 +3071,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         alert(`Failed to delete file: ${result.error}`);
       }
     }
-  }, [currentIndex, directories, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, totalImages]);
+  }, [currentIndex, directories, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, onRequestDelete, totalImages]);
 
   // Navigation the user asked for explicitly: it ends any repeat-all/shuffle chain, so the item we
   // land on obeys the auto-play setting again.
@@ -3359,9 +3354,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const confirmRename = async () => {
     const oldImageId = image.id;
-    const result = await renameIndexedImage(image, newName);
+    const result = onRequestRename
+      ? await onRequestRename(image.id, newName)
+      : await renameIndexedImage(image, newName);
     if (result.success) {
-      onImageRenamed?.(oldImageId, result.newImageId || oldImageId, result.newRelativePath || image.name);
+      if (!onRequestRename) {
+        onImageRenamed?.(oldImageId, result.newImageId || oldImageId, result.newRelativePath || image.name);
+      }
       setIsRenaming(false);
     } else {
       alert(`Failed to rename file: ${result.error}`);
@@ -3435,7 +3434,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     <React.Profiler id="ImageModal" onRender={modalProfilerOnRender}>
     <div
       className={`fixed inset-0 transition-all duration-300 ${
-        isFullViewportModal ? 'pointer-events-auto bg-black' : 'pointer-events-none'
+        isFullViewportModal || isNativeWindow ? 'pointer-events-auto bg-black' : 'pointer-events-none'
       }`}
       style={{ zIndex: isFullViewportModal ? Math.max(zIndex, 9999) : zIndex }}
       onClick={isFullscreen && !isSlideshowMode ? onClose : undefined}
@@ -3446,7 +3445,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         aria-modal={isFullViewportModal ? 'true' : 'false'}
         aria-label={`Image viewer: ${image.name}`}
         className={`${
-          isFullViewportModal
+          isFullViewportModal || isNativeWindow
             ? 'fixed inset-0 z-[9999] h-screen w-screen rounded-none bg-black'
             : `fixed bg-gray-900 border rounded-2xl overflow-hidden ${modalShellStateClass}`
         } pointer-events-auto flex flex-col ${modalEntryAnimationClass} ${isWindowInteractionActive ? 'select-none' : ''}`}
@@ -3456,7 +3455,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           hideContextMenu();
         }}
         style={
-          isFullViewportModal
+          isFullViewportModal || isNativeWindow
             ? undefined
             : {
                 left: `${modalWindow.x}px`,
@@ -3469,9 +3468,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
       >
         {!isFullViewportModal && (
           <div
-            className={`flex items-center justify-between gap-3 border-b px-4 py-1.5 backdrop-blur-sm cursor-move transition-colors duration-150 ${titleBarStateClass}`}
-            onPointerDown={handleWindowSurfacePointerDown}
-            onDoubleClick={toggleWindowMaximize}
+            className={`flex items-center justify-between gap-3 border-b px-4 py-1.5 backdrop-blur-sm transition-colors duration-150 ${isNativeWindow ? '' : 'cursor-move'} ${titleBarStateClass}`}
+            onPointerDown={isNativeWindow ? undefined : handleWindowSurfacePointerDown}
+            onDoubleClick={isNativeWindow ? undefined : toggleWindowMaximize}
           >
             <div className="min-w-0 flex-1">
               {isRenaming ? (
@@ -3514,14 +3513,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     Cancel
                   </button>
                 </div>
-              ) : (
+              ) : !isNativeWindow ? (
                 <div className={`truncate text-sm font-semibold ${titleTextClass}`} title={image.name}>
                   {image.name}
                 </div>
-              )}
+              ) : null}
               <div className={`flex items-center gap-2 text-[11px] ${titleMetaClass}`}>
                 <span className="min-w-0 truncate" title={imageFullPath}>
-                  {imageFullPath}
+                  {isNativeWindow ? (directoryPath || imageFullPath) : imageFullPath}
                 </span>
                 {hasVerifiedTelemetry(liveImage) && (
                   <span
@@ -3547,6 +3546,22 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              {isNativeWindow && onToggleAlwaysOnTop && (
+                <motion.button
+                  onClick={onToggleAlwaysOnTop}
+                  whileTap={{ scale: 0.9 }}
+                  className={`rounded-lg border p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    isAlwaysOnTop
+                      ? 'border-blue-400/50 bg-blue-500/20 text-blue-300'
+                      : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-600 hover:bg-gray-700 hover:text-white'
+                  }`}
+                  aria-pressed={isAlwaysOnTop}
+                  aria-label={isAlwaysOnTop ? 'Disable always on top' : 'Enable always on top'}
+                  title={isAlwaysOnTop ? 'Stop keeping this window on top' : 'Keep this window on top'}
+                >
+                  <Pin className={`h-3.5 w-3.5 ${isAlwaysOnTop ? 'fill-current' : ''}`} />
+                </motion.button>
+              )}
               <motion.button
                 onClick={handleDelete}
                 whileTap={{ scale: 0.9 }}
@@ -3569,34 +3584,38 @@ const ImageModal: React.FC<ImageModalProps> = ({
               >
                 <Pencil className="w-3.5 h-3.5" />
               </motion.button>
-              <motion.button
-                onClick={() => void handleMinimizeWithAnimation()}
-                whileTap={{ scale: 0.9 }}
-                onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                title="Minimize window"
-              >
-                <Minus className="w-3.5 h-3.5" />
-              </motion.button>
-              <motion.button
-                onClick={toggleWindowMaximize}
-                whileTap={{ scale: 0.9 }}
-                onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
-              >
-                {isWindowMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-              </motion.button>
-              <motion.button
-                onClick={onClose}
-                whileTap={{ scale: 0.9 }}
-                onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                aria-label="Close image"
-                title="Close (Esc)"
-              >
-                <X className="w-3.5 h-3.5" />
-              </motion.button>
+              {!isNativeWindow && (
+                <>
+                  <motion.button
+                    onClick={() => void handleMinimizeWithAnimation()}
+                    whileTap={{ scale: 0.9 }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    title="Minimize window"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </motion.button>
+                  <motion.button
+                    onClick={toggleWindowMaximize}
+                    whileTap={{ scale: 0.9 }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
+                  >
+                    {isWindowMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                  </motion.button>
+                  <motion.button
+                    onClick={onClose}
+                    whileTap={{ scale: 0.9 }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    aria-label="Close image"
+                    title="Close (Esc)"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </motion.button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -3613,7 +3632,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               : showSidebarOnBottom
                 ? 'min-h-[280px] flex-1'
                 : 'h-full flex-1 min-w-0'
-          } bg-black flex items-center justify-center ${isFullViewportModal ? 'p-0' : 'p-2'} relative group overflow-hidden`}
+          } bg-black flex items-center justify-center ${isFullViewportModal || isNativeWindow ? 'p-0' : 'p-2'} relative group overflow-hidden`}
           onPointerDown={handleImageContainerPointerDown}
           onPointerMove={revealMediaOverlay}
           onMouseDown={isPlayableMedia ? undefined : handleMouseDown}
@@ -3622,7 +3641,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
           onMouseLeave={isPlayableMedia ? undefined : handleMouseUp}
           style={{ cursor: !isPlayableMedia && zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
         >
-          {imageUrl ? (
+          {isModel3D ? (
+            <div data-no-window-drag="true" className="h-full min-h-0 w-full min-w-0">
+              <Model3DViewer
+                key={liveImage.id}
+                image={liveImage}
+                directoryPath={directoryPath}
+                modalControls
+                onOpenSourceImage={(targetImage) => {
+                  setPreviewImage(targetImage);
+                  setSelectedImage(targetImage);
+                }}
+              />
+            </div>
+          ) : imageUrl ? (
             isAudio ? (
               <div data-no-window-drag="true" className="h-full w-full" onContextMenu={handleContextMenu}>
                 <AudioPlayer
@@ -3790,7 +3822,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             )}
           </div>
 
-          {!isPlayableMedia && (
+          {!isPlayableMedia && !isModel3D && (
             <div data-no-window-drag="true" className={`absolute bottom-4 left-4 z-30 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
               <button
                 onClick={handleZoomIn}
@@ -3873,14 +3905,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 >
                   <Minimize2 className="h-4 w-4" />
                 </button>
-                <button
-                  onClick={onClose}
-                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
-                  aria-label="Close image"
-                  title="Close (Esc)"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                {!isNativeWindow && (
+                  <button
+                    onClick={onClose}
+                    className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
+                    aria-label="Close image"
+                    title="Close (Esc)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             ) : (
               <div className="flex flex-row items-center gap-2">
@@ -4075,10 +4109,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <TagInputCombobox
                   ref={tagInputRef}
                   value={tagInput}
-                  onValueChange={setTagInput}
+                  onValueChange={(value) => {
+                    setTagInput(value);
+                    if (onRequestTagSuggestions && value.trim()) {
+                      void onRequestTagSuggestions(value).then(setRemoteAvailableTags);
+                    }
+                  }}
                   onSubmit={handleAddTag}
                   recentTags={recentTags}
-                  availableTags={availableTags}
+                  availableTags={onRequestTagSuggestions ? remoteAvailableTags : availableTags}
                   excludedTags={currentTags}
                   suggestionLimit={tagSuggestionLimit}
                   placeholder="Add tag..."
@@ -4155,7 +4194,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           </div>
 
-          {nMeta && showComfyUIActions && (
+          {nMeta && showComfyUIContext && (
             <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-2">
               <div className="flex gap-2">
                 <button
@@ -4253,7 +4292,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   whileTap={{ scale: 0.99 }}
                   className="text-gray-600 dark:text-gray-300 text-sm w-full text-left py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between hover:text-gray-900 dark:hover:text-white transition-colors"
                 >
-                  <span className="font-semibold">Generation Details</span>
+                  <span className="font-semibold">{isModel3D ? '3D Generation' : 'Generation Details'}</span>
                   {showDetails ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 </motion.button>
                 {showDetails && (
@@ -4308,6 +4347,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
                       )}
                     </div>
+                    {nMeta.model_3d && (
+                      <div className="grid grid-cols-2 gap-2 border-t border-gray-700/50 pt-3">
+                        <MetadataItem label="3D Format" value={nMeta.model_3d.format?.toUpperCase()} />
+                        <MetadataItem label="Vertices" value={nMeta.model_3d.vertexCount} />
+                        <MetadataItem label="Faces" value={nMeta.model_3d.faceCount} />
+                        <MetadataItem label="Materials" value={nMeta.model_3d.materialCount} />
+                        <MetadataItem label="Textures" value={nMeta.model_3d.hasTextures == null ? undefined : (nMeta.model_3d.hasTextures ? 'Yes' : 'No')} />
+                        <MetadataItem label="Source Node" value={nMeta.model_3d.sourceNodeClass} />
+                      </div>
+                    )}
                     {videoInfo && (
                       <div className="grid grid-cols-2 gap-2">
                         <MetadataItem label="Frames" value={videoInfo.frame_count} />
@@ -4501,7 +4550,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
             >
               <Search className="w-3 h-3" />
-              Find similar...
+               Find by metadata...
             </motion.button>
           </div>
 
@@ -4597,7 +4646,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       model: params.model || effectiveMetadata?.model,
                       ...(params.sampler ? { sampler: params.sampler } : {}),
                     };
-                    await generateWithA1111(generationImage, customMetadata, params.numberOfImages);
+                    await runGenerateRequest(
+                      'a1111',
+                      () => ({
+                        provider: 'a1111',
+                        imageId: generationImage.id,
+                        customMetadata,
+                        numberOfImages: params.numberOfImages,
+                      }),
+                      () => generateWithA1111(generationImage, customMetadata, params.numberOfImages),
+                    );
                     setIsGenerateModalOpen(false);
                   }}
                   isGenerating={isGenerating}
@@ -4753,7 +4811,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             )}
           </div>
             </div>
-          ) : sidebarTab === 'workflow' && nMeta && showComfyUIActions ? (
+          ) : sidebarTab === 'workflow' && nMeta && showComfyUIContext ? (
             <div className="space-y-4">
               <ComfyUIWorkflowWorkspace
                 image={image}
@@ -4773,7 +4831,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       ...(params.scheduler ? { scheduler: params.scheduler } : {}),
                     };
 
-                    await generateWithComfyUI(generationImage, {
+                    const generateParams = {
                       customMetadata,
                       overrides: {
                         model: params.model || undefined,
@@ -4783,8 +4841,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       sourceImagePolicy: params.sourceImagePolicy,
                       advancedPromptJson: params.advancedPromptJson,
                       advancedWorkflowJson: params.advancedWorkflowJson,
-                      maskFile: params.maskFile,
-                    });
+                    };
+
+                    await runGenerateRequest(
+                      'comfyui',
+                      async () => ({
+                        provider: 'comfyui',
+                        imageId: generationImage.id,
+                        ...generateParams,
+                        maskFile: await toImageViewerMaskFileDTO(params.maskFile),
+                      }),
+                      () => generateWithComfyUI(generationImage, {
+                        ...generateParams,
+                        maskFile: params.maskFile,
+                      }),
+                    );
                   }}
                   isGenerating={isGeneratingComfyUI}
                   status={generateStatusComfyUI}
@@ -4800,7 +4871,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         )}
         </div>
 
-        {!isFullViewportModal && (
+        {!isFullViewportModal && !isNativeWindow && (
           <>
             <div
               className="absolute inset-x-5 top-0 h-1.5 cursor-ns-resize bg-transparent"
@@ -4928,7 +4999,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       {/* Context Menu */}
       {contextMenu.visible && (
         <div
-          className="pointer-events-auto fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+          className="pointer-events-auto fixed z-[10000] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -5070,7 +5141,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 disabled={!canFindSimilar}
               >
                 <Search className="w-4 h-4" />
-                Find similar...
+                 Find by metadata...
               </button>
 
               <div className="border-t border-gray-600 my-1"></div>
@@ -5138,6 +5209,9 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.initialWindowState?.width === nextProps.initialWindowState?.width &&
     prevProps.initialWindowState?.height === nextProps.initialWindowState?.height &&
     prevProps.isMinimized === nextProps.isMinimized &&
+    prevProps.hostMode === nextProps.hostMode &&
+    prevProps.isAlwaysOnTop === nextProps.isAlwaysOnTop &&
+    prevProps.onToggleAlwaysOnTop === nextProps.onToggleAlwaysOnTop &&
     prevProps.startSlideshow === nextProps.startSlideshow &&
     prevProps.closeOnSlideshowExit === nextProps.closeOnSlideshowExit &&
     prevProps.diagnosticsFlowId === nextProps.diagnosticsFlowId &&

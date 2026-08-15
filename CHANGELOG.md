@@ -1,16 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- Added initial 3D model library support for GLB, GLTF, OBJ, FBX, and STL, including bounded metadata indexing, 3D filters, interactive viewing, lazy thumbnails, and GLB/OBJ/STL/FBX export with Image MetaHub sidecars.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.19.0] - 2026-08-05
+## [0.19.0] - Unreleased
 
 ### Added
 
-- **Local Visual Search**: A new opt-in way to search your library by what images actually show, not just their prompt or filename — including screenshots, downloads, and anything else with no generation metadata at all. Runs entirely on your machine using a small CLIP model (about 155MB, downloaded once from Hugging Face on first use); nothing is ever uploaded. Turn it on from Settings → Visual Search or the sparkle icon in the sidebar search bar, then build the index — indexing can be paused, resumed, and picks up where it left off across restarts. Exclude a concept from a search with a minus, e.g. `beach -people`. An optional GPU-accelerated mode (WebGPU) speeds up indexing on supported hardware; it's off by default so it never competes with an image generator for VRAM, and falls back to CPU automatically if the GPU can't run it. Free indexes your 2,000 most recent images; Pro indexes the whole library.
-- **Find Visually Similar**: A new "Find visually similar" action in the grid and table context menus ranks the library by visual resemblance to any image, including ones with no metadata — the image is embedded on the spot the first time you use it.
+- **Find Similar — Local Visual Search**: Added opt-in local visual search with Find Similar. Select an image to discover visually related files across the current library, including images without metadata. Indexing is resumable and runs locally, with optional WebGPU acceleration and WASM fallback. Experimental text-to-image queries are also available and do not replace metadata search.
+- **Native Image Viewer Windows**: Images now open in separate native desktop windows with an optional always-on-top toggle and drag-and-drop support. Settings → Viewer → Behavior can restore the legacy in-app viewer. Generating with A1111 or ComfyUI from a separate window queues the job in the main window, so it runs normally, and dragging a file out of a viewer window no longer risks moving the wrong image if you later drop an unrelated file onto a folder.
+
+### Fixed
+
+- **Dates on Network Shares (SMB/CIFS)**: Fixed every image on an SMB/CIFS share being dated December 31, 1969, which collapsed date grouping into a single group and made sorting by newest or oldest meaningless. These mounts report no creation time, and MetaHub was storing that missing value as a date instead of falling back to the file's modification time. Sorting, date grouping, session grouping and the date shown in the viewer now use the modification time whenever a creation time isn't available. Folders already indexed are corrected on load — no reindex needed — though the affected thumbnails are regenerated once.
 
 ## [0.18.1] - 2026-08-01
 

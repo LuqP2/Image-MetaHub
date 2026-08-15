@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const isDevelopment = process.env.NODE_ENV === 'development' || process.defaultApp === true;
 const pendingDeepLinkFiles = [];
@@ -171,6 +171,44 @@ const electronAPI = {
     };
   },
 
+  // Resolves the absolute path of a dropped OS file. `File.path` was removed in
+  // Electron 32+, so this is the only way to identify a drop by its real origin.
+  getPathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file) || '';
+    } catch {
+      return '';
+    }
+  },
+
+  onSettingsUpdated: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('settings-updated', handler);
+    return () => ipcRenderer.removeListener('settings-updated', handler);
+  },
+
+  onLicenseStatusChanged: (callback) => {
+    const handler = (_event, status) => callback(status);
+    ipcRenderer.on('license-status-changed', handler);
+    return () => ipcRenderer.removeListener('license-status-changed', handler);
+  },
+
+  onImageViewerSnapshot: (callback) => {
+    const handler = (_event, snapshot) => callback(snapshot);
+    ipcRenderer.on('image-viewer-snapshot', handler);
+    return () => ipcRenderer.removeListener('image-viewer-snapshot', handler);
+  },
+  onImageViewerEvent: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('image-viewer-event', handler);
+    return () => ipcRenderer.removeListener('image-viewer-event', handler);
+  },
+  onImageViewerCommand: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('image-viewer-command', handler);
+    return () => ipcRenderer.removeListener('image-viewer-command', handler);
+  },
+
   onZoomFactorChanged: (callback) => {
     const handler = (event, ...args) => callback(...args);
     ipcRenderer.on('zoom-factor-changed', handler);
@@ -199,9 +237,11 @@ const electronAPI = {
   readFilesHeadBatch: (args) => ipcRenderer.invoke('read-files-head-batch', args),
   readFilesTailBatch: (args) => ipcRenderer.invoke('read-files-tail-batch', args),
   readMediaMetadata: (args) => ipcRenderer.invoke('read-media-metadata', args),
+  readModel3DMetadata: (args) => ipcRenderer.invoke('read-model3d-metadata', args),
   readVideoMetadata: (args) => ipcRenderer.invoke('read-video-metadata', args),
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
   writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
+  writeModel3DExport: (args) => ipcRenderer.invoke('write-model3d-export', args),
   exportBatchToFolder: (args) => ipcRenderer.invoke('export-images-batch', args),
   exportBatchToZip: (args) => ipcRenderer.invoke('export-images-zip', args),
   cancelBatchExport: (args) => ipcRenderer.invoke('cancel-export-batch', args),
@@ -211,6 +251,10 @@ const electronAPI = {
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  getLicenseStatus: () => ipcRenderer.invoke('license:get-status'),
+  activateLicense: (key, email) => ipcRenderer.invoke('license:activate', { key, email }),
+  refreshLicense: () => ipcRenderer.invoke('license:refresh'),
+  deactivateLicense: () => ipcRenderer.invoke('license:deactivate'),
   markChangelogViewed: (version) => ipcRenderer.invoke('mark-changelog-viewed', version),
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
@@ -259,7 +303,18 @@ const electronAPI = {
   toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
   getFullscreenState: () => ipcRenderer.invoke('get-fullscreen-state'),
   setFullscreen: (isFullscreen) => ipcRenderer.invoke('set-fullscreen', isFullscreen),
+  imageViewerOpen: (payload) => ipcRenderer.invoke('image-viewer-open', payload),
+  imageViewerUpdate: (payload) => ipcRenderer.invoke('image-viewer-update', payload),
+  imageViewerReady: (sessionId) => ipcRenderer.invoke('image-viewer-ready', sessionId),
+  imageViewerWindowAction: (payload) => ipcRenderer.invoke('image-viewer-window-action', payload),
+  imageViewerCommand: (payload) => ipcRenderer.invoke('image-viewer-command', payload),
+  imageViewerRespond: (payload) => ipcRenderer.send('image-viewer-command-response', payload),
   startFileDrag: (args) => ipcRenderer.send('start-file-drag', args),
+  onNativeFileDragStarted: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('native-file-drag-started', handler);
+    return () => ipcRenderer.removeListener('native-file-drag-started', handler);
+  },
 
   // --- Caching ---
   copyImageToClipboard: (filePath) => ipcRenderer.invoke('copy-image-to-clipboard', filePath),

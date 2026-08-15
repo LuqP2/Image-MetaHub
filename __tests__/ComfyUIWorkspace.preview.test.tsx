@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import ComfyUIWorkspace from '../components/ComfyUIWorkspace';
 import type { IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
@@ -65,7 +65,7 @@ const createImage = (id: string, name = `${id}.png`): IndexedImage => ({
   fileType: 'image/png',
 });
 
-describe('ComfyUIWorkspace image preview', () => {
+describe('ComfyUIWorkspace image viewer entry point', () => {
   let originalCreateObjectURL: typeof URL.createObjectURL | undefined;
   let originalRevokeObjectURL: typeof URL.revokeObjectURL | undefined;
 
@@ -115,8 +115,10 @@ describe('ComfyUIWorkspace image preview', () => {
     delete window.electronAPI;
   });
 
-  it('opens an immersive Workspace preview from a thumbnail and closes on background click', async () => {
+  it('opens the full image viewer from a thumbnail', () => {
     const image = createImage('alpha');
+    const onInspectImage = vi.fn();
+    const onViewFullMetadata = vi.fn();
 
     render(
       <ComfyUIWorkspace
@@ -126,78 +128,15 @@ describe('ComfyUIWorkspace image preview', () => {
         isActive={false}
         onOpenQueue={vi.fn()}
         onOpenSettings={vi.fn()}
+        onInspectImage={onInspectImage}
+        onViewFullMetadata={onViewFullMetadata}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Preview alpha\.png/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Open alpha\.png/i }));
 
-    const dialog = await screen.findByRole('dialog', { name: /Workspace image preview/i });
-    expect(within(dialog).getByText('model.safetensors')).toBeTruthy();
-    expect(within(dialog).getByText(/prompt for alpha\.png/i)).toBeTruthy();
-
-    fireEvent.mouseDown(dialog);
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: /Workspace image preview/i })).toBeNull();
-    });
-  });
-
-  it('navigates the immersive preview with arrow keys', async () => {
-    const first = createImage('alpha');
-    const second = createImage('beta');
-
-    render(
-      <ComfyUIWorkspace
-        image={first}
-        navigationImages={[first, second]}
-        currentIndex={0}
-        isActive={false}
-        onOpenQueue={vi.fn()}
-        onOpenSettings={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /Preview alpha\.png/i }));
-    await screen.findByRole('dialog', { name: /Workspace image preview/i });
-
-    fireEvent.keyDown(window, { key: 'ArrowRight' });
-
-    await waitFor(() => {
-      expect(within(screen.getByRole('dialog', { name: /Workspace image preview/i })).getByText('beta.png')).toBeTruthy();
-    });
-  });
-
-  it('keeps metadata expanded while navigating and copies parameters', async () => {
-    const first = createImage('alpha');
-    const second = createImage('beta');
-
-    render(
-      <ComfyUIWorkspace
-        image={first}
-        navigationImages={[first, second]}
-        currentIndex={0}
-        isActive={false}
-        onOpenQueue={vi.fn()}
-        onOpenSettings={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /Preview alpha\.png/i }));
-    const dialog = await screen.findByRole('dialog', { name: /Workspace image preview/i });
-    fireEvent.click(within(dialog).getByRole('button', { name: /Toggle metadata/i }));
-
-    fireEvent.click(within(dialog).getByRole('button', { name: /Copy preview parameters/i }));
-
-    await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('Prompt: prompt for alpha.png'));
-    });
-
-    fireEvent.keyDown(window, { key: 'ArrowRight' });
-
-    await waitFor(() => {
-      const updatedDialog = screen.getByRole('dialog', { name: /Workspace image preview/i });
-      expect(within(updatedDialog).getByRole('button', { name: /Copy preview parameters/i })).toBeTruthy();
-      expect(within(updatedDialog).getByText('beta.png')).toBeTruthy();
-    });
+    expect(onInspectImage).toHaveBeenCalledWith(image);
+    expect(onViewFullMetadata).toHaveBeenCalledWith(image);
+    expect(screen.queryByRole('dialog', { name: /Workspace image preview/i })).toBeNull();
   });
 });

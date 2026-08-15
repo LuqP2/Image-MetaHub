@@ -10,8 +10,8 @@ import { execSync } from 'child_process';
 
 const VERSION = process.argv[2];
 if (!VERSION) {
-  console.error('Usage: node generate-release.js <version>');
-  console.error('Example: node generate-release.js 1.7.4');
+  console.error('Usage: node scripts/generate-release.js <version>');
+  console.error('Example: node scripts/generate-release.js 1.7.4');
   process.exit(1);
 }
 
