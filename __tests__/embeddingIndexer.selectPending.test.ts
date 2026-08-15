@@ -5,6 +5,7 @@ import { DEFAULT_EMBEDDING_MODEL_KEY, getEmbeddingModel } from '../services/embe
 import {
   applyRelevanceCutoff,
   buildSearchLiveMask,
+  canReuseImageEmbedding,
   closeLibrary,
   DEFAULT_TOP_FRACTION,
   getIndex,
@@ -71,6 +72,31 @@ describe('selectPendingImages', () => {
     const images = [image('a', 5), image('b', 4)];
     expect(selectPendingImages(images, new Map(), 0)).toEqual([]);
     expect(selectPendingImages(images, new Map(), -3)).toEqual([]);
+  });
+});
+
+describe('canReuseImageEmbedding', () => {
+  it('reuses an on-demand source vector only while its content key matches', () => {
+    const source = image('source', 7, 42);
+    const index = {
+      hasVector: vi.fn().mockReturnValue(true),
+      contentKeyFor: vi.fn().mockReturnValue(contentKeyForImage(source)),
+    };
+
+    expect(canReuseImageEmbedding(index as any, source)).toBe(true);
+    index.contentKeyFor.mockReturnValue(contentKeyForImage({ ...source, contentModifiedMs: 6 }));
+    expect(canReuseImageEmbedding(index as any, source)).toBe(false);
+  });
+
+  it('does not reuse a missing source vector', () => {
+    const source = image('source', 7, 42);
+    const index = {
+      hasVector: vi.fn().mockReturnValue(false),
+      contentKeyFor: vi.fn(),
+    };
+
+    expect(canReuseImageEmbedding(index as any, source)).toBe(false);
+    expect(index.contentKeyFor).not.toHaveBeenCalled();
   });
 });
 

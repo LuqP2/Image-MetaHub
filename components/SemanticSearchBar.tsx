@@ -50,10 +50,12 @@ const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSe
   // index is opened.
   React.useEffect(() => {
     if (!semanticEnabled) return;
-    setDevice(semanticDevice === 'webgpu' ? 'webgpu' : 'wasm');
-    setModel(getEmbeddingModel(semanticModel).key);
-    refreshModelStatus();
-    openForLibrary();
+    void (async () => {
+      setDevice(semanticDevice === 'webgpu' ? 'webgpu' : 'wasm');
+      await setModel(getEmbeddingModel(semanticModel).key);
+      await refreshModelStatus();
+      await openForLibrary();
+    })();
   }, [semanticEnabled, semanticDevice, semanticModel, setDevice, setModel, refreshModelStatus, openForLibrary]);
 
   const [visualMode, setVisualMode] = React.useState(false);
