@@ -44,10 +44,10 @@ jobs:
           echo "Generating release notes for version $VERSION"
           node scripts/generate-release.js $VERSION
 
-      - name: Build Windows installer
+      - name: Build Windows installer and portable app
         shell: bash
         run: |
-          echo "Building Windows installer..."
+          echo "Building Windows installer and portable app..."
           npm run build
           npx electron-builder --win --publish=never
           echo "Windows build completed!"
@@ -83,7 +83,7 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "Uploading Windows assets for v$VERSION"
           for file in dist-electron/*; do
-            if [[ "$file" == *"Setup"*".exe" ]] || [[ "$file" == *"latest.yml" ]] || [[ "$file" == *"Setup"*".exe.blockmap" ]] || [[ "$file" == *".zip" ]]; then
+            if [[ "$file" == *"Setup"*".exe" ]] || [[ "$file" == *"Portable"*".exe" ]] || [[ "$file" == *"latest.yml" ]] || [[ "$file" == *"Setup"*".exe.blockmap" ]]; then
               echo "Uploading $file..."
               gh release upload v$VERSION "$file" --clobber
             fi
