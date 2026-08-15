@@ -90,7 +90,7 @@ interface SemanticStoreState {
 
   setDevice: (device: EmbeddingDevice) => void;
   /** Switches models: swaps the index, the worker and the downloaded weights. */
-  setModel: (modelKey: EmbeddingModelKey) => void;
+  setModel: (modelKey: EmbeddingModelKey) => Promise<void>;
   refreshModelStatus: () => Promise<boolean>;
   startModelDownload: () => Promise<boolean>;
   cancelModelDownload: () => Promise<void>;
@@ -101,7 +101,7 @@ interface SemanticStoreState {
   startBackfill: (cap: number | null) => Promise<void>;
   pauseBackfill: () => void;
   resumeBackfill: () => void;
-  cancelBackfill: () => void;
+  cancelBackfill: () => Promise<void>;
 
   runQuery: (query: string) => Promise<void>;
   /** Ranks the grid by visual similarity to an image (embedding it if needed). */
@@ -109,10 +109,12 @@ interface SemanticStoreState {
   clearQuery: () => void;
 
   deleteIndex: () => Promise<void>;
-  teardown: () => void;
+  teardown: () => Promise<void>;
 }
 
 let backfillController: AbortController | null = null;
+let backfillCompletion: Promise<void> | null = null;
+let modelDownloadCompletion: Promise<boolean> | null = null;
 let pauseResolvers: Array<() => void> = [];
 let paused = false;
 /** Monotonic query id so a slow reply from a superseded query is ignored. */
@@ -215,13 +217,13 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     void get().refreshModelStatus();
   },
 
-  setModel: (modelKey) => {
+  setModel: async (modelKey) => {
     const resolved = getEmbeddingModel(modelKey).key;
     if (resolved === get().modelKey) return;
 
     // A running query or backfill belongs to the old model's index; both would
     // otherwise keep writing into an index the app no longer considers current.
-    get().cancelBackfill();
+    await get().cancelBackfill();
     get().clearQuery();
     setPreferredModel(resolved);
     // Drops the open index and its search worker. openForLibrary below reopens
@@ -255,35 +257,46 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
   startModelDownload: async () => {
     if (get().modelDownloading) return false;
     set({ modelDownloading: true, modelProgress: null, lastError: null });
+    const completion = (async (): Promise<boolean> => {
+      try {
+        // The q8 baseline is the CPU fallback and is what modelInstalled gates on,
+        // so it must always be fetched — even on GPU, which otherwise pulls only
+        // the fp16 towers and would leave modelInstalled stuck false. On GPU we
+        // then add the fp16 towers on top (the handler skips verified files).
+        const onProgress = (progress: EmbeddingModelProgress) => set({ modelProgress: progress });
+        let result = await downloadModel(onProgress, 'wasm', get().modelKey);
+        if (result.success && get().device === 'webgpu') {
+          result = await downloadModel(onProgress, 'webgpu', get().modelKey);
+        }
+        if (result.success) {
+          // Downloaded files depend on the selected backend; re-check both flags.
+          await get().refreshModelStatus();
+          set({ modelDownloading: false });
+          return true;
+        }
+        set({
+          modelDownloading: false,
+          lastError: result.cancelled ? null : result.error ?? 'Model download failed',
+        });
+        return false;
+      } catch (error) {
+        set({ modelDownloading: false, lastError: error instanceof Error ? error.message : String(error) });
+        return false;
+      }
+    })();
+    modelDownloadCompletion = completion;
     try {
-      // The q8 baseline is the CPU fallback and is what modelInstalled gates on,
-      // so it must always be fetched — even on GPU, which otherwise pulls only
-      // the fp16 towers and would leave modelInstalled stuck false. On GPU we
-      // then add the fp16 towers on top (the handler skips files already on disk).
-      const onProgress = (progress: EmbeddingModelProgress) => set({ modelProgress: progress });
-      let result = await downloadModel(onProgress, 'wasm', get().modelKey);
-      if (result.success && get().device === 'webgpu') {
-        result = await downloadModel(onProgress, 'webgpu', get().modelKey);
-      }
-      if (result.success) {
-        // Downloaded files depend on the selected backend; re-check both flags.
-        await get().refreshModelStatus();
-        set({ modelDownloading: false });
-        return true;
-      }
-      set({
-        modelDownloading: false,
-        lastError: result.cancelled ? null : result.error ?? 'Model download failed',
-      });
-      return false;
-    } catch (error) {
-      set({ modelDownloading: false, lastError: error instanceof Error ? error.message : String(error) });
-      return false;
+      return await completion;
+    } finally {
+      if (modelDownloadCompletion === completion) modelDownloadCompletion = null;
     }
   },
 
   cancelModelDownload: async () => {
+    const completion = modelDownloadCompletion;
+    if (!get().modelDownloading && !completion) return;
     await cancelModelDownload();
+    await completion?.catch(() => undefined);
     set({ modelDownloading: false });
   },
 
@@ -315,34 +328,42 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
 
     const images = useImageStore.getState().images;
 
+    const completion = (async (): Promise<void> => {
+      try {
+        await runBackfill({
+          model: getEmbeddingModel(get().modelKey),
+          images,
+          cap,
+          signal: backfillController!.signal,
+          waitWhilePaused,
+          onProgress: (progress) => {
+            const total = useImageStore.getState().images.length;
+            set({ indexProgress: progress, coverage: buildCoverage(cap, total) });
+          },
+        });
+      } catch (error) {
+        set({
+          indexProgress: {
+            phase: 'error',
+            current: 0,
+            total: 0,
+            message: 'Visual search indexing failed',
+            error: error instanceof Error ? error.message : String(error),
+          },
+          lastError: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        backfillController = null;
+        releasePause();
+        const total = useImageStore.getState().images.length;
+        set({ isBackfilling: false, isPaused: false, coverage: buildCoverage(cap, total) });
+      }
+    })();
+    backfillCompletion = completion;
     try {
-      await runBackfill({
-        model: getEmbeddingModel(get().modelKey),
-        images,
-        cap,
-        signal: backfillController.signal,
-        waitWhilePaused,
-        onProgress: (progress) => {
-          const total = useImageStore.getState().images.length;
-          set({ indexProgress: progress, coverage: buildCoverage(cap, total) });
-        },
-      });
-    } catch (error) {
-      set({
-        indexProgress: {
-          phase: 'error',
-          current: 0,
-          total: 0,
-          message: 'Visual search indexing failed',
-          error: error instanceof Error ? error.message : String(error),
-        },
-        lastError: error instanceof Error ? error.message : String(error),
-      });
+      await completion;
     } finally {
-      backfillController = null;
-      releasePause();
-      const total = useImageStore.getState().images.length;
-      set({ isBackfilling: false, isPaused: false, coverage: buildCoverage(cap, total) });
+      if (backfillCompletion === completion) backfillCompletion = null;
     }
   },
 
@@ -358,11 +379,13 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     set({ isPaused: false });
   },
 
-  cancelBackfill: () => {
+  cancelBackfill: async () => {
+    const completion = backfillCompletion;
     backfillController?.abort();
     // A paused job is parked inside the gate; release it so the abort is seen.
     releasePause();
     set({ isPaused: false });
+    await completion?.catch(() => undefined);
   },
 
   runQuery: async (query) => {
@@ -733,15 +756,18 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
   },
 
   deleteIndex: async () => {
-    get().cancelBackfill();
+    await get().cancelBackfill();
     get().clearQuery();
     closeLibrary();
     await deleteEmbeddingIndex(semanticCacheId(getEmbeddingModel(get().modelKey)));
     set({ coverage: null, indexProgress: null });
   },
 
-  teardown: () => {
-    get().cancelBackfill();
+  teardown: async () => {
+    await Promise.all([
+      get().cancelBackfill(),
+      get().cancelModelDownload(),
+    ]);
     get().clearQuery();
     closeLibrary();
     stopEmbeddingWorker();
@@ -878,9 +904,11 @@ if (import.meta.hot) {
 
 /** Exposed separately because it is only reachable from the settings panel. */
 export const deleteSemanticModel = async (): Promise<void> => {
+  const semanticState = useSemanticStore.getState();
+  await semanticState.teardown();
   // Removes the selected model only; the other one's weights stay on disk, so
   // switching back does not re-download.
-  await deleteModel(useSemanticStore.getState().modelKey);
+  await deleteModel(semanticState.modelKey);
   // Both towers go with it, so the GPU flag has to drop too or the panel keeps
   // claiming the fp16 model is installed.
   useSemanticStore.setState({ modelInstalled: false, gpuModelInstalled: false, modelProgress: null });

@@ -70,7 +70,17 @@ export const VisualSearchSettingsPanel: React.FC = () => {
     resumeBackfill,
     cancelBackfill,
     deleteIndex,
+    teardown,
   } = useSemanticStore();
+
+  const handleEnabledChange = async (nextEnabled: boolean) => {
+    if (!nextEnabled) {
+      // Keep the controls visible until cancellation has reached the backfill
+      // flush and the download handler has settled, then tear workers down.
+      await teardown();
+    }
+    setEnabled(nextEnabled);
+  };
 
   // Keep the engine's backend and model in sync with the persisted settings.
   useEffect(() => {
@@ -78,7 +88,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
   }, [deviceSetting, setDevice]);
 
   useEffect(() => {
-    setModel(getEmbeddingModel(modelSetting).key);
+    void setModel(getEmbeddingModel(modelSetting).key);
   }, [modelSetting, setModel]);
 
   useEffect(() => {
@@ -112,7 +122,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
         <SettingRow
           label="Enable Local Visual Search"
           description="Opt in to a rebuildable on-device index. The model downloads only when you explicitly request it; after that, processing works offline and nothing is uploaded."
-          control={<SettingSwitch checked={enabled} onChange={setEnabled} />}
+          control={<SettingSwitch checked={enabled} onChange={handleEnabledChange} />}
         />
 
         {enabled && (
