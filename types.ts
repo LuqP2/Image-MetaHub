@@ -396,6 +396,12 @@ export interface CivitaiLookupQuery {
   versionId?: number;
 }
 
+export interface DesktopRuntimeInfo {
+  isPortable: boolean;
+  userDataPath: string;
+  autoUpdateSupported: boolean;
+}
+
 export type LicensePlan = 'lifetime' | 'monthly' | 'annual';
 
 export interface LicenseClientStatus {
@@ -422,7 +428,7 @@ export interface ElectronAPI {
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
   showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
-  openCacheLocation: (cachePath: string) => Promise<{ success: boolean; error?: string }>;
+  openCacheLocation: () => Promise<{ success: boolean; error?: string }>;
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string; realPath?: string }[]; error?: string }>;
   createSubfolder: (parentPath: string, folderName: string) => Promise<{ success: boolean; folder?: { name: string; path: string; realPath?: string }; error?: string }>;
   listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
@@ -455,6 +461,7 @@ export interface ElectronAPI {
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   ensureDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   getUserDataPath: () => Promise<string>;
+  getRuntimeInfo: () => Promise<DesktopRuntimeInfo>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   getLicenseStatus: () => Promise<LicenseClientStatus>;
@@ -462,8 +469,8 @@ export interface ElectronAPI {
   refreshLicense: () => Promise<LicenseClientStatus>;
   deactivateLicense: () => Promise<LicenseClientStatus>;
   markChangelogViewed: (version: string) => Promise<{ success: boolean; error?: string }>;
-  downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
-  installUpdate: () => Promise<{ success: boolean; error?: string }>;
+  downloadUpdate: () => Promise<{ success: boolean; error?: string; errorCode?: string }>;
+  installUpdate: () => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   skipUpdateVersion: (version: string) => Promise<{ success: boolean; error?: string }>;
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;

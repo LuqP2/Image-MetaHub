@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import type { DesktopRuntimeInfo } from '../../types';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { clearLibraryCaches, resetAllCaches } from '../../utils/cacheReset';
 import { AdvancedSection } from './AdvancedSection';
@@ -53,6 +54,8 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
 
   const [currentCachePath, setCurrentCachePath] = useState('');
   const [defaultCachePath, setDefaultCachePath] = useState('');
+  const [runtimeInfo, setRuntimeInfo] = useState<DesktopRuntimeInfo | null>(null);
+  const [cacheLocationError, setCacheLocationError] = useState<string | null>(null);
 
   const hardwareConcurrency =
     typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
@@ -62,19 +65,28 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
     ? Math.max(1, Math.min(16, Math.floor(hardwareConcurrency)))
     : 16;
   const selectedStartupVerificationMode = startupVerificationModeDetails[startupVerificationMode];
+  const isPortable = runtimeInfo?.isPortable === true;
+
+  useEffect(() => {
+    window.electronAPI?.getRuntimeInfo?.()
+      .then(setRuntimeInfo)
+      .catch((error) => {
+        console.error('Failed to get desktop runtime information:', error);
+      });
+  }, []);
 
   useEffect(() => {
     window.electronAPI?.getDefaultCachePath()
       .then((result) => {
         if (result.success && result.path) {
           setDefaultCachePath(result.path);
-          setCurrentCachePath(cachePath || result.path);
+          setCurrentCachePath(isPortable ? result.path : cachePath || result.path);
         }
       })
       .catch((error) => {
         console.error('Failed to get default cache path:', error);
       });
-  }, [cachePath]);
+  }, [cachePath, isPortable]);
 
   const handleSelectCacheDirectory = async () => {
     const result = await window.electronAPI?.showDirectoryDialog();
@@ -90,8 +102,20 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   };
 
   const handleOpenCacheLocation = async () => {
-    if (currentCachePath) {
-      await window.electronAPI?.openCacheLocation(currentCachePath);
+    if (!currentCachePath || !window.electronAPI?.openCacheLocation) {
+      return;
+    }
+
+    setCacheLocationError(null);
+    try {
+      const result = await window.electronAPI.openCacheLocation();
+      if (!result.success) {
+        setCacheLocationError(result.error || 'Failed to open the cache location.');
+      }
+    } catch (error) {
+      setCacheLocationError(
+        error instanceof Error ? error.message : 'Failed to open the cache location.',
+      );
     }
   };
 
@@ -208,19 +232,25 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         ) : null}
       </SettingsSectionCard>
 
-      <SettingsSectionCard title="Cache location">
+      <SettingsSectionCard title={isPortable ? 'Portable storage' : 'Cache location'}>
         <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
           <p className="truncate text-sm text-gray-200">{currentCachePath || 'Loading cache location...'}</p>
-          {defaultCachePath ? <p className="mt-2 text-xs text-gray-500">Default: {defaultCachePath}</p> : null}
+          {isPortable ? (
+            <p className="mt-2 text-xs text-gray-500">Settings, browser data and caches stay with the portable app.</p>
+          ) : defaultCachePath ? (
+            <p className="mt-2 text-xs text-gray-500">Default: {defaultCachePath}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={handleSelectCacheDirectory}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
-          >
-            Change location
-          </button>
+          {!isPortable ? (
+            <button
+              type="button"
+              onClick={handleSelectCacheDirectory}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+            >
+              Change location
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={handleOpenCacheLocation}
@@ -228,22 +258,35 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           >
             Open location
           </button>
-          <button
-            type="button"
-            onClick={handleResetCacheDirectory}
-            disabled={!defaultCachePath || currentCachePath === defaultCachePath}
-            className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Reset to default
-          </button>
+          {!isPortable ? (
+            <button
+              type="button"
+              onClick={handleResetCacheDirectory}
+              disabled={!defaultCachePath || currentCachePath === defaultCachePath}
+              className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Reset to default
+            </button>
+          ) : null}
         </div>
+        {cacheLocationError ? (
+          <p role="alert" className="text-sm text-red-400">{cacheLocationError}</p>
+        ) : null}
       </SettingsSectionCard>
 
       <AdvancedSection title="Advanced / Troubleshooting" description="Less common options and recovery tools.">
         <SettingRow
           label="Check for updates on startup"
-          description="Disable this to keep the app fully offline during launch."
-          control={<SettingSwitch checked={autoUpdate} onChange={() => toggleAutoUpdate()} />}
+          description={isPortable
+            ? 'Portable builds are updated manually from GitHub Releases.'
+            : 'Disable this to keep the app fully offline during launch.'}
+          control={(
+            <SettingSwitch
+              checked={isPortable ? false : autoUpdate}
+              onChange={() => toggleAutoUpdate()}
+              disabled={isPortable}
+            />
+          )}
         />
         <SettingRow
           label="Performance diagnostics"
