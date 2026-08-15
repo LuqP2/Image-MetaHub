@@ -530,11 +530,12 @@ export interface ElectronAPI {
   readCacheTombstones: (args: { cacheId: string }) => Promise<{ success: boolean; data?: { chunkCount: number; ids: string[] } | null; error?: string }>;
   // Visual-search vector sidecars. `fileName` must match the whitelist in the
   // main-process handler; build it with the helpers in embeddingFormat.ts.
-  readEmbeddingFile: (args: { fileName: string; binary?: boolean }) => Promise<{ success: boolean; data?: any; error?: string }>;
-  writeEmbeddingFile: (args: { fileName: string; data: any; binary?: boolean }) => Promise<{ success: boolean; error?: string }>;
-  appendEmbeddingSegment: (args: { fileName: string; data: ArrayBuffer }) => Promise<{ success: boolean; byteLength?: number; error?: string }>;
-  statEmbeddingIndex: (args: { cacheId: string }) => Promise<{ success: boolean; totalBytes?: number; fileCount?: number; error?: string }>;
-  deleteEmbeddingIndex: (args: { cacheId: string }) => Promise<{ success: boolean; removed?: number; error?: string }>;
+  getEmbeddingCacheIdentity: () => Promise<{ success: boolean; identity?: string; error?: string }>;
+  readEmbeddingFile: (args: { fileName: string; binary?: boolean; cacheRootIdentity: string }) => Promise<{ success: boolean; data?: any; error?: string }>;
+  writeEmbeddingFile: (args: { fileName: string; data: any; binary?: boolean; cacheRootIdentity: string }) => Promise<{ success: boolean; error?: string }>;
+  appendEmbeddingSegment: (args: { fileName: string; data: ArrayBuffer; expectedOffset: number; cacheRootIdentity: string }) => Promise<{ success: boolean; byteLength?: number; error?: string }>;
+  statEmbeddingIndex: (args: { cacheId: string; cacheRootIdentity: string }) => Promise<{ success: boolean; totalBytes?: number; fileCount?: number; error?: string }>;
+  deleteEmbeddingIndex: (args: { cacheId: string; cacheRootIdentity: string }) => Promise<{ success: boolean; removed?: number; error?: string }>;
   getEmbeddingModelStatus: (args: { modelId: string; files: string[] }) => Promise<{
     success: boolean;
     installed?: boolean;

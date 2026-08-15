@@ -50,8 +50,19 @@ export interface EmbeddingIndexStats {
   dim: number;
 }
 
+export const getEmbeddingCacheIdentity = async (): Promise<string> => {
+  const api = getElectronAPI();
+  const result = await api.getEmbeddingCacheIdentity();
+  if (!result.success || !result.identity) {
+    throw new Error(result.error || 'Failed to resolve embedding cache location');
+  }
+  return result.identity;
+};
+
 export class EmbeddingIndex {
   private readonly safeCacheId: string;
+
+  private readonly cacheRootIdentity: string;
 
   private manifest: EmbeddingManifest;
 
@@ -74,8 +85,9 @@ export class EmbeddingIndex {
 
   private centroidCount = 0;
 
-  private constructor(safeCacheId: string, manifest: EmbeddingManifest) {
+  private constructor(safeCacheId: string, cacheRootIdentity: string, manifest: EmbeddingManifest) {
     this.safeCacheId = safeCacheId;
+    this.cacheRootIdentity = cacheRootIdentity;
     this.manifest = manifest;
     this.centroidSum = new Float64Array(manifest.dim);
     if (manifest.centroidSum?.length === manifest.dim) {
@@ -84,22 +96,36 @@ export class EmbeddingIndex {
     }
   }
 
-  static async open(cacheId: string, modelId: string, modelRevision: string, dim: number): Promise<EmbeddingIndex> {
+  static async open(
+    cacheId: string,
+    modelId: string,
+    modelRevision: string,
+    dim: number,
+    cacheRootIdentity?: string,
+  ): Promise<EmbeddingIndex> {
     const safeCacheId = toSafeCacheId(cacheId);
     const api = getElectronAPI();
-    const manifestResult = await api.readEmbeddingFile({ fileName: manifestFileName(safeCacheId) });
+    const resolvedCacheRoot = cacheRootIdentity ?? await getEmbeddingCacheIdentity();
+    const manifestResult = await api.readEmbeddingFile({
+      fileName: manifestFileName(safeCacheId),
+      cacheRootIdentity: resolvedCacheRoot,
+    });
     const stored = manifestResult.success ? (manifestResult.data as EmbeddingManifest | null) : null;
 
-    if (!isManifestCompatible(stored, modelId, dim)) {
-      // A different model, dim or format cannot be reinterpreted. Embeddings are
+    if (!isManifestCompatible(stored, modelId, modelRevision, dim)) {
+      // A different model, revision, dim or format cannot be reinterpreted. Embeddings are
       // derived data, so dropping and rebuilding is always the safe recovery.
       if (stored) {
-        await api.deleteEmbeddingIndex({ cacheId });
+        await api.deleteEmbeddingIndex({ cacheId, cacheRootIdentity: resolvedCacheRoot });
       }
-      return new EmbeddingIndex(safeCacheId, createEmptyManifest(modelId, modelRevision, dim));
+      return new EmbeddingIndex(
+        safeCacheId,
+        resolvedCacheRoot,
+        createEmptyManifest(modelId, modelRevision, dim),
+      );
     }
 
-    const index = new EmbeddingIndex(safeCacheId, stored);
+    const index = new EmbeddingIndex(safeCacheId, resolvedCacheRoot, stored);
     await index.loadRowIndex();
     return index;
   }
@@ -109,7 +135,10 @@ export class EmbeddingIndex {
     const rows: EmbeddingRowEntry[] = [];
 
     for (let chunk = 0; chunk < this.manifest.rowChunkCount; chunk += 1) {
-      const result = await api.readEmbeddingFile({ fileName: rowChunkFileName(this.safeCacheId, chunk) });
+      const result = await api.readEmbeddingFile({
+        fileName: rowChunkFileName(this.safeCacheId, chunk),
+        cacheRootIdentity: this.cacheRootIdentity,
+      });
       const entries = result.success && Array.isArray(result.data) ? (result.data as EmbeddingRowEntry[]) : [];
       for (const entry of entries) {
         rows.push(entry);
@@ -280,6 +309,8 @@ export class EmbeddingIndex {
       const result = await api.appendEmbeddingSegment({
         fileName: segmentFileName(this.safeCacheId, segmentIndex),
         data: payload.buffer,
+        expectedOffset: (physicalRow % SEGMENT_ROWS) * stride,
+        cacheRootIdentity: this.cacheRootIdentity,
       });
       if (!result.success) {
         // Leave everything from here on buffered; the manifest still describes
@@ -332,6 +363,7 @@ export class EmbeddingIndex {
       const written = await api.writeEmbeddingFile({
         fileName: rowChunkFileName(this.safeCacheId, chunk),
         data: entries,
+        cacheRootIdentity: this.cacheRootIdentity,
       });
       if (!written.success) {
         throw new Error(written.error || 'Failed to write embedding row chunk');
@@ -343,6 +375,7 @@ export class EmbeddingIndex {
     const manifestWrite = await api.writeEmbeddingFile({
       fileName: manifestFileName(this.safeCacheId),
       data: this.manifest,
+      cacheRootIdentity: this.cacheRootIdentity,
     });
     if (!manifestWrite.success) {
       throw new Error(manifestWrite.error || 'Failed to write embedding manifest');
@@ -372,7 +405,11 @@ export class EmbeddingIndex {
     const descriptor = this.manifest.segments[index];
     if (!descriptor) return null;
     const api = getElectronAPI();
-    const result = await api.readEmbeddingFile({ fileName: descriptor.file, binary: true });
+    const result = await api.readEmbeddingFile({
+      fileName: descriptor.file,
+      binary: true,
+      cacheRootIdentity: this.cacheRootIdentity,
+    });
     if (!result.success || !result.data) return null;
     return result.data as ArrayBuffer;
   }
@@ -397,14 +434,16 @@ export const contentKeyForImage = (image: {
 export const deleteEmbeddingIndex = async (cacheId: string): Promise<boolean> => {
   const api = typeof window !== 'undefined' ? window.electronAPI : undefined;
   if (!api) return false;
-  const result = await api.deleteEmbeddingIndex({ cacheId });
+  const cacheRootIdentity = await getEmbeddingCacheIdentity();
+  const result = await api.deleteEmbeddingIndex({ cacheId, cacheRootIdentity });
   return Boolean(result.success);
 };
 
 export const statEmbeddingIndex = async (cacheId: string): Promise<{ totalBytes: number; fileCount: number }> => {
   const api = typeof window !== 'undefined' ? window.electronAPI : undefined;
   if (!api) return { totalBytes: 0, fileCount: 0 };
-  const result = await api.statEmbeddingIndex({ cacheId });
+  const cacheRootIdentity = await getEmbeddingCacheIdentity();
+  const result = await api.statEmbeddingIndex({ cacheId, cacheRootIdentity });
   return {
     totalBytes: result.success ? result.totalBytes ?? 0 : 0,
     fileCount: result.success ? result.fileCount ?? 0 : 0,

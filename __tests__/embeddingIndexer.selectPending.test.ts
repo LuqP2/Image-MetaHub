@@ -1,5 +1,8 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { selectPendingImages } from '../services/embeddings/embeddingIndexer';
+import {
+  selectCappedIndexWindow,
+  selectPendingImages,
+} from '../services/embeddings/embeddingIndexer';
 import { contentKeyForImage } from '../services/embeddings/embeddingStore';
 import { DEFAULT_EMBEDDING_MODEL_KEY, getEmbeddingModel } from '../services/embeddings/embeddingModel';
 import {
@@ -72,6 +75,39 @@ describe('selectPendingImages', () => {
     const images = [image('a', 5), image('b', 4)];
     expect(selectPendingImages(images, new Map(), 0)).toEqual([]);
     expect(selectPendingImages(images, new Map(), -3)).toEqual([]);
+  });
+});
+
+describe('selectCappedIndexWindow', () => {
+  it('evicts older rows so newly added images enter the newest capped window', () => {
+    const images = [image('new', 5), image('middle', 4), image('old', 3)];
+    const embedded = new Map([
+      ['middle', contentKeyForImage(images[1])],
+      ['old', contentKeyForImage(images[2])],
+    ]);
+
+    const window = selectCappedIndexWindow(images, embedded, 2);
+
+    expect(window.images.map((entry) => entry.id)).toEqual(['new', 'middle']);
+    expect(window.evictImageIds).toEqual(['old']);
+    expect(selectPendingImages(
+      window.images,
+      new Map([['middle', embedded.get('middle')!]]),
+      1,
+    )
+      .map((entry) => entry.id)).toEqual(['new']);
+  });
+
+  it('evicts a changed row inside a full window so it can be replaced', () => {
+    const current = image('changed', 5, 20);
+    const embedded = new Map([
+      ['changed', contentKeyForImage(image('changed', 4, 10))],
+      ['stable', contentKeyForImage(image('stable', 3))],
+    ]);
+
+    const window = selectCappedIndexWindow([current, image('stable', 3)], embedded, 2);
+
+    expect(window.evictImageIds).toEqual(['changed']);
   });
 });
 
@@ -245,6 +281,7 @@ describe('reconcileWithImages', () => {
 
   const openEmptyLibrary = async () => {
     window.electronAPI = {
+      getEmbeddingCacheIdentity: vi.fn().mockResolvedValue({ success: true, identity: 'root-a' }),
       readEmbeddingFile: vi.fn().mockResolvedValue({ success: true, data: null }),
       writeEmbeddingFile: vi.fn().mockResolvedValue({ success: true }),
       appendEmbeddingSegment: vi.fn().mockResolvedValue({ success: true }),
@@ -280,5 +317,29 @@ describe('reconcileWithImages', () => {
 
     expect(index.stats.liveRows).toBe(0);
     expect(index.hasVector('present-image')).toBe(false);
+  });
+
+  it('reopens the index when the main-process cache root changes', async () => {
+    let identity = 'root-a';
+    window.electronAPI = {
+      getEmbeddingCacheIdentity: vi.fn(async () => ({ success: true, identity })),
+      readEmbeddingFile: vi.fn().mockResolvedValue({ success: true, data: null }),
+      writeEmbeddingFile: vi.fn().mockResolvedValue({ success: true }),
+      appendEmbeddingSegment: vi.fn().mockResolvedValue({ success: true }),
+    };
+
+    const first = await openLibrary(testModel);
+    identity = 'root-b';
+    const second = await openLibrary(testModel);
+
+    expect(second).not.toBe(first);
+    expect(window.electronAPI.readEmbeddingFile).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ cacheRootIdentity: 'root-a' }),
+    );
+    expect(window.electronAPI.readEmbeddingFile).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cacheRootIdentity: 'root-b' }),
+    );
   });
 });

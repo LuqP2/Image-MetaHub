@@ -1,7 +1,7 @@
 import type { IndexedImage } from '../../types';
 import { ROW_FLAG_TOMBSTONE, type EmbeddingRowEntry } from './embeddingFormat';
 import type { EmbeddingModelDescriptor } from './embeddingModel';
-import { EmbeddingIndex, contentKeyForImage } from './embeddingStore';
+import { EmbeddingIndex, contentKeyForImage, getEmbeddingCacheIdentity } from './embeddingStore';
 import { buildEmbedItems, embedImages, embedText, getPreferredModel } from './embeddingService';
 
 /**
@@ -175,6 +175,7 @@ export const DEFAULT_VISUAL_SIMILARITY_MIN_SCORE = 0.75;
 
 let index: EmbeddingIndex | null = null;
 let currentCacheId: string | null = null;
+let currentCacheRootIdentity: string | null = null;
 let worker: Worker | null = null;
 let workerReady = false;
 let nextQueryId = 1;
@@ -208,10 +209,22 @@ export const openLibrary = async (
   model: EmbeddingModelDescriptor = getPreferredModel()
 ): Promise<EmbeddingIndex> => {
   const cacheId = semanticCacheId(model);
-  if (index && currentCacheId === cacheId) return index;
+  const cacheRootIdentity = await getEmbeddingCacheIdentity();
+  if (
+    index
+    && currentCacheId === cacheId
+    && currentCacheRootIdentity === cacheRootIdentity
+  ) return index;
   closeLibrary();
-  index = await EmbeddingIndex.open(cacheId, model.id, model.revision, model.dim);
+  index = await EmbeddingIndex.open(
+    cacheId,
+    model.id,
+    model.revision,
+    model.dim,
+    cacheRootIdentity,
+  );
   currentCacheId = cacheId;
+  currentCacheRootIdentity = cacheRootIdentity;
   return index;
 };
 
@@ -242,6 +255,7 @@ export const closeLibrary = (): void => {
   stopSearchWorker();
   index = null;
   currentCacheId = null;
+  currentCacheRootIdentity = null;
 };
 
 const stopSearchWorker = (): void => {

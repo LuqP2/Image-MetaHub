@@ -110,11 +110,13 @@ export const createEmptyManifest = (
 export const isManifestCompatible = (
   manifest: EmbeddingManifest | null,
   modelId: string,
+  modelRevision: string,
   dim: number
 ): manifest is EmbeddingManifest => Boolean(
   manifest
   && manifest.formatVersion === EMBEDDING_FORMAT_VERSION
   && manifest.modelId === modelId
+  && manifest.modelRevision === modelRevision
   && manifest.dim === dim
   && manifest.quant === 'i8-pervec'
 );
