@@ -55,6 +55,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   const [currentCachePath, setCurrentCachePath] = useState('');
   const [defaultCachePath, setDefaultCachePath] = useState('');
   const [runtimeInfo, setRuntimeInfo] = useState<DesktopRuntimeInfo | null>(null);
+  const [cacheLocationError, setCacheLocationError] = useState<string | null>(null);
 
   const hardwareConcurrency =
     typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
@@ -101,8 +102,20 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   };
 
   const handleOpenCacheLocation = async () => {
-    if (currentCachePath) {
-      await window.electronAPI?.openCacheLocation();
+    if (!currentCachePath || !window.electronAPI?.openCacheLocation) {
+      return;
+    }
+
+    setCacheLocationError(null);
+    try {
+      const result = await window.electronAPI.openCacheLocation();
+      if (!result.success) {
+        setCacheLocationError(result.error || 'Failed to open the cache location.');
+      }
+    } catch (error) {
+      setCacheLocationError(
+        error instanceof Error ? error.message : 'Failed to open the cache location.',
+      );
     }
   };
 
@@ -256,6 +269,9 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
             </button>
           ) : null}
         </div>
+        {cacheLocationError ? (
+          <p role="alert" className="text-sm text-red-400">{cacheLocationError}</p>
+        ) : null}
       </SettingsSectionCard>
 
       <AdvancedSection title="Advanced / Troubleshooting" description="Less common options and recovery tools.">

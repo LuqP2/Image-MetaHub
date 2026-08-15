@@ -402,6 +402,24 @@ export interface DesktopRuntimeInfo {
   autoUpdateSupported: boolean;
 }
 
+export type LicensePlan = 'lifetime' | 'monthly' | 'annual';
+
+export interface LicenseClientStatus {
+  authorized: boolean;
+  licenseStatus: 'free' | 'pro' | 'lifetime';
+  plan: LicensePlan | null;
+  licenseEmail: string | null;
+  expiresAt: string | null;
+  refreshAfter: string | null;
+  migrationRequired: boolean;
+  message: string | null;
+}
+
+export interface LicenseActivationResult {
+  activated: boolean;
+  status: LicenseClientStatus;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -446,6 +464,10 @@ export interface ElectronAPI {
   getRuntimeInfo: () => Promise<DesktopRuntimeInfo>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  getLicenseStatus: () => Promise<LicenseClientStatus>;
+  activateLicense: (key: string, email: string) => Promise<LicenseActivationResult>;
+  refreshLicense: () => Promise<LicenseClientStatus>;
+  deactivateLicense: () => Promise<LicenseClientStatus>;
   markChangelogViewed: (version: string) => Promise<{ success: boolean; error?: string }>;
   downloadUpdate: () => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   installUpdate: () => Promise<{ success: boolean; error?: string; errorCode?: string }>;
@@ -552,6 +574,7 @@ export interface ElectronAPI {
   imageViewerRespond: (payload: { requestId: string; response: { success: boolean; error?: string; [key: string]: unknown } }) => void;
   getPathForFile: (file: File) => string;
   onSettingsUpdated: (callback: () => void) => () => void;
+  onLicenseStatusChanged: (callback: (status: LicenseClientStatus) => void) => () => void;
   onImageViewerSnapshot: (callback: (snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot) => void) => () => void;
   onImageViewerEvent: (callback: (event: { sessionId: string; type: string; reason?: string }) => void) => () => void;
   onImageViewerCommand: (callback: (payload: { sessionId: string; requestId: string; command: import('./services/imageViewerContracts').ImageViewerCommand }) => void) => () => void;

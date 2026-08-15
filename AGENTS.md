@@ -844,7 +844,7 @@ Executes complete pipeline:
 - Runs `npm run build` (compile + test)
 - Updates `package.json` version
 - Updates `ARCHITECTURE.md` version
-- Generates release notes via `generate-release.js`
+- Generates release notes via `scripts/generate-release.js`
 - Creates git commit with standardized message
 - Creates git tag `v{VERSION}`
 - Pushes branch and tag to origin
@@ -867,7 +867,7 @@ Same as above but **skips build step** (safe for pre-tested changes):
 
 ```bash
 npm version 0.9.6
-node generate-release.js 0.9.6
+node scripts/generate-release.js 0.9.6
 git tag v0.9.6
 git push origin main v0.9.6
 ```
@@ -921,7 +921,7 @@ All jobs upload to the **same release draft**, ensuring single unified release w
 
 ### Release Notes Generation
 
-**Script:** `generate-release.js`
+**Script:** `scripts/generate-release.js`
 
 Reads `CHANGELOG.md` and generates `release-v{VERSION}.md` with:
 

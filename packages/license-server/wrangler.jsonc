@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "image-metahub-license-server",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-08-13",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "image-metahub-licenses",
+      "database_id": "REPLACE_DURING_DEPLOYMENT",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "LICENSE_SIGNING_PUBLIC_KEY": "REPLACE_DURING_DEPLOYMENT"
+  }
+}

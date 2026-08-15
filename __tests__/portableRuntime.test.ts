@@ -141,9 +141,8 @@ describe('portable runtime', () => {
     const handlerEnd = source.indexOf("ipcMain.handle('list-subfolders'", handlerStart);
     const handlerSource = source.slice(handlerStart, handlerEnd);
 
-    expect(handlerSource).toContain('await getCacheRootPath()');
-    expect(handlerSource).toContain('await fs.stat(normalizedCachePath)');
-    expect(handlerSource).toContain('stats.isDirectory()');
+    expect(handlerSource).toContain('await openAuthorizedCacheDirectory({');
+    expect(handlerSource).toContain('getCacheRootPath,');
     expect(handlerSource).not.toContain('cachePath) =>');
   });
 

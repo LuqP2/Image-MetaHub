@@ -35,7 +35,8 @@ tsconfig.tsbuildinfo
 *.njsproj
 *.sln
 *.sw?
-release-v1.7.4.md
+# Generated release notes (the changelog remains the source of truth)
+release-v*.md
 analyze-woman.cjs
 CATS-WORKFLOW-ANALYSIS.md
 test-parser.js
@@ -56,13 +57,11 @@ favorites-development-issues.md
 
 # Development changelog (local only - see DECISIONS.md for permanent record)
 development-changelog.md
-App.tsx
 ImageMetaHub-Source2.zip
 ImageMetaHub-source.zip
 services/parsers/comfyui/workflows/pikachu.json
 IMPLEMENTATION_NOTES.md
 nul
-image-metahub.code-workspace
 packages/license-server/data/license-db.json
 packages/license-server/data/license-db.sqlite
 packages/license-server/data/license-private.pem
@@ -71,5 +70,6 @@ packages/license-server/data/test-sqlite-relative.db
 packages/license-server/data/test-sqlite-relative.db-journal
 packages/license-server/data/test-sqlite.db
 packages/license-server/data/test-sqlite.db-journal
-image-metahub.code-workspace
+.license-reissues/
+packages/license-server/wrangler.production.generated.json
 .claude/settings.json

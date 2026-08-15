@@ -14,7 +14,8 @@ jobs:
       contents: write
       packages: write
     env:
-      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+      IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
+      IMH_LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
     outputs:
       release-created: true
 
@@ -33,12 +34,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Configure public license client
+        run: node scripts/configureLicenseClient.mjs
+
       - name: Generate release notes
         shell: bash
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "Generating release notes for version $VERSION"
-          node generate-release.js $VERSION
+          node scripts/generate-release.js $VERSION
 
       - name: Build Windows installer and portable app
         shell: bash
@@ -104,7 +108,8 @@ jobs:
       contents: write
       packages: write
     env:
-      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+      IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
+      IMH_LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
 
     steps:
       - name: Checkout repository
@@ -120,6 +125,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Configure public license client
+        run: node scripts/configureLicenseClient.mjs
 
       - name: Build macOS installer
         run: |
@@ -154,7 +162,8 @@ jobs:
       contents: write
       packages: write
     env:
-      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+      IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
+      IMH_LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
 
     steps:
       - name: Checkout repository
@@ -170,6 +179,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Configure public license client
+        run: node scripts/configureLicenseClient.mjs
 
       - name: Build Linux installer
         run: |

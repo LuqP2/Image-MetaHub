@@ -4999,7 +4999,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       {/* Context Menu */}
       {contextMenu.visible && (
         <div
-          className="pointer-events-auto fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+          className="pointer-events-auto fixed z-[10000] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >

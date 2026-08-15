@@ -27,6 +27,6 @@
     "noEmit": true
   },
   "exclude": [
-    "__tests__/**/*"
+    "**/__tests__/**/*"
   ]
 }

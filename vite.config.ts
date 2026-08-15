@@ -3,13 +3,6 @@ import react from '@vitejs/plugin-react'
 import { copyFileSync } from 'fs'
 import { resolve } from 'path'
 
-// Ensure the license secret is baked into the renderer bundle.
-// If only IMH_LICENSE_SECRET is set, we mirror it to VITE_IMH_LICENSE_SECRET here.
-const licenseSecret =
-  process.env.VITE_IMH_LICENSE_SECRET ||
-  process.env.IMH_LICENSE_SECRET ||
-  'CHANGE-ME-BEFORE-RELEASE'
-
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
@@ -37,9 +30,6 @@ export default defineConfig({
     }
   ],
   base: './',
-  define: {
-    'import.meta.env.VITE_IMH_LICENSE_SECRET': JSON.stringify(licenseSecret),
-  },
   server: {
     host: true, // Expose server to the network
   },
