@@ -45,8 +45,8 @@ import {
   validateEmbeddingModelRequest,
 } from './electron/embeddingModelPolicy.mjs';
 import {
-  expectedSha256FromHeaders,
   verifyDownloadedModelFile,
+  waitForWritableDrain,
 } from './electron/embeddingModelIntegrity.mjs';
 import {
   getModel3DSidecarPathIfPresent,
@@ -4654,17 +4654,25 @@ function setupFileOperationHandlers() {
   // only network request the feature ever makes; nothing is uploaded.
   ipcMain.handle('get-embedding-model-status', async (event, { modelId, files } = {}) => {
     try {
-      validateEmbeddingModelRequest({ modelId, files });
+      const validated = validateEmbeddingModelRequest({ modelId, files });
       const modelDir = getEmbeddingModelDir(modelId);
       const missing = [];
       let totalBytes = 0;
-      for (const file of Array.isArray(files) ? files : []) {
+      for (const integrity of validated.files) {
+        const { file } = integrity;
         const filePath = resolveEmbeddingModelFilePath(modelDir, file);
         const stats = await fs.stat(filePath).catch(() => null);
-        if (!stats || stats.size === 0) {
+        if (!stats) {
           missing.push(file);
         } else {
-          totalBytes += stats.size;
+          try {
+            await verifyDownloadedModelFile(filePath, integrity);
+            totalBytes += integrity.size;
+          } catch {
+            // Integrity failures remove the unusable file. Report it as missing
+            // so the only recovery path is a fresh, verified download.
+            missing.push(file);
+          }
         }
       }
       return { success: true, installed: missing.length === 0, modelDir, missing, totalBytes };
@@ -4695,24 +4703,48 @@ function setupFileOperationHandlers() {
         sender.send('embedding-model-progress', payload);
       }
     };
+    let activePartPath = null;
 
     try {
       const list = files;
       let completed = 0;
 
-      for (const file of list) {
+      for (const integrity of list) {
+        const { file } = integrity;
         const destination = resolveEmbeddingModelFilePath(modelDir, file);
         await fs.mkdir(path.dirname(destination), { recursive: true });
 
         const existing = await fs.stat(destination).catch(() => null);
-        if (existing && existing.size > 0) {
-          completed += 1;
-          emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: existing.size, totalBytes: existing.size });
-          continue;
+        if (existing) {
+          try {
+            await verifyDownloadedModelFile(destination, integrity);
+            completed += 1;
+            emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: integrity.size, totalBytes: integrity.size });
+            continue;
+          } catch {
+            // The verifier removed the stale/corrupt cache entry. Download the
+            // trusted bytes below instead of silently treating it as installed.
+          }
         }
 
         const partPath = `${destination}.part`;
-        const partial = await fs.stat(partPath).catch(() => null);
+        activePartPath = partPath;
+        let partial = await fs.stat(partPath).catch(() => null);
+        if (partial?.size === integrity.size) {
+          try {
+            await verifyDownloadedModelFile(partPath, integrity);
+            await fs.rename(partPath, destination);
+            activePartPath = null;
+            completed += 1;
+            emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: integrity.size, totalBytes: integrity.size });
+            continue;
+          } catch {
+            partial = null;
+          }
+        } else if (partial && partial.size > integrity.size) {
+          await fs.rm(partPath, { force: true });
+          partial = null;
+        }
         const resumeFrom = partial ? partial.size : 0;
 
         const url = buildEmbeddingModelDownloadUrl({ modelId, revision, file });
@@ -4729,13 +4761,8 @@ function setupFileOperationHandlers() {
           await fs.rm(partPath, { force: true });
         }
 
-        const declared = Number(response.headers.get('content-length')) || 0;
-        const totalBytes = appending ? resumeFrom + declared : declared;
+        const totalBytes = integrity.size;
         let received = appending ? resumeFrom : 0;
-        // Hugging Face's linked ETag names the complete LFS object even for a
-        // range response, so resumed downloads can and must verify the stitched
-        // file too.
-        const expectedSha256 = expectedSha256FromHeaders(response.headers);
 
         const stream = fsSync.createWriteStream(partPath, { flags: appending ? 'a' : 'w' });
         // Without an 'error' listener a write failure (disk full, device removed)
@@ -4756,7 +4783,7 @@ function setupFileOperationHandlers() {
             if (done) break;
             received += value.byteLength;
             if (!stream.write(Buffer.from(value))) {
-              await new Promise((resolve) => stream.once('drain', resolve));
+              await waitForWritableDrain(stream);
             }
             emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: received, totalBytes });
           }
@@ -4772,20 +4799,18 @@ function setupFileOperationHandlers() {
           throw new Error(`Truncated download for ${file}: got ${received} of ${totalBytes} bytes`);
         }
 
-        // Verify the bytes on disk match what the server said we'd get before
-        // this file is ever handed to the runtime. A resumed download that
-        // ends up without a usable header (see above) is not verified here —
-        // a byte-length mismatch would already have thrown above.
+        // Verify against the immutable main-process policy, never response
+        // headers or renderer-supplied metadata, before exposing the file.
         try {
-          await verifyDownloadedModelFile(partPath, expectedSha256);
+          await verifyDownloadedModelFile(partPath, integrity);
         } catch (error) {
-          throw new Error(`Checksum mismatch for ${file}: ${error.message}`);
+          throw new Error(`Integrity check failed for ${file}: ${error.message}`);
         }
 
-        // Only rename once the bytes are complete (and verified, when a hash
-        // was available), so a partial or corrupt file is never visible under
-        // the real name and never fed to the runtime.
+        // Only rename once the bytes are complete and verified, so a partial or
+        // corrupt file is never visible under the real name.
         await fs.rename(partPath, destination);
+        activePartPath = null;
         completed += 1;
         emit({ phase: 'downloading', file, completedFiles: completed, totalFiles: list.length, receivedBytes: received, totalBytes });
       }
@@ -4794,6 +4819,9 @@ function setupFileOperationHandlers() {
       return { success: true, modelDir };
     } catch (error) {
       const cancelled = error?.name === 'AbortError';
+      if (!cancelled && typeof activePartPath === 'string') {
+        await fs.rm(activePartPath, { force: true }).catch(() => undefined);
+      }
       emit({ phase: cancelled ? 'cancelled' : 'error', error: cancelled ? null : error.message });
       return { success: false, cancelled, error: cancelled ? 'Download cancelled' : error.message };
     } finally {

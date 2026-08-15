@@ -76,7 +76,7 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelKey, EmbeddingModelDescripto
   'clip-b32': {
     key: 'clip-b32',
     id: 'Xenova/clip-vit-base-patch32',
-    revision: 'main',
+    revision: 'd15189d7028b43f1d3e65039190477f6af591c2a',
     dim: 512,
     // Keeps the original, un-suffixed id so an index built before models were
     // selectable is found — and, being format-incompatible, properly reclaimed
@@ -96,7 +96,7 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelKey, EmbeddingModelDescripto
   'clip-b16': {
     key: 'clip-b16',
     id: 'Xenova/clip-vit-base-patch16',
-    revision: 'main',
+    revision: '342fdf2f67aded64d138ff074745fb4a5d2bba5f',
     dim: 512,
     cacheId: 'imh-visual-search-b16',
     label: 'Higher quality',
