@@ -421,7 +421,20 @@ export interface LicenseActivationResult {
 }
 
 export interface ElectronAPI {
-  trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
+  trashFile: (filename: string) => Promise<{
+    success: boolean;
+    error?: string;
+    permanentDeleteToken?: string;
+    primaryDeleted?: boolean;
+    remainingFileCount?: number;
+  }>;
+  confirmPermanentDelete: (args: { tokens: string[] }) => Promise<{
+    success: boolean;
+    cancelled: boolean;
+    deletedTokens: string[];
+    failedTokens: string[];
+    error?: string;
+  }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
   setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;

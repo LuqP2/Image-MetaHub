@@ -43,7 +43,7 @@ describe('3D model file operations', () => {
     ]);
   });
 
-  it('reports and removes an orphaned sidecar when trashing it fails', async () => {
+  it('preserves a sidecar when trashing it fails after the model was trashed', async () => {
     const fsApi = {
       lstat: vi.fn().mockResolvedValue({ isFile: () => true }),
       unlink: vi.fn().mockResolvedValue(undefined),
@@ -52,9 +52,28 @@ describe('3D model file operations', () => {
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('trash failed'));
 
-    await expect(trashModel3DWithSidecar(fsApi, trashItem, 'model.glb'))
-      .rejects.toThrow('permanently removed');
-    expect(fsApi.unlink).toHaveBeenCalledWith('model.glb.imagemetahub.json');
+    const error = await trashModel3DWithSidecar(fsApi, trashItem, 'model.glb')
+      .catch((caught) => caught);
+
+    expect(error.message).toContain('sidecar could not be moved');
+    expect(error.remainingPaths).toEqual(['model.glb.imagemetahub.json']);
+    expect(error.primaryDeleted).toBe(true);
+    expect(fsApi.unlink).not.toHaveBeenCalled();
+  });
+
+  it('preserves both model and sidecar when the initial trash attempt fails', async () => {
+    const fsApi = {
+      lstat: vi.fn().mockResolvedValue({ isFile: () => true }),
+      unlink: vi.fn(),
+    };
+    const trashItem = vi.fn().mockRejectedValue(new Error('recycle bin disabled'));
+
+    const error = await trashModel3DWithSidecar(fsApi, trashItem, 'model.glb')
+      .catch((caught) => caught);
+
+    expect(error.remainingPaths).toEqual(['model.glb', 'model.glb.imagemetahub.json']);
+    expect(error.primaryDeleted).toBe(false);
+    expect(fsApi.unlink).not.toHaveBeenCalled();
   });
 
   it('removes incomplete model exports when sidecar copying fails', async () => {
