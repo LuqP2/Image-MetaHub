@@ -40,4 +40,10 @@ describe('SettingsModal', () => {
       expect(screen.getByRole('heading', { name: 'Support / License' })).toBeTruthy();
     });
   });
+
+  it('stays above the sticky application header and footer', () => {
+    render(<SettingsModal isOpen={true} onClose={() => {}} />);
+
+    expect(screen.getByRole('dialog', { name: 'Settings' }).className).toContain('z-[100]');
+  });
 });

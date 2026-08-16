@@ -771,7 +771,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <div className="w-px h-4 bg-gray-700 mx-1" />
 
                 {/* Compare */}
-                <Tooltip label={canOpenSelectedImageEditor && !canUseImageEditor ? 'Image Editor (Pro Feature) - start trial' : editImageTooltip}>
+                <Tooltip label={canOpenSelectedImageEditor && !canUseImageEditor ? 'Image Editor (Pro Feature)' : editImageTooltip}>
                   <button
                     onClick={handleOpenImageEditor}
                     className={`p-1.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
@@ -779,7 +779,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                         ? 'text-gray-400 hover:text-cyan-300 hover:bg-gray-700'
                         : 'text-gray-600 cursor-not-allowed'
                     }`}
-                    title={canOpenSelectedImageEditor && !canUseImageEditor ? 'Image Editor (Pro Feature) - start trial' : editImageTooltip}
+                    title={canOpenSelectedImageEditor && !canUseImageEditor ? 'Image Editor (Pro Feature)' : editImageTooltip}
                     aria-label="Edit image"
                     disabled={!canOpenSelectedImageEditor}
                   >
@@ -1145,7 +1145,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
               )}
             </div>
 
-            <Tooltip label={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'}>
+            <Tooltip label={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature)'}>
               <button
                 onClick={() => {
                   if (canUseAnalytics) {
@@ -1155,8 +1155,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                   }
                 }}
                 className="relative p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                title={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'}
-                aria-label={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'}
+                title={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature)'}
+                aria-label={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature)'}
               >
                 <BarChart3 className="w-4 h-4" />
                 <div className="absolute -right-0.5 -top-0.5">

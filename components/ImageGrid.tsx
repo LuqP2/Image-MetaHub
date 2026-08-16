@@ -32,7 +32,12 @@ import { RATING_VALUES, RatingValueIcons, getRatingChipClasses, getRatingLabel }
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import ProBadge from './ProBadge';
-import { ContextMenuButton, ContextMenuSubmenu, buildFileMenuItems } from './contextMenu/ContextMenuPrimitives';
+import {
+  ContextMenuButton,
+  ContextMenuSubmenu,
+  ShowInFolderContextAction,
+  buildFileMenuItems,
+} from './contextMenu/ContextMenuPrimitives';
 import { useImageStacking } from '../hooks/useImageStacking';
 import TagManagerModal from './TagManagerModal';
 import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
@@ -2219,7 +2224,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           >
             <Tag className="w-4 h-4" />
             <span className="flex-1">Add/Remove Tags</span>
-            {!canUseBulkTagging && selectedCount > 1 && initialized && <ProBadge size="sm" variant="subtle" tooltip="Pro feature - start trial" />}
+            {!canUseBulkTagging && selectedCount > 1 && initialized && <ProBadge size="sm" variant="subtle" tooltip="Pro feature" />}
           </button>
 
           <div
@@ -2390,13 +2395,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <button
               onClick={selectForComparison}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title={!canUseComparison && initialized ? 'Pro feature - start trial' : undefined}
+              title={!canUseComparison && initialized ? 'Pro feature' : undefined}
             >
               <GitCompare className="w-4 h-4" />
               <span className="flex-1">
                 Add to Compare {canUseComparison && comparisonCount > 0 ? `(${comparisonCount}/4)` : ''}
               </span>
-              {!canUseComparison && <ProBadge size="sm" variant="subtle" tooltip="Pro feature - start trial" />}
+              {!canUseComparison && <ProBadge size="sm" variant="subtle" tooltip="Pro feature" />}
             </button>
           )}
 
@@ -2428,11 +2433,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <button
               onClick={openImageEditor}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature) - start trial' : 'Open this image in the editor workspace'}
+              title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature)' : 'Open this image in the editor workspace'}
             >
               <ImageIcon className="w-4 h-4" />
               <span className="flex-1">Open in Editor</span>
-              {!canUseImageEditor && initialized && <ProBadge size="sm" variant="subtle" tooltip="Image Editor (Pro Feature) - start trial" />}
+              {!canUseImageEditor && initialized && <ProBadge size="sm" variant="subtle" tooltip="Image Editor (Pro Feature)" />}
             </button>
           )}
 
@@ -2458,12 +2463,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
           <div className="border-t border-gray-600 my-1"></div>
 
+          <ShowInFolderContextAction onClick={showInFolder} />
+
           {(() => {
             const fileMenuItems = buildFileMenuItems({
               onRename: () => openInlineRename(contextMenu.image),
               onCopyTo: () => openTransferModal('copy'),
               onMoveTo: () => openTransferModal('move'),
-              onShowInFolder: showInFolder,
               onExport: exportImage,
               onBatchExport: handleBatchExport,
               selectedCount,
@@ -2480,7 +2486,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 onOpenChange={setIsFileSubmenuOpen}
                 horizontalClass={submenuHorizontalClass}
                 showProBadge={fileHasProItem && initialized}
-                proBadgeTooltip="Pro feature - start trial"
+                proBadgeTooltip="Pro feature"
               >
                 {fileMenuItems.map((item) => (
                   <ContextMenuButton
@@ -2488,9 +2494,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     onClick={item.onClick}
                     icon={item.icon}
                     label={item.label}
-                    title={item.isPro && initialized ? 'Pro feature - start trial' : undefined}
+                    title={item.isPro && initialized ? 'Pro feature' : undefined}
                     showProBadge={item.isPro}
-                    proBadgeTooltip="Pro feature - start trial"
+                    proBadgeTooltip="Pro feature"
                   />
                 ))}
               </ContextMenuSubmenu>
@@ -2508,7 +2514,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     icon={<Workflow className="w-4 h-4" />}
                     label="Open in ComfyUI Workspace"
                     showProBadge={!canUseComfyUI}
-                    proBadgeTooltip="Pro feature - start trial"
+                    proBadgeTooltip="Pro feature"
                   />
                 </>
               );
@@ -2580,9 +2586,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     icon={generateMenuItems[0].icon}
                     label={generateMenuItems[0].label}
                     disabled={generateMenuItems[0].disabled}
-                    title={generateMenuItems[0].isPro && initialized ? 'Pro feature - start trial' : generateMenuItems[0].title}
+                    title={generateMenuItems[0].isPro && initialized ? 'Pro feature' : generateMenuItems[0].title}
                     showProBadge={generateMenuItems[0].isPro}
-                    proBadgeTooltip="Pro feature - start trial"
+                    proBadgeTooltip="Pro feature"
                   />
                 ) : (
                   <ContextMenuSubmenu
@@ -2592,7 +2598,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     onOpenChange={setIsGenerateSubmenuOpen}
                     horizontalClass={submenuHorizontalClass}
                     showProBadge={generateHasProItem && initialized}
-                    proBadgeTooltip="Pro feature - start trial"
+                    proBadgeTooltip="Pro feature"
                   >
                     {generateMenuItems.map((item) => (
                       <ContextMenuButton
@@ -2601,9 +2607,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                         icon={item.icon}
                         label={item.label}
                         disabled={item.disabled}
-                        title={item.isPro && initialized ? 'Pro feature - start trial' : item.title}
+                        title={item.isPro && initialized ? 'Pro feature' : item.title}
                         showProBadge={item.isPro}
-                        proBadgeTooltip="Pro feature - start trial"
+                        proBadgeTooltip="Pro feature"
                       />
                     ))}
                   </ContextMenuSubmenu>

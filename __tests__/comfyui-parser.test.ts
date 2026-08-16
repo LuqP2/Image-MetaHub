@@ -341,6 +341,18 @@ describe('ComfyUI Parser - Detection from capitalized string keys', () => {
     expect(result?.model).not.toBe('wrong.safetensors');
   });
 
+  it('falls back to parameters when the ComfyUI graph is empty', async () => {
+    const result = await parseImageMetadata({
+      workflow: {},
+      parameters: 'fallback prompt\nSteps: 20, Sampler: Euler, CFG scale: 7, Seed: 42, Size: 512x768, Model: fallback.safetensors',
+    } as any);
+
+    expect(result?.generator).toBe('Automatic1111');
+    expect(result?.prompt).toBe('fallback prompt');
+    expect(result?.model).toBe('fallback.safetensors');
+    expect(result?.steps).toBe(20);
+  });
+
   it('should parse standard SaveImage exports with SDXL rgthree nodes', async () => {
     const prompt = {
       '3': {

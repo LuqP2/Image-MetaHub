@@ -41,7 +41,11 @@ function getRelativeImagePath(image: IndexedImage): string {
   return relativePath || image.name;
 }
 
-function createMockFileHandle(fileName: string, absolutePath: string): FileSystemFileHandle {
+function createMockFileHandle(
+  fileName: string,
+  absolutePath: string,
+  lastModified?: number,
+): FileSystemFileHandle {
   return {
     name: fileName,
     kind: 'file',
@@ -55,7 +59,7 @@ function createMockFileHandle(fileName: string, absolutePath: string): FileSyste
       const freshData = new Uint8Array(fileResult.data);
       return new File([freshData as any], fileName, {
         type: inferMimeTypeFromName(fileName),
-        lastModified: Date.now(),
+        lastModified: lastModified ?? Date.now(),
       });
     },
   } as ElectronFileHandle as FileSystemFileHandle;
@@ -63,12 +67,12 @@ function createMockFileHandle(fileName: string, absolutePath: string): FileSyste
 
 function buildTransferredEntry(item: IndexedImageTransferResultItem) {
   return {
-    handle: createMockFileHandle(item.fileName, item.destinationAbsolutePath),
+    handle: createMockFileHandle(item.fileName, item.destinationAbsolutePath, item.lastModified),
     path: item.destinationRelativePath,
     lastModified: item.lastModified ?? Date.now(),
     size: item.size,
     type: item.type,
-    birthtimeMs: item.lastModified ?? Date.now(),
+    birthtimeMs: item.birthtimeMs ?? item.lastModified ?? Date.now(),
   };
 }
 
@@ -215,7 +219,7 @@ export async function transferIndexedImages({
     fileStatsMap.set(item.destinationRelativePath, {
       size: item.size,
       type: item.type,
-      birthtimeMs: item.lastModified,
+      birthtimeMs: item.birthtimeMs,
     });
   }
 

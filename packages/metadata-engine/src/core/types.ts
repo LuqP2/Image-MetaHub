@@ -495,6 +495,41 @@ export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Au
   return true;
 }
 
+const parseComfyGraphCandidate = (value: unknown): unknown => {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value.replace(/:\s*NaN/g, ': null'));
+  } catch {
+    return null;
+  }
+};
+
+const isComfyGraphNode = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const node = value as Record<string, unknown>;
+  return (typeof node.class_type === 'string' && 'inputs' in node)
+    || (typeof node.type === 'string'
+      && ('inputs' in node || 'outputs' in node || 'widgets_values' in node));
+};
+
+const hasComfyGraphNodes = (value: unknown): boolean => {
+  const parsed = parseComfyGraphCandidate(value);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  const graph = parsed as Record<string, unknown>;
+  if (Array.isArray(graph.nodes)) return graph.nodes.some(isComfyGraphNode);
+  return Object.values(graph).some(isComfyGraphNode);
+};
+
+export function hasUsableComfyGraphMetadata(metadata: ImageMetadata): boolean {
+  const entries = Object.entries(metadata as Record<string, unknown>);
+  const workflow = entries.find(([key]) => key.toLowerCase() === 'workflow')?.[1];
+  const prompt = entries.find(([key]) => key.toLowerCase() === 'prompt')?.[1];
+  return hasComfyGraphNodes(workflow)
+    || hasComfyGraphNodes(prompt)
+    || entries.some(([key, value]) =>
+      key !== 'extra' && key !== 'extraMetadata' && isComfyGraphNode(value));
+}
+
 export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIMetadata {
   // The presence of a 'workflow' property is the most reliable and unique indicator for ComfyUI.
   // This check is intentionally lenient, trusting the dedicated parser to handle the details.

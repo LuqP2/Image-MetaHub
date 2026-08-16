@@ -9,6 +9,7 @@ const resetLicenseState = () => {
     expiredTrialResetApplied: true,
     nextReleaseTrialResetApplied: true,
     trialDurationV2ResetApplied: true,
+    trialAvailable: true,
     trialStartDate: null,
     trialActivated: false,
     licenseStatus: 'free',
@@ -27,6 +28,37 @@ describe('useLicenseStore trial policy', () => {
 
   it('uses a 7-day trial duration', () => {
     expect(TRIAL_DURATION_DAYS).toBe(7);
+  });
+
+  it('does not reset a newly activated trial as legacy state after restart', async () => {
+    useLicenseStore.setState({
+      initialized: true,
+      migrationResetApplied: false,
+      expiredTrialResetApplied: false,
+      nextReleaseTrialResetApplied: false,
+      trialDurationV2ResetApplied: false,
+    });
+
+    useLicenseStore.getState().activateTrial();
+    const activated = useLicenseStore.getState();
+
+    expect(activated).toMatchObject({
+      licenseStatus: 'trial',
+      trialActivated: true,
+      migrationResetApplied: true,
+      expiredTrialResetApplied: true,
+      nextReleaseTrialResetApplied: true,
+      trialDurationV2ResetApplied: true,
+    });
+
+    useLicenseStore.setState({ ...activated, initialized: false });
+    await useLicenseStore.getState().checkLicenseStatus();
+
+    expect(useLicenseStore.getState()).toMatchObject({
+      licenseStatus: 'trial',
+      trialActivated: true,
+      trialStartDate: activated.trialStartDate,
+    });
   });
 
   it('preserves an initialized authoritative status across arbitrary rehydration', () => {

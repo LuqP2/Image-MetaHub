@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Portable Windows Build**: Added a dedicated Portable executable that keeps settings and caches beside the app, separate from the standard Windows installation.
 - **Find Similar — Local Visual Search**: Added opt-in local visual search with Find Similar. Select an image to discover visually related files across the current library, including images without metadata. Indexing is resumable and runs locally, with optional WebGPU acceleration and WASM fallback. Experimental text-to-image queries are also available and do not replace metadata search.
 - **Native Image Viewer Windows**: Images now open in separate native desktop windows with an optional always-on-top toggle and drag-and-drop support. Settings → Viewer → Behavior can restore the legacy in-app viewer. Generating with A1111 or ComfyUI from a separate window queues the job in the main window, so it runs normally, and dragging a file out of a viewer window no longer risks moving the wrong image if you later drop an unrelated file onto a folder.
 

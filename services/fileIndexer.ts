@@ -2,7 +2,7 @@
 /// <reference lib="dom.iterable" />
 import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager';
 
-import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
+import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, hasUsableComfyGraphMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { getFilesystemPathComparisonKey, normalizeFilesystemPath } from '../utils/filesystemPath';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph } from './parsers/comfyUIParser';
@@ -117,6 +117,52 @@ import { extractWorkflowNodeTypes, extractWorkflowNodeTypesFromMetadata } from '
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
     return jsonString.replace(/:\s*NaN/g, ': null');
+}
+
+function parseComfyExifGraphValue(
+  value: unknown,
+  prefix?: 'workflow' | 'prompt',
+): ComfyUIMetadata['workflow'] | ComfyUIMetadata['prompt'] | undefined {
+  if (value && typeof value === 'object') {
+    return value as ComfyUIMetadata['workflow'] | ComfyUIMetadata['prompt'];
+  }
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  const marker = prefix ? `${prefix}:` : '';
+  if (marker && !trimmed.toLowerCase().startsWith(marker)) {
+    return undefined;
+  }
+
+  const json = marker ? trimmed.slice(marker.length).trim() : trimmed;
+  if (!json) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(sanitizeJson(json));
+    return parsed && typeof parsed === 'object'
+      ? parsed as ComfyUIMetadata['workflow'] | ComfyUIMetadata['prompt']
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractComfyUIExifGraphMetadata(
+  exifData: Record<string, unknown>,
+): ComfyUIMetadata | null {
+  const workflow = parseComfyExifGraphValue(exifData.workflow)
+    ?? parseComfyExifGraphValue(exifData.Workflow)
+    ?? parseComfyExifGraphValue(exifData.Make, 'workflow');
+  const prompt = parseComfyExifGraphValue(exifData.prompt)
+    ?? parseComfyExifGraphValue(exifData.Prompt)
+    ?? parseComfyExifGraphValue(exifData.Model, 'prompt');
+
+  const metadata = workflow || prompt ? { workflow, prompt } : null;
+  return metadata && hasUsableComfyGraphMetadata(metadata) ? metadata : null;
 }
 
 const trimJsonChunkPadding = (value: string): string => {
@@ -697,6 +743,11 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       }
     }
 
+    const comfyExifGraph = extractComfyUIExifGraphMetadata(exifData);
+    if (comfyExifGraph) {
+      return comfyExifGraph;
+    }
+
     // Check all possible field names for UserComment (A1111 and SwarmUI store metadata here in JPEGs)
     // Also check XMP Description for Draw Things and other XMP-based metadata
     let metadataText: string | Uint8Array | undefined =
@@ -1098,6 +1149,11 @@ export async function parseWebPMetadata(
       } catch (e) {
         // Not JSON or not MetaHub metadata, continue with normal parsing
       }
+    }
+
+    const comfyExifGraph = extractComfyUIExifGraphMetadata(exifData);
+    if (comfyExifGraph) {
+      return comfyExifGraph;
     }
 
     // Fall back to regular JPEG parsing logic (UserComment, etc.)
@@ -1682,11 +1738,10 @@ if (rawMetadata) {
   }
 
   // Priority 1: Check for text-based formats (A1111, Forge, Fooocus all use 'parameters' string)
-  // An AVIF can carry both a ComfyUI graph (prompt/workflow) and an Image MetaHub
-  // 'parameters' string. Let the ComfyUI graph parser (Priority 2) win in that case
-  // instead of misparsing the compact 'parameters' string through the A1111 fallback.
+  // ComfyUI save nodes can include an A1111-compatible `parameters` string beside
+  // their canonical prompt/workflow graph. Let the graph parser win in that case.
   if (!normalizedMetadata && 'parameters' in rawMetadata && typeof rawMetadata.parameters === 'string'
-      && !(isAvifCarrier && isComfyUIMetadata(rawMetadata))) {
+      && !hasUsableComfyGraphMetadata(rawMetadata)) {
     const params = rawMetadata.parameters;
     
     // Sub-priority 2.0: Check if parameters contains SwarmUI JSON format

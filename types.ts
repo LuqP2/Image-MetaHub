@@ -279,6 +279,7 @@ export interface IndexedImageTransferResultItem {
   fileName: string;
   size?: number;
   lastModified?: number;
+  birthtimeMs?: number;
   type?: string;
 }
 
@@ -420,8 +421,28 @@ export interface LicenseActivationResult {
   status: LicenseClientStatus;
 }
 
+export interface TrialActivationResult {
+  success: boolean;
+  activated: boolean;
+  trialStartDate: number | null;
+  error?: string;
+}
+
 export interface ElectronAPI {
-  trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
+  trashFile: (filename: string) => Promise<{
+    success: boolean;
+    error?: string;
+    permanentDeleteToken?: string;
+    primaryDeleted?: boolean;
+    remainingFileCount?: number;
+  }>;
+  confirmPermanentDelete: (args: { tokens: string[] }) => Promise<{
+    success: boolean;
+    cancelled: boolean;
+    deletedTokens: string[];
+    failedTokens: string[];
+    error?: string;
+  }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
   setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
@@ -464,6 +485,7 @@ export interface ElectronAPI {
   getRuntimeInfo: () => Promise<DesktopRuntimeInfo>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  activateTrial: () => Promise<TrialActivationResult>;
   getLicenseStatus: () => Promise<LicenseClientStatus>;
   activateLicense: (key: string, email: string) => Promise<LicenseActivationResult>;
   refreshLicense: () => Promise<LicenseClientStatus>;
@@ -888,6 +910,9 @@ export const isAutomatic1111Metadata = (metadata: ImageMetadata): metadata is Au
 
 export const isComfyUIMetadata = (metadata: ImageMetadata): metadata is ComfyUIMetadata =>
   sharedCoreTypes.isComfyUIMetadata(metadata as SharedImageMetadata);
+
+export const hasUsableComfyGraphMetadata = (metadata: ImageMetadata): boolean =>
+  sharedCoreTypes.hasUsableComfyGraphMetadata(metadata as SharedImageMetadata);
 
 export type ThumbnailStatus = SharedThumbnailStatus;
 export type ImageRating = SharedImageRating;

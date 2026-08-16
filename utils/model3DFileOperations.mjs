@@ -1,3 +1,5 @@
+import { copyFilePreservingTimestamps } from './fileCopy.mjs';
+
 const getErrorMessage = (error) => error?.message || String(error || 'Unknown error');
 
 const lstatIfPresent = async (fsApi, filePath) => {
@@ -23,7 +25,7 @@ const transferPath = async (fsApi, sourcePath, destinationPath, mode) => {
       await fsApi.rename(sourcePath, destinationPath);
     } catch (error) {
       if (error?.code !== 'EXDEV') throw error;
-      await fsApi.copyFile(sourcePath, destinationPath);
+      await copyFilePreservingTimestamps(fsApi, sourcePath, destinationPath);
       try {
         await fsApi.unlink(sourcePath);
       } catch (unlinkError) {
@@ -40,7 +42,7 @@ const transferPath = async (fsApi, sourcePath, destinationPath, mode) => {
     return;
   }
 
-  await fsApi.copyFile(sourcePath, destinationPath);
+  await copyFilePreservingTimestamps(fsApi, sourcePath, destinationPath);
 };
 
 const removeIfPresent = async (fsApi, filePath) => {
@@ -56,21 +58,23 @@ const createExportStagingPath = (destinationPath, label) =>
 
 export const trashModel3DWithSidecar = async (fsApi, trashItem, modelPath) => {
   const sidecarPath = await getModel3DSidecarPathIfPresent(fsApi, modelPath);
-  await trashItem(modelPath);
+  try {
+    await trashItem(modelPath);
+  } catch (error) {
+    throw Object.assign(new Error(getErrorMessage(error)), {
+      remainingPaths: [modelPath, ...(sidecarPath ? [sidecarPath] : [])],
+      primaryDeleted: false,
+      trashAttempted: true,
+    });
+  }
   if (!sidecarPath) return;
 
   try {
     await trashItem(sidecarPath);
   } catch (sidecarError) {
-    try {
-      await removeIfPresent(fsApi, sidecarPath);
-    } catch (cleanupError) {
-      throw new Error(
-        `The model was moved to trash, but its metadata sidecar could not be trashed or removed (${getErrorMessage(cleanupError)}).`,
-      );
-    }
-    throw new Error(
-      `The model was moved to trash, but its metadata sidecar could not be moved to trash and was permanently removed (${getErrorMessage(sidecarError)}).`,
+    throw Object.assign(
+      new Error(`The model was moved to trash, but its metadata sidecar could not be moved (${getErrorMessage(sidecarError)}).`),
+      { remainingPaths: [sidecarPath], primaryDeleted: true, trashAttempted: true },
     );
   }
 };

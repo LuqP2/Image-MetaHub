@@ -3428,6 +3428,13 @@ export default function App() {
         };
         const viewerCommand = command as ImageViewerCommand;
         switch (viewerCommand.type) {
+          case 'start-trial': {
+            const activated = await useLicenseStore.getState().activateTrial();
+            if (!activated) {
+              throw new Error(useLicenseStore.getState().licenseMessage || 'The trial could not be started.');
+            }
+            break;
+          }
           case 'navigate':
             handleImageModalNavigate(session.modalId, viewerCommand.direction, { wrap: viewerCommand.wrap });
             break;

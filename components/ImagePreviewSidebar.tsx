@@ -781,8 +781,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   onClick={openBatchExport}
                   whileTap={{ scale: 0.95 }}
                   className="p-1.5 rounded-md transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
-                  title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
-                  aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
+                  title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature' : 'Open export flow'}
+                  aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature' : 'Open export flow'}
                 >
                   <Download size={14} />
                 </motion.button>

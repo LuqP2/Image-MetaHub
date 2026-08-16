@@ -17,6 +17,7 @@ const setLicense = (
     expiredTrialResetApplied: true,
     nextReleaseTrialResetApplied: true,
     trialDurationV2ResetApplied: true,
+    trialAvailable: true,
     trialStartDate: null,
     trialActivated: licenseStatus === 'expired' || licenseStatus === 'trial',
     licenseStatus,

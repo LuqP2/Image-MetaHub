@@ -43,7 +43,7 @@ describe('3D model file operations', () => {
     ]);
   });
 
-  it('reports and removes an orphaned sidecar when trashing it fails', async () => {
+  it('preserves a sidecar when trashing it fails after the model was trashed', async () => {
     const fsApi = {
       lstat: vi.fn().mockResolvedValue({ isFile: () => true }),
       unlink: vi.fn().mockResolvedValue(undefined),
@@ -52,9 +52,28 @@ describe('3D model file operations', () => {
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('trash failed'));
 
-    await expect(trashModel3DWithSidecar(fsApi, trashItem, 'model.glb'))
-      .rejects.toThrow('permanently removed');
-    expect(fsApi.unlink).toHaveBeenCalledWith('model.glb.imagemetahub.json');
+    const error = await trashModel3DWithSidecar(fsApi, trashItem, 'model.glb')
+      .catch((caught) => caught);
+
+    expect(error.message).toContain('sidecar could not be moved');
+    expect(error.remainingPaths).toEqual(['model.glb.imagemetahub.json']);
+    expect(error.primaryDeleted).toBe(true);
+    expect(fsApi.unlink).not.toHaveBeenCalled();
+  });
+
+  it('preserves both model and sidecar when the initial trash attempt fails', async () => {
+    const fsApi = {
+      lstat: vi.fn().mockResolvedValue({ isFile: () => true }),
+      unlink: vi.fn(),
+    };
+    const trashItem = vi.fn().mockRejectedValue(new Error('recycle bin disabled'));
+
+    const error = await trashModel3DWithSidecar(fsApi, trashItem, 'model.glb')
+      .catch((caught) => caught);
+
+    expect(error.remainingPaths).toEqual(['model.glb', 'model.glb.imagemetahub.json']);
+    expect(error.primaryDeleted).toBe(false);
+    expect(fsApi.unlink).not.toHaveBeenCalled();
   });
 
   it('removes incomplete model exports when sidecar copying fails', async () => {
@@ -151,11 +170,17 @@ describe('3D model file operations', () => {
   });
 
   it('copies a model and its metadata sidecar together', async () => {
+    const modelTime = new Date('2020-01-01T00:00:00.000Z');
+    const sidecarTime = new Date('2020-01-02T00:00:00.000Z');
     const fsApi = {
       lstat: vi.fn()
         .mockResolvedValueOnce({ isFile: () => true })
         .mockRejectedValueOnce(missingFileError()),
       copyFile: vi.fn().mockResolvedValue(undefined),
+      stat: vi.fn()
+        .mockResolvedValueOnce({ atime: modelTime, mtime: modelTime })
+        .mockResolvedValueOnce({ atime: sidecarTime, mtime: sidecarTime }),
+      utimes: vi.fn().mockResolvedValue(undefined),
       unlink: vi.fn(),
     };
 
@@ -164,6 +189,10 @@ describe('3D model file operations', () => {
     expect(fsApi.copyFile.mock.calls).toEqual([
       ['old.glb', 'new.glb'],
       ['old.glb.imagemetahub.json', 'new.glb.imagemetahub.json'],
+    ]);
+    expect(fsApi.utimes.mock.calls).toEqual([
+      ['new.glb', modelTime, modelTime],
+      ['new.glb.imagemetahub.json', sidecarTime, sidecarTime],
     ]);
   });
 
@@ -176,6 +205,8 @@ describe('3D model file operations', () => {
       copyFile: vi.fn()
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(sidecarError),
+      stat: vi.fn().mockResolvedValue({ atime: new Date(1), mtime: new Date(2) }),
+      utimes: vi.fn().mockResolvedValue(undefined),
       unlink: vi.fn()
         .mockRejectedValueOnce(missingFileError())
         .mockResolvedValueOnce(undefined),
@@ -212,6 +243,8 @@ describe('3D model file operations', () => {
       lstat: vi.fn().mockRejectedValue(missingFileError()),
       rename: vi.fn().mockRejectedValue(crossVolumeError),
       copyFile: vi.fn().mockResolvedValue(undefined),
+      stat: vi.fn().mockResolvedValue({ atime: new Date(1), mtime: new Date(2) }),
+      utimes: vi.fn().mockResolvedValue(undefined),
       unlink: vi.fn()
         .mockRejectedValueOnce(sourceDeleteError)
         .mockResolvedValueOnce(undefined),
