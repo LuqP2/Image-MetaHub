@@ -911,6 +911,9 @@ export const isAutomatic1111Metadata = (metadata: ImageMetadata): metadata is Au
 export const isComfyUIMetadata = (metadata: ImageMetadata): metadata is ComfyUIMetadata =>
   sharedCoreTypes.isComfyUIMetadata(metadata as SharedImageMetadata);
 
+export const hasUsableComfyGraphMetadata = (metadata: ImageMetadata): boolean =>
+  sharedCoreTypes.hasUsableComfyGraphMetadata(metadata as SharedImageMetadata);
+
 export type ThumbnailStatus = SharedThumbnailStatus;
 export type ImageRating = SharedImageRating;
 

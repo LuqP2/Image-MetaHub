@@ -13,7 +13,7 @@ const box = (type: string, body: Buffer) => {
   return result;
 };
 
-const createBasicMp4 = () => {
+const createBasicMp4 = (zeroSizedMoov = false) => {
   const mvhd = Buffer.alloc(20);
   mvhd.writeUInt32BE(1000, 12);
   mvhd.writeUInt32BE(12_500, 16);
@@ -30,6 +30,7 @@ const createBasicMp4 = () => {
     box('mdia', box('hdlr', hdlr)),
   ]));
   const moov = box('moov', Buffer.concat([box('mvhd', mvhd), trak]));
+  if (zeroSizedMoov) moov.writeUInt32BE(0, 0);
   return Buffer.concat([box('ftyp', Buffer.from('isom0000')), moov]);
 };
 
@@ -48,6 +49,18 @@ describe('basic packaged MP4 metadata fallback', () => {
     directory = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-mp4-'));
     const filePath = path.join(directory, 'sample.mp4');
     await fs.writeFile(filePath, createBasicMp4());
+
+    await expect(readBasicMp4Metadata(filePath)).resolves.toEqual({
+      width: 1920,
+      height: 1080,
+      duration_seconds: 12.5,
+    });
+  });
+
+  it('resolves a final zero-sized moov box against the file length', async () => {
+    directory = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-mp4-zero-moov-'));
+    const filePath = path.join(directory, 'sample.mp4');
+    await fs.writeFile(filePath, createBasicMp4(true));
 
     await expect(readBasicMp4Metadata(filePath)).resolves.toEqual({
       width: 1920,

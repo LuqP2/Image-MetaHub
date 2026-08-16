@@ -1,4 +1,4 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata, VideoMetadata, isInvokeAIMetadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata, VideoMetadata, hasUsableComfyGraphMetadata, isInvokeAIMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
@@ -171,8 +171,14 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     const promptCI = getCaseInsensitive<unknown>(rawMetadata, 'prompt');
     const promptLooksLikeGraph = typeof promptCI === 'string' && /"class_type"|"inputs"/.test(promptCI);
     const promptOnlyGraph = isComfyPromptOnlyGraph(rawMetadata);
+    const comfyGraphDetected = workflowCI !== undefined
+        || (promptCI && typeof promptCI === 'object')
+        || promptLooksLikeGraph
+        || promptOnlyGraph;
+    const hasParameterFallback = typeof metadata.parameters === 'string'
+        && metadata.parameters.trim().length > 0;
 
-    if (workflowCI !== undefined || (promptCI && typeof promptCI === 'object') || promptLooksLikeGraph || promptOnlyGraph) {
+    if (comfyGraphDetected && (!hasParameterFallback || hasUsableComfyGraphMetadata(metadata))) {
         return {
             parse: (data: ComfyUIMetadata) => {
                 // Parse workflow and prompt if they are strings

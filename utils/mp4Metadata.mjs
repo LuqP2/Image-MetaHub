@@ -89,7 +89,8 @@ export const readBasicMp4Metadata = async (filePath) => {
     while (offset + 8 <= stats.size && boxCount < MAX_TOP_LEVEL_BOXES) {
       const headerBuffer = Buffer.alloc(16);
       const { bytesRead } = await handle.read(headerBuffer, 0, 16, offset);
-      const header = readBoxSize(headerBuffer, 0, bytesRead);
+      if (bytesRead < 8 || (headerBuffer.readUInt32BE(0) === 1 && bytesRead < 16)) return null;
+      const header = readBoxSize(headerBuffer, 0, stats.size - offset);
       if (!header || header.size < header.headerSize || offset + header.size > stats.size) return null;
       if (boxType(headerBuffer, 0) === 'moov') {
         if (header.size > MAX_MOOV_BYTES) return null;
