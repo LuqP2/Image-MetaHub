@@ -29,6 +29,37 @@ describe('useLicenseStore trial policy', () => {
     expect(TRIAL_DURATION_DAYS).toBe(7);
   });
 
+  it('does not reset a newly activated trial as legacy state after restart', async () => {
+    useLicenseStore.setState({
+      initialized: true,
+      migrationResetApplied: false,
+      expiredTrialResetApplied: false,
+      nextReleaseTrialResetApplied: false,
+      trialDurationV2ResetApplied: false,
+    });
+
+    useLicenseStore.getState().activateTrial();
+    const activated = useLicenseStore.getState();
+
+    expect(activated).toMatchObject({
+      licenseStatus: 'trial',
+      trialActivated: true,
+      migrationResetApplied: true,
+      expiredTrialResetApplied: true,
+      nextReleaseTrialResetApplied: true,
+      trialDurationV2ResetApplied: true,
+    });
+
+    useLicenseStore.setState({ ...activated, initialized: false });
+    await useLicenseStore.getState().checkLicenseStatus();
+
+    expect(useLicenseStore.getState()).toMatchObject({
+      licenseStatus: 'trial',
+      trialActivated: true,
+      trialStartDate: activated.trialStartDate,
+    });
+  });
+
   it('preserves an initialized authoritative status across arbitrary rehydration', () => {
     const current = useLicenseStore.getState();
     const merged = mergePersistedLicenseState({ licenseStatus: 'free', licensePlan: null }, {

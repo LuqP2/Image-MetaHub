@@ -183,6 +183,12 @@ export const useLicenseStore = create<LicenseState>()(
           trialActivated: true,
           licenseStatus: 'trial',
           initialized: true,
+          // A trial started by the current opt-in flow must never be mistaken
+          // for one of the legacy trials that the migrations below reset.
+          migrationResetApplied: true,
+          expiredTrialResetApplied: true,
+          nextReleaseTrialResetApplied: true,
+          trialDurationV2ResetApplied: true,
           // A fresh trial re-arms the post-trial notice for when this one ends.
           trialExpiredNoticeDismissed: false,
         });
