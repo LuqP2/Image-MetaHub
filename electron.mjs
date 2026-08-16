@@ -45,6 +45,7 @@ import { openAuthorizedCacheDirectory } from './electron/cacheDirectory.mjs';
 import { appendEmbeddingSegmentAtOffset } from './electron/embeddingSegmentFile.mjs';
 import {
   createPermanentDeleteGrantStore,
+  permanentlyDeleteGrantedFiles,
   requestPermanentDeleteConfirmation,
 } from './electron/permanentDeletePolicy.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
@@ -5599,28 +5600,23 @@ function setupFileOperationHandlers() {
       const failedTokens = [];
       const errors = [];
       for (const grant of authorizedGrants) {
-        let failed = false;
-        for (const target of grant.targetFiles) {
-          try {
-            const currentStats = await fs.lstat(target.path);
-            if (currentStats.dev !== target.dev || currentStats.ino !== target.ino) {
-              throw new Error('File changed after the Recycle Bin failure');
-            }
-            await fs.unlink(target.path);
-          } catch (error) {
-            if (error?.code !== 'ENOENT') {
-              failed = true;
-              errors.push(`${path.basename(target.path)}: ${error.message}`);
-            }
-          }
-        }
-        (failed ? failedTokens : deletedTokens).push(grant.token);
+        const result = await permanentlyDeleteGrantedFiles(fs, grant);
+        errors.push(...result.failures.map(
+          (failure) => `${path.basename(failure.path)}: ${failure.error.message}`,
+        ));
+        const primaryStillPresent = result.failures.length > 0 && !result.primaryDeleted;
+        (primaryStillPresent ? failedTokens : deletedTokens).push(grant.token);
       }
-      if (failedTokens.length > 0) {
+      if (errors.length > 0) {
+        const partialFailureMessage = authorizedGrants.length === 1
+          ? 'The item was deleted, but an associated file could not be permanently deleted.'
+          : 'The selected items were deleted, but associated files could not be permanently deleted.';
         await showMessageBox({
           type: 'error',
           title: 'Permanent deletion failed',
-          message: failedTokens.length === 1
+          message: failedTokens.length === 0
+            ? partialFailureMessage
+            : failedTokens.length === 1
             ? 'One item could not be permanently deleted.'
             : `${failedTokens.length} items could not be permanently deleted.`,
           detail: `Files that could not be deleted were preserved.\n\n${errors.join('\n')}`,

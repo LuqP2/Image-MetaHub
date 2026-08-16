@@ -39,4 +39,15 @@ describe('ComfyUI EXIF graph priority (issue #502)', () => {
       Model: 'EOS R5',
     })).toBeNull();
   });
+
+  it('rejects empty EXIF graphs so the parameters fallback remains available', () => {
+    expect(extractComfyUIExifGraphMetadata({
+      Workflow: {},
+      UserComment: 'fallback prompt\nSteps: 20, Sampler: Euler, Seed: 42',
+    })).toBeNull();
+    expect(extractComfyUIExifGraphMetadata({
+      Workflow: { version: 0.4, nodes: [] },
+      Parameters: 'fallback prompt\nSteps: 20, Sampler: Euler, Seed: 42',
+    })).toBeNull();
+  });
 });

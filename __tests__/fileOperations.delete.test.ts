@@ -86,4 +86,25 @@ describe('FileOperations permanent-delete fallback', () => {
     expect(result).toEqual({ success: false, error: 'Access denied' });
     expect(confirmPermanentDelete).not.toHaveBeenCalled();
   });
+
+  it('removes a stale library item when the primary file was deleted but its sidecar failed', async () => {
+    const FileOperations = await loadFileOperations({
+      joinPaths: vi.fn().mockResolvedValue({ success: true, path: 'C:\\Library\\model.glb' }),
+      trashFile: vi.fn().mockResolvedValue({
+        success: false,
+        error: 'trash disabled',
+        permanentDeleteToken: 'token-model',
+      }),
+      confirmPermanentDelete: vi.fn().mockResolvedValue({
+        success: true,
+        cancelled: false,
+        deletedTokens: ['token-model'],
+        failedTokens: [],
+        error: 'model.glb.imagemetahub.json: sidecar locked',
+      }),
+    });
+
+    await expect(FileOperations.deleteFiles([image('model', 'model.glb')]))
+      .resolves.toEqual([{ success: true }]);
+  });
 });

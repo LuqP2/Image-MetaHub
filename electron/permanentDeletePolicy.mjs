@@ -48,6 +48,29 @@ export const createPermanentDeleteGrantStore = ({
   };
 };
 
+export const permanentlyDeleteGrantedFiles = async (fsApi, grant) => {
+  let primaryDeleted = grant.primaryDeleted === true;
+  const failures = [];
+  for (const target of grant.targetFiles) {
+    const isPrimary = target.path === grant.requestedPath;
+    try {
+      const currentStats = await fsApi.lstat(target.path);
+      if (currentStats.dev !== target.dev || currentStats.ino !== target.ino) {
+        throw new Error('File changed after the Recycle Bin failure');
+      }
+      await fsApi.unlink(target.path);
+      if (isPrimary) primaryDeleted = true;
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        if (isPrimary) primaryDeleted = true;
+      } else {
+        failures.push({ path: target.path, error });
+      }
+    }
+  }
+  return { primaryDeleted, failures };
+};
+
 export const requestPermanentDeleteConfirmation = async (
   showMessageBox,
   { itemCount, fileCount, scopeLabel },

@@ -161,7 +161,8 @@ export function extractComfyUIExifGraphMetadata(
     ?? parseComfyExifGraphValue(exifData.Prompt)
     ?? parseComfyExifGraphValue(exifData.Model, 'prompt');
 
-  return workflow || prompt ? { workflow, prompt } : null;
+  const metadata = workflow || prompt ? { workflow, prompt } : null;
+  return metadata && hasUsableComfyGraphMetadata(metadata) ? metadata : null;
 }
 
 const trimJsonChunkPadding = (value: string): string => {
