@@ -47,4 +47,11 @@ describe('SearchBar Shortcut Hint', () => {
     expect(node).not.toBeNull();
     expect(node?.className).toMatch(/peer-focus:opacity-0/);
   });
+
+  it('uses a concise visual-query placeholder', () => {
+    render(<SearchBar value="" onChange={() => {}} visualMode={true} />);
+
+    expect(screen.getByPlaceholderText('Experimental visual text query')).toBeTruthy();
+    expect(screen.queryByPlaceholderText(/press Enter|…/i)).toBeNull();
+  });
 });

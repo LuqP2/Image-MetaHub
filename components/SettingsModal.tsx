@@ -89,7 +89,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-3 md:p-6"
+      className="fixed inset-0 z-[100] overflow-y-auto bg-black/60 p-3 md:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Settings"
       onClick={onClose}
     >
       <div

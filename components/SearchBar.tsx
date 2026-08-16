@@ -74,7 +74,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
         value={currentValue}
         onChange={(e) => handleInputChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={visualMode ? 'Experimental visual text query… (press Enter)' : 'Search by prompt, model, etc...'}
+        placeholder={visualMode ? 'Experimental visual text query' : 'Search by prompt, model, etc...'}
         aria-label={visualMode ? 'Experimental visual text query' : 'Search'}
         className={`peer w-full bg-gray-800/50 backdrop-blur-sm text-gray-200 placeholder-gray-400 py-3 pl-10 ${showVisualToggle ? 'pr-20' : 'pr-10'} rounded-xl border transition-all duration-300 shadow-sm hover:bg-gray-800/70 focus:outline-none focus:ring-2 ${
           visualMode

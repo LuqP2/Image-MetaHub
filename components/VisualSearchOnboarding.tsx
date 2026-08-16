@@ -48,7 +48,7 @@ const VisualSearchOnboarding: React.FC<{ hasImages: boolean }> = ({ hasImages })
         <div className="min-w-0">
           <div className="font-medium text-indigo-50">Find Similar — Local Visual Search</div>
           <div className="text-indigo-200/80">
-            Select any image to find visually related files, even without prompts or metadata. After an explicit model download, processing stays on your machine.
+            Select any image to find visually related files, even without prompts or metadata.
           </div>
         </div>
       </div>
