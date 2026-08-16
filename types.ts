@@ -421,6 +421,13 @@ export interface LicenseActivationResult {
   status: LicenseClientStatus;
 }
 
+export interface TrialActivationResult {
+  success: boolean;
+  activated: boolean;
+  trialStartDate: number | null;
+  error?: string;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{
     success: boolean;
@@ -478,6 +485,7 @@ export interface ElectronAPI {
   getRuntimeInfo: () => Promise<DesktopRuntimeInfo>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  activateTrial: () => Promise<TrialActivationResult>;
   getLicenseStatus: () => Promise<LicenseClientStatus>;
   activateLicense: (key: string, email: string) => Promise<LicenseActivationResult>;
   refreshLicense: () => Promise<LicenseClientStatus>;

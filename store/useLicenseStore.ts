@@ -53,6 +53,7 @@ interface LicenseState {
   expiredTrialResetApplied: boolean;
   nextReleaseTrialResetApplied: boolean;
   trialDurationV2ResetApplied: boolean;
+  trialAvailable: boolean;
 
   // Trial tracking
   trialStartDate: number | null;
@@ -72,7 +73,7 @@ interface LicenseState {
   trialExpiredNoticeDismissed: boolean;
 
   // Actions
-  activateTrial: () => void;
+  activateTrial: () => Promise<boolean>;
   checkLicenseStatus: () => Promise<void>;
   activateLicense: (key: string, email: string) => Promise<boolean>;
   refreshLicense: () => Promise<boolean>;
@@ -156,6 +157,7 @@ export const useLicenseStore = create<LicenseState>()(
       expiredTrialResetApplied: false,
       nextReleaseTrialResetApplied: false,
       trialDurationV2ResetApplied: false,
+      trialAvailable: true,
       trialStartDate: null,
       trialActivated: false,
       licenseStatus: 'free',
@@ -166,22 +168,50 @@ export const useLicenseStore = create<LicenseState>()(
       trialExpiredNoticeDismissed: false,
 
       // Activate trial (only works once)
-      activateTrial: () => {
+      activateTrial: async () => {
         const state = get();
+
+        if (!state.trialAvailable) {
+          set({
+            initialized: true,
+            licenseMessage: 'The free trial is not available in the Portable edition. Activate a license key to unlock Pro.',
+          });
+          return false;
+        }
 
         // Only activate once
         if (state.trialActivated) {
           console.log('[IMH] Trial already activated');
-          set({ initialized: true, licenseStatus: checkIfTrialExpired(state.trialStartDate) ? 'expired' : 'trial' });
-          return;
+          const trialExpired = checkIfTrialExpired(state.trialStartDate) || !state.trialStartDate;
+          set({ initialized: true, licenseStatus: trialExpired ? 'expired' : 'trial' });
+          return !trialExpired;
         }
 
-        const now = Date.now();
+        let trialStartDate = Date.now();
+        if (isElectron) {
+          try {
+            const result = await window.electronAPI.activateTrial();
+            if (!result.success || !result.trialStartDate) {
+              set({
+                initialized: true,
+                licenseMessage: result.error || 'The trial could not be started.',
+              });
+              return false;
+            }
+            trialStartDate = result.trialStartDate;
+          } catch {
+            set({
+              initialized: true,
+              licenseMessage: 'The trial could not be started.',
+            });
+            return false;
+          }
+        }
 
         set({
-          trialStartDate: now,
+          trialStartDate,
           trialActivated: true,
-          licenseStatus: 'trial',
+          licenseStatus: checkIfTrialExpired(trialStartDate) ? 'expired' : 'trial',
           initialized: true,
           // A trial started by the current opt-in flow must never be mistaken
           // for one of the legacy trials that the migrations below reset.
@@ -194,6 +224,7 @@ export const useLicenseStore = create<LicenseState>()(
         });
 
         console.log(`[IMH] Trial activated! ${TRIAL_DURATION_DAYS} days of Pro features unlocked.`);
+        return !checkIfTrialExpired(trialStartDate);
       },
 
       // Check license status (called on app start and periodically)
@@ -202,10 +233,14 @@ export const useLicenseStore = create<LicenseState>()(
 
         if (isElectron) {
           try {
+            const runtimeInfo = await window.electronAPI.getRuntimeInfo();
+            const trialAvailable = runtimeInfo?.isPortable !== true;
             const authorityStatus = await window.electronAPI.getLicenseStatus();
             if (authorityStatus.authorized) {
               set({
                 ...stateFromAuthority(authorityStatus),
+                trialAvailable,
+                ...(trialAvailable ? {} : { trialStartDate: null, trialActivated: false }),
                 migrationResetApplied: true,
                 expiredTrialResetApplied: true,
                 nextReleaseTrialResetApplied: true,
@@ -214,11 +249,13 @@ export const useLicenseStore = create<LicenseState>()(
               return;
             }
 
-            const localTrialStatus = state.licenseStatus === 'trial' || state.licenseStatus === 'expired'
+            const localTrialStatus = trialAvailable && (state.licenseStatus === 'trial' || state.licenseStatus === 'expired')
               ? state.licenseStatus
               : 'free';
             set({
               initialized: true,
+              trialAvailable,
+              ...(trialAvailable ? {} : { trialStartDate: null, trialActivated: false }),
               licenseStatus: localTrialStatus,
               licenseKey: authorityStatus.migrationRequired ? state.licenseKey : null,
               licenseEmail: authorityStatus.licenseEmail ?? (authorityStatus.migrationRequired ? state.licenseEmail : null),
@@ -227,9 +264,20 @@ export const useLicenseStore = create<LicenseState>()(
             });
             if (authorityStatus.migrationRequired) return;
             state = get();
+            if (!trialAvailable) {
+              set({
+                initialized: true,
+                trialAvailable: false,
+                trialStartDate: null,
+                trialActivated: false,
+                ...clearStoredLicenseState(),
+              });
+              return;
+            }
           } catch {
             set({
               initialized: true,
+              trialAvailable: false,
               licenseStatus: 'free',
               licenseMessage: 'License status is temporarily unavailable.',
             });
@@ -401,6 +449,7 @@ export const useLicenseStore = create<LicenseState>()(
           expiredTrialResetApplied: false,
           nextReleaseTrialResetApplied: false,
           trialDurationV2ResetApplied: false,
+          trialAvailable: true,
           trialStartDate: null,
           trialActivated: false,
           licenseStatus: 'free',

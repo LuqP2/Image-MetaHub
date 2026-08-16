@@ -2933,6 +2933,74 @@ app.whenReady().then(async () => {
 });
 
 function setupLicenseHandlers() {
+  ipcMain.handle('trial:activate', async (event) => {
+    try {
+      if (desktopRuntime.isPortable) {
+        return {
+          success: false,
+          activated: false,
+          trialStartDate: null,
+          error: 'The free trial is not available in the Portable edition. Activate a license key to unlock Pro.',
+        };
+      }
+
+      const authorityStatus = await licenseManager.getStatus();
+      if (authorityStatus.authorized) {
+        return {
+          success: false,
+          activated: false,
+          trialStartDate: null,
+          error: 'A paid license is already active.',
+        };
+      }
+
+      let activated = false;
+      let trialStartDate = null;
+      await queueSettingsUpdate((currentSettings) => {
+        const currentLicense = currentSettings?.license && typeof currentSettings.license === 'object'
+          ? currentSettings.license
+          : {};
+        const persistedTrialStartDate = Number(currentLicense.trialStartDate);
+        const hasExistingTrial = currentLicense.trialActivated === true
+          && Number.isFinite(persistedTrialStartDate)
+          && persistedTrialStartDate > 0;
+        trialStartDate = hasExistingTrial ? persistedTrialStartDate : Date.now();
+        activated = !hasExistingTrial;
+
+        return {
+          ...currentSettings,
+          license: {
+            ...currentLicense,
+            migrationResetApplied: true,
+            expiredTrialResetApplied: true,
+            nextReleaseTrialResetApplied: true,
+            trialDurationV2ResetApplied: true,
+            trialStartDate,
+            trialActivated: true,
+            licenseStatus: 'trial',
+            trialExpiredNoticeDismissed: false,
+          },
+        };
+      });
+
+      // The source renderer receives the canonical result below; every other
+      // renderer rehydrates from the settings just committed by the main process.
+      broadcastSettingsUpdated(event.sender);
+      return {
+        success: true,
+        activated,
+        trialStartDate,
+      };
+    } catch (error) {
+      console.error('Failed to activate trial:', error);
+      return {
+        success: false,
+        activated: false,
+        trialStartDate: null,
+        error: 'The trial state could not be saved.',
+      };
+    }
+  });
   ipcMain.handle('license:get-status', () => licenseManager.getStatus());
   ipcMain.handle('license:activate', (_event, { key, email } = {}) => licenseManager.activate(key, email));
   ipcMain.handle('license:refresh', () => licenseManager.refresh());

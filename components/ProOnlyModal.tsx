@@ -13,7 +13,7 @@ interface ProOnlyModalProps {
   isTrialActive: boolean;
   daysRemaining: number;
   canStartTrial: boolean;
-  onStartTrial: () => void;
+  onStartTrial: () => Promise<boolean>;
   isExpired: boolean;
   isPro: boolean;
 }
@@ -256,8 +256,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
               <>
                 <button
                   onClick={() => {
-                    onStartTrial();
-                    onClose();
+                    void onStartTrial();
                   }}
                   className="w-full inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
                 >

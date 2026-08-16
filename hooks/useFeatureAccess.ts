@@ -155,7 +155,7 @@ export const useFeatureAccess = () => {
   const showTrialExpiredNotice = isExpired && !licenseStore.trialExpiredNoticeDismissed;
   const isFree = isInitialized && licenseStore.licenseStatus === 'free';
   const trialUsed = isInitialized && licenseStore.trialActivated;
-  const canStartTrial = isInitialized && !hasProLicense && !isTrialActive && !trialUsed;
+  const canStartTrial = isInitialized && licenseStore.trialAvailable && !hasProLicense && !isTrialActive && !trialUsed;
 
   // Keep the development shortcut working, but do not open paid features before license state loads.
   const allowDuringInit = devOverride;
@@ -191,9 +191,10 @@ export const useFeatureAccess = () => {
     return 'Free Version';
   }, [isPro, isTrialActive, isExpired, trialDaysRemaining]);
 
-  const startTrial = () => {
-    licenseStore.activateTrial();
-    closeProModal();
+  const startTrial = async () => {
+    const activated = await licenseStore.activateTrial();
+    if (activated) closeProModal();
+    return activated;
   };
 
   // Log dev override

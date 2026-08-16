@@ -3927,7 +3927,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       onOpenImageEditor(liveImage);
                     }}
                     className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                    title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature) - start trial' : 'Open Image Editor'}
+                    title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature)' : 'Open Image Editor'}
                   >
                     <ImageIcon className="h-4 w-4" />
                   </button>
@@ -3948,8 +3948,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         ? 'border-cyan-400/40 bg-cyan-500/25'
                         : 'border-white/10 bg-black/35 hover:bg-black/55'
                     }`}
-                    title={!canUseImageEditor && initialized ? 'Image adjustments (Pro Feature) - start trial' : isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
-                    aria-label={!canUseImageEditor && initialized ? 'Image adjustments (Pro Feature) - start trial' : isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
+                    title={!canUseImageEditor && initialized ? 'Image adjustments (Pro Feature)' : isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
+                    aria-label={!canUseImageEditor && initialized ? 'Image adjustments (Pro Feature)' : isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
                   >
                     <SlidersHorizontal className="h-4 w-4" />
                   </button>
@@ -4782,8 +4782,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={openBatchExport}
                   whileTap={{ scale: 0.95 }}
                   className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
-                  title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
-                  aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
+                  title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature' : 'Open export flow'}
+                  aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature' : 'Open export flow'}
                 >
                   <Download size={14} />
                 </motion.button>
@@ -5167,7 +5167,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <button
                 onClick={exportImage}
                 className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-                title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : undefined}
+                title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature' : undefined}
               >
                 <Download className="w-4 h-4" />
                 Export...

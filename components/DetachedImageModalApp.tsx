@@ -31,7 +31,6 @@ const DetachedImageModalApp: React.FC = () => {
     canStartTrial,
     isExpired,
     isPro,
-    startTrial,
   } = useFeatureAccess();
 
   useEffect(() => {
@@ -57,6 +56,17 @@ const DetachedImageModalApp: React.FC = () => {
     if (!api?.imageViewerCommand) return { success: false, error: 'Desktop viewer bridge is unavailable.' };
     return api.imageViewerCommand({ sessionId: sessionIdRef.current, command });
   }, []);
+
+  const startTrialFromDetachedViewer = useCallback(async () => {
+    const result = await sendCommand({ type: 'start-trial' });
+    if (!result.success) return false;
+
+    await useLicenseStore.persist.rehydrate();
+    await useLicenseStore.getState().checkLicenseStatus();
+    const activated = useLicenseStore.getState().licenseStatus === 'trial';
+    if (activated) closeProModal();
+    return activated;
+  }, [closeProModal, sendCommand]);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -221,7 +231,7 @@ const DetachedImageModalApp: React.FC = () => {
       isTrialActive={isTrialActive}
       daysRemaining={trialDaysRemaining}
       canStartTrial={canStartTrial}
-      onStartTrial={startTrial}
+      onStartTrial={startTrialFromDetachedViewer}
       isExpired={isExpired}
       isPro={isPro}
     />

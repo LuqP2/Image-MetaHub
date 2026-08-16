@@ -851,11 +851,11 @@ const ImageTable: React.FC<ImageTableProps> = ({
             <button
               onClick={openImageEditor}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature) - start trial' : 'Open this image in the Image Editor workspace'}
+              title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature)' : 'Open this image in the Image Editor workspace'}
             >
               <ImageIcon className="w-4 h-4" />
               <span className="flex-1">Edit Image</span>
-              {!canUseImageEditor && initialized && <ProBadge size="sm" variant="subtle" tooltip="Image Editor (Pro Feature) - start trial" />}
+              {!canUseImageEditor && initialized && <ProBadge size="sm" variant="subtle" tooltip="Image Editor (Pro Feature)" />}
             </button>
           )}
 
@@ -863,11 +863,11 @@ const ImageTable: React.FC<ImageTableProps> = ({
             <button
               onClick={openComfyUIWorkspace}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title={canUseComfyUI ? 'Open this image in the ComfyUI workspace context panel' : 'Pro feature - start trial'}
+              title={canUseComfyUI ? 'Open this image in the ComfyUI workspace context panel' : 'Pro feature'}
             >
               <Workflow className="w-4 h-4" />
               <span className="flex-1">Open ComfyUI Workspace</span>
-              {!canUseComfyUI && <ProBadge size="sm" variant="subtle" tooltip="Pro feature - start trial" />}
+              {!canUseComfyUI && <ProBadge size="sm" variant="subtle" tooltip="Pro feature" />}
             </button>
           )}
 
@@ -905,7 +905,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
                 onOpenChange={setIsFileSubmenuOpen}
                 horizontalClass={submenuHorizontalClass}
                 showProBadge={fileHasProItem && initialized}
-                proBadgeTooltip="Pro feature - start trial"
+                proBadgeTooltip="Pro feature"
               >
                 {fileMenuItems.map((item) => (
                   <ContextMenuButton
@@ -913,9 +913,9 @@ const ImageTable: React.FC<ImageTableProps> = ({
                     onClick={item.onClick}
                     icon={item.icon}
                     label={item.label}
-                    title={item.isPro && initialized ? 'Pro feature - start trial' : undefined}
+                    title={item.isPro && initialized ? 'Pro feature' : undefined}
                     showProBadge={item.isPro}
-                    proBadgeTooltip="Pro feature - start trial"
+                    proBadgeTooltip="Pro feature"
                   />
                 ))}
               </ContextMenuSubmenu>

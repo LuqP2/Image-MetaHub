@@ -91,6 +91,7 @@ export interface ImageViewerSaveResult {
 
 export type ImageViewerCommand =
   | { type: 'navigate'; direction: 'next' | 'previous' | 'random'; wrap?: boolean }
+  | { type: 'start-trial' }
   | { type: 'close' }
   | { type: 'focus-main' }
   | { type: 'find-similar'; imageId: string }

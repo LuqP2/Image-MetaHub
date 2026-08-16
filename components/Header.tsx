@@ -41,6 +41,7 @@ const Header: React.FC<HeaderProps> = ({
     initialized,
     isExpired,
     isFree,
+    canStartTrial,
   } = useFeatureAccess();
 
   // Store hooks for View Controls
@@ -351,7 +352,9 @@ const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenLicense}
             className={`app-top-pill shrink-0 text-[10px] uppercase tracking-[0.18em] ${statusConfig.classes}`}
-            title={isFree ? 'Start trial or activate license' : 'Manage license and status'}
+            title={isFree
+              ? (canStartTrial ? 'Start trial or activate license' : 'Activate license')
+              : 'Manage license and status'}
           >
             <Crown className="h-3 w-3" />
             <span>{statusConfig.label}</span>

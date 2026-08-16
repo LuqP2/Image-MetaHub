@@ -9,6 +9,7 @@ const resetLicenseState = () => {
     expiredTrialResetApplied: true,
     nextReleaseTrialResetApplied: true,
     trialDurationV2ResetApplied: true,
+    trialAvailable: true,
     trialStartDate: null,
     trialActivated: false,
     licenseStatus: 'free',
