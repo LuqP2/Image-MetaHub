@@ -333,6 +333,21 @@ const electronAPI = {
   writeCacheIndex: (args) => ipcRenderer.invoke('write-cache-index', args),
   readCacheIndex: (args) => ipcRenderer.invoke('read-cache-index', args),
   readCacheTombstones: (args) => ipcRenderer.invoke('read-cache-tombstones', args),
+  getEmbeddingCacheIdentity: () => ipcRenderer.invoke('get-embedding-cache-identity'),
+  readEmbeddingFile: (args) => ipcRenderer.invoke('read-embedding-file', args),
+  writeEmbeddingFile: (args) => ipcRenderer.invoke('write-embedding-file', args),
+  appendEmbeddingSegment: (args) => ipcRenderer.invoke('append-embedding-segment', args),
+  statEmbeddingIndex: (args) => ipcRenderer.invoke('stat-embedding-index', args),
+  deleteEmbeddingIndex: (args) => ipcRenderer.invoke('delete-embedding-index', args),
+  getEmbeddingModelStatus: (args) => ipcRenderer.invoke('get-embedding-model-status', args),
+  downloadEmbeddingModel: (args) => ipcRenderer.invoke('download-embedding-model', args),
+  cancelEmbeddingModelDownload: () => ipcRenderer.invoke('cancel-embedding-model-download'),
+  deleteEmbeddingModel: (args) => ipcRenderer.invoke('delete-embedding-model', args),
+  onEmbeddingModelProgress: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('embedding-model-progress', listener);
+    return () => ipcRenderer.removeListener('embedding-model-progress', listener);
+  },
   resolveThumbnailCacheBatch: (args) => ipcRenderer.invoke('resolve-thumbnail-cache-batch', args),
   getThumbnail: (thumbnailId) => ipcRenderer.invoke('get-thumbnail', thumbnailId),
   cacheThumbnail: (args) => ipcRenderer.invoke('cache-thumbnail', args),

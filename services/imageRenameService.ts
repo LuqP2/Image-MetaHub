@@ -83,6 +83,19 @@ export async function renameIndexedImage(
 
   await transferImagePersistence(oldImageId, renamedImage.id, 'move');
 
+  // Move the visual-search vector to the new id. The embedding is unchanged, so
+  // this only rebinds the row; without it every rename would orphan a vector and
+  // force a re-embed. Best-effort: the index may not be open, and a failure here
+  // must not fail the rename.
+  try {
+    const { isOpen, applyRename } = await import('./embeddings/semanticSearchEngine');
+    if (isOpen()) {
+      await applyRename(oldImageId, renamedImage.id);
+    }
+  } catch {
+    // Visual search not in use; nothing to migrate.
+  }
+
   const directory = useImageStore.getState().directories.find((entry) => entry.id === renamedImage.directoryId);
   if (directory) {
     await cacheManager.replaceCachedImages(

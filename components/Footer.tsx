@@ -4,6 +4,7 @@ import Tooltip from './Tooltip';
 import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks, X, RefreshCw } from 'lucide-react';
 import { A1111ProgressState } from '../hooks/useA1111Progress';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { useSemanticStore } from '../store/useSemanticStore';
 import { IndexedImage, IndexedImageTransferProgress } from '../types';
 import type { ImageGroupByMode, ImageGroupingSortOrder } from '../utils/imageGrouping';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
@@ -88,6 +89,11 @@ const Footer: React.FC<FooterProps> = ({
   hidePageSize = false,
 }) => {
   const { canUseA1111 } = useFeatureAccess();
+  const semanticModelDownloading = useSemanticStore((s) => s.modelDownloading);
+  const semanticModelProgress = useSemanticStore((s) => s.modelProgress);
+  const semanticBackfilling = useSemanticStore((s) => s.isBackfilling);
+  const semanticPaused = useSemanticStore((s) => s.isPaused);
+  const semanticIndexProgress = useSemanticStore((s) => s.indexProgress);
   const [isEditingPage, setIsEditingPage] = useState(false);
   const [pageInput, setPageInput] = useState(currentPage.toString());
   const windowStripRef = useRef<HTMLDivElement | null>(null);
@@ -152,7 +158,22 @@ const Footer: React.FC<FooterProps> = ({
   const hasEnrichmentJob = enrichmentProgress && enrichmentProgress.total > 0;
   const hasA1111Job = canUseA1111 && a1111Progress && a1111Progress.isGenerating; // Only show if feature is available
   const hasTransferJob = transferProgress && transferProgress.total > 0 && transferProgress.stage !== 'done';
-  const hasAnyJob = hasEnrichmentJob || hasA1111Job || hasTransferJob;
+
+  const semanticDownloadPercent = semanticModelProgress?.totalBytes
+    ? Math.min(100, Math.round(((semanticModelProgress.receivedBytes ?? 0) / semanticModelProgress.totalBytes) * 100))
+    : 0;
+  const semanticIndexPercent = semanticIndexProgress?.total
+    ? Math.min(100, Math.round((semanticIndexProgress.current / semanticIndexProgress.total) * 100))
+    : 0;
+  const hasSemanticJob = semanticModelDownloading || semanticBackfilling;
+  const semanticJobLabel = semanticModelDownloading
+    ? `Model ${semanticDownloadPercent}%`
+    : semanticPaused
+      ? 'Index paused'
+      : `Index ${semanticIndexPercent}%`;
+  const semanticJobPercent = semanticModelDownloading ? semanticDownloadPercent : semanticIndexPercent;
+
+  const hasAnyJob = hasEnrichmentJob || hasA1111Job || hasTransferJob || hasSemanticJob;
 
   return (
     <footer className={`${sticky ? 'sticky bottom-0' : 'relative'} z-[55] bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up`}>
@@ -278,6 +299,20 @@ const Footer: React.FC<FooterProps> = ({
             </div>
           </div>
         )}
+        {hasSemanticJob && (
+          <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs shadow-sm animate-in fade-in slide-in-from-bottom-2">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                {!semanticPaused && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>}
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+              </span>
+              <span className="font-medium">{semanticJobLabel}</span>
+            </div>
+            <div className="w-20 h-1.5 bg-gray-700/50 rounded-full overflow-hidden">
+              <div className="h-full bg-indigo-500 transition-all duration-500 ease-out" style={{ width: `${semanticJobPercent}%` }} />
+            </div>
+          </div>
+        )}
         {hasA1111Job && (
           <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 text-xs shadow-sm animate-in fade-in slide-in-from-bottom-2">
             <div className="flex items-center gap-2">
@@ -335,6 +370,9 @@ const Footer: React.FC<FooterProps> = ({
               <option value="asc">A-Z</option>
               <option value="desc">Z-A</option>
               <option value="random">Random</option>
+              {/* Not user-selectable; shown only so the control reflects an
+                  active visual search instead of rendering blank. */}
+              {sortOrder === 'relevance' && <option value="relevance">Relevance</option>}
             </select>
             {sortOrder === 'random' && onReshuffle && (
               <Tooltip label="Reshuffle random order">

@@ -4550,7 +4550,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
             >
               <Search className="w-3 h-3" />
-              Find similar...
+               Find by metadata...
             </motion.button>
           </div>
 
@@ -5141,7 +5141,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 disabled={!canFindSimilar}
               >
                 <Search className="w-4 h-4" />
-                Find similar...
+                 Find by metadata...
               </button>
 
               <div className="border-t border-gray-600 my-1"></div>
