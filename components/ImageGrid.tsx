@@ -1135,6 +1135,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cardRefCallbacksRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
   const columnCountRef = useRef<number>(1);
+  // Re-run the focused-card reveal when a sidebar or window resize changes the wrapping.
+  const [observedColumnCount, setObservedColumnCount] = useState<number>(1);
   const lastWarmupWindowRef = useRef<string>('');
   const lastScrollResetKeyRef = useRef<string | undefined>(scrollResetKey);
   const lastRestoredScrollKeyRef = useRef<string>('');
@@ -1295,6 +1297,42 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     const measuredWidth = gridBackground?.clientWidth ?? gridScopeRef.current?.clientWidth ?? 0;
     const measuredColumnCount = Math.floor((measuredWidth + GAP_SIZE) / (imageSize + GAP_SIZE));
     return Math.max(1, measuredColumnCount || columnCountRef.current || 1);
+  }, [imageSize, isInfinite]);
+
+  const handleVirtualGridResize = useCallback(({ width }: { width: number }) => {
+    const nextColumnCount = Math.max(1, Math.floor(width / (imageSize + GAP_SIZE)));
+    setObservedColumnCount((currentColumnCount) =>
+      currentColumnCount === nextColumnCount ? currentColumnCount : nextColumnCount
+    );
+  }, [imageSize]);
+
+  useEffect(() => {
+    if (isInfinite || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const gridElement = gridScopeRef.current;
+    if (!gridElement) {
+      return;
+    }
+
+    const updateColumnCount = (width: number) => {
+      const nextColumnCount = Math.max(1, Math.floor((width + GAP_SIZE) / (imageSize + GAP_SIZE)));
+      columnCountRef.current = nextColumnCount;
+      setObservedColumnCount((currentColumnCount) =>
+        currentColumnCount === nextColumnCount ? currentColumnCount : nextColumnCount
+      );
+    };
+
+    updateColumnCount(gridElement.getBoundingClientRect().width);
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      if (entry) {
+        updateColumnCount(entry.contentRect.width);
+      }
+    });
+    resizeObserver.observe(gridElement);
+
+    return () => resizeObserver.disconnect();
   }, [imageSize, isInfinite]);
 
   const getRenderedIndexInItems = useCallback((imageIndex: number | null, renderItems: GridRenderItem[]): number => {
@@ -2082,7 +2120,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       virtualGridRef.current?.scrollToItem({
         rowIndex: Math.floor(renderedIndex / columnCount),
         columnIndex: renderedIndex % columnCount,
-        align: 'auto',
+        align: 'smart',
       });
       return;
     }
@@ -2099,7 +2137,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         inline: 'nearest',
       });
     }
-  }, [focusedImageIndex, getRenderedIndexInItems, isInfinite, itemsToRender]);
+  }, [focusedImageIndex, getRenderedIndexInItems, isInfinite, itemsToRender, observedColumnCount]);
 
   useEffect(() => {
     if (!jumpToGroupRequest || effectiveGroupBy === 'none') {
@@ -2836,7 +2874,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
           >
-            <AutoSizer>
+            <AutoSizer onResize={handleVirtualGridResize}>
               {({ height, width }) => {
                 const columnCount = Math.floor(width / (imageSize + GAP_SIZE));
                 const safeColumnCount = columnCount > 0 ? columnCount : 1;
