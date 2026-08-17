@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageGrid from '../components/ImageGrid';
 import { useImageSelection } from '../hooks/useImageSelection';
 import { useImageStore } from '../store/useImageStore';
@@ -763,6 +763,50 @@ describe('ImageGrid selection opening behavior', () => {
 
     expect(onImageClick).toHaveBeenCalledTimes(1);
     expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
+  });
+
+  it('keeps the previewed card visible when the static grid loses columns', async () => {
+    const images = createImages(8);
+    let resizeCallback: ResizeObserverCallback | null = null;
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    useSettingsStore.setState({ doubleClickToOpen: true } as any);
+    setupImageGridState(images);
+
+    try {
+      render(<Harness images={images} />);
+
+      const imageThumb = screen.getByAltText('image-6.png');
+      fireEvent.mouseDown(imageThumb, { button: 0 });
+      fireEvent.click(imageThumb);
+      await waitFor(() => expect(useImageStore.getState().previewImage?.id).toBe('img-6'));
+      scrollIntoView.mockClear();
+
+      act(() => {
+        resizeCallback?.([
+          { contentRect: { width: 272 } } as ResizeObserverEntry,
+        ], {} as ResizeObserver);
+      });
+
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({
+        block: 'nearest',
+        inline: 'nearest',
+      }));
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      vi.unstubAllGlobals();
+    }
   });
 
   it('preserves checked images when middle-clicking an image', () => {
