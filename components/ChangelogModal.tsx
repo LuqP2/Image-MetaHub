@@ -171,25 +171,31 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                 <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
                 <div className="space-y-3 text-sm leading-relaxed">
                   <p className="text-gray-300">
-                    Hi there, I'm Lucas - the solo dev behind Image MetaHub.
+                    Hey there, this is Lucas - the solo dev behind Image MetaHub
                   </p>
                   <p className="text-gray-300">
-                    A few things worth 30 seconds: this release unifies the Smart Library/Model View/Collections into a unified Explore workspace. If you prefer the old layout, Settings → Appearance → Classic Mode brings the old labels back. Also, ComfyUI generations now render step-by-step live in the queue, and AVIF files are fully supported (thanks to {renderMarkdownLink('[@austintraver](https://github.com/austintraver)')})
+                    v0.19 is a pretty big update with the main new features being local visual search (CLIP) and support to 3D assets. As usual, its a first implementation that, although functional, might still need a bit of trimming around the edges. Let me know what you think.
                   </p>
                   <p className="text-gray-300">
-                    Two notes on the trial: its now 7 days, if yours already expired youve been given a fresh one with this update. Just open a Pro feature to start it.
+                    There's also an important change to licensing that IMH now uses a new license format; if you already own a license, a replacement license has been sent to the e-mail address used for your purchase. Your existing purchase is still valid, you'll just need to activate using the new key.{' '}
                   </p>
                   <p className="text-gray-300">
-                    I keep the licensing light on purpose - no aggressive DRM, no phone-home. I'm working on IMH full-time, so if it's actually useful to you and you have the means, a Pro license is what makes that possible.
+                    One other change worth calling out: the Pro Trial is no longer available in the Portable version. It can still be accessed in the regular installed version of IMH.
                   </p>
                   <p className="text-gray-300">
-                    By the way, IMH is now listed in the {renderMarkdownLink('[CivitAI Tools Section](https://civitai.com/tools/image-metahub)')}, so if you upload any images there, tagging Image MetaHub as the tool helps a lot!
+                    Before you go, I’d really appreciate it if you could {renderMarkdownLink('[answer the short anonymous survey](https://forms.gle/7WKvUC5RVf9Mx9jF7)')}. It directly helps me figure out what’s worth working on next.
                   </p>
                   <p className="text-gray-300">
-                    Also, if you have two minutes, this short {renderMarkdownLink('[anonymous survey](https://forms.gle/7WKvUC5RVf9Mx9jF7)')} directly shapes the app and it's really helpful to me.
+                    And if you want to chat, share feedback, show what you’re working on, or just make the place feel a little less abandoned, {renderMarkdownLink('[come join the Discord](https://discord.gg/2MXWxjKyJ5)')}. It’s been a bit quiet in there lately. 😅
                   </p>
                   <p className="text-gray-300">
-                    To everyone who's filed an issue, sent a PR, bought Pro, or just uses the app: thank you!! If you need anything, you can reach me on {renderMarkdownLink('[Discord](https://discord.gg/2MXWxjKyJ5)')}, imagemetahub@gmail.com, or just open an issue on github.
+                    Thanks for sticking around, and if you have any issues, suggestions, criticism or feature request, please open an Issue on GitHub or contact me directly on  {renderMarkdownLink('[Discord](https://discord.gg/2MXWxjKyJ5)')} or through imagemetahub@gmail.com
+                  </p>
+                  <p className="text-gray-300">
+                    Back to shipping
+                  </p>
+                  <p className="text-gray-300">
+                    - Lucas
                   </p>
 
                   {/* Badges */}
