@@ -1,4 +1,4 @@
-import React, { startTransition, useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
+import React, { startTransition, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useSemanticStore } from './store/useSemanticStore';
@@ -704,6 +704,11 @@ export default function App() {
 
   const hasLeftSidebar = hasDirectories && libraryView !== 'comfyui' && libraryView !== 'editor';
   const hasRightSidebar = Boolean(isQueueOpen || (previewImage && libraryView !== 'comfyui' && libraryView !== 'editor'));
+  const previousHasRightSidebarRef = useRef(hasRightSidebar);
+  const rightSidebarVisibilityChanged = previousHasRightSidebarRef.current !== hasRightSidebar;
+  useLayoutEffect(() => {
+    previousHasRightSidebarRef.current = hasRightSidebar;
+  }, [hasRightSidebar]);
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
       resolveSidebarWidths({
@@ -3934,7 +3939,7 @@ export default function App() {
       )}
 
       <div
-        className={`h-screen flex flex-col ${isSidebarResizing ? 'transition-none' : 'transition-[margin] duration-300 ease-in-out'}`}
+        className={`h-screen flex flex-col ${isSidebarResizing || rightSidebarVisibilityChanged ? 'transition-none' : 'transition-[margin] duration-300 ease-in-out'}`}
         style={{ marginLeft: mainContentMarginLeft, marginRight: mainContentMarginRight }}
       >
         <Header
@@ -4229,6 +4234,7 @@ export default function App() {
                           initialScrollTop={libraryGridScrollTopRef.current}
                           onScrollPositionChange={handleLibraryGridScrollPositionChange}
                           scrollResetKey={libraryGridSignature}
+                          hasRightSidebar={hasRightSidebar}
                         />
                       ) : (
                         <ImageTable
@@ -4285,6 +4291,7 @@ export default function App() {
                         initialScrollTop={collectionsGridScrollTopRef.current}
                         onScrollPositionChange={handleCollectionsGridScrollPositionChange}
                         scrollResetKey={collectionsGridSignature}
+                        hasRightSidebar={hasRightSidebar}
                       />
                     ) : (
                       <ImageTable
