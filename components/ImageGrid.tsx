@@ -1,7 +1,7 @@
 import { VariableSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { type IndexedImage, type BaseMetadata, type Directory, ImageStack, SmartCollection } from '../types';
@@ -1072,6 +1072,7 @@ interface ImageGridProps {
   initialScrollTop?: number;
   onScrollPositionChange?: (scrollTop: number) => void;
   scrollResetKey?: string;
+  hasRightSidebar?: boolean;
 }
 
 const InnerGridElement = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
@@ -1101,6 +1102,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   initialScrollTop = 0,
   onScrollPositionChange,
   scrollResetKey,
+  hasRightSidebar = false,
 }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
@@ -1135,8 +1137,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cardRefCallbacksRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
   const columnCountRef = useRef<number>(1);
-  // Re-run the focused-card reveal when a sidebar or window resize changes the wrapping.
-  const [observedColumnCount, setObservedColumnCount] = useState<number>(1);
+  const lastFocusedRevealImageIdRef = useRef<string | null>(null);
+  const previousHasRightSidebarRef = useRef(hasRightSidebar);
+  const previewAnchorCandidateRef = useRef<{ imageId: string; viewportOffsetY: number } | null>(null);
+  const pendingPreviewAnchorRef = useRef<{ imageId: string; viewportOffsetY: number } | null>(null);
+  const previewAnchorFramesRef = useRef({ first: 0, second: 0 });
   const lastWarmupWindowRef = useRef<string>('');
   const lastScrollResetKeyRef = useRef<string | undefined>(scrollResetKey);
   const lastRestoredScrollKeyRef = useRef<string>('');
@@ -1157,6 +1162,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const previewImage = useImageStore((state) => state.previewImage);
   const transferProgress = useImageStore((state) => state.transferProgress);
+  const previewAnchorDataRef = useRef({
+    itemsToRender,
+    isInfinite,
+  });
+  previewAnchorDataRef.current = {
+    itemsToRender,
+    isInfinite,
+  };
 
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
@@ -1232,6 +1245,26 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   const getGridScrollElement = useCallback(() => gridScrollRef.current ?? gridScopeRef.current, []);
 
+  const capturePreviewAnchorCandidate = useCallback((event: React.MouseEvent) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const cardElement = (event.target as HTMLElement).closest<HTMLElement>('[data-image-id]');
+    const scrollElement = getGridScrollElement();
+    const imageId = cardElement?.dataset.imageId;
+    if (!cardElement || !scrollElement || !imageId) {
+      return;
+    }
+
+    const cardRect = cardElement.getBoundingClientRect();
+    const scrollRect = scrollElement.getBoundingClientRect();
+    previewAnchorCandidateRef.current = {
+      imageId,
+      viewportOffsetY: cardRect.top - scrollRect.top,
+    };
+  }, [getGridScrollElement]);
+
   const restoreGridScrollPosition = useCallback((scrollTop: number) => {
     const nextScrollTop = Math.max(0, scrollTop);
 
@@ -1297,42 +1330,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     const measuredWidth = gridBackground?.clientWidth ?? gridScopeRef.current?.clientWidth ?? 0;
     const measuredColumnCount = Math.floor((measuredWidth + GAP_SIZE) / (imageSize + GAP_SIZE));
     return Math.max(1, measuredColumnCount || columnCountRef.current || 1);
-  }, [imageSize, isInfinite]);
-
-  const handleVirtualGridResize = useCallback(({ width }: { width: number }) => {
-    const nextColumnCount = Math.max(1, Math.floor(width / (imageSize + GAP_SIZE)));
-    setObservedColumnCount((currentColumnCount) =>
-      currentColumnCount === nextColumnCount ? currentColumnCount : nextColumnCount
-    );
-  }, [imageSize]);
-
-  useEffect(() => {
-    if (isInfinite || typeof ResizeObserver === 'undefined') {
-      return;
-    }
-
-    const gridElement = gridScopeRef.current;
-    if (!gridElement) {
-      return;
-    }
-
-    const updateColumnCount = (width: number) => {
-      const nextColumnCount = Math.max(1, Math.floor((width + GAP_SIZE) / (imageSize + GAP_SIZE)));
-      columnCountRef.current = nextColumnCount;
-      setObservedColumnCount((currentColumnCount) =>
-        currentColumnCount === nextColumnCount ? currentColumnCount : nextColumnCount
-      );
-    };
-
-    updateColumnCount(gridElement.getBoundingClientRect().width);
-    const resizeObserver = new ResizeObserver(([entry]) => {
-      if (entry) {
-        updateColumnCount(entry.contentRect.width);
-      }
-    });
-    resizeObserver.observe(gridElement);
-
-    return () => resizeObserver.disconnect();
   }, [imageSize, isInfinite]);
 
   const getRenderedIndexInItems = useCallback((imageIndex: number | null, renderItems: GridRenderItem[]): number => {
@@ -2103,9 +2100,20 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   }, []);
 
   useEffect(() => {
-    if (!gridKeyboardActiveRef.current || focusedImageIndex == null || focusedImageIndex < 0) {
+    const focusedImageId = focusedImageIndex != null && focusedImageIndex >= 0
+      ? images[focusedImageIndex]?.id ?? null
+      : null;
+
+    if (!gridKeyboardActiveRef.current || !focusedImageId) {
+      lastFocusedRevealImageIdRef.current = null;
       return;
     }
+
+    // A rerender must not pull the viewport back to an unchanged focused card.
+    if (lastFocusedRevealImageIdRef.current === focusedImageId) {
+      return;
+    }
+    lastFocusedRevealImageIdRef.current = focusedImageId;
 
     const columnCount = Math.max(1, columnCountRef.current);
     const activeItems = isInfinite
@@ -2120,7 +2128,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       virtualGridRef.current?.scrollToItem({
         rowIndex: Math.floor(renderedIndex / columnCount),
         columnIndex: renderedIndex % columnCount,
-        align: 'smart',
+        align: 'auto',
       });
       return;
     }
@@ -2137,7 +2145,126 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         inline: 'nearest',
       });
     }
-  }, [focusedImageIndex, getRenderedIndexInItems, isInfinite, itemsToRender, observedColumnCount]);
+  }, [focusedImageIndex, getRenderedIndexInItems, images, isInfinite, itemsToRender]);
+
+  const cancelScheduledPreviewAnchor = useCallback(() => {
+    window.cancelAnimationFrame(previewAnchorFramesRef.current.first);
+    window.cancelAnimationFrame(previewAnchorFramesRef.current.second);
+    previewAnchorFramesRef.current = { first: 0, second: 0 };
+  }, []);
+
+  const revealPendingPreviewAnchor = useCallback(() => {
+    const anchor = pendingPreviewAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+
+    const latest = previewAnchorDataRef.current;
+    const columnCount = Math.max(1, columnCountRef.current);
+    const activeItems = latest.isInfinite
+      ? expandGroupedItemsForColumns(latest.itemsToRender, columnCount)
+      : latest.itemsToRender;
+    const renderedIndex = activeItems.findIndex((item) =>
+      isImageRenderItem(item) && (isImageStack(item)
+        ? item.images.some((stackImage) => stackImage.id === anchor.imageId)
+        : item.id === anchor.imageId)
+    );
+    if (renderedIndex < 0) {
+      pendingPreviewAnchorRef.current = null;
+      return;
+    }
+
+    const anchoredItem = activeItems[renderedIndex];
+    if (!anchoredItem || !isImageRenderItem(anchoredItem)) {
+      pendingPreviewAnchorRef.current = null;
+      return;
+    }
+
+    const anchoredElement = imageCardsRef.current.get(getWarmupImage(anchoredItem).id);
+    const scrollElement = getGridScrollElement();
+    if (!anchoredElement || !scrollElement) {
+      if (latest.isInfinite) {
+        virtualGridRef.current?.scrollToItem({
+          rowIndex: Math.floor(renderedIndex / columnCount),
+          columnIndex: renderedIndex % columnCount,
+          align: 'smart',
+        });
+        return;
+      }
+
+      pendingPreviewAnchorRef.current = null;
+      return;
+    }
+
+    const currentOffsetY = anchoredElement.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top;
+    const nextScrollTop = Math.max(0, scrollElement.scrollTop + currentOffsetY - anchor.viewportOffsetY);
+    if (latest.isInfinite) {
+      virtualGridRef.current?.scrollTo({ scrollTop: nextScrollTop, scrollLeft: scrollElement.scrollLeft });
+    } else {
+      scrollElement.scrollTop = nextScrollTop;
+    }
+    pendingPreviewAnchorRef.current = null;
+  }, [getGridScrollElement]);
+
+  const schedulePendingPreviewAnchor = useCallback(() => {
+    if (!pendingPreviewAnchorRef.current) {
+      return;
+    }
+
+    cancelScheduledPreviewAnchor();
+    previewAnchorFramesRef.current.first = window.requestAnimationFrame(() => {
+      previewAnchorFramesRef.current.second = window.requestAnimationFrame(() => {
+        previewAnchorFramesRef.current = { first: 0, second: 0 };
+        revealPendingPreviewAnchor();
+      });
+    });
+  }, [cancelScheduledPreviewAnchor, revealPendingPreviewAnchor]);
+
+  useLayoutEffect(() => {
+    const wasOpen = previousHasRightSidebarRef.current;
+    previousHasRightSidebarRef.current = hasRightSidebar;
+
+    if (!hasRightSidebar) {
+      if (wasOpen) {
+        previewAnchorCandidateRef.current = null;
+        pendingPreviewAnchorRef.current = null;
+        cancelScheduledPreviewAnchor();
+      }
+      return;
+    }
+
+    if (!wasOpen && previewImage) {
+      const candidate = previewAnchorCandidateRef.current;
+      previewAnchorCandidateRef.current = null;
+      if (candidate?.imageId === previewImage.id) {
+        pendingPreviewAnchorRef.current = candidate;
+      }
+    }
+  }, [cancelScheduledPreviewAnchor, hasRightSidebar, previewImage]);
+
+  const handleVirtualGridResize = useCallback(() => {
+    schedulePendingPreviewAnchor();
+  }, [schedulePendingPreviewAnchor]);
+
+  useEffect(() => {
+    if (isInfinite || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const gridElement = gridScopeRef.current;
+    if (!gridElement) {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      schedulePendingPreviewAnchor();
+    });
+    resizeObserver.observe(gridElement);
+
+    return () => resizeObserver.disconnect();
+  }, [isInfinite, schedulePendingPreviewAnchor]);
+
+  useEffect(() => cancelScheduledPreviewAnchor, [cancelScheduledPreviewAnchor]);
 
   useEffect(() => {
     if (!jumpToGroupRequest || effectiveGroupBy === 'none') {
@@ -2868,6 +2995,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             onMouseDownCapture={(event) => {
               if (!isTypingTarget(event.target)) {
                 gridKeyboardActiveRef.current = true;
+                capturePreviewAnchorCandidate(event);
               }
             }}
             onMouseDown={handleMouseDown}
@@ -2950,6 +3078,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                       });
                     }}
                     onItemsRendered={({ visibleColumnStartIndex, visibleColumnStopIndex, visibleRowStartIndex, visibleRowStopIndex, overscanRowStopIndex }) => {
+                      schedulePendingPreviewAnchor();
                       const itemsRenderedStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
                       const visibleStartIndex = (visibleRowStartIndex * safeColumnCount) + visibleColumnStartIndex;
                       const visibleStopIndex = Math.min(
@@ -3073,6 +3202,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         onMouseDownCapture={(event) => {
           if (!isTypingTarget(event.target)) {
             gridKeyboardActiveRef.current = true;
+            capturePreviewAnchorCandidate(event);
           }
         }}
         onClick={() => {

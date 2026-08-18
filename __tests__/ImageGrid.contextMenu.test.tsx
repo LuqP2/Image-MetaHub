@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageGrid from '../components/ImageGrid';
 import { useImageSelection } from '../hooks/useImageSelection';
 import { useImageStore } from '../store/useImageStore';
@@ -9,6 +9,9 @@ import type { ImageStack, IndexedImage } from '../types';
 
 const renameIndexedImageMock = vi.hoisted(() => vi.fn());
 const stackedItemsMock = vi.hoisted(() => ({ value: null as (IndexedImage | ImageStack)[] | null }));
+const autoSizerResizeMock = vi.hoisted(() => ({
+  callback: null as null | ((size: { height: number; width: number }) => void),
+}));
 const showContextMenuMock = vi.fn();
 const hideContextMenuMock = vi.fn();
 const contextMenuStateMock = {
@@ -38,8 +41,13 @@ vi.mock('../hooks/useContextMenu', () => ({
 }));
 
 vi.mock('react-virtualized-auto-sizer', () => ({
-  default: ({ children }: { children: (size: { height: number; width: number }) => React.ReactNode }) =>
-    children({ height: 600, width: 408 }),
+  default: ({ children, onResize }: {
+    children: (size: { height: number; width: number }) => React.ReactNode;
+    onResize?: (size: { height: number; width: number }) => void;
+  }) => {
+    autoSizerResizeMock.callback = onResize ?? null;
+    return children({ height: 600, width: 408 });
+  },
 }));
 
 vi.mock('../services/imageRenameService', () => ({
@@ -158,11 +166,12 @@ const createImages = (count: number): IndexedImage[] =>
     }),
   );
 
-const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisuallySimilar = false }: {
+const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisuallySimilar = false, hasRightSidebar = false }: {
   images: IndexedImage[];
   onFindSimilar?: (image: IndexedImage) => void;
   onFindVisuallySimilar?: (image: IndexedImage) => void;
   canFindVisuallySimilar?: boolean;
+  hasRightSidebar?: boolean;
 }) => {
   const selectedImages = useImageStore((state) => state.selectedImages);
 
@@ -178,6 +187,7 @@ const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisually
       onFindSimilar={onFindSimilar}
       onFindVisuallySimilar={onFindVisuallySimilar}
       canFindVisuallySimilar={canFindVisuallySimilar}
+      hasRightSidebar={hasRightSidebar}
     />
   );
 };
@@ -765,11 +775,35 @@ describe('ImageGrid selection opening behavior', () => {
     expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
   });
 
-  it('keeps the previewed card visible when the static grid loses columns', async () => {
+  it('preserves the previewed card position once when the sidebar opens without locking later scroll', async () => {
     const images = createImages(8);
     let resizeCallback: ResizeObserverCallback | null = null;
-    const scrollIntoView = vi.fn();
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    let sidebarOpen = false;
+    const requestAnimationFrame = vi.spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+    const cancelAnimationFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    const getBoundingClientRect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const top = this.dataset.imageId === 'img-6'
+          ? (sidebarOpen ? 500 : 300)
+          : this.dataset.area === 'grid'
+            ? 100
+            : 0;
+        return {
+          x: 0,
+          y: top,
+          top,
+          left: 0,
+          right: 120,
+          bottom: top + 120,
+          width: 120,
+          height: 120,
+          toJSON: () => ({}),
+        };
+      });
 
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: ResizeObserverCallback) {
@@ -780,32 +814,86 @@ describe('ImageGrid selection opening behavior', () => {
       unobserve() {}
       disconnect() {}
     });
-    HTMLElement.prototype.scrollIntoView = scrollIntoView;
     useSettingsStore.setState({ doubleClickToOpen: true } as any);
     setupImageGridState(images);
 
     try {
-      render(<Harness images={images} />);
+      const { container, rerender } = render(<Harness images={images} />);
+      const grid = container.querySelector<HTMLElement>('[data-area="grid"]')!;
+      grid.scrollTop = 100;
 
       const imageThumb = screen.getByAltText('image-6.png');
       fireEvent.mouseDown(imageThumb, { button: 0 });
       fireEvent.click(imageThumb);
       await waitFor(() => expect(useImageStore.getState().previewImage?.id).toBe('img-6'));
-      scrollIntoView.mockClear();
 
-      act(() => {
-        resizeCallback?.([
-          { contentRect: { width: 272 } } as ResizeObserverEntry,
-        ], {} as ResizeObserver);
+      sidebarOpen = true;
+      rerender(<Harness images={images} hasRightSidebar />);
+      resizeCallback?.([
+        { contentRect: { width: 272 } } as ResizeObserverEntry,
+      ], {} as ResizeObserver);
+
+      await waitFor(() => expect(grid.scrollTop).toBe(300));
+
+      grid.scrollTop = 500;
+      fireEvent.scroll(grid);
+      rerender(<Harness images={images} hasRightSidebar />);
+      expect(grid.scrollTop).toBe(500);
+    } finally {
+      requestAnimationFrame.mockRestore();
+      cancelAnimationFrame.mockRestore();
+      getBoundingClientRect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('preserves the previewed card position in the virtual grid after its final resize', async () => {
+    const images = createImages(8);
+    let sidebarOpen = false;
+    const getBoundingClientRect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const top = this.dataset.imageId === 'img-6'
+          ? (sidebarOpen ? 500 : 300)
+          : 0;
+        return {
+          x: 0,
+          y: top,
+          top,
+          left: 0,
+          right: 120,
+          bottom: top + 120,
+          width: 120,
+          height: 120,
+          toJSON: () => ({}),
+        };
       });
 
-      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({
-        block: 'nearest',
-        inline: 'nearest',
-      }));
+    useSettingsStore.setState({ doubleClickToOpen: true, itemsPerPage: -1 } as any);
+    setupImageGridState(images);
+
+    try {
+      const { container, rerender } = render(<Harness images={images} />);
+      const grid = container.querySelector<HTMLElement>('.no-scrollbar-if-needed')!;
+      expect(grid).toBeTruthy();
+      grid.scrollTop = 100;
+
+      const imageThumb = screen.getByAltText('image-6.png');
+      fireEvent.mouseDown(imageThumb, { button: 0 });
+      fireEvent.click(imageThumb);
+      await waitFor(() => expect(useImageStore.getState().previewImage?.id).toBe('img-6'));
+
+      sidebarOpen = true;
+      rerender(<Harness images={images} hasRightSidebar />);
+      autoSizerResizeMock.callback?.({ height: 600, width: 272 });
+
+      await waitFor(() => expect(grid.scrollTop).toBe(300));
+
+      grid.scrollTop = 500;
+      fireEvent.scroll(grid);
+      rerender(<Harness images={images} hasRightSidebar />);
+      expect(grid.scrollTop).toBe(500);
     } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-      vi.unstubAllGlobals();
+      getBoundingClientRect.mockRestore();
     }
   });
 
