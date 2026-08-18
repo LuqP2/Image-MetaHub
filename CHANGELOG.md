@@ -1,9 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- Added initial 3D model library support for GLB, GLTF, OBJ, FBX, and STL, including bounded metadata indexing, 3D filters, interactive viewing, lazy thumbnails, and GLB/OBJ/STL/FBX export with Image MetaHub sidecars.
-
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -13,13 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Find Similar — Local Visual Search**: Added opt-in local visual search with Find Similar. Select an image to discover visually related files across the current library, including images without metadata. Indexing is resumable and runs locally, with optional WebGPU acceleration and WASM fallback. Experimental text-to-image queries are also available and do not replace metadata search.
+- **Find Similar — Local Visual Search**: Added opt-in, fully local visual similarity search, including for images without generation metadata. Model download is a separate explicit action; indexing is resumable, supports optional WebGPU acceleration with WASM fallback, and covers the 2,000 newest images on Free or the full library on Pro. Experimental text-to-image queries remain separate from deterministic metadata search.
+- **3D Model Library**: Added initial support for indexing, filtering, thumbnailing, viewing, and exporting GLB, GLTF, OBJ, FBX, and STL models, with Image MetaHub sidecars for formats that cannot embed the metadata.
 - **Portable Windows Build**: Added a dedicated Portable executable that keeps settings and caches beside the app, separate from the standard Windows installation.
-- **Native Image Viewer Windows**: Images now open in separate native desktop windows with an optional always-on-top toggle and drag-and-drop support. Settings → Viewer → Behavior can restore the legacy in-app viewer. Generating with A1111 or ComfyUI from a separate window queues the job in the main window, so it runs normally, and dragging a file out of a viewer window no longer risks moving the wrong image if you later drop an unrelated file onto a folder.
+- **Native Viewer Windows**: Images can now open in separate desktop windows with always-on-top, drag-and-drop, navigation, editing, metadata, and generation actions. Settings → Viewer → Behavior can restore the legacy in-app viewer.
+
+### Improved
+
+- **License Activation**: Pro activation now uses signed IMH2 certificates verified by the desktop app, while lifetime licenses remain usable offline after activation. Historical license keys require a reissued IMH2 key.
 
 ### Fixed
 
-- **Dates on Network Shares (SMB/CIFS)**: Fixed every image on an SMB/CIFS share being dated December 31, 1969, which collapsed date grouping into a single group and made sorting by newest or oldest meaningless. These mounts report no creation time, and MetaHub was storing that missing value as a date instead of falling back to the file's modification time. Sorting, date grouping, session grouping and the date shown in the viewer now use the modification time whenever a creation time isn't available. Folders already indexed are corrected on load — no reindex needed — though the affected thumbnails are regenerated once.
+- **Dates on Network Shares**: Files on SMB/CIFS shares no longer appear as December 31, 1969 when creation time is unavailable. Sorting, grouping, and the viewer now fall back to modification time, and existing cached entries are corrected on load.
+- **Desktop File Actions**: Restored direct Show in Folder actions, preserved original timestamps when copying or moving files, and added an explicitly confirmed permanent-delete fallback when the Recycle Bin is unavailable.
+- **ComfyUI EXIF Metadata**: JPEG and WebP exports with canonical ComfyUI workflow/prompt data are no longer misidentified as A1111 when a `parameters` field is also present, while empty graphs now fall through to `UserComment` and `Parameters` metadata.
+- **Packaged MP4 Metadata**: Restored basic MP4 dimensions and duration when `ffprobe` is unavailable in the packaged app.
+- **CLI Metadata Parsing**: Restored CLI parsing after the metadata engine's module boundary caused ESM/CJS loading failures.
+- **Card View Preview**: Opening the preview sidebar no longer moves the focused card out of view when the grid reflows.
 
 ## [0.18.1] - 2026-08-01
 
