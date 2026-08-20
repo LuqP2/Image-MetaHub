@@ -397,6 +397,11 @@ export interface CivitaiLookupQuery {
   versionId?: number;
 }
 
+export type ModelLibraryCivitaiFetchResult =
+  | { status: 'found'; metadata: import('./services/modelLibrary/types').CivitaiModelMetadata }
+  | { status: 'notFound' }
+  | { status: 'unavailable' };
+
 export interface DesktopRuntimeInfo {
   isPortable: boolean;
   userDataPath: string;
@@ -447,6 +452,24 @@ export interface ElectronAPI {
   setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
+  modelLibrarySetRoots: (roots: string[]) => Promise<{ success: boolean; error?: string }>;
+  modelLibraryScan: (sources: Array<{ id: string; path: string; recursive?: boolean }>) => Promise<{ success: boolean; results?: Array<{ sourceId: string; locations: Array<{ sourceId: string; relativePath: string; absolutePath: string; fileName: string; size: number; createdAt: number | null; modifiedAt: number | null }>; error?: string }>; error?: string }>;
+  modelLibraryReadMetadata: (filePath: string) => Promise<{ success: boolean; metadata?: import('./services/modelLibrary/types').ModelFileMetadata; error?: string }>;
+  modelLibraryHash: (args: { filePath: string; requestId: string }) => Promise<{ success: boolean; sha256?: string; size?: number; modifiedAt?: number | null; cancelled?: boolean; error?: string }>;
+  modelLibraryCancelHash: (requestId: string) => Promise<{ success: boolean; error?: string }>;
+  onModelLibraryHashProgress: (callback: (progress: { requestId: string; bytesProcessed: number; totalBytes: number }) => void) => () => void;
+  modelLibraryRevealLocation: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  modelInspectorOpen: (payload: { items: import('./services/modelLibrary/types').ModelInspectorItem[]; selectedId: string | null }) => Promise<{ success: boolean; existing?: boolean; error?: string }>;
+  modelInspectorSyncCollection: (payload: { items: import('./services/modelLibrary/types').ModelInspectorItem[] }) => Promise<{ success: boolean; error?: string }>;
+  modelInspectorSyncSelection: (selectedId: string | null) => Promise<{ success: boolean; ignored?: boolean; error?: string }>;
+  modelInspectorReady: () => Promise<{ success: boolean; error?: string }>;
+  modelInspectorWindowAction: (action: 'focus' | 'close' | 'toggle-always-on-top') => Promise<{ success: boolean; isAlwaysOnTop?: boolean; error?: string }>;
+  modelInspectorNavigate: (direction: 'previous' | 'next') => Promise<{ success: boolean; error?: string }>;
+  modelInspectorSelect: (selectedId: string) => Promise<{ success: boolean; error?: string }>;
+  modelInspectorSetFollowSelection: (followSelection: boolean) => Promise<{ success: boolean; error?: string }>;
+  modelInspectorUpdateItem: (payload: { locationId: string; item: import('./services/modelLibrary/types').ModelInspectorItem }) => Promise<{ success: boolean; error?: string }>;
+  onModelInspectorSnapshot: (callback: (snapshot: import('./services/modelLibrary/types').ModelInspectorSnapshot) => void) => () => void;
+  onModelInspectorItemUpdated: (callback: (item: import('./services/modelLibrary/types').ModelInspectorItem) => void) => () => void;
   showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   openCacheLocation: () => Promise<{ success: boolean; error?: string }>;
@@ -497,6 +520,7 @@ export interface ElectronAPI {
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
   civitaiLookup: (query: CivitaiLookupQuery) => Promise<CivitaiLookupResult>;
+  modelLibraryFetchCivitai: (hash: string) => Promise<ModelLibraryCivitaiFetchResult>;
   openPath: (filePath: string) => Promise<{ success: boolean; error?: string; errorType?: string }>;
   comfyUIViewOpen: (payload: { url: string; bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
   comfyUIViewShow: (payload?: { bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;

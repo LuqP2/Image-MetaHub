@@ -226,6 +226,36 @@ const electronAPI = {
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),
   updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
+  modelLibrarySetRoots: (roots) => ipcRenderer.invoke('model-library-set-roots', roots),
+  modelLibraryScan: (sources) => ipcRenderer.invoke('model-library-scan', sources),
+  modelLibraryReadMetadata: (filePath) => ipcRenderer.invoke('model-library-read-metadata', filePath),
+  modelLibraryHash: (args) => ipcRenderer.invoke('model-library-hash', args),
+  modelLibraryCancelHash: (requestId) => ipcRenderer.invoke('model-library-cancel-hash', requestId),
+  onModelLibraryHashProgress: (callback) => {
+    const handler = (event, value) => callback(value);
+    ipcRenderer.on('model-library-hash-progress', handler);
+    return () => ipcRenderer.removeListener('model-library-hash-progress', handler);
+  },
+  modelLibraryRevealLocation: (filePath) => ipcRenderer.invoke('model-library-reveal-location', filePath),
+  modelInspectorOpen: (payload) => ipcRenderer.invoke('model-inspector-open', payload),
+  modelInspectorSyncCollection: (payload) => ipcRenderer.invoke('model-inspector-sync-collection', payload),
+  modelInspectorSyncSelection: (selectedId) => ipcRenderer.invoke('model-inspector-sync-selection', selectedId),
+  modelInspectorReady: () => ipcRenderer.invoke('model-inspector-ready'),
+  modelInspectorWindowAction: (action) => ipcRenderer.invoke('model-inspector-window-action', action),
+  modelInspectorNavigate: (direction) => ipcRenderer.invoke('model-inspector-navigate', direction),
+  modelInspectorSelect: (selectedId) => ipcRenderer.invoke('model-inspector-select', selectedId),
+  modelInspectorSetFollowSelection: (followSelection) => ipcRenderer.invoke('model-inspector-set-follow-selection', followSelection),
+  modelInspectorUpdateItem: (payload) => ipcRenderer.invoke('model-inspector-update-item', payload),
+  onModelInspectorSnapshot: (callback) => {
+    const handler = (_event, snapshot) => callback(snapshot);
+    ipcRenderer.on('model-inspector-snapshot', handler);
+    return () => ipcRenderer.removeListener('model-inspector-snapshot', handler);
+  },
+  onModelInspectorItemUpdated: (callback) => {
+    const handler = (_event, item) => callback(item);
+    ipcRenderer.on('model-inspector-item-updated', handler);
+    return () => ipcRenderer.removeListener('model-inspector-item-updated', handler);
+  },
   showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
   openCacheLocation: () => ipcRenderer.invoke('open-cache-location'),
@@ -265,6 +295,7 @@ const electronAPI = {
   launchGenerator: (payload) => ipcRenderer.invoke('launch-generator', payload),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   civitaiLookup: (query) => ipcRenderer.invoke('civitai-lookup', query),
+  modelLibraryFetchCivitai: (hash) => ipcRenderer.invoke('model-library-fetch-civitai', hash),
   openPath: (filePath) => ipcRenderer.invoke('open-path', filePath),
   comfyUIViewOpen: (payload) => ipcRenderer.invoke('comfy-view-open', payload),
   comfyUIViewShow: (payload) => ipcRenderer.invoke('comfy-view-show', payload),

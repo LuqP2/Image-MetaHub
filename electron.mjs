@@ -44,6 +44,13 @@ import { resetUserDataContents } from './electron/cacheReset.mjs';
 import { openAuthorizedCacheDirectory } from './electron/cacheDirectory.mjs';
 import { appendEmbeddingSegmentAtOffset } from './electron/embeddingSegmentFile.mjs';
 import {
+  MODEL_INSPECTOR_MIN_HEIGHT,
+  MODEL_INSPECTOR_MIN_WIDTH,
+  resolveModelInspectorWindowState,
+  toggleModelInspectorAlwaysOnTop,
+} from './electron/modelInspectorWindowState.mjs';
+import { isModelLibraryPathWithinRoots } from './electron/modelLibrarySecurity.mjs';
+import {
   createPermanentDeleteGrantStore,
   permanentlyDeleteGrantedFiles,
   requestPermanentDeleteConfirmation,
@@ -602,6 +609,9 @@ let licenseManager;
 const detachedImageViewerWindows = new Map();
 const detachedImageViewerSnapshots = new Map();
 const detachedImageViewerRequestResolvers = new Map();
+let modelInspectorWindow = null;
+let modelInspectorSnapshot = null;
+let modelInspectorMainSelectedId = null;
 let comfyUIView = null;
 let comfyUIViewConfiguredUrl = '';
 let comfyUIViewState = {
@@ -2469,7 +2479,7 @@ function pickDetachedViewerCascadeSlot() {
 
 /** Notify every renderer except the one that just wrote settings. */
 function broadcastSettingsUpdated(senderWebContents) {
-  const targets = [mainWindow, ...detachedImageViewerWindows.values()];
+  const targets = [mainWindow, modelInspectorWindow, ...detachedImageViewerWindows.values()];
   for (const targetWindow of targets) {
     if (!targetWindow || targetWindow.isDestroyed()) continue;
     if (targetWindow.webContents === senderWebContents) continue;
@@ -2640,6 +2650,181 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   }
 }
 
+let persistModelInspectorStateTimer = null;
+
+function persistModelInspectorState(inspectorWindow) {
+  if (!inspectorWindow || inspectorWindow.isDestroyed()) return Promise.resolve();
+  const bounds = inspectorWindow.isMaximized() ? inspectorWindow.getNormalBounds() : inspectorWindow.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+  return queueSettingsUpdate((currentSettings) => ({
+    ...currentSettings,
+    modelInspectorWindowState: { bounds, displayId: display?.id ?? null },
+  })).catch(() => {});
+}
+
+function normalizeModelInspectorItems(items) {
+  if (!Array.isArray(items)) return [];
+  return items.filter((item) => {
+    const location = item?.location;
+    return location
+      && typeof location.id === 'string'
+      && typeof location.absolutePath === 'string'
+      && isModelLibraryPathAllowed(location.absolutePath);
+  });
+}
+
+function sendModelInspectorSnapshot() {
+  if (!modelInspectorWindow || modelInspectorWindow.isDestroyed() || !modelInspectorSnapshot) return;
+  modelInspectorWindow.webContents.send('model-inspector-snapshot', modelInspectorSnapshot);
+}
+
+function updateModelInspectorSnapshot(updater) {
+  if (!modelInspectorSnapshot) return false;
+  const next = updater(modelInspectorSnapshot);
+  if (!next || next === modelInspectorSnapshot) return false;
+  modelInspectorSnapshot = { ...next, revision: Number(modelInspectorSnapshot.revision || 0) + 1 };
+  sendModelInspectorSnapshot();
+  return true;
+}
+
+function queueModelInspectorStatePersist(inspectorWindow) {
+  if (!inspectorWindow || inspectorWindow.isDestroyed()) return;
+  if (persistModelInspectorStateTimer) clearTimeout(persistModelInspectorStateTimer);
+  persistModelInspectorStateTimer = setTimeout(() => {
+    persistModelInspectorStateTimer = null;
+    void persistModelInspectorState(inspectorWindow);
+  }, 200);
+}
+
+function ensureModelInspectorOnScreen() {
+  if (!modelInspectorWindow || modelInspectorWindow.isDestroyed()) return;
+  const currentBounds = modelInspectorWindow.getBounds();
+  const resolved = resolveModelInspectorWindowState({
+    saved: { bounds: currentBounds },
+    displays: screen.getAllDisplays(),
+    mainBounds: mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined,
+  });
+  if (JSON.stringify(currentBounds) !== JSON.stringify(resolved.bounds)) {
+    modelInspectorWindow.setBounds(resolved.bounds);
+  }
+}
+
+async function createModelInspectorWindow(items, selectedId) {
+  const normalizedItems = normalizeModelInspectorItems(items);
+  if (!normalizedItems.length) return { success: false, error: 'There are no visible models to inspect.' };
+  const resolvedSelectedId = normalizedItems.some((item) => item.location.id === selectedId)
+    ? selectedId
+    : normalizedItems[0].location.id;
+  modelInspectorMainSelectedId = resolvedSelectedId;
+
+  if (modelInspectorWindow && !modelInspectorWindow.isDestroyed()) {
+    modelInspectorSnapshot = {
+      ...modelInspectorSnapshot,
+      revision: Number(modelInspectorSnapshot?.revision || 0) + 1,
+      items: normalizedItems,
+      selectedId: resolvedSelectedId,
+    };
+    sendModelInspectorSnapshot();
+    if (modelInspectorWindow.isMinimized()) modelInspectorWindow.restore();
+    modelInspectorWindow.show();
+    modelInspectorWindow.focus();
+    return { success: true, existing: true };
+  }
+
+  const settings = await readSettings();
+  const initialState = resolveModelInspectorWindowState({
+    saved: settings?.modelInspectorWindowState,
+    displays: screen.getAllDisplays(),
+    mainBounds: mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined,
+  });
+  const inspectorWindow = new BrowserWindow({
+    ...initialState.bounds,
+    minWidth: MODEL_INSPECTOR_MIN_WIDTH,
+    minHeight: MODEL_INSPECTOR_MIN_HEIGHT,
+    modal: false,
+    alwaysOnTop: false,
+    skipTaskbar: false,
+    show: false,
+    title: 'Model Inspector — Image MetaHub',
+    icon: getIconPath(),
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      enableRemoteModule: false,
+      webSecurity: true,
+      backgroundThrottling: false,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+  inspectorWindow.setMenu(null);
+  modelInspectorWindow = inspectorWindow;
+  modelInspectorSnapshot = {
+    revision: 1,
+    items: normalizedItems,
+    selectedId: resolvedSelectedId,
+    followSelection: true,
+    isAlwaysOnTop: false,
+  };
+
+  const inspectorUrl = isDev
+    ? new URL('http://localhost:5173')
+    : new URL(`file://${path.join(__dirname, 'dist', 'index.html')}`);
+  inspectorUrl.searchParams.set('window', 'model-inspector');
+  configureDetachedViewerNavigationHandlers(inspectorWindow, inspectorUrl);
+
+  let rendererReady = false;
+  let nativeReady = false;
+  const rendererReadyTimeout = setTimeout(() => {
+    if (!rendererReady && !inspectorWindow.isDestroyed()) inspectorWindow.destroy();
+  }, 15000);
+  const showWhenReady = () => {
+    if (rendererReady && nativeReady && !inspectorWindow.isDestroyed()) inspectorWindow.show();
+  };
+  inspectorWindow.once('ready-to-show', () => { nativeReady = true; showWhenReady(); });
+  inspectorWindow.__markModelInspectorRendererReady = () => {
+    rendererReady = true;
+    clearTimeout(rendererReadyTimeout);
+    showWhenReady();
+  };
+  inspectorWindow.on('move', () => queueModelInspectorStatePersist(inspectorWindow));
+  inspectorWindow.on('resize', () => queueModelInspectorStatePersist(inspectorWindow));
+  inspectorWindow.on('close', () => { void persistModelInspectorState(inspectorWindow); });
+  inspectorWindow.webContents.on('context-menu', (_event, params) => {
+    showEditableTextContextMenu(inspectorWindow.webContents, params);
+  });
+  inspectorWindow.webContents.on('render-process-gone', () => {
+    if (!inspectorWindow.isDestroyed()) inspectorWindow.destroy();
+  });
+  inspectorWindow.webContents.on('did-fail-load', (_event, errorCode, _description, _validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3 || rendererReady || inspectorWindow.isDestroyed()) return;
+    inspectorWindow.destroy();
+  });
+  inspectorWindow.on('closed', () => {
+    clearTimeout(rendererReadyTimeout);
+    if (persistModelInspectorStateTimer) clearTimeout(persistModelInspectorStateTimer);
+    persistModelInspectorStateTimer = null;
+    modelInspectorWindow = null;
+    modelInspectorSnapshot = null;
+    modelInspectorMainSelectedId = null;
+  });
+  attachWindowProcessDiagnostics(inspectorWindow);
+
+  try {
+    await inspectorWindow.loadURL(inspectorUrl.toString());
+    return { success: true };
+  } catch (error) {
+    if (!inspectorWindow.isDestroyed()) inspectorWindow.destroy();
+    return { success: false, error: error?.message || 'Failed to load Model Inspector.' };
+  }
+}
+
+function closeModelInspector() {
+  if (modelInspectorWindow && !modelInspectorWindow.isDestroyed()) modelInspectorWindow.destroy();
+  modelInspectorWindow = null;
+  modelInspectorSnapshot = null;
+  modelInspectorMainSelectedId = null;
+}
+
 function closeAllDetachedImageViewers() {
   for (const viewerWindow of detachedImageViewerWindows.values()) {
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
@@ -2790,6 +2975,7 @@ async function createWindow(startupDirectory = null) {
 
   mainWindow.on('closed', () => {
     closeAllDetachedImageViewers();
+    closeModelInspector();
     disposeComfyUIView('main-window-closed');
     mainWindow = null;
   });
@@ -2890,6 +3076,9 @@ app.whenReady().then(async () => {
     for (const viewerWindow of detachedImageViewerWindows.values()) {
       if (!viewerWindow.isDestroyed()) viewerWindow.webContents.send('theme-updated', themePayload);
     }
+    if (modelInspectorWindow && !modelInspectorWindow.isDestroyed()) {
+      modelInspectorWindow.webContents.send('theme-updated', themePayload);
+    }
   });
 
   let startupDirectory = null;
@@ -2928,7 +3117,11 @@ app.whenReady().then(async () => {
   // Setup IPC handlers for file operations BEFORE creating window
   setupLicenseHandlers();
   setupImageViewerHandlers();
+  setupModelInspectorHandlers();
   setupFileOperationHandlers();
+
+  screen.on('display-removed', ensureModelInspectorOnScreen);
+  screen.on('display-metrics-changed', ensureModelInspectorOnScreen);
   
   await createWindow(startupDirectory);
 });
@@ -3126,9 +3319,157 @@ function setupImageViewerHandlers() {
   });
 }
 
+function setupModelInspectorHandlers() {
+  const isMainSender = (event) => Boolean(
+    mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents
+  );
+  const isInspectorSender = (event) => Boolean(
+    modelInspectorWindow && !modelInspectorWindow.isDestroyed() && event.sender === modelInspectorWindow.webContents
+  );
+
+  ipcMain.handle('model-inspector-open', async (event, payload) => {
+    if (!isMainSender(event)) return { success: false, error: 'Unauthorized Model Inspector request.' };
+    return createModelInspectorWindow(payload?.items, payload?.selectedId);
+  });
+
+  ipcMain.handle('model-inspector-sync-collection', (event, payload) => {
+    if (!isMainSender(event)) return { success: false, error: 'Unauthorized Model Inspector update.' };
+    if (!modelInspectorWindow || modelInspectorWindow.isDestroyed() || !modelInspectorSnapshot) {
+      return { success: false, error: 'Model Inspector is not open.' };
+    }
+    const items = normalizeModelInspectorItems(payload?.items);
+    updateModelInspectorSnapshot((current) => ({
+      ...current,
+      items,
+      selectedId: items.some((item) => item.location.id === current.selectedId)
+        ? current.selectedId
+        : items[0]?.location.id ?? null,
+    }));
+    return { success: true };
+  });
+
+  ipcMain.handle('model-inspector-sync-selection', (event, selectedId) => {
+    if (!isMainSender(event)) return { success: false, error: 'Unauthorized Model Inspector selection.' };
+    modelInspectorMainSelectedId = typeof selectedId === 'string' ? selectedId : null;
+    if (!modelInspectorSnapshot?.followSelection || !modelInspectorMainSelectedId) return { success: true, ignored: true };
+    const exists = modelInspectorSnapshot.items.some((item) => item.location.id === modelInspectorMainSelectedId);
+    if (!exists) return { success: true, ignored: true };
+    updateModelInspectorSnapshot((current) => current.selectedId === modelInspectorMainSelectedId
+      ? current
+      : { ...current, selectedId: modelInspectorMainSelectedId });
+    return { success: true };
+  });
+
+  ipcMain.handle('model-inspector-ready', (event) => {
+    if (!isInspectorSender(event) || !modelInspectorSnapshot) {
+      return { success: false, error: 'Unknown Model Inspector.' };
+    }
+    sendModelInspectorSnapshot();
+    modelInspectorWindow.__markModelInspectorRendererReady?.();
+    return { success: true };
+  });
+
+  ipcMain.handle('model-inspector-window-action', (event, action) => {
+    if ((!isMainSender(event) && !isInspectorSender(event)) || !modelInspectorWindow || modelInspectorWindow.isDestroyed()) {
+      return { success: false, error: 'Unknown Model Inspector.' };
+    }
+    if (action === 'focus') {
+      if (modelInspectorWindow.isMinimized()) modelInspectorWindow.restore();
+      modelInspectorWindow.show();
+      modelInspectorWindow.focus();
+    } else if (action === 'close') {
+      modelInspectorWindow.close();
+    } else if (action === 'toggle-always-on-top') {
+      const isAlwaysOnTop = toggleModelInspectorAlwaysOnTop(modelInspectorWindow);
+      updateModelInspectorSnapshot((current) => ({ ...current, isAlwaysOnTop }));
+      return { success: true, isAlwaysOnTop };
+    } else {
+      return { success: false, error: 'Unsupported Model Inspector action.' };
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('model-inspector-navigate', (event, direction) => {
+    if (!isInspectorSender(event) || !modelInspectorSnapshot || (direction !== 'previous' && direction !== 'next')) {
+      return { success: false, error: 'Invalid Model Inspector navigation.' };
+    }
+    const index = modelInspectorSnapshot.items.findIndex((item) => item.location.id === modelInspectorSnapshot.selectedId);
+    const safeIndex = index >= 0 ? index : 0;
+    const nextIndex = direction === 'next'
+      ? Math.min(modelInspectorSnapshot.items.length - 1, safeIndex + 1)
+      : Math.max(0, safeIndex - 1);
+    const selectedId = modelInspectorSnapshot.items[nextIndex]?.location.id;
+    if (selectedId) updateModelInspectorSnapshot((current) => current.selectedId === selectedId ? current : { ...current, selectedId });
+    return { success: true };
+  });
+
+  ipcMain.handle('model-inspector-select', (event, selectedId) => {
+    if (!isInspectorSender(event) || !modelInspectorSnapshot || typeof selectedId !== 'string') {
+      return { success: false, error: 'Invalid Model Inspector selection.' };
+    }
+    if (!modelInspectorSnapshot.items.some((item) => item.location.id === selectedId)) {
+      return { success: false, error: 'This model is not in the Inspector collection.' };
+    }
+    updateModelInspectorSnapshot((current) => current.selectedId === selectedId ? current : { ...current, selectedId });
+    return { success: true };
+  });
+
+  ipcMain.handle('model-inspector-set-follow-selection', (event, followSelection) => {
+    if (!isInspectorSender(event) || !modelInspectorSnapshot) {
+      return { success: false, error: 'Unknown Model Inspector.' };
+    }
+    updateModelInspectorSnapshot((current) => ({
+      ...current,
+      followSelection: Boolean(followSelection),
+      selectedId: followSelection
+        && modelInspectorMainSelectedId
+        && current.items.some((item) => item.location.id === modelInspectorMainSelectedId)
+          ? modelInspectorMainSelectedId
+          : current.selectedId,
+    }));
+    return { success: true };
+  });
+
+  ipcMain.handle('model-inspector-update-item', (event, payload) => {
+    if (!isInspectorSender(event) || !modelInspectorSnapshot || typeof payload?.locationId !== 'string') {
+      return { success: false, error: 'Unauthorized Model Inspector item update.' };
+    }
+    const index = modelInspectorSnapshot.items.findIndex((item) => item.location.id === payload.locationId);
+    const previous = modelInspectorSnapshot.items[index];
+    if (index < 0 || !previous || payload?.item?.location?.id !== previous.location.id) {
+      return { success: false, error: 'Unknown model location.' };
+    }
+    const incoming = payload.item;
+    const nextLocation = {
+      ...previous.location,
+      fileMetadata: incoming.location.fileMetadata,
+      sha256: /^[0-9a-f]{64}$/i.test(incoming.location.sha256 || '') ? incoming.location.sha256.toLowerCase() : previous.location.sha256,
+      hashFingerprint: incoming.location.hashFingerprint,
+      civitai: incoming.location.civitai,
+    };
+    const nextItem = { location: nextLocation, localMetadata: incoming.localMetadata };
+    updateModelInspectorSnapshot((current) => {
+      const items = [...current.items];
+      items[index] = nextItem;
+      return { ...current, items };
+    });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('model-inspector-item-updated', nextItem);
+    }
+    return { success: true };
+  });
+}
+
 // Setup IPC handlers for file operations
 // Store allowed directory paths for security
 const allowedDirectoryPaths = new Set();
+const modelLibraryRootPaths = new Set();
+const modelLibraryHashTasks = new Map();
+const isPrimaryWindowSender = (event) => Boolean(mainWindow && event?.sender === mainWindow.webContents);
+const isModelInspectorSender = (event) => Boolean(
+  modelInspectorWindow && !modelInspectorWindow.isDestroyed() && event?.sender === modelInspectorWindow.webContents
+);
+const isModelLibraryRendererSender = (event) => isPrimaryWindowSender(event) || isModelInspectorSender(event);
 
 const normalizeAllowedPath = (inputPath) => {
   if (!inputPath) return '';
@@ -3160,6 +3501,101 @@ const isPathAllowed = (filePath) => {
   const normalizedFilePath = normalizeAllowedPath(filePath);
   return Array.from(allowedDirectoryPaths).some((allowedPath) => isSameOrChildPath(normalizedFilePath, allowedPath));
 };
+
+const isModelLibraryPathAllowed = (filePath) => {
+  return isModelLibraryPathWithinRoots(filePath, modelLibraryRootPaths);
+};
+
+async function scanModelLibrarySource(source) {
+  const sourcePath = typeof source?.path === 'string' ? path.resolve(source.path) : '';
+  const sourceId = typeof source?.id === 'string' ? source.id : '';
+  if (!sourceId || !sourcePath || !isModelLibraryPathAllowed(sourcePath)) {
+    return { sourceId, locations: [], error: 'This folder is not an approved model source.' };
+  }
+  const locations = [];
+  const visit = async (directoryPath) => {
+    const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      const entryPath = path.join(directoryPath, entry.name);
+      if (entry.isDirectory()) {
+        if (source.recursive !== false) await visit(entryPath);
+        continue;
+      }
+      if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== '.safetensors') continue;
+      const stats = await fs.stat(entryPath);
+      locations.push({ sourceId, relativePath: path.relative(sourcePath, entryPath), absolutePath: entryPath, fileName: entry.name, size: stats.size, createdAt: Number.isFinite(stats.birthtimeMs) ? stats.birthtimeMs : null, modifiedAt: Number.isFinite(stats.mtimeMs) ? stats.mtimeMs : null });
+    }
+  };
+  try { await visit(sourcePath); return { sourceId, locations }; }
+  catch (error) { return { sourceId, locations: [], error: error?.message || 'Unable to scan this model source.' }; }
+}
+
+function getModelSpecMetadata(rawMetadata) {
+  const value = (key) => typeof rawMetadata[key] === 'string' ? rawMetadata[key].trim() : '';
+  const triggerWords = value('modelspec.trigger_phrase').split(/[\n,]/).map((word) => word.trim()).filter(Boolean);
+  const preview = value('modelspec.thumbnail');
+  const embeddedPreview = /^data:image\/(png|jpe?g|webp);base64,/i.test(preview) && preview.length <= 2_800_000 ? preview : undefined;
+  return {
+    modelName: value('modelspec.title') || undefined,
+    modelType: value('modelspec.type') || undefined,
+    baseModel: value('modelspec.base_model') || undefined,
+    architecture: value('modelspec.architecture') || undefined,
+    description: value('modelspec.description') || undefined,
+    triggerWords: triggerWords.length ? triggerWords : undefined,
+    raw: rawMetadata,
+    embeddedPreview,
+  };
+}
+
+async function readModelLibrarySafetensorsMetadata(filePath) {
+  if (!isModelLibraryPathAllowed(filePath)) throw new Error('This file is not in an approved model source.');
+  const handle = await fs.open(filePath, 'r');
+  try {
+    const prefix = Buffer.alloc(8);
+    const { bytesRead } = await handle.read(prefix, 0, 8, 0);
+    if (bytesRead !== 8) throw new Error('Invalid safetensors file header.');
+    const headerLength = Number(prefix.readBigUInt64LE(0));
+    if (!Number.isSafeInteger(headerLength) || headerLength < 2 || headerLength > 16 * 1024 * 1024) throw new Error('Safetensors header is invalid or too large.');
+    const header = Buffer.alloc(headerLength);
+    const headerRead = await handle.read(header, 0, headerLength, 8);
+    if (headerRead.bytesRead !== headerLength) throw new Error('Safetensors header is truncated.');
+    const parsed = JSON.parse(header.toString('utf8'));
+    const source = parsed?.__metadata__;
+    const raw = {};
+    if (source && typeof source === 'object') {
+      for (const [key, value] of Object.entries(source)) if (typeof value === 'string') raw[key] = value;
+    }
+    return getModelSpecMetadata(raw);
+  } finally { await handle.close(); }
+}
+
+async function hashModelLibraryFile(filePath, requestId, sender) {
+  if (!isModelLibraryPathAllowed(filePath)) throw new Error('This file is not in an approved model source.');
+  const before = await fs.stat(filePath);
+  const handle = await fs.open(filePath, 'r');
+  const task = { cancelled: false };
+  modelLibraryHashTasks.set(requestId, task);
+  const hash = crypto.createHash('sha256');
+  const buffer = Buffer.alloc(4 * 1024 * 1024);
+  let position = 0;
+  try {
+    while (position < before.size) {
+      if (task.cancelled) return { cancelled: true };
+      const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, before.size - position), position);
+      if (!bytesRead) throw new Error('Model file changed while it was being hashed.');
+      hash.update(buffer.subarray(0, bytesRead));
+      position += bytesRead;
+      sender.send('model-library-hash-progress', { requestId, bytesProcessed: position, totalBytes: before.size });
+    }
+  } finally {
+    modelLibraryHashTasks.delete(requestId);
+    await handle.close();
+  }
+  const after = await fs.stat(filePath);
+  if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) throw new Error('Model file changed while it was being hashed.');
+  return { sha256: hash.digest('hex'), size: before.size, modifiedAt: Number.isFinite(before.mtimeMs) ? before.mtimeMs : null };
+}
 
 // Symlink-aware containment check for write operations (e.g. creating a folder).
 // isPathAllowed compares textual paths, which is correct for reads but has two
@@ -4003,6 +4439,64 @@ function setupFileOperationHandlers() {
     } catch (error) {
       // Network failure / abort — transient, let the renderer offer a retry.
       return { status: 'unavailable' };
+    }
+  });
+
+  // Explicit model-library enrichment. This is never called by indexing or
+  // ordinary browsing; users must choose Fetch Info from Civitai.
+  ipcMain.handle('model-library-fetch-civitai', async (event, hash) => {
+    if (!isModelLibraryRendererSender(event) || typeof hash !== 'string' || !/^[0-9a-f]{64}$/i.test(hash)) {
+      return { status: 'notFound' };
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch(`https://civitai.com/api/v1/model-versions/by-hash/${encodeURIComponent(hash)}`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
+      if (response.status === 404) return { status: 'notFound' };
+      if (!response.ok) return { status: 'unavailable' };
+      const data = await response.json();
+      if (typeof data?.modelId !== 'number' || typeof data?.id !== 'number') return { status: 'notFound' };
+      const image = Array.isArray(data.images) ? data.images.find((item) => typeof item?.url === 'string') : null;
+      let coverImage;
+      if (image?.url) {
+        try {
+          const imageUrl = new URL(image.url);
+          if (imageUrl.protocol === 'https:' && (imageUrl.hostname === 'civitai.com' || imageUrl.hostname.endsWith('.civitai.com'))) {
+            const imageResponse = await fetch(imageUrl, { signal: controller.signal });
+            const contentLength = Number(imageResponse.headers.get('content-length'));
+            const contentType = imageResponse.headers.get('content-type') || '';
+            if (imageResponse.ok && /^image\/(png|jpe?g|webp)$/i.test(contentType.split(';')[0]) && (!Number.isFinite(contentLength) || contentLength <= 2 * 1024 * 1024)) {
+              const bytes = Buffer.from(await imageResponse.arrayBuffer());
+              if (bytes.length <= 2 * 1024 * 1024) coverImage = `data:${contentType.split(';')[0]};base64,${bytes.toString('base64')}`;
+            }
+          }
+        } catch {
+          // A cover is optional; preserve the metadata if image retrieval fails.
+        }
+      }
+      return {
+        status: 'found',
+        metadata: {
+          modelId: data.modelId,
+          versionId: data.id,
+          modelName: typeof data?.model?.name === 'string' ? data.model.name : '',
+          versionName: typeof data.name === 'string' ? data.name : '',
+          modelType: typeof data?.model?.type === 'string' ? data.model.type : undefined,
+          baseModel: typeof data.baseModel === 'string' ? data.baseModel : undefined,
+          description: typeof data.description === 'string' ? data.description : (typeof data?.model?.description === 'string' ? data.model.description : undefined),
+          trainedWords: Array.isArray(data.trainedWords) ? data.trainedWords.filter((word) => typeof word === 'string').slice(0, 100) : [],
+          url: `https://civitai.com/models/${data.modelId}?modelVersionId=${data.id}`,
+          coverImage,
+          fetchedAt: Date.now(),
+        },
+      };
+    } catch {
+      return { status: 'unavailable' };
+    } finally {
+      clearTimeout(timeout);
     }
   });
 
@@ -5488,6 +5982,48 @@ function setupFileOperationHandlers() {
       console.error('Error showing directory dialog:', error);
       return { success: false, error: error.message };
     }
+  });
+
+  ipcMain.handle('model-library-set-roots', async (event, roots) => {
+    if (!isPrimaryWindowSender(event)) return { success: false, error: 'Unauthorized sender.' };
+    modelLibraryRootPaths.clear();
+    for (const rootPath of Array.isArray(roots) ? roots : []) {
+      if (typeof rootPath === 'string' && rootPath.trim()) modelLibraryRootPaths.add(normalizeAllowedPath(rootPath));
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('model-library-scan', async (event, sources) => {
+    if (!isPrimaryWindowSender(event)) return { success: false, error: 'Unauthorized sender.' };
+    const requestedSources = Array.isArray(sources) ? sources.slice(0, 128) : [];
+    const results = [];
+    for (const source of requestedSources) results.push(await scanModelLibrarySource(source));
+    return { success: true, results };
+  });
+
+  ipcMain.handle('model-library-read-metadata', async (event, filePath) => {
+    if (!isModelLibraryRendererSender(event)) return { success: false, error: 'Unauthorized sender.' };
+    try { return { success: true, metadata: await readModelLibrarySafetensorsMetadata(filePath) }; }
+    catch (error) { return { success: false, error: error?.message || 'Unable to read safetensors metadata.' }; }
+  });
+
+  ipcMain.handle('model-library-hash', async (event, { filePath, requestId } = {}) => {
+    if (!isModelLibraryRendererSender(event) || typeof requestId !== 'string' || !requestId) return { success: false, error: 'Invalid hash request.' };
+    try { return { success: true, ...(await hashModelLibraryFile(filePath, requestId, event.sender)) }; }
+    catch (error) { return { success: false, error: error?.message || 'Unable to hash model file.' }; }
+  });
+
+  ipcMain.handle('model-library-cancel-hash', async (event, requestId) => {
+    if (!isModelLibraryRendererSender(event) || typeof requestId !== 'string') return { success: false, error: 'Invalid hash request.' };
+    const task = modelLibraryHashTasks.get(requestId);
+    if (task) task.cancelled = true;
+    return { success: true };
+  });
+
+  ipcMain.handle('model-library-reveal-location', async (event, filePath) => {
+    if (!isModelLibraryRendererSender(event) || !isModelLibraryPathAllowed(filePath)) return { success: false, error: 'This file is not in an approved model source.' };
+    try { shell.showItemInFolder(path.resolve(filePath)); return { success: true }; }
+    catch (error) { return { success: false, error: error?.message || 'Unable to reveal this file.' }; }
   });
 
   ipcMain.handle('show-save-dialog', async (event, options = {}) => {

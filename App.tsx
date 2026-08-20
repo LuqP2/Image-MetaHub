@@ -43,6 +43,7 @@ import ModelPromptPickerModal from './components/ModelPromptPickerModal';
 import CollectionsWorkspace from './components/CollectionsWorkspace';
 import ComfyUIWorkspace from './components/ComfyUIWorkspace';
 import ImageEditorWorkspace from './components/ImageEditorWorkspace';
+import ModelsWorkspace from './components/ModelsWorkspace';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
@@ -540,7 +541,7 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'explore' | 'collections' | 'comfyui' | 'editor'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor'>('library');
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -702,8 +703,8 @@ export default function App() {
     }
   }, [activeImageScope, clusters, collections, safeImages, validateActiveImageScope]);
 
-  const hasLeftSidebar = hasDirectories && libraryView !== 'comfyui' && libraryView !== 'editor';
-  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && libraryView !== 'comfyui' && libraryView !== 'editor'));
+  const hasLeftSidebar = hasDirectories && libraryView !== 'comfyui' && libraryView !== 'editor' && libraryView !== 'models';
+  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && libraryView !== 'comfyui' && libraryView !== 'editor' && libraryView !== 'models'));
   const previousHasRightSidebarRef = useRef(hasRightSidebar);
   const rightSidebarVisibilityChanged = previousHasRightSidebarRef.current !== hasRightSidebar;
   useLayoutEffect(() => {
@@ -4047,9 +4048,9 @@ export default function App() {
             </div>
           )}
 
-          {!isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}
+          {!isLoading && !hasDirectories && libraryView !== 'models' && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
-          {hasDirectories && (
+          {(hasDirectories || libraryView === 'models') && (
             <>
                 {libraryView === 'library' && (
                   <AnalyticsSummaryStrip
@@ -4191,7 +4192,9 @@ export default function App() {
                 )}
 
               <div className={`flex-1 min-h-0 transition-[filter,opacity] duration-150 ease-out ${libraryContentFocusClass}`}>
-                {libraryView === 'library' ? (
+                {libraryView === 'models' ? (
+                  <ModelsWorkspace />
+                ) : libraryView === 'library' ? (
                   shouldShowLibraryPlaceholder ? (
                     <div className="flex h-full items-center justify-center text-sm text-gray-500">
                       Loading folder...
