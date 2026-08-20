@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 export const PREFERENCES_DB_NAME = 'image-metahub-preferences';
-export const PREFERENCES_DB_VERSION = 7;
+export const PREFERENCES_DB_VERSION = 8;
 
 export const PREFERENCES_STORE_NAMES = {
   folderSelection: 'folderSelection',
@@ -11,6 +11,7 @@ export const PREFERENCES_STORE_NAMES = {
   smartCollections: 'smartCollections',
   shadowMetadata: 'shadowMetadata',
   automationRules: 'automationRules',
+  modelSources: 'modelSources',
 } as const;
 
 type DisablePersistenceFn = (error?: unknown) => void;
@@ -176,6 +177,7 @@ function upgradePreferencesDatabase(request: IDBOpenDBRequest, oldVersion: numbe
 
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.shadowMetadata, { keyPath: 'imageId' });
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.automationRules, { keyPath: 'id' });
+  ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.modelSources, { keyPath: 'id' });
 
   const manualTagsStore = ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.manualTags, { keyPath: 'name' });
   if (oldVersion < 5) {
@@ -184,6 +186,9 @@ function upgradePreferencesDatabase(request: IDBOpenDBRequest, oldVersion: numbe
 
   if (oldVersion < 7) {
     console.log('Shared preferences database upgraded to v7.');
+  }
+  if (oldVersion < 8) {
+    console.log('Shared preferences database upgraded to v8.');
   }
 }
 

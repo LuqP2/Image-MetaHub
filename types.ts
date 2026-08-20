@@ -447,6 +447,9 @@ export interface ElectronAPI {
   setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
+  modelLibrarySetRoots: (roots: string[]) => Promise<{ success: boolean; error?: string }>;
+  modelLibraryScan: (sources: Array<{ id: string; path: string; recursive?: boolean }>) => Promise<{ success: boolean; results?: Array<{ sourceId: string; locations: Array<{ sourceId: string; relativePath: string; absolutePath: string; fileName: string; size: number; createdAt: number | null; modifiedAt: number | null }>; error?: string }>; error?: string }>;
+  modelLibraryRevealLocation: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   openCacheLocation: () => Promise<{ success: boolean; error?: string }>;

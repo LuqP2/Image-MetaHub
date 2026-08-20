@@ -3129,6 +3129,7 @@ function setupImageViewerHandlers() {
 // Setup IPC handlers for file operations
 // Store allowed directory paths for security
 const allowedDirectoryPaths = new Set();
+const modelLibraryRootPaths = new Set();
 
 const normalizeAllowedPath = (inputPath) => {
   if (!inputPath) return '';
@@ -3160,6 +3161,37 @@ const isPathAllowed = (filePath) => {
   const normalizedFilePath = normalizeAllowedPath(filePath);
   return Array.from(allowedDirectoryPaths).some((allowedPath) => isSameOrChildPath(normalizedFilePath, allowedPath));
 };
+
+const isModelLibraryPathAllowed = (filePath) => {
+  if (modelLibraryRootPaths.size === 0 || !filePath) return false;
+  const normalizedFilePath = normalizeAllowedPath(filePath);
+  return Array.from(modelLibraryRootPaths).some((rootPath) => isSameOrChildPath(normalizedFilePath, rootPath));
+};
+
+async function scanModelLibrarySource(source) {
+  const sourcePath = typeof source?.path === 'string' ? path.resolve(source.path) : '';
+  const sourceId = typeof source?.id === 'string' ? source.id : '';
+  if (!sourceId || !sourcePath || !isModelLibraryPathAllowed(sourcePath)) {
+    return { sourceId, locations: [], error: 'This folder is not an approved model source.' };
+  }
+  const locations = [];
+  const visit = async (directoryPath) => {
+    const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      const entryPath = path.join(directoryPath, entry.name);
+      if (entry.isDirectory()) {
+        if (source.recursive !== false) await visit(entryPath);
+        continue;
+      }
+      if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== '.safetensors') continue;
+      const stats = await fs.stat(entryPath);
+      locations.push({ sourceId, relativePath: path.relative(sourcePath, entryPath), absolutePath: entryPath, fileName: entry.name, size: stats.size, createdAt: Number.isFinite(stats.birthtimeMs) ? stats.birthtimeMs : null, modifiedAt: Number.isFinite(stats.mtimeMs) ? stats.mtimeMs : null });
+    }
+  };
+  try { await visit(sourcePath); return { sourceId, locations }; }
+  catch (error) { return { sourceId, locations: [], error: error?.message || 'Unable to scan this model source.' }; }
+}
 
 // Symlink-aware containment check for write operations (e.g. creating a folder).
 // isPathAllowed compares textual paths, which is correct for reads but has two
@@ -5488,6 +5520,29 @@ function setupFileOperationHandlers() {
       console.error('Error showing directory dialog:', error);
       return { success: false, error: error.message };
     }
+  });
+
+  ipcMain.handle('model-library-set-roots', async (event, roots) => {
+    if (!isMainSender(event)) return { success: false, error: 'Unauthorized sender.' };
+    modelLibraryRootPaths.clear();
+    for (const rootPath of Array.isArray(roots) ? roots : []) {
+      if (typeof rootPath === 'string' && rootPath.trim()) modelLibraryRootPaths.add(normalizeAllowedPath(rootPath));
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('model-library-scan', async (event, sources) => {
+    if (!isMainSender(event)) return { success: false, error: 'Unauthorized sender.' };
+    const requestedSources = Array.isArray(sources) ? sources.slice(0, 128) : [];
+    const results = [];
+    for (const source of requestedSources) results.push(await scanModelLibrarySource(source));
+    return { success: true, results };
+  });
+
+  ipcMain.handle('model-library-reveal-location', async (event, filePath) => {
+    if (!isMainSender(event) || !isModelLibraryPathAllowed(filePath)) return { success: false, error: 'This file is not in an approved model source.' };
+    try { shell.showItemInFolder(path.resolve(filePath)); return { success: true }; }
+    catch (error) { return { success: false, error: error?.message || 'Unable to reveal this file.' }; }
   });
 
   ipcMain.handle('show-save-dialog', async (event, options = {}) => {
