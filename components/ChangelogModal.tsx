@@ -174,7 +174,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                     Hey there, this is Lucas - the solo dev behind Image MetaHub
                   </p>
                   <p className="text-gray-300">
-                    v0.19 is a pretty big update with the main new features being local visual search (CLIP) and support to 3D assets. As usual, its a first implementation that, although functional, might still need a bit of trimming around the edges. Let me know what you think.
+                    v0.19 is a pretty big update with the main new features being local visual search (CLIP) and support to 3D assets. If you use ComfyUI, please update the MetaHub Save Node and use the 3D Save Node so Image MetaHub can keep track of the original image and related metadata. As usual, its a first implementation that, although functional, might still need a bit of trimming around the edges. Let me know what you think.
                   </p>
                   <p className="text-gray-300">
                     There's also an important change to licensing that IMH now uses a new license format; if you already own a license, a replacement license has been sent to the e-mail address used for your purchase. Your existing purchase is still valid, you'll just need to activate using the new key.{' '}
