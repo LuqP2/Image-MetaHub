@@ -54,6 +54,14 @@ export interface CivitaiModelMetadata {
   fetchedAt: number;
 }
 
+export interface ModelLocalMetadata {
+  sha256: string;
+  displayName?: string;
+  notes?: string;
+  tags: string[];
+  updatedAt: number;
+}
+
 export interface ManagedModel {
   id: string;
   sha256: string;

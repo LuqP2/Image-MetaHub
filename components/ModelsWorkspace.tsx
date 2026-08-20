@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ExternalLink, FileBox, FolderOpen, FolderPlus, Hash, RefreshCw, Search, Square, Trash2 } from 'lucide-react';
 import { buildManagedModels, reconcileModelCatalog, EMPTY_MODEL_CATALOG } from '../services/modelLibrary/catalog';
 import { deleteModelSource, getAllModelSources, saveModelSource } from '../services/modelLibrary/modelSourceStorage';
-import type { ModelCatalog, ModelLocation, ModelSource, ModelSourceKind, ModelSourceScanResult } from '../services/modelLibrary/types';
+import { getAllModelLocalMetadata, saveModelLocalMetadata } from '../services/modelLibrary/localMetadataStorage';
+import type { ModelCatalog, ModelLocalMetadata, ModelLocation, ModelSource, ModelSourceKind, ModelSourceScanResult } from '../services/modelLibrary/types';
 
 const CATALOG_CACHE_ID = 'model-library-catalog-v1';
 
@@ -36,6 +37,9 @@ const ModelsWorkspace: React.FC = () => {
   const [isReadingMetadata, setIsReadingMetadata] = useState(false);
   const [hashProgress, setHashProgress] = useState<{ requestId: string; bytesProcessed: number; totalBytes: number } | null>(null);
   const [isFetchingCivitai, setIsFetchingCivitai] = useState(false);
+  const [localMetadata, setLocalMetadata] = useState<Record<string, ModelLocalMetadata>>({});
+  const [typeFilter, setTypeFilter] = useState<'all' | ModelSourceKind>('all');
+  const [sortBy, setSortBy] = useState<'name' | 'size' | 'modified'>('name');
 
   const persistCatalog = useCallback(async (next: ModelCatalog) => {
     setCatalog(next);
@@ -84,6 +88,8 @@ const ModelsWorkspace: React.FC = () => {
 
   useEffect(() => window.electronAPI?.onModelLibraryHashProgress((progress) => setHashProgress(progress)), []);
 
+  useEffect(() => { void getAllModelLocalMetadata().then((entries) => setLocalMetadata(Object.fromEntries(entries.map((entry) => [entry.sha256, entry])))); }, []);
+
   const addSource = async () => {
     const result = await window.electronAPI?.showDirectoryDialog();
     if (!result?.success || !result.path) return;
@@ -105,9 +111,10 @@ const ModelsWorkspace: React.FC = () => {
   };
 
   const locations = useMemo(() => catalog.locations.filter((location) => {
-    const haystack = `${location.fileName} ${location.relativePath} ${location.sourceName}`.toLowerCase();
-    return haystack.includes(query.trim().toLowerCase());
-  }), [catalog.locations, query]);
+    const local = location.sha256 ? localMetadata[location.sha256] : undefined;
+    const haystack = `${location.fileName} ${location.relativePath} ${location.sourceName} ${local?.displayName ?? ''} ${local?.notes ?? ''} ${(local?.tags ?? []).join(' ')}`.toLowerCase();
+    return (typeFilter === 'all' || location.sourceKind === typeFilter) && haystack.includes(query.trim().toLowerCase());
+  }).sort((a, b) => sortBy === 'size' ? b.size - a.size : sortBy === 'modified' ? (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0) : a.fileName.localeCompare(b.fileName)), [catalog.locations, localMetadata, query, sortBy, typeFilter]);
   const selected = catalog.locations.find((location) => location.id === selectedId) ?? locations[0] ?? null;
 
   const updateSelectedLocation = async (update: (location: ModelLocation) => ModelLocation) => {
@@ -125,14 +132,17 @@ const ModelsWorkspace: React.FC = () => {
     } catch (readError) { setError(readError instanceof Error ? readError.message : 'Unable to read safetensors metadata.'); }
     finally { setIsReadingMetadata(false); }
   };
-  const hashSelected = async () => {
+  const hashSelected = async (): Promise<string | undefined> => {
     if (!selected || !window.electronAPI) return;
     const requestId = `model-hash-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setHashProgress({ requestId, bytesProcessed: 0, totalBytes: selected.size }); setError(null);
     try {
       const result = await window.electronAPI.modelLibraryHash({ filePath: selected.absolutePath, requestId });
       if (!result.success) throw new Error(result.error || 'Unable to hash model file.');
-      if (!result.cancelled && result.sha256) await updateSelectedLocation((location) => ({ ...location, sha256: result.sha256, hashFingerprint: { size: result.size ?? location.size, modifiedAt: result.modifiedAt ?? location.modifiedAt } }));
+      if (!result.cancelled && result.sha256) {
+        await updateSelectedLocation((location) => ({ ...location, sha256: result.sha256, hashFingerprint: { size: result.size ?? location.size, modifiedAt: result.modifiedAt ?? location.modifiedAt } }));
+        return result.sha256;
+      }
     } catch (hashError) { setError(hashError instanceof Error ? hashError.message : 'Unable to hash model file.'); }
     finally { setHashProgress(null); }
   };
@@ -156,6 +166,13 @@ const ModelsWorkspace: React.FC = () => {
       : location);
     await persistCatalog({ ...catalog, locations, managedModels: buildManagedModels(locations), updatedAt: Date.now() });
   };
+  const saveLocalMetadata = async (value: Omit<ModelLocalMetadata, 'sha256' | 'updatedAt'>) => {
+    if (!selected) return;
+    const sha256 = selected.sha256 ?? await hashSelected();
+    if (!sha256) return;
+    const saved = await saveModelLocalMetadata({ sha256, ...value, updatedAt: Date.now() });
+    setLocalMetadata((current) => ({ ...current, [saved.sha256]: saved }));
+  };
 
   return <div className="flex h-full min-h-0 bg-gray-950 text-gray-100">
     <aside className="w-64 shrink-0 border-r border-gray-800 bg-gray-900/70 p-4">
@@ -174,21 +191,36 @@ const ModelsWorkspace: React.FC = () => {
       </div>
     </aside>
     <section className="flex min-w-0 flex-1 flex-col">
-      <div className="flex items-center gap-3 border-b border-gray-800 px-5 py-4"><div className="relative min-w-0 flex-1"><Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search models" className="w-full rounded-md border border-gray-700 bg-gray-900 py-2 pl-9 pr-3 text-sm text-gray-100 placeholder:text-gray-500" /></div><button type="button" onClick={() => void scan(sources)} disabled={!sources.length || isScanning} className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800 disabled:text-gray-600"><RefreshCw className={`h-4 w-4 ${isScanning ? 'animate-spin' : ''}`} />Refresh</button></div>
+      <div className="flex flex-wrap items-center gap-3 border-b border-gray-800 px-5 py-4"><div className="relative min-w-[180px] flex-1"><Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search models" className="w-full rounded-md border border-gray-700 bg-gray-900 py-2 pl-9 pr-3 text-sm text-gray-100 placeholder:text-gray-500" /></div><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | ModelSourceKind)} className="rounded-md border border-gray-700 bg-gray-900 px-2 py-2 text-sm"><option value="all">All types</option><option value="lora">LoRAs</option><option value="checkpoint">Checkpoints</option></select><select value={sortBy} onChange={(event) => setSortBy(event.target.value as 'name' | 'size' | 'modified')} className="rounded-md border border-gray-700 bg-gray-900 px-2 py-2 text-sm"><option value="name">Name</option><option value="modified">Modified</option><option value="size">Size</option></select><button type="button" onClick={() => void scan(sources)} disabled={!sources.length || isScanning} className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800 disabled:text-gray-600"><RefreshCw className={`h-4 w-4 ${isScanning ? 'animate-spin' : ''}`} />Refresh</button></div>
       {error && <div className="mx-5 mt-4 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div>}
       <div className="min-h-0 flex-1 overflow-auto p-5">
         {isLoading ? <div className="text-sm text-gray-400">Loading model catalog…</div> : !sources.length ? <div className="flex h-full flex-col items-center justify-center text-center"><FolderOpen className="mb-3 h-10 w-10 text-gray-600" /><h3 className="font-semibold">Add a model folder</h3><p className="mt-1 max-w-sm text-sm text-gray-400">Choose a LoRA or checkpoint folder to build a local model catalog.</p></div> : !locations.length ? <div className="flex h-full items-center justify-center text-sm text-gray-400">{isScanning ? 'Scanning .safetensors files…' : 'No .safetensors files found in these sources.'}</div> : <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">{locations.map((location) => <button type="button" key={location.id} onClick={() => setSelectedId(location.id)} className={`rounded-lg border p-3 text-left transition-colors ${selected?.id === location.id ? 'border-cyan-400/60 bg-cyan-500/10' : 'border-gray-800 bg-gray-900 hover:border-gray-700'}`}><div className="truncate font-medium" title={location.fileName}>{location.fileName}</div><div className="mt-1 text-xs text-cyan-200">{location.sourceKind === 'lora' ? 'LoRA' : 'Checkpoint'}</div><div className="mt-3 text-xs text-gray-400">{formatBytes(location.size)} · {location.sourceName}</div></button>)}</div>}
       </div>
     </section>
-    <ModelDetails location={selected} isReadingMetadata={isReadingMetadata} isFetchingCivitai={isFetchingCivitai} hashProgress={hashProgress} onReadMetadata={readMetadata} onHash={hashSelected} onFetchCivitai={fetchCivitai} onClearCivitaiCover={clearCivitaiCover} onCancelHash={() => hashProgress && void window.electronAPI?.modelLibraryCancelHash(hashProgress.requestId)} />
+    <ModelDetails location={selected} localMetadata={selected?.sha256 ? localMetadata[selected.sha256] : undefined} onSaveLocalMetadata={saveLocalMetadata} isReadingMetadata={isReadingMetadata} isFetchingCivitai={isFetchingCivitai} hashProgress={hashProgress} onReadMetadata={readMetadata} onHash={hashSelected} onFetchCivitai={fetchCivitai} onClearCivitaiCover={clearCivitaiCover} onCancelHash={() => hashProgress && void window.electronAPI?.modelLibraryCancelHash(hashProgress.requestId)} />
   </div>;
 };
 
-const ModelDetails: React.FC<{ location: ModelLocation | null; isReadingMetadata: boolean; isFetchingCivitai: boolean; hashProgress: { requestId: string; bytesProcessed: number; totalBytes: number } | null; onReadMetadata: () => void; onHash: () => void; onFetchCivitai: () => void; onClearCivitaiCover: () => void; onCancelHash: () => void }> = ({ location, isReadingMetadata, isFetchingCivitai, hashProgress, onReadMetadata, onHash, onFetchCivitai, onClearCivitaiCover, onCancelHash }) => <aside className="w-80 shrink-0 overflow-auto border-l border-gray-800 bg-gray-900/70 p-5">
+const ModelDetails: React.FC<{ location: ModelLocation | null; localMetadata?: ModelLocalMetadata; onSaveLocalMetadata: (value: Omit<ModelLocalMetadata, 'sha256' | 'updatedAt'>) => Promise<void>; isReadingMetadata: boolean; isFetchingCivitai: boolean; hashProgress: { requestId: string; bytesProcessed: number; totalBytes: number } | null; onReadMetadata: () => void; onHash: () => void; onFetchCivitai: () => void; onClearCivitaiCover: () => void; onCancelHash: () => void }> = ({ location, localMetadata, onSaveLocalMetadata, isReadingMetadata, isFetchingCivitai, hashProgress, onReadMetadata, onHash, onFetchCivitai, onClearCivitaiCover, onCancelHash }) => <aside className="w-80 shrink-0 overflow-auto border-l border-gray-800 bg-gray-900/70 p-5">
   <h3 className="font-semibold">Model details</h3>
+  {location && <LocalMetadataEditor value={localMetadata} onSave={onSaveLocalMetadata} />}
   {!location ? <p className="mt-3 text-sm text-gray-500">Select a model to inspect its file information.</p> : <div className="mt-4 space-y-4 text-sm"><div><div className="break-words font-medium text-gray-100">{location.fileName}</div><div className="mt-1 text-cyan-200">{location.sourceKind === 'lora' ? 'LoRA' : 'Checkpoint'}</div></div>{location.fileMetadata?.embeddedPreview && <img src={location.fileMetadata.embeddedPreview} alt="Embedded model preview" className="max-h-52 w-full rounded-md border border-gray-800 object-cover" />}{location.civitai && 'modelId' in location.civitai && <><img src={location.civitai.coverImage || location.fileMetadata?.embeddedPreview} alt="Civitai cover" className="max-h-52 w-full rounded-md border border-gray-800 object-cover" /><Detail label="Civitai" value={`${location.civitai.modelName} · ${location.civitai.versionName}`} /><Detail label="Civitai base model" value={location.civitai.baseModel || 'Unavailable'} />{location.civitai.trainedWords.length ? <Detail label="Civitai trained words" value={location.civitai.trainedWords.join(', ')} /> : null}<div className="flex gap-2"><button type="button" onClick={() => void window.electronAPI?.openExternalUrl(location.civitai.url)} className="inline-flex items-center gap-1 text-sm text-cyan-200 hover:text-cyan-100"><ExternalLink className="h-3.5 w-3.5" />Open on Civitai</button>{location.civitai.coverImage && <button type="button" onClick={onClearCivitaiCover} className="text-sm text-gray-400 hover:text-gray-200">Clear cover</button>}</div></>} {location.civitai && 'status' in location.civitai && <p className="text-sm text-gray-500">Not found on Civitai when last checked.</p>}<Detail label="Source" value={location.sourceName} /><Detail label="Path" value={location.absolutePath} /><Detail label="Size" value={formatBytes(location.size)} /><Detail label="Created" value={formatDate(location.createdAt)} /><Detail label="Modified" value={formatDate(location.modifiedAt)} />{location.sha256 ? <Detail label="SHA256" value={location.sha256} /> : null}{location.fileMetadata && <><Detail label="Model name" value={location.fileMetadata.modelName || 'Unavailable'} /><Detail label="Base model" value={location.fileMetadata.baseModel || location.fileMetadata.architecture || 'Unavailable'} />{location.fileMetadata.triggerWords?.length ? <Detail label="Trigger words" value={location.fileMetadata.triggerWords.join(', ')} /> : null}</>}<div className="flex flex-wrap gap-2"><button type="button" onClick={onReadMetadata} disabled={isReadingMetadata} className="rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800 disabled:text-gray-600">{isReadingMetadata ? 'Reading…' : 'Read embedded metadata'}</button>{hashProgress ? <button type="button" onClick={onCancelHash} className="inline-flex items-center gap-2 rounded-md border border-amber-500/50 px-3 py-2 text-sm text-amber-100"><Square className="h-3.5 w-3.5" />Stop {Math.round((hashProgress.bytesProcessed / Math.max(1, hashProgress.totalBytes)) * 100)}%</button> : <button type="button" onClick={onHash} className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800"><Hash className="h-4 w-4" />Compute SHA256</button>}{location.sha256 && <button type="button" onClick={onFetchCivitai} disabled={isFetchingCivitai} className="rounded-md border border-cyan-500/50 px-3 py-2 text-sm text-cyan-100 hover:bg-cyan-500/10 disabled:text-gray-600">{isFetchingCivitai ? 'Fetching Civitai…' : location.civitai && 'modelId' in location.civitai ? 'Refresh Civitai info' : 'Fetch Info from Civitai'}</button>}<button type="button" onClick={() => void window.electronAPI?.modelLibraryRevealLocation(location.absolutePath)} className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800"><FolderOpen className="h-4 w-4" />Open location</button></div></div>}
 </aside>;
 
 const Detail: React.FC<{ label: string; value: string }> = ({ label, value }) => <div><div className="text-xs uppercase tracking-wide text-gray-500">{label}</div><div className="mt-1 break-words text-gray-200">{value}</div></div>;
+
+const LocalMetadataEditor: React.FC<{ value?: ModelLocalMetadata; onSave: (value: Omit<ModelLocalMetadata, 'sha256' | 'updatedAt'>) => Promise<void> }> = ({ value, onSave }) => {
+  const [displayName, setDisplayName] = useState(value?.displayName ?? '');
+  const [notes, setNotes] = useState(value?.notes ?? '');
+  const [tags, setTags] = useState(value?.tags.join(', ') ?? '');
+  useEffect(() => { setDisplayName(value?.displayName ?? ''); setNotes(value?.notes ?? ''); setTags(value?.tags.join(', ') ?? ''); }, [value]);
+  return <form className="mt-3 space-y-2 rounded-md border border-gray-800 bg-gray-950/50 p-3" onSubmit={(event) => { event.preventDefault(); void onSave({ displayName, notes, tags: tags.split(',') }); }}>
+    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Local metadata</div>
+    <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name" className="w-full rounded border border-gray-700 bg-gray-900 px-2 py-1.5 text-sm" />
+    <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="Tags, comma separated" className="w-full rounded border border-gray-700 bg-gray-900 px-2 py-1.5 text-sm" />
+    <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Local notes" rows={3} className="w-full rounded border border-gray-700 bg-gray-900 px-2 py-1.5 text-sm" />
+    <button type="submit" className="rounded border border-gray-700 px-2 py-1 text-xs hover:bg-gray-800">Save local metadata</button>
+  </form>;
+};
 
 export default ModelsWorkspace;

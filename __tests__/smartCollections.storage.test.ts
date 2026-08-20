@@ -218,7 +218,7 @@ describe('smart collection storage', () => {
     } = await import('../services/automationRulesStorage');
     const { PREFERENCES_DB_VERSION, PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
 
-    expect(PREFERENCES_DB_VERSION).toBe(8);
+    expect(PREFERENCES_DB_VERSION).toBe(9);
     expect(PREFERENCES_STORE_NAMES.automationRules).toBe('automationRules');
 
     await saveAutomationRule({
