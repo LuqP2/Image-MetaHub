@@ -5,17 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.19.0] - Unreleased
+## [0.19.0] - [2026-08-20]
 
 ### Added
 
 - **Find Similar — Local Visual Search**: Added opt-in, fully local visual similarity search, including for images without generation metadata. Model download is a separate explicit action; indexing is resumable, supports optional WebGPU acceleration with WASM fallback, and covers the 2,000 newest images on Free or the full library on Pro. Experimental text-to-image queries remain separate from deterministic metadata search.
 - **3D Model Library**: Added initial support for indexing, filtering, thumbnailing, viewing, and exporting GLB, GLTF, OBJ, FBX, and STL models, with Image MetaHub sidecars for formats that cannot embed the metadata.
-- **Portable Windows Build**: Added a dedicated Portable executable that keeps settings and caches beside the app, separate from the standard Windows installation.
 - **Native Viewer Windows**: Images can now open in separate desktop windows with always-on-top, drag-and-drop, navigation, editing, metadata, and generation actions. Settings → Viewer → Behavior can restore the legacy in-app viewer.
 
 ### Improved
 
+- **Portable Windows Build**: Added a dedicated Portable executable that keeps settings and caches beside the app, separate from the standard Windows installation.
 - **License Activation**: Pro activation now uses signed IMH2 certificates verified by the desktop app, while lifetime licenses remain usable offline after activation. Historical license keys require a reissued IMH2 key.
 
 ### Fixed
