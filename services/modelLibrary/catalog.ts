@@ -1,16 +1,51 @@
 import type { ManagedModel, ModelCatalog, ModelLocation, ModelSource, ModelSourceScanResult } from './types';
 
 export const EMPTY_MODEL_CATALOG: ModelCatalog = { version: 1, locations: [], updatedAt: 0 };
+export const MODEL_CATALOG_CACHE_ID = 'model-library-catalog-v1';
+
+export function validModelCatalog(value: unknown): ModelCatalog {
+  if (!value || typeof value !== 'object' || !Array.isArray((value as ModelCatalog).locations)) {
+    return EMPTY_MODEL_CATALOG;
+  }
+  const catalog = value as ModelCatalog;
+  const locations = catalog.locations;
+  return {
+    version: 1,
+    locations,
+    managedModels: buildManagedModels(locations),
+    updatedAt: catalog.updatedAt || 0,
+  };
+}
+
+export function replaceCatalogLocation(catalog: ModelCatalog, update: ModelLocation): ModelCatalog {
+  if (!catalog.locations.some((location) => location.id === update.id)) return catalog;
+  const locations = catalog.locations.map((location) => location.id === update.id ? update : location);
+  return { ...catalog, locations, managedModels: buildManagedModels(locations), updatedAt: Date.now() };
+}
 
 export function buildManagedModels(locations: ModelLocation[]): ManagedModel[] {
-  const byHash = new Map<string, string[]>();
+  const byIdentity = new Map<string, { sha256?: string; locationIds: string[] }>();
   for (const location of locations) {
-    if (!location.sha256) continue;
-    const ids = byHash.get(location.sha256) ?? [];
-    ids.push(location.id);
-    byHash.set(location.sha256, ids);
+    const sha256 = location.sha256?.toLowerCase();
+    const identity = sha256 ? `sha256:${sha256}` : `location:${location.id}`;
+    const entry = byIdentity.get(identity) ?? { sha256, locationIds: [] };
+    entry.locationIds.push(location.id);
+    byIdentity.set(identity, entry);
   }
-  return [...byHash.entries()].map(([sha256, locationIds]) => ({ id: `sha256:${sha256}`, sha256, locationIds }));
+  return [...byIdentity.entries()].map(([id, entry]) => ({
+    id,
+    sha256: entry.sha256,
+    primaryLocationId: entry.locationIds[0],
+    locationIds: entry.locationIds,
+  }));
+}
+
+export function getManagedModelPrimaryLocations(catalog: ModelCatalog): ModelLocation[] {
+  const locationById = new Map(catalog.locations.map((location) => [location.id, location]));
+  const managedModels = catalog.managedModels?.length ? catalog.managedModels : buildManagedModels(catalog.locations);
+  return managedModels
+    .map((model) => locationById.get(model.primaryLocationId ?? model.locationIds[0]))
+    .filter((location): location is ModelLocation => Boolean(location));
 }
 
 export function reconcileModelCatalog(
@@ -41,7 +76,12 @@ export function reconcileModelCatalog(
         discoveredAt: previous?.discoveredAt ?? now,
         lastSeenAt: now,
         ...(previous?.size === scanned.size && previous?.modifiedAt === scanned.modifiedAt
-          ? { fileMetadata: previous.fileMetadata, sha256: previous.sha256, hashFingerprint: previous.hashFingerprint }
+          ? {
+              fileMetadata: previous.fileMetadata,
+              sha256: previous.sha256,
+              hashFingerprint: previous.hashFingerprint,
+              civitai: previous.civitai,
+            }
           : {}),
       });
     }

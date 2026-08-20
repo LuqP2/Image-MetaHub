@@ -237,6 +237,25 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('model-library-hash-progress', handler);
   },
   modelLibraryRevealLocation: (filePath) => ipcRenderer.invoke('model-library-reveal-location', filePath),
+  modelInspectorOpen: (payload) => ipcRenderer.invoke('model-inspector-open', payload),
+  modelInspectorSyncCollection: (payload) => ipcRenderer.invoke('model-inspector-sync-collection', payload),
+  modelInspectorSyncSelection: (selectedId) => ipcRenderer.invoke('model-inspector-sync-selection', selectedId),
+  modelInspectorReady: () => ipcRenderer.invoke('model-inspector-ready'),
+  modelInspectorWindowAction: (action) => ipcRenderer.invoke('model-inspector-window-action', action),
+  modelInspectorNavigate: (direction) => ipcRenderer.invoke('model-inspector-navigate', direction),
+  modelInspectorSelect: (selectedId) => ipcRenderer.invoke('model-inspector-select', selectedId),
+  modelInspectorSetFollowSelection: (followSelection) => ipcRenderer.invoke('model-inspector-set-follow-selection', followSelection),
+  modelInspectorUpdateItem: (payload) => ipcRenderer.invoke('model-inspector-update-item', payload),
+  onModelInspectorSnapshot: (callback) => {
+    const handler = (_event, snapshot) => callback(snapshot);
+    ipcRenderer.on('model-inspector-snapshot', handler);
+    return () => ipcRenderer.removeListener('model-inspector-snapshot', handler);
+  },
+  onModelInspectorItemUpdated: (callback) => {
+    const handler = (_event, item) => callback(item);
+    ipcRenderer.on('model-inspector-item-updated', handler);
+    return () => ipcRenderer.removeListener('model-inspector-item-updated', handler);
+  },
   showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
   openCacheLocation: () => ipcRenderer.invoke('open-cache-location'),

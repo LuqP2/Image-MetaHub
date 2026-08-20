@@ -55,16 +55,22 @@ export interface CivitaiModelMetadata {
 }
 
 export interface ModelLocalMetadata {
-  sha256: string;
+  /** Stable local identity. Uses sha256:<hash> when known, otherwise location:<catalog id>. */
+  id: string;
+  sha256?: string;
+  locationId?: string;
   displayName?: string;
   notes?: string;
   tags: string[];
+  triggerWords?: string[];
+  defaultStrength?: number;
   updatedAt: number;
 }
 
 export interface ManagedModel {
   id: string;
-  sha256: string;
+  sha256?: string;
+  primaryLocationId: string;
   locationIds: string[];
 }
 
@@ -79,4 +85,17 @@ export interface ModelSourceScanResult {
   sourceId: string;
   locations: Omit<ModelLocation, 'id' | 'sourceKind' | 'sourceName' | 'discoveredAt' | 'lastSeenAt'>[];
   error?: string;
+}
+
+export interface ModelInspectorItem {
+  location: ModelLocation;
+  localMetadata?: ModelLocalMetadata;
+}
+
+export interface ModelInspectorSnapshot {
+  revision: number;
+  items: ModelInspectorItem[];
+  selectedId: string | null;
+  followSelection: boolean;
+  isAlwaysOnTop: boolean;
 }
