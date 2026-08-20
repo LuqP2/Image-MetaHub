@@ -26,6 +26,7 @@ export interface ModelLocation {
   fileMetadata?: ModelFileMetadata;
   sha256?: string;
   hashFingerprint?: { size: number; modifiedAt: number | null };
+  civitai?: CivitaiModelMetadata | { status: 'notFound'; fetchedAt: number; url: string };
 }
 
 export interface ModelFileMetadata {
@@ -37,6 +38,20 @@ export interface ModelFileMetadata {
   triggerWords?: string[];
   raw: Record<string, string>;
   embeddedPreview?: string;
+}
+
+export interface CivitaiModelMetadata {
+  modelId: number;
+  versionId: number;
+  modelName: string;
+  versionName: string;
+  modelType?: string;
+  baseModel?: string;
+  description?: string;
+  trainedWords: string[];
+  url: string;
+  coverImage?: string;
+  fetchedAt: number;
 }
 
 export interface ManagedModel {

@@ -397,6 +397,11 @@ export interface CivitaiLookupQuery {
   versionId?: number;
 }
 
+export type ModelLibraryCivitaiFetchResult =
+  | { status: 'found'; metadata: import('./services/modelLibrary/types').CivitaiModelMetadata }
+  | { status: 'notFound' }
+  | { status: 'unavailable' };
+
 export interface DesktopRuntimeInfo {
   isPortable: boolean;
   userDataPath: string;
@@ -504,6 +509,7 @@ export interface ElectronAPI {
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
   civitaiLookup: (query: CivitaiLookupQuery) => Promise<CivitaiLookupResult>;
+  modelLibraryFetchCivitai: (hash: string) => Promise<ModelLibraryCivitaiFetchResult>;
   openPath: (filePath: string) => Promise<{ success: boolean; error?: string; errorType?: string }>;
   comfyUIViewOpen: (payload: { url: string; bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
   comfyUIViewShow: (payload?: { bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;

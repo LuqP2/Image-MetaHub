@@ -4106,6 +4106,64 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // Explicit model-library enrichment. This is never called by indexing or
+  // ordinary browsing; users must choose Fetch Info from Civitai.
+  ipcMain.handle('model-library-fetch-civitai', async (event, hash) => {
+    if (!isPrimaryWindowSender(event) || typeof hash !== 'string' || !/^[0-9a-f]{64}$/i.test(hash)) {
+      return { status: 'notFound' };
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch(`https://civitai.com/api/v1/model-versions/by-hash/${encodeURIComponent(hash)}`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
+      if (response.status === 404) return { status: 'notFound' };
+      if (!response.ok) return { status: 'unavailable' };
+      const data = await response.json();
+      if (typeof data?.modelId !== 'number' || typeof data?.id !== 'number') return { status: 'notFound' };
+      const image = Array.isArray(data.images) ? data.images.find((item) => typeof item?.url === 'string') : null;
+      let coverImage;
+      if (image?.url) {
+        try {
+          const imageUrl = new URL(image.url);
+          if (imageUrl.protocol === 'https:' && (imageUrl.hostname === 'civitai.com' || imageUrl.hostname.endsWith('.civitai.com'))) {
+            const imageResponse = await fetch(imageUrl, { signal: controller.signal });
+            const contentLength = Number(imageResponse.headers.get('content-length'));
+            const contentType = imageResponse.headers.get('content-type') || '';
+            if (imageResponse.ok && /^image\/(png|jpe?g|webp)$/i.test(contentType.split(';')[0]) && (!Number.isFinite(contentLength) || contentLength <= 2 * 1024 * 1024)) {
+              const bytes = Buffer.from(await imageResponse.arrayBuffer());
+              if (bytes.length <= 2 * 1024 * 1024) coverImage = `data:${contentType.split(';')[0]};base64,${bytes.toString('base64')}`;
+            }
+          }
+        } catch {
+          // A cover is optional; preserve the metadata if image retrieval fails.
+        }
+      }
+      return {
+        status: 'found',
+        metadata: {
+          modelId: data.modelId,
+          versionId: data.id,
+          modelName: typeof data?.model?.name === 'string' ? data.model.name : '',
+          versionName: typeof data.name === 'string' ? data.name : '',
+          modelType: typeof data?.model?.type === 'string' ? data.model.type : undefined,
+          baseModel: typeof data.baseModel === 'string' ? data.baseModel : undefined,
+          description: typeof data.description === 'string' ? data.description : (typeof data?.model?.description === 'string' ? data.model.description : undefined),
+          trainedWords: Array.isArray(data.trainedWords) ? data.trainedWords.filter((word) => typeof word === 'string').slice(0, 100) : [],
+          url: `https://civitai.com/models/${data.modelId}?modelVersionId=${data.id}`,
+          coverImage,
+          fetchedAt: Date.now(),
+        },
+      };
+    } catch {
+      return { status: 'unavailable' };
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
+
   ipcMain.handle('open-path', async (event, filePath) => {
     try {
       if (!filePath) {
