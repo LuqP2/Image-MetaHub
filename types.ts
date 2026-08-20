@@ -449,6 +449,10 @@ export interface ElectronAPI {
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
   modelLibrarySetRoots: (roots: string[]) => Promise<{ success: boolean; error?: string }>;
   modelLibraryScan: (sources: Array<{ id: string; path: string; recursive?: boolean }>) => Promise<{ success: boolean; results?: Array<{ sourceId: string; locations: Array<{ sourceId: string; relativePath: string; absolutePath: string; fileName: string; size: number; createdAt: number | null; modifiedAt: number | null }>; error?: string }>; error?: string }>;
+  modelLibraryReadMetadata: (filePath: string) => Promise<{ success: boolean; metadata?: import('./services/modelLibrary/types').ModelFileMetadata; error?: string }>;
+  modelLibraryHash: (args: { filePath: string; requestId: string }) => Promise<{ success: boolean; sha256?: string; size?: number; modifiedAt?: number | null; cancelled?: boolean; error?: string }>;
+  modelLibraryCancelHash: (requestId: string) => Promise<{ success: boolean; error?: string }>;
+  onModelLibraryHashProgress: (callback: (progress: { requestId: string; bytesProcessed: number; totalBytes: number }) => void) => () => void;
   modelLibraryRevealLocation: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;

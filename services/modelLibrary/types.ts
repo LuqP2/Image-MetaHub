@@ -23,11 +23,32 @@ export interface ModelLocation {
   modifiedAt: number | null;
   discoveredAt: number;
   lastSeenAt: number;
+  fileMetadata?: ModelFileMetadata;
+  sha256?: string;
+  hashFingerprint?: { size: number; modifiedAt: number | null };
+}
+
+export interface ModelFileMetadata {
+  modelName?: string;
+  modelType?: string;
+  baseModel?: string;
+  architecture?: string;
+  description?: string;
+  triggerWords?: string[];
+  raw: Record<string, string>;
+  embeddedPreview?: string;
+}
+
+export interface ManagedModel {
+  id: string;
+  sha256: string;
+  locationIds: string[];
 }
 
 export interface ModelCatalog {
   version: 1;
   locations: ModelLocation[];
+  managedModels?: ManagedModel[];
   updatedAt: number;
 }
 

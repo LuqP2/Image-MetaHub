@@ -3130,6 +3130,8 @@ function setupImageViewerHandlers() {
 // Store allowed directory paths for security
 const allowedDirectoryPaths = new Set();
 const modelLibraryRootPaths = new Set();
+const modelLibraryHashTasks = new Map();
+const isPrimaryWindowSender = (event) => Boolean(mainWindow && event?.sender === mainWindow.webContents);
 
 const normalizeAllowedPath = (inputPath) => {
   if (!inputPath) return '';
@@ -3191,6 +3193,72 @@ async function scanModelLibrarySource(source) {
   };
   try { await visit(sourcePath); return { sourceId, locations }; }
   catch (error) { return { sourceId, locations: [], error: error?.message || 'Unable to scan this model source.' }; }
+}
+
+function getModelSpecMetadata(rawMetadata) {
+  const value = (key) => typeof rawMetadata[key] === 'string' ? rawMetadata[key].trim() : '';
+  const triggerWords = value('modelspec.trigger_phrase').split(/[\n,]/).map((word) => word.trim()).filter(Boolean);
+  const preview = value('modelspec.thumbnail');
+  const embeddedPreview = /^data:image\/(png|jpe?g|webp);base64,/i.test(preview) && preview.length <= 2_800_000 ? preview : undefined;
+  return {
+    modelName: value('modelspec.title') || undefined,
+    modelType: value('modelspec.type') || undefined,
+    baseModel: value('modelspec.base_model') || undefined,
+    architecture: value('modelspec.architecture') || undefined,
+    description: value('modelspec.description') || undefined,
+    triggerWords: triggerWords.length ? triggerWords : undefined,
+    raw: rawMetadata,
+    embeddedPreview,
+  };
+}
+
+async function readModelLibrarySafetensorsMetadata(filePath) {
+  if (!isModelLibraryPathAllowed(filePath)) throw new Error('This file is not in an approved model source.');
+  const handle = await fs.open(filePath, 'r');
+  try {
+    const prefix = Buffer.alloc(8);
+    const { bytesRead } = await handle.read(prefix, 0, 8, 0);
+    if (bytesRead !== 8) throw new Error('Invalid safetensors file header.');
+    const headerLength = Number(prefix.readBigUInt64LE(0));
+    if (!Number.isSafeInteger(headerLength) || headerLength < 2 || headerLength > 16 * 1024 * 1024) throw new Error('Safetensors header is invalid or too large.');
+    const header = Buffer.alloc(headerLength);
+    const headerRead = await handle.read(header, 0, headerLength, 8);
+    if (headerRead.bytesRead !== headerLength) throw new Error('Safetensors header is truncated.');
+    const parsed = JSON.parse(header.toString('utf8'));
+    const source = parsed?.__metadata__;
+    const raw = {};
+    if (source && typeof source === 'object') {
+      for (const [key, value] of Object.entries(source)) if (typeof value === 'string') raw[key] = value;
+    }
+    return getModelSpecMetadata(raw);
+  } finally { await handle.close(); }
+}
+
+async function hashModelLibraryFile(filePath, requestId, sender) {
+  if (!isModelLibraryPathAllowed(filePath)) throw new Error('This file is not in an approved model source.');
+  const before = await fs.stat(filePath);
+  const handle = await fs.open(filePath, 'r');
+  const task = { cancelled: false };
+  modelLibraryHashTasks.set(requestId, task);
+  const hash = crypto.createHash('sha256');
+  const buffer = Buffer.alloc(4 * 1024 * 1024);
+  let position = 0;
+  try {
+    while (position < before.size) {
+      if (task.cancelled) return { cancelled: true };
+      const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, before.size - position), position);
+      if (!bytesRead) throw new Error('Model file changed while it was being hashed.');
+      hash.update(buffer.subarray(0, bytesRead));
+      position += bytesRead;
+      sender.send('model-library-hash-progress', { requestId, bytesProcessed: position, totalBytes: before.size });
+    }
+  } finally {
+    modelLibraryHashTasks.delete(requestId);
+    await handle.close();
+  }
+  const after = await fs.stat(filePath);
+  if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) throw new Error('Model file changed while it was being hashed.');
+  return { sha256: hash.digest('hex'), size: before.size, modifiedAt: Number.isFinite(before.mtimeMs) ? before.mtimeMs : null };
 }
 
 // Symlink-aware containment check for write operations (e.g. creating a folder).
@@ -5523,7 +5591,7 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('model-library-set-roots', async (event, roots) => {
-    if (!isMainSender(event)) return { success: false, error: 'Unauthorized sender.' };
+    if (!isPrimaryWindowSender(event)) return { success: false, error: 'Unauthorized sender.' };
     modelLibraryRootPaths.clear();
     for (const rootPath of Array.isArray(roots) ? roots : []) {
       if (typeof rootPath === 'string' && rootPath.trim()) modelLibraryRootPaths.add(normalizeAllowedPath(rootPath));
@@ -5532,15 +5600,34 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('model-library-scan', async (event, sources) => {
-    if (!isMainSender(event)) return { success: false, error: 'Unauthorized sender.' };
+    if (!isPrimaryWindowSender(event)) return { success: false, error: 'Unauthorized sender.' };
     const requestedSources = Array.isArray(sources) ? sources.slice(0, 128) : [];
     const results = [];
     for (const source of requestedSources) results.push(await scanModelLibrarySource(source));
     return { success: true, results };
   });
 
+  ipcMain.handle('model-library-read-metadata', async (event, filePath) => {
+    if (!isPrimaryWindowSender(event)) return { success: false, error: 'Unauthorized sender.' };
+    try { return { success: true, metadata: await readModelLibrarySafetensorsMetadata(filePath) }; }
+    catch (error) { return { success: false, error: error?.message || 'Unable to read safetensors metadata.' }; }
+  });
+
+  ipcMain.handle('model-library-hash', async (event, { filePath, requestId } = {}) => {
+    if (!isPrimaryWindowSender(event) || typeof requestId !== 'string' || !requestId) return { success: false, error: 'Invalid hash request.' };
+    try { return { success: true, ...(await hashModelLibraryFile(filePath, requestId, event.sender)) }; }
+    catch (error) { return { success: false, error: error?.message || 'Unable to hash model file.' }; }
+  });
+
+  ipcMain.handle('model-library-cancel-hash', async (event, requestId) => {
+    if (!isPrimaryWindowSender(event) || typeof requestId !== 'string') return { success: false, error: 'Invalid hash request.' };
+    const task = modelLibraryHashTasks.get(requestId);
+    if (task) task.cancelled = true;
+    return { success: true };
+  });
+
   ipcMain.handle('model-library-reveal-location', async (event, filePath) => {
-    if (!isMainSender(event) || !isModelLibraryPathAllowed(filePath)) return { success: false, error: 'This file is not in an approved model source.' };
+    if (!isPrimaryWindowSender(event) || !isModelLibraryPathAllowed(filePath)) return { success: false, error: 'This file is not in an approved model source.' };
     try { shell.showItemInFolder(path.resolve(filePath)); return { success: true }; }
     catch (error) { return { success: false, error: error?.message || 'Unable to reveal this file.' }; }
   });

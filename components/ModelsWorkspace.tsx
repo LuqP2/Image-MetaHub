@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileBox, FolderOpen, FolderPlus, RefreshCw, Search, Trash2 } from 'lucide-react';
-import { reconcileModelCatalog, EMPTY_MODEL_CATALOG } from '../services/modelLibrary/catalog';
+import { FileBox, FolderOpen, FolderPlus, Hash, RefreshCw, Search, Square, Trash2 } from 'lucide-react';
+import { buildManagedModels, reconcileModelCatalog, EMPTY_MODEL_CATALOG } from '../services/modelLibrary/catalog';
 import { deleteModelSource, getAllModelSources, saveModelSource } from '../services/modelLibrary/modelSourceStorage';
 import type { ModelCatalog, ModelLocation, ModelSource, ModelSourceKind, ModelSourceScanResult } from '../services/modelLibrary/types';
 
@@ -33,6 +33,8 @@ const ModelsWorkspace: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isReadingMetadata, setIsReadingMetadata] = useState(false);
+  const [hashProgress, setHashProgress] = useState<{ requestId: string; bytesProcessed: number; totalBytes: number } | null>(null);
 
   const persistCatalog = useCallback(async (next: ModelCatalog) => {
     setCatalog(next);
@@ -79,6 +81,8 @@ const ModelsWorkspace: React.FC = () => {
     return () => { active = false; };
   }, [persistCatalog]);
 
+  useEffect(() => window.electronAPI?.onModelLibraryHashProgress((progress) => setHashProgress(progress)), []);
+
   const addSource = async () => {
     const result = await window.electronAPI?.showDirectoryDialog();
     if (!result?.success || !result.path) return;
@@ -105,6 +109,33 @@ const ModelsWorkspace: React.FC = () => {
   }), [catalog.locations, query]);
   const selected = catalog.locations.find((location) => location.id === selectedId) ?? locations[0] ?? null;
 
+  const updateSelectedLocation = async (update: (location: ModelLocation) => ModelLocation) => {
+    if (!selected) return;
+    const locations = catalog.locations.map((location) => location.id === selected.id ? update(location) : location);
+    await persistCatalog({ ...catalog, locations, managedModels: buildManagedModels(locations), updatedAt: Date.now() });
+  };
+  const readMetadata = async () => {
+    if (!selected || !window.electronAPI) return;
+    setIsReadingMetadata(true); setError(null);
+    try {
+      const result = await window.electronAPI.modelLibraryReadMetadata(selected.absolutePath);
+      if (!result.success || !result.metadata) throw new Error(result.error || 'Unable to read safetensors metadata.');
+      await updateSelectedLocation((location) => ({ ...location, fileMetadata: result.metadata }));
+    } catch (readError) { setError(readError instanceof Error ? readError.message : 'Unable to read safetensors metadata.'); }
+    finally { setIsReadingMetadata(false); }
+  };
+  const hashSelected = async () => {
+    if (!selected || !window.electronAPI) return;
+    const requestId = `model-hash-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setHashProgress({ requestId, bytesProcessed: 0, totalBytes: selected.size }); setError(null);
+    try {
+      const result = await window.electronAPI.modelLibraryHash({ filePath: selected.absolutePath, requestId });
+      if (!result.success) throw new Error(result.error || 'Unable to hash model file.');
+      if (!result.cancelled && result.sha256) await updateSelectedLocation((location) => ({ ...location, sha256: result.sha256, hashFingerprint: { size: result.size ?? location.size, modifiedAt: result.modifiedAt ?? location.modifiedAt } }));
+    } catch (hashError) { setError(hashError instanceof Error ? hashError.message : 'Unable to hash model file.'); }
+    finally { setHashProgress(null); }
+  };
+
   return <div className="flex h-full min-h-0 bg-gray-950 text-gray-100">
     <aside className="w-64 shrink-0 border-r border-gray-800 bg-gray-900/70 p-4">
       <h2 className="text-lg font-semibold">Models</h2>
@@ -128,13 +159,13 @@ const ModelsWorkspace: React.FC = () => {
         {isLoading ? <div className="text-sm text-gray-400">Loading model catalog…</div> : !sources.length ? <div className="flex h-full flex-col items-center justify-center text-center"><FolderOpen className="mb-3 h-10 w-10 text-gray-600" /><h3 className="font-semibold">Add a model folder</h3><p className="mt-1 max-w-sm text-sm text-gray-400">Choose a LoRA or checkpoint folder to build a local model catalog.</p></div> : !locations.length ? <div className="flex h-full items-center justify-center text-sm text-gray-400">{isScanning ? 'Scanning .safetensors files…' : 'No .safetensors files found in these sources.'}</div> : <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">{locations.map((location) => <button type="button" key={location.id} onClick={() => setSelectedId(location.id)} className={`rounded-lg border p-3 text-left transition-colors ${selected?.id === location.id ? 'border-cyan-400/60 bg-cyan-500/10' : 'border-gray-800 bg-gray-900 hover:border-gray-700'}`}><div className="truncate font-medium" title={location.fileName}>{location.fileName}</div><div className="mt-1 text-xs text-cyan-200">{location.sourceKind === 'lora' ? 'LoRA' : 'Checkpoint'}</div><div className="mt-3 text-xs text-gray-400">{formatBytes(location.size)} · {location.sourceName}</div></button>)}</div>}
       </div>
     </section>
-    <ModelDetails location={selected} />
+    <ModelDetails location={selected} isReadingMetadata={isReadingMetadata} hashProgress={hashProgress} onReadMetadata={readMetadata} onHash={hashSelected} onCancelHash={() => hashProgress && void window.electronAPI?.modelLibraryCancelHash(hashProgress.requestId)} />
   </div>;
 };
 
-const ModelDetails: React.FC<{ location: ModelLocation | null }> = ({ location }) => <aside className="w-80 shrink-0 overflow-auto border-l border-gray-800 bg-gray-900/70 p-5">
+const ModelDetails: React.FC<{ location: ModelLocation | null; isReadingMetadata: boolean; hashProgress: { requestId: string; bytesProcessed: number; totalBytes: number } | null; onReadMetadata: () => void; onHash: () => void; onCancelHash: () => void }> = ({ location, isReadingMetadata, hashProgress, onReadMetadata, onHash, onCancelHash }) => <aside className="w-80 shrink-0 overflow-auto border-l border-gray-800 bg-gray-900/70 p-5">
   <h3 className="font-semibold">Model details</h3>
-  {!location ? <p className="mt-3 text-sm text-gray-500">Select a model to inspect its file information.</p> : <div className="mt-4 space-y-4 text-sm"><div><div className="break-words font-medium text-gray-100">{location.fileName}</div><div className="mt-1 text-cyan-200">{location.sourceKind === 'lora' ? 'LoRA' : 'Checkpoint'}</div></div><Detail label="Source" value={location.sourceName} /><Detail label="Path" value={location.absolutePath} /><Detail label="Size" value={formatBytes(location.size)} /><Detail label="Created" value={formatDate(location.createdAt)} /><Detail label="Modified" value={formatDate(location.modifiedAt)} /><button type="button" onClick={() => void window.electronAPI?.modelLibraryRevealLocation(location.absolutePath)} className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800"><FolderOpen className="h-4 w-4" />Open location</button></div>}
+  {!location ? <p className="mt-3 text-sm text-gray-500">Select a model to inspect its file information.</p> : <div className="mt-4 space-y-4 text-sm"><div><div className="break-words font-medium text-gray-100">{location.fileName}</div><div className="mt-1 text-cyan-200">{location.sourceKind === 'lora' ? 'LoRA' : 'Checkpoint'}</div></div>{location.fileMetadata?.embeddedPreview && <img src={location.fileMetadata.embeddedPreview} alt="Embedded model preview" className="max-h-52 w-full rounded-md border border-gray-800 object-cover" />}<Detail label="Source" value={location.sourceName} /><Detail label="Path" value={location.absolutePath} /><Detail label="Size" value={formatBytes(location.size)} /><Detail label="Created" value={formatDate(location.createdAt)} /><Detail label="Modified" value={formatDate(location.modifiedAt)} />{location.sha256 ? <Detail label="SHA256" value={location.sha256} /> : null}{location.fileMetadata && <><Detail label="Model name" value={location.fileMetadata.modelName || 'Unavailable'} /><Detail label="Base model" value={location.fileMetadata.baseModel || location.fileMetadata.architecture || 'Unavailable'} />{location.fileMetadata.triggerWords?.length ? <Detail label="Trigger words" value={location.fileMetadata.triggerWords.join(', ')} /> : null}</>}<div className="flex flex-wrap gap-2"><button type="button" onClick={onReadMetadata} disabled={isReadingMetadata} className="rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800 disabled:text-gray-600">{isReadingMetadata ? 'Reading…' : 'Read embedded metadata'}</button>{hashProgress ? <button type="button" onClick={onCancelHash} className="inline-flex items-center gap-2 rounded-md border border-amber-500/50 px-3 py-2 text-sm text-amber-100"><Square className="h-3.5 w-3.5" />Stop {Math.round((hashProgress.bytesProcessed / Math.max(1, hashProgress.totalBytes)) * 100)}%</button> : <button type="button" onClick={onHash} className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800"><Hash className="h-4 w-4" />Compute SHA256</button>}<button type="button" onClick={() => void window.electronAPI?.modelLibraryRevealLocation(location.absolutePath)} className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800"><FolderOpen className="h-4 w-4" />Open location</button></div></div>}
 </aside>;
 
 const Detail: React.FC<{ label: string; value: string }> = ({ label, value }) => <div><div className="text-xs uppercase tracking-wide text-gray-500">{label}</div><div className="mt-1 break-words text-gray-200">{value}</div></div>;

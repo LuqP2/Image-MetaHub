@@ -228,6 +228,14 @@ const electronAPI = {
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
   modelLibrarySetRoots: (roots) => ipcRenderer.invoke('model-library-set-roots', roots),
   modelLibraryScan: (sources) => ipcRenderer.invoke('model-library-scan', sources),
+  modelLibraryReadMetadata: (filePath) => ipcRenderer.invoke('model-library-read-metadata', filePath),
+  modelLibraryHash: (args) => ipcRenderer.invoke('model-library-hash', args),
+  modelLibraryCancelHash: (requestId) => ipcRenderer.invoke('model-library-cancel-hash', requestId),
+  onModelLibraryHashProgress: (callback) => {
+    const handler = (event, value) => callback(value);
+    ipcRenderer.on('model-library-hash-progress', handler);
+    return () => ipcRenderer.removeListener('model-library-hash-progress', handler);
+  },
   modelLibraryRevealLocation: (filePath) => ipcRenderer.invoke('model-library-reveal-location', filePath),
   showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
