@@ -706,6 +706,7 @@ describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
       imagemetahub_data: {
         generator: 'ComfyUI',
         prompt: 'False',
+        model: 'krea2_turbo_bf16.safetensors',
         workflow: {
           nodes: [
             { id: 73, type: 'CLIPTextEncode', widgets_values: [expectedPrompt] },
@@ -735,6 +736,23 @@ describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
     } as any);
 
     expect(result?.prompt).toBe(expectedPrompt);
+  });
+
+  it('preserves a legitimate prompt equal to false outside the Krea2 sentinel shape', async () => {
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'False',
+        model: 'another-model.safetensors',
+        workflow: { nodes: [{ id: 1, type: 'CLIPTextEncode', widgets_values: ['different text'] }] },
+        prompt_api: {
+          '1': { class_type: 'CLIPTextEncode', inputs: { text: 'different text' } },
+          '2': { class_type: 'KSampler', inputs: { positive: ['1', 0] } },
+        },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe('False');
   });
 });
 

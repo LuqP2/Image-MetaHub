@@ -5,7 +5,7 @@ import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager'
 import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, hasUsableComfyGraphMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { getFilesystemPathComparisonKey, normalizeFilesystemPath } from '../utils/filesystemPath';
 import { parse } from 'exifr';
-import { isUsablePromptText, resolvePromptFromGraph, parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph } from './parsers/comfyUIParser';
+import { isLegacyKrea2FalsePromptPayload, isNonBlankPromptText, resolvePromptFromGraph, parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph } from './parsers/comfyUIParser';
 import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
@@ -1419,12 +1419,14 @@ export const buildNormalizedMetadataFromMetaHubChunk = async (
       let inferredLineage: BaseMetadata['lineage'] | undefined;
       let recoveredMetadata: Record<string, any> | undefined;
       const hasPromptGraph = Boolean(payload.workflow || payload.prompt_api || payload.prompt);
+      const hasLegacyKrea2FalsePrompt = isLegacyKrea2FalsePromptPayload(payload);
       const embeddedLorasAreValid = Array.isArray(payload.loras) && payload.loras.every((lora: unknown) =>
         typeof lora === 'string'
         || Boolean(lora && typeof lora === 'object' && typeof (lora as Record<string, unknown>).name === 'string')
       );
       const needsGraphRecovery = hasPromptGraph && (
-        !isUsablePromptText(payload.prompt)
+        !isNonBlankPromptText(payload.prompt)
+        || hasLegacyKrea2FalsePrompt
         || !embeddedLorasAreValid
         || !explicitGenerationType
       );
@@ -1436,10 +1438,12 @@ export const buildNormalizedMetadataFromMetaHubChunk = async (
       }
 
       return {
-        prompt: isUsablePromptText(payload.prompt)
-          ? payload.prompt
-          : recoveredMetadata?.prompt || '',
-        negativePrompt: isUsablePromptText(payload.negativePrompt)
+        prompt: hasLegacyKrea2FalsePrompt && isNonBlankPromptText(recoveredMetadata?.prompt)
+          ? recoveredMetadata.prompt
+          : isNonBlankPromptText(payload.prompt)
+            ? payload.prompt
+            : recoveredMetadata?.prompt || '',
+        negativePrompt: isNonBlankPromptText(payload.negativePrompt)
           ? payload.negativePrompt
           : recoveredMetadata?.negativePrompt || '',
         model: typeof payload.model === 'string' ? payload.model : '',

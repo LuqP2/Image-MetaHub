@@ -173,14 +173,18 @@ function normalizePromptWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-export function isUsablePromptText(value: unknown): value is string {
-  return typeof value === 'string'
-    && value.trim().length > 0
-    && value.trim().toLowerCase() !== 'false';
+export function isNonBlankPromptText(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
-function firstUsablePromptString(...values: unknown[]): string | undefined {
-  return values.find(isUsablePromptText) as string | undefined;
+export function isLegacyKrea2FalsePromptPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false;
+  const record = payload as Record<string, any>;
+  if (record.prompt !== 'False' || typeof record.model !== 'string' || !record.model.toLowerCase().includes('krea2')) {
+    return false;
+  }
+  return record.prompt_api && typeof record.prompt_api === 'object'
+    && Object.values(record.prompt_api).some((node: any) => node?.class_type === 'ComfySwitchNode');
 }
 
 function firstNonBlankString(...values: unknown[]): string | undefined {
@@ -1015,6 +1019,9 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
         const graphMetadata = graph
           ? resolvePromptFromGraph(workflowGraph, promptGraph)
           : {};
+        const recoveredKrea2Prompt = isLegacyKrea2FalsePromptPayload(metahubData)
+          ? firstNonBlankString(graphMetadata.prompt)
+          : undefined;
         const inferredLineage = graph
           ? metahubData.media_type === 'model3d'
             ? detectModel3DLineageFromGraph(graph)
@@ -1050,8 +1057,8 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
 
         // Map MetaHub chunk fields to expected format
         return {
-          prompt: firstUsablePromptString(metahubData.prompt, graphMetadata.prompt) || '',
-          negativePrompt: firstUsablePromptString(metahubData.negativePrompt, graphMetadata.negativePrompt) || '',
+          prompt: recoveredKrea2Prompt || firstNonBlankString(metahubData.prompt, graphMetadata.prompt) || '',
+          negativePrompt: firstNonBlankString(metahubData.negativePrompt, graphMetadata.negativePrompt) || '',
           seed,
           steps: firstNonNullish(metahubData.steps, graphMetadata.steps),
           cfg: firstNonNullish(metahubData.cfg, graphMetadata.cfg),
