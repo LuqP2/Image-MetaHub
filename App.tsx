@@ -82,6 +82,7 @@ import {
 } from './utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from './utils/directoryActivity';
 import { resolveMediaType } from './utils/mediaTypes.js';
+import { resolveNavigationAfterDeletion } from './utils/viewerNavigation';
 import { FileOperations } from './services/fileOperations';
 import { renameIndexedImage } from './services/imageRenameService';
 import { useReparseMetadata } from './hooks/useReparseMetadata';
@@ -579,6 +580,7 @@ export default function App() {
   const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
   const watchedRemovalCacheDeltaQueueRef = useRef<Map<string, PendingWatchedRemovalCacheDelta>>(new Map());
   const startupHydrationPromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const [isStartupHydrating, setIsStartupHydrating] = useState(true);
   const appProfilerOnRender = useMemo(() => createProfilerOnRender('App'), []);
   const resolveViewerHost = useCallback(
     () => resolveEffectiveImageViewerHost(imageViewerMode, Boolean(window.electronAPI?.imageViewerOpen)),
@@ -1139,8 +1141,12 @@ export default function App() {
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
-    // Only run once on mount
-    startupHydrationPromiseRef.current = handleLoadFromStorage();
+    const hydration = handleLoadFromStorage();
+    startupHydrationPromiseRef.current = hydration;
+    void hydration.then(
+      () => setIsStartupHydrating(false),
+      () => setIsStartupHydrating(false),
+    );
   }, []);
 
   // Listen for directory load events from the main process (e.g., from CLI argument)
@@ -2088,20 +2094,39 @@ export default function App() {
 
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {
+    const navigationUpdates = new Map(openImageModals.map((modal) => [
+      modal.modalId,
+      resolveNavigationAfterDeletion(
+        resolveModalNavigationImageIds(modal),
+        imageId,
+        modal.navigationImageIds.filter((navigationImageId) => getImageByIdFromStore(navigationImageId)),
+      ),
+    ]));
+    const replacementModal = openImageModals.find((modal) =>
+      modal.imageId === imageId && modal.modalId === activeImageModalId
+    ) ?? openImageModals.find((modal) => modal.imageId === imageId);
+    const replacementId = replacementModal
+      ? navigationUpdates.get(replacementModal.modalId)?.nextImageId ?? null
+      : null;
+    const replacementImage = replacementId ? getImageByIdFromStore(replacementId) ?? null : null;
+
     removeImage(imageId);
     setOpenImageModals((current) => {
       return current.flatMap((modal) => {
-        const navigationImageIds = modal.navigationImageIds.filter((id) => id !== imageId);
+        const update = navigationUpdates.get(modal.modalId)
+          ?? resolveNavigationAfterDeletion(modal.navigationImageIds, imageId);
         if (modal.imageId === imageId) {
-          return [];
+          return update.nextImageId
+            ? [{ ...modal, imageId: update.nextImageId, navigationImageIds: update.navigationImageIds }]
+            : [];
         }
-        return [{ ...modal, navigationImageIds }];
+        return [{ ...modal, navigationImageIds: update.navigationImageIds }];
       });
     });
     if (useImageStore.getState().selectedImage?.id === imageId) {
-      setSelectedImage(null);
+      setSelectedImage(replacementImage);
     }
-  }, [removeImage, setSelectedImage]);
+  }, [activeImageModalId, getImageByIdFromStore, openImageModals, removeImage, resolveModalNavigationImageIds, setSelectedImage]);
 
   const handleImageRenamed = useCallback((oldImageId: string, newImageId: string) => {
     if (oldImageId === newImageId) {
@@ -3484,7 +3509,8 @@ export default function App() {
             const result = await FileOperations.deleteFile(image);
             if (!result.success) throw new Error(result.error || 'Failed to delete image.');
             handleImageDeleted(image.id);
-            break;
+            respond({ success: true, handledNavigation: true });
+            return;
           }
           case 'rename-image': {
             const image = requireImage(viewerCommand.imageId);
@@ -3784,7 +3810,7 @@ export default function App() {
   const shouldShowLibraryPlaceholder =
     libraryView === 'library' &&
     safeFilteredImages.length === 0 &&
-    activeFolderHasProgress;
+    (isStartupHydrating || isLoading || activeFolderHasProgress);
 
   return (
     <React.Profiler id="App" onRender={appProfilerOnRender}>
@@ -4047,7 +4073,7 @@ export default function App() {
             </div>
           )}
 
-          {!isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}
+          {!isStartupHydrating && !isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
           {hasDirectories && (
             <>

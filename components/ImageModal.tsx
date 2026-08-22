@@ -169,7 +169,7 @@ interface ImageModalProps {
   onOpenImageEditor?: (image: IndexedImage) => void;
   onImageDeleted?: (imageId: string) => void;
   onImageRenamed?: (oldImageId: string, newImageId: string, newRelativePath: string) => void;
-  onRequestDelete?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
+  onRequestDelete?: (imageId: string) => Promise<{ success: boolean; error?: string; handledNavigation?: boolean }>;
   onRequestRename?: (imageId: string, newName: string) => Promise<{ success: boolean; error?: string; newImageId?: string; newRelativePath?: string }>;
   onRequestReparse?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
   onRequestTagSuggestions?: (query: string) => Promise<TagInfo[]>;
@@ -666,6 +666,12 @@ const VideoPlayer: React.FC<{
     : repeatMode === 'all'
       ? 'Repeat all'
       : 'Repeat off';
+  const repeatModeShortLabel = repeatMode === 'one' ? '1' : repeatMode === 'all' ? 'All' : 'Off';
+  const repeatModeTitle = repeatMode === 'one'
+    ? 'Repeat one: replay this file'
+    : repeatMode === 'all'
+      ? 'Repeat all: continue through the file list'
+      : 'Repeat off: stop when this file ends';
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
@@ -863,11 +869,12 @@ const VideoPlayer: React.FC<{
                 </button>
                 <button
                   onClick={cycleRepeatMode}
-                  className={`transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded ${repeatMode === 'off' ? 'text-gray-400 hover:text-white' : 'text-blue-400'}`}
-                  title={repeatModeLabel}
+                  className={`inline-flex items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded ${repeatMode === 'off' ? 'text-gray-400 hover:text-white' : 'text-blue-400'}`}
+                  title={repeatModeTitle}
                   aria-label={repeatModeLabel}
                 >
                     {repeatMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
+                    <span className="text-[10px] font-semibold">{repeatModeShortLabel}</span>
                 </button>
             </div>
         </div>
@@ -3052,7 +3059,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
         ? await onRequestDelete(imageToDelete.id)
         : await FileOperations.deleteFile(imageToDelete);
       if (result.success) {
-        if (hasMoreImages) {
+        const handledNavigation = 'handledNavigation' in result && result.handledNavigation === true;
+        if (hasMoreImages && !handledNavigation) {
           if (currentIndex < totalImages - 1) {
             onNavigateNext?.();
           } else {
@@ -3063,7 +3071,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           onImageDeleted?.(idToDelete);
         }
         
-        if (!hasMoreImages) {
+        if (!hasMoreImages && !handledNavigation) {
           onClose();
         }
       } else {

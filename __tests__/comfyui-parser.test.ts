@@ -48,6 +48,32 @@ describe('ComfyUI Parser - Prompt Sources', () => {
     expect(result._telemetry.unknown_nodes_count).toBe(0);
   });
 
+  it('preserves empty runtime prompt values over stale workflow text', () => {
+    const workflow = {
+      nodes: [
+        { id: 2, type: 'CLIPTextEncode', widgets_values: ['stale negative prompt'] },
+        { id: 3, type: 'CLIPTextEncode', widgets_values: ['stale positive prompt'] },
+      ],
+    };
+    const prompt = {
+      '1': { class_type: 'String Literal', inputs: { string: '' } },
+      '2': { class_type: 'CLIPTextEncode', inputs: { text: ['1', 0] } },
+      '3': { class_type: 'CLIPTextEncode', inputs: { text: '' } },
+      '4': {
+        class_type: 'KSampler',
+        inputs: {
+          positive: ['3', 0],
+          negative: ['2', 0],
+        },
+      },
+    };
+
+    const result = resolvePromptFromGraph(workflow, prompt);
+
+    expect(result.prompt).toBe('');
+    expect(result.negativePrompt).toBe('');
+  });
+
   it('should handle ImpactWildcardProcessor populated_text links without treating them as text', () => {
     const prompt = {
       '1': {
@@ -699,6 +725,89 @@ describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
     expect(result?.seed).toBe(1100100895348371);
     expect(result?.model).toBe('Z image Turbo\\z_image_turbo_bf16.safetensors');
   });
+
+  it('recovers the Krea2 prompt when the Save Node stored False', async () => {
+    const expectedPrompt = 'A studio portrait with dramatic directional lighting';
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'False',
+        model: 'krea2_turbo_bf16.safetensors',
+        generation_type: 'img2img',
+        parent_image: {
+          fileName: 'source.png',
+          relativePath: 'inputs/source.png',
+        },
+        workflow: {
+          nodes: [
+            { id: 73, type: 'CLIPTextEncode', widgets_values: [expectedPrompt] },
+          ],
+        },
+        prompt_api: {
+          '67': { class_type: 'PrimitiveBoolean', inputs: { value: false } },
+          '70': {
+            class_type: 'ComfySwitchNode',
+            inputs: { switch: ['67', 0], on_false: ['71', 0], on_true: ['69', 0] },
+          },
+          '71': { class_type: 'PrimitiveStringMultiline', inputs: { value: expectedPrompt } },
+          '72': {
+            class_type: 'KSampler',
+            inputs: {
+              seed: 123,
+              steps: 10,
+              cfg: 1,
+              sampler_name: 'euler',
+              scheduler: 'simple',
+              positive: ['73', 0],
+            },
+          },
+          '73': { class_type: 'CLIPTextEncode', inputs: { text: ['70', 0] } },
+        },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe(expectedPrompt);
+    expect(result?.generationType).toBe('img2img');
+    expect(result?.lineage?.sourceImage?.fileName).toBe('source.png');
+  });
+
+  it('preserves a legitimate prompt equal to false outside the Krea2 sentinel shape', async () => {
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'False',
+        model: 'another-model.safetensors',
+        workflow: { nodes: [{ id: 1, type: 'CLIPTextEncode', widgets_values: ['different text'] }] },
+        prompt_api: {
+          '1': { class_type: 'CLIPTextEncode', inputs: { text: 'different text' } },
+          '2': { class_type: 'KSampler', inputs: { positive: ['1', 0] } },
+        },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe('False');
+  });
+
+  it('preserves canonical metadata and lineage when an embedded workflow is malformed', async () => {
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'canonical prompt',
+        negativePrompt: '',
+        model: 'krea2_turbo_bf16.safetensors',
+        generation_type: 'img2img',
+        parent_image: { fileName: 'source.png' },
+        workflow: { nodes: {} },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe('canonical prompt');
+    expect(result?.negativePrompt).toBe('');
+    expect(result?.model).toBe('krea2_turbo_bf16.safetensors');
+    expect(result?.generationType).toBe('img2img');
+    expect(result?.lineage?.sourceImage?.fileName).toBe('source.png');
+  });
+
 });
 
 describe('ComfyUI Parser - Prompt-only graph payloads', () => {

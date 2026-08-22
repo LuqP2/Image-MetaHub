@@ -49,6 +49,7 @@ import {
   requestPermanentDeleteConfirmation,
 } from './electron/permanentDeletePolicy.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
+import { buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
 import {
   buildEmbeddingModelDownloadUrl,
   validateEmbeddingModelId,
@@ -2562,11 +2563,11 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   viewerWindow.__imageViewerCascadeSlot = cascadeSlot;
   const viewerWindowId = viewerWindow.id;
 
-  const viewerUrl = isDev
-    ? new URL('http://localhost:5173')
-    : new URL(`file://${path.join(__dirname, 'dist', 'index.html')}`);
-  viewerUrl.searchParams.set('window', 'image-modal');
-  viewerUrl.searchParams.set('sessionId', sessionId);
+  const viewerUrl = buildDetachedViewerUrl(
+    path.join(__dirname, 'dist', 'index.html'),
+    sessionId,
+    isDev,
+  );
   configureDetachedViewerNavigationHandlers(viewerWindow, viewerUrl);
 
   detachedImageViewerWindows.set(sessionId, viewerWindow);
@@ -2703,7 +2704,7 @@ async function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.19.0');
+    mainWindow.setTitle('Image MetaHub v0.19.1');
   }
 
   // Load the app

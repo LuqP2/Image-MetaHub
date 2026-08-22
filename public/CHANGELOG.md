@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.1] - [2026-08-21]
+
+### Improved
+
+- **Playback and Find Similar Clarity**: Repeat now visibly identifies Off, All, and 1 modes, and Find Similar briefly explains that Local Visual Search compares visual content on-device.
+
+### Fixed
+
+- **Detached Viewer on macOS**: Separate viewer windows now load packaged paths containing spaces or Unicode safely, and deleting the current file advances to the next available item instead of closing the window.
+- **3D Viewing**: Switching models no longer lets stale WebGL cleanup clear the active viewer, controls live outside the model viewport, errors remain readable, and OBJ/GLTF/FBX cards use stable placeholders instead of starting WebGL previews in the grid.
+- **Startup Library State**: The library no longer flashes a false “no images match” state while its initial data is hydrating.
+- **Krea2 Prompts**: MetaHub Save Node payloads containing `False` now recover the actual prompt from the embedded ComfyUI workflow.
+
 ## [0.19.0] - [2026-08-20]
 
 ### Added
