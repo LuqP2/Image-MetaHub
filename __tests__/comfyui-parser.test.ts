@@ -699,6 +699,43 @@ describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
     expect(result?.seed).toBe(1100100895348371);
     expect(result?.model).toBe('Z image Turbo\\z_image_turbo_bf16.safetensors');
   });
+
+  it('recovers the Krea2 prompt when the Save Node stored False', async () => {
+    const expectedPrompt = 'A studio portrait with dramatic directional lighting';
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'False',
+        workflow: {
+          nodes: [
+            { id: 73, type: 'CLIPTextEncode', widgets_values: [expectedPrompt] },
+          ],
+        },
+        prompt_api: {
+          '67': { class_type: 'PrimitiveBoolean', inputs: { value: false } },
+          '70': {
+            class_type: 'ComfySwitchNode',
+            inputs: { switch: ['67', 0], on_false: ['71', 0], on_true: ['69', 0] },
+          },
+          '71': { class_type: 'PrimitiveStringMultiline', inputs: { value: expectedPrompt } },
+          '72': {
+            class_type: 'KSampler',
+            inputs: {
+              seed: 123,
+              steps: 10,
+              cfg: 1,
+              sampler_name: 'euler',
+              scheduler: 'simple',
+              positive: ['73', 0],
+            },
+          },
+          '73': { class_type: 'CLIPTextEncode', inputs: { text: ['70', 0] } },
+        },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe(expectedPrompt);
+  });
 });
 
 describe('ComfyUI Parser - Prompt-only graph payloads', () => {

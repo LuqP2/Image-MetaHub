@@ -5,7 +5,7 @@ import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager'
 import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, hasUsableComfyGraphMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { getFilesystemPathComparisonKey, normalizeFilesystemPath } from '../utils/filesystemPath';
 import { parse } from 'exifr';
-import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph } from './parsers/comfyUIParser';
+import { isUsablePromptText, resolvePromptFromGraph, parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph } from './parsers/comfyUIParser';
 import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
@@ -1424,7 +1424,7 @@ export const buildNormalizedMetadataFromMetaHubChunk = async (
         || Boolean(lora && typeof lora === 'object' && typeof (lora as Record<string, unknown>).name === 'string')
       );
       const needsGraphRecovery = hasPromptGraph && (
-        !(typeof payload.prompt === 'string' && payload.prompt.trim())
+        !isUsablePromptText(payload.prompt)
         || !embeddedLorasAreValid
         || !explicitGenerationType
       );
@@ -1436,10 +1436,10 @@ export const buildNormalizedMetadataFromMetaHubChunk = async (
       }
 
       return {
-        prompt: typeof payload.prompt === 'string' && payload.prompt.trim()
+        prompt: isUsablePromptText(payload.prompt)
           ? payload.prompt
           : recoveredMetadata?.prompt || '',
-        negativePrompt: typeof payload.negativePrompt === 'string' && payload.negativePrompt.trim()
+        negativePrompt: isUsablePromptText(payload.negativePrompt)
           ? payload.negativePrompt
           : recoveredMetadata?.negativePrompt || '',
         model: typeof payload.model === 'string' ? payload.model : '',

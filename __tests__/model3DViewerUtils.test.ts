@@ -4,6 +4,7 @@ import {
   embedMetadataInGlb,
   extractObjMaterialLibraries,
   getModel3DExportMetadataPayload,
+  retainRuntimeUnlessOwned,
   resolveModel3DResourceUrl,
   safeModel3DAssetPath,
 } from '../components/Model3DViewer';
@@ -24,6 +25,14 @@ const encodeMinimalGlb = (paddingByte = 0x20): ArrayBuffer => {
 };
 
 describe('3D viewer utilities', () => {
+  it('does not let stale cleanup clear the newly selected model runtime', () => {
+    const previousRuntime = { id: 'previous' };
+    const activeRuntime = { id: 'active' };
+
+    expect(retainRuntimeUnlessOwned(activeRuntime, previousRuntime)).toBe(activeRuntime);
+    expect(retainRuntimeUnlessOwned(activeRuntime, activeRuntime)).toBeNull();
+  });
+
   it('resolves sibling resources within the indexed root', () => {
     expect(safeModel3DAssetPath('D:\\Library', 'models/cube.gltf', 'textures/albedo.png'))
       .toBe('D:\\Library\\models\\textures\\albedo.png');

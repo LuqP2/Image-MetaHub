@@ -298,7 +298,8 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
           // If text comes from a link (like String Literal), trace it
           const textInput = node.inputs?.text;
           if (textInput && Array.isArray(textInput)) {
-            return traverse(textInput as any, { ...state, targetParam: 'prompt' }, graph, []);
+            const resolved = traverse(textInput as any, { ...state, targetParam: 'prompt' }, graph, []);
+            if (typeof resolved === 'string' && resolved.trim()) return resolved;
           }
           // If text is a direct value in inputs, use it
           if (textInput && typeof textInput === 'string') {
@@ -317,7 +318,8 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
           // Same logic as prompt - CLIPTextEncode can be used for both positive and negative
           const textInput = node.inputs?.text;
           if (textInput && Array.isArray(textInput)) {
-            return traverse(textInput as any, { ...state, targetParam: 'negativePrompt' }, graph, []);
+            const resolved = traverse(textInput as any, { ...state, targetParam: 'negativePrompt' }, graph, []);
+            if (typeof resolved === 'string' && resolved.trim()) return resolved;
           }
           if (textInput && typeof textInput === 'string') {
             return textInput;

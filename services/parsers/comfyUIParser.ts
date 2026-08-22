@@ -173,6 +173,16 @@ function normalizePromptWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+export function isUsablePromptText(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.trim().length > 0
+    && value.trim().toLowerCase() !== 'false';
+}
+
+function firstUsablePromptString(...values: unknown[]): string | undefined {
+  return values.find(isUsablePromptText) as string | undefined;
+}
+
 function firstNonBlankString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) {
@@ -1040,8 +1050,8 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
 
         // Map MetaHub chunk fields to expected format
         return {
-          prompt: firstNonBlankString(metahubData.prompt, graphMetadata.prompt) || '',
-          negativePrompt: firstNonBlankString(metahubData.negativePrompt, graphMetadata.negativePrompt) || '',
+          prompt: firstUsablePromptString(metahubData.prompt, graphMetadata.prompt) || '',
+          negativePrompt: firstUsablePromptString(metahubData.negativePrompt, graphMetadata.negativePrompt) || '',
           seed,
           steps: firstNonNullish(metahubData.steps, graphMetadata.steps),
           cfg: firstNonNullish(metahubData.cfg, graphMetadata.cfg),
