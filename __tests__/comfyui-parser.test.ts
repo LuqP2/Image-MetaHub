@@ -48,6 +48,31 @@ describe('ComfyUI Parser - Prompt Sources', () => {
     expect(result._telemetry.unknown_nodes_count).toBe(0);
   });
 
+  it('preserves an empty linked negative prompt over stale workflow text', () => {
+    const workflow = {
+      nodes: [
+        { id: 2, type: 'CLIPTextEncode', widgets_values: ['stale negative prompt'] },
+      ],
+    };
+    const prompt = {
+      '1': { class_type: 'String Literal', inputs: { string: '' } },
+      '2': { class_type: 'CLIPTextEncode', inputs: { text: ['1', 0] } },
+      '3': { class_type: 'CLIPTextEncode', inputs: { text: 'active positive prompt' } },
+      '4': {
+        class_type: 'KSampler',
+        inputs: {
+          positive: ['3', 0],
+          negative: ['2', 0],
+        },
+      },
+    };
+
+    const result = resolvePromptFromGraph(workflow, prompt);
+
+    expect(result.prompt).toBe('active positive prompt');
+    expect(result.negativePrompt).toBe('');
+  });
+
   it('should handle ImpactWildcardProcessor populated_text links without treating them as text', () => {
     const prompt = {
       '1': {

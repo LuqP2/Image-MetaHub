@@ -299,7 +299,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
           const textInput = node.inputs?.text;
           if (textInput && Array.isArray(textInput)) {
             const resolved = traverse(textInput as any, { ...state, targetParam: 'prompt' }, graph, []);
-            if (typeof resolved === 'string' && resolved.trim()) return resolved;
+            if (typeof resolved === 'string') return resolved;
           }
           // If text is a direct value in inputs, use it
           if (textInput && typeof textInput === 'string') {
@@ -319,7 +319,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
           const textInput = node.inputs?.text;
           if (textInput && Array.isArray(textInput)) {
             const resolved = traverse(textInput as any, { ...state, targetParam: 'negativePrompt' }, graph, []);
-            if (typeof resolved === 'string' && resolved.trim()) return resolved;
+            if (typeof resolved === 'string') return resolved;
           }
           if (textInput && typeof textInput === 'string') {
             return textInput;
