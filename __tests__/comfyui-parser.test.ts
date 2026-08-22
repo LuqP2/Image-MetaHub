@@ -707,6 +707,11 @@ describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
         generator: 'ComfyUI',
         prompt: 'False',
         model: 'krea2_turbo_bf16.safetensors',
+        generation_type: 'img2img',
+        parent_image: {
+          fileName: 'source.png',
+          relativePath: 'inputs/source.png',
+        },
         workflow: {
           nodes: [
             { id: 73, type: 'CLIPTextEncode', widgets_values: [expectedPrompt] },
@@ -736,6 +741,8 @@ describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
     } as any);
 
     expect(result?.prompt).toBe(expectedPrompt);
+    expect(result?.generationType).toBe('img2img');
+    expect(result?.lineage?.sourceImage?.fileName).toBe('source.png');
   });
 
   it('preserves a legitimate prompt equal to false outside the Krea2 sentinel shape', async () => {

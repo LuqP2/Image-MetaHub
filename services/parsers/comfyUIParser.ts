@@ -1005,12 +1005,12 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
           ? metahubData.source_image as SourceImageReference
           : undefined;
         const hasExplicitLineage = Boolean(explicitGenerationType && (explicitParentImage || explicitSourceImage));
-        const workflowGraph = !hasExplicitLineage && metahubData.workflow && typeof metahubData.workflow === 'object'
+        const workflowGraph = metahubData.workflow && typeof metahubData.workflow === 'object'
           ? metahubData.workflow
           : undefined;
-        const promptGraph = !hasExplicitLineage && metahubData.prompt_api && typeof metahubData.prompt_api === 'object'
+        const promptGraph = metahubData.prompt_api && typeof metahubData.prompt_api === 'object'
           ? metahubData.prompt_api
-          : !hasExplicitLineage && metahubData.prompt && typeof metahubData.prompt === 'object'
+          : metahubData.prompt && typeof metahubData.prompt === 'object'
             ? metahubData.prompt
             : undefined;
         const graph = workflowGraph || promptGraph
@@ -1022,7 +1022,7 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
         const recoveredKrea2Prompt = isLegacyKrea2FalsePromptPayload(metahubData)
           ? firstNonBlankString(graphMetadata.prompt)
           : undefined;
-        const inferredLineage = graph
+        const inferredLineage = !hasExplicitLineage && graph
           ? metahubData.media_type === 'model3d'
             ? detectModel3DLineageFromGraph(graph)
             : detectComfyLineageFromGraph(graph, findTerminalNode(graph), metahubData.denoise)
