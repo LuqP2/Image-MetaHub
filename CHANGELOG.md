@@ -5,17 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.19.1] - [2026-08-21]
+## [0.19.1] - [2026-08-22]
 
 ### Improved
 
-- **Playback and Find Similar Clarity**: Repeat now visibly identifies Off, All, and 1 modes, and Find Similar briefly explains that Local Visual Search compares visual content on-device.
+- **Playback Controls**: Repeat modes now show their current Off, All, or 1 state directly in the player.
 
 ### Fixed
 
-- **Detached Viewer on macOS**: Separate viewer windows now load packaged paths containing spaces or Unicode safely, and deleting the current file advances to the next available item instead of closing the window.
-- **3D Viewing**: Switching models no longer lets stale WebGL cleanup clear the active viewer, controls live outside the model viewport, errors remain readable, and OBJ/GLTF/FBX cards use stable placeholders instead of starting WebGL previews in the grid.
-- **Startup Library State**: The library no longer flashes a false “no images match” state while its initial data is hydrating.
+- **Detached Viewer on macOS**: Separate viewer windows now load packaged file paths containing spaces or Unicode correctly.
+- **Viewer Navigation After Deletion**: Deleting the current file now advances to the next available item even if the active filter or scope changed while the viewer was open, including in detached viewer windows.
+- **3D Viewing**: Switching models no longer lets stale WebGL cleanup clear the active viewer, controls remain accessible outside the model viewport, errors stay readable, and OBJ/GLTF/FBX cards use stable placeholders instead of starting WebGL previews in the grid.
+- **Startup Library State**: The library no longer flashes a false “no images match” state while its initial data is loading.
 - **Krea2 Prompts**: MetaHub Save Node payloads containing `False` now recover the actual prompt from the embedded ComfyUI workflow.
 
 ## [0.19.0] - [2026-08-20]
@@ -1175,7 +1176,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Type-Safe Metadata Handling**: New TypeScript interfaces for Automatic1111Metadata and ComfyUIMetadata with proper type guards
 - **Dynamic Metadata Extraction**: Re-extraction of models, LoRAs, and schedulers during cache reconstruction for data consistency
 - **Backward Compatibility**: Maintained full compatibility with existing InvokeAI metadata and caching system
-- **Cross-Format Filtering**: Unified filtering system that works seamlessly with images from different generation tools
+- **Cross-Format Filtering**: Unified filtering system that works seamlessly across images from different generation tools
 - **Workflow Automation**: Improved GitHub Actions workflows with separate jobs for Windows, macOS, and Linux builds
 - **Build System Optimization**: Cleaned up duplicate workflow configurations and ensured proper artifact generation
 
