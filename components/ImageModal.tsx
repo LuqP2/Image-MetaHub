@@ -3059,7 +3059,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
         ? await onRequestDelete(imageToDelete.id)
         : await FileOperations.deleteFile(imageToDelete);
       if (result.success) {
-        if (hasMoreImages && !result.handledNavigation) {
+        const handledNavigation = 'handledNavigation' in result && result.handledNavigation === true;
+        if (hasMoreImages && !handledNavigation) {
           if (currentIndex < totalImages - 1) {
             onNavigateNext?.();
           } else {
@@ -3070,7 +3071,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           onImageDeleted?.(idToDelete);
         }
         
-        if (!hasMoreImages && !result.handledNavigation) {
+        if (!hasMoreImages && !handledNavigation) {
           onClose();
         }
       } else {
