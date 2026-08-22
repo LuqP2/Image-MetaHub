@@ -302,7 +302,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
             if (typeof resolved === 'string') return resolved;
           }
           // If text is a direct value in inputs, use it
-          if (textInput && typeof textInput === 'string') {
+          if (typeof textInput === 'string') {
             return textInput;
           }
           // Otherwise use widget value at index 0
@@ -321,7 +321,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
             const resolved = traverse(textInput as any, { ...state, targetParam: 'negativePrompt' }, graph, []);
             if (typeof resolved === 'string') return resolved;
           }
-          if (textInput && typeof textInput === 'string') {
+          if (typeof textInput === 'string') {
             return textInput;
           }
           if (node.widgets_values?.[0]) {

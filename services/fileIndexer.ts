@@ -1418,15 +1418,19 @@ export const buildNormalizedMetadataFromMetaHubChunk = async (
       let inferredGenerationType: BaseMetadata['generationType'] | undefined;
       let inferredLineage: BaseMetadata['lineage'] | undefined;
       let recoveredMetadata: Record<string, any> | undefined;
-      const hasPromptGraph = Boolean(payload.workflow || payload.prompt_api || payload.prompt);
+      const hasPromptGraph = Boolean(
+        (payload.workflow && typeof payload.workflow === 'object')
+        || (payload.prompt_api && typeof payload.prompt_api === 'object')
+        || (payload.prompt && typeof payload.prompt === 'object')
+      );
       const hasLegacyKrea2FalsePrompt = isLegacyKrea2FalsePromptPayload(payload);
       const embeddedLorasAreValid = Array.isArray(payload.loras) && payload.loras.every((lora: unknown) =>
         typeof lora === 'string'
         || Boolean(lora && typeof lora === 'object' && typeof (lora as Record<string, unknown>).name === 'string')
       );
       const needsGraphRecovery = hasPromptGraph && (
-        !isNonBlankPromptText(payload.prompt)
-        || hasLegacyKrea2FalsePrompt
+        hasLegacyKrea2FalsePrompt
+        || !isNonBlankPromptText(payload.prompt)
         || !embeddedLorasAreValid
         || !explicitGenerationType
       );
@@ -1437,12 +1441,14 @@ export const buildNormalizedMetadataFromMetaHubChunk = async (
         inferredLineage = recoveredMetadata.lineage as BaseMetadata['lineage'] | undefined;
       }
 
+      let prompt = isNonBlankPromptText(payload.prompt) ? payload.prompt : recoveredMetadata?.prompt || '';
+      if (hasLegacyKrea2FalsePrompt) {
+        const recoveredPrompt = recoveredMetadata?.prompt;
+        prompt = isNonBlankPromptText(recoveredPrompt) ? recoveredPrompt : '';
+      }
+
       return {
-        prompt: hasLegacyKrea2FalsePrompt && isNonBlankPromptText(recoveredMetadata?.prompt)
-          ? recoveredMetadata.prompt
-          : isNonBlankPromptText(payload.prompt)
-            ? payload.prompt
-            : recoveredMetadata?.prompt || '',
+        prompt,
         negativePrompt: isNonBlankPromptText(payload.negativePrompt)
           ? payload.negativePrompt
           : recoveredMetadata?.negativePrompt || '',

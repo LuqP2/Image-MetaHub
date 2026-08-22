@@ -666,44 +666,54 @@ function detectComfyLineageFromGraph(
  */
 function createNodeMap(workflow: any, prompt: any): Graph {
     const graph: Graph = {};
+    const promptNodes = prompt && typeof prompt === 'object' && !Array.isArray(prompt)
+        ? prompt
+        : {};
+    const workflowNodes = Array.isArray(workflow?.nodes) ? workflow.nodes : [];
 
     // Add/overlay from prompt (execution data: class_type, inputs)
     // Optimization: use for...in instead of Object.entries to avoid intermediate array allocation
     // Impact: reduces O(N) memory allocation and GC overhead during workflow graph traversal
-    for (const id in prompt || {}) {
-        const pNode = (prompt as any)[id];
+    for (const id in promptNodes) {
+        const pNode = promptNodes[id];
+        if (!pNode || typeof pNode !== 'object' || Array.isArray(pNode)) {
+            continue;
+        }
         graph[id] = {
             id,
-            class_type: (pNode as any).class_type,
-            inputs: (pNode as any).inputs || {},
-            widgets_values: (pNode as any).widgets_values,  // Keep undefined if not present
+            class_type: pNode.class_type,
+            inputs: pNode.inputs && typeof pNode.inputs === 'object' && !Array.isArray(pNode.inputs)
+                ? pNode.inputs
+                : {},
+            widgets_values: pNode.widgets_values,  // Keep undefined if not present
             mode: 0,
         };
     }
 
     // Overlay from workflow (UI data: widgets_values, mode, type if missing)
-    if (workflow?.nodes) {
-        for (const wNode of workflow.nodes) {
-            const id = wNode.id.toString();
-            if (graph[id]) {
-                graph[id].widgets_values = wNode.widgets_values || [];
-                graph[id].mode = wNode.mode || 0;
-                graph[id].class_type = graph[id].class_type || wNode.type;
-            } else {
-                graph[id] = {
-                    id,
-                    class_type: wNode.type,
-                    inputs: {},
-                    widgets_values: wNode.widgets_values || [],
-                    mode: wNode.mode || 0,
-                };
-            }
-            
-            // For grouped workflow nodes: DON'T apply parent widgets to children
-            // The child nodes already have correct values in their "inputs" from the prompt data
-            // Applying parent widgets would break the indices since parent widgets are concatenated
-            // The fallback logic in extractValue will read from inputs when widgets_values is empty
+    for (const wNode of workflowNodes) {
+        if (!wNode || typeof wNode !== 'object' || wNode.id === undefined || wNode.id === null) {
+            continue;
         }
+        const id = wNode.id.toString();
+        if (graph[id]) {
+            graph[id].widgets_values = wNode.widgets_values || [];
+            graph[id].mode = wNode.mode || 0;
+            graph[id].class_type = graph[id].class_type || wNode.type;
+        } else {
+            graph[id] = {
+                id,
+                class_type: wNode.type,
+                inputs: {},
+                widgets_values: wNode.widgets_values || [],
+                mode: wNode.mode || 0,
+            };
+        }
+
+        // For grouped workflow nodes: DON'T apply parent widgets to children
+        // The child nodes already have correct values in their "inputs" from the prompt data
+        // Applying parent widgets would break the indices since parent widgets are concatenated
+        // The fallback logic in extractValue will read from inputs when widgets_values is empty
     }
 
     // Overlay UI metadata from ComfyUI subgraph definitions onto prompt nodes.
@@ -711,7 +721,7 @@ function createNodeMap(workflow: any, prompt: any): Graph {
     // those nodes often carry execution inputs while the widget values only exist
     // in workflow.definitions.subgraphs.
     const subgraphs = workflow?.definitions?.subgraphs;
-    if (subgraphs && workflow?.nodes) {
+    if (subgraphs && workflowNodes.length > 0) {
         const subgraphEntries: Array<[string, any]> = Array.isArray(subgraphs)
             ? subgraphs.map((subgraph: any) => [String(subgraph?.id ?? subgraph?.name ?? subgraph?.type ?? ''), subgraph])
             : Object.entries(subgraphs).map(([id, subgraph]) => [String(id), subgraph]);
@@ -720,7 +730,10 @@ function createNodeMap(workflow: any, prompt: any): Graph {
             subgraphEntries.filter(([id, subgraph]) => id && subgraph)
         );
 
-        for (const parentNode of workflow.nodes) {
+        for (const parentNode of workflowNodes) {
+            if (!parentNode || typeof parentNode !== 'object') {
+                continue;
+            }
             const parentId = parentNode.id?.toString();
             const parentType = String(parentNode.type ?? '');
             const parentMode = parentNode.mode ?? 0;
@@ -755,9 +768,15 @@ function createNodeMap(workflow: any, prompt: any): Graph {
     }
 
     // If workflow has links, populate inputs for nodes without them (fallback for incomplete prompts)
-    if (workflow?.links) {
+    if (Array.isArray(workflow?.links)) {
         for (const link of workflow.links) {
+            if (!Array.isArray(link)) {
+                continue;
+            }
             const [, sourceId, sourceSlot, targetId, targetSlot, , inputName] = link; // Adjust based on link format
+            if (sourceId === undefined || sourceId === null || targetId === undefined || targetId === null) {
+                continue;
+            }
             const targetNode = graph[targetId.toString()];
             if (targetNode && inputName) {
                 targetNode.inputs[inputName] = [sourceId.toString(), sourceSlot];
@@ -1019,7 +1038,8 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
         const graphMetadata = graph
           ? resolvePromptFromGraph(workflowGraph, promptGraph)
           : {};
-        const recoveredKrea2Prompt = isLegacyKrea2FalsePromptPayload(metahubData)
+        const hasLegacyKrea2FalsePrompt = isLegacyKrea2FalsePromptPayload(metahubData);
+        const recoveredKrea2Prompt = hasLegacyKrea2FalsePrompt
           ? firstNonBlankString(graphMetadata.prompt)
           : undefined;
         const inferredLineage = !hasExplicitLineage && graph
@@ -1057,7 +1077,9 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
 
         // Map MetaHub chunk fields to expected format
         return {
-          prompt: recoveredKrea2Prompt || firstNonBlankString(metahubData.prompt, graphMetadata.prompt) || '',
+          prompt: hasLegacyKrea2FalsePrompt
+            ? recoveredKrea2Prompt ?? ''
+            : firstNonBlankString(metahubData.prompt, graphMetadata.prompt) || '',
           negativePrompt: firstNonBlankString(metahubData.negativePrompt, graphMetadata.negativePrompt) || '',
           seed,
           steps: firstNonNullish(metahubData.steps, graphMetadata.steps),

@@ -48,16 +48,17 @@ describe('ComfyUI Parser - Prompt Sources', () => {
     expect(result._telemetry.unknown_nodes_count).toBe(0);
   });
 
-  it('preserves an empty linked negative prompt over stale workflow text', () => {
+  it('preserves empty runtime prompt values over stale workflow text', () => {
     const workflow = {
       nodes: [
         { id: 2, type: 'CLIPTextEncode', widgets_values: ['stale negative prompt'] },
+        { id: 3, type: 'CLIPTextEncode', widgets_values: ['stale positive prompt'] },
       ],
     };
     const prompt = {
       '1': { class_type: 'String Literal', inputs: { string: '' } },
       '2': { class_type: 'CLIPTextEncode', inputs: { text: ['1', 0] } },
-      '3': { class_type: 'CLIPTextEncode', inputs: { text: 'active positive prompt' } },
+      '3': { class_type: 'CLIPTextEncode', inputs: { text: '' } },
       '4': {
         class_type: 'KSampler',
         inputs: {
@@ -69,7 +70,7 @@ describe('ComfyUI Parser - Prompt Sources', () => {
 
     const result = resolvePromptFromGraph(workflow, prompt);
 
-    expect(result.prompt).toBe('active positive prompt');
+    expect(result.prompt).toBe('');
     expect(result.negativePrompt).toBe('');
   });
 
@@ -786,6 +787,27 @@ describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
 
     expect(result?.prompt).toBe('False');
   });
+
+  it('preserves canonical metadata and lineage when an embedded workflow is malformed', async () => {
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'canonical prompt',
+        negativePrompt: '',
+        model: 'krea2_turbo_bf16.safetensors',
+        generation_type: 'img2img',
+        parent_image: { fileName: 'source.png' },
+        workflow: { nodes: {} },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe('canonical prompt');
+    expect(result?.negativePrompt).toBe('');
+    expect(result?.model).toBe('krea2_turbo_bf16.safetensors');
+    expect(result?.generationType).toBe('img2img');
+    expect(result?.lineage?.sourceImage?.fileName).toBe('source.png');
+  });
+
 });
 
 describe('ComfyUI Parser - Prompt-only graph payloads', () => {
