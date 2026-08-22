@@ -2096,7 +2096,11 @@ export default function App() {
   const handleImageDeleted = useCallback((imageId: string) => {
     const navigationUpdates = new Map(openImageModals.map((modal) => [
       modal.modalId,
-      resolveNavigationAfterDeletion(resolveModalNavigationImageIds(modal), imageId),
+      resolveNavigationAfterDeletion(
+        resolveModalNavigationImageIds(modal),
+        imageId,
+        modal.navigationImageIds.filter((navigationImageId) => getImageByIdFromStore(navigationImageId)),
+      ),
     ]));
     const replacementModal = openImageModals.find((modal) =>
       modal.imageId === imageId && modal.modalId === activeImageModalId

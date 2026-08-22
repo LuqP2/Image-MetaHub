@@ -32,4 +32,11 @@ describe('detached viewer hotfix helpers', () => {
       nextImageId: null,
     });
   });
+
+  it('falls back to the stored playlist when the current scope omits the deleted item', () => {
+    expect(resolveNavigationAfterDeletion(['c'], 'b', ['a', 'b', 'c'])).toEqual({
+      navigationImageIds: ['a', 'c'],
+      nextImageId: 'c',
+    });
+  });
 });

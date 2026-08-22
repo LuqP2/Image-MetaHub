@@ -1,9 +1,15 @@
 export const resolveNavigationAfterDeletion = (
   navigationImageIds: string[],
   deletedImageId: string,
+  fallbackNavigationImageIds: string[] = [],
 ): { navigationImageIds: string[]; nextImageId: string | null } => {
-  const deletedIndex = navigationImageIds.indexOf(deletedImageId);
-  const remaining = navigationImageIds.filter((imageId) => imageId !== deletedImageId);
+  const sourceImageIds = navigationImageIds.includes(deletedImageId)
+    ? navigationImageIds
+    : fallbackNavigationImageIds.includes(deletedImageId)
+      ? fallbackNavigationImageIds
+      : navigationImageIds;
+  const deletedIndex = sourceImageIds.indexOf(deletedImageId);
+  const remaining = sourceImageIds.filter((imageId) => imageId !== deletedImageId);
 
   if (remaining.length === 0 || deletedIndex < 0) {
     return { navigationImageIds: remaining, nextImageId: null };
