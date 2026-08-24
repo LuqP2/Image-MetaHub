@@ -217,7 +217,9 @@ removes only the matching paid period; it cannot override a later paid invoice.
 Refund facts are stored by PaymentIntent and Charge even if the payment webhook
 has not arrived, so later facts converge without depending on webhook order.
 `refund.updated` and `charge.refunded` cover delayed and aggregate refund
-completion. Partial and failed refunds remain audit-only.
+completion. The latest ordered snapshot also clears a previous full-refund fact
+when Stripe later reports that the refund failed. Partial and failed refunds
+remain audit-only.
 
 New customer keys exist in plaintext only in Worker memory. Before the D1 batch is
 committed, the key and recipient are encrypted together using AES-256-GCM and the

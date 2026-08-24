@@ -306,7 +306,7 @@ describe('D1 Stripe billing reducer', () => {
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM licenses').get()).toEqual({ count: 0 });
   });
 
-  it('revokes Lifetime only after the payment becomes fully refunded', async () => {
+  it('revokes Lifetime only while the latest refund snapshot is fully refunded', async () => {
     const { sqlite, repository } = await setup();
     const lifetimeCandidate = {
       ...candidate('life', period1, 'cs_life'),
@@ -344,11 +344,19 @@ describe('D1 Stripe billing reducer', () => {
       FROM stripe_entitlements e
       JOIN licenses l ON l.id = e.license_id
     `).get()).toEqual({ billing_state: 'active', status: 'active', admin_status: 'active' });
-    await repository.applyRefundSnapshot({
+    const succeededRefund = {
       ...fullRefund('life'),
       stripePaymentIntentId: 'pi_life',
       stripeChargeId: 'ch_life',
       amount: 3900,
+    };
+    await repository.applyRefundSnapshot({
+      ...succeededRefund,
+      chargeSnapshot: {
+        ...succeededRefund,
+        factId: 'charge:ch_life',
+        stripeRefundId: null,
+      },
     });
     expect(sqlite.prepare(`
       SELECT e.billing_state, l.status, l.admin_status
@@ -358,6 +366,49 @@ describe('D1 Stripe billing reducer', () => {
     expect(sqlite.prepare(`
       SELECT status, encrypted_payload FROM license_delivery_outbox
     `).get()).toEqual({ status: 'cancelled', encrypted_payload: null });
+
+    const failedRefund = {
+      ...succeededRefund,
+      refundStatus: 'failed',
+      paymentFullyRefunded: false,
+      eventId: 'evt_refund_life_failed',
+      eventCreatedAt: 500,
+      updatedAt: period1,
+    };
+    await repository.applyRefundSnapshot({
+      ...failedRefund,
+      chargeSnapshot: {
+        ...failedRefund,
+        factId: 'charge:ch_life',
+        stripeRefundId: null,
+        refundStatus: 'not_refunded',
+        amount: 0,
+      },
+    });
+    expect(sqlite.prepare(`
+      SELECT e.billing_state, l.status, l.admin_status
+      FROM stripe_entitlements e
+      JOIN licenses l ON l.id = e.license_id
+    `).get()).toEqual({ billing_state: 'active', status: 'active', admin_status: 'active' });
+    expect(sqlite.prepare(`
+      SELECT fact_id, payment_fully_refunded
+      FROM stripe_refund_facts ORDER BY fact_id
+    `).all()).toEqual([
+      { fact_id: 'charge:ch_life', payment_fully_refunded: 0 },
+      { fact_id: 'refund:re_life', payment_fully_refunded: 0 },
+    ]);
+
+    await repository.applyRefundSnapshot({
+      ...succeededRefund,
+      chargeSnapshot: {
+        ...succeededRefund,
+        factId: 'charge:ch_life',
+        stripeRefundId: null,
+      },
+    });
+    expect(sqlite.prepare(`
+      SELECT billing_state FROM stripe_entitlements
+    `).get()).toEqual({ billing_state: 'active' });
   });
 
   it('does not let an old-period refund reduce a newer paid period', async () => {

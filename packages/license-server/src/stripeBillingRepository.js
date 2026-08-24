@@ -175,10 +175,22 @@ const refundUpsert = (database, record) => database.prepare(`
       ELSE stripe_refund_facts.refund_status
     END,
     amount = CASE
-      WHEN excluded.event_created_at >= stripe_refund_facts.event_created_at
+      WHEN excluded.event_created_at > stripe_refund_facts.event_created_at
+        OR (
+          excluded.event_created_at = stripe_refund_facts.event_created_at
+          AND excluded.event_id > stripe_refund_facts.event_id
+        )
       THEN excluded.amount ELSE stripe_refund_facts.amount END,
     currency = COALESCE(excluded.currency, stripe_refund_facts.currency),
-    payment_fully_refunded = MAX(stripe_refund_facts.payment_fully_refunded, excluded.payment_fully_refunded),
+    payment_fully_refunded = CASE
+      WHEN excluded.event_created_at > stripe_refund_facts.event_created_at
+        OR (
+          excluded.event_created_at = stripe_refund_facts.event_created_at
+          AND excluded.event_id > stripe_refund_facts.event_id
+        )
+      THEN excluded.payment_fully_refunded
+      ELSE stripe_refund_facts.payment_fully_refunded
+    END,
     event_id = CASE
       WHEN excluded.event_created_at > stripe_refund_facts.event_created_at
         OR (
@@ -622,8 +634,9 @@ export class D1StripeBillingRepository {
   }
 
   async applyRefundSnapshot(record) {
+    const facts = [record, record.chargeSnapshot].filter(Boolean);
     await this.database.batch([
-      refundUpsert(this.database, record),
+      ...facts.map((fact) => refundUpsert(this.database, fact)),
       ...recomputeStatements(this.database, record.updatedAt),
     ]);
   }

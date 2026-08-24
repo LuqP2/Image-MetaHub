@@ -432,6 +432,44 @@ describe('refund convergence', () => {
         paymentFullyRefunded: true,
         stripePaymentIntentId: 'pi_1',
         stripeChargeId: 'ch_1',
+        chargeSnapshot: expect.objectContaining({
+          factId: 'charge:ch_1',
+          paymentFullyRefunded: true,
+        }),
+      }),
+    );
+  });
+
+  it('clears refund and Charge aggregates when a completed refund later fails', async () => {
+    const { service, repository, stripeClient } = createService();
+    stripeClient.refunds.retrieve.mockResolvedValue({
+      id: 're_1',
+      status: 'failed',
+      charge: 'ch_1',
+      payment_intent: 'pi_1',
+      amount: 499,
+      currency: 'usd',
+    });
+    stripeClient.charges.retrieve.mockResolvedValue({
+      id: 'ch_1',
+      payment_intent: 'pi_1',
+      amount: 499,
+      amount_refunded: 0,
+      currency: 'usd',
+    });
+
+    await service.processEvent(event('refund.failed', 're_1', 300));
+
+    expect(repository.applyRefundSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        factId: 'refund:re_1',
+        refundStatus: 'failed',
+        paymentFullyRefunded: false,
+        chargeSnapshot: expect.objectContaining({
+          factId: 'charge:ch_1',
+          refundStatus: 'not_refunded',
+          paymentFullyRefunded: false,
+        }),
       }),
     );
   });

@@ -99,6 +99,29 @@ function paymentReferences(invoice) {
   };
 }
 
+function chargeRefundSnapshot(charge, event, recordedAt) {
+  const amountRefunded = Number(charge.amount_refunded || 0);
+  const fullyRefunded = Number(charge.amount) > 0
+    && amountRefunded >= Number(charge.amount);
+  let refundStatus = 'not_refunded';
+  if (amountRefunded > 0) refundStatus = 'partial';
+  if (fullyRefunded) refundStatus = 'succeeded';
+  return {
+    factId: `charge:${charge.id}`,
+    stripeRefundId: null,
+    stripePaymentIntentId: objectId(charge.payment_intent),
+    stripeChargeId: charge.id,
+    refundStatus,
+    amount: amountRefunded,
+    currency: charge.currency ?? null,
+    paymentFullyRefunded: fullyRefunded,
+    eventId: event.eventId,
+    eventCreatedAt: event.eventCreatedAt,
+    createdAt: recordedAt,
+    updatedAt: recordedAt,
+  };
+}
+
 function planForPrice(priceId, config) {
   if (priceId === config.monthlyPriceId || config.monthlyHistoricalPriceIds.includes(priceId)) return 'monthly';
   if (priceId === config.annualPriceId || config.annualHistoricalPriceIds.includes(priceId)) return 'annual';
@@ -444,22 +467,7 @@ export class StripeBillingService {
     const now = this.nowDate().toISOString();
     if (event.eventType === 'charge.refunded') {
       const charge = await this.stripeClient.charges.retrieve(event.objectId);
-      const fullyRefunded = Number(charge.amount) > 0
-        && Number(charge.amount_refunded) >= Number(charge.amount);
-      await this.repository.applyRefundSnapshot({
-        factId: `charge:${charge.id}`,
-        stripeRefundId: null,
-        stripePaymentIntentId: objectId(charge.payment_intent),
-        stripeChargeId: charge.id,
-        refundStatus: fullyRefunded ? 'succeeded' : 'partial',
-        amount: Number(charge.amount_refunded || 0),
-        currency: charge.currency ?? null,
-        paymentFullyRefunded: fullyRefunded,
-        eventId: event.eventId,
-        eventCreatedAt: event.eventCreatedAt,
-        createdAt: now,
-        updatedAt: now,
-      });
+      await this.repository.applyRefundSnapshot(chargeRefundSnapshot(charge, event, now));
       return;
     }
 
@@ -487,6 +495,7 @@ export class StripeBillingService {
       eventCreatedAt: event.eventCreatedAt,
       createdAt: now,
       updatedAt: now,
+      chargeSnapshot: charge ? chargeRefundSnapshot(charge, event, now) : null,
     });
   }
 
