@@ -51,6 +51,27 @@ const safeErrorCode = (error) => {
   return /^[a-z0-9_:-]{1,80}$/.test(value) ? value : 'processing_error';
 };
 
+async function collectStripeList(fetchPage) {
+  const data = [];
+  const cursors = new Set();
+  let startingAfter = null;
+  while (true) {
+    const page = await fetchPage({
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    const pageData = page?.data || [];
+    data.push(...pageData);
+    if (!page?.has_more) return data;
+    const nextCursor = objectId(pageData.at(-1));
+    if (!nextCursor || cursors.has(nextCursor)) {
+      throw new RetryableStripeEventError('stripe_pagination_cursor_invalid');
+    }
+    cursors.add(nextCursor);
+    startingAfter = nextCursor;
+  }
+}
+
 function paymentReferences(invoice) {
   const paidPayment = invoice?.payments?.data?.find((item) => item?.status === 'paid')
     ?? invoice?.payments?.data?.[0]
@@ -285,9 +306,10 @@ export class StripeBillingService {
     if (event.eventType === 'checkout.session.async_payment_failed') return;
     if (session.payment_status !== 'paid') return;
 
-    const lineItems = await this.stripeClient.checkout.sessions.listLineItems(session.id, { limit: 100 });
-    if (lineItems.has_more) throw new RetryableStripeEventError('stripe_checkout_lines_incomplete');
-    const matches = (lineItems.data || []).filter((line) => {
+    const lineItems = await collectStripeList(
+      (params) => this.stripeClient.checkout.sessions.listLineItems(session.id, params),
+    );
+    const matches = lineItems.filter((line) => {
       const priceId = objectId(line.price);
       const productId = objectId(line.price?.product);
       return priceId === this.config.lifetimePriceId
@@ -378,9 +400,10 @@ export class StripeBillingService {
     }
     if (invoice.status !== 'paid') throw new RetryableStripeEventError('stripe_invoice_not_paid');
 
-    const lineItems = await this.stripeClient.invoices.listLineItems(invoice.id, { limit: 100 });
-    if (lineItems.has_more) throw new RetryableStripeEventError('stripe_invoice_lines_incomplete');
-    const paidLine = selectPaidSubscriptionLine(lineItems.data, this.config);
+    const lineItems = await collectStripeList(
+      (params) => this.stripeClient.invoices.listLineItems(invoice.id, params),
+    );
+    const paidLine = selectPaidSubscriptionLine(lineItems, this.config);
     if (!paidLine) throw new RetryableStripeEventError('stripe_invoice_line_ambiguous');
     const plan = planForPrice(paidLine.priceId, this.config);
     if (!plan || plan === 'lifetime') throw new RetryableStripeEventError('stripe_invoice_price_invalid');

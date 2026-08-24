@@ -366,6 +366,42 @@ describe('Stripe billing service', () => {
     expect(selectPaidSubscriptionLine([paidLine(), paidLine()], config)).toBeNull();
   });
 
+  it('finds the paid subscription line on a later invoice page', async () => {
+    const existing = {
+      id: 'lic_paginated', plan: 'monthly', status: 'active', source: 'stripe',
+      expiresAt: '2026-09-23T00:00:00.000Z', stripeSubscriptionId: 'sub_1',
+    };
+    repository.licenses.set(existing.id, existing);
+    repository.subscriptions.set('sub_1', {
+      stripeSubscriptionId: 'sub_1', licenseId: existing.id,
+      latestPaidEventCreatedAt: 100, lastEventCreatedAt: 100, paidThrough: existing.expiresAt,
+    });
+    const invoice = {
+      id: 'in_paginated', status: 'paid', customer_email: 'buyer@example.com',
+      parent: { subscription_details: { subscription: 'sub_1' } },
+      payments: { data: [{ status: 'paid', payment: { payment_intent: 'pi_paginated' } }] },
+      amount_paid: 499, currency: 'usd',
+    };
+    stripe._invoices.set(invoice.id, invoice);
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      ...paidLine('price_monthly', 1_789_000_000),
+      id: `il_noise_${index}`,
+      parent: { type: 'invoice_item_details' },
+    }));
+    stripe.invoices.listLineItems
+      .mockImplementationOnce(async () => ({ data: firstPage, has_more: true }))
+      .mockImplementationOnce(async () => ({
+        data: [paidLine('price_monthly', 1_791_592_000)], has_more: false,
+      }));
+
+    await process(event('evt_paginated_paid', 'invoice.paid', invoice, 1_788_500_000));
+
+    expect(stripe.invoices.listLineItems).toHaveBeenNthCalledWith(2, invoice.id, {
+      limit: 100, starting_after: 'il_noise_99',
+    });
+    expect(existing.expiresAt).toBe(new Date(1_791_592_000_000).toISOString());
+  });
+
   it('creates one subscription key on invoice.paid and reuses it on renewal', async () => {
     const checkout = {
       id: 'cs_subscription', mode: 'subscription', payment_status: 'paid', livemode: false,
