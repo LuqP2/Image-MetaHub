@@ -12,6 +12,7 @@ export const SUPPORTED_STRIPE_EVENTS = new Set([
   'invoice.payment_action_required',
   'invoice.finalization_failed',
   'refund.created',
+  'refund.updated',
   'refund.failed',
 ]);
 
@@ -382,8 +383,8 @@ export class StripeBillingService {
 
     const existing = await this.repository.findLicenseBySubscriptionId(subscriptionId);
     const billingMirror = await this.repository.findSubscription(subscriptionId);
-    const newerTerminationExists = billingMirror?.billingStatus === 'canceled'
-      && billingMirror.lastEventCreatedAt > event.eventCreatedAt;
+    const blockingTerminationExists = billingMirror?.billingStatus === 'canceled'
+      && billingMirror.lastEventCreatedAt >= event.eventCreatedAt;
     const subscriptionRecord = this.subscriptionRecord(subscription, event, now, {
       licenseId: stripeLicenseId(existing),
       stripePriceId: paidLine.priceId,
@@ -413,7 +414,7 @@ export class StripeBillingService {
       return;
     }
 
-    if (newerTerminationExists) {
+    if (blockingTerminationExists) {
       await this.repository.recordInvoice(invoiceRecord);
       return;
     }
@@ -469,7 +470,7 @@ export class StripeBillingService {
     const chargeId = objectId(refund.charge);
     const paymentIntentId = objectId(refund.payment_intent);
     const payment = await this.repository.findPayment({ paymentIntentId, chargeId });
-    if (!payment && event.eventType === 'refund.created') {
+    if (!payment && event.eventType !== 'refund.failed' && refund.status !== 'failed') {
       throw new RetryableStripeEventError('stripe_refund_payment_unresolved');
     }
     let charge = null;

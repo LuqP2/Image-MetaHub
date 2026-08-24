@@ -154,6 +154,14 @@ describe('D1 Stripe billing repository', () => {
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM stripe_payments WHERE payment_reference = 'pi_rollback'").get()).toMatchObject({ count: 0 });
   });
 
+  it('cancels pending key delivery atomically with effective subscription deletion', async () => {
+    await repository.createStripeLicenseBundle({ license: license(), subscription, invoice, payment, delivery });
+    expect(await repository.terminateSubscription('sub_1', 300, '2026-08-24T00:00:00.000Z')).toBe(true);
+    expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'cancelled' });
+    expect(sqlite.prepare('SELECT status, encrypted_payload FROM license_delivery_outbox WHERE id = ?').get('delivery_1'))
+      .toMatchObject({ status: 'cancelled', encrypted_payload: null });
+  });
+
   it('does not let a delayed paid period reactivate a same-or-later fully refunded period', async () => {
     await repository.createStripeLicenseBundle({ license: license(), subscription, invoice, payment, delivery });
     await repository.recordRefund({

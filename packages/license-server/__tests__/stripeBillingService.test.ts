@@ -89,7 +89,7 @@ class MemoryBillingRepository {
     license.plan = plan;
     const currentSubscription = this.subscriptions.get(subscription.stripeSubscriptionId);
     const blockedByTermination = currentSubscription?.billingStatus === 'canceled'
-      && currentSubscription.lastEventCreatedAt > subscription.latestPaidEventCreatedAt;
+      && currentSubscription.lastEventCreatedAt >= subscription.latestPaidEventCreatedAt;
     const blockedByRefund = [...this.refunds.values()].some((refund) => {
       if (!refund.isFullRefund || refund.refundStatus !== 'succeeded') return false;
       const refundedPayment = this.payments.get(refund.paymentReference);
@@ -129,6 +129,10 @@ class MemoryBillingRepository {
     const subscription = this.subscriptions.get(id);
     if (!subscription?.licenseId || (subscription.latestPaidEventCreatedAt ?? 0) > eventCreatedAt) return false;
     this.licenses.get(subscription.licenseId).status = 'cancelled';
+    const delivery = [...this.deliveries.values()].find((item) => item.licenseId === subscription.licenseId);
+    if (delivery && (delivery.status === 'pending' || delivery.status === 'processing')) {
+      Object.assign(delivery, { status: 'cancelled', encryptedPayload: null });
+    }
     return true;
   }
   async claimDeliveries() {
@@ -410,11 +414,17 @@ describe('Stripe billing service', () => {
       stripeSubscriptionId: 'sub_1', licenseId: existing.id,
       latestPaidEventCreatedAt: 300, lastEventCreatedAt: 300,
     });
+    const pendingDelivery = {
+      id: 'delivery_cancelled', licenseId: existing.id, encryptedPayload: 'encrypted',
+      status: 'pending', attempts: 0,
+    };
+    repository.deliveries.set(pendingDelivery.id, pendingDelivery);
     stripe._subscriptions.set('sub_1', subscription({ status: 'canceled', ended_at: 1_786_000_000 }));
     await process(event('evt_delete_old', 'customer.subscription.deleted', { id: 'sub_1' }, 200));
     expect(existing.status).toBe('active');
     await process(event('evt_delete_new', 'customer.subscription.deleted', { id: 'sub_1' }, 400));
     expect(existing.status).toBe('cancelled');
+    expect(pendingDelivery).toMatchObject({ status: 'cancelled', encryptedPayload: null });
 
     const stalePaidInvoice = {
       id: 'in_before_deletion', status: 'paid', customer_email: 'buyer@example.com',
@@ -424,8 +434,25 @@ describe('Stripe billing service', () => {
     };
     stripe._invoices.set(stalePaidInvoice.id, stalePaidInvoice);
     stripe._invoiceLines.set(stalePaidInvoice.id, [paidLine('price_monthly', 1_789_000_000)]);
-    await process(event('evt_paid_before_deletion', 'invoice.paid', stalePaidInvoice, 350));
+    await process(event('evt_paid_before_deletion', 'invoice.paid', stalePaidInvoice, 400));
     expect(existing.status).toBe('cancelled');
+  });
+
+  it('does not provision a same-second paid invoice after deletion was processed first', async () => {
+    stripe._subscriptions.set('sub_1', subscription({ status: 'canceled', ended_at: 1_786_000_000 }));
+    await process(event('evt_delete_tied', 'customer.subscription.deleted', { id: 'sub_1' }, 400));
+    const tiedInvoice = {
+      id: 'in_tied', status: 'paid', customer_email: 'buyer@example.com',
+      parent: { subscription_details: { subscription: 'sub_1' } },
+      payments: { data: [{ status: 'paid', payment: { payment_intent: 'pi_tied' } }] },
+      amount_paid: 499, currency: 'usd',
+    };
+    stripe._invoices.set(tiedInvoice.id, tiedInvoice);
+    stripe._invoiceLines.set(tiedInvoice.id, [paidLine('price_monthly', 1_789_000_000)]);
+    await process(event('evt_paid_tied', 'invoice.paid', tiedInvoice, 400));
+    expect(repository.licenses.size).toBe(0);
+    expect(repository.deliveries.size).toBe(0);
+    expect(repository.invoices.get(tiedInvoice.id)).toMatchObject({ licenseId: null });
   });
 
   it('retries delivery without storing plaintext and clears ciphertext after success', async () => {
@@ -538,6 +565,32 @@ describe('Stripe billing service', () => {
     await process(event('evt_paid_delayed_old', 'invoice.paid', delayedOldInvoice, 1_785_000_000));
     expect(monthly.status).toBe('expired');
     expect(monthly.expiresAt).toBe(now.toISOString());
+  });
+
+  it('processes refund.updated after a pending refund event has dead-lettered', async () => {
+    const lifetime = { id: 'lic_refund_updated', plan: 'lifetime', status: 'active', source: 'stripe' };
+    repository.licenses.set(lifetime.id, lifetime);
+    repository.payments.set('pi_refund_updated', {
+      paymentReference: 'pi_refund_updated', stripePaymentIntentId: 'pi_refund_updated',
+      stripeChargeId: 'ch_refund_updated', licenseId: lifetime.id,
+    });
+    stripe._refunds.set('re_updated', {
+      id: 're_updated', status: 'pending', amount: 3900, currency: 'usd',
+      charge: 'ch_refund_updated', payment_intent: 'pi_refund_updated',
+    });
+    stripe._charges.set('ch_refund_updated', { id: 'ch_refund_updated', amount: 3900, amount_refunded: 0 });
+    await process(event('evt_refund_pending', 'refund.created', { id: 're_updated' }));
+    repository.events.get('evt_refund_pending').status = 'dead_letter';
+    expect(lifetime.status).toBe('active');
+
+    stripe._refunds.set('re_updated', {
+      id: 're_updated', status: 'succeeded', amount: 3900, currency: 'usd',
+      charge: 'ch_refund_updated', payment_intent: 'pi_refund_updated',
+    });
+    stripe._charges.set('ch_refund_updated', { id: 'ch_refund_updated', amount: 3900, amount_refunded: 3900 });
+    await process(event('evt_refund_updated', 'refund.updated', { id: 're_updated' }, 1_786_100_000));
+    expect(lifetime.status).toBe('revoked');
+    expect(repository.events.get('evt_refund_updated').status).toBe('processed');
   });
 
   it('retries transient email failures and dead-letters after the seven scheduled retries', async () => {

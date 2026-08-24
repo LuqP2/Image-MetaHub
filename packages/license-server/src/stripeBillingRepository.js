@@ -290,7 +290,7 @@ export class D1StripeBillingRepository {
             ) OR EXISTS (
               SELECT 1 FROM stripe_subscriptions s
               WHERE s.stripe_subscription_id = ? AND s.billing_status = 'canceled'
-                AND s.last_event_created_at > ?
+                AND s.last_event_created_at >= ?
             ) THEN status ELSE 'active' END,
             expires_at = CASE WHEN EXISTS (
               SELECT 1 FROM stripe_refunds r
@@ -302,7 +302,7 @@ export class D1StripeBillingRepository {
             ) OR EXISTS (
               SELECT 1 FROM stripe_subscriptions s
               WHERE s.stripe_subscription_id = ? AND s.billing_status = 'canceled'
-                AND s.last_event_created_at > ?
+                AND s.last_event_created_at >= ?
             ) THEN expires_at
               WHEN expires_at IS NULL OR expires_at < ? THEN ? ELSE expires_at END,
             stripe_price_id = ?, updated_at = ?
@@ -410,6 +410,12 @@ export class D1StripeBillingRepository {
             last_event_created_at = MAX(last_event_created_at, ?), updated_at = ?
         WHERE stripe_subscription_id = ?
       `).bind(now, eventCreatedAt, now, subscriptionId),
+      this.database.prepare(`
+        UPDATE license_delivery_outbox
+        SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
+            lease_token = NULL, lease_expires_at = NULL
+        WHERE license_id = ? AND status IN ('pending', 'processing')
+      `).bind(now, subscription.licenseId),
     ]);
     return true;
   }

@@ -175,6 +175,7 @@ The endpoint supports:
 - `invoice.payment_action_required`
 - `invoice.finalization_failed`
 - `refund.created`
+- `refund.updated`
 - `refund.failed`
 
 For recurring products, `invoice.paid` is the only provisioning and renewal
@@ -191,8 +192,10 @@ paths.
 
 Full successful refunds revoke Lifetime. For recurring licenses, a full refund
 expires only the latest paid period; it cannot override a later paid invoice.
-Partial and failed refunds are audit-only. A stale subscription deletion similarly
-cannot override an invoice paid later than that deletion event.
+`refund.updated` applies delayed refund success even after the original creation
+event exhausted its retries. Partial and failed refunds are audit-only. A stale
+subscription deletion similarly cannot override an invoice paid later than that
+deletion event; equal Stripe timestamps resolve in favor of effective deletion.
 
 New customer keys exist in plaintext only in Worker memory. Before the D1 batch is
 committed, the key and recipient are encrypted together using AES-256-GCM and the
@@ -210,6 +213,6 @@ Administrative recovery endpoints:
 Production activation still requires a separate, explicit operation: apply
 `0002_stripe_billing.sql`, configure the secrets and variables above, deploy the
 Worker/Cron Trigger, verify the Resend sender, then register the Stripe webhook at
-API version `2026-07-29.dahlia` with exactly the twelve events listed above. None
+API version `2026-07-29.dahlia` with exactly the thirteen events listed above. None
 of those external actions are performed by repository tests or this deployment
 preparation code.
