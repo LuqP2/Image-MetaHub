@@ -2,6 +2,8 @@ PRAGMA foreign_keys = ON;
 
 ALTER TABLE licenses ADD COLUMN admin_status TEXT NOT NULL DEFAULT 'active'
   CHECK (admin_status IN ('active', 'revoked', 'cancelled', 'expired'));
+ALTER TABLE licenses ADD COLUMN legacy_status_revision INTEGER NOT NULL DEFAULT 0
+  CHECK (legacy_status_revision >= 0);
 UPDATE licenses SET admin_status = status;
 
 -- Expand/contract compatibility: the deployed v1 Worker continues to use
@@ -19,16 +21,9 @@ CREATE TRIGGER licenses_sync_admin_status_after_status_update
 AFTER UPDATE OF status ON licenses
 FOR EACH ROW
 WHEN NEW.admin_status <> NEW.status
+  AND NEW.legacy_status_revision = OLD.legacy_status_revision
 BEGIN
   UPDATE licenses SET admin_status = NEW.status WHERE id = NEW.id;
-END;
-
-CREATE TRIGGER licenses_sync_status_after_admin_status_update
-AFTER UPDATE OF admin_status ON licenses
-FOR EACH ROW
-WHEN NEW.status <> NEW.admin_status
-BEGIN
-  UPDATE licenses SET status = NEW.admin_status WHERE id = NEW.id;
 END;
 
 CREATE INDEX idx_licenses_admin_status_expires_at

@@ -1,18 +1,14 @@
-const effectiveStatus = (row) => {
-  if (row.admin_status !== 'active') return row.admin_status;
-  if (row.source !== 'stripe') return row.admin_status;
-  if (row.billing_state === 'active') return 'active';
-  if (row.billing_state === 'cancelled') return 'cancelled';
-  if (row.billing_state === 'refunded' && row.plan === 'lifetime') return 'revoked';
-  return 'expired';
-};
+import {
+  effectiveLicenseStatus,
+  LEGACY_STATUS_PROJECTION_SQL,
+} from './licenseStatusProjection.js';
 
 const mapLicense = (row) => row && ({
   id: row.id,
   keyHash: row.key_hash,
   emailLookup: row.email_lookup,
   plan: row.plan,
-  status: effectiveStatus(row),
+  status: effectiveLicenseStatus(row),
   adminStatus: row.admin_status,
   billingState: row.billing_state ?? null,
   source: row.source,
@@ -126,19 +122,22 @@ export class D1LicenseRepository {
     }
     const update = this.database.prepare(`UPDATE licenses SET ${assignments.join(', ')} WHERE id = ?`)
       .bind(...values, id);
+    const syncLegacyStatus = this.database.prepare(`
+      UPDATE licenses
+      SET status = ${LEGACY_STATUS_PROJECTION_SQL},
+          legacy_status_revision = legacy_status_revision + 1
+      WHERE id = ?
+    `).bind(id);
+    const statements = [update, syncLegacyStatus];
     if (patch.status !== undefined && patch.status !== 'active') {
-      await this.database.batch([
-        update,
-        this.database.prepare(`
-          UPDATE license_delivery_outbox
-          SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
-              lease_token = NULL, lease_expires_at = NULL
-          WHERE license_id = ? AND status IN ('pending', 'leased', 'dead_letter')
-        `).bind(patch.updatedAt, id),
-      ]);
-    } else {
-      await update.run();
+      statements.push(this.database.prepare(`
+        UPDATE license_delivery_outbox
+        SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
+            lease_token = NULL, lease_expires_at = NULL
+        WHERE license_id = ? AND status IN ('pending', 'leased', 'dead_letter')
+      `).bind(patch.updatedAt, id));
     }
+    await this.database.batch(statements);
     return this.findLicenseById(id);
   }
 

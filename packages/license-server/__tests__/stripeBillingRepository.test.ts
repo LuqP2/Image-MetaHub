@@ -208,9 +208,22 @@ describe('D1 Stripe billing reducer', () => {
     expect(sqlite.prepare(`SELECT status, admin_status FROM licenses WHERE id = 'lic_active'`).get())
       .toEqual({ status: 'revoked', admin_status: 'revoked' });
 
-    sqlite.prepare(`UPDATE licenses SET admin_status = 'active' WHERE id = 'lic_active'`).run();
+    sqlite.prepare(`
+      UPDATE licenses
+      SET status = 'active', admin_status = 'active'
+      WHERE id = 'lic_active'
+    `).run();
+    sqlite.prepare(`
+      UPDATE licenses
+      SET status = 'cancelled', legacy_status_revision = legacy_status_revision + 1
+      WHERE id = 'lic_active'
+    `).run();
     expect(sqlite.prepare(`SELECT status, admin_status FROM licenses WHERE id = 'lic_active'`).get())
-      .toEqual({ status: 'active', admin_status: 'active' });
+      .toEqual({ status: 'cancelled', admin_status: 'active' });
+
+    sqlite.prepare(`UPDATE licenses SET status = 'expired' WHERE id = 'lic_active'`).run();
+    expect(sqlite.prepare(`SELECT status, admin_status FROM licenses WHERE id = 'lic_active'`).get())
+      .toEqual({ status: 'expired', admin_status: 'expired' });
 
     sqlite.prepare(`
       INSERT INTO licenses (
@@ -327,8 +340,10 @@ describe('D1 Stripe billing reducer', () => {
       now,
     });
     expect(sqlite.prepare(`
-      SELECT billing_state FROM stripe_entitlements
-    `).get()).toEqual({ billing_state: 'active' });
+      SELECT e.billing_state, l.status, l.admin_status
+      FROM stripe_entitlements e
+      JOIN licenses l ON l.id = e.license_id
+    `).get()).toEqual({ billing_state: 'active', status: 'active', admin_status: 'active' });
     await repository.applyRefundSnapshot({
       ...fullRefund('life'),
       stripePaymentIntentId: 'pi_life',
@@ -336,8 +351,10 @@ describe('D1 Stripe billing reducer', () => {
       amount: 3900,
     });
     expect(sqlite.prepare(`
-      SELECT billing_state FROM stripe_entitlements
-    `).get()).toEqual({ billing_state: 'refunded' });
+      SELECT e.billing_state, l.status, l.admin_status
+      FROM stripe_entitlements e
+      JOIN licenses l ON l.id = e.license_id
+    `).get()).toEqual({ billing_state: 'refunded', status: 'revoked', admin_status: 'active' });
     expect(sqlite.prepare(`
       SELECT status, encrypted_payload FROM license_delivery_outbox
     `).get()).toEqual({ status: 'cancelled', encrypted_payload: null });
@@ -356,6 +373,18 @@ describe('D1 Stripe billing reducer', () => {
       paid_through: period2,
       winning_invoice_id: 'in_2',
     });
+  });
+
+  it('projects deletion and renewal into the rollback-compatible status', async () => {
+    const { sqlite, repository } = await setup();
+    await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
+    await repository.applySubscriptionDeleted(deletion(200));
+    expect(sqlite.prepare(`SELECT status, admin_status FROM licenses`).get())
+      .toEqual({ status: 'cancelled', admin_status: 'active' });
+
+    await repository.applyPaidInvoice(paidInvoice('2', 300, period2));
+    expect(sqlite.prepare(`SELECT status, admin_status FROM licenses`).get())
+      .toEqual({ status: 'active', admin_status: 'active' });
   });
 
   it('keeps administrative revocation separate from every Stripe transition', async () => {
@@ -381,7 +410,7 @@ describe('D1 Stripe billing reducer', () => {
   });
 
   it('preserves the public status contract while admin and billing states stay separate', async () => {
-    const { database, repository } = await setup();
+    const { sqlite, database, repository } = await setup();
     const licenses = new D1LicenseRepository(database);
     await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
     const licenseId = (await licenses.findLicenseByKeyHash('hash_1'))?.id;
@@ -424,6 +453,13 @@ describe('D1 Stripe billing reducer', () => {
       adminStatus: 'active',
       billingState: 'expired',
     });
+    expect(sqlite.prepare(`SELECT status, admin_status FROM licenses`).get())
+      .toEqual({ status: 'expired', admin_status: 'active' });
+
+    await licenses.updateLicense(licenseId, { status: 'revoked', updatedAt: now });
+    await licenses.updateLicense(licenseId, { status: 'active', updatedAt: now });
+    expect(sqlite.prepare(`SELECT status, admin_status FROM licenses`).get())
+      .toEqual({ status: 'expired', admin_status: 'active' });
   });
 
   it('cancels a claimed delivery before authorization but honors the authorization boundary', async () => {

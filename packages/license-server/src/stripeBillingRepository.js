@@ -1,3 +1,5 @@
+import { LEGACY_STATUS_PROJECTION_SQL } from './licenseStatusProjection.js';
+
 const mapEvent = (row) => row && ({
   eventId: row.event_id,
   eventType: row.event_type,
@@ -330,6 +332,8 @@ const recomputeStatements = (database, now) => [
           (SELECT e.stripe_price_id FROM stripe_entitlements e WHERE e.license_id = licenses.id),
           stripe_price_id
         ),
+        status = ${LEGACY_STATUS_PROJECTION_SQL},
+        legacy_status_revision = legacy_status_revision + 1,
         updated_at = ?
     WHERE source = 'stripe'
   `).bind(now),
