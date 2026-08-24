@@ -406,11 +406,13 @@ export class StripeBillingService {
 
   async handleCheckout(event) {
     const now = this.nowDate().toISOString();
-    const session = event.objectSnapshot?.object === 'checkout.session'
+    const persistedSnapshot = event.objectSnapshot?.object === 'checkout.session'
       ? event.objectSnapshot
-      : await this.stripeClient.checkout.sessions.retrieve(event.objectId, {
-        expand: ['customer', 'subscription'],
-      });
+      : null;
+    const session = persistedSnapshot ?? await this.stripeClient.checkout.sessions.retrieve(
+      event.objectId,
+      { expand: ['customer', 'subscription'] },
+    );
     if (Boolean(session.livemode) !== this.config.expectedLivemode) return;
     if (session.mode === 'subscription') return;
     if (session.mode !== 'payment' || event.eventType === 'checkout.session.async_payment_failed') return;
@@ -425,24 +427,20 @@ export class StripeBillingService {
     ));
     if (matches.length !== 1) return;
 
-    let recipient = session;
-    if (
-      event.objectSnapshot?.object === 'checkout.session'
-      && !session.customer
-    ) {
-      recipient = await this.stripeClient.checkout.sessions.retrieve(event.objectId, {
-        expand: ['customer'],
-      });
-    }
+    const recipientSession = persistedSnapshot
+      ? await this.stripeClient.checkout.sessions.retrieve(event.objectId, {
+        expand: ['customer', 'subscription'],
+      })
+      : session;
     const email = await this.resolveCustomerEmail(
-      recipient.customer,
-      recipient.customer_details?.email ?? recipient.customer_email,
+      recipientSession.customer ?? session.customer,
+      recipientSession.customer_details?.email ?? recipientSession.customer_email,
     );
     const prepared = await this.prepareCandidateLicense({
       email,
       plan: 'lifetime',
       expiresAt: null,
-      stripeCustomerId: objectId(session.customer),
+      stripeCustomerId: objectId(session.customer ?? recipientSession.customer),
       stripePriceId: this.config.lifetimePriceId,
       stripeCheckoutSessionId: session.id,
       externalReference: objectId(session.payment_intent) ?? session.id,

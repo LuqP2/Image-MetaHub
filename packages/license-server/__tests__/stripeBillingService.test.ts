@@ -205,6 +205,71 @@ describe('Stripe normalization', () => {
     }));
   });
 
+  it('uses the persisted Checkout payment fact but retrieves its durable recipient', async () => {
+    const applyLifetimePayment = vi.fn(async () => undefined);
+    const retrieve = vi.fn(async () => ({
+      id: 'cs_delayed',
+      livemode: false,
+      mode: 'payment',
+      payment_status: 'unpaid',
+      customer: { id: 'cus_deleted', deleted: true },
+      customer_details: { email: 'checkout-recipient@example.com' },
+      payment_intent: 'pi_changed',
+      amount_total: 0,
+      currency: 'usd',
+    }));
+    const { service } = createService({
+      repository: { applyLifetimePayment },
+      licenseService: {
+        prepareLicense: vi.fn(async () => ({
+          license: { id: 'lic_delayed' },
+          licenseKey: 'IMH2-TEST',
+        })),
+      },
+      stripeClient: {
+        checkout: {
+          sessions: {
+            retrieve,
+            listLineItems: vi.fn(async () => ({
+              data: [{
+                id: 'li_lifetime',
+                quantity: 1,
+                price: { id: 'price_lifetime', product: 'prod_lifetime' },
+              }],
+              has_more: false,
+            })),
+          },
+        },
+      },
+    });
+
+    await service.processEvent({
+      ...event('checkout.session.completed', 'cs_delayed', 100),
+      objectSnapshot: {
+        id: 'cs_delayed',
+        object: 'checkout.session',
+        livemode: false,
+        mode: 'payment',
+        payment_status: 'paid',
+        customer: 'cus_deleted',
+        subscription: null,
+        payment_intent: 'pi_authoritative',
+        amount_total: 4999,
+        currency: 'usd',
+      },
+    });
+
+    expect(retrieve).toHaveBeenCalledWith('cs_delayed', {
+      expand: ['customer', 'subscription'],
+    });
+    expect(applyLifetimePayment).toHaveBeenCalledWith(expect.objectContaining({
+      payment: expect.objectContaining({
+        stripePaymentIntentId: 'pi_authoritative',
+        amountPaid: 4999,
+      }),
+    }));
+  });
+
   it('keeps the Checkout Session off renewal payment facts', async () => {
     const invoices = new Map([
       ['in_initial', {
