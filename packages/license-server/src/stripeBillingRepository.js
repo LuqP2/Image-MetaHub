@@ -373,38 +373,49 @@ export class D1StripeBillingRepository {
   }
 
   async revokeRefundedLicense({ licenseId, recurring, refundedPeriodEnd, now }) {
-    if (recurring) {
-      const newer = await this.database.prepare(`
-        SELECT 1 FROM stripe_invoices
-        WHERE license_id = ? AND paid_event_created_at IS NOT NULL AND period_end > ?
-        LIMIT 1
-      `).bind(licenseId, refundedPeriodEnd).first();
-      if (newer) return false;
-    }
-    await this.database.batch([
+    const results = await this.database.batch([
       this.database.prepare(`
         UPDATE licenses
         SET status = ?, expires_at = CASE WHEN plan = 'lifetime' THEN NULL ELSE ? END, updated_at = ?
         WHERE id = ? AND source = 'stripe'
-      `).bind(recurring ? 'expired' : 'revoked', now, now, licenseId),
+          AND (? = 0 OR NOT EXISTS (
+            SELECT 1 FROM stripe_invoices
+            WHERE license_id = ? AND paid_event_created_at IS NOT NULL AND period_end > ?
+          ))
+      `).bind(
+        recurring ? 'expired' : 'revoked', now, now, licenseId,
+        recurring ? 1 : 0, licenseId, refundedPeriodEnd,
+      ),
       this.database.prepare(`
         UPDATE license_delivery_outbox
         SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?
         WHERE license_id = ? AND status IN ('pending', 'processing')
-      `).bind(now, licenseId),
+          AND (? = 0 OR NOT EXISTS (
+            SELECT 1 FROM stripe_invoices
+            WHERE license_id = ? AND paid_event_created_at IS NOT NULL AND period_end > ?
+          ))
+      `).bind(now, licenseId, recurring ? 1 : 0, licenseId, refundedPeriodEnd),
     ]);
-    return true;
+    return Boolean(results[0]?.meta?.changes);
   }
 
   async terminateSubscription(subscriptionId, eventCreatedAt, now) {
     const subscription = await this.findSubscription(subscriptionId);
     if (!subscription?.licenseId) return false;
     if (subscription.latestPaidEventCreatedAt && subscription.latestPaidEventCreatedAt > eventCreatedAt) return false;
-    await this.database.batch([
+    const results = await this.database.batch([
       this.database.prepare(`
         UPDATE licenses SET status = 'cancelled', updated_at = ?
         WHERE id = ? AND source = 'stripe'
-      `).bind(now, subscription.licenseId),
+          AND EXISTS (
+            SELECT 1 FROM stripe_subscriptions
+            WHERE stripe_subscription_id = ? AND license_id = ?
+              AND COALESCE(latest_paid_event_created_at, 0) <= ?
+          )
+      `).bind(
+        now, subscription.licenseId,
+        subscriptionId, subscription.licenseId, eventCreatedAt,
+      ),
       this.database.prepare(`
         UPDATE stripe_subscriptions
         SET billing_status = 'canceled', ended_at = COALESCE(ended_at, ?),
@@ -416,9 +427,17 @@ export class D1StripeBillingRepository {
         SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
             lease_token = NULL, lease_expires_at = NULL
         WHERE license_id = ? AND status IN ('pending', 'processing')
-      `).bind(now, subscription.licenseId),
+          AND EXISTS (
+            SELECT 1 FROM stripe_subscriptions
+            WHERE stripe_subscription_id = ? AND license_id = ?
+              AND COALESCE(latest_paid_event_created_at, 0) <= ?
+          )
+      `).bind(
+        now, subscription.licenseId,
+        subscriptionId, subscription.licenseId, eventCreatedAt,
+      ),
     ]);
-    return true;
+    return Boolean(results[0]?.meta?.changes);
   }
 
   async claimDeliveries({ now, leaseToken, leaseExpiresAt, limit }) {

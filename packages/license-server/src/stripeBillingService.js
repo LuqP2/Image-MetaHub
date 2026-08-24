@@ -466,7 +466,20 @@ export class StripeBillingService {
         delivery,
       });
     } catch (error) {
-      if (!isUniqueError(error) || !await this.repository.findLicenseBySubscriptionId(subscriptionId)) throw error;
+      const winner = isUniqueError(error)
+        ? await this.repository.findLicenseBySubscriptionId(subscriptionId)
+        : null;
+      if (!winner) throw error;
+      await this.repository.recordPaidRenewal({
+        licenseId: winner.id,
+        plan,
+        expiresAt,
+        priceId: paidLine.priceId,
+        now,
+        subscription: { ...subscriptionRecord, licenseId: winner.id },
+        invoice: { ...invoiceRecord, licenseId: winner.id },
+        payment: this.paymentRecord({ licenseId: winner.id, invoice, now }),
+      });
     }
   }
 

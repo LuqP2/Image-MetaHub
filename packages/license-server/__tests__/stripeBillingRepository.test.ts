@@ -27,11 +27,18 @@ class SqliteD1Statement {
 }
 
 class SqliteD1Database {
+  private beforeNextBatch: (() => void) | null = null;
+
   constructor(private database: DatabaseSync) {}
 
   prepare(sql: string) { return new SqliteD1Statement(this.database, sql); }
 
+  beforeBatch(callback: () => void) { this.beforeNextBatch = callback; }
+
   async batch(statements: SqliteD1Statement[]) {
+    const beforeBatch = this.beforeNextBatch;
+    this.beforeNextBatch = null;
+    beforeBatch?.();
     this.database.exec('BEGIN IMMEDIATE');
     try {
       const results = statements.map((statement) => statement.runSync());
@@ -121,6 +128,7 @@ const delivery = {
 
 describe('D1 Stripe billing repository', () => {
   let sqlite: DatabaseSync;
+  let database: SqliteD1Database;
   let repository: D1StripeBillingRepository;
 
   beforeEach(async () => {
@@ -128,7 +136,8 @@ describe('D1 Stripe billing repository', () => {
     const migrationsDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migrations');
     sqlite.exec(await fs.readFile(path.join(migrationsDirectory, '0001_initial.sql'), 'utf8'));
     sqlite.exec(await fs.readFile(path.join(migrationsDirectory, '0002_stripe_billing.sql'), 'utf8'));
-    repository = new D1StripeBillingRepository(new SqliteD1Database(sqlite) as any);
+    database = new SqliteD1Database(sqlite);
+    repository = new D1StripeBillingRepository(database as any);
   });
 
   afterEach(() => sqlite.close());
@@ -160,6 +169,21 @@ describe('D1 Stripe billing repository', () => {
     expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'cancelled' });
     expect(sqlite.prepare('SELECT status, encrypted_payload FROM license_delivery_outbox WHERE id = ?').get('delivery_1'))
       .toMatchObject({ status: 'cancelled', encrypted_payload: null });
+  });
+
+  it('does not cancel when a newer paid event commits immediately before deletion', async () => {
+    await repository.createStripeLicenseBundle({ license: license(), subscription, invoice, payment, delivery });
+    database.beforeBatch(() => {
+      sqlite.prepare(`
+        UPDATE stripe_subscriptions
+        SET latest_paid_event_created_at = 400, paid_through = '2026-10-23T00:00:00.000Z'
+        WHERE stripe_subscription_id = 'sub_1'
+      `).run();
+    });
+    expect(await repository.terminateSubscription('sub_1', 300, '2026-08-24T00:00:00.000Z')).toBe(false);
+    expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'active' });
+    expect(sqlite.prepare('SELECT status, encrypted_payload FROM license_delivery_outbox WHERE id = ?').get('delivery_1'))
+      .toMatchObject({ status: 'pending', encrypted_payload: delivery.encryptedPayload });
   });
 
   it('does not let a delayed paid period reactivate a same-or-later fully refunded period', async () => {
@@ -208,5 +232,26 @@ describe('D1 Stripe billing repository', () => {
       },
     });
     expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'revoked', expires_at: expiresAt });
+  });
+
+  it('does not apply an old-period refund when a newer invoice commits immediately before it', async () => {
+    await repository.createStripeLicenseBundle({ license: license(), subscription, invoice, payment, delivery });
+    database.beforeBatch(() => {
+      sqlite.prepare(`
+        INSERT INTO stripe_invoices (
+          stripe_invoice_id, stripe_subscription_id, license_id, stripe_price_id,
+          invoice_status, period_end, paid_event_created_at, last_event_created_at,
+          created_at, updated_at
+        ) VALUES ('in_newer', 'sub_1', 'lic_1', 'price_monthly', 'paid',
+          '2026-10-23T00:00:00.000Z', 400, 400, ?, ?)
+      `).run(now, now);
+    });
+    expect(await repository.revokeRefundedLicense({
+      licenseId: 'lic_1', recurring: true,
+      refundedPeriodEnd: invoice.periodEnd, now,
+    })).toBe(false);
+    expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'active' });
+    expect(sqlite.prepare('SELECT status, encrypted_payload FROM license_delivery_outbox WHERE id = ?').get('delivery_1'))
+      .toMatchObject({ status: 'pending', encrypted_payload: delivery.encryptedPayload });
   });
 });

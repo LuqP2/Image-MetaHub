@@ -359,6 +359,39 @@ describe('Stripe billing service', () => {
     expect(repository.licenses.get(license.id).expiresAt).toBe(new Date(1_791_592_000_000).toISOString());
   });
 
+  it('reapplies a colliding paid invoice to the license created by the winning worker', async () => {
+    const invoice = {
+      id: 'in_collision_newer', status: 'paid', customer_email: 'buyer@example.com',
+      parent: { subscription_details: { subscription: 'sub_1' } },
+      payments: { data: [{ status: 'paid', payment: { payment_intent: 'pi_collision_newer' } }] },
+      amount_paid: 499, currency: 'usd',
+    };
+    stripe._invoices.set(invoice.id, invoice);
+    stripe._invoiceLines.set(invoice.id, [paidLine('price_monthly', 1_791_592_000)]);
+    vi.spyOn(repository, 'createStripeLicenseBundle').mockImplementationOnce(async ({
+      license, subscription: createdSubscription,
+    }: any) => {
+      const winner = {
+        ...license, id: 'lic_collision_winner', expiresAt: '2026-09-23T00:00:00.000Z',
+      };
+      repository.licenses.set(winner.id, winner);
+      await repository.upsertSubscription({ ...createdSubscription, licenseId: winner.id });
+      throw new Error('UNIQUE constraint failed: licenses.stripe_subscription_id');
+    });
+
+    await process(event('evt_collision_newer', 'invoice.paid', invoice, 1_788_500_000));
+
+    const winner = repository.licenses.get('lic_collision_winner');
+    expect(repository.licenses.size).toBe(1);
+    expect(winner).toMatchObject({
+      status: 'active',
+      expiresAt: new Date(1_791_592_000_000).toISOString(),
+    });
+    expect(repository.invoices.get(invoice.id)).toMatchObject({ licenseId: winner.id });
+    expect(repository.payments.get('pi_collision_newer')).toMatchObject({ licenseId: winner.id });
+    expect(repository.deliveries.size).toBe(0);
+  });
+
   it('renews a subscription on an allowlisted historical Price ID', async () => {
     stripe._subscriptions.set('sub_old_price', subscription({
       id: 'sub_old_price',
