@@ -2,12 +2,6 @@ name: Deploy license server
 
 on:
   workflow_dispatch:
-    inputs:
-      apply_migrations:
-        description: "Apply pending D1 migrations before deployment"
-        required: true
-        default: true
-        type: boolean
 
 permissions:
   contents: read
@@ -63,11 +57,10 @@ jobs:
       - name: Validate Worker bundle without deploying
         run: npx wrangler deploy --dry-run --config wrangler.production.generated.json
 
-      - name: Configure required Worker secrets
+      - name: Prepare required Worker secrets
         shell: bash
         run: |
           set -euo pipefail
-          trap 'rm -f .production-secrets.json' EXIT
           jq -n \
             --arg signingKey "$LICENSE_SIGNING_PRIVATE_KEY" \
             --arg adminToken "$LICENSE_SERVER_ADMIN_TOKEN" \
@@ -78,17 +71,20 @@ jobs:
             --arg resendApiKey "$RESEND_API_KEY" \
             '{LICENSE_SIGNING_PRIVATE_KEY: $signingKey, LICENSE_SERVER_ADMIN_TOKEN: $adminToken, EMAIL_LOOKUP_PEPPER: $emailPepper, STRIPE_WEBHOOK_SECRET: $stripeWebhookSecret, STRIPE_RESTRICTED_API_KEY: $stripeRestrictedKey, LICENSE_DELIVERY_ENCRYPTION_KEY: $deliveryEncryptionKey, RESEND_API_KEY: $resendApiKey}' \
             > .production-secrets.json
-          npx wrangler secret bulk .production-secrets.json --config wrangler.production.generated.json
 
       - name: Apply D1 migrations
-        if: ${{ inputs.apply_migrations }}
         run: npx wrangler d1 migrations apply image-metahub-licenses --remote --config wrangler.production.generated.json
 
       - name: Deploy validated Worker code and public configuration
-        run: npx wrangler deploy --config wrangler.production.generated.json
+        id: deploy
+        run: npx wrangler deploy --config wrangler.production.generated.json --secrets-file .production-secrets.json
 
       - name: Mandatory post-deploy entitlement smoke test
         run: node ../../scripts/smokeTestLicenseServer.mjs
+
+      - name: Roll back Worker after a failed post-deploy check
+        if: ${{ failure() && steps.deploy.outcome == 'success' }}
+        run: npx wrangler rollback --yes --message "Automatic rollback after failed licensing smoke test" --config wrangler.production.generated.json
 
       - name: Remove generated deployment configuration
         if: ${{ always() }}

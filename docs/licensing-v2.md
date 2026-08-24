@@ -150,7 +150,7 @@ Subscriptions, Invoices, Charges, PaymentIntents, and Refunds. It must never be
 embedded in the desktop application. Stripe Tax remains disabled; this integration
 does not set `automatic_tax` or modify any Stripe account setting.
 
-The deployment workflow generates the ignored `wrangler.production.generated.json`, rejects missing/placeholding values, validates the D1 ID, validates the production HTTPS URL, verifies that the Ed25519 public/private keys match, performs a Wrangler dry run, configures all Worker secrets, optionally applies D1 migrations, and deploys with the generated D1/public-key configuration. It then runs a mandatory create → activate → refresh → deactivate smoke test and revokes the test entitlement.
+The deployment workflow generates the ignored `wrangler.production.generated.json`, rejects missing/placeholding values, validates the D1 ID, validates the production HTTPS URL, verifies that the Ed25519 public/private keys match, and performs a Wrangler dry run. It then applies all pending D1 migrations and deploys code, public configuration, and secrets as one Worker version. A mandatory create → activate → refresh → deactivate smoke test follows and revokes the test entitlement; if that post-deploy check fails, the workflow automatically rolls the Worker back to its previous version. Migration `0002` is expand/contract compatible with that previous Worker, so rollback does not require a destructive schema rollback.
 
 No operator should manually edit committed Wrangler configuration with production IDs. The workflow must fail before deployment if any required production input is missing or a placeholder remains.
 
@@ -163,9 +163,10 @@ Release packaging separately runs `scripts/configureLicenseClient.mjs`, which re
 ## Stripe billing integration
 
 `POST /v1/stripe/webhook` verifies the raw request body using the endpoint signing
-secret before accepting an event. The handler stores only the event ID, type,
-object ID, livemode flag, and timestamps in D1. It never persists the Stripe event
-payload. A one-minute scheduled handler drains the event inbox and email outbox;
+secret before accepting an event. The handler stores the event envelope plus a
+minimal immutable snapshot of the authoritative Stripe object and its correlation
+IDs. It does not persist plaintext email addresses or unrelated customer/payment
+payload fields. A one-minute scheduled handler drains the event inbox and email outbox;
 `waitUntil()` starts the same work opportunistically after a new webhook is safely
 persisted.
 
@@ -227,9 +228,11 @@ New customer keys exist in plaintext only in Worker memory. Before the D1 batch 
 committed, the key and recipient are encrypted together using AES-256-GCM and the
 delivery payload is inserted atomically with the hashed license. Delivery ownership
 uses a compare-and-set lease. Full inbox batches are drained before the outbox,
-and delivery claim plus authorization refuse to proceed while due events or events
-being processed remain. Pending or dead-lettered deletion/refund events keep the
-outbox blocked until reducer or administrative recovery resolves them. The durable
+and delivery claim plus authorization refuse to proceed while destructive event
+work correlated to that license remains pending, processing, or dead-lettered.
+Unrelated customer events do not stall delivery. Destructive rows written by the
+previous Worker during the migration window lack correlation IDs and therefore
+block conservatively until processed. The durable
 transition from `leased` to
 `authorized` is the point of no return: cancellation can stop un-authorized work,
 but cannot pretend that an external request was unsent after authorization.
@@ -254,6 +257,9 @@ Administrative recovery endpoints:
 
 - `POST /v1/admin/stripe/events/:eventId/retry`
 - `POST /v1/admin/license-deliveries/:deliveryId/retry`
+- `POST /v1/admin/license-deliveries/:deliveryId/resolve` with
+  `confirmed_delivered` plus the Resend message ID, or `confirmed_unsent` after the
+  operator has verified that Resend did not accept the request
 
 Production activation still requires a separate, explicit operation: apply
 `0002_stripe_billing.sql`, configure the secrets and variables above, deploy the

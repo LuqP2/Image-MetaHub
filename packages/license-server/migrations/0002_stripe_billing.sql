@@ -35,6 +35,12 @@ CREATE TABLE stripe_event_inbox (
   object_id TEXT NOT NULL,
   livemode INTEGER NOT NULL CHECK (livemode IN (0, 1)),
   event_created_at INTEGER NOT NULL,
+  object_snapshot TEXT NOT NULL DEFAULT '{}',
+  stripe_subscription_id TEXT,
+  stripe_invoice_id TEXT,
+  stripe_checkout_session_id TEXT,
+  stripe_payment_intent_id TEXT,
+  stripe_charge_id TEXT,
   status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'processed', 'dead_letter')),
   attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
   next_attempt_at TEXT NOT NULL,
@@ -47,6 +53,15 @@ CREATE TABLE stripe_event_inbox (
 
 CREATE INDEX idx_stripe_event_inbox_due
   ON stripe_event_inbox(status, next_attempt_at);
+CREATE INDEX idx_stripe_event_inbox_subscription
+  ON stripe_event_inbox(stripe_subscription_id)
+  WHERE stripe_subscription_id IS NOT NULL;
+CREATE INDEX idx_stripe_event_inbox_payment_intent
+  ON stripe_event_inbox(stripe_payment_intent_id)
+  WHERE stripe_payment_intent_id IS NOT NULL;
+CREATE INDEX idx_stripe_event_inbox_charge
+  ON stripe_event_inbox(stripe_charge_id)
+  WHERE stripe_charge_id IS NOT NULL;
 
 CREATE TABLE stripe_subscription_events (
   event_id TEXT PRIMARY KEY,
@@ -140,6 +155,7 @@ CREATE TABLE stripe_refund_facts (
   payment_fully_refunded INTEGER NOT NULL DEFAULT 0 CHECK (payment_fully_refunded IN (0, 1)),
   event_id TEXT NOT NULL,
   event_created_at INTEGER NOT NULL,
+  event_precedence INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

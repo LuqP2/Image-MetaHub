@@ -14,6 +14,19 @@ afterEach(async () => {
 });
 
 describe('license server deployment preflight', () => {
+  it('makes migrations mandatory and rolls the Worker back when smoke fails', async () => {
+    const workflow = await fs.readFile(
+      path.resolve('.github/workflows/license-server-deploy.yml'),
+      'utf8',
+    );
+    expect(workflow).not.toContain('apply_migrations');
+    expect(workflow).not.toContain('wrangler secret bulk');
+    expect(workflow).toContain('wrangler d1 migrations apply');
+    expect(workflow).toContain('--secrets-file .production-secrets.json');
+    expect(workflow).toContain('steps.deploy.outcome == \'success\'');
+    expect(workflow).toContain('wrangler rollback --yes');
+  });
+
   it('includes the Cloudflare deployment token in packaged secret-value scans', () => {
     expect(getConfiguredSensitiveValues({
       CLOUDFLARE_API_TOKEN: 'production-cloudflare-token',

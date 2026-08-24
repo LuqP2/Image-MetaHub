@@ -159,6 +159,26 @@ export async function handleRequest(request, env, context) {
   }
 
   if (url.pathname.startsWith('/v1/admin/')) {
+    const deliveryResolution = url.pathname.match(
+      /^\/v1\/admin\/license-deliveries\/([^/]+)\/resolve$/,
+    );
+    if (request.method === 'POST' && deliveryResolution) {
+      const resolution = String(body.resolution || '');
+      const providerMessageId = resolution === 'confirmed_delivered'
+        ? String(body.providerMessageId || '').trim()
+        : null;
+      if (
+        !['confirmed_delivered', 'confirmed_unsent'].includes(resolution)
+        || (resolution === 'confirmed_delivered' && !providerMessageId)
+      ) {
+        throw new LicenseError('invalid_request', 'Invalid request.');
+      }
+      const resolved = await createBillingService(env).repository.resolveManualReviewDelivery(
+        decodeURIComponent(deliveryResolution[1]),
+        { resolution, providerMessageId, now: new Date().toISOString() },
+      );
+      return json({ resolved }, resolved ? 200 : 404);
+    }
     if (request.method === 'POST' && url.pathname === '/v1/admin/licenses') {
       const result = await service.createLicense(body);
       return json({

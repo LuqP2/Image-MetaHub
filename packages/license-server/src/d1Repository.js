@@ -141,22 +141,34 @@ export class D1LicenseRepository {
     return this.findLicenseById(id);
   }
 
-  async activateInstallation(record, maxActivations) {
+  async activateInstallation(record, maxActivations, authorizedAt) {
     const result = await this.database.prepare(`
       INSERT INTO activations (
         id, license_id, installation_hash, created_at, last_seen_at,
         deactivated_at, app_version, platform
       )
       SELECT ?, ?, ?, ?, ?, NULL, ?, ?
-      WHERE ? IS NULL
-        OR EXISTS (
-          SELECT 1 FROM activations
-          WHERE license_id = ? AND installation_hash = ? AND deactivated_at IS NULL
+      FROM licenses current_license
+      LEFT JOIN stripe_entitlements current_entitlement
+        ON current_entitlement.license_id = current_license.id
+      WHERE current_license.id = ?
+        AND current_license.admin_status = 'active'
+        AND (current_license.expires_at IS NULL OR current_license.expires_at > ?)
+        AND (
+          current_license.source <> 'stripe'
+          OR current_entitlement.billing_state = 'active'
         )
-        OR (
-          SELECT COUNT(*) FROM activations
-          WHERE license_id = ? AND deactivated_at IS NULL
-        ) < ?
+        AND (
+          ? IS NULL
+          OR EXISTS (
+            SELECT 1 FROM activations
+            WHERE license_id = ? AND installation_hash = ? AND deactivated_at IS NULL
+          )
+          OR (
+            SELECT COUNT(*) FROM activations
+            WHERE license_id = ? AND deactivated_at IS NULL
+          ) < ?
+        )
       ON CONFLICT(license_id, installation_hash) DO UPDATE SET
         last_seen_at = excluded.last_seen_at,
         deactivated_at = NULL,
@@ -170,6 +182,8 @@ export class D1LicenseRepository {
       record.lastSeenAt,
       record.appVersion,
       record.platform,
+      record.licenseId,
+      authorizedAt,
       maxActivations,
       record.licenseId,
       record.installationHash,
@@ -191,7 +205,20 @@ export class D1LicenseRepository {
     const result = await this.database.prepare(`
       UPDATE activations SET last_seen_at = ?
       WHERE license_id = ? AND installation_hash = ? AND deactivated_at IS NULL
-    `).bind(lastSeenAt, licenseId, installationHash).run();
+        AND EXISTS (
+          SELECT 1
+          FROM licenses current_license
+          LEFT JOIN stripe_entitlements current_entitlement
+            ON current_entitlement.license_id = current_license.id
+          WHERE current_license.id = activations.license_id
+            AND current_license.admin_status = 'active'
+            AND (current_license.expires_at IS NULL OR current_license.expires_at > ?)
+            AND (
+              current_license.source <> 'stripe'
+              OR current_entitlement.billing_state = 'active'
+            )
+        )
+    `).bind(lastSeenAt, licenseId, installationHash, lastSeenAt).run();
     return Boolean(result.meta?.changes);
   }
 

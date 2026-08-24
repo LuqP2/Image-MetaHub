@@ -68,6 +68,93 @@ const safeErrorCode = (error) => {
   return /^[a-z0-9_:-]{1,80}$/.test(value) ? value : 'processing_error';
 };
 
+const subscriptionSnapshot = (subscription) => ({
+  id: subscription.id,
+  object: 'subscription',
+  customer: objectId(subscription.customer),
+  status: String(subscription.status || 'unknown'),
+  cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
+  items: {
+    data: (subscription?.items?.data || []).map((item) => ({
+      price: {
+        id: objectId(item?.price ?? item?.plan),
+        product: objectId(item?.price?.product ?? item?.plan?.product),
+      },
+    })),
+  },
+});
+
+const eventObjectSnapshot = (event) => {
+  const object = event?.data?.object || {};
+  if (event.type.startsWith('checkout.session.')) {
+    return {
+      id: object.id,
+      object: 'checkout.session',
+      livemode: Boolean(object.livemode),
+      mode: object.mode ?? null,
+      payment_status: object.payment_status ?? null,
+      customer: objectId(object.customer),
+      subscription: objectId(object.subscription),
+      payment_intent: objectId(object.payment_intent),
+      amount_total: Number.isFinite(Number(object.amount_total)) ? Number(object.amount_total) : null,
+      currency: object.currency ?? null,
+    };
+  }
+  if (event.type.startsWith('customer.subscription.')) return subscriptionSnapshot(object);
+  if (event.type.startsWith('invoice.')) {
+    return {
+      id: object.id,
+      object: 'invoice',
+      status: object.status ?? null,
+      subscription: objectId(
+        object?.parent?.subscription_details?.subscription ?? object?.subscription,
+      ),
+      customer: objectId(object.customer),
+      billing_reason: object.billing_reason ?? null,
+      payment_intent: objectId(object.payment_intent),
+      charge: objectId(object.charge),
+    };
+  }
+  if (event.type.startsWith('refund.')) {
+    return {
+      id: object.id,
+      object: 'refund',
+      status: object.status ?? null,
+      charge: objectId(object.charge),
+      payment_intent: objectId(object.payment_intent),
+      amount: Number(object.amount || 0),
+      currency: object.currency ?? null,
+    };
+  }
+  if (event.type === 'charge.refunded') {
+    return {
+      id: object.id,
+      object: 'charge',
+      payment_intent: objectId(object.payment_intent),
+      amount: Number(object.amount || 0),
+      amount_refunded: Number(object.amount_refunded || 0),
+      currency: object.currency ?? null,
+    };
+  }
+  return { id: object.id, object: object.object ?? null };
+};
+
+const eventCorrelations = (event, snapshot) => ({
+  stripeSubscriptionId: event.type.startsWith('customer.subscription.')
+    ? snapshot.id
+    : snapshot.subscription ?? null,
+  stripeInvoiceId: event.type.startsWith('invoice.') ? snapshot.id : null,
+  stripeCheckoutSessionId: event.type.startsWith('checkout.session.') ? snapshot.id : null,
+  stripePaymentIntentId: objectId(snapshot.payment_intent),
+  stripeChargeId: event.type === 'charge.refunded' ? snapshot.id : objectId(snapshot.charge),
+});
+
+const refundEventPrecedence = (status, eventType) => {
+  if (eventType === 'refund.failed' || status === 'failed') return 30;
+  if (status === 'succeeded' || eventType === 'charge.refunded') return 20;
+  return 10;
+};
+
 async function collectStripeList(fetchPage) {
   const data = [];
   const cursors = new Set();
@@ -117,6 +204,7 @@ function chargeRefundSnapshot(charge, event, recordedAt) {
     paymentFullyRefunded: fullyRefunded,
     eventId: event.eventId,
     eventCreatedAt: event.eventCreatedAt,
+    eventPrecedence: refundEventPrecedence(refundStatus, event.eventType),
     createdAt: recordedAt,
     updatedAt: recordedAt,
   };
@@ -231,12 +319,15 @@ export class StripeBillingService {
       throw new Error('Stripe event account does not match this environment.');
     }
     const receivedAt = this.nowDate().toISOString();
+    const objectSnapshot = eventObjectSnapshot(event);
     const inserted = await this.repository.enqueueEvent({
       eventId: event.id,
       eventType: event.type,
       objectId: event.data.object.id,
       livemode: Boolean(event.livemode),
       eventCreatedAt: Number(event.created),
+      objectSnapshot,
+      ...eventCorrelations(event, objectSnapshot),
       receivedAt,
     });
     return { accepted: true, duplicate: !inserted };
@@ -315,9 +406,11 @@ export class StripeBillingService {
 
   async handleCheckout(event) {
     const now = this.nowDate().toISOString();
-    const session = await this.stripeClient.checkout.sessions.retrieve(event.objectId, {
-      expand: ['customer', 'subscription'],
-    });
+    const session = event.objectSnapshot?.object === 'checkout.session'
+      ? event.objectSnapshot
+      : await this.stripeClient.checkout.sessions.retrieve(event.objectId, {
+        expand: ['customer', 'subscription'],
+      });
     if (Boolean(session.livemode) !== this.config.expectedLivemode) return;
     if (session.mode === 'subscription') return;
     if (session.mode !== 'payment' || event.eventType === 'checkout.session.async_payment_failed') return;
@@ -332,9 +425,18 @@ export class StripeBillingService {
     ));
     if (matches.length !== 1) return;
 
+    let recipient = session;
+    if (
+      event.objectSnapshot?.object === 'checkout.session'
+      && !session.customer
+    ) {
+      recipient = await this.stripeClient.checkout.sessions.retrieve(event.objectId, {
+        expand: ['customer'],
+      });
+    }
     const email = await this.resolveCustomerEmail(
-      session.customer,
-      session.customer_details?.email ?? session.customer_email,
+      recipient.customer,
+      recipient.customer_details?.email ?? recipient.customer_email,
     );
     const prepared = await this.prepareCandidateLicense({
       email,
@@ -370,9 +472,21 @@ export class StripeBillingService {
 
   async handleSubscription(event) {
     const now = this.nowDate().toISOString();
-    const subscription = await this.stripeClient.subscriptions.retrieve(event.objectId);
-    const priceId = priceFromSubscription(subscription, this.config);
-    if (!priceId) return;
+    const subscription = event.objectSnapshot?.object === 'subscription'
+      ? event.objectSnapshot
+      : await this.stripeClient.subscriptions.retrieve(event.objectId);
+    let priceId = null;
+    if (event.eventType === 'customer.subscription.deleted') {
+      priceId = (subscriptionProductItems(subscription, this.config)
+        .map((item) => objectId(item?.price ?? item?.plan))
+        .find((candidate) => {
+          const plan = planForPrice(candidate, this.config);
+          return plan === 'monthly' || plan === 'annual';
+        })) ?? null;
+    } else {
+      priceId = priceFromSubscription(subscription, this.config);
+      if (!priceId) return;
+    }
     const command = this.subscriptionCommand(subscription, event, now, priceId);
     if (event.eventType === 'customer.subscription.deleted') {
       await this.repository.applySubscriptionDeleted(command);
@@ -389,12 +503,11 @@ export class StripeBillingService {
     });
     if (invoice.status !== 'paid') throw new RetryableStripeEventError('stripe_invoice_not_paid');
     const subscriptionId = objectId(
-      invoice?.parent?.subscription_details?.subscription ?? invoice?.subscription,
+      event.objectSnapshot?.subscription
+        ?? invoice?.parent?.subscription_details?.subscription
+        ?? invoice?.subscription,
     );
     if (!subscriptionId) return;
-    const subscription = await this.stripeClient.subscriptions.retrieve(subscriptionId);
-    const subscriptionPrice = priceFromSubscription(subscription, this.config);
-    if (!subscriptionPrice) return;
     const lineItems = await collectStripeList(
       (params) => this.stripeClient.invoices.listLineItems(invoice.id, params),
     );
@@ -412,14 +525,14 @@ export class StripeBillingService {
       ? checkoutSessionId
       : null;
     const email = await this.resolveCustomerEmail(
-      checkoutSession?.customer ?? invoice.customer ?? subscription.customer,
+      checkoutSession?.customer ?? invoice.customer,
       checkoutSession?.customer_details?.email ?? invoice.customer_email,
     );
     const prepared = await this.prepareCandidateLicense({
       email,
       plan: paidLine.plan,
       expiresAt: paidLine.periodEnd,
-      stripeCustomerId: objectId(subscription.customer),
+      stripeCustomerId: objectId(invoice.customer),
       stripeSubscriptionId: subscriptionId,
       stripePriceId: paidLine.priceId,
       stripeCheckoutSessionId: checkoutSessionId,
@@ -466,12 +579,16 @@ export class StripeBillingService {
   async handleRefund(event) {
     const now = this.nowDate().toISOString();
     if (event.eventType === 'charge.refunded') {
-      const charge = await this.stripeClient.charges.retrieve(event.objectId);
+      const charge = event.objectSnapshot?.object === 'charge'
+        ? event.objectSnapshot
+        : await this.stripeClient.charges.retrieve(event.objectId);
       await this.repository.applyRefundSnapshot(chargeRefundSnapshot(charge, event, now));
       return;
     }
 
-    const refund = await this.stripeClient.refunds.retrieve(event.objectId);
+    const refund = event.objectSnapshot?.object === 'refund'
+      ? event.objectSnapshot
+      : await this.stripeClient.refunds.retrieve(event.objectId);
     const chargeId = objectId(refund.charge);
     const paymentIntentId = objectId(refund.payment_intent);
     const charge = chargeId
@@ -493,6 +610,7 @@ export class StripeBillingService {
       paymentFullyRefunded: fullyRefunded,
       eventId: event.eventId,
       eventCreatedAt: event.eventCreatedAt,
+      eventPrecedence: refundEventPrecedence(refund.status, event.eventType),
       createdAt: now,
       updatedAt: now,
       chargeSnapshot: charge ? chargeRefundSnapshot(charge, event, now) : null,
@@ -646,4 +764,5 @@ export {
   PermanentStripeEventError,
   RetryableStripeEventError,
   selectPaidSubscriptionLine,
+  eventObjectSnapshot,
 };

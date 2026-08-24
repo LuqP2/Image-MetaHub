@@ -244,7 +244,7 @@ describe('Stripe normalization', () => {
     ]);
     let licenseSequence = 0;
     const applyPaidInvoice = vi.fn(async () => undefined);
-    const { service } = createService({
+    const { service, stripeClient } = createService({
       repository: { applyPaidInvoice },
       licenseService: {
         prepareLicense: vi.fn(async (input: { stripeCheckoutSessionId: string | null }) => ({
@@ -282,7 +282,7 @@ describe('Stripe normalization', () => {
             id: 'sub_1',
             customer: 'cus_1',
             items: {
-              data: [{ price: { id: 'price_monthly', product: 'prod_1' } }],
+              data: [{ price: { id: 'price_replaced_after_payment', product: 'prod_1' } }],
             },
           })),
         },
@@ -311,6 +311,71 @@ describe('Stripe normalization', () => {
       { paymentCheckoutSessionId: 'cs_initial', licenseCheckoutSessionId: 'cs_initial' },
       { paymentCheckoutSessionId: null, licenseCheckoutSessionId: 'cs_initial' },
     ]);
+    expect(stripeClient.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
+  it('records deletion from the immutable event snapshot without retrieving mutable Stripe state', async () => {
+    const applySubscriptionDeleted = vi.fn(async () => undefined);
+    const retrieve = vi.fn(async () => {
+      throw new Error('current subscription must not be read');
+    });
+    const { service } = createService({
+      repository: { applySubscriptionDeleted },
+      stripeClient: { subscriptions: { retrieve } },
+    });
+    await service.processEvent({
+      ...event('customer.subscription.deleted', 'sub_deleted', 300),
+      objectSnapshot: {
+        id: 'sub_deleted',
+        object: 'subscription',
+        customer: 'cus_1',
+        status: 'canceled',
+        cancel_at_period_end: false,
+        items: { data: [] },
+      },
+    });
+    expect(retrieve).not.toHaveBeenCalled();
+    expect(applySubscriptionDeleted).toHaveBeenCalledWith(expect.objectContaining({
+      stripeSubscriptionId: 'sub_deleted',
+      eventCreatedAt: 300,
+      stripePriceId: null,
+    }));
+  });
+
+  it('persists the authoritative object snapshot and delivery correlations at webhook acceptance', async () => {
+    const enqueueEvent = vi.fn(async () => true);
+    const { service } = createService({ repository: { enqueueEvent } });
+    await service.enqueueVerifiedEvent({
+      id: 'evt_invoice_snapshot',
+      type: 'invoice.paid',
+      created: 400,
+      livemode: false,
+      account: 'acct_1',
+      data: {
+        object: {
+          id: 'in_snapshot',
+          object: 'invoice',
+          status: 'paid',
+          customer: 'cus_1',
+          customer_email: 'buyer@example.com',
+          parent: { subscription_details: { subscription: 'sub_snapshot' } },
+          payment_intent: 'pi_snapshot',
+          charge: 'ch_snapshot',
+        },
+      },
+    });
+    expect(enqueueEvent).toHaveBeenCalledWith(expect.objectContaining({
+      stripeSubscriptionId: 'sub_snapshot',
+      stripeInvoiceId: 'in_snapshot',
+      stripePaymentIntentId: 'pi_snapshot',
+      stripeChargeId: 'ch_snapshot',
+      objectSnapshot: expect.objectContaining({
+        id: 'in_snapshot',
+        status: 'paid',
+        subscription: 'sub_snapshot',
+      }),
+    }));
+    expect(JSON.stringify(enqueueEvent.mock.calls[0][0])).not.toContain('buyer@example.com');
   });
 });
 

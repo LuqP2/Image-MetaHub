@@ -1,11 +1,25 @@
 import { LEGACY_STATUS_PROJECTION_SQL } from './licenseStatusProjection.js';
 
+const parseSnapshot = (value) => {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
 const mapEvent = (row) => row && ({
   eventId: row.event_id,
   eventType: row.event_type,
   objectId: row.object_id,
   livemode: Boolean(row.livemode),
   eventCreatedAt: row.event_created_at,
+  objectSnapshot: parseSnapshot(row.object_snapshot),
+  stripeSubscriptionId: row.stripe_subscription_id,
+  stripeInvoiceId: row.stripe_invoice_id,
+  stripeCheckoutSessionId: row.stripe_checkout_session_id,
+  stripePaymentIntentId: row.stripe_payment_intent_id,
+  stripeChargeId: row.stripe_charge_id,
   status: row.status,
   attempts: row.attempts,
 });
@@ -20,21 +34,37 @@ const mapDelivery = (row) => row && ({
   firstProviderAttemptAt: row.first_provider_attempt_at,
 });
 
-const blockingEventWorkSql = `
+const blockingEventWorkSql = (licenseIdSql = 'license_delivery_outbox.license_id') => `
   EXISTS (
     SELECT 1 FROM stripe_event_inbox event_work
-    WHERE event_work.status = 'processing'
-      OR (
-        event_work.status = 'pending'
-        AND event_work.next_attempt_at <= ?
-      )
-      OR (
-        event_work.status IN ('pending', 'dead_letter')
-        AND event_work.event_type IN (
-          'customer.subscription.deleted',
-          'refund.created',
-          'refund.updated',
-          'charge.refunded'
+    WHERE event_work.event_type IN (
+      'customer.subscription.deleted',
+      'refund.created',
+      'refund.updated',
+      'charge.refunded'
+    )
+      AND event_work.status IN ('processing', 'pending', 'dead_letter')
+      AND (
+        EXISTS (
+          SELECT 1 FROM licenses event_license
+          WHERE event_license.id = ${licenseIdSql}
+            AND event_work.stripe_subscription_id IS NOT NULL
+            AND event_work.stripe_subscription_id = event_license.stripe_subscription_id
+        )
+        OR EXISTS (
+          SELECT 1 FROM stripe_payments event_payment
+          WHERE event_payment.license_id = ${licenseIdSql}
+            AND (
+              (event_work.stripe_payment_intent_id IS NOT NULL
+                AND event_work.stripe_payment_intent_id = event_payment.stripe_payment_intent_id)
+              OR (event_work.stripe_charge_id IS NOT NULL
+                AND event_work.stripe_charge_id = event_payment.stripe_charge_id)
+            )
+        )
+        OR (
+          event_work.stripe_subscription_id IS NULL
+          AND event_work.stripe_payment_intent_id IS NULL
+          AND event_work.stripe_charge_id IS NULL
         )
       )
   )
@@ -200,8 +230,8 @@ const refundUpsert = (database, record) => database.prepare(`
   INSERT INTO stripe_refund_facts (
     fact_id, stripe_refund_id, stripe_payment_intent_id, stripe_charge_id,
     refund_status, amount, currency, payment_fully_refunded, event_id,
-    event_created_at, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    event_created_at, event_precedence, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(fact_id) DO UPDATE SET
     stripe_payment_intent_id = COALESCE(excluded.stripe_payment_intent_id, stripe_refund_facts.stripe_payment_intent_id),
     stripe_charge_id = COALESCE(excluded.stripe_charge_id, stripe_refund_facts.stripe_charge_id),
@@ -209,7 +239,13 @@ const refundUpsert = (database, record) => database.prepare(`
       WHEN excluded.event_created_at > stripe_refund_facts.event_created_at
         OR (
           excluded.event_created_at = stripe_refund_facts.event_created_at
-          AND excluded.event_id > stripe_refund_facts.event_id
+          AND (
+            excluded.event_precedence > stripe_refund_facts.event_precedence
+            OR (
+              excluded.event_precedence = stripe_refund_facts.event_precedence
+              AND excluded.amount > stripe_refund_facts.amount
+            )
+          )
         )
       THEN excluded.refund_status
       ELSE stripe_refund_facts.refund_status
@@ -218,7 +254,13 @@ const refundUpsert = (database, record) => database.prepare(`
       WHEN excluded.event_created_at > stripe_refund_facts.event_created_at
         OR (
           excluded.event_created_at = stripe_refund_facts.event_created_at
-          AND excluded.event_id > stripe_refund_facts.event_id
+          AND (
+            excluded.event_precedence > stripe_refund_facts.event_precedence
+            OR (
+              excluded.event_precedence = stripe_refund_facts.event_precedence
+              AND excluded.amount > stripe_refund_facts.amount
+            )
+          )
         )
       THEN excluded.amount ELSE stripe_refund_facts.amount END,
     currency = COALESCE(excluded.currency, stripe_refund_facts.currency),
@@ -226,7 +268,13 @@ const refundUpsert = (database, record) => database.prepare(`
       WHEN excluded.event_created_at > stripe_refund_facts.event_created_at
         OR (
           excluded.event_created_at = stripe_refund_facts.event_created_at
-          AND excluded.event_id > stripe_refund_facts.event_id
+          AND (
+            excluded.event_precedence > stripe_refund_facts.event_precedence
+            OR (
+              excluded.event_precedence = stripe_refund_facts.event_precedence
+              AND excluded.amount > stripe_refund_facts.amount
+            )
+          )
         )
       THEN excluded.payment_fully_refunded
       ELSE stripe_refund_facts.payment_fully_refunded
@@ -235,10 +283,31 @@ const refundUpsert = (database, record) => database.prepare(`
       WHEN excluded.event_created_at > stripe_refund_facts.event_created_at
         OR (
           excluded.event_created_at = stripe_refund_facts.event_created_at
-          AND excluded.event_id > stripe_refund_facts.event_id
+          AND (
+            excluded.event_precedence > stripe_refund_facts.event_precedence
+            OR (
+              excluded.event_precedence = stripe_refund_facts.event_precedence
+              AND excluded.amount > stripe_refund_facts.amount
+            )
+          )
         )
       THEN excluded.event_id
       ELSE stripe_refund_facts.event_id
+    END,
+    event_precedence = CASE
+      WHEN excluded.event_created_at > stripe_refund_facts.event_created_at
+        OR (
+          excluded.event_created_at = stripe_refund_facts.event_created_at
+          AND (
+            excluded.event_precedence > stripe_refund_facts.event_precedence
+            OR (
+              excluded.event_precedence = stripe_refund_facts.event_precedence
+              AND excluded.amount > stripe_refund_facts.amount
+            )
+          )
+        )
+      THEN excluded.event_precedence
+      ELSE stripe_refund_facts.event_precedence
     END,
     event_created_at = MAX(stripe_refund_facts.event_created_at, excluded.event_created_at),
     updated_at = excluded.updated_at
@@ -253,6 +322,7 @@ const refundUpsert = (database, record) => database.prepare(`
   record.paymentFullyRefunded ? 1 : 0,
   record.eventId,
   record.eventCreatedAt,
+  record.eventPrecedence ?? 0,
   record.createdAt,
   record.updatedAt,
 );
@@ -522,7 +592,7 @@ const deliveryInsert = (database, record, candidateKeyHash, now) => {
   );
 };
 
-const reactivateUndeliveredDelivery = (
+const recoverUndeliveredDelivery = (
   database,
   candidateLicense,
   delivery,
@@ -535,16 +605,31 @@ const reactivateUndeliveredDelivery = (
         updated_at = ?
     WHERE source = 'stripe'
       AND admin_status = 'active'
-      AND stripe_subscription_id = ?
+      AND (
+        (? IS NOT NULL AND stripe_subscription_id = ?)
+        OR (? IS NOT NULL AND stripe_checkout_session_id = ?)
+      )
       AND EXISTS (
         SELECT 1 FROM stripe_entitlements e
         WHERE e.license_id = licenses.id AND e.billing_state = 'active'
       )
-      AND EXISTS (
-        SELECT 1 FROM license_delivery_outbox d
-        WHERE d.license_id = licenses.id
-          AND d.status IN ('cancelled', 'dead_letter')
-          AND d.first_provider_attempt_at IS NULL
+      AND (
+        EXISTS (
+          SELECT 1 FROM license_delivery_outbox d
+          WHERE d.license_id = licenses.id
+            AND d.status IN ('cancelled', 'dead_letter')
+            AND d.first_provider_attempt_at IS NULL
+        )
+        OR (
+          NOT EXISTS (
+            SELECT 1 FROM license_delivery_outbox d
+            WHERE d.license_id = licenses.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM activations a
+            WHERE a.license_id = licenses.id
+          )
+        )
       )
   `).bind(
     candidateLicense.keyHash,
@@ -553,6 +638,9 @@ const reactivateUndeliveredDelivery = (
     candidateLicense.stripeCheckoutSessionId,
     now,
     candidateLicense.stripeSubscriptionId,
+    candidateLicense.stripeSubscriptionId,
+    candidateLicense.stripeCheckoutSessionId,
+    candidateLicense.stripeCheckoutSessionId,
   ),
   database.prepare(`
     UPDATE license_delivery_outbox
@@ -581,14 +669,22 @@ export class D1StripeBillingRepository {
     const result = await this.database.prepare(`
       INSERT OR IGNORE INTO stripe_event_inbox (
         event_id, event_type, object_id, livemode, event_created_at,
+        object_snapshot, stripe_subscription_id, stripe_invoice_id,
+        stripe_checkout_session_id, stripe_payment_intent_id, stripe_charge_id,
         status, attempts, next_attempt_at, received_at
-      ) VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)
     `).bind(
       record.eventId,
       record.eventType,
       record.objectId,
       record.livemode ? 1 : 0,
       record.eventCreatedAt,
+      JSON.stringify(record.objectSnapshot ?? { id: record.objectId }),
+      record.stripeSubscriptionId ?? null,
+      record.stripeInvoiceId ?? null,
+      record.stripeCheckoutSessionId ?? null,
+      record.stripePaymentIntentId ?? null,
+      record.stripeChargeId ?? null,
       record.receivedAt,
       record.receivedAt,
     ).run();
@@ -683,7 +779,7 @@ export class D1StripeBillingRepository {
       paymentUpsert(this.database, payment),
       licenseInsert(this.database, candidateLicense, eligible, [invoice.stripeInvoiceId, now]),
       ...recomputeStatements(this.database, now),
-      ...reactivateUndeliveredDelivery(
+      ...recoverUndeliveredDelivery(
         this.database,
         candidateLicense,
         delivery,
@@ -710,6 +806,12 @@ export class D1StripeBillingRepository {
         [payment.stripeCheckoutSessionId],
       ),
       ...recomputeStatements(this.database, now),
+      ...recoverUndeliveredDelivery(
+        this.database,
+        candidateLicense,
+        delivery,
+        now,
+      ),
       deliveryInsert(this.database, delivery, candidateLicense.keyHash, now),
     ]);
   }
@@ -733,10 +835,10 @@ export class D1StripeBillingRepository {
         )
       )
         AND next_attempt_at <= ?
-        AND NOT (${blockingEventWorkSql})
+        AND NOT (${blockingEventWorkSql()})
       ORDER BY created_at, id
       LIMIT ?
-    `).bind(now, now, now, limit).all();
+    `).bind(now, now, limit).all();
     const statements = (rows.results || []).map((row) => this.database.prepare(`
       UPDATE license_delivery_outbox
       SET status = CASE WHEN status = 'authorized' THEN 'authorized' ELSE 'leased' END,
@@ -749,8 +851,8 @@ export class D1StripeBillingRepository {
             AND (lease_token IS NULL OR lease_expires_at <= ?)
           )
         )
-        AND NOT (${blockingEventWorkSql})
-    `).bind(leaseToken, leaseExpiresAt, now, row.id, now, now));
+        AND NOT (${blockingEventWorkSql()})
+    `).bind(leaseToken, leaseExpiresAt, now, row.id, now));
     if (statements.length) await this.database.batch(statements);
     const claimed = await this.database.prepare(`
       SELECT * FROM license_delivery_outbox
@@ -785,7 +887,7 @@ export class D1StripeBillingRepository {
             updated_at = ?
         WHERE id = ? AND lease_token = ?
           AND encrypted_payload IS NOT NULL
-          AND NOT (${blockingEventWorkSql})
+          AND NOT (${blockingEventWorkSql()})
           AND (
             status = 'authorized'
             OR (
@@ -801,14 +903,14 @@ export class D1StripeBillingRepository {
               )
             )
           )
-      `).bind(now, now, now, id, leaseToken, now, now),
+      `).bind(now, now, now, id, leaseToken, now),
       this.database.prepare(`
         UPDATE license_delivery_outbox
         SET status = 'pending', updated_at = ?, lease_token = NULL,
             lease_expires_at = NULL
         WHERE id = ? AND status = 'leased' AND lease_token = ?
-          AND (${blockingEventWorkSql})
-      `).bind(now, id, leaseToken, now),
+          AND (${blockingEventWorkSql()})
+      `).bind(now, id, leaseToken),
     ]);
     return Boolean(results[1]?.meta?.changes);
   }
@@ -890,5 +992,31 @@ export class D1StripeBillingRepository {
         || row?.status === 'authorized'
         || Boolean(row?.first_provider_attempt_at),
     };
+  }
+
+  async resolveManualReviewDelivery(id, { resolution, providerMessageId, now }) {
+    if (resolution === 'confirmed_delivered') {
+      const result = await this.database.prepare(`
+        UPDATE license_delivery_outbox
+        SET status = 'delivered', encrypted_payload = NULL,
+            provider_message_id = ?, delivered_at = ?, updated_at = ?,
+            lease_token = NULL, lease_expires_at = NULL, last_error_code = NULL
+        WHERE id = ? AND status = 'manual_review'
+      `).bind(providerMessageId, now, now, id).run();
+      return Boolean(result.meta?.changes);
+    }
+    if (resolution === 'confirmed_unsent') {
+      const result = await this.database.prepare(`
+        UPDATE license_delivery_outbox
+        SET status = 'pending', attempts = 0, next_attempt_at = ?,
+            authorized_at = NULL, first_provider_attempt_at = NULL,
+            updated_at = ?, lease_token = NULL, lease_expires_at = NULL,
+            last_error_code = NULL
+        WHERE id = ? AND status = 'manual_review'
+          AND encrypted_payload IS NOT NULL
+      `).bind(now, now, id).run();
+      return Boolean(result.meta?.changes);
+    }
+    return false;
   }
 }

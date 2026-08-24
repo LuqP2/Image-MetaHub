@@ -234,6 +234,17 @@ describe('D1 Stripe billing reducer', () => {
     `).run(now, now);
     expect(sqlite.prepare(`SELECT status, admin_status FROM licenses WHERE id = 'lic_old_worker'`).get())
       .toEqual({ status: 'cancelled', admin_status: 'cancelled' });
+    sqlite.prepare(`
+      INSERT INTO stripe_event_inbox (
+        event_id, event_type, object_id, livemode, event_created_at,
+        status, attempts, next_attempt_at, received_at
+      ) VALUES ('evt_old_worker', 'refund.created', 're_old', 0, 1,
+        'pending', 0, ?, ?)
+    `).run(now, now);
+    expect(sqlite.prepare(`
+      SELECT object_snapshot, stripe_payment_intent_id
+      FROM stripe_event_inbox WHERE event_id = 'evt_old_worker'
+    `).get()).toEqual({ object_snapshot: '{}', stripe_payment_intent_id: null });
   });
 
   it('converges to the same entitlement for every delivery order', async () => {
@@ -538,6 +549,172 @@ describe('D1 Stripe billing reducer', () => {
     });
   });
 
+  it('recovers the single canonical delivery for both a missing outbox and Lifetime dead-letter', async () => {
+    const subscription = await setup();
+    await subscription.repository.applyPaidInvoice(paidInvoice('1', 100, period1));
+    subscription.sqlite.prepare('DELETE FROM license_delivery_outbox').run();
+    const replacement = paidInvoice('1', 100, period1);
+    replacement.candidateLicense = candidate('replacement', period1, 'cs_1');
+    replacement.delivery = delivery('replacement');
+    await subscription.repository.applyPaidInvoice(replacement);
+    expect(subscription.sqlite.prepare(`
+      SELECT COUNT(*) AS count FROM licenses
+    `).get()).toEqual({ count: 1 });
+    expect(subscription.sqlite.prepare(`
+      SELECT l.key_hash, d.status, d.encrypted_payload
+      FROM licenses l JOIN license_delivery_outbox d ON d.license_id = l.id
+    `).get()).toEqual({
+      key_hash: 'hash_replacement',
+      status: 'pending',
+      encrypted_payload: 'encrypted_replacement',
+    });
+
+    const lifetime = await setup();
+    const lifetimeCommand = {
+      payment: {
+        paymentReference: 'pi_life_recovery',
+        paymentKind: 'lifetime',
+        stripePaymentIntentId: 'pi_life_recovery',
+        stripeChargeId: 'ch_life_recovery',
+        stripeCheckoutSessionId: 'cs_life_recovery',
+        stripeInvoiceId: null,
+        stripeSubscriptionId: null,
+        amountPaid: 3900,
+        currency: 'usd',
+        eventId: 'evt_life_recovery',
+        eventCreatedAt: 100,
+        createdAt: now,
+        updatedAt: now,
+      },
+      candidateLicense: {
+        ...candidate('life_recovery', period1, 'cs_life_recovery'),
+        plan: 'lifetime',
+        expiresAt: null,
+        stripeSubscriptionId: null,
+        stripePriceId: 'price_lifetime',
+      },
+      delivery: delivery('life_recovery'),
+      now,
+    };
+    await lifetime.repository.applyLifetimePayment(lifetimeCommand);
+    lifetime.sqlite.prepare(`
+      UPDATE license_delivery_outbox
+      SET status = 'dead_letter', encrypted_payload = 'old_payload'
+    `).run();
+    await lifetime.repository.applyLifetimePayment({
+      ...lifetimeCommand,
+      candidateLicense: {
+        ...lifetimeCommand.candidateLicense,
+        id: 'lic_life_replacement',
+        keyHash: 'hash_life_replacement',
+      },
+      delivery: {
+        ...lifetimeCommand.delivery,
+        id: 'delivery_life_replacement',
+        encryptedPayload: 'encrypted_life_replacement',
+      },
+    });
+    expect(lifetime.sqlite.prepare(`
+      SELECT l.key_hash, d.status, d.encrypted_payload
+      FROM licenses l JOIN license_delivery_outbox d ON d.license_id = l.id
+    `).get()).toEqual({
+      key_hash: 'hash_life_replacement',
+      status: 'pending',
+      encrypted_payload: 'encrypted_life_replacement',
+    });
+  });
+
+  it('uses semantic refund precedence instead of Stripe event ID order at equal timestamps', async () => {
+    for (const order of ['succeeded-first', 'failed-first']) {
+      const { sqlite, repository } = await setup();
+      await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
+      const succeeded = {
+        ...fullRefund('1', 200),
+        eventId: 'evt_z_succeeded',
+        eventPrecedence: 20,
+        chargeSnapshot: {
+          ...fullRefund('1', 200),
+          factId: 'charge:ch_1',
+          stripeRefundId: null,
+          eventId: 'evt_z_succeeded',
+          eventPrecedence: 20,
+        },
+      };
+      const failed = {
+        ...succeeded,
+        refundStatus: 'failed',
+        paymentFullyRefunded: false,
+        eventId: 'evt_a_failed',
+        eventPrecedence: 30,
+        chargeSnapshot: {
+          ...succeeded.chargeSnapshot,
+          refundStatus: 'not_refunded',
+          amount: 0,
+          paymentFullyRefunded: false,
+          eventId: 'evt_a_failed',
+          eventPrecedence: 30,
+        },
+      };
+      if (order === 'succeeded-first') {
+        await repository.applyRefundSnapshot(succeeded);
+        await repository.applyRefundSnapshot(failed);
+      } else {
+        await repository.applyRefundSnapshot(failed);
+        await repository.applyRefundSnapshot(succeeded);
+      }
+      expect(sqlite.prepare(`
+        SELECT billing_state FROM stripe_entitlements
+      `).get()).toEqual({ billing_state: 'active' });
+      expect(sqlite.prepare(`
+        SELECT refund_status, event_id FROM stripe_refund_facts
+        WHERE fact_id = 'refund:re_1'
+      `).get()).toEqual({ refund_status: 'failed', event_id: 'evt_a_failed' });
+      expect(sqlite.prepare(`
+        SELECT refund_status, event_id FROM stripe_refund_facts
+        WHERE fact_id = 'charge:ch_1'
+      `).get()).toEqual({ refund_status: 'not_refunded', event_id: 'evt_a_failed' });
+    }
+  });
+
+  it('converges when multiple partial refunds cumulatively refund the payment', async () => {
+    for (const order of ['small-first', 'large-first']) {
+      const { sqlite, repository } = await setup();
+      await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
+      const partial = (suffix: string, amount: number, total: number) => ({
+        ...fullRefund(suffix, 200),
+        factId: `refund:re_${suffix}`,
+        stripeRefundId: `re_${suffix}`,
+        stripePaymentIntentId: 'pi_1',
+        stripeChargeId: 'ch_1',
+        amount,
+        paymentFullyRefunded: false,
+        eventPrecedence: 20,
+        chargeSnapshot: {
+          ...fullRefund('1', 200),
+          factId: 'charge:ch_1',
+          stripeRefundId: null,
+          amount: total,
+          paymentFullyRefunded: total === 499,
+          refundStatus: total === 499 ? 'succeeded' : 'partial',
+          eventId: `evt_charge_${total}`,
+          eventPrecedence: 20,
+        },
+      });
+      const small = partial('partial_small', 249, 499);
+      const large = partial('partial_large', 250, 250);
+      if (order === 'small-first') {
+        await repository.applyRefundSnapshot(small);
+        await repository.applyRefundSnapshot(large);
+      } else {
+        await repository.applyRefundSnapshot(large);
+        await repository.applyRefundSnapshot(small);
+      }
+      expect(sqlite.prepare(`
+        SELECT billing_state FROM stripe_entitlements
+      `).get()).toEqual({ billing_state: 'expired' });
+    }
+  });
+
   it('does not let an old-period refund reduce a newer paid period', async () => {
     const { sqlite, repository } = await setup();
     await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
@@ -723,13 +900,32 @@ describe('D1 Stripe billing reducer', () => {
     `).get()).toEqual({ status: 'authorized', lease_token: 'lease_reclaimed' });
   });
 
-  it('blocks delivery claims and authorization while event work is unfinished', async () => {
+  it('blocks only destructive event work correlated to the delivery license', async () => {
+    const unrelated = await setup();
+    await unrelated.repository.applyPaidInvoice(paidInvoice('1', 100, period1));
+    await unrelated.repository.enqueueEvent({
+      eventId: 'evt_refund_unrelated',
+      eventType: 'refund.created',
+      objectId: 're_unrelated',
+      stripePaymentIntentId: 'pi_other_customer',
+      livemode: false,
+      eventCreatedAt: 200,
+      receivedAt: now,
+    });
+    expect(await unrelated.repository.claimDeliveries({
+      now,
+      leaseToken: 'lease_unrelated',
+      leaseExpiresAt: period1,
+      limit: 1,
+    })).toHaveLength(1);
+
     const { sqlite, repository } = await setup();
     await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
     await repository.enqueueEvent({
       eventId: 'evt_refund_pending',
       eventType: 'refund.created',
       objectId: 're_pending',
+      stripePaymentIntentId: 'pi_1',
       livemode: false,
       eventCreatedAt: 200,
       receivedAt: now,
@@ -769,6 +965,7 @@ describe('D1 Stripe billing reducer', () => {
       eventId: 'evt_refund_race',
       eventType: 'refund.created',
       objectId: 're_race',
+      stripeChargeId: 'ch_1',
       livemode: false,
       eventCreatedAt: 300,
       receivedAt: period1,
@@ -792,6 +989,72 @@ describe('D1 Stripe billing reducer', () => {
       leaseExpiresAt: period2,
       limit: 1,
     })).toEqual([]);
+  });
+
+  it('linearizes activation and refresh writes against current entitlement state', async () => {
+    const { sqlite, database, repository } = await setup();
+    await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
+    const licenses = new D1LicenseRepository(database);
+    const activation = {
+      id: 'activation_1',
+      licenseId: 'lic_1',
+      installationHash: 'installation_1',
+      createdAt: now,
+      lastSeenAt: now,
+      appVersion: null,
+      platform: null,
+    };
+    expect(await licenses.activateInstallation(activation, null, now)).not.toBeNull();
+    sqlite.prepare(`UPDATE licenses SET admin_status = 'revoked', status = 'revoked'`).run();
+    expect(await licenses.activateInstallation({
+      ...activation,
+      id: 'activation_2',
+      installationHash: 'installation_2',
+    }, null, now)).toBeNull();
+    expect(await licenses.touchActivation('lic_1', 'installation_1', period1)).toBe(false);
+  });
+
+  it('requires an explicit operator decision to leave manual review', async () => {
+    const { sqlite, repository } = await setup();
+    await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
+    sqlite.prepare(`
+      UPDATE license_delivery_outbox
+      SET status = 'manual_review', first_provider_attempt_at = ?, authorized_at = ?
+    `).run(now, now);
+    expect(await repository.resolveManualReviewDelivery('delivery_1', {
+      resolution: 'confirmed_delivered',
+      providerMessageId: 'email_confirmed',
+      now: period1,
+    })).toBe(true);
+    expect(sqlite.prepare(`
+      SELECT status, provider_message_id, encrypted_payload
+      FROM license_delivery_outbox
+    `).get()).toEqual({
+      status: 'delivered',
+      provider_message_id: 'email_confirmed',
+      encrypted_payload: null,
+    });
+
+    const unsent = await setup();
+    await unsent.repository.applyPaidInvoice(paidInvoice('1', 100, period1));
+    unsent.sqlite.prepare(`
+      UPDATE license_delivery_outbox
+      SET status = 'manual_review', first_provider_attempt_at = ?, authorized_at = ?
+    `).run(now, now);
+    expect(await unsent.repository.resolveManualReviewDelivery('delivery_1', {
+      resolution: 'confirmed_unsent',
+      providerMessageId: null,
+      now: period1,
+    })).toBe(true);
+    expect(unsent.sqlite.prepare(`
+      SELECT status, authorized_at, first_provider_attempt_at, encrypted_payload
+      FROM license_delivery_outbox
+    `).get()).toEqual({
+      status: 'pending',
+      authorized_at: null,
+      first_provider_attempt_at: null,
+      encrypted_payload: 'encrypted_1',
+    });
   });
 
   it('rolls back the whole command when D1 rejects its batch', async () => {
