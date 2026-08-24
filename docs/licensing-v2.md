@@ -115,8 +115,42 @@ Protected secrets:
 - `LICENSE_SIGNING_PRIVATE_KEY`
 - `LICENSE_SERVER_ADMIN_TOKEN`
 - `EMAIL_LOOKUP_PEPPER`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_RESTRICTED_API_KEY`
+- `LICENSE_DELIVERY_ENCRYPTION_KEY` (32 random bytes, base64url encoded)
+- `RESEND_API_KEY` (sending-only and restricted to the verified sending domain)
 
-The deployment workflow generates the ignored `wrangler.production.generated.json`, rejects missing/placeholding values, validates the D1 ID, validates the production HTTPS URL, verifies that the Ed25519 public/private keys match, performs a Wrangler dry run, configures all Worker secrets, optionally applies D1 migrations, and deploys with the generated D1/public-key configuration. It then runs a mandatory create → activate → refresh → deactivate smoke test and revokes the test entitlement.
+Stripe/email variables:
+
+- `STRIPE_ACCOUNT_ID`
+- `STRIPE_SUBSCRIPTION_PRODUCT_ID`
+- `STRIPE_MONTHLY_PRICE_ID`
+- `STRIPE_ANNUAL_PRICE_ID`
+- `STRIPE_MONTHLY_HISTORICAL_PRICE_IDS` (optional, comma-separated renewal allowlist)
+- `STRIPE_ANNUAL_HISTORICAL_PRICE_IDS` (optional, comma-separated renewal allowlist)
+- `STRIPE_LIFETIME_PRICE_ID`
+- `LICENSE_EMAIL_FROM`
+- `LICENSE_EMAIL_REPLY_TO` (optional)
+
+Production Stripe variable values:
+
+- `STRIPE_ACCOUNT_ID=acct_1ThKSaB04OXmIQu6`
+- `STRIPE_SUBSCRIPTION_PRODUCT_ID=prod_V81gqqBbpZ0ccz`
+- `STRIPE_MONTHLY_PRICE_ID=price_1U7ld7B04OXmIQu6wmn1uk4R`
+- `STRIPE_ANNUAL_PRICE_ID=price_1U7ldDB04OXmIQu6Dx18wNvf`
+- `STRIPE_LIFETIME_PRICE_ID=price_1ThKqfB04OXmIQu6mFJPOkyc`
+
+Before replacing a Monthly or Annual Price, append its previous ID to the
+corresponding historical allowlist. Historical IDs are accepted for paid
+subscription invoices and retain their Monthly or Annual plan mapping; the
+current Price variables remain the canonical IDs for new checkouts.
+
+The live-mode Stripe restricted key needs read-only access to Checkout Sessions, Customers,
+Subscriptions, Invoices, Charges, PaymentIntents, and Refunds. It must never be
+embedded in the desktop application. Stripe Tax remains disabled; this integration
+does not set `automatic_tax` or modify any Stripe account setting.
+
+The deployment workflow generates the ignored `wrangler.production.generated.json`, rejects missing/placeholding values, validates the D1 ID, validates the production HTTPS URL, verifies that the Ed25519 public/private keys match, and performs a Wrangler dry run. It then applies all pending D1 migrations and deploys code, public configuration, and secrets as one Worker version. A mandatory create → activate → refresh → deactivate smoke test follows and revokes the test entitlement; if that post-deploy check fails, the workflow automatically rolls the Worker back to its previous version. Migration `0002` is expand/contract compatible with that previous Worker, so rollback does not require a destructive schema rollback.
 
 No operator should manually edit committed Wrangler configuration with production IDs. The workflow must fail before deployment if any required production input is missing or a placeholder remains.
 
@@ -126,10 +160,110 @@ Release packaging separately runs `scripts/configureLicenseClient.mjs`, which re
 
 `npm run verify:license-package` performs a TypeScript/Vite build, creates an unpacked Electron package, opens its actual `app.asar`, verifies every Electron licensing runtime module, and scans package contents for sensitive licensing identifiers and any configured secret values. A Vite-only build is not sufficient release validation.
 
-## Future Stripe integration
+## Stripe billing integration
 
-Stripe is intentionally not implemented here. The D1 schema retains nullable customer, subscription, price, and checkout-session identifiers. Future Stripe webhooks should call the existing `LicenseService` entitlement methods rather than create a second authority:
+`POST /v1/stripe/webhook` verifies the raw request body using the endpoint signing
+secret before accepting an event. The handler stores the event envelope plus a
+minimal immutable snapshot of the authoritative Stripe object and its correlation
+IDs. It does not persist plaintext email addresses or unrelated customer/payment
+payload fields. A one-minute scheduled handler drains the event inbox and email outbox;
+`waitUntil()` starts the same work opportunistically after a new webhook is safely
+persisted.
 
-- lifetime purchase: create an unlimited lifetime entitlement with `source = stripe`;
-- monthly/annual purchase or renewal: create or extend `expires_at`;
-- cancellation or terminal billing state: update the existing entitlement according to the explicit billing policy.
+The endpoint supports:
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `invoice.payment_action_required`
+- `invoice.finalization_failed`
+- `refund.created`
+- `refund.updated`
+- `refund.failed`
+- `charge.refunded`
+
+The schema separates operator intent from Stripe billing. Migration `0002` adds
+`licenses.admin_status` without removing the legacy `status` column, and keeps the
+legacy column synchronized with the effective entitlement for rollback safety.
+A projection revision distinguishes reducer writes from administrative writes by
+the old Worker, so billing changes never overwrite `admin_status`. Removing
+`status` and its compatibility trigger is a later contract migration. `admin_status` is
+changed only by authenticated administrative operations. Stripe commands write
+idempotent subscription, invoice, payment, and refund facts, then rebuild
+`stripe_entitlements` inside the same D1 batch. Activation maps the administrative
+status and billing projection back to the existing public `status` contract.
+An inactive administrative status always wins, even while paid-through and Stripe
+audit facts continue to advance.
+
+For recurring products, `invoice.paid` is the only provisioning and renewal
+authority. The service selects one non-proration subscription line for an
+allowlisted Monthly or Annual Price and uses that line's `period.end` as the paid
+through date. The reducer chooses the greatest non-refunded paid period and
+compares its paid-event timestamp with the greatest deletion timestamp. Deletion
+wins ties; a later paid invoice reactivates access. `past_due`, payment failure,
+and `cancel_at_period_end` do not shorten an already-paid period.
+
+Lifetime Checkout is provisioned only after the Session is paid, including delayed
+payment confirmation through `checkout.session.async_payment_succeeded`. The
+Checkout Session uniqueness constraint deduplicates the immediate and delayed
+paths.
+
+Full successful refunds revoke Lifetime. For recurring licenses, a full refund
+removes only the matching paid period; it cannot override a later paid invoice.
+Refund facts are stored by PaymentIntent and Charge even if the payment webhook
+has not arrived. A later paid invoice or Checkout still creates the canonical
+inactive license and suspended encrypted delivery, so `refund.failed` can restore
+both without manual database recovery or another payment webhook.
+`refund.updated` and `charge.refunded` cover delayed and aggregate refund
+completion. The latest ordered snapshot also clears a previous full-refund fact
+when Stripe later reports that the refund failed. Partial and failed refunds
+remain audit-only.
+
+New customer keys exist in plaintext only in Worker memory. Before the D1 batch is
+committed, the key and recipient are encrypted together using AES-256-GCM and the
+delivery payload is inserted atomically with the hashed license. Delivery ownership
+uses a compare-and-set lease. Full inbox batches are drained before the outbox,
+and delivery claim plus authorization refuse to proceed while destructive event
+work correlated to that license remains pending, processing, or dead-lettered.
+Unrelated customer events do not stall delivery. Destructive rows written by the
+previous Worker during the migration window lack correlation IDs and therefore
+block conservatively until processed. The durable
+transition from `leased` to
+`authorized` is the point of no return: cancellation can stop un-authorized work,
+but cannot pretend that an external request was unsent after authorization.
+Before the first provider attempt, a successful refund moves an otherwise
+deliverable row to `suspended` and retains only its AES-GCM ciphertext. If Stripe
+later reports `refund.failed`, the same delivery returns to `pending`; final
+administrative revocation, deletion, or expiry still cancels it and erases the
+ciphertext.
+Resend receives `license-delivery/<outbox-id>` as its stable idempotency key.
+Automatic retries finish within 23 hours. Any uncertain result beyond that window
+moves to `manual_review`; the normal retry endpoint returns
+`manual_review_required` instead of risking a duplicate email. Successful or
+cancelled rows delete the ciphertext, while suspended and manual-review rows
+retain it only for refund reversal or explicit operator recovery.
+
+Unexpected Worker, D1, network, Stripe 429, and Stripe 5xx failures are retryable
+by default. Only explicitly classified domain/configuration errors dead-letter
+immediately. If even the reschedule write fails, the existing lease expires and
+the row becomes claimable again.
+
+Administrative recovery endpoints:
+
+- `POST /v1/admin/stripe/events/:eventId/retry`
+- `POST /v1/admin/license-deliveries/:deliveryId/retry`
+- `POST /v1/admin/license-deliveries/:deliveryId/resolve` with
+  `confirmed_delivered` plus the Resend message ID, or `confirmed_unsent` after the
+  operator has verified that Resend did not accept the request
+
+Production activation still requires a separate, explicit operation: apply
+`0002_stripe_billing.sql`, configure the secrets and variables above, deploy the
+Worker/Cron Trigger, verify the Resend sender, then register the Stripe webhook at
+API version `2026-07-29.dahlia` with exactly the fourteen events listed above. None
+of those external actions are performed by repository tests or this deployment
+preparation code.

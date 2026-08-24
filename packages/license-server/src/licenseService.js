@@ -115,6 +115,13 @@ export class LicenseService {
     throw new Error('Unable to create a unique license key.');
   }
 
+  async prepareLicense(input) {
+    requireValue(input.source !== 'legacy_reissue', 'invalid_request', 'Historical reissues must use the dedicated reissue operation.');
+    const plaintextKey = generateRandomLicenseKey(this.cryptoApi);
+    const record = await this.buildLicenseRecord({ ...input, source: input.source ?? 'manual' }, plaintextKey);
+    return { license: record, licenseKey: plaintextKey };
+  }
+
   async reissueHistoricalLicense({ email, licenseKey }) {
     const normalizedEmail = normalizeEmail(email);
     const normalizedKey = normalizeImh2LicenseKey(licenseKey);
@@ -183,8 +190,11 @@ export class LicenseService {
       lastSeenAt: now.toISOString(),
       appVersion: optionalString(appVersion, 100),
       platform: optionalString(platform, 100),
-    }, license.maxActivations);
+    }, license.maxActivations, now.toISOString());
     if (!activation) {
+      const current = await this.repository.findLicenseById(license.id);
+      const currentFailure = entitlementFailure(current, now.getTime());
+      if (currentFailure) throw currentFailure;
       throw new LicenseError('activation_limit_reached', 'Activation limit reached.', 409);
     }
 
@@ -218,7 +228,12 @@ export class LicenseService {
     const failure = entitlementFailure(license, now.getTime());
     if (failure) throw failure;
     const touched = await this.repository.touchActivation(license.id, installationHash, now.toISOString());
-    if (!touched) throw new LicenseError('activation_inactive', 'Activation is not active.', 403);
+    if (!touched) {
+      const current = await this.repository.findLicenseById(license.id);
+      const currentFailure = entitlementFailure(current, now.getTime());
+      if (currentFailure) throw currentFailure;
+      throw new LicenseError('activation_inactive', 'Activation is not active.', 403);
+    }
 
     return {
       certificate: await this.issueCertificate(license, payload.installationId, now),
