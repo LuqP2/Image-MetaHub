@@ -12,6 +12,8 @@ const config = {
   subscriptionProductId: 'prod_subscription',
   monthlyPriceId: 'price_monthly',
   annualPriceId: 'price_annual',
+  monthlyHistoricalPriceIds: ['price_monthly_old'],
+  annualHistoricalPriceIds: ['price_annual_old'],
   lifetimePriceId: 'price_lifetime',
   deliveryEncryptionKey: encodeBase64Url(new Uint8Array(32).fill(7)),
 };
@@ -100,7 +102,7 @@ class MemoryBillingRepository {
         && (!refundedInvoice?.periodEnd || refundedInvoice.periodEnd >= expiresAt);
     });
     if (!blockedByRefund && !blockedByTermination) {
-      license.status = 'active';
+      if (license.status !== 'revoked') license.status = 'active';
       license.expiresAt = [license.expiresAt, expiresAt].filter(Boolean).sort().at(-1);
     }
     await this.upsertSubscription({ ...subscription, licenseId });
@@ -355,6 +357,60 @@ describe('Stripe billing service', () => {
     expect(repository.deliveries.size).toBe(1);
     expect(repository.licenses.get(license.id).keyHash).toBe(firstKeyHash);
     expect(repository.licenses.get(license.id).expiresAt).toBe(new Date(1_791_592_000_000).toISOString());
+  });
+
+  it('renews a subscription on an allowlisted historical Price ID', async () => {
+    stripe._subscriptions.set('sub_old_price', subscription({
+      id: 'sub_old_price',
+      items: { data: [{ price: { id: 'price_monthly_old', product: 'prod_subscription' } }] },
+    }));
+    const existing = {
+      id: 'lic_old_price', plan: 'monthly', status: 'active', source: 'stripe',
+      expiresAt: '2026-09-23T00:00:00.000Z', stripeSubscriptionId: 'sub_old_price',
+    };
+    repository.licenses.set(existing.id, existing);
+    repository.subscriptions.set('sub_old_price', {
+      stripeSubscriptionId: 'sub_old_price', licenseId: existing.id,
+      latestPaidEventCreatedAt: 100, lastEventCreatedAt: 100, paidThrough: existing.expiresAt,
+    });
+    const renewal = {
+      id: 'in_old_price', status: 'paid', customer_email: 'buyer@example.com',
+      parent: { subscription_details: { subscription: 'sub_old_price' } },
+      payments: { data: [{ status: 'paid', payment: { payment_intent: 'pi_old_price' } }] },
+      amount_paid: 499, currency: 'usd',
+    };
+    stripe._invoices.set(renewal.id, renewal);
+    stripe._invoiceLines.set(renewal.id, [paidLine('price_monthly_old', 1_791_592_000)]);
+    await process(event('evt_old_price_paid', 'invoice.paid', renewal, 1_788_500_000));
+    expect(existing).toMatchObject({
+      status: 'active', plan: 'monthly',
+      expiresAt: new Date(1_791_592_000_000).toISOString(),
+    });
+  });
+
+  it('preserves an administrative revocation across a paid renewal', async () => {
+    const existing = {
+      id: 'lic_revoked', plan: 'monthly', status: 'revoked', source: 'stripe',
+      expiresAt: '2026-09-23T00:00:00.000Z', stripeSubscriptionId: 'sub_1',
+    };
+    repository.licenses.set(existing.id, existing);
+    repository.subscriptions.set('sub_1', {
+      stripeSubscriptionId: 'sub_1', licenseId: existing.id,
+      latestPaidEventCreatedAt: 100, lastEventCreatedAt: 100, paidThrough: existing.expiresAt,
+    });
+    const renewal = {
+      id: 'in_revoked', status: 'paid', customer_email: 'buyer@example.com',
+      parent: { subscription_details: { subscription: 'sub_1' } },
+      payments: { data: [{ status: 'paid', payment: { payment_intent: 'pi_revoked' } }] },
+      amount_paid: 499, currency: 'usd',
+    };
+    stripe._invoices.set(renewal.id, renewal);
+    stripe._invoiceLines.set(renewal.id, [paidLine('price_monthly', 1_791_592_000)]);
+    await process(event('evt_revoked_paid', 'invoice.paid', renewal, 1_788_500_000));
+    expect(existing).toMatchObject({
+      status: 'revoked',
+      expiresAt: new Date(1_791_592_000_000).toISOString(),
+    });
   });
 
   it('uses the exact annual line period as the annual entitlement expiry', async () => {

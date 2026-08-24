@@ -189,4 +189,24 @@ describe('D1 Stripe billing repository', () => {
     });
     expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'expired', expires_at: now });
   });
+
+  it('preserves an administrative revocation while recording a later paid period', async () => {
+    await repository.createStripeLicenseBundle({ license: license(), subscription, invoice, payment, delivery });
+    sqlite.prepare("UPDATE licenses SET status = 'revoked' WHERE id = 'lic_1'").run();
+    const expiresAt = '2026-10-23T00:00:00.000Z';
+    await repository.recordPaidRenewal({
+      licenseId: 'lic_1', plan: 'monthly', expiresAt,
+      priceId: 'price_monthly', now,
+      subscription: { ...subscription, paidThrough: expiresAt, latestPaidEventCreatedAt: 300, lastEventCreatedAt: 300 },
+      invoice: {
+        ...invoice, stripeInvoiceId: 'in_renewed', stripePaymentIntentId: 'pi_renewed',
+        stripeChargeId: 'ch_renewed', periodEnd: expiresAt, paidEventCreatedAt: 300, lastEventCreatedAt: 300,
+      },
+      payment: {
+        ...payment, paymentReference: 'pi_renewed', stripePaymentIntentId: 'pi_renewed',
+        stripeChargeId: 'ch_renewed', stripeInvoiceId: 'in_renewed',
+      },
+    });
+    expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'revoked', expires_at: expiresAt });
+  });
 });

@@ -280,7 +280,8 @@ export class D1StripeBillingRepository {
       this.database.prepare(`
         UPDATE licenses
         SET plan = ?,
-            status = CASE WHEN EXISTS (
+            status = CASE WHEN status = 'revoked' THEN status
+              WHEN EXISTS (
               SELECT 1 FROM stripe_refunds r
               JOIN stripe_payments p ON p.payment_reference = r.payment_reference
               LEFT JOIN stripe_invoices i ON i.stripe_invoice_id = p.stripe_invoice_id

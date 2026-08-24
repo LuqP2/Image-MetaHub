@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { decodeBase64Url } from '../utils/licenseCertificate.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const parsePriceIds = (value) => [...new Set(String(value || '')
+  .split(',')
+  .map((priceId) => priceId.trim())
+  .filter(Boolean))];
 
 export async function prepareLicenseServerDeployment({ env = process.env, outputPath }) {
   const required = [
@@ -60,12 +64,22 @@ export async function prepareLicenseServerDeployment({ env = process.env, output
   for (const [name, pattern] of Object.entries(stripeIds)) {
     if (!pattern.test(env[name])) throw new Error(`${name} is not a valid Stripe identifier.`);
   }
-  if (new Set([
-    env.STRIPE_MONTHLY_PRICE_ID,
-    env.STRIPE_ANNUAL_PRICE_ID,
-    env.STRIPE_LIFETIME_PRICE_ID,
-  ]).size !== 3) {
-    throw new Error('Stripe price identifiers must be distinct.');
+  const monthlyHistoricalPriceIds = parsePriceIds(env.STRIPE_MONTHLY_HISTORICAL_PRICE_IDS);
+  const annualHistoricalPriceIds = parsePriceIds(env.STRIPE_ANNUAL_HISTORICAL_PRICE_IDS);
+  for (const [name, priceIds] of [
+    ['STRIPE_MONTHLY_HISTORICAL_PRICE_IDS', monthlyHistoricalPriceIds],
+    ['STRIPE_ANNUAL_HISTORICAL_PRICE_IDS', annualHistoricalPriceIds],
+  ]) {
+    if (priceIds.some((priceId) => !stripeIds.STRIPE_MONTHLY_PRICE_ID.test(priceId))) {
+      throw new Error(`${name} contains an invalid Stripe price identifier.`);
+    }
+  }
+  const monthlyPriceIds = new Set([env.STRIPE_MONTHLY_PRICE_ID, ...monthlyHistoricalPriceIds]);
+  const annualPriceIds = new Set([env.STRIPE_ANNUAL_PRICE_ID, ...annualHistoricalPriceIds]);
+  if ([...monthlyPriceIds].some((priceId) => annualPriceIds.has(priceId))
+    || monthlyPriceIds.has(env.STRIPE_LIFETIME_PRICE_ID)
+    || annualPriceIds.has(env.STRIPE_LIFETIME_PRICE_ID)) {
+    throw new Error('Stripe price identifiers must map to exactly one plan.');
   }
   if (decodeBase64Url(env.LICENSE_DELIVERY_ENCRYPTION_KEY).length !== 32) {
     throw new Error('LICENSE_DELIVERY_ENCRYPTION_KEY must contain 32 base64url-encoded bytes.');
@@ -102,6 +116,12 @@ export async function prepareLicenseServerDeployment({ env = process.env, output
       STRIPE_SUBSCRIPTION_PRODUCT_ID: env.STRIPE_SUBSCRIPTION_PRODUCT_ID,
       STRIPE_MONTHLY_PRICE_ID: env.STRIPE_MONTHLY_PRICE_ID,
       STRIPE_ANNUAL_PRICE_ID: env.STRIPE_ANNUAL_PRICE_ID,
+      ...(monthlyHistoricalPriceIds.length > 0
+        ? { STRIPE_MONTHLY_HISTORICAL_PRICE_IDS: monthlyHistoricalPriceIds.join(',') }
+        : {}),
+      ...(annualHistoricalPriceIds.length > 0
+        ? { STRIPE_ANNUAL_HISTORICAL_PRICE_IDS: annualHistoricalPriceIds.join(',') }
+        : {}),
       STRIPE_LIFETIME_PRICE_ID: env.STRIPE_LIFETIME_PRICE_ID,
       LICENSE_EMAIL_FROM: env.LICENSE_EMAIL_FROM,
       ...(env.LICENSE_EMAIL_REPLY_TO ? { LICENSE_EMAIL_REPLY_TO: env.LICENSE_EMAIL_REPLY_TO } : {}),

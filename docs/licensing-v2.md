@@ -126,6 +126,8 @@ Stripe/email variables:
 - `STRIPE_SUBSCRIPTION_PRODUCT_ID`
 - `STRIPE_MONTHLY_PRICE_ID`
 - `STRIPE_ANNUAL_PRICE_ID`
+- `STRIPE_MONTHLY_HISTORICAL_PRICE_IDS` (optional, comma-separated renewal allowlist)
+- `STRIPE_ANNUAL_HISTORICAL_PRICE_IDS` (optional, comma-separated renewal allowlist)
 - `STRIPE_LIFETIME_PRICE_ID`
 - `LICENSE_EMAIL_FROM`
 - `LICENSE_EMAIL_REPLY_TO` (optional)
@@ -137,6 +139,11 @@ Production Stripe variable values:
 - `STRIPE_MONTHLY_PRICE_ID=price_1U7ld7B04OXmIQu6wmn1uk4R`
 - `STRIPE_ANNUAL_PRICE_ID=price_1U7ldDB04OXmIQu6Dx18wNvf`
 - `STRIPE_LIFETIME_PRICE_ID=price_1ThKqfB04OXmIQu6mFJPOkyc`
+
+Before replacing a Monthly or Annual Price, append its previous ID to the
+corresponding historical allowlist. Historical IDs are accepted for paid
+subscription invoices and retain their Monthly or Annual plan mapping; the
+current Price variables remain the canonical IDs for new checkouts.
 
 The Stripe restricted key needs read-only access to Checkout Sessions, Customers,
 Subscriptions, Invoices, Charges, PaymentIntents, and Refunds. It must never be

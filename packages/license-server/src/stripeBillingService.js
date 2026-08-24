@@ -42,6 +42,10 @@ const toIso = (unixSeconds) => Number.isFinite(Number(unixSeconds))
   ? new Date(Number(unixSeconds) * 1000).toISOString()
   : null;
 const isUniqueError = (error) => /unique|constraint/i.test(String(error?.message || ''));
+const parsePriceIds = (value) => String(value || '')
+  .split(',')
+  .map((priceId) => priceId.trim())
+  .filter(Boolean);
 const safeErrorCode = (error) => {
   const value = String(error?.code || error?.type || 'processing_error').toLowerCase();
   return /^[a-z0-9_:-]{1,80}$/.test(value) ? value : 'processing_error';
@@ -62,15 +66,15 @@ function priceFromSubscription(subscription, config) {
     const priceId = objectId(item?.price ?? item?.plan);
     const productId = objectId(item?.price?.product ?? item?.plan?.product);
     return productId === config.subscriptionProductId
-      && (priceId === config.monthlyPriceId || priceId === config.annualPriceId);
+      && (planForPrice(priceId, config) === 'monthly' || planForPrice(priceId, config) === 'annual');
   });
   if (matches.length !== 1) return null;
   return objectId(matches[0].price ?? matches[0].plan);
 }
 
 function planForPrice(priceId, config) {
-  if (priceId === config.monthlyPriceId) return 'monthly';
-  if (priceId === config.annualPriceId) return 'annual';
+  if (priceId === config.monthlyPriceId || config.monthlyHistoricalPriceIds?.includes(priceId)) return 'monthly';
+  if (priceId === config.annualPriceId || config.annualHistoricalPriceIds?.includes(priceId)) return 'annual';
   if (priceId === config.lifetimePriceId) return 'lifetime';
   return null;
 }
@@ -84,7 +88,7 @@ function selectPaidSubscriptionLine(lines, config) {
       && details?.proration === false
       && Number(line?.quantity ?? 1) === 1
       && productId === config.subscriptionProductId
-      && (priceId === config.monthlyPriceId || priceId === config.annualPriceId)
+      && (planForPrice(priceId, config) === 'monthly' || planForPrice(priceId, config) === 'annual')
       && Number.isFinite(Number(line?.period?.end));
   });
   if (matches.length !== 1) return null;
@@ -107,6 +111,8 @@ export function createStripeBillingConfig(env) {
     subscriptionProductId: String(env.STRIPE_SUBSCRIPTION_PRODUCT_ID || ''),
     monthlyPriceId: String(env.STRIPE_MONTHLY_PRICE_ID || ''),
     annualPriceId: String(env.STRIPE_ANNUAL_PRICE_ID || ''),
+    monthlyHistoricalPriceIds: parsePriceIds(env.STRIPE_MONTHLY_HISTORICAL_PRICE_IDS),
+    annualHistoricalPriceIds: parsePriceIds(env.STRIPE_ANNUAL_HISTORICAL_PRICE_IDS),
     lifetimePriceId: String(env.STRIPE_LIFETIME_PRICE_ID || ''),
     deliveryEncryptionKey: String(env.LICENSE_DELIVERY_ENCRYPTION_KEY || ''),
   };
