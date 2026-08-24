@@ -185,6 +185,14 @@ The endpoint supports:
 - `refund.updated`
 - `refund.failed`
 
+Stripe automation follows one entitlement precedence rule: an explicit
+`revoked` status is never changed by subscription, invoice, or refund handling.
+Paid recurring periods can otherwise reactivate an expired/cancelled Stripe
+license only when no same-or-later deletion or full refund blocks that period.
+First provisioning evaluates the same deletion guard inside its D1 batch.
+Outbox workers must still own the current lease and re-authorize delivery against
+an active, unexpired license immediately before calling the email provider.
+
 For recurring products, `invoice.paid` is the only provisioning and renewal
 authority. The service selects one non-proration subscription line for an
 allowlisted Monthly or Annual Price and uses that line's `period.end` as the paid

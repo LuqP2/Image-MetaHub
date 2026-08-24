@@ -180,7 +180,13 @@ export async function handleRequest(request, env, context) {
     }
     const revokeMatch = url.pathname.match(/^\/v1\/admin\/licenses\/([^/]+)\/revoke$/);
     if (request.method === 'POST' && revokeMatch) {
-      const license = await service.updateLicense(decodeURIComponent(revokeMatch[1]), { status: 'revoked' });
+      const licenseId = decodeURIComponent(revokeMatch[1]);
+      const license = await service.updateLicense(licenseId, { status: 'revoked' });
+      if (license.source === 'stripe') {
+        await new D1StripeBillingRepository(env.DB).cancelDeliveryForLicense(
+          licenseId, new Date().toISOString(),
+        );
+      }
       return json({ license: { id: license.id, status: license.status } });
     }
     const match = url.pathname.match(/^\/v1\/admin\/licenses\/([^/]+)$/);

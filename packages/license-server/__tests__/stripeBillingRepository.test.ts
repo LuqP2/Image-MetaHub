@@ -151,6 +151,21 @@ describe('D1 Stripe billing repository', () => {
     });
   });
 
+  it('creates a cancelled entitlement when deletion wins the first-invoice race', async () => {
+    await repository.upsertSubscription({ ...subscription, licenseId: null });
+    database.beforeBatch(() => {
+      sqlite.prepare(`
+        UPDATE stripe_subscriptions
+        SET billing_status = 'canceled', last_event_created_at = 300
+        WHERE stripe_subscription_id = 'sub_1'
+      `).run();
+    });
+    await repository.createStripeLicenseBundle({ license: license(), subscription, invoice, payment, delivery });
+    expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'cancelled' });
+    expect(sqlite.prepare('SELECT status, encrypted_payload FROM license_delivery_outbox WHERE id = ?').get('delivery_1'))
+      .toMatchObject({ status: 'cancelled', encrypted_payload: null });
+  });
+
   it('rolls back the complete batch if delivery persistence fails', async () => {
     await expect(repository.createStripeLicenseBundle({
       license: license('lic_rollback'),
@@ -217,7 +232,14 @@ describe('D1 Stripe billing repository', () => {
   it('preserves an administrative revocation while recording a later paid period', async () => {
     await repository.createStripeLicenseBundle({ license: license(), subscription, invoice, payment, delivery });
     sqlite.prepare("UPDATE licenses SET status = 'revoked' WHERE id = 'lic_1'").run();
+    expect(await repository.cancelDeliveryForLicense('lic_1', now)).toBe(true);
+    expect(sqlite.prepare('SELECT status, encrypted_payload FROM license_delivery_outbox WHERE id = ?').get('delivery_1'))
+      .toMatchObject({ status: 'cancelled', encrypted_payload: null });
     expect(await repository.terminateSubscription('sub_1', 250, now)).toBe(true);
+    expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'revoked' });
+    expect(await repository.revokeRefundedLicense({
+      licenseId: 'lic_1', recurring: true, refundedPeriodEnd: invoice.periodEnd, now,
+    })).toBe(true);
     expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'revoked' });
     const expiresAt = '2026-10-23T00:00:00.000Z';
     await repository.recordPaidRenewal({
@@ -255,5 +277,41 @@ describe('D1 Stripe billing repository', () => {
     expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'active' });
     expect(sqlite.prepare('SELECT status, encrypted_payload FROM license_delivery_outbox WHERE id = ?').get('delivery_1'))
       .toMatchObject({ status: 'pending', encrypted_payload: delivery.encryptedPayload });
+  });
+
+  it('does not send or finalize a delivery cancelled after it was claimed', async () => {
+    await repository.createStripeLicenseBundle({ license: license(), subscription, invoice, payment, delivery });
+    const claimed = await repository.claimDeliveries({
+      now, leaseToken: 'lease_1', leaseExpiresAt: '2026-08-23T12:05:00.000Z', limit: 1,
+    });
+    expect(claimed).toHaveLength(1);
+    await repository.terminateSubscription('sub_1', 300, now);
+    expect(await repository.authorizeDeliverySend('delivery_1', 'lease_1', now)).toBe(false);
+    await repository.markDeliveryDelivered('delivery_1', 'lease_1', 'email_should_not_commit', now);
+    expect(sqlite.prepare(`
+      SELECT status, encrypted_payload, provider_message_id FROM license_delivery_outbox WHERE id = ?
+    `).get('delivery_1')).toMatchObject({
+      status: 'cancelled', encrypted_payload: null, provider_message_id: null,
+    });
+  });
+
+  it('does not let a stale event worker finalize a stolen lease', async () => {
+    await repository.enqueueEvent({
+      eventId: 'evt_lease', eventType: 'invoice.paid', objectId: 'in_lease',
+      livemode: false, eventCreatedAt: 100, receivedAt: now,
+    });
+    await repository.claimEvents({
+      now, leaseToken: 'lease_old', leaseExpiresAt: '2026-08-23T12:05:00.000Z', limit: 1,
+    });
+    sqlite.prepare(`
+      UPDATE stripe_event_inbox SET lease_token = 'lease_new' WHERE event_id = 'evt_lease'
+    `).run();
+    await repository.markEventProcessed('evt_lease', 'lease_old', now);
+    await repository.rescheduleEvent('evt_lease', 'lease_old', {
+      attempts: 1, nextAttemptAt: now, errorCode: 'stale', deadLetter: false,
+    });
+    expect(sqlite.prepare(`
+      SELECT status, lease_token, attempts FROM stripe_event_inbox WHERE event_id = 'evt_lease'
+    `).get()).toMatchObject({ status: 'processing', lease_token: 'lease_new', attempts: 0 });
   });
 });

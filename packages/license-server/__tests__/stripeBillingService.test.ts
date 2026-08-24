@@ -32,14 +32,20 @@ class MemoryBillingRepository {
     this.events.set(record.eventId, { ...record, status: 'pending', attempts: 0 });
     return true;
   }
-  async claimEvents() {
+  async claimEvents({ leaseToken }: any) {
     const result = [...this.events.values()].filter((event) => event.status === 'pending');
-    result.forEach((event) => { event.status = 'processing'; });
+    result.forEach((event) => Object.assign(event, { status: 'processing', leaseToken }));
     return result;
   }
-  async markEventProcessed(id: string) { this.events.get(id).status = 'processed'; }
-  async rescheduleEvent(id: string, patch: any) {
-    Object.assign(this.events.get(id), patch, { status: patch.deadLetter ? 'dead_letter' : 'pending' });
+  async markEventProcessed(id: string, leaseToken: string) {
+    const event = this.events.get(id);
+    if (event?.status === 'processing' && event.leaseToken === leaseToken) event.status = 'processed';
+  }
+  async rescheduleEvent(id: string, leaseToken: string, patch: any) {
+    const event = this.events.get(id);
+    if (event?.status === 'processing' && event.leaseToken === leaseToken) {
+      Object.assign(event, patch, { status: patch.deadLetter ? 'dead_letter' : 'pending', leaseToken: null });
+    }
   }
   async requeueEvent(id: string) {
     const event = this.events.get(id);
@@ -80,11 +86,19 @@ class MemoryBillingRepository {
       || await this.findLicenseByCheckoutSessionId(license.stripeCheckoutSessionId)) {
       throw new Error('UNIQUE constraint failed');
     }
-    this.licenses.set(license.id, { ...license });
+    const blockedByTermination = subscription
+      && this.subscriptions.get(subscription.stripeSubscriptionId)?.billingStatus === 'canceled'
+      && this.subscriptions.get(subscription.stripeSubscriptionId).lastEventCreatedAt >= subscription.lastEventCreatedAt;
+    this.licenses.set(license.id, { ...license, status: blockedByTermination ? 'cancelled' : license.status });
     if (subscription) await this.upsertSubscription(subscription);
     if (invoice) this.invoices.set(invoice.stripeInvoiceId, { ...invoice });
     if (payment) this.payments.set(payment.paymentReference, { ...payment });
-    this.deliveries.set(delivery.id, { ...delivery, status: 'pending', attempts: 0 });
+    this.deliveries.set(delivery.id, {
+      ...delivery,
+      encryptedPayload: blockedByTermination ? null : delivery.encryptedPayload,
+      status: blockedByTermination ? 'cancelled' : 'pending',
+      attempts: 0,
+    });
   }
   async recordPaidRenewal({ licenseId, plan, expiresAt, subscription, invoice, payment }: any) {
     const license = this.licenses.get(licenseId);
@@ -123,8 +137,12 @@ class MemoryBillingRepository {
       (invoice) => invoice.licenseId === licenseId && invoice.periodEnd > refundedPeriodEnd,
     )) return false;
     const license = this.licenses.get(licenseId);
-    license.status = recurring ? 'expired' : 'revoked';
+    if (license.status !== 'revoked') license.status = recurring ? 'expired' : 'revoked';
     if (recurring) license.expiresAt = now;
+    const delivery = [...this.deliveries.values()].find((item) => item.licenseId === licenseId);
+    if (delivery && ['pending', 'processing', 'dead_letter'].includes(delivery.status)) {
+      Object.assign(delivery, { status: 'cancelled', encryptedPayload: null, leaseToken: null });
+    }
     return true;
   }
   async terminateSubscription(id: string, eventCreatedAt: number) {
@@ -133,21 +151,42 @@ class MemoryBillingRepository {
     const license = this.licenses.get(subscription.licenseId);
     if (license.status !== 'revoked') license.status = 'cancelled';
     const delivery = [...this.deliveries.values()].find((item) => item.licenseId === subscription.licenseId);
-    if (delivery && (delivery.status === 'pending' || delivery.status === 'processing')) {
-      Object.assign(delivery, { status: 'cancelled', encryptedPayload: null });
+    if (delivery && ['pending', 'processing', 'dead_letter'].includes(delivery.status)) {
+      Object.assign(delivery, { status: 'cancelled', encryptedPayload: null, leaseToken: null });
     }
     return true;
   }
-  async claimDeliveries() {
+  async claimDeliveries({ leaseToken }: any) {
     const result = [...this.deliveries.values()].filter((delivery) => delivery.status === 'pending');
-    result.forEach((delivery) => { delivery.status = 'processing'; });
-    return result;
+    result.forEach((delivery) => Object.assign(delivery, { status: 'processing', leaseToken }));
+    return result.map((delivery) => ({ ...delivery }));
   }
-  async markDeliveryDelivered(id: string, messageId: string) {
-    Object.assign(this.deliveries.get(id), { status: 'delivered', encryptedPayload: null, providerMessageId: messageId });
+  async authorizeDeliverySend(id: string, leaseToken: string, now: string) {
+    const delivery = this.deliveries.get(id);
+    const license = delivery ? this.licenses.get(delivery.licenseId) : null;
+    const authorized = delivery?.status === 'processing' && delivery.leaseToken === leaseToken
+      && delivery.encryptedPayload && license?.status === 'active'
+      && (!license.expiresAt || license.expiresAt > now);
+    if (!authorized && delivery?.status === 'processing' && delivery.leaseToken === leaseToken) {
+      Object.assign(delivery, { status: 'cancelled', encryptedPayload: null, leaseToken: null });
+    }
+    return Boolean(authorized);
   }
-  async rescheduleDelivery(id: string, patch: any) {
-    Object.assign(this.deliveries.get(id), patch, { status: patch.deadLetter ? 'dead_letter' : 'pending' });
+  async markDeliveryDelivered(id: string, leaseToken: string, messageId: string) {
+    const delivery = this.deliveries.get(id);
+    if (delivery?.status === 'processing' && delivery.leaseToken === leaseToken) {
+      Object.assign(delivery, {
+        status: 'delivered', encryptedPayload: null, providerMessageId: messageId, leaseToken: null,
+      });
+    }
+  }
+  async rescheduleDelivery(id: string, leaseToken: string, patch: any) {
+    const delivery = this.deliveries.get(id);
+    if (delivery?.status === 'processing' && delivery.leaseToken === leaseToken) {
+      Object.assign(delivery, patch, {
+        status: patch.deadLetter ? 'dead_letter' : 'pending', leaseToken: null,
+      });
+    }
   }
   async requeueDelivery(id: string) {
     const delivery = this.deliveries.get(id);
@@ -564,6 +603,31 @@ describe('Stripe billing service', () => {
     expect(outbox.status).toBe('delivered');
     expect(outbox.encryptedPayload).toBeNull();
     expect(deliveries[0].licenseKey).toMatch(/^IMH2-/);
+  });
+
+  it('does not send a stale claimed payload after entitlement cancellation', async () => {
+    const session = {
+      id: 'cs_claim_cancel', mode: 'payment', payment_status: 'paid', livemode: false,
+      customer_details: { email: 'buyer@example.com' }, payment_intent: 'pi_claim_cancel',
+      lineItems: [{ quantity: 1, price: { id: 'price_lifetime', product: 'prod_subscription' } }],
+    };
+    stripe._sessions.set(session.id, session);
+    await process(event('evt_claim_cancel', 'checkout.session.completed', session));
+    const claimDeliveries = repository.claimDeliveries.bind(repository);
+    vi.spyOn(repository, 'claimDeliveries').mockImplementationOnce(async (options: any) => {
+      const claimed = await claimDeliveries(options);
+      const persisted = repository.deliveries.get(claimed[0].id);
+      repository.licenses.get(persisted.licenseId).status = 'revoked';
+      Object.assign(persisted, { status: 'cancelled', encryptedPayload: null, leaseToken: null });
+      return claimed;
+    });
+
+    await service.processDeliveryOutbox();
+
+    expect(deliveries).toHaveLength(0);
+    expect([...repository.deliveries.values()][0]).toMatchObject({
+      status: 'cancelled', encryptedPayload: null,
+    });
   });
 
   it('keeps partial and old-period refunds from reducing a later paid entitlement', async () => {

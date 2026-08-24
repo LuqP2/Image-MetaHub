@@ -552,7 +552,7 @@ export class StripeBillingService {
     for (const event of events) {
       try {
         await this.processEvent(event);
-        await this.repository.markEventProcessed(event.eventId, this.nowDate().toISOString());
+        await this.repository.markEventProcessed(event.eventId, leaseToken, this.nowDate().toISOString());
       } catch (error) {
         const attempts = event.attempts + 1;
         const retryable = error instanceof RetryableStripeEventError
@@ -561,7 +561,7 @@ export class StripeBillingService {
           || Number(error?.statusCode) >= 500;
         const deadLetter = !retryable || attempts >= EVENT_RETRY_LIMIT;
         const delay = Math.min(60_000 * (2 ** Math.min(attempts - 1, 8)), EVENT_RETRY_MAX_MS);
-        await this.repository.rescheduleEvent(event.eventId, {
+        await this.repository.rescheduleEvent(event.eventId, leaseToken, {
           attempts,
           nextAttemptAt: new Date(this.nowDate().getTime() + delay).toISOString(),
           errorCode: safeErrorCode(error),
@@ -589,18 +589,26 @@ export class StripeBillingService {
           this.config.deliveryEncryptionKey,
           this.cryptoApi,
         );
-        result = await this.deliveryClient.sendLicense({ outboxId: delivery.id, ...payload });
+        const authorized = await this.repository.authorizeDeliverySend(
+          delivery.id, leaseToken, this.nowDate().toISOString(),
+        );
+        result = authorized
+          ? await this.deliveryClient.sendLicense({ outboxId: delivery.id, ...payload })
+          : { ok: false, cancelled: true };
       } catch (error) {
         result = { ok: false, retryable: false, code: safeErrorCode(error) };
       }
+      if (result.cancelled) continue;
       if (result.ok) {
-        await this.repository.markDeliveryDelivered(delivery.id, result.messageId, this.nowDate().toISOString());
+        await this.repository.markDeliveryDelivered(
+          delivery.id, leaseToken, result.messageId, this.nowDate().toISOString(),
+        );
         continue;
       }
       const attempts = delivery.attempts + 1;
       const retryDelay = DELIVERY_RETRY_DELAYS_MS[attempts - 1];
       const deadLetter = !result.retryable || retryDelay === undefined;
-      await this.repository.rescheduleDelivery(delivery.id, {
+      await this.repository.rescheduleDelivery(delivery.id, leaseToken, {
         attempts,
         nextAttemptAt: new Date(this.nowDate().getTime() + (retryDelay ?? 0)).toISOString(),
         errorCode: safeErrorCode({ code: result.code }),

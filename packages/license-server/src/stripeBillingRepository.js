@@ -54,14 +54,24 @@ const mapDelivery = (row) => row && ({
   attempts: row.attempts,
 });
 
-const licenseInsert = (database, record) => database.prepare(`
+const licenseInsert = (database, record, subscription) => database.prepare(`
   INSERT INTO licenses (
     id, key_hash, email_lookup, plan, status, source, created_at, updated_at,
     expires_at, max_activations, stripe_customer_id, stripe_subscription_id,
     stripe_price_id, stripe_checkout_session_id, external_reference
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) SELECT ?, ?, ?, ?,
+    CASE WHEN ? IS NOT NULL AND EXISTS (
+      SELECT 1 FROM stripe_subscriptions
+      WHERE stripe_subscription_id = ? AND billing_status = 'canceled'
+        AND last_event_created_at >= ?
+    ) THEN 'cancelled' ELSE ? END,
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 `).bind(
-  record.id, record.keyHash, record.emailLookup, record.plan, record.status, record.source,
+  record.id, record.keyHash, record.emailLookup, record.plan,
+  subscription?.stripeSubscriptionId ?? null,
+  subscription?.stripeSubscriptionId ?? null,
+  subscription?.lastEventCreatedAt ?? null,
+  record.status, record.source,
   record.createdAt, record.updatedAt, record.expiresAt, record.maxActivations,
   record.stripeCustomerId, record.stripeSubscriptionId, record.stripePriceId,
   record.stripeCheckoutSessionId, record.externalReference,
@@ -154,8 +164,14 @@ const deliveryInsert = (database, record) => database.prepare(`
   INSERT INTO license_delivery_outbox (
     id, license_id, encrypted_payload, payload_version, status, attempts,
     next_attempt_at, created_at, updated_at
-  ) VALUES (?, ?, ?, 1, 'pending', 0, ?, ?, ?)
-`).bind(record.id, record.licenseId, record.encryptedPayload, record.nextAttemptAt, record.createdAt, record.updatedAt);
+  ) SELECT ?, ?, CASE WHEN status = 'active' THEN ? ELSE NULL END, 1,
+      CASE WHEN status = 'active' THEN 'pending' ELSE 'cancelled' END,
+      0, ?, ?, ?
+    FROM licenses WHERE id = ?
+`).bind(
+  record.id, record.licenseId, record.encryptedPayload, record.nextAttemptAt,
+  record.createdAt, record.updatedAt, record.licenseId,
+);
 
 export class D1StripeBillingRepository {
   constructor(database) {
@@ -197,22 +213,25 @@ export class D1StripeBillingRepository {
     return (claimed.results || []).map(mapEvent);
   }
 
-  async markEventProcessed(eventId, now) {
+  async markEventProcessed(eventId, leaseToken, now) {
     await this.database.prepare(`
       UPDATE stripe_event_inbox
       SET status = 'processed', processed_at = ?, lease_token = NULL,
           lease_expires_at = NULL, last_error_code = NULL
-      WHERE event_id = ?
-    `).bind(now, eventId).run();
+      WHERE event_id = ? AND status = 'processing' AND lease_token = ?
+    `).bind(now, eventId, leaseToken).run();
   }
 
-  async rescheduleEvent(eventId, { attempts, nextAttemptAt, errorCode, deadLetter }) {
+  async rescheduleEvent(eventId, leaseToken, { attempts, nextAttemptAt, errorCode, deadLetter }) {
     await this.database.prepare(`
       UPDATE stripe_event_inbox
       SET status = ?, attempts = ?, next_attempt_at = ?, last_error_code = ?,
           lease_token = NULL, lease_expires_at = NULL
-      WHERE event_id = ?
-    `).bind(deadLetter ? 'dead_letter' : 'pending', attempts, nextAttemptAt, errorCode, eventId).run();
+      WHERE event_id = ? AND status = 'processing' AND lease_token = ?
+    `).bind(
+      deadLetter ? 'dead_letter' : 'pending', attempts, nextAttemptAt,
+      errorCode, eventId, leaseToken,
+    ).run();
   }
 
   async requeueEvent(eventId, now) {
@@ -267,7 +286,7 @@ export class D1StripeBillingRepository {
   }
 
   async createStripeLicenseBundle({ license, subscription, invoice, payment, delivery }) {
-    const statements = [licenseInsert(this.database, license)];
+    const statements = [licenseInsert(this.database, license, subscription)];
     if (subscription) statements.push(subscriptionUpsert(this.database, subscription));
     if (invoice) statements.push(invoiceUpsert(this.database, invoice));
     if (payment) statements.push(paymentUpsert(this.database, payment));
@@ -376,7 +395,9 @@ export class D1StripeBillingRepository {
     const results = await this.database.batch([
       this.database.prepare(`
         UPDATE licenses
-        SET status = ?, expires_at = CASE WHEN plan = 'lifetime' THEN NULL ELSE ? END, updated_at = ?
+        SET status = CASE WHEN status = 'revoked' THEN status ELSE ? END,
+            expires_at = CASE WHEN plan = 'lifetime' THEN NULL ELSE ? END,
+            updated_at = ?
         WHERE id = ? AND source = 'stripe'
           AND (? = 0 OR NOT EXISTS (
             SELECT 1 FROM stripe_invoices
@@ -388,8 +409,9 @@ export class D1StripeBillingRepository {
       ),
       this.database.prepare(`
         UPDATE license_delivery_outbox
-        SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?
-        WHERE license_id = ? AND status IN ('pending', 'processing')
+        SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
+            lease_token = NULL, lease_expires_at = NULL
+        WHERE license_id = ? AND status IN ('pending', 'processing', 'dead_letter')
           AND (? = 0 OR NOT EXISTS (
             SELECT 1 FROM stripe_invoices
             WHERE license_id = ? AND paid_event_created_at IS NOT NULL AND period_end > ?
@@ -428,7 +450,7 @@ export class D1StripeBillingRepository {
         UPDATE license_delivery_outbox
         SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
             lease_token = NULL, lease_expires_at = NULL
-        WHERE license_id = ? AND status IN ('pending', 'processing')
+        WHERE license_id = ? AND status IN ('pending', 'processing', 'dead_letter')
           AND EXISTS (
             SELECT 1 FROM stripe_subscriptions
             WHERE stripe_subscription_id = ? AND license_id = ?
@@ -462,23 +484,66 @@ export class D1StripeBillingRepository {
     return (claimed.results || []).map(mapDelivery);
   }
 
-  async markDeliveryDelivered(id, messageId, now) {
+  async authorizeDeliverySend(id, leaseToken, now) {
+    const results = await this.database.batch([
+      this.database.prepare(`
+        UPDATE license_delivery_outbox
+        SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
+            lease_token = NULL, lease_expires_at = NULL
+        WHERE id = ? AND status = 'processing' AND lease_token = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM licenses
+            WHERE licenses.id = license_delivery_outbox.license_id
+              AND licenses.status = 'active'
+              AND (licenses.expires_at IS NULL OR licenses.expires_at > ?)
+          )
+      `).bind(now, id, leaseToken, now),
+      this.database.prepare(`
+        UPDATE license_delivery_outbox
+        SET updated_at = updated_at
+        WHERE id = ? AND status = 'processing' AND lease_token = ?
+          AND encrypted_payload IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM licenses
+            WHERE licenses.id = license_delivery_outbox.license_id
+              AND licenses.status = 'active'
+              AND (licenses.expires_at IS NULL OR licenses.expires_at > ?)
+          )
+      `).bind(id, leaseToken, now),
+    ]);
+    return Boolean(results[1]?.meta?.changes);
+  }
+
+  async cancelDeliveryForLicense(licenseId, now) {
+    const result = await this.database.prepare(`
+      UPDATE license_delivery_outbox
+      SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
+          lease_token = NULL, lease_expires_at = NULL
+      WHERE license_id = ? AND status IN ('pending', 'processing', 'dead_letter')
+    `).bind(now, licenseId).run();
+    return Boolean(result.meta?.changes);
+  }
+
+  async markDeliveryDelivered(id, leaseToken, messageId, now) {
     await this.database.prepare(`
       UPDATE license_delivery_outbox
       SET status = 'delivered', encrypted_payload = NULL, provider_message_id = ?,
           delivered_at = ?, updated_at = ?, lease_token = NULL,
           lease_expires_at = NULL, last_error_code = NULL
-      WHERE id = ?
-    `).bind(messageId, now, now, id).run();
+      WHERE id = ? AND status = 'processing' AND lease_token = ?
+    `).bind(messageId, now, now, id, leaseToken).run();
   }
 
-  async rescheduleDelivery(id, { attempts, nextAttemptAt, errorCode, deadLetter, now }) {
+  async rescheduleDelivery(id, leaseToken, { attempts, nextAttemptAt, errorCode, deadLetter, now }) {
     await this.database.prepare(`
       UPDATE license_delivery_outbox
       SET status = ?, attempts = ?, next_attempt_at = ?, last_error_code = ?,
           updated_at = ?, lease_token = NULL, lease_expires_at = NULL
-      WHERE id = ?
-    `).bind(deadLetter ? 'dead_letter' : 'pending', attempts, nextAttemptAt, errorCode, now, id).run();
+      WHERE id = ? AND status = 'processing' AND lease_token = ?
+    `).bind(
+      deadLetter ? 'dead_letter' : 'pending', attempts, nextAttemptAt,
+      errorCode, now, id, leaseToken,
+    ).run();
   }
 
   async requeueDelivery(id, now) {
