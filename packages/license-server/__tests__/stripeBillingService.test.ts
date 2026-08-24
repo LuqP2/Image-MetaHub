@@ -315,6 +315,23 @@ describe('Stripe normalization', () => {
 });
 
 describe('delivery authorization and Resend window', () => {
+  it('drains full inbox batches before processing deliveries', async () => {
+    const { service } = createService();
+    const processEventInbox = vi.spyOn(service, 'processEventInbox')
+      .mockResolvedValueOnce(25)
+      .mockResolvedValueOnce(25)
+      .mockResolvedValueOnce(3);
+    const processDeliveryOutbox = vi.spyOn(service, 'processDeliveryOutbox')
+      .mockResolvedValueOnce(0);
+
+    await service.processQueues();
+
+    expect(processEventInbox).toHaveBeenCalledTimes(3);
+    expect(processDeliveryOutbox).toHaveBeenCalledTimes(1);
+    expect(processEventInbox.mock.invocationCallOrder[2])
+      .toBeLessThan(processDeliveryOutbox.mock.invocationCallOrder[0]);
+  });
+
   it('retries a transient D1 authorization failure', async () => {
     const encryptedPayload = await encryptDeliveryPayload({
       email: 'buyer@example.com',

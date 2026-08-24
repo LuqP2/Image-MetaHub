@@ -20,6 +20,26 @@ const mapDelivery = (row) => row && ({
   firstProviderAttemptAt: row.first_provider_attempt_at,
 });
 
+const blockingEventWorkSql = `
+  EXISTS (
+    SELECT 1 FROM stripe_event_inbox event_work
+    WHERE event_work.status = 'processing'
+      OR (
+        event_work.status = 'pending'
+        AND event_work.next_attempt_at <= ?
+      )
+      OR (
+        event_work.status IN ('pending', 'dead_letter')
+        AND event_work.event_type IN (
+          'customer.subscription.deleted',
+          'refund.created',
+          'refund.updated',
+          'charge.refunded'
+        )
+      )
+  )
+`;
+
 const subscriptionEventInsert = (database, record) => database.prepare(`
   INSERT INTO stripe_subscription_events (
     event_id, stripe_subscription_id, event_type, billing_status,
@@ -619,9 +639,10 @@ export class D1StripeBillingRepository {
         )
       )
         AND next_attempt_at <= ?
+        AND NOT (${blockingEventWorkSql})
       ORDER BY created_at, id
       LIMIT ?
-    `).bind(now, now, limit).all();
+    `).bind(now, now, now, limit).all();
     const statements = (rows.results || []).map((row) => this.database.prepare(`
       UPDATE license_delivery_outbox
       SET status = CASE WHEN status = 'authorized' THEN 'authorized' ELSE 'leased' END,
@@ -634,7 +655,8 @@ export class D1StripeBillingRepository {
             AND (lease_token IS NULL OR lease_expires_at <= ?)
           )
         )
-    `).bind(leaseToken, leaseExpiresAt, now, row.id, now));
+        AND NOT (${blockingEventWorkSql})
+    `).bind(leaseToken, leaseExpiresAt, now, row.id, now, now));
     if (statements.length) await this.database.batch(statements);
     const claimed = await this.database.prepare(`
       SELECT * FROM license_delivery_outbox
@@ -669,6 +691,7 @@ export class D1StripeBillingRepository {
             updated_at = ?
         WHERE id = ? AND lease_token = ?
           AND encrypted_payload IS NOT NULL
+          AND NOT (${blockingEventWorkSql})
           AND (
             status = 'authorized'
             OR (
@@ -684,7 +707,14 @@ export class D1StripeBillingRepository {
               )
             )
           )
-      `).bind(now, now, now, id, leaseToken, now),
+      `).bind(now, now, now, id, leaseToken, now, now),
+      this.database.prepare(`
+        UPDATE license_delivery_outbox
+        SET status = 'pending', updated_at = ?, lease_token = NULL,
+            lease_expires_at = NULL
+        WHERE id = ? AND status = 'leased' AND lease_token = ?
+          AND (${blockingEventWorkSql})
+      `).bind(now, id, leaseToken, now),
     ]);
     return Boolean(results[1]?.meta?.changes);
   }

@@ -545,6 +545,77 @@ describe('D1 Stripe billing reducer', () => {
     `).get()).toEqual({ status: 'authorized', lease_token: 'lease_reclaimed' });
   });
 
+  it('blocks delivery claims and authorization while event work is unfinished', async () => {
+    const { sqlite, repository } = await setup();
+    await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
+    await repository.enqueueEvent({
+      eventId: 'evt_refund_pending',
+      eventType: 'refund.created',
+      objectId: 're_pending',
+      livemode: false,
+      eventCreatedAt: 200,
+      receivedAt: now,
+    });
+
+    expect(await repository.claimDeliveries({
+      now,
+      leaseToken: 'lease_while_pending',
+      leaseExpiresAt: period1,
+      limit: 1,
+    })).toEqual([]);
+
+    const processing = await repository.claimEvents({
+      now,
+      leaseToken: 'event_lease',
+      leaseExpiresAt: period1,
+      limit: 1,
+    });
+    expect(processing).toHaveLength(1);
+    expect(await repository.claimDeliveries({
+      now,
+      leaseToken: 'lease_while_processing',
+      leaseExpiresAt: period1,
+      limit: 1,
+    })).toEqual([]);
+
+    await repository.markEventProcessed('evt_refund_pending', 'event_lease', now);
+    const claimed = await repository.claimDeliveries({
+      now,
+      leaseToken: 'delivery_lease',
+      leaseExpiresAt: period1,
+      limit: 1,
+    });
+    expect(claimed).toHaveLength(1);
+
+    await repository.enqueueEvent({
+      eventId: 'evt_refund_race',
+      eventType: 'refund.created',
+      objectId: 're_race',
+      livemode: false,
+      eventCreatedAt: 300,
+      receivedAt: period1,
+    });
+    expect(await repository.authorizeDeliverySend(
+      claimed[0].id,
+      'delivery_lease',
+      now,
+    )).toBe(false);
+    expect(sqlite.prepare(`
+      SELECT status, lease_token FROM license_delivery_outbox
+    `).get()).toEqual({ status: 'pending', lease_token: null });
+
+    sqlite.prepare(`
+      UPDATE stripe_event_inbox SET status = 'dead_letter'
+      WHERE event_id = 'evt_refund_race'
+    `).run();
+    expect(await repository.claimDeliveries({
+      now: period1,
+      leaseToken: 'lease_while_dead_lettered',
+      leaseExpiresAt: period2,
+      limit: 1,
+    })).toEqual([]);
+  });
+
   it('rolls back the whole command when D1 rejects its batch', async () => {
     const { sqlite, database, repository } = await setup();
     database.failNextBatchWith = new Error('D1_ERROR: overloaded');

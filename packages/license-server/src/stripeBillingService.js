@@ -624,7 +624,10 @@ export class StripeBillingService {
   }
 
   async processQueues() {
-    await this.processEventInbox();
+    let claimedEvents;
+    do {
+      claimedEvents = await this.processEventInbox();
+    } while (claimedEvents === 25);
     await this.processDeliveryOutbox();
   }
 }

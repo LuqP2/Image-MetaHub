@@ -222,7 +222,11 @@ completion. Partial and failed refunds remain audit-only.
 New customer keys exist in plaintext only in Worker memory. Before the D1 batch is
 committed, the key and recipient are encrypted together using AES-256-GCM and the
 delivery payload is inserted atomically with the hashed license. Delivery ownership
-uses a compare-and-set lease. The durable transition from `leased` to
+uses a compare-and-set lease. Full inbox batches are drained before the outbox,
+and delivery claim plus authorization refuse to proceed while due events or events
+being processed remain. Pending or dead-lettered deletion/refund events keep the
+outbox blocked until reducer or administrative recovery resolves them. The durable
+transition from `leased` to
 `authorized` is the point of no return: cancellation can stop un-authorized work,
 but cannot pretend that an external request was unsent after authorization.
 Resend receives `license-delivery/<outbox-id>` as its stable idempotency key.
