@@ -609,8 +609,10 @@ export class D1StripeBillingRepository {
       SELECT id FROM license_delivery_outbox
       WHERE (
         status = 'pending'
-        OR status = 'authorized'
-        OR (status = 'leased' AND lease_expires_at <= ?)
+        OR (
+          status IN ('leased', 'authorized')
+          AND (lease_token IS NULL OR lease_expires_at <= ?)
+        )
       )
         AND next_attempt_at <= ?
       ORDER BY created_at, id
@@ -623,8 +625,10 @@ export class D1StripeBillingRepository {
       WHERE id = ?
         AND (
           status = 'pending'
-          OR status = 'authorized'
-          OR (status = 'leased' AND lease_expires_at <= ?)
+          OR (
+            status IN ('leased', 'authorized')
+            AND (lease_token IS NULL OR lease_expires_at <= ?)
+          )
         )
     `).bind(leaseToken, leaseExpiresAt, now, row.id, now));
     if (statements.length) await this.database.batch(statements);

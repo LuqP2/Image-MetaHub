@@ -471,6 +471,44 @@ describe('D1 Stripe billing reducer', () => {
     `).get()).toEqual({ status: 'delivered', provider_message_id: 'email_1' });
   });
 
+  it('does not reclaim an authorized delivery until its lease expires', async () => {
+    const { sqlite, repository } = await setup();
+    await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
+    const firstClaim = await repository.claimDeliveries({
+      now,
+      leaseToken: 'lease_first',
+      leaseExpiresAt: period1,
+      limit: 1,
+    });
+    expect(firstClaim).toHaveLength(1);
+    expect(await repository.authorizeDeliverySend(
+      firstClaim[0].id,
+      'lease_first',
+      now,
+    )).toBe(true);
+
+    expect(await repository.claimDeliveries({
+      now,
+      leaseToken: 'lease_overlap',
+      leaseExpiresAt: period2,
+      limit: 1,
+    })).toEqual([]);
+    expect(sqlite.prepare(`
+      SELECT status, lease_token FROM license_delivery_outbox
+    `).get()).toEqual({ status: 'authorized', lease_token: 'lease_first' });
+
+    const reclaimed = await repository.claimDeliveries({
+      now: period1,
+      leaseToken: 'lease_reclaimed',
+      leaseExpiresAt: period2,
+      limit: 1,
+    });
+    expect(reclaimed).toHaveLength(1);
+    expect(sqlite.prepare(`
+      SELECT status, lease_token FROM license_delivery_outbox
+    `).get()).toEqual({ status: 'authorized', lease_token: 'lease_reclaimed' });
+  });
+
   it('rolls back the whole command when D1 rejects its batch', async () => {
     const { sqlite, database, repository } = await setup();
     database.failNextBatchWith = new Error('D1_ERROR: overloaded');
