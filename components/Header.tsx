@@ -9,6 +9,8 @@ import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch
 import { buildProLicenseUrl } from '../utils/creatorAttribution';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
 import type { ExploreDimension } from '../types';
+import { useLicenseStore } from '../store/useLicenseStore';
+import { formatLicenseValidity, licensePlanLabel } from '../utils/licenseDisplay';
 
 type LibraryView = 'library' | 'explore' | 'collections' | 'comfyui' | 'editor';
 
@@ -56,6 +58,8 @@ const Header: React.FC<HeaderProps> = ({
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
   const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
+  const licensePlan = useLicenseStore((state) => state.licensePlan);
+  const licenseExpiresAt = useLicenseStore((state) => state.licenseExpiresAt);
   const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'menu');
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
   const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
@@ -285,7 +289,7 @@ const Header: React.FC<HeaderProps> = ({
     }
     if (isPro) {
       return {
-        label: 'Pro',
+        label: licensePlanLabel(licensePlan),
         classes: 'text-gray-100',
       };
     }
@@ -354,7 +358,7 @@ const Header: React.FC<HeaderProps> = ({
             className={`app-top-pill shrink-0 text-[10px] uppercase tracking-[0.18em] ${statusConfig.classes}`}
             title={isFree
               ? (canStartTrial ? 'Start trial or activate license' : 'Activate license')
-              : 'Manage license and status'}
+              : formatLicenseValidity(licensePlan, licenseExpiresAt) ?? 'Manage license and status'}
           >
             <Crown className="h-3 w-3" />
             <span>{statusConfig.label}</span>

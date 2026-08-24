@@ -72,6 +72,7 @@ packages/license-server/data/test-sqlite.db
 packages/license-server/data/test-sqlite.db-journal
 .license-reissues/
 packages/license-server/wrangler.production.generated.json
+packages/license-server/.wrangler/
 .claude/settings.json
 
 # ONNX Runtime binaries staged from node_modules by vite.config.ts (see stageOnnxRuntime)

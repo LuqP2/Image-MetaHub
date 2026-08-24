@@ -1,9 +1,20 @@
+const effectiveStatus = (row) => {
+  if (row.admin_status !== 'active') return row.admin_status;
+  if (row.source !== 'stripe') return row.admin_status;
+  if (row.billing_state === 'active') return 'active';
+  if (row.billing_state === 'cancelled') return 'cancelled';
+  if (row.billing_state === 'refunded' && row.plan === 'lifetime') return 'revoked';
+  return 'expired';
+};
+
 const mapLicense = (row) => row && ({
   id: row.id,
   keyHash: row.key_hash,
   emailLookup: row.email_lookup,
   plan: row.plan,
-  status: row.status,
+  status: effectiveStatus(row),
+  adminStatus: row.admin_status,
+  billingState: row.billing_state ?? null,
   source: row.source,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -15,6 +26,12 @@ const mapLicense = (row) => row && ({
   stripeCheckoutSessionId: row.stripe_checkout_session_id,
   externalReference: row.external_reference,
 });
+
+const LICENSE_SELECT = `
+  SELECT licenses.*, stripe_entitlements.billing_state
+  FROM licenses
+  LEFT JOIN stripe_entitlements ON stripe_entitlements.license_id = licenses.id
+`;
 
 const mapActivation = (row) => row && ({
   id: row.id,
@@ -35,7 +52,7 @@ export class D1LicenseRepository {
   async createLicense(record) {
     await this.database.prepare(`
       INSERT INTO licenses (
-        id, key_hash, email_lookup, plan, status, source, created_at, updated_at,
+        id, key_hash, email_lookup, plan, admin_status, source, created_at, updated_at,
         expires_at, max_activations, stripe_customer_id, stripe_subscription_id,
         stripe_price_id, stripe_checkout_session_id, external_reference
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -60,29 +77,29 @@ export class D1LicenseRepository {
   }
 
   async findLicenseById(id) {
-    return mapLicense(await this.database.prepare('SELECT * FROM licenses WHERE id = ?').bind(id).first());
+    return mapLicense(await this.database.prepare(`${LICENSE_SELECT} WHERE licenses.id = ?`).bind(id).first());
   }
 
   async findLicenseByKeyHash(keyHash) {
-    return mapLicense(await this.database.prepare('SELECT * FROM licenses WHERE key_hash = ?').bind(keyHash).first());
+    return mapLicense(await this.database.prepare(`${LICENSE_SELECT} WHERE licenses.key_hash = ?`).bind(keyHash).first());
   }
 
   async findLicenseForActivation(keyHash, emailLookupValue) {
     return mapLicense(await this.database.prepare(
-      'SELECT * FROM licenses WHERE key_hash = ? AND email_lookup = ?',
+      `${LICENSE_SELECT} WHERE licenses.key_hash = ? AND licenses.email_lookup = ?`,
     ).bind(keyHash, emailLookupValue).first());
   }
 
   async findLicenseBySourceAndEmailLookup(source, emailLookupValue) {
     return mapLicense(await this.database.prepare(
-      'SELECT * FROM licenses WHERE source = ? AND email_lookup = ?',
+      `${LICENSE_SELECT} WHERE licenses.source = ? AND licenses.email_lookup = ?`,
     ).bind(source, emailLookupValue).first());
   }
 
   async updateLicense(id, patch) {
     const columns = {
       plan: 'plan',
-      status: 'status',
+      status: 'admin_status',
       expiresAt: 'expires_at',
       maxActivations: 'max_activations',
       stripeCustomerId: 'stripe_customer_id',
@@ -96,9 +113,21 @@ export class D1LicenseRepository {
     if (entries.length === 0) return this.findLicenseById(id);
 
     const assignments = entries.map(([key]) => `${columns[key]} = ?`).join(', ');
-    await this.database.prepare(`UPDATE licenses SET ${assignments} WHERE id = ?`)
-      .bind(...entries.map(([, value]) => value), id)
-      .run();
+    const update = this.database.prepare(`UPDATE licenses SET ${assignments} WHERE id = ?`)
+      .bind(...entries.map(([, value]) => value), id);
+    if (patch.status !== undefined && patch.status !== 'active') {
+      await this.database.batch([
+        update,
+        this.database.prepare(`
+          UPDATE license_delivery_outbox
+          SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
+              lease_token = NULL, lease_expires_at = NULL
+          WHERE license_id = ? AND status IN ('pending', 'leased', 'dead_letter')
+        `).bind(patch.updatedAt, id),
+      ]);
+    } else {
+      await update.run();
+    }
     return this.findLicenseById(id);
   }
 

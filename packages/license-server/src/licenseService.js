@@ -115,6 +115,13 @@ export class LicenseService {
     throw new Error('Unable to create a unique license key.');
   }
 
+  async prepareLicense(input) {
+    requireValue(input.source !== 'legacy_reissue', 'invalid_request', 'Historical reissues must use the dedicated reissue operation.');
+    const plaintextKey = generateRandomLicenseKey(this.cryptoApi);
+    const record = await this.buildLicenseRecord({ ...input, source: input.source ?? 'manual' }, plaintextKey);
+    return { license: record, licenseKey: plaintextKey };
+  }
+
   async reissueHistoricalLicense({ email, licenseKey }) {
     const normalizedEmail = normalizeEmail(email);
     const normalizedKey = normalizeImh2LicenseKey(licenseKey);

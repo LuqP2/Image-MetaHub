@@ -5,6 +5,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { SettingsPanel } from './SettingsPanel';
 import { SettingsSectionCard } from './SettingsSectionCard';
 import { buildProLicenseUrl } from '../../utils/creatorAttribution';
+import { formatLicenseValidity, licensePlanLabel } from '../../utils/licenseDisplay';
 
 const licenseStatusClassName: Record<string, string> = {
   free: 'border-gray-700 bg-gray-800 text-gray-300',
@@ -25,11 +26,17 @@ const licenseStatusLabel: Record<string, string> = {
 export const LicenseSettingsPanel: React.FC = () => {
   const licenseStatus = useLicenseStore((state) => state.licenseStatus);
   const licenseEmail = useLicenseStore((state) => state.licenseEmail);
+  const licensePlan = useLicenseStore((state) => state.licensePlan);
+  const licenseExpiresAt = useLicenseStore((state) => state.licenseExpiresAt);
   const licenseKey = useLicenseStore((state) => state.licenseKey);
   const licenseStoreMessage = useLicenseStore((state) => state.licenseMessage);
   const activateLicense = useLicenseStore((state) => state.activateLicense);
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
   const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'settings');
+  const paidPlanLabel = licenseStatus === 'pro' || licenseStatus === 'lifetime'
+    ? licensePlanLabel(licensePlan)
+    : licenseStatusLabel[licenseStatus];
+  const validityLabel = formatLicenseValidity(licensePlan, licenseExpiresAt);
 
   const [licenseEmailInput, setLicenseEmailInput] = useState(licenseEmail ?? '');
   const [licenseKeyInput, setLicenseKeyInput] = useState(licenseKey ?? '');
@@ -77,9 +84,10 @@ export const LicenseSettingsPanel: React.FC = () => {
       <SettingsSectionCard title="License status">
         <div className="flex flex-wrap items-center gap-3">
           <span className={`inline-flex rounded-full border px-3 py-1 text-sm font-medium ${licenseStatusClassName[licenseStatus]}`}>
-            {licenseStatusLabel[licenseStatus]}
+            {paidPlanLabel}
           </span>
           {licenseEmail ? <span className="text-sm text-gray-400">Activated for {licenseEmail}</span> : null}
+          {validityLabel ? <span className="text-sm text-gray-400">{validityLabel}</span> : null}
         </div>
       </SettingsSectionCard>
 

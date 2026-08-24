@@ -22,6 +22,10 @@ const sensitiveIdentifiers = [
   'LICENSE_SIGNING_PRIVATE_KEY',
   'LICENSE_SERVER_ADMIN_TOKEN',
   'EMAIL_LOOKUP_PEPPER',
+  'STRIPE_WEBHOOK_SECRET',
+  'STRIPE_RESTRICTED_API_KEY',
+  'LICENSE_DELIVERY_ENCRYPTION_KEY',
+  'RESEND_API_KEY',
   'CLOUDFLARE_API_TOKEN',
 ];
 
@@ -36,6 +40,10 @@ export function getConfiguredSensitiveValues(env = process.env) {
     env.LICENSE_SIGNING_PRIVATE_KEY,
     env.LICENSE_SERVER_ADMIN_TOKEN,
     env.EMAIL_LOOKUP_PEPPER,
+    env.STRIPE_WEBHOOK_SECRET,
+    env.STRIPE_RESTRICTED_API_KEY,
+    env.LICENSE_DELIVERY_ENCRYPTION_KEY,
+    env.RESEND_API_KEY,
     env.CLOUDFLARE_API_TOKEN,
   ].filter((value) => typeof value === 'string' && value.length >= 8);
 }
