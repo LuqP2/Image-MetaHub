@@ -303,16 +303,10 @@ export class StripeBillingService {
     const lineItems = await collectStripeList(
       (params) => this.stripeClient.checkout.sessions.listLineItems(session.id, params),
     );
-    const productLines = lineItems.filter((line) => (
-      objectId(line.price?.product) === this.config.subscriptionProductId
-    ));
-    const matches = productLines.filter((line) => (
+    const matches = lineItems.filter((line) => (
       objectId(line.price) === this.config.lifetimePriceId
       && Number(line.quantity ?? 1) === 1
     ));
-    if (productLines.length && !matches.length) {
-      throw new PermanentStripeEventError('stripe_checkout_price_unmapped');
-    }
     if (matches.length !== 1) return;
 
     const email = await this.resolveCustomerEmail(

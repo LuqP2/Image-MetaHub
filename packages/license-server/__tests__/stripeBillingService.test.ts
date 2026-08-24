@@ -157,6 +157,54 @@ describe('Stripe normalization', () => {
     });
   });
 
+  it('matches a Lifetime checkout by Price when it uses a separate Product', async () => {
+    const applyLifetimePayment = vi.fn(async () => undefined);
+    const { service } = createService({
+      repository: { applyLifetimePayment },
+      licenseService: {
+        prepareLicense: vi.fn(async () => ({
+          license: { id: 'lic_lifetime' },
+          licenseKey: 'IMH2-TEST',
+        })),
+      },
+      stripeClient: {
+        checkout: {
+          sessions: {
+            retrieve: vi.fn(async () => ({
+              id: 'cs_lifetime',
+              livemode: false,
+              mode: 'payment',
+              payment_status: 'paid',
+              customer: 'cus_lifetime',
+              customer_details: { email: 'buyer@example.com' },
+              payment_intent: 'pi_lifetime',
+              amount_total: 4_999,
+              currency: 'usd',
+            })),
+            listLineItems: vi.fn(async () => ({
+              data: [{
+                id: 'li_lifetime',
+                quantity: 1,
+                price: { id: 'price_lifetime', product: 'prod_lifetime' },
+              }],
+              has_more: false,
+            })),
+          },
+        },
+      },
+    });
+
+    await service.processEvent(event('checkout.session.completed', 'cs_lifetime', 100));
+
+    expect(applyLifetimePayment).toHaveBeenCalledWith(expect.objectContaining({
+      payment: expect.objectContaining({
+        stripeCheckoutSessionId: 'cs_lifetime',
+        stripePaymentIntentId: 'pi_lifetime',
+      }),
+      candidateLicense: expect.objectContaining({ id: 'lic_lifetime' }),
+    }));
+  });
+
   it('keeps the Checkout Session off renewal payment facts', async () => {
     const invoices = new Map([
       ['in_initial', {
