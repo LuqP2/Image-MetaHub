@@ -390,6 +390,10 @@ export class StripeBillingService {
       limit: 1,
     });
     const checkoutSession = checkoutSessions.data?.[0] ?? null;
+    const checkoutSessionId = checkoutSession?.id ?? null;
+    const paymentCheckoutSessionId = invoice.billing_reason === 'subscription_create'
+      ? checkoutSessionId
+      : null;
     const email = await this.resolveCustomerEmail(
       checkoutSession?.customer ?? invoice.customer ?? subscription.customer,
       checkoutSession?.customer_details?.email ?? invoice.customer_email,
@@ -401,7 +405,7 @@ export class StripeBillingService {
       stripeCustomerId: objectId(subscription.customer),
       stripeSubscriptionId: subscriptionId,
       stripePriceId: paidLine.priceId,
-      stripeCheckoutSessionId: checkoutSession?.id ?? null,
+      stripeCheckoutSessionId: checkoutSessionId,
       externalReference: invoice.id,
       now,
     });
@@ -427,7 +431,7 @@ export class StripeBillingService {
         paymentKind: 'subscription',
         stripePaymentIntentId: references.paymentIntentId,
         stripeChargeId: references.chargeId,
-        stripeCheckoutSessionId: checkoutSession?.id ?? null,
+        stripeCheckoutSessionId: paymentCheckoutSessionId,
         stripeInvoiceId: invoice.id,
         stripeSubscriptionId: subscriptionId,
         amountPaid: Number.isFinite(Number(invoice.amount_paid)) ? Number(invoice.amount_paid) : null,

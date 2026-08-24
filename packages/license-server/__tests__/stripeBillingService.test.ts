@@ -156,6 +156,114 @@ describe('Stripe normalization', () => {
       plan: 'monthly',
     });
   });
+
+  it('keeps the Checkout Session off renewal payment facts', async () => {
+    const invoices = new Map([
+      ['in_initial', {
+        id: 'in_initial',
+        status: 'paid',
+        billing_reason: 'subscription_create',
+        parent: { subscription_details: { subscription: 'sub_1' } },
+        customer: 'cus_1',
+        amount_paid: 499,
+        currency: 'usd',
+        payments: {
+          data: [{
+            status: 'paid',
+            payment: { payment_intent: 'pi_initial', charge: 'ch_initial' },
+          }],
+        },
+      }],
+      ['in_renewal', {
+        id: 'in_renewal',
+        status: 'paid',
+        billing_reason: 'subscription_cycle',
+        parent: { subscription_details: { subscription: 'sub_1' } },
+        customer: 'cus_1',
+        amount_paid: 499,
+        currency: 'usd',
+        payments: {
+          data: [{
+            status: 'paid',
+            payment: { payment_intent: 'pi_renewal', charge: 'ch_renewal' },
+          }],
+        },
+      }],
+    ]);
+    const lineItems = new Map([
+      ['in_initial', { start: 1_786_000_000, end: 1_788_500_000 }],
+      ['in_renewal', { start: 1_788_500_000, end: 1_791_200_000 }],
+    ]);
+    let licenseSequence = 0;
+    const applyPaidInvoice = vi.fn(async () => undefined);
+    const { service } = createService({
+      repository: { applyPaidInvoice },
+      licenseService: {
+        prepareLicense: vi.fn(async (input: { stripeCheckoutSessionId: string | null }) => ({
+          license: {
+            id: `lic_${++licenseSequence}`,
+            stripeCheckoutSessionId: input.stripeCheckoutSessionId,
+          },
+          licenseKey: 'IMH2-TEST',
+        })),
+      },
+      stripeClient: {
+        invoices: {
+          retrieve: vi.fn(async (id: string) => invoices.get(id)),
+          listLineItems: vi.fn(async (id: string) => {
+            const period = lineItems.get(id);
+            return {
+              data: [{
+                id: `li_${id}`,
+                quantity: 1,
+                parent: {
+                  type: 'subscription_item_details',
+                  subscription_item_details: { proration: false },
+                },
+                pricing: {
+                  price_details: { price: 'price_monthly', product: 'prod_1' },
+                },
+                period,
+              }],
+              has_more: false,
+            };
+          }),
+        },
+        subscriptions: {
+          retrieve: vi.fn(async () => ({
+            id: 'sub_1',
+            customer: 'cus_1',
+            items: {
+              data: [{ price: { id: 'price_monthly', product: 'prod_1' } }],
+            },
+          })),
+        },
+        checkout: {
+          sessions: {
+            list: vi.fn(async () => ({
+              data: [{
+                id: 'cs_initial',
+                customer: 'cus_1',
+                customer_details: { email: 'buyer@example.com' },
+              }],
+            })),
+          },
+        },
+      },
+    });
+
+    await service.processEvent(event('invoice.paid', 'in_initial', 100));
+    await service.processEvent(event('invoice.paid', 'in_renewal', 200));
+
+    expect(applyPaidInvoice).toHaveBeenCalledTimes(2);
+    expect(applyPaidInvoice.mock.calls.map(([command]) => ({
+      paymentCheckoutSessionId: command.payment.stripeCheckoutSessionId,
+      licenseCheckoutSessionId: command.candidateLicense.stripeCheckoutSessionId,
+    }))).toEqual([
+      { paymentCheckoutSessionId: 'cs_initial', licenseCheckoutSessionId: 'cs_initial' },
+      { paymentCheckoutSessionId: null, licenseCheckoutSessionId: 'cs_initial' },
+    ]);
+  });
 });
 
 describe('delivery authorization and Resend window', () => {
