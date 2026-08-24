@@ -130,7 +130,8 @@ class MemoryBillingRepository {
   async terminateSubscription(id: string, eventCreatedAt: number) {
     const subscription = this.subscriptions.get(id);
     if (!subscription?.licenseId || (subscription.latestPaidEventCreatedAt ?? 0) > eventCreatedAt) return false;
-    this.licenses.get(subscription.licenseId).status = 'cancelled';
+    const license = this.licenses.get(subscription.licenseId);
+    if (license.status !== 'revoked') license.status = 'cancelled';
     const delivery = [...this.deliveries.values()].find((item) => item.licenseId === subscription.licenseId);
     if (delivery && (delivery.status === 'pending' || delivery.status === 'processing')) {
       Object.assign(delivery, { status: 'cancelled', encryptedPayload: null });
@@ -431,6 +432,9 @@ describe('Stripe billing service', () => {
       stripeSubscriptionId: 'sub_1', licenseId: existing.id,
       latestPaidEventCreatedAt: 100, lastEventCreatedAt: 100, paidThrough: existing.expiresAt,
     });
+    stripe._subscriptions.set('sub_1', subscription({ status: 'canceled', ended_at: 1_788_000_000 }));
+    await process(event('evt_revoked_deleted', 'customer.subscription.deleted', { id: 'sub_1' }, 1_788_000_000));
+    expect(existing.status).toBe('revoked');
     const renewal = {
       id: 'in_revoked', status: 'paid', customer_email: 'buyer@example.com',
       parent: { subscription_details: { subscription: 'sub_1' } },

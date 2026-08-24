@@ -217,6 +217,8 @@ describe('D1 Stripe billing repository', () => {
   it('preserves an administrative revocation while recording a later paid period', async () => {
     await repository.createStripeLicenseBundle({ license: license(), subscription, invoice, payment, delivery });
     sqlite.prepare("UPDATE licenses SET status = 'revoked' WHERE id = 'lic_1'").run();
+    expect(await repository.terminateSubscription('sub_1', 250, now)).toBe(true);
+    expect(await repository.findLicenseById('lic_1')).toMatchObject({ status: 'revoked' });
     const expiresAt = '2026-10-23T00:00:00.000Z';
     await repository.recordPaidRenewal({
       licenseId: 'lic_1', plan: 'monthly', expiresAt,

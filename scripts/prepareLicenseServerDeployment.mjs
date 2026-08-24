@@ -48,8 +48,8 @@ export async function prepareLicenseServerDeployment({ env = process.env, output
   if (!/^whsec_[A-Za-z0-9_]+$/.test(env.STRIPE_WEBHOOK_SECRET)) {
     throw new Error('STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret.');
   }
-  if (!/^rk_(?:live|test)_[A-Za-z0-9]+$/.test(env.STRIPE_RESTRICTED_API_KEY)) {
-    throw new Error('STRIPE_RESTRICTED_API_KEY must be a restricted Stripe API key.');
+  if (!/^rk_live_[A-Za-z0-9]+$/.test(env.STRIPE_RESTRICTED_API_KEY)) {
+    throw new Error('STRIPE_RESTRICTED_API_KEY must be a live-mode restricted Stripe API key.');
   }
   if (!/^re_[A-Za-z0-9_]+$/.test(env.RESEND_API_KEY)) {
     throw new Error('RESEND_API_KEY must be a Resend API key.');

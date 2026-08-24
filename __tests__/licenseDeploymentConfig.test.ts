@@ -45,32 +45,30 @@ describe('license server deployment preflight', () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-deploy-config-test-'));
     tempDirectories.push(directory);
     const outputPath = path.join(directory, 'wrangler.production.generated.json');
-    await prepareLicenseServerDeployment({
-      outputPath,
-      env: {
-        CLOUDFLARE_API_TOKEN: 'test-cloudflare-token',
-        CLOUDFLARE_ACCOUNT_ID: 'test-cloudflare-account',
-        LICENSE_D1_DATABASE_ID: d1DatabaseId,
-        LICENSE_SERVER_URL: 'https://licenses.example.com',
-        LICENSE_SIGNING_PUBLIC_KEY: keys.publicKey,
-        LICENSE_SIGNING_PRIVATE_KEY: keys.privateKey,
-        LICENSE_SERVER_ADMIN_TOKEN: 'a'.repeat(32),
-        EMAIL_LOOKUP_PEPPER: 'test-only-email-pepper',
-        STRIPE_WEBHOOK_SECRET: 'whsec_test_webhook_secret',
-        STRIPE_RESTRICTED_API_KEY: 'rk_test_restrictedkey',
-        LICENSE_DELIVERY_ENCRYPTION_KEY: encodeBase64Url(new Uint8Array(32).fill(9)),
-        RESEND_API_KEY: 're_test_resend_key',
-        STRIPE_ACCOUNT_ID: 'acct_testaccount',
-        STRIPE_SUBSCRIPTION_PRODUCT_ID: 'prod_subscription',
-        STRIPE_MONTHLY_PRICE_ID: 'price_monthly',
-        STRIPE_ANNUAL_PRICE_ID: 'price_annual',
-        STRIPE_MONTHLY_HISTORICAL_PRICE_IDS: 'price_monthlyold, price_monthlyolder',
-        STRIPE_ANNUAL_HISTORICAL_PRICE_IDS: 'price_annualold',
-        STRIPE_LIFETIME_PRICE_ID: 'price_lifetime',
-        LICENSE_EMAIL_FROM: 'Image MetaHub <licenses@example.com>',
-        LICENSE_EMAIL_REPLY_TO: 'support@example.com',
-      },
-    });
+    const env = {
+      CLOUDFLARE_API_TOKEN: 'test-cloudflare-token',
+      CLOUDFLARE_ACCOUNT_ID: 'test-cloudflare-account',
+      LICENSE_D1_DATABASE_ID: d1DatabaseId,
+      LICENSE_SERVER_URL: 'https://licenses.example.com',
+      LICENSE_SIGNING_PUBLIC_KEY: keys.publicKey,
+      LICENSE_SIGNING_PRIVATE_KEY: keys.privateKey,
+      LICENSE_SERVER_ADMIN_TOKEN: 'a'.repeat(32),
+      EMAIL_LOOKUP_PEPPER: 'test-only-email-pepper',
+      STRIPE_WEBHOOK_SECRET: 'whsec_test_webhook_secret',
+      STRIPE_RESTRICTED_API_KEY: 'rk_live_restrictedkey',
+      LICENSE_DELIVERY_ENCRYPTION_KEY: encodeBase64Url(new Uint8Array(32).fill(9)),
+      RESEND_API_KEY: 're_test_resend_key',
+      STRIPE_ACCOUNT_ID: 'acct_testaccount',
+      STRIPE_SUBSCRIPTION_PRODUCT_ID: 'prod_subscription',
+      STRIPE_MONTHLY_PRICE_ID: 'price_monthly',
+      STRIPE_ANNUAL_PRICE_ID: 'price_annual',
+      STRIPE_MONTHLY_HISTORICAL_PRICE_IDS: 'price_monthlyold, price_monthlyolder',
+      STRIPE_ANNUAL_HISTORICAL_PRICE_IDS: 'price_annualold',
+      STRIPE_LIFETIME_PRICE_ID: 'price_lifetime',
+      LICENSE_EMAIL_FROM: 'Image MetaHub <licenses@example.com>',
+      LICENSE_EMAIL_REPLY_TO: 'support@example.com',
+    };
+    await prepareLicenseServerDeployment({ outputPath, env });
     const contents = await fs.readFile(outputPath, 'utf8');
     expect(contents).not.toContain('REPLACE_DURING_DEPLOYMENT');
     expect(JSON.parse(contents)).toMatchObject({
@@ -93,7 +91,11 @@ describe('license server deployment preflight', () => {
     expect(contents).not.toContain(keys.privateKey);
     expect(contents).not.toContain('test-only-email-pepper');
     expect(contents).not.toContain('whsec_test_webhook_secret');
-    expect(contents).not.toContain('rk_test_restrictedkey');
+    expect(contents).not.toContain('rk_live_restrictedkey');
     expect(contents).not.toContain('re_test_resend_key');
+    await expect(prepareLicenseServerDeployment({
+      outputPath,
+      env: { ...env, STRIPE_RESTRICTED_API_KEY: 'rk_test_restrictedkey' },
+    })).rejects.toThrow('live-mode restricted Stripe API key');
   });
 });

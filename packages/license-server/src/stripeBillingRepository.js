@@ -405,7 +405,9 @@ export class D1StripeBillingRepository {
     if (subscription.latestPaidEventCreatedAt && subscription.latestPaidEventCreatedAt > eventCreatedAt) return false;
     const results = await this.database.batch([
       this.database.prepare(`
-        UPDATE licenses SET status = 'cancelled', updated_at = ?
+        UPDATE licenses
+        SET status = CASE WHEN status = 'revoked' THEN status ELSE 'cancelled' END,
+            updated_at = ?
         WHERE id = ? AND source = 'stripe'
           AND EXISTS (
             SELECT 1 FROM stripe_subscriptions

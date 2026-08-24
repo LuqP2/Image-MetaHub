@@ -145,7 +145,7 @@ corresponding historical allowlist. Historical IDs are accepted for paid
 subscription invoices and retain their Monthly or Annual plan mapping; the
 current Price variables remain the canonical IDs for new checkouts.
 
-The Stripe restricted key needs read-only access to Checkout Sessions, Customers,
+The live-mode Stripe restricted key needs read-only access to Checkout Sessions, Customers,
 Subscriptions, Invoices, Charges, PaymentIntents, and Refunds. It must never be
 embedded in the desktop application. Stripe Tax remains disabled; this integration
 does not set `automatic_tax` or modify any Stripe account setting.
