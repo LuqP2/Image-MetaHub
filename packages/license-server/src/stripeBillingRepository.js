@@ -40,7 +40,7 @@ const blockingEventWorkSql = `
   )
 `;
 
-const reversibleRefundSuspensionSql = `
+const reversibleRefundForLicenseSql = (licenseIdSql) => `
   EXISTS (
     SELECT 1
     FROM licenses refund_license
@@ -58,7 +58,7 @@ const reversibleRefundSuspensionSql = `
      )
     LEFT JOIN stripe_invoices refunded_invoice
       ON refunded_invoice.stripe_invoice_id = refund_payment.stripe_invoice_id
-    WHERE refund_license.id = license_delivery_outbox.license_id
+    WHERE refund_license.id = ${licenseIdSql}
       AND refund_license.admin_status = 'active'
       AND refund_entitlement.billing_state IN ('refunded', 'expired')
       AND (
@@ -75,6 +75,10 @@ const reversibleRefundSuspensionSql = `
       )
   )
 `;
+
+const reversibleRefundSuspensionSql = reversibleRefundForLicenseSql(
+  'license_delivery_outbox.license_id',
+);
 
 const subscriptionEventInsert = (database, record) => database.prepare(`
   INSERT INTO stripe_subscription_events (
@@ -478,28 +482,45 @@ const recomputeStatements = (database, now) => [
   `).bind(now, now, now),
 ];
 
-const deliveryInsert = (database, record, candidateKeyHash, now) => database.prepare(`
-  INSERT INTO license_delivery_outbox (
-    id, license_id, encrypted_payload, payload_version, status, attempts,
-    next_attempt_at, created_at, updated_at
-  )
-  SELECT ?, l.id, ?, 1, 'pending', 0, ?, ?, ?
-  FROM licenses l
-  JOIN stripe_entitlements e ON e.license_id = l.id
-  WHERE l.key_hash = ?
-    AND l.admin_status = 'active'
-    AND e.billing_state = 'active'
-    AND (l.expires_at IS NULL OR l.expires_at > ?)
-  ON CONFLICT(license_id) DO NOTHING
-`).bind(
-  record.id,
-  record.encryptedPayload,
-  record.nextAttemptAt,
-  record.createdAt,
-  record.updatedAt,
-  candidateKeyHash,
-  now,
-);
+const deliveryInsert = (database, record, candidateKeyHash, now) => {
+  const reversibleRefund = reversibleRefundForLicenseSql('l.id');
+  return database.prepare(`
+    INSERT INTO license_delivery_outbox (
+      id, license_id, encrypted_payload, payload_version, status, attempts,
+      next_attempt_at, created_at, updated_at
+    )
+    SELECT ?, l.id, ?, 1,
+      CASE
+        WHEN e.billing_state = 'active'
+          AND (l.expires_at IS NULL OR l.expires_at > ?)
+        THEN 'pending'
+        ELSE 'suspended'
+      END,
+      0, ?, ?, ?
+    FROM licenses l
+    JOIN stripe_entitlements e ON e.license_id = l.id
+    WHERE l.key_hash = ?
+      AND l.admin_status = 'active'
+      AND (
+        (
+          e.billing_state = 'active'
+          AND (l.expires_at IS NULL OR l.expires_at > ?)
+        )
+        OR (${reversibleRefund})
+      )
+    ON CONFLICT(license_id) DO NOTHING
+  `).bind(
+    record.id,
+    record.encryptedPayload,
+    now,
+    record.nextAttemptAt,
+    record.createdAt,
+    record.updatedAt,
+    candidateKeyHash,
+    now,
+    now,
+  );
+};
 
 const reactivateUndeliveredDelivery = (
   database,
@@ -649,14 +670,6 @@ export class D1StripeBillingRepository {
         SELECT 1 FROM stripe_invoices i
         WHERE i.stripe_invoice_id = ?
           AND i.period_end > ?
-          AND NOT EXISTS (
-            SELECT 1 FROM stripe_refund_facts r
-            WHERE r.payment_fully_refunded = 1
-              AND (
-                (r.stripe_payment_intent_id IS NOT NULL AND r.stripe_payment_intent_id = i.stripe_payment_intent_id)
-                OR (r.stripe_charge_id IS NOT NULL AND r.stripe_charge_id = i.stripe_charge_id)
-              )
-          )
           AND COALESCE((
             SELECT MAX(se.event_created_at)
             FROM stripe_subscription_events se
@@ -686,14 +699,6 @@ export class D1StripeBillingRepository {
         SELECT 1 FROM stripe_payments p
         WHERE p.stripe_checkout_session_id = ?
           AND p.payment_status = 'paid'
-          AND NOT EXISTS (
-            SELECT 1 FROM stripe_refund_facts r
-            WHERE r.payment_fully_refunded = 1
-              AND (
-                (r.stripe_payment_intent_id IS NOT NULL AND r.stripe_payment_intent_id = p.stripe_payment_intent_id)
-                OR (r.stripe_charge_id IS NOT NULL AND r.stripe_charge_id = p.stripe_charge_id)
-              )
-          )
       )
     `;
     await this.database.batch([

@@ -215,7 +215,9 @@ paths.
 Full successful refunds revoke Lifetime. For recurring licenses, a full refund
 removes only the matching paid period; it cannot override a later paid invoice.
 Refund facts are stored by PaymentIntent and Charge even if the payment webhook
-has not arrived, so later facts converge without depending on webhook order.
+has not arrived. A later paid invoice or Checkout still creates the canonical
+inactive license and suspended encrypted delivery, so `refund.failed` can restore
+both without manual database recovery or another payment webhook.
 `refund.updated` and `charge.refunded` cover delayed and aggregate refund
 completion. The latest ordered snapshot also clears a previous full-refund fact
 when Stripe later reports that the refund failed. Partial and failed refunds

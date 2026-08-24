@@ -298,12 +298,103 @@ describe('D1 Stripe billing reducer', () => {
     }
   });
 
-  it('persists an early refund and blocks later provisioning of that payment', async () => {
+  it('preserves a suspended subscription candidate when refund arrives before payment', async () => {
     const { sqlite, repository } = await setup();
     await repository.applyRefundSnapshot(fullRefund('1', 50));
     await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM stripe_invoices').get()).toEqual({ count: 1 });
-    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM licenses').get()).toEqual({ count: 0 });
+    expect(sqlite.prepare(`
+      SELECT e.billing_state, d.status, d.encrypted_payload
+      FROM stripe_entitlements e
+      JOIN license_delivery_outbox d ON d.license_id = e.license_id
+    `).get()).toEqual({
+      billing_state: 'expired',
+      status: 'suspended',
+      encrypted_payload: 'encrypted_1',
+    });
+
+    await repository.applyRefundSnapshot({
+      ...fullRefund('1', 150),
+      refundStatus: 'failed',
+      paymentFullyRefunded: false,
+      eventId: 'evt_refund_1_failed',
+    });
+    expect(sqlite.prepare(`
+      SELECT e.billing_state, d.status, d.encrypted_payload
+      FROM stripe_entitlements e
+      JOIN license_delivery_outbox d ON d.license_id = e.license_id
+    `).get()).toEqual({
+      billing_state: 'active',
+      status: 'pending',
+      encrypted_payload: 'encrypted_1',
+    });
+  });
+
+  it('preserves a suspended Lifetime candidate when refund arrives before payment', async () => {
+    const { sqlite, repository } = await setup();
+    const succeededRefund = {
+      ...fullRefund('early_life', 50),
+      amount: 3900,
+    };
+    await repository.applyRefundSnapshot(succeededRefund);
+
+    const lifetimeCandidate = {
+      ...candidate('early_life', period1, 'cs_early_life'),
+      plan: 'lifetime',
+      expiresAt: null,
+      stripeSubscriptionId: null,
+      stripePriceId: 'price_lifetime',
+      externalReference: 'pi_early_life',
+    };
+    await repository.applyLifetimePayment({
+      payment: {
+        paymentReference: 'pi_early_life',
+        paymentKind: 'lifetime',
+        stripePaymentIntentId: 'pi_early_life',
+        stripeChargeId: 'ch_early_life',
+        stripeCheckoutSessionId: 'cs_early_life',
+        stripeInvoiceId: null,
+        stripeSubscriptionId: null,
+        amountPaid: 3900,
+        currency: 'usd',
+        eventId: 'evt_early_life',
+        eventCreatedAt: 100,
+        createdAt: now,
+        updatedAt: now,
+      },
+      candidateLicense: lifetimeCandidate,
+      delivery: {
+        ...delivery('early_life'),
+        licenseId: lifetimeCandidate.id,
+      },
+      now,
+    });
+    expect(sqlite.prepare(`
+      SELECT e.billing_state, d.status, d.encrypted_payload
+      FROM stripe_entitlements e
+      JOIN license_delivery_outbox d ON d.license_id = e.license_id
+    `).get()).toEqual({
+      billing_state: 'refunded',
+      status: 'suspended',
+      encrypted_payload: 'encrypted_early_life',
+    });
+
+    await repository.applyRefundSnapshot({
+      ...succeededRefund,
+      refundStatus: 'failed',
+      paymentFullyRefunded: false,
+      eventId: 'evt_refund_early_life_failed',
+      eventCreatedAt: 150,
+    });
+    expect(sqlite.prepare(`
+      SELECT e.billing_state, d.status, d.encrypted_payload
+      FROM stripe_entitlements e
+      JOIN license_delivery_outbox d ON d.license_id = e.license_id
+    `).get()).toEqual({
+      billing_state: 'active',
+      status: 'pending',
+      encrypted_payload: 'encrypted_early_life',
+    });
   });
 
   it('revokes Lifetime only while the latest refund snapshot is fully refunded', async () => {
