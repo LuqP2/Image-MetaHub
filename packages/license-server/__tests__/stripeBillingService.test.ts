@@ -440,6 +440,38 @@ describe('refund convergence', () => {
     );
   });
 
+  it('keeps cumulative Charge totals out of an individual partial refund fact', async () => {
+    const { service, repository, stripeClient } = createService();
+    stripeClient.refunds.retrieve.mockResolvedValue({
+      id: 're_partial_1',
+      status: 'succeeded',
+      charge: 'ch_1',
+      payment_intent: 'pi_1',
+      amount: 250,
+      currency: 'usd',
+    });
+    stripeClient.charges.retrieve.mockResolvedValue({
+      id: 'ch_1',
+      payment_intent: 'pi_1',
+      amount: 499,
+      amount_refunded: 499,
+      currency: 'usd',
+    });
+
+    await service.processEvent(event('refund.updated', 're_partial_1', 250));
+
+    expect(repository.applyRefundSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        factId: 'refund:re_partial_1',
+        paymentFullyRefunded: false,
+        chargeSnapshot: expect.objectContaining({
+          factId: 'charge:ch_1',
+          paymentFullyRefunded: true,
+        }),
+      }),
+    );
+  });
+
   it('clears refund and Charge aggregates when a completed refund later fails', async () => {
     const { service, repository, stripeClient } = createService();
     stripeClient.refunds.retrieve.mockResolvedValue({

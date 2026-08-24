@@ -231,12 +231,17 @@ outbox blocked until reducer or administrative recovery resolves them. The durab
 transition from `leased` to
 `authorized` is the point of no return: cancellation can stop un-authorized work,
 but cannot pretend that an external request was unsent after authorization.
+Before the first provider attempt, a successful refund moves an otherwise
+deliverable row to `suspended` and retains only its AES-GCM ciphertext. If Stripe
+later reports `refund.failed`, the same delivery returns to `pending`; final
+administrative revocation, deletion, or expiry still cancels it and erases the
+ciphertext.
 Resend receives `license-delivery/<outbox-id>` as its stable idempotency key.
 Automatic retries finish within 23 hours. Any uncertain result beyond that window
 moves to `manual_review`; the normal retry endpoint returns
 `manual_review_required` instead of risking a duplicate email. Successful or
-cancelled rows delete the ciphertext, while manual-review rows retain it for
-explicit operator recovery.
+cancelled rows delete the ciphertext, while suspended and manual-review rows
+retain it only for refund reversal or explicit operator recovery.
 
 Unexpected Worker, D1, network, Stripe 429, and Stripe 5xx failures are retryable
 by default. Only explicitly classified domain/configuration errors dead-letter

@@ -40,6 +40,42 @@ const blockingEventWorkSql = `
   )
 `;
 
+const reversibleRefundSuspensionSql = `
+  EXISTS (
+    SELECT 1
+    FROM licenses refund_license
+    JOIN stripe_entitlements refund_entitlement
+      ON refund_entitlement.license_id = refund_license.id
+    JOIN stripe_payments refund_payment
+      ON refund_payment.license_id = refund_license.id
+    JOIN stripe_refund_facts refund_fact
+      ON refund_fact.payment_fully_refunded = 1
+     AND (
+       (refund_fact.stripe_payment_intent_id IS NOT NULL
+         AND refund_fact.stripe_payment_intent_id = refund_payment.stripe_payment_intent_id)
+       OR (refund_fact.stripe_charge_id IS NOT NULL
+         AND refund_fact.stripe_charge_id = refund_payment.stripe_charge_id)
+     )
+    LEFT JOIN stripe_invoices refunded_invoice
+      ON refunded_invoice.stripe_invoice_id = refund_payment.stripe_invoice_id
+    WHERE refund_license.id = license_delivery_outbox.license_id
+      AND refund_license.admin_status = 'active'
+      AND refund_entitlement.billing_state IN ('refunded', 'expired')
+      AND (
+        refund_license.plan = 'lifetime'
+        OR (
+          refunded_invoice.period_end > ?
+          AND refunded_invoice.period_end = (
+            SELECT MAX(latest_invoice.period_end)
+            FROM stripe_invoices latest_invoice
+            WHERE latest_invoice.stripe_subscription_id = refund_license.stripe_subscription_id
+              AND latest_invoice.invoice_status = 'paid'
+          )
+        )
+      )
+  )
+`;
+
 const subscriptionEventInsert = (database, record) => database.prepare(`
   INSERT INTO stripe_subscription_events (
     event_id, stripe_subscription_id, event_type, billing_status,
@@ -384,9 +420,27 @@ const recomputeStatements = (database, now) => [
   `).bind(now),
   database.prepare(`
     UPDATE license_delivery_outbox
+    SET status = 'pending', attempts = 0, next_attempt_at = ?,
+        lease_token = NULL, lease_expires_at = NULL,
+        last_error_code = NULL, updated_at = ?
+    WHERE status = 'suspended'
+      AND encrypted_payload IS NOT NULL
+      AND first_provider_attempt_at IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM licenses l
+        JOIN stripe_entitlements e ON e.license_id = l.id
+        WHERE l.id = license_delivery_outbox.license_id
+          AND l.admin_status = 'active'
+          AND e.billing_state = 'active'
+          AND (l.expires_at IS NULL OR l.expires_at > ?)
+      )
+  `).bind(now, now, now),
+  database.prepare(`
+    UPDATE license_delivery_outbox
     SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
         lease_token = NULL, lease_expires_at = NULL
-    WHERE status IN ('pending', 'leased', 'dead_letter')
+    WHERE status IN ('pending', 'leased', 'suspended', 'dead_letter')
       AND EXISTS (
         SELECT 1
         FROM licenses l
@@ -399,7 +453,29 @@ const recomputeStatements = (database, now) => [
             OR (l.expires_at IS NOT NULL AND l.expires_at <= ?)
           )
       )
-  `).bind(now, now),
+      AND NOT (${reversibleRefundSuspensionSql})
+  `).bind(now, now, now),
+  database.prepare(`
+    UPDATE license_delivery_outbox
+    SET status = 'suspended', updated_at = ?,
+        lease_token = NULL, lease_expires_at = NULL
+    WHERE status IN ('pending', 'leased', 'dead_letter')
+      AND encrypted_payload IS NOT NULL
+      AND first_provider_attempt_at IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM licenses l
+        LEFT JOIN stripe_entitlements e ON e.license_id = l.id
+        WHERE l.id = license_delivery_outbox.license_id
+          AND (
+            l.admin_status <> 'active'
+            OR e.billing_state IS NULL
+            OR e.billing_state <> 'active'
+            OR (l.expires_at IS NOT NULL AND l.expires_at <= ?)
+          )
+      )
+      AND (${reversibleRefundSuspensionSql})
+  `).bind(now, now, now),
 ];
 
 const deliveryInsert = (database, record, candidateKeyHash, now) => database.prepare(`

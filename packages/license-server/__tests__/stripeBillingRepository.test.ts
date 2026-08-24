@@ -365,7 +365,7 @@ describe('D1 Stripe billing reducer', () => {
     `).get()).toEqual({ billing_state: 'refunded', status: 'revoked', admin_status: 'active' });
     expect(sqlite.prepare(`
       SELECT status, encrypted_payload FROM license_delivery_outbox
-    `).get()).toEqual({ status: 'cancelled', encrypted_payload: null });
+    `).get()).toEqual({ status: 'suspended', encrypted_payload: 'encrypted_life' });
 
     const failedRefund = {
       ...succeededRefund,
@@ -397,6 +397,9 @@ describe('D1 Stripe billing reducer', () => {
       { fact_id: 'charge:ch_life', payment_fully_refunded: 0 },
       { fact_id: 'refund:re_life', payment_fully_refunded: 0 },
     ]);
+    expect(sqlite.prepare(`
+      SELECT status, encrypted_payload FROM license_delivery_outbox
+    `).get()).toEqual({ status: 'pending', encrypted_payload: 'encrypted_life' });
 
     await repository.applyRefundSnapshot({
       ...succeededRefund,
@@ -409,6 +412,39 @@ describe('D1 Stripe billing reducer', () => {
     expect(sqlite.prepare(`
       SELECT billing_state FROM stripe_entitlements
     `).get()).toEqual({ billing_state: 'active' });
+  });
+
+  it('restores an unsent subscription delivery when its full refund later fails', async () => {
+    const { sqlite, repository } = await setup();
+    await repository.applyPaidInvoice(paidInvoice('1', 100, period1));
+    await repository.applyRefundSnapshot(fullRefund('1', 200));
+
+    expect(sqlite.prepare(`
+      SELECT e.billing_state, d.status, d.encrypted_payload
+      FROM stripe_entitlements e
+      JOIN license_delivery_outbox d ON d.license_id = e.license_id
+    `).get()).toEqual({
+      billing_state: 'expired',
+      status: 'suspended',
+      encrypted_payload: 'encrypted_1',
+    });
+
+    await repository.applyRefundSnapshot({
+      ...fullRefund('1', 300),
+      refundStatus: 'failed',
+      paymentFullyRefunded: false,
+      eventId: 'evt_refund_1_failed',
+    });
+
+    expect(sqlite.prepare(`
+      SELECT e.billing_state, d.status, d.encrypted_payload
+      FROM stripe_entitlements e
+      JOIN license_delivery_outbox d ON d.license_id = e.license_id
+    `).get()).toEqual({
+      billing_state: 'active',
+      status: 'pending',
+      encrypted_payload: 'encrypted_1',
+    });
   });
 
   it('does not let an old-period refund reduce a newer paid period', async () => {

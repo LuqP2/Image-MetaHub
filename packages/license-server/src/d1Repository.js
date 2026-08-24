@@ -134,7 +134,7 @@ export class D1LicenseRepository {
         UPDATE license_delivery_outbox
         SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
             lease_token = NULL, lease_expires_at = NULL
-        WHERE license_id = ? AND status IN ('pending', 'leased', 'dead_letter')
+        WHERE license_id = ? AND status IN ('pending', 'leased', 'suspended', 'dead_letter')
       `).bind(patch.updatedAt, id));
     }
     await this.database.batch(statements);

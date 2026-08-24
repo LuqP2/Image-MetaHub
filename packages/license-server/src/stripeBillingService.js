@@ -481,7 +481,7 @@ export class StripeBillingService {
     const fullyRefunded = succeeded
       && charge
       && Number(charge.amount) > 0
-      && Number(charge.amount_refunded) >= Number(charge.amount);
+      && Number(refund.amount) >= Number(charge.amount);
     await this.repository.applyRefundSnapshot({
       factId: `refund:${refund.id}`,
       stripeRefundId: refund.id,

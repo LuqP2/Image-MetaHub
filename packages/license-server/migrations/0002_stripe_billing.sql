@@ -182,7 +182,7 @@ CREATE TABLE license_delivery_outbox (
   encrypted_payload TEXT,
   payload_version INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL CHECK (
-    status IN ('pending', 'leased', 'authorized', 'delivered', 'cancelled', 'dead_letter', 'manual_review')
+    status IN ('pending', 'leased', 'suspended', 'authorized', 'delivered', 'cancelled', 'dead_letter', 'manual_review')
   ),
   attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
   next_attempt_at TEXT NOT NULL,
