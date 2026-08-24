@@ -36,7 +36,9 @@ export const LicenseSettingsPanel: React.FC = () => {
   const paidPlanLabel = licenseStatus === 'pro' || licenseStatus === 'lifetime'
     ? licensePlanLabel(licensePlan)
     : licenseStatusLabel[licenseStatus];
-  const validityLabel = formatLicenseValidity(licensePlan, licenseExpiresAt);
+  const validityLabel = licenseStatus === 'pro' || licenseStatus === 'lifetime'
+    ? formatLicenseValidity(licensePlan, licenseExpiresAt)
+    : null;
 
   const [licenseEmailInput, setLicenseEmailInput] = useState(licenseEmail ?? '');
   const [licenseKeyInput, setLicenseKeyInput] = useState(licenseKey ?? '');

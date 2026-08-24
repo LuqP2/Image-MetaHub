@@ -1,7 +1,36 @@
 PRAGMA foreign_keys = ON;
 
-ALTER TABLE licenses RENAME COLUMN status TO admin_status;
-DROP INDEX idx_licenses_status_expires_at;
+ALTER TABLE licenses ADD COLUMN admin_status TEXT NOT NULL DEFAULT 'active'
+  CHECK (admin_status IN ('active', 'revoked', 'cancelled', 'expired'));
+UPDATE licenses SET admin_status = status;
+
+-- Expand/contract compatibility: the deployed v1 Worker continues to use
+-- status while the v2 Worker uses admin_status. Keep both columns synchronized
+-- until a later deployment can safely remove the legacy status column.
+CREATE TRIGGER licenses_sync_admin_status_after_insert
+AFTER INSERT ON licenses
+FOR EACH ROW
+WHEN NEW.admin_status <> NEW.status
+BEGIN
+  UPDATE licenses SET admin_status = NEW.status WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER licenses_sync_admin_status_after_status_update
+AFTER UPDATE OF status ON licenses
+FOR EACH ROW
+WHEN NEW.admin_status <> NEW.status
+BEGIN
+  UPDATE licenses SET admin_status = NEW.status WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER licenses_sync_status_after_admin_status_update
+AFTER UPDATE OF admin_status ON licenses
+FOR EACH ROW
+WHEN NEW.status <> NEW.admin_status
+BEGIN
+  UPDATE licenses SET status = NEW.admin_status WHERE id = NEW.id;
+END;
+
 CREATE INDEX idx_licenses_admin_status_expires_at
   ON licenses(admin_status, expires_at);
 

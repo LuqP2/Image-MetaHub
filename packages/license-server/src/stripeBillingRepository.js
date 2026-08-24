@@ -185,11 +185,11 @@ const refundUpsert = (database, record) => database.prepare(`
 
 const licenseInsert = (database, record, eligibilitySql, eligibilityBindings) => database.prepare(`
   INSERT INTO licenses (
-    id, key_hash, email_lookup, plan, admin_status, source, created_at, updated_at,
+    id, key_hash, email_lookup, plan, status, admin_status, source, created_at, updated_at,
     expires_at, max_activations, stripe_customer_id, stripe_subscription_id,
     stripe_price_id, stripe_checkout_session_id, external_reference
   )
-  SELECT ?, ?, ?, ?, 'active', 'stripe', ?, ?, ?, ?, ?, ?, ?, ?, ?
+  SELECT ?, ?, ?, ?, 'active', 'active', 'stripe', ?, ?, ?, ?, ?, ?, ?, ?, ?
   WHERE NOT EXISTS (
     SELECT 1 FROM licenses
     WHERE (? IS NOT NULL AND stripe_subscription_id = ?)

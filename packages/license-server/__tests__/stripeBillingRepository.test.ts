@@ -196,13 +196,31 @@ describe('D1 Stripe billing reducer', () => {
       insert.run(`lic_${status}`, `hash_${status}`, `email_${status}`, status, now, now);
     }
     sqlite.exec(await fs.readFile(path.join(migrationsDirectory, '0002_stripe_billing.sql'), 'utf8'));
-    expect(sqlite.prepare('SELECT admin_status FROM licenses ORDER BY id').all())
+    expect(sqlite.prepare('SELECT status, admin_status FROM licenses ORDER BY id').all())
       .toEqual([
-        { admin_status: 'active' },
-        { admin_status: 'cancelled' },
-        { admin_status: 'expired' },
-        { admin_status: 'revoked' },
+        { status: 'active', admin_status: 'active' },
+        { status: 'cancelled', admin_status: 'cancelled' },
+        { status: 'expired', admin_status: 'expired' },
+        { status: 'revoked', admin_status: 'revoked' },
       ]);
+
+    sqlite.prepare(`UPDATE licenses SET status = 'revoked' WHERE id = 'lic_active'`).run();
+    expect(sqlite.prepare(`SELECT status, admin_status FROM licenses WHERE id = 'lic_active'`).get())
+      .toEqual({ status: 'revoked', admin_status: 'revoked' });
+
+    sqlite.prepare(`UPDATE licenses SET admin_status = 'active' WHERE id = 'lic_active'`).run();
+    expect(sqlite.prepare(`SELECT status, admin_status FROM licenses WHERE id = 'lic_active'`).get())
+      .toEqual({ status: 'active', admin_status: 'active' });
+
+    sqlite.prepare(`
+      INSERT INTO licenses (
+        id, key_hash, email_lookup, plan, status, source, created_at, updated_at,
+        expires_at, max_activations
+      ) VALUES ('lic_old_worker', 'hash_old_worker', 'email_old_worker', 'lifetime',
+        'cancelled', 'manual', ?, ?, NULL, NULL)
+    `).run(now, now);
+    expect(sqlite.prepare(`SELECT status, admin_status FROM licenses WHERE id = 'lic_old_worker'`).get())
+      .toEqual({ status: 'cancelled', admin_status: 'cancelled' });
   });
 
   it('converges to the same entitlement for every delivery order', async () => {

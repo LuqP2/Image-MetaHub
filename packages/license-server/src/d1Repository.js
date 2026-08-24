@@ -52,15 +52,16 @@ export class D1LicenseRepository {
   async createLicense(record) {
     await this.database.prepare(`
       INSERT INTO licenses (
-        id, key_hash, email_lookup, plan, admin_status, source, created_at, updated_at,
+        id, key_hash, email_lookup, plan, status, admin_status, source, created_at, updated_at,
         expires_at, max_activations, stripe_customer_id, stripe_subscription_id,
         stripe_price_id, stripe_checkout_session_id, external_reference
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       record.id,
       record.keyHash,
       record.emailLookup,
       record.plan,
+      record.status,
       record.status,
       record.source,
       record.createdAt,
@@ -112,9 +113,19 @@ export class D1LicenseRepository {
     const entries = Object.entries(patch).filter(([key]) => columns[key]);
     if (entries.length === 0) return this.findLicenseById(id);
 
-    const assignments = entries.map(([key]) => `${columns[key]} = ?`).join(', ');
-    const update = this.database.prepare(`UPDATE licenses SET ${assignments} WHERE id = ?`)
-      .bind(...entries.map(([, value]) => value), id);
+    const assignments = [];
+    const values = [];
+    for (const [key, value] of entries) {
+      if (key === 'status') {
+        assignments.push('status = ?', 'admin_status = ?');
+        values.push(value, value);
+      } else {
+        assignments.push(`${columns[key]} = ?`);
+        values.push(value);
+      }
+    }
+    const update = this.database.prepare(`UPDATE licenses SET ${assignments.join(', ')} WHERE id = ?`)
+      .bind(...values, id);
     if (patch.status !== undefined && patch.status !== 'active') {
       await this.database.batch([
         update,

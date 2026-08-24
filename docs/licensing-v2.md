@@ -186,8 +186,11 @@ The endpoint supports:
 - `refund.failed`
 - `charge.refunded`
 
-The schema separates operator intent from Stripe billing. `licenses.admin_status`
-is changed only by authenticated administrative operations. Stripe commands write
+The schema separates operator intent from Stripe billing. Migration `0002` adds
+`licenses.admin_status` without removing the legacy `status` column, and keeps the
+two synchronized for compatibility with both Worker versions during deployment
+and rollback. Removing `status` is a later contract migration. `admin_status` is
+changed only by authenticated administrative operations. Stripe commands write
 idempotent subscription, invoice, payment, and refund facts, then rebuild
 `stripe_entitlements` inside the same D1 batch. Activation maps the administrative
 status and billing projection back to the existing public `status` contract.
