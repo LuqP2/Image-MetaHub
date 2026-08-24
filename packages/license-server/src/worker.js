@@ -2,6 +2,10 @@ import { D1LicenseRepository } from './d1Repository.js';
 import { LicenseError } from './errors.js';
 import { secureStringEqual } from './cryptoHelpers.js';
 import { LicenseService } from './licenseService.js';
+import { D1StripeBillingRepository } from './stripeBillingRepository.js';
+import { StripeBillingService, createStripeBillingConfig } from './stripeBillingService.js';
+import { createStripeClient, verifyStripeWebhook } from './stripeClient.js';
+import { ResendDeliveryClient } from './resendClient.js';
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -43,16 +47,96 @@ function createService(env) {
   });
 }
 
-export async function handleRequest(request, env) {
+function createBillingService(env) {
+  const required = [
+    'STRIPE_RESTRICTED_API_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+    'STRIPE_ACCOUNT_ID',
+    'STRIPE_SUBSCRIPTION_PRODUCT_ID',
+    'STRIPE_MONTHLY_PRICE_ID',
+    'STRIPE_ANNUAL_PRICE_ID',
+    'STRIPE_LIFETIME_PRICE_ID',
+    'LICENSE_DELIVERY_ENCRYPTION_KEY',
+    'RESEND_API_KEY',
+    'LICENSE_EMAIL_FROM',
+  ];
+  if (required.some((name) => !String(env[name] || '').trim())) {
+    throw new Error('Stripe billing environment is incomplete.');
+  }
+  return new StripeBillingService({
+    repository: new D1StripeBillingRepository(env.DB),
+    licenseService: createService(env),
+    stripeClient: createStripeClient(env.STRIPE_RESTRICTED_API_KEY),
+    deliveryClient: new ResendDeliveryClient({
+      apiKey: env.RESEND_API_KEY,
+      from: env.LICENSE_EMAIL_FROM,
+      replyTo: env.LICENSE_EMAIL_REPLY_TO || null,
+    }),
+    config: createStripeBillingConfig(env),
+  });
+}
+
+async function handleStripeWebhook(request, env, context) {
+  const contentLength = Number(request.headers.get('content-length') || 0);
+  if (contentLength > 262_144) throw new LicenseError('invalid_webhook', 'Invalid webhook.', 413);
+  const rawBody = await request.text();
+  if (new TextEncoder().encode(rawBody).byteLength > 262_144) {
+    throw new LicenseError('invalid_webhook', 'Invalid webhook.', 413);
+  }
+  let event;
+  try {
+    event = await verifyStripeWebhook(
+      rawBody,
+      request.headers.get('stripe-signature'),
+      env.STRIPE_WEBHOOK_SECRET,
+    );
+  } catch {
+    throw new LicenseError('invalid_webhook_signature', 'Invalid webhook signature.', 400);
+  }
+  const billingService = createBillingService(env);
+  const result = await billingService.enqueueVerifiedEvent(event);
+  if (result.accepted && !result.duplicate) {
+    const work = billingService.processQueues();
+    if (context?.waitUntil) context.waitUntil(work);
+    else await work;
+  }
+  return json({ received: true, duplicate: result.duplicate });
+}
+
+export async function handleRequest(request, env, context) {
   const url = new URL(request.url);
   if (request.method === 'GET' && url.pathname === '/health') {
-    return json({ ok: true, service: 'image-metahub-license-server', version: 1 });
+    return json({ ok: true, service: 'image-metahub-license-server', version: 2 });
+  }
+  if (request.method === 'POST' && url.pathname === '/v1/stripe/webhook') {
+    return handleStripeWebhook(request, env, context);
   }
   if (request.method !== 'POST' && request.method !== 'PATCH') {
     return json({ error: { code: 'not_found', message: 'Not found.' } }, 404);
   }
 
   const service = createService(env);
+
+  if (url.pathname.startsWith('/v1/admin/')) {
+    await requireAdmin(request, env);
+    const stripeEventRetry = url.pathname.match(/^\/v1\/admin\/stripe\/events\/([^/]+)\/retry$/);
+    if (request.method === 'POST' && stripeEventRetry) {
+      const requeued = await createBillingService(env).repository.requeueEvent(
+        decodeURIComponent(stripeEventRetry[1]),
+        new Date().toISOString(),
+      );
+      return json({ requeued }, requeued ? 200 : 404);
+    }
+    const deliveryRetry = url.pathname.match(/^\/v1\/admin\/license-deliveries\/([^/]+)\/retry$/);
+    if (request.method === 'POST' && deliveryRetry) {
+      const requeued = await createBillingService(env).repository.requeueDelivery(
+        decodeURIComponent(deliveryRetry[1]),
+        new Date().toISOString(),
+      );
+      return json({ requeued }, requeued ? 200 : 404);
+    }
+  }
+
   const body = await readJson(request);
 
   if (request.method === 'POST' && url.pathname === '/v1/activate') {
@@ -66,7 +150,6 @@ export async function handleRequest(request, env) {
   }
 
   if (url.pathname.startsWith('/v1/admin/')) {
-    await requireAdmin(request, env);
     if (request.method === 'POST' && url.pathname === '/v1/admin/licenses') {
       const result = await service.createLicense(body);
       return json({
@@ -119,9 +202,9 @@ export async function handleRequest(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, context) {
     try {
-      return await handleRequest(request, env);
+      return await handleRequest(request, env, context);
     } catch (error) {
       if (error instanceof LicenseError) {
         return json({ error: { code: error.code, message: error.message } }, error.status);
@@ -129,5 +212,10 @@ export default {
       console.error('license_server_error');
       return json({ error: { code: 'internal_error', message: 'Service unavailable.' } }, 500);
     }
+  },
+  async scheduled(_controller, env, context) {
+    const work = createBillingService(env).processQueues();
+    if (context?.waitUntil) context.waitUntil(work);
+    else await work;
   },
 };

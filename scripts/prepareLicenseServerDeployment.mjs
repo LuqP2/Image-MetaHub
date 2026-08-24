@@ -15,6 +15,16 @@ export async function prepareLicenseServerDeployment({ env = process.env, output
     'LICENSE_SIGNING_PRIVATE_KEY',
     'LICENSE_SERVER_ADMIN_TOKEN',
     'EMAIL_LOOKUP_PEPPER',
+    'STRIPE_WEBHOOK_SECRET',
+    'STRIPE_RESTRICTED_API_KEY',
+    'LICENSE_DELIVERY_ENCRYPTION_KEY',
+    'RESEND_API_KEY',
+    'STRIPE_ACCOUNT_ID',
+    'STRIPE_SUBSCRIPTION_PRODUCT_ID',
+    'STRIPE_MONTHLY_PRICE_ID',
+    'STRIPE_ANNUAL_PRICE_ID',
+    'STRIPE_LIFETIME_PRICE_ID',
+    'LICENSE_EMAIL_FROM',
   ];
   for (const name of required) {
     if (!String(env[name] || '').trim() || /REPLACE_DURING_DEPLOYMENT/i.test(String(env[name]))) {
@@ -30,6 +40,35 @@ export async function prepareLicenseServerDeployment({ env = process.env, output
   }
   if (String(env.LICENSE_SERVER_ADMIN_TOKEN).length < 32 || String(env.EMAIL_LOOKUP_PEPPER).length < 16) {
     throw new Error('License server admin token or email lookup pepper is too short.');
+  }
+  if (!/^whsec_[A-Za-z0-9_]+$/.test(env.STRIPE_WEBHOOK_SECRET)) {
+    throw new Error('STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret.');
+  }
+  if (!/^rk_(?:live|test)_[A-Za-z0-9]+$/.test(env.STRIPE_RESTRICTED_API_KEY)) {
+    throw new Error('STRIPE_RESTRICTED_API_KEY must be a restricted Stripe API key.');
+  }
+  if (!/^re_[A-Za-z0-9_]+$/.test(env.RESEND_API_KEY)) {
+    throw new Error('RESEND_API_KEY must be a Resend API key.');
+  }
+  const stripeIds = {
+    STRIPE_ACCOUNT_ID: /^acct_[A-Za-z0-9]+$/,
+    STRIPE_SUBSCRIPTION_PRODUCT_ID: /^prod_[A-Za-z0-9]+$/,
+    STRIPE_MONTHLY_PRICE_ID: /^price_[A-Za-z0-9]+$/,
+    STRIPE_ANNUAL_PRICE_ID: /^price_[A-Za-z0-9]+$/,
+    STRIPE_LIFETIME_PRICE_ID: /^price_[A-Za-z0-9]+$/,
+  };
+  for (const [name, pattern] of Object.entries(stripeIds)) {
+    if (!pattern.test(env[name])) throw new Error(`${name} is not a valid Stripe identifier.`);
+  }
+  if (new Set([
+    env.STRIPE_MONTHLY_PRICE_ID,
+    env.STRIPE_ANNUAL_PRICE_ID,
+    env.STRIPE_LIFETIME_PRICE_ID,
+  ]).size !== 3) {
+    throw new Error('Stripe price identifiers must be distinct.');
+  }
+  if (decodeBase64Url(env.LICENSE_DELIVERY_ENCRYPTION_KEY).length !== 32) {
+    throw new Error('LICENSE_DELIVERY_ENCRYPTION_KEY must contain 32 base64url-encoded bytes.');
   }
 
   const publicKeyBytes = decodeBase64Url(env.LICENSE_SIGNING_PUBLIC_KEY);
@@ -56,7 +95,18 @@ export async function prepareLicenseServerDeployment({ env = process.env, output
       database_id: env.LICENSE_D1_DATABASE_ID,
       migrations_dir: 'migrations',
     }],
-    vars: { LICENSE_SIGNING_PUBLIC_KEY: env.LICENSE_SIGNING_PUBLIC_KEY },
+    vars: {
+      LICENSE_SIGNING_PUBLIC_KEY: env.LICENSE_SIGNING_PUBLIC_KEY,
+      STRIPE_LIVEMODE: 'true',
+      STRIPE_ACCOUNT_ID: env.STRIPE_ACCOUNT_ID,
+      STRIPE_SUBSCRIPTION_PRODUCT_ID: env.STRIPE_SUBSCRIPTION_PRODUCT_ID,
+      STRIPE_MONTHLY_PRICE_ID: env.STRIPE_MONTHLY_PRICE_ID,
+      STRIPE_ANNUAL_PRICE_ID: env.STRIPE_ANNUAL_PRICE_ID,
+      STRIPE_LIFETIME_PRICE_ID: env.STRIPE_LIFETIME_PRICE_ID,
+      LICENSE_EMAIL_FROM: env.LICENSE_EMAIL_FROM,
+      ...(env.LICENSE_EMAIL_REPLY_TO ? { LICENSE_EMAIL_REPLY_TO: env.LICENSE_EMAIL_REPLY_TO } : {}),
+    },
+    triggers: { crons: ['* * * * *'] },
   };
   const target = path.resolve(outputPath || path.join(repositoryRoot, 'packages/license-server/wrangler.production.generated.json'));
   await fs.writeFile(target, `${JSON.stringify(config, null, 2)}\n`, 'utf8');

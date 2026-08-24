@@ -10,6 +10,9 @@
     "d1:migrate:remote": "wrangler d1 migrations apply image-metahub-licenses --remote",
     "test": "vitest run __tests__"
   },
+  "dependencies": {
+    "stripe": "22.4.0"
+  },
   "devDependencies": {
     "vitest": "^3.2.4",
     "wrangler": "^4.28.1"

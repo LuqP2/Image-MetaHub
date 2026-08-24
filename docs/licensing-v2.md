@@ -115,6 +115,33 @@ Protected secrets:
 - `LICENSE_SIGNING_PRIVATE_KEY`
 - `LICENSE_SERVER_ADMIN_TOKEN`
 - `EMAIL_LOOKUP_PEPPER`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_RESTRICTED_API_KEY`
+- `LICENSE_DELIVERY_ENCRYPTION_KEY` (32 random bytes, base64url encoded)
+- `RESEND_API_KEY` (sending-only and restricted to the verified sending domain)
+
+Stripe/email variables:
+
+- `STRIPE_ACCOUNT_ID`
+- `STRIPE_SUBSCRIPTION_PRODUCT_ID`
+- `STRIPE_MONTHLY_PRICE_ID`
+- `STRIPE_ANNUAL_PRICE_ID`
+- `STRIPE_LIFETIME_PRICE_ID`
+- `LICENSE_EMAIL_FROM`
+- `LICENSE_EMAIL_REPLY_TO` (optional)
+
+Production Stripe variable values:
+
+- `STRIPE_ACCOUNT_ID=acct_1ThKSaB04OXmIQu6`
+- `STRIPE_SUBSCRIPTION_PRODUCT_ID=prod_V81gqqBbpZ0ccz`
+- `STRIPE_MONTHLY_PRICE_ID=price_1U7ld7B04OXmIQu6wmn1uk4R`
+- `STRIPE_ANNUAL_PRICE_ID=price_1U7ldDB04OXmIQu6Dx18wNvf`
+- `STRIPE_LIFETIME_PRICE_ID=price_1ThKqfB04OXmIQu6mFJPOkyc`
+
+The Stripe restricted key needs read-only access to Checkout Sessions, Customers,
+Subscriptions, Invoices, Charges, PaymentIntents, and Refunds. It must never be
+embedded in the desktop application. Stripe Tax remains disabled; this integration
+does not set `automatic_tax` or modify any Stripe account setting.
 
 The deployment workflow generates the ignored `wrangler.production.generated.json`, rejects missing/placeholding values, validates the D1 ID, validates the production HTTPS URL, verifies that the Ed25519 public/private keys match, performs a Wrangler dry run, configures all Worker secrets, optionally applies D1 migrations, and deploys with the generated D1/public-key configuration. It then runs a mandatory create → activate → refresh → deactivate smoke test and revokes the test entitlement.
 
@@ -126,10 +153,63 @@ Release packaging separately runs `scripts/configureLicenseClient.mjs`, which re
 
 `npm run verify:license-package` performs a TypeScript/Vite build, creates an unpacked Electron package, opens its actual `app.asar`, verifies every Electron licensing runtime module, and scans package contents for sensitive licensing identifiers and any configured secret values. A Vite-only build is not sufficient release validation.
 
-## Future Stripe integration
+## Stripe billing integration
 
-Stripe is intentionally not implemented here. The D1 schema retains nullable customer, subscription, price, and checkout-session identifiers. Future Stripe webhooks should call the existing `LicenseService` entitlement methods rather than create a second authority:
+`POST /v1/stripe/webhook` verifies the raw request body using the endpoint signing
+secret before accepting an event. The handler stores only the event ID, type,
+object ID, livemode flag, and timestamps in D1. It never persists the Stripe event
+payload. A one-minute scheduled handler drains the event inbox and email outbox;
+`waitUntil()` starts the same work opportunistically after a new webhook is safely
+persisted.
 
-- lifetime purchase: create an unlimited lifetime entitlement with `source = stripe`;
-- monthly/annual purchase or renewal: create or extend `expires_at`;
-- cancellation or terminal billing state: update the existing entitlement according to the explicit billing policy.
+The endpoint supports:
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `invoice.payment_action_required`
+- `invoice.finalization_failed`
+- `refund.created`
+- `refund.failed`
+
+For recurring products, `invoice.paid` is the only provisioning and renewal
+authority. The service selects one non-proration subscription line for an
+allowlisted Monthly or Annual Price and uses that line's `period.end` as the paid
+through date. Renewals update the existing license selected by the unique Stripe
+subscription ID and never generate or email another key. `past_due`, payment
+failure, and `cancel_at_period_end` do not shorten an already-paid period.
+
+Lifetime Checkout is provisioned only after the Session is paid, including delayed
+payment confirmation through `checkout.session.async_payment_succeeded`. The
+Checkout Session uniqueness constraint deduplicates the immediate and delayed
+paths.
+
+Full successful refunds revoke Lifetime. For recurring licenses, a full refund
+expires only the latest paid period; it cannot override a later paid invoice.
+Partial and failed refunds are audit-only. A stale subscription deletion similarly
+cannot override an invoice paid later than that deletion event.
+
+New customer keys exist in plaintext only in Worker memory. Before the D1 batch is
+committed, the key and recipient are encrypted together using AES-256-GCM and the
+delivery payload is inserted atomically with the hashed license. Resend delivery
+uses a stable idempotency key and retries within its 24-hour idempotency window.
+After successful delivery, D1 retains the provider message ID and timestamp and
+deletes the ciphertext. Dead-letter ciphertext can be requeued through the
+authenticated admin endpoint without returning the plaintext key.
+
+Administrative recovery endpoints:
+
+- `POST /v1/admin/stripe/events/:eventId/retry`
+- `POST /v1/admin/license-deliveries/:deliveryId/retry`
+
+Production activation still requires a separate, explicit operation: apply
+`0002_stripe_billing.sql`, configure the secrets and variables above, deploy the
+Worker/Cron Trigger, verify the Resend sender, then register the Stripe webhook at
+API version `2026-07-29.dahlia` with exactly the twelve events listed above. None
+of those external actions are performed by repository tests or this deployment
+preparation code.
