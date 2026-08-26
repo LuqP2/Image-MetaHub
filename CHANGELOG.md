@@ -5,11 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.19.1] - [2026-08-22]
+## [0.19.1] - [2026-08-26]
+
+### Added
+
+- **Stripe Billing for Pro Plans**: Added production billing support for Monthly, Annual, and Lifetime purchases through Stripe, with automatic license provisioning and email delivery.
+- **Subscription License Lifecycle**: Monthly and Annual licenses now follow their paid-through period automatically. Renewals extend access from paid invoices, while cancellations or payment failures do not cut off time that has already been paid for.
+- **Refund Handling**: Full refunds now automatically revoke affected Lifetime purchases or the matching paid subscription period, with safe recovery when a refund later fails or is reversed.
 
 ### Improved
 
 - **Playback Controls**: Repeat modes now show their current Off, All, or 1 state directly in the player.
+- **License Delivery Reliability**: Stripe events and license emails are processed idempotently with durable retries and recovery safeguards, reducing the risk of duplicate licenses, duplicate delivery, or out-of-order billing events changing entitlement incorrectly.
 
 ### Fixed
 
@@ -98,8 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Generator Detection Priority**: Reordered metadata parser dispatch so DreamStudio, Draw Things, Midjourney, Niji and Forge images are correctly identified instead of being swallowed by the generic Automatic1111 catch-all.
 - **MetaHub Save Node Tags/Notes**: Tags and notes from MetaHub Save Node images are no longer dropped during metadata normalization.
-- **Large Library Metadata Re-reads**: Files that overflowed the batch read budget are now re-read consistently, and truncated WebP metadata is detected and re-read the same way PNG already was.
-- **Folder Tree Sorting**: Subfolders now sort case-insensitively and naturally (matching Finder/Windows Explorer) instead of raw filesystem order.
+- **Large Library Metadata Re-reads**: Files that overflowed the batch read budget are re-read consistently, and truncated WebP metadata is detected and re-read the same way PNG already was.
+- **Folder Tree Sorting**: Subfolders sort case-insensitively and naturally (matching Finder/Windows Explorer) instead of raw filesystem order.
 - **macOS External File Drag**: Dragging grid cards onto ComfyUI or into Finder on macOS now transfers the actual file instead of a text clipping.
 
 ## [0.17.4] - 2026-07-11
@@ -388,7 +395,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
 - **Favorites Icon Refresh**: Updated favorite actions and indicators to use a heart icon instead of a star for clearer separation from the new rating system.
 - **Sidebar Faceted Filters**: Reworked the sidebar filter experience around dedicated facet sections for checkpoints, LoRAs, samplers, and schedulers, with per-value include/exclude actions, result counts, in-section search, and clearer active-filter chips.
-- **Tag Match Mode**: Added an `Any / All` toggle for included manual tag filters in the sidebar, allowing tag searches to match any selected tag or require all selected tags for narrower curation workflows.
+- **Tag Match Mode**: Added an `Any / All` toggle for included manual tag filters in the sidebar, allowing tag searches to match any selected tag or require all selected tags for narrower curation.
 - **Large Library Responsiveness**: Significantly improved responsiveness for large libraries by moving lineage resolution out of the image modal hot path, reducing expensive modal navigation lookups, and cutting renderer churn during indexing and filtering.
 - **Cached Startup Stability**: Reduced reopen instability on large libraries and made startup verification less intrusive by default, improving launches from cache on heavy libraries.
 - **Sidebar Visual Cohesion**: Simplified the sidebar styling into a more consistent, subdued visual system and made the `Generation Parameters` section collapsible like the other filter groups.
@@ -533,7 +540,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Multiple similarity metrics: Jaccard (token-based), Levenshtein (character-based), and hybrid scoring
   - Prompt normalization and FNV-1a hashing for efficient deduplication
   - Stack cards showing cover image, prompt preview, and image counts
-  - StackExpandedView for browsing images within each cluster
   - Real-time progress streaming across clustering phases
   - File watcher integration: deletions automatically update clusters and remove empty ones
 
@@ -744,7 +750,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance
 
-- **Batch Path Joins**: Implemented batch IPC handler `join-paths-batch` for path joining operations, reducing 1000+ individual IPC calls to a single batch call in cache loading and file handle operations (3-5x faster).
+- **Batch Path Joins**: Implemented batch IPC handler `join-paths-batch` for path joining operations, reducing 1000+ individual IPC calls to a single batch call in cache loading and file operations (3-5x faster).
 - **Reduced JSON Operations**: Optimized `fileIndexer.ts` to skip `JSON.stringify` for empty rawMetadata objects, avoiding unnecessary serialization overhead.
 - **Component Memoization**: Added `React.memo` to `Sidebar.tsx` and `ImagePreviewSidebar.tsx` components to prevent unnecessary re-renders when props haven't changed.
 - **Granular Store Selectors**: Refactored `App.tsx`, `ComparisonModal.tsx`, and `ImageGrid.tsx` to use granular Zustand selectors instead of mass destructuring, reducing unnecessary re-renders by 40-60%.
@@ -818,8 +824,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **A1111 Image Generation Integration**: Revolutionary new feature that enables direct image generation from Image MetaHub using Automatic1111 API:
-  - "Generate Variation" button in ImageModal and ImagePreviewSidebar
-  - Full-featured generation modal with editable prompts, negative prompts, CFG Scale, Steps, and Seed control
+  - "Generate Variation" button in ImageModal for creating variations
+  - Full parameter customization (model, LoRAs, seed, steps, CFG Scale, Steps, and Seed control)
   - Support for both fixed and random seed generation
   - Real-time generation status feedback and progress tracking
   - Seamless workflow: browse images → customize parameters → generate variations directly within the app
@@ -1044,7 +1050,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Right Sidebar Image Preview**: New collapsible sidebar that displays image preview and metadata when hovering over thumbnails in the grid
-- **Enhanced Cache Management**: Added "Clear All Cache" button in Settings modal with confirmation dialog and automatic state reset
+- **Enhanced Cache Management**: Added "Clear All Cache" button in Settings modal with confirmation and automatic state reset
 - **Improved ComfyUI Support**: Enhanced grouped workflow parsing with proper widget value extraction and custom node extractors
 
 ### Fixed
@@ -1204,7 +1210,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **macOS Auto-Updater Configuration**: Added proper entitlements, hardened runtime, and platform-specific error handling for macOS auto-updates
 - **Robust Error Handling**: Enhanced validation in frontend to prevent crashes when IPC calls fail
-- **Cross-Platform Build Verification**: Comprehensive testing and validation of build configuration for Windows, macOS, and Linux
+- **Cross-Platform Build Verification**: Comprehensive testing and validation of build configuration for all 3 platforms
 
 ### Technical Improvements
 
@@ -1447,7 +1453,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Scheduler Filtering**: Added new filter option to search images by scheduler type (DPMSolverMultistepScheduler, EulerDiscreteScheduler, etc.)
+- **Scheduler Filtering**: Added new filter option to search images by scheduler type (DPMSolverMultistepScheduler, etc.)
 
 ### UI Improvements
 
