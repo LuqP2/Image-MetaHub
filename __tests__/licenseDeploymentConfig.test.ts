@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { prepareLicenseServerDeployment } from '../scripts/prepareLicenseServerDeployment.mjs';
+import { setupLicenseOperator } from '../scripts/setupLicenseOperator.mjs';
 import { getConfiguredSensitiveValues } from '../scripts/verifyPackagedLicensing.mjs';
 import { createEd25519TestKeys } from './licenseCryptoTestHelpers';
 import { encodeBase64Url } from '../utils/licenseCertificate.mjs';
@@ -110,5 +111,77 @@ describe('license server deployment preflight', () => {
       outputPath,
       env: { ...env, STRIPE_RESTRICTED_API_KEY: 'rk_test_restrictedkey' },
     })).rejects.toThrow('live-mode restricted Stripe API key');
+  });
+});
+
+describe('license operator setup', () => {
+  const adminToken = 'operator-token-that-is-long-enough-for-testing';
+
+  it('synchronizes GitHub before the Worker without a generated Wrangler config', async () => {
+    const events: Array<{ type: string; command?: string; args?: string[]; input?: string }> = [];
+    await setupLicenseOperator({
+      env: {},
+      existingConfig: null,
+      createAdminToken: () => adminToken,
+      persistOperatorConfig: (value: string) => events.push({ type: 'persist', input: value }),
+      runCommand: async (command: { command: string; args: string[]; input?: string }) => {
+        events.push({ type: 'command', ...command });
+      },
+      platform: 'win32',
+    });
+
+    expect(events.map((event) => event.type === 'persist'
+      ? 'persist'
+      : `${event.command} ${event.args?.slice(0, 3).join(' ')}`)).toEqual([
+      'gh auth status',
+      'npx --yes wrangler@4.28.1 whoami',
+      'persist',
+      'gh secret set LICENSE_SERVER_ADMIN_TOKEN',
+      'npx --yes wrangler@4.28.1 secret',
+    ]);
+    const githubSecret = events[3];
+    const workerSecret = events[4];
+    expect(githubSecret.input).toBe(`${adminToken}\n`);
+    expect(workerSecret.input).toBe(`${adminToken}\n`);
+    expect(githubSecret.args).toContain('license-server-production');
+    expect(workerSecret.args).toContain('--name');
+    expect(workerSecret.args).toContain('image-metahub-license-server');
+    expect(workerSecret.args).not.toContain('--config');
+  });
+
+  it('reuses the saved token so a partial synchronization can be retried safely', async () => {
+    const inputs: string[] = [];
+    let persisted = false;
+    const result = await setupLicenseOperator({
+      env: {},
+      existingConfig: {
+        IMH_LICENSE_SERVER_URL: 'https://image-metahub-license-server.image-metahub.workers.dev',
+        LICENSE_SERVER_ADMIN_TOKEN: adminToken,
+      },
+      persistOperatorConfig: () => { persisted = true; },
+      runCommand: async ({ input }: { input?: string }) => {
+        if (input) inputs.push(input);
+      },
+    });
+
+    expect(result.reusingExistingToken).toBe(true);
+    expect(persisted).toBe(false);
+    expect(inputs).toEqual([`${adminToken}\n`, `${adminToken}\n`]);
+  });
+
+  it('does not rotate the Worker when GitHub secret synchronization fails', async () => {
+    const commands: string[][] = [];
+    await expect(setupLicenseOperator({
+      env: {},
+      existingConfig: null,
+      createAdminToken: () => adminToken,
+      persistOperatorConfig: () => {},
+      runCommand: async ({ args }: { args: string[] }) => {
+        commands.push(args);
+        if (args[0] === 'secret' && args[1] === 'set') throw new Error('GitHub failed');
+      },
+    })).rejects.toThrow('GitHub failed');
+
+    expect(commands.some((args) => args.includes('put'))).toBe(false);
   });
 });
