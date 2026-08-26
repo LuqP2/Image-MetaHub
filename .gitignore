@@ -71,6 +71,7 @@ packages/license-server/data/test-sqlite-relative.db-journal
 packages/license-server/data/test-sqlite.db
 packages/license-server/data/test-sqlite.db-journal
 .license-reissues/
+.license-operator.env
 packages/license-server/wrangler.production.generated.json
 packages/license-server/.wrangler/
 .claude/settings.json

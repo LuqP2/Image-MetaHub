@@ -1,5 +1,8 @@
-const serverUrl = String(process.env.IMH_LICENSE_SERVER_URL || '').trim().replace(/\/$/, '');
-const adminToken = String(process.env.LICENSE_SERVER_ADMIN_TOKEN || '').trim();
+import { loadOperatorLicenseConfig } from './licenseOperatorConfig.mjs';
+
+const operatorConfig = loadOperatorLicenseConfig();
+const serverUrl = String(process.env.IMH_LICENSE_SERVER_URL || operatorConfig.IMH_LICENSE_SERVER_URL || '').trim().replace(/\/$/, '');
+const adminToken = String(process.env.LICENSE_SERVER_ADMIN_TOKEN || operatorConfig.LICENSE_SERVER_ADMIN_TOKEN || '').trim();
 const email = String(process.env.LICENSE_EMAIL || process.argv[2] || '').trim();
 const plan = String(process.env.LICENSE_PLAN || process.argv[3] || 'lifetime').trim();
 const expiresAt = String(process.env.LICENSE_EXPIRES_AT || process.argv[4] || '').trim();
