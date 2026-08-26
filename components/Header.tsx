@@ -10,7 +10,7 @@ import { buildProLicenseUrl } from '../utils/creatorAttribution';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
 import type { ExploreDimension } from '../types';
 import { useLicenseStore } from '../store/useLicenseStore';
-import { formatLicenseValidity, licensePlanLabel } from '../utils/licenseDisplay';
+import { formatLicenseValidity } from '../utils/licenseDisplay';
 
 type LibraryView = 'library' | 'explore' | 'collections' | 'comfyui' | 'editor';
 
@@ -287,12 +287,6 @@ const Header: React.FC<HeaderProps> = ({
         classes: 'text-gray-300',
       };
     }
-    if (isPro) {
-      return {
-        label: licensePlanLabel(licensePlan),
-        classes: 'text-gray-100',
-      };
-    }
     if (isTrialActive) {
       const daysLabel = `${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'day' : 'days'} left`;
       return {
@@ -353,16 +347,18 @@ const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-4 py-2.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
       <div className="container mx-auto flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          <button
-            onClick={onOpenLicense}
-            className={`app-top-pill shrink-0 text-[10px] uppercase tracking-[0.18em] ${statusConfig.classes}`}
-            title={isFree
-              ? (canStartTrial ? 'Start trial or activate license' : 'Activate license')
-              : formatLicenseValidity(licensePlan, licenseExpiresAt) ?? 'Manage license and status'}
-          >
-            <Crown className="h-3 w-3" />
-            <span>{statusConfig.label}</span>
-          </button>
+          {!isPro && !isTrialActive && (
+            <button
+              onClick={onOpenLicense}
+              className={`app-top-pill shrink-0 text-[10px] uppercase tracking-[0.18em] ${statusConfig.classes}`}
+              title={isFree
+                ? (canStartTrial ? 'Start trial or activate license' : 'Activate license')
+                : formatLicenseValidity(licensePlan, licenseExpiresAt) ?? 'Manage license and status'}
+            >
+              <Crown className="h-3 w-3" />
+              <span>{statusConfig.label}</span>
+            </button>
+          )}
 
           {libraryView && onLibraryViewChange && (
             <div className="min-w-0 max-w-full overflow-x-auto scrollbar-thin">

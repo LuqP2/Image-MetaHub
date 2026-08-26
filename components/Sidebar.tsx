@@ -7,6 +7,7 @@ import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
 import { createProfilerOnRender } from '../utils/performanceDiagnostics';
 
@@ -85,6 +86,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onExcludeFolder,
   onIncludeFolder,
 }) => {
+  const { isPro, isTrialActive } = useFeatureAccess();
   const [isGenerationParametersExpanded, setIsGenerationParametersExpanded] = useState(true);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
@@ -278,7 +280,9 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center gap-3 px-4 py-3">
           <img src="logo1.png" alt="Image MetaHub" className="h-11 w-11 flex-shrink-0 rounded-xl object-contain" />
           <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
-            <h1 className="truncate text-lg font-semibold tracking-tight text-white">Image MetaHub</h1>
+            <h1 className="truncate text-lg font-semibold tracking-tight text-white">
+              {isPro ? 'Image MetaHub Pro' : isTrialActive ? 'Image MetaHub Pro Trial' : 'Image MetaHub'}
+            </h1>
             <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.19.1</span>
           </div>
           <button
