@@ -105,8 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Generator Detection Priority**: Reordered metadata parser dispatch so DreamStudio, Draw Things, Midjourney, Niji and Forge images are correctly identified instead of being swallowed by the generic Automatic1111 catch-all.
 - **MetaHub Save Node Tags/Notes**: Tags and notes from MetaHub Save Node images are no longer dropped during metadata normalization.
-- **Large Library Metadata Re-reads**: Files that overflowed the batch read budget are re-read consistently, and truncated WebP metadata is detected and re-read the same way PNG already was.
-- **Folder Tree Sorting**: Subfolders sort case-insensitively and naturally (matching Finder/Windows Explorer) instead of raw filesystem order.
+- **Large Library Metadata Re-reads**: Files that overflowed the batch read budget are now re-read consistently, and truncated WebP metadata is detected and re-read the same way PNG already was.
+- **Folder Tree Sorting**: Subfolders now sort case-insensitively and naturally (matching Finder/Windows Explorer) instead of raw filesystem order.
 - **macOS External File Drag**: Dragging grid cards onto ComfyUI or into Finder on macOS now transfers the actual file instead of a text clipping.
 
 ## [0.17.4] - 2026-07-11
@@ -376,7 +376,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Visual ComfyUI Workflow Inspector**: Added a visual node-based editor inside the ComfyUI generation modal and Image Details Modal, with zoom/pan controls, editable node fields, embedded-layout support, and an advanced JSON fallback for debugging edge cases.
-- **ComfyUI Node View**: Added a dedicated `Node View` alongside Library, Smart Library, and Model View, with searchable exact node-type catalogs, per-node result counts, and multi-select OR filtering for images that contain embedded ComfyUI workflows.
+- **ComfyUI Node View**: Added a dedicated `Node View` alongside Library, Smart Library and Model View, with searchable exact node-type catalogs, per-node result counts, and multi-select OR filtering for images that contain embedded ComfyUI workflows.
 - **Image Lineage for Transformations**: Added explicit lineage support for `img2img`, `inpaint`, and `outpaint`, so transformed images are no longer treated as generic generations. The viewer now shows the generation type, source/input image status, denoise strength when available, and direct navigation between source and result when the original image can be recovered with confidence.
 - **Analytics Explorer**: Rebuilt analytics into an interactive explorer with `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views, scope switching between the current results and full library, cohort comparison tools, and one-click promotion of analytics insights into live filters.
 - **Windowed Image Viewer**: Added support for multiple open image windows with drag, resize, minimize/maximize, and dockable or collapsible details so images can be compared and inspected more flexibly.
@@ -395,7 +395,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
 - **Favorites Icon Refresh**: Updated favorite actions and indicators to use a heart icon instead of a star for clearer separation from the new rating system.
 - **Sidebar Faceted Filters**: Reworked the sidebar filter experience around dedicated facet sections for checkpoints, LoRAs, samplers, and schedulers, with per-value include/exclude actions, result counts, in-section search, and clearer active-filter chips.
-- **Tag Match Mode**: Added an `Any / All` toggle for included manual tag filters in the sidebar, allowing tag searches to match any selected tag or require all selected tags for narrower curation.
+- **Tag Match Mode**: Added an `Any / All` toggle for included manual tag filters in the sidebar, allowing tag searches to match any selected tag or require all selected tags for narrower curation workflows.
 - **Large Library Responsiveness**: Significantly improved responsiveness for large libraries by moving lineage resolution out of the image modal hot path, reducing expensive modal navigation lookups, and cutting renderer churn during indexing and filtering.
 - **Cached Startup Stability**: Reduced reopen instability on large libraries and made startup verification less intrusive by default, improving launches from cache on heavy libraries.
 - **Sidebar Visual Cohesion**: Simplified the sidebar styling into a more consistent, subdued visual system and made the `Generation Parameters` section collapsible like the other filter groups.
@@ -496,7 +496,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
-- **Indexing Performance**: Major underlying optimization to file indexing (Phase B), significantly reducing time and UI lag for large libraries. Switched to synchronous header reads with controlled concurrency, eliminating disk contention and improving read times by ~98% (from ~800ms to ~10ms).
+- **Indexing Performance**: Major underlying optimization to file indexing (Phase B), significantly reducing time and UI lag. Switched to synchronous header reads with controlled concurrency, eliminating disk contention and improving read times by ~98% (from ~800ms to ~10ms).
 
 ### Fixed
 
@@ -540,6 +540,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Multiple similarity metrics: Jaccard (token-based), Levenshtein (character-based), and hybrid scoring
   - Prompt normalization and FNV-1a hashing for efficient deduplication
   - Stack cards showing cover image, prompt preview, and image counts
+  - StackExpandedView for browsing images within each cluster
   - Real-time progress streaming across clustering phases
   - File watcher integration: deletions automatically update clusters and remove empty ones
 
@@ -671,7 +672,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Performance Analytics Dashboard**: New analytics visualizations for images with MetaHub Save Node telemetry data:
   - **Overview Cards**: Average speed (it/s), VRAM usage (GB), generation time, and telemetry coverage percentage
   - **Generation Time Distribution**: Histogram showing distribution of generation times across time buckets (< 1s, 1-5s, 5-10s, etc.)
-  - **Performance by GPU Device**: Dual-axis bar chart comparing average speed and VRAM usage across different GPU devices
+  - **Performance by GPU Device**: Dual-axis bar chart comparing average speed and VRAM usage across GPU devices
   - **Performance Over Time**: Timeline chart tracking generation speed and VRAM trends over days/weeks/months
   - **Dismissible Promo Banner**: Top banner with links to MetaHub Save Node (ComfyUI Registry and GitHub) for users without telemetry data
   - **Subtle Footer Reminder**: Always-visible footer link encouraging adoption of MetaHub Save Node
@@ -691,7 +692,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - JSONL indexing support
 - **VAE and Denoise Display**: Added visual display of VAE model and denoise strength in metadata panels
 - **Metadata Comparison Diff View**: Enhanced comparison modal with intelligent difference highlighting for iterating through generation variations:
-  - **Toggle between Standard and Diff views**: New view mode button in comparison metadata panel
+  - **Toggle between Standard and Diff views**: New view mode button in comparison header
   - **Word-level diff for prompts**: Only changed words are highlighted (e.g., "brick" vs "wooden" or "yellow" vs "red")
   - **Smart field comparison**: Automatically detects differences in models, LoRAs, seeds, CFG, clip skip, steps, sampler, and other generation parameters
   - **Neutral visual design**: Subtle blue highlighting for differences, no intrusive badges
@@ -750,7 +751,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance
 
-- **Batch Path Joins**: Implemented batch IPC handler `join-paths-batch` for path joining operations, reducing 1000+ individual IPC calls to a single batch call in cache loading and file operations (3-5x faster).
+- **Batch Path Joins**: Implemented batch IPC handler `join-paths-batch` for path joining operations, reducing 1000+ individual IPC calls to a single batch call in cache loading and file handle operations (3-5x faster).
 - **Reduced JSON Operations**: Optimized `fileIndexer.ts` to skip `JSON.stringify` for empty rawMetadata objects, avoiding unnecessary serialization overhead.
 - **Component Memoization**: Added `React.memo` to `Sidebar.tsx` and `ImagePreviewSidebar.tsx` components to prevent unnecessary re-renders when props haven't changed.
 - **Granular Store Selectors**: Refactored `App.tsx`, `ComparisonModal.tsx`, and `ImageGrid.tsx` to use granular Zustand selectors instead of mass destructuring, reducing unnecessary re-renders by 40-60%.
@@ -824,8 +825,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **A1111 Image Generation Integration**: Revolutionary new feature that enables direct image generation from Image MetaHub using Automatic1111 API:
-  - "Generate Variation" button in ImageModal for creating variations
-  - Full parameter customization (model, LoRAs, seed, steps, CFG Scale, Steps, and Seed control)
+  - "Generate Variation" button in ImageModal and ImagePreviewSidebar
+  - Full-featured generation modal with editable prompts, negative prompts, CFG Scale, Steps, and Seed control
   - Support for both fixed and random seed generation
   - Real-time generation status feedback and progress tracking
   - Seamless workflow: browse images → customize parameters → generate variations directly within the app
@@ -1050,7 +1051,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Right Sidebar Image Preview**: New collapsible sidebar that displays image preview and metadata when hovering over thumbnails in the grid
-- **Enhanced Cache Management**: Added "Clear All Cache" button in Settings modal with confirmation and automatic state reset
+- **Enhanced Cache Management**: Added "Clear All Cache" button in Settings modal with confirmation dialog and automatic state reset
 - **Improved ComfyUI Support**: Enhanced grouped workflow parsing with proper widget value extraction and custom node extractors
 
 ### Fixed
@@ -1210,7 +1211,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **macOS Auto-Updater Configuration**: Added proper entitlements, hardened runtime, and platform-specific error handling for macOS auto-updates
 - **Robust Error Handling**: Enhanced validation in frontend to prevent crashes when IPC calls fail
-- **Cross-Platform Build Verification**: Comprehensive testing and validation of build configuration for all 3 platforms
+- **Cross-Platform Build Verification**: Comprehensive testing and validation of build configuration for Windows, macOS, and Linux
 
 ### Technical Improvements
 
@@ -1335,7 +1336,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Advanced Filtering**: Steps range slider for precise filtering by inference steps
+- **Advanced Filtering**: Steps range slider for precise filtering
 - **Range Filtering**: CFG Scale and Steps range filtering components
 - **Enhanced Filtering UI**: Improved filtering interface with range controls
 
@@ -1453,7 +1454,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Scheduler Filtering**: Added new filter option to search images by scheduler type (DPMSolverMultistepScheduler, etc.)
+- **Scheduler Filtering**: Added new filter option to search images by scheduler type (DPMSolverMultistepScheduler, EulerDiscreteScheduler, etc.)
 
 ### UI Improvements
 
@@ -1506,7 +1507,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Model and LoRA filtering
 - Thumbnail support (WebP thumbnails)
 - Responsive grid layout with pagination
-- Image modal with detailed metadata view
+- Image modal with detailed metadata
 - Basic caching system with IndexedDB
 - Intermediate image filtering
 
