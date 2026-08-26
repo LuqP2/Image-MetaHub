@@ -169,6 +169,31 @@ describe('license operator setup', () => {
     expect(inputs).toEqual([`${adminToken}\n`, `${adminToken}\n`]);
   });
 
+  it.each([
+    ['empty', {}],
+    ['missing its token', { IMH_LICENSE_SERVER_URL: 'https://image-metahub-license-server.image-metahub.workers.dev' }],
+    ['missing its URL', { LICENSE_SERVER_ADMIN_TOKEN: adminToken }],
+  ])('rejects a saved config that is %s before generating or synchronizing a token', async (_label, existingConfig) => {
+    let generated = false;
+    let persisted = false;
+    let commandRan = false;
+
+    await expect(setupLicenseOperator({
+      env: {},
+      existingConfig,
+      createAdminToken: () => {
+        generated = true;
+        return adminToken;
+      },
+      persistOperatorConfig: () => { persisted = true; },
+      runCommand: async () => { commandRan = true; },
+    })).rejects.toThrow('Saved operator configuration is incomplete');
+
+    expect(generated).toBe(false);
+    expect(persisted).toBe(false);
+    expect(commandRan).toBe(false);
+  });
+
   it('does not rotate the Worker when GitHub secret synchronization fails', async () => {
     const commands: string[][] = [];
     await expect(setupLicenseOperator({

@@ -57,8 +57,16 @@ export async function setupLicenseOperator({
   }
 
   const reusingExistingToken = existingConfig !== null;
-  const configuredServerUrl = String(existingConfig?.IMH_LICENSE_SERVER_URL || serverUrl).trim().replace(/\/$/, '');
-  const adminToken = String(existingConfig?.LICENSE_SERVER_ADMIN_TOKEN || createAdminToken()).trim();
+  if (reusingExistingToken
+    && (!existingConfig.IMH_LICENSE_SERVER_URL || !existingConfig.LICENSE_SERVER_ADMIN_TOKEN)) {
+    throw new Error('Saved operator configuration is incomplete. Restore or deliberately replace it before setup.');
+  }
+  const configuredServerUrl = reusingExistingToken
+    ? String(existingConfig.IMH_LICENSE_SERVER_URL).trim().replace(/\/$/, '')
+    : serverUrl;
+  const adminToken = reusingExistingToken
+    ? String(existingConfig.LICENSE_SERVER_ADMIN_TOKEN).trim()
+    : String(createAdminToken()).trim();
   if (configuredServerUrl !== serverUrl || adminToken.length < 32) {
     throw new Error('Existing operator configuration is invalid. Restore or deliberately replace it before setup.');
   }
