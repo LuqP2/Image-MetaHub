@@ -56,7 +56,21 @@ Administrative endpoints require `Authorization: Bearer <LICENSE_SERVER_ADMIN_TO
 
 ## Current manual issuance
 
-Plaintext customer credentials must not pass through public GitHub Actions logs or artifacts. The old issuance workflow was retired. Until Stripe provisioning exists, an operator runs the local CLI from a trusted workstation:
+Plaintext customer credentials must not pass through public GitHub Actions logs or artifacts. The old issuance workflow was retired. For manual or exceptional issuance, an operator runs the local CLI from a trusted workstation:
+
+The one-time local operator setup creates a Git-ignored `.license-operator.env`
+and synchronizes the same admin token to both the production Worker and the
+protected `license-server-production` GitHub Environment:
+
+```bash
+npm run license:setup-operator
+```
+
+The command uses the Worker name directly and does not depend on the generated,
+deployment-only `wrangler.production.generated.json`. If synchronization is
+interrupted, rerun the command: it reuses the saved token so GitHub and
+Cloudflare converge on the same value. Delete `.license-operator.env` first only
+when an intentional token rotation is required.
 
 ```bash
 IMH_LICENSE_SERVER_URL="https://license-worker.example" \

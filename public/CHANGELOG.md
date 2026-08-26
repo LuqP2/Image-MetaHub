@@ -5,11 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.19.1] - [2026-08-22]
+## [0.19.1] - [2026-08-26]
+
+### Added
+
+- **Stripe Billing for Pro Plans**: Added production billing support for Monthly, Annual, and Lifetime purchases through Stripe, with automatic license provisioning and email delivery.
+- **Subscription License Lifecycle**: Monthly and Annual licenses now follow their paid-through period automatically. Renewals extend access from paid invoices, while cancellations or payment failures do not cut off time that has already been paid for.
+- **Refund Handling**: Full refunds now automatically revoke affected Lifetime purchases or the matching paid subscription period, with safe recovery when a refund later fails or is reversed.
 
 ### Improved
 
 - **Playback Controls**: Repeat modes now show their current Off, All, or 1 state directly in the player.
+- **License Delivery Reliability**: Stripe events and license emails are processed idempotently with durable retries and recovery safeguards, reducing the risk of duplicate licenses, duplicate delivery, or out-of-order billing events changing entitlement incorrectly.
 
 ### Fixed
 
