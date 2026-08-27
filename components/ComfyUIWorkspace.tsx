@@ -208,11 +208,12 @@ const WorkspaceThumbnailButton: React.FC<{
   isSelected: boolean;
   directoryPath?: string;
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onDoubleClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onToggleSelected: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onToggleFavorite: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onDragStart: (event: React.DragEvent<HTMLElement>, image: IndexedImage, directoryPath?: string) => void;
-}> = ({ image, isActive, isSelected, directoryPath, onClick, onToggleSelected, onToggleFavorite, onContextMenu, onDragStart }) => {
+}> = ({ image, isActive, isSelected, directoryPath, onClick, onDoubleClick, onToggleSelected, onToggleFavorite, onContextMenu, onDragStart }) => {
   useThumbnail(image);
   const thumbnail = useResolvedThumbnail(image);
   const dimensionsLabel = getImageDimensionsLabel(image);
@@ -222,6 +223,7 @@ const WorkspaceThumbnailButton: React.FC<{
       <div className="relative aspect-square w-full">
         <button
           onClick={onClick}
+          onDoubleClick={onDoubleClick}
           onContextMenu={onContextMenu}
           className={`h-full w-full overflow-hidden rounded-md border bg-black transition-colors ${
             isSelected
@@ -915,8 +917,13 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     }
 
     inspectWorkspaceImage(contextImage);
+  }, [inspectWorkspaceImage, updateThumbSelection]);
+
+  const handleThumbnailDoubleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>, contextImage: IndexedImage) => {
+    event.preventDefault();
+    event.stopPropagation();
     onViewFullMetadata?.(contextImage);
-  }, [inspectWorkspaceImage, onViewFullMetadata, updateThumbSelection]);
+  }, [onViewFullMetadata]);
 
   const getContextTargetImages = useCallback((contextImage?: IndexedImage | null) => {
     if (contextImage && selectedImages.has(contextImage.id) && selectedWorkspaceImages.length > 0) {
@@ -1301,6 +1308,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 isSelected={selectedImages.has(candidate.id)}
                 directoryPath={directoryPathByImageId[candidate.id]}
                 onClick={(event) => handleThumbnailClick(event, candidate, visibleIndex)}
+                onDoubleClick={(event) => handleThumbnailDoubleClick(event, candidate)}
                 onToggleSelected={(event) => updateThumbSelection(event, candidate, visibleIndex)}
                 onToggleFavorite={(event) => {
                   event.preventDefault();
