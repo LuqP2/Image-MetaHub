@@ -1573,6 +1573,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
     return [contextMenu.image];
   }, [contextMenu.image, images, selectedImages]);
+  const deleteTargetCount = contextMenu.image && selectedImages.has(contextMenu.image.id)
+    ? selectedImages.size
+    : contextMenu.image ? 1 : 0;
 
   const handleAddToExistingCollection = useCallback(async (collection: SmartCollection) => {
     const targetImages = getContextTargetImages();
@@ -2806,8 +2809,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               <ContextMenuButton
                 onClick={handleDeleteFromContextMenu}
                 icon={<Trash2 className="w-4 h-4" />}
-                label={getContextTargetImages().length > 1
-                  ? `Delete Selected (${getContextTargetImages().length})`
+                label={deleteTargetCount > 1
+                  ? `Delete Selected (${deleteTargetCount})`
                   : 'Delete'}
               />
             </>

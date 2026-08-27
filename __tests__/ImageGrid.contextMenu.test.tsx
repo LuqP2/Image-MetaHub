@@ -537,20 +537,21 @@ describe('ImageGrid context menu', () => {
     expect(hideContextMenuMock).toHaveBeenCalled();
   });
 
-  it('deletes the current selection when the context image is selected', () => {
+  it('shows and deletes the full global selection when some selected images are outside the grid', () => {
     const onDeleteSelected = vi.fn();
     const image = createImage({ id: 'img-1', name: 'alpha.png' });
     const otherImage = createImage({ id: 'img-2', name: 'beta.png' });
+    const hiddenImage = createImage({ id: 'img-3', name: 'hidden.png' });
     contextMenuStateMock.visible = true;
     contextMenuStateMock.image = image;
-    setupImageGridState([image, otherImage]);
-    useImageStore.setState({ selectedImages: new Set(['img-1', 'img-2']) });
+    setupImageGridState([image, otherImage, hiddenImage]);
+    useImageStore.setState({ selectedImages: new Set(['img-1', 'img-2', 'img-3']) });
 
     render(<Harness images={[image, otherImage]} onDeleteSelected={onDeleteSelected} />);
 
-    fireEvent.click(screen.getByText('Delete Selected (2)'));
+    fireEvent.click(screen.getByText('Delete Selected (3)'));
 
-    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2', 'img-3']));
     expect(onDeleteSelected).toHaveBeenCalledTimes(1);
   });
 
