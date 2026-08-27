@@ -166,12 +166,13 @@ const createImages = (count: number): IndexedImage[] =>
     }),
   );
 
-const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisuallySimilar = false, hasRightSidebar = false }: {
+const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisuallySimilar = false, hasRightSidebar = false, onDeleteSelected }: {
   images: IndexedImage[];
   onFindSimilar?: (image: IndexedImage) => void;
   onFindVisuallySimilar?: (image: IndexedImage) => void;
   canFindVisuallySimilar?: boolean;
   hasRightSidebar?: boolean;
+  onDeleteSelected?: () => void;
 }) => {
   const selectedImages = useImageStore((state) => state.selectedImages);
 
@@ -188,6 +189,7 @@ const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisually
       onFindVisuallySimilar={onFindVisuallySimilar}
       canFindVisuallySimilar={canFindVisuallySimilar}
       hasRightSidebar={hasRightSidebar}
+      onDeleteSelected={onDeleteSelected}
     />
   );
 };
@@ -515,6 +517,41 @@ describe('ImageGrid context menu', () => {
 
     expect(screen.getByRole('textbox', { name: /rename alpha\.png/i })).toBeTruthy();
     expect(hideContextMenuMock).toHaveBeenCalled();
+  });
+
+  it('deletes only the context image when it is outside the current selection', () => {
+    const onDeleteSelected = vi.fn();
+    const image = createImage({ id: 'img-1', name: 'alpha.png' });
+    const otherImage = createImage({ id: 'img-2', name: 'beta.png' });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+    setupImageGridState([image, otherImage]);
+    useImageStore.setState({ selectedImages: new Set(['img-2']) });
+
+    render(<Harness images={[image, otherImage]} onDeleteSelected={onDeleteSelected} />);
+
+    fireEvent.click(screen.getByText('Delete'));
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1']));
+    expect(onDeleteSelected).toHaveBeenCalledTimes(1);
+    expect(hideContextMenuMock).toHaveBeenCalled();
+  });
+
+  it('deletes the current selection when the context image is selected', () => {
+    const onDeleteSelected = vi.fn();
+    const image = createImage({ id: 'img-1', name: 'alpha.png' });
+    const otherImage = createImage({ id: 'img-2', name: 'beta.png' });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+    setupImageGridState([image, otherImage]);
+    useImageStore.setState({ selectedImages: new Set(['img-1', 'img-2']) });
+
+    render(<Harness images={[image, otherImage]} onDeleteSelected={onDeleteSelected} />);
+
+    fireEvent.click(screen.getByText('Delete Selected (2)'));
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
+    expect(onDeleteSelected).toHaveBeenCalledTimes(1);
   });
 
   it('shows collection actions in the image context menu', () => {
