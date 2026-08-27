@@ -209,11 +209,12 @@ const WorkspaceThumbnailButton: React.FC<{
   directoryPath?: string;
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onDoubleClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
   onToggleSelected: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onToggleFavorite: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onDragStart: (event: React.DragEvent<HTMLElement>, image: IndexedImage, directoryPath?: string) => void;
-}> = ({ image, isActive, isSelected, directoryPath, onClick, onDoubleClick, onToggleSelected, onToggleFavorite, onContextMenu, onDragStart }) => {
+}> = ({ image, isActive, isSelected, directoryPath, onClick, onDoubleClick, onKeyDown, onToggleSelected, onToggleFavorite, onContextMenu, onDragStart }) => {
   useThumbnail(image);
   const thumbnail = useResolvedThumbnail(image);
   const dimensionsLabel = getImageDimensionsLabel(image);
@@ -224,6 +225,7 @@ const WorkspaceThumbnailButton: React.FC<{
         <button
           onClick={onClick}
           onDoubleClick={onDoubleClick}
+          onKeyDown={onKeyDown}
           onContextMenu={onContextMenu}
           className={`h-full w-full overflow-hidden rounded-md border bg-black transition-colors ${
             isSelected
@@ -232,8 +234,8 @@ const WorkspaceThumbnailButton: React.FC<{
                 ? 'border-purple-400 ring-1 ring-purple-400/60'
                 : 'border-gray-700 hover:border-gray-500'
           }`}
-          title={`Open ${image.name}`}
-          aria-label={`Open ${image.name}`}
+          title={`Inspect ${image.name}. Double-click or press Enter to open the full viewer.`}
+          aria-label={`Inspect ${image.name}; press Enter to open the full viewer`}
           draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
           onDragStart={(event) => onDragStart(event, image, directoryPath)}
         >
@@ -925,6 +927,16 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     onViewFullMetadata?.(contextImage);
   }, [onViewFullMetadata]);
 
+  const handleThumbnailKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>, contextImage: IndexedImage) => {
+    if (event.key !== 'Enter' || event.repeat) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    onViewFullMetadata?.(contextImage);
+  }, [onViewFullMetadata]);
+
   const getContextTargetImages = useCallback((contextImage?: IndexedImage | null) => {
     if (contextImage && selectedImages.has(contextImage.id) && selectedWorkspaceImages.length > 0) {
       return selectedWorkspaceImages;
@@ -1309,6 +1321,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 directoryPath={directoryPathByImageId[candidate.id]}
                 onClick={(event) => handleThumbnailClick(event, candidate, visibleIndex)}
                 onDoubleClick={(event) => handleThumbnailDoubleClick(event, candidate)}
+                onKeyDown={(event) => handleThumbnailKeyDown(event, candidate)}
                 onToggleSelected={(event) => updateThumbSelection(event, candidate, visibleIndex)}
                 onToggleFavorite={(event) => {
                   event.preventDefault();
