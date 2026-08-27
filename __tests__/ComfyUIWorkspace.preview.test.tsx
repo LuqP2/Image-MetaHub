@@ -115,7 +115,7 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
     delete window.electronAPI;
   });
 
-  it('opens the full image viewer from a thumbnail', () => {
+  it('inspects on single click and opens the full image viewer on double click or Enter', () => {
     const image = createImage('alpha');
     const onInspectImage = vi.fn();
     const onViewFullMetadata = vi.fn();
@@ -133,9 +133,19 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Open alpha\.png/i }));
+    const thumbnail = screen.getByRole('button', { name: /Inspect alpha\.png/i });
+    fireEvent.click(thumbnail);
 
     expect(onInspectImage).toHaveBeenCalledWith(image);
+    expect(onViewFullMetadata).not.toHaveBeenCalled();
+
+    fireEvent.doubleClick(thumbnail);
+
+    expect(onViewFullMetadata).toHaveBeenCalledWith(image);
+
+    onViewFullMetadata.mockClear();
+    fireEvent.keyDown(thumbnail, { key: 'Enter' });
+
     expect(onViewFullMetadata).toHaveBeenCalledWith(image);
     expect(screen.queryByRole('dialog', { name: /Workspace image preview/i })).toBeNull();
   });

@@ -1,4 +1,5 @@
 import React, { startTransition, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
+import { flushSync } from 'react-dom';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useSemanticStore } from './store/useSemanticStore';
@@ -2110,22 +2111,27 @@ export default function App() {
       : null;
     const replacementImage = replacementId ? getImageByIdFromStore(replacementId) ?? null : null;
 
-    removeImage(imageId);
-    setOpenImageModals((current) => {
-      return current.flatMap((modal) => {
-        const update = navigationUpdates.get(modal.modalId)
-          ?? resolveNavigationAfterDeletion(modal.navigationImageIds, imageId);
-        if (modal.imageId === imageId) {
-          return update.nextImageId
-            ? [{ ...modal, imageId: update.nextImageId, navigationImageIds: update.navigationImageIds }]
-            : [];
-        }
-        return [{ ...modal, navigationImageIds: update.navigationImageIds }];
+    // Keep detached sessions alive while deleting their current image. If the
+    // store removes it first, reconciliation briefly sees no image for the
+    // session, closes the native window, then opens it again on the next item.
+    flushSync(() => {
+      setOpenImageModals((current) => {
+        return current.flatMap((modal) => {
+          const update = navigationUpdates.get(modal.modalId)
+            ?? resolveNavigationAfterDeletion(modal.navigationImageIds, imageId);
+          if (modal.imageId === imageId) {
+            return update.nextImageId
+              ? [{ ...modal, imageId: update.nextImageId, navigationImageIds: update.navigationImageIds }]
+              : [];
+          }
+          return [{ ...modal, navigationImageIds: update.navigationImageIds }];
+        });
       });
+      if (useImageStore.getState().selectedImage?.id === imageId) {
+        setSelectedImage(replacementImage);
+      }
     });
-    if (useImageStore.getState().selectedImage?.id === imageId) {
-      setSelectedImage(replacementImage);
-    }
+    removeImage(imageId);
   }, [activeImageModalId, getImageByIdFromStore, openImageModals, removeImage, resolveModalNavigationImageIds, setSelectedImage]);
 
   const handleImageRenamed = useCallback((oldImageId: string, newImageId: string) => {
@@ -3084,12 +3090,13 @@ export default function App() {
   }, []);
   const handleComfyUIWorkspaceViewFullMetadata = useCallback((image: IndexedImage) => {
     setComfyUIWorkspaceImageId(image.id);
-    setSelectedImage(image);
     const existing = openImageModals.find((modal) => modal.imageId === image.id);
-    if ((existing?.host ?? resolveViewerHost()) === 'inline') {
-      setLibraryView('library');
+    if (existing) {
+      handleActivateImageModal(existing.modalId);
+      return;
     }
-  }, [openImageModals, resolveViewerHost, setSelectedImage]);
+    setSelectedImage(image);
+  }, [handleActivateImageModal, openImageModals, setSelectedImage]);
   const handleComfyUIWorkspaceNavigate = useCallback((direction: 'next' | 'previous') => {
     if (comfyUIWorkspaceCurrentIndex === -1) {
       return;

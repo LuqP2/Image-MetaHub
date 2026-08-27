@@ -56,7 +56,9 @@ describe('Header classic mode', () => {
   afterEach(() => cleanup());
 
   it('hides the legacy tabs by default', () => {
-    renderHeader();
+    const { container } = renderHeader();
+    expect(container.querySelector('header > div')?.className).not.toContain('container');
+    expect(container.querySelector('header > div')?.className).not.toContain('mx-auto');
     expect(screen.queryByRole('button', { name: /model view/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /smart library/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /node view/i })).toBeNull();

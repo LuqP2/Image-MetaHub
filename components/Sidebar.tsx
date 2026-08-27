@@ -283,7 +283,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <h1 className="truncate text-lg font-semibold tracking-tight text-white">
               {isPro ? 'Image MetaHub Pro' : isTrialActive ? 'Image MetaHub Pro Trial' : 'Image MetaHub'}
             </h1>
-            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.19.1</span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.19.2</span>
           </div>
           <button
             onClick={onToggleCollapse}

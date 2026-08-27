@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.2] - [2026-08-27]
+
+### Fixed
+
+- **ComfyUI Workspace Thumbnails**: Single-clicking a thumbnail now opens it in the workspace inspector, while double-clicking opens the full image viewer according to the configured inline or detached viewer setting without returning to the Library grid.
+- **Detached Viewer Deletion**: Deleting the current image now advances to the next available image without closing, flashing, or reopening the detached viewer window.
+
 ## [0.19.1] - [2026-08-26]
 
 ### Added
