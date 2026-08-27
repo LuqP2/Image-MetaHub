@@ -4,9 +4,8 @@ import { ResendDeliveryClient } from '../src/resendClient.js';
 
 describe('ResendDeliveryClient', () => {
   it('invokes fetch with the global receiver required by Cloudflare Workers', async () => {
-    let receiver: unknown;
     const fetchImpl = function (this: unknown) {
-      receiver = this;
+      expect(this).toBe(globalThis);
       return Promise.resolve(new Response(JSON.stringify({ id: 'email_1' }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -26,7 +25,6 @@ describe('ResendDeliveryClient', () => {
       expiresAt: '2026-09-27T00:00:00.000Z',
     });
 
-    expect(receiver).toBe(globalThis);
     expect(result).toEqual({ ok: true, messageId: 'email_1' });
   });
 });
