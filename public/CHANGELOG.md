@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **ComfyUI Workspace Thumbnails**: Single-clicking a thumbnail now opens it in the workspace inspector, while double-clicking or pressing Enter opens the full image viewer according to the configured inline or detached viewer setting without returning to the Library grid.
 - **Detached Viewer Deletion**: Deleting the current image now advances to the next available image without closing, flashing, or reopening the detached viewer window.
+- **Image Grid Deletion**: Added a Delete action to the image grid context menu, applying to the clicked image or the current multi-selection.
 - **Light Mode Image Preview**: The preview title, file name, and metadata section headings now remain readable against the preview panel when using Light Mode.
 
 ## [0.19.1] - [2026-08-26]

@@ -18,7 +18,8 @@ import { Heart, Info, Copy, CheckCircle, Folder, Clipboard, Sparkles, GitCompare
   Tag,
   RefreshCw,
   Image as ImageIcon,
-  Workflow
+  Workflow,
+  Trash2
 } from 'lucide-react';
 import { copyTextToClipboard } from '../utils/imageUtils';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
@@ -1056,6 +1057,7 @@ interface ImageGridProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   onBatchExport: () => void;
+  onDeleteSelected?: () => void | Promise<void>;
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
@@ -1087,6 +1089,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   totalPages,
   onPageChange,
   onBatchExport,
+  onDeleteSelected,
   activeCollection = null,
   isCollectionsView = false,
   onImageRenamed,
@@ -1570,6 +1573,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
     return [contextMenu.image];
   }, [contextMenu.image, images, selectedImages]);
+  const deleteTargetCount = contextMenu.image && selectedImages.has(contextMenu.image.id)
+    ? selectedImages.size
+    : contextMenu.image ? 1 : 0;
 
   const handleAddToExistingCollection = useCallback(async (collection: SmartCollection) => {
     const targetImages = getContextTargetImages();
@@ -1686,6 +1692,20 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     setRenamingImageId(image.id);
     hideContextMenu();
   }, [hideContextMenu]);
+
+  const handleDeleteFromContextMenu = useCallback(() => {
+    if (!contextMenu.image || !onDeleteSelected) {
+      hideContextMenu();
+      return;
+    }
+
+    if (!selectedImages.has(contextMenu.image.id)) {
+      useImageStore.setState({ selectedImages: new Set([contextMenu.image.id]) });
+    }
+
+    hideContextMenu();
+    void onDeleteSelected();
+  }, [contextMenu.image, hideContextMenu, onDeleteSelected, selectedImages]);
 
   const closeInlineRename = useCallback((result?: ImageRenameResult) => {
     if (result) {
@@ -2782,6 +2802,19 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               </>
             );
           })()}
+
+          {onDeleteSelected && (
+            <>
+              <div className="border-t border-gray-600 my-1"></div>
+              <ContextMenuButton
+                onClick={handleDeleteFromContextMenu}
+                icon={<Trash2 className="w-4 h-4" />}
+                label={deleteTargetCount > 1
+                  ? `Delete Selected (${deleteTargetCount})`
+                  : 'Delete'}
+              />
+            </>
+          )}
         </div>,
         document.body,
       )

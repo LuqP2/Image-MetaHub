@@ -4254,6 +4254,7 @@ export default function App() {
                           totalPages={totalPages}
                           onPageChange={setCurrentPage}
                           onBatchExport={handleOpenBatchExport}
+                          onDeleteSelected={handleDeleteSelectedImages}
                           onImageRenamed={handleImageRenamed}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                           onFindVisuallySimilar={runVisualSimilar}
@@ -4309,6 +4310,7 @@ export default function App() {
                         totalPages={totalPages}
                         onPageChange={setCurrentPage}
                         onBatchExport={handleOpenBatchExport}
+                        onDeleteSelected={handleDeleteSelectedImages}
                         activeCollection={activeCollection}
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
