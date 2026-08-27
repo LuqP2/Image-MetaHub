@@ -9,10 +9,10 @@ import { formatLicenseValidity, licensePlanLabel } from '../../utils/licenseDisp
 
 const licenseStatusClassName: Record<string, string> = {
   free: 'border-gray-700 bg-gray-800 text-gray-300',
-  trial: 'border-yellow-500/30 bg-yellow-500/10 text-yellow-200',
-  expired: 'border-red-500/30 bg-red-500/10 text-red-200',
-  pro: 'border-green-500/30 bg-green-500/10 text-green-200',
-  lifetime: 'border-green-500/30 bg-green-500/10 text-green-200',
+  trial: 'border-yellow-300 bg-yellow-100 text-yellow-800 dark:border-yellow-500/30 dark:bg-yellow-500/10 dark:text-yellow-200',
+  expired: 'border-red-300 bg-red-100 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200',
+  pro: 'border-green-300 bg-green-100 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-200',
+  lifetime: 'border-green-300 bg-green-100 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-200',
 };
 
 const licenseStatusLabel: Record<string, string> = {

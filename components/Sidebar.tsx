@@ -280,7 +280,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center gap-3 px-4 py-3">
           <img src="logo1.png" alt="Image MetaHub" className="h-11 w-11 flex-shrink-0 rounded-xl object-contain" />
           <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
-            <h1 className="truncate text-lg font-semibold tracking-tight text-white">
+            <h1 className="truncate text-lg font-semibold tracking-tight text-gray-100">
               {isPro ? 'Image MetaHub Pro' : isTrialActive ? 'Image MetaHub Pro Trial' : 'Image MetaHub'}
             </h1>
             <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.19.2</span>
