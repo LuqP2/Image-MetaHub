@@ -54,7 +54,7 @@ export class ResendDeliveryClient {
     };
     let response;
     try {
-      response = await this.fetchImpl(RESEND_ENDPOINT, {
+      response = await this.fetchImpl.call(globalThis, RESEND_ENDPOINT, {
         method: 'POST',
         headers: {
           authorization: `Bearer ${this.apiKey}`,
