@@ -532,7 +532,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
       </div>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Image Preview</h2>
+        <h2 className="text-lg font-semibold text-gray-200">Image Preview</h2>
         <button
           onClick={() => setPreviewImage(null)}
           className="text-gray-400 hover:text-gray-50 transition-colors"
@@ -611,7 +611,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
         {/* Metadata */}
         <div>
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 break-all">{activeImage.name}</h2>
+            <h2 className="text-lg font-bold text-gray-100 break-all">{activeImage.name}</h2>
             {hasVerifiedTelemetry(activeImage) && (
               <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
@@ -749,7 +749,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
           <>
             <div className="flex items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-600 pb-2">
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-gray-700 dark:text-gray-300">Metadata</h3>
+                <h3 className="text-base font-semibold text-gray-200">Metadata</h3>
                 {shadowMetadata && (
                   <span className="text-[10px] bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded border border-blue-800">
                     EDITED
@@ -866,7 +866,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
             {effectiveMetadata?.loras && effectiveMetadata.loras.length > 0 && (
                <>
-                  <h3 className="text-base font-semibold text-gray-700 dark:text-gray-300 pt-2 border-b border-gray-200 dark:border-gray-600 pb-2">LoRAs</h3>
+                  <h3 className="text-base font-semibold text-gray-200 pt-2 border-b border-gray-200 dark:border-gray-600 pb-2">LoRAs</h3>
                   <MetadataItem label="LoRAs" value={effectiveMetadata.loras.map(formatLoRA).join(', ')} />
                </>
             )}
@@ -1160,7 +1160,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
             <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-base font-semibold text-gray-700 dark:text-gray-300">Generation Parameters</h3>
+                <h3 className="text-base font-semibold text-gray-200">Generation Parameters</h3>
                 <button
                   onClick={() => {
                     const nextShowRawMetadata = !showRawMetadata;
