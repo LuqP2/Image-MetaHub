@@ -7,15 +7,6 @@ const escapeHtml = (value) => String(value)
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#039;');
 
-const planLabel = (plan) => ({ lifetime: 'Lifetime', monthly: 'Monthly', annual: 'Annual' }[plan] || 'Pro');
-
-function formatExpiration(expiresAt) {
-  if (!expiresAt) return 'No expiration';
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC',
-  }).format(new Date(expiresAt));
-}
-
 export class ResendDeliveryClient {
   constructor({ apiKey, from, replyTo = null, fetchImpl = globalThis.fetch }) {
     this.apiKey = apiKey;
@@ -24,24 +15,33 @@ export class ResendDeliveryClient {
     this.fetchImpl = fetchImpl;
   }
 
-  async sendLicense({ outboxId, email, licenseKey, plan, expiresAt }) {
-    const label = planLabel(plan);
-    const validity = formatExpiration(expiresAt);
+  async sendLicense({ outboxId, email, licenseKey }) {
     const text = [
-      'Thank you for supporting Image MetaHub.',
+      'Hi there!',
       '',
-      `Plan: ${label}`,
-      `Validity: ${validity}`,
-      `License key: ${licenseKey}`,
+      'Thank you for your purchase and for supporting the project!',
       '',
-      'Activate it in Image MetaHub using this email address and the license key above.',
+      'Your license is ready to use. Just open Image MetaHub, go to Settings → License, enter the email below and the key, and the app will activate immediately.',
+      '',
+      `Email: ${email}`,
+      `License: ${licenseKey}`,
+      '',
+      'If you have a moment, I’d really appreciate it if you could fill out this short survey: https://forms.gle/HY8eysnEB2uS9bsS6. Hearing directly from you helps me a lot in making the app better for everyone!',
+      '',
+      'If you have any issues activating the license, please let me know!',
+      '',
+      'Best regards,',
+      'Lucas',
     ].join('\n');
     const html = [
-      '<p>Thank you for supporting Image MetaHub.</p>',
-      `<p><strong>Plan:</strong> ${escapeHtml(label)}<br>`,
-      `<strong>Validity:</strong> ${escapeHtml(validity)}</p>`,
-      `<p><strong>License key:</strong><br><code>${escapeHtml(licenseKey)}</code></p>`,
-      '<p>Activate it in Image MetaHub using this email address and the license key above.</p>',
+      '<p>Hi there!</p>',
+      '<p>Thank you for your purchase and for supporting the project!</p>',
+      '<p>Your license is ready to use. Just open Image MetaHub, go to Settings → License, enter the email below and the key, and the app will activate immediately.</p>',
+      `<p><strong>Email:</strong> ${escapeHtml(email)}<br>`,
+      `<strong>License:</strong> <code>${escapeHtml(licenseKey)}</code></p>`,
+      '<p>If you have a moment, I’d really appreciate it if you could fill out this short survey: <a href="https://forms.gle/HY8eysnEB2uS9bsS6">https://forms.gle/HY8eysnEB2uS9bsS6</a>. Hearing directly from you helps me a lot in making the app better for everyone!</p>',
+      '<p>If you have any issues activating the license, please let me know!</p>',
+      '<p>Best regards,<br>Lucas</p>',
     ].join('');
     const body = {
       from: this.from,

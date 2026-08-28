@@ -4,8 +4,10 @@ import { ResendDeliveryClient } from '../src/resendClient.js';
 
 describe('ResendDeliveryClient', () => {
   it('invokes fetch with the global receiver required by Cloudflare Workers', async () => {
-    const fetchImpl = function (this: unknown) {
+    let sentBody: Record<string, unknown> | undefined;
+    const fetchImpl = function (this: unknown, _url: string | URL | Request, init?: RequestInit) {
       expect(this).toBe(globalThis);
+      sentBody = JSON.parse(String(init?.body));
       return Promise.resolve(new Response(JSON.stringify({ id: 'email_1' }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -26,5 +28,27 @@ describe('ResendDeliveryClient', () => {
     });
 
     expect(result).toEqual({ ok: true, messageId: 'email_1' });
+    expect(sentBody?.text).toBe([
+      'Hi there!',
+      '',
+      'Thank you for your purchase and for supporting the project!',
+      '',
+      'Your license is ready to use. Just open Image MetaHub, go to Settings → License, enter the email below and the key, and the app will activate immediately.',
+      '',
+      'Email: buyer@example.com',
+      'License: IMH2-TEST',
+      '',
+      'If you have a moment, I’d really appreciate it if you could fill out this short survey: https://forms.gle/HY8eysnEB2uS9bsS6. Hearing directly from you helps me a lot in making the app better for everyone!',
+      '',
+      'If you have any issues activating the license, please let me know!',
+      '',
+      'Best regards,',
+      'Lucas',
+    ].join('\n'));
+    expect(sentBody?.html).toContain('<p>Hi there!</p>');
+    expect(sentBody?.html).toContain('<strong>Email:</strong> buyer@example.com<br>');
+    expect(sentBody?.html).toContain('<strong>License:</strong> <code>IMH2-TEST</code>');
+    expect(sentBody?.html).toContain('<a href="https://forms.gle/HY8eysnEB2uS9bsS6">');
+    expect(sentBody?.html).toContain('<p>Best regards,<br>Lucas</p>');
   });
 });
