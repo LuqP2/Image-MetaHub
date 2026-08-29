@@ -2212,7 +2212,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
 
-    const delta = Math.max(-0.1, Math.min(0.1, e.deltaY * -0.001));
+    const deltaModeScale = e.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? 40
+      : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? Math.max(window.innerHeight, 800)
+        : 1;
+    const normalizedDeltaY = e.deltaY * deltaModeScale;
+    const delta = Math.max(-0.1, Math.min(0.1, normalizedDeltaY * -0.001));
     const newZoom = Math.min(Math.max(minViewerZoom, zoom + delta), maxViewerZoom);
 
     setViewerZoomMode('manual');
