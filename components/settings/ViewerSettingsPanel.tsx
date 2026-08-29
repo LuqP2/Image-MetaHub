@@ -36,6 +36,8 @@ export const ViewerSettingsPanel: React.FC = () => {
   const setSlideshowShowFilename = useSettingsStore((state) => state.setSlideshowShowFilename);
   const imageViewerMode = useSettingsStore((state) => state.imageViewerMode);
   const setImageViewerMode = useSettingsStore((state) => state.setImageViewerMode);
+  const imageViewerDefaultZoom = useSettingsStore((state) => state.imageViewerDefaultZoom);
+  const setImageViewerDefaultZoom = useSettingsStore((state) => state.setImageViewerDefaultZoom);
   const isDesktop = typeof window !== 'undefined' && Boolean(window.electronAPI);
 
   return (
@@ -50,6 +52,19 @@ export const ViewerSettingsPanel: React.FC = () => {
               onChange={(checked) => setImageViewerMode(checked ? 'detached' : 'inline')}
               disabled={!isDesktop}
             />
+          }
+        />
+        <SettingRow
+          label="Default image zoom"
+          control={
+            <select
+              value={imageViewerDefaultZoom}
+              onChange={(event) => setImageViewerDefaultZoom(event.target.value as 'fit' | 'actual')}
+              className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="fit">Fit</option>
+              <option value="actual">1:1</option>
+            </select>
           }
         />
         <SettingRow

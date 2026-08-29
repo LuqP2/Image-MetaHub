@@ -111,9 +111,13 @@ export const sanitizeSlideshowIntervalSeconds = (value: number): number => {
 
 export type VideoRepeatMode = 'off' | 'one' | 'all';
 export type ImageViewerMode = 'detached' | 'inline';
+export type ImageViewerDefaultZoom = 'fit' | 'actual';
 
 export const sanitizeImageViewerMode = (value: unknown): ImageViewerMode =>
   value === 'inline' || value === 'detached' ? value : 'detached';
+
+export const sanitizeImageViewerDefaultZoom = (value: unknown): ImageViewerDefaultZoom =>
+  value === 'actual' ? 'actual' : 'fit';
 
 const VALID_VIDEO_REPEAT_MODES: VideoRepeatMode[] = ['off', 'one', 'all'];
 const isValidVideoRepeatMode = (value: unknown): value is VideoRepeatMode =>
@@ -196,6 +200,8 @@ interface SettingsState {
   videoShuffle: boolean;
   /** Desktop viewer host. Web builds always resolve this preference to inline. */
   imageViewerMode: ImageViewerMode;
+  /** Zoom mode applied whenever an image opens in the viewer. */
+  imageViewerDefaultZoom: ImageViewerDefaultZoom;
   creatorAttributionToken: string | null;
   creatorAttributionUpdatedAt: number | null;
 
@@ -258,6 +264,7 @@ interface SettingsState {
   setVideoRepeatMode: (value: VideoRepeatMode) => void;
   setVideoShuffle: (value: boolean) => void;
   setImageViewerMode: (value: ImageViewerMode) => void;
+  setImageViewerDefaultZoom: (value: ImageViewerDefaultZoom) => void;
   setCreatorAttributionToken: (token: string | null) => void;
   setA1111Enabled: (value: boolean) => void;
   setA1111ServerUrl: (url: string) => void;
@@ -324,6 +331,7 @@ export const useSettingsStore = create<SettingsState>()(
       videoRepeatMode: readLegacyVideoRepeatMode(),
       videoShuffle: false,
       imageViewerMode: 'detached',
+      imageViewerDefaultZoom: 'fit',
       creatorAttributionToken: null,
       creatorAttributionUpdatedAt: null,
 
@@ -400,6 +408,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({ videoRepeatMode: isValidVideoRepeatMode(value) ? value : 'off' }),
       setVideoShuffle: (value) => set({ videoShuffle: !!value }),
       setImageViewerMode: (value) => set({ imageViewerMode: sanitizeImageViewerMode(value) }),
+      setImageViewerDefaultZoom: (value) => set({ imageViewerDefaultZoom: sanitizeImageViewerDefaultZoom(value) }),
       setCreatorAttributionToken: (token) => {
         const normalizedToken = typeof token === 'string' ? token.trim() : '';
         set({
@@ -487,6 +496,7 @@ export const useSettingsStore = create<SettingsState>()(
         videoRepeatMode: 'off',
         videoShuffle: false,
         imageViewerMode: 'detached',
+        imageViewerDefaultZoom: 'fit',
         creatorAttributionToken: null,
         creatorAttributionUpdatedAt: null,
         a1111Enabled: true,
@@ -607,6 +617,10 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && !isValidVideoRepeatMode(state.videoRepeatMode)) {
           state.videoRepeatMode = 'off';
+        }
+
+        if (state) {
+          state.imageViewerDefaultZoom = sanitizeImageViewerDefaultZoom(state.imageViewerDefaultZoom);
         }
 
         if (state && typeof state.videoShuffle !== 'boolean') {

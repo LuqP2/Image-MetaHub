@@ -1017,6 +1017,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const slideshowIntervalSeconds = useSettingsStore((state) => state.slideshowIntervalSeconds);
   const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
   const autoPlayMedia = useSettingsStore((state) => state.autoPlayMedia);
+  const imageViewerDefaultZoom = useSettingsStore((state) => state.imageViewerDefaultZoom);
   // A running slideshow and a repeat-all/shuffle chain both imply continuous playback, so they
   // start the media regardless of the auto-play preference.
   const shouldAutoPlayMedia = autoPlayMedia || isChainedPlayback || (isSlideshowMode && isSlideshowPlaying);
@@ -2137,11 +2138,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     setZoom(1);
-    setViewerZoomMode('fit');
+    setViewerZoomMode(imageViewerDefaultZoom);
     setPan({ x: 0, y: 0 });
     setSlideshowVideoDuration(null);
     revealMediaOverlay();
-  }, [image.id, revealMediaOverlay]);
+  }, [image.id, imageViewerDefaultZoom, revealMediaOverlay]);
 
   useEffect(() => {
     if (!isSlideshowMode) {
@@ -2155,11 +2156,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     setZoom(1);
-    setViewerZoomMode('fit');
+    setViewerZoomMode(isSlideshowMode ? 'fit' : imageViewerDefaultZoom);
     setPan({ x: 0, y: 0 });
     setIsMediaOverlayVisible(false);
     clearMediaOverlayHideTimer();
-  }, [clearMediaOverlayHideTimer, isFullscreen]);
+  }, [clearMediaOverlayHideTimer, imageViewerDefaultZoom, isFullscreen, isSlideshowMode]);
 
   useEffect(() => {
     const applyWindowZoomFactor = (nextZoomFactor: number) => {
@@ -2211,7 +2212,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
 
-    const delta = e.deltaY * -0.01;
+    const deltaModeScale = e.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? 40
+      : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? Math.max(window.innerHeight, 800)
+        : 1;
+    const normalizedDeltaY = e.deltaY * deltaModeScale;
+    const delta = Math.max(-0.1, Math.min(0.1, normalizedDeltaY * -0.001));
     const newZoom = Math.min(Math.max(minViewerZoom, zoom + delta), maxViewerZoom);
 
     setViewerZoomMode('manual');
