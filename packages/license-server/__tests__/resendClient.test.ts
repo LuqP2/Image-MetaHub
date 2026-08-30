@@ -38,8 +38,6 @@ describe('ResendDeliveryClient', () => {
       'Email: buyer@example.com',
       'License: IMH2-TEST',
       '',
-      'If you have a moment, I’d really appreciate it if you could fill out this short survey: https://forms.gle/HY8eysnEB2uS9bsS6. Hearing directly from you helps me a lot in making the app better for everyone!',
-      '',
       'If you have any issues activating the license, please let me know!',
       '',
       'Best regards,',
@@ -48,7 +46,8 @@ describe('ResendDeliveryClient', () => {
     expect(sentBody?.html).toContain('<p>Hi there!</p>');
     expect(sentBody?.html).toContain('<strong>Email:</strong> buyer@example.com<br>');
     expect(sentBody?.html).toContain('<strong>License:</strong> <code>IMH2-TEST</code>');
-    expect(sentBody?.html).toContain('<a href="https://forms.gle/HY8eysnEB2uS9bsS6">');
+    expect(sentBody?.text).not.toContain('https://');
+    expect(sentBody?.html).not.toContain('<a ');
     expect(sentBody?.html).toContain('<p>Best regards,<br>Lucas</p>');
   });
 });
