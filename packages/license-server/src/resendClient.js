@@ -7,6 +7,24 @@ const escapeHtml = (value) => String(value)
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#039;');
 
+const planLabels = {
+  lifetime: 'Lifetime',
+  monthly: 'Monthly',
+  annual: 'Annual',
+};
+
+const formatExpiry = (plan, expiresAt) => {
+  if (plan === 'lifetime') return 'No expiration';
+  const date = new Date(String(expiresAt || ''));
+  if (!Number.isFinite(date.getTime())) return 'Unavailable';
+  return new Intl.DateTimeFormat('en-US', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+};
+
 export class ResendDeliveryClient {
   constructor({ apiKey, from, replyTo = null, fetchImpl = globalThis.fetch }) {
     this.apiKey = apiKey;
@@ -15,7 +33,9 @@ export class ResendDeliveryClient {
     this.fetchImpl = fetchImpl;
   }
 
-  async sendLicense({ outboxId, email, licenseKey }) {
+  async sendLicense({ outboxId, email, licenseKey, plan, expiresAt }) {
+    const planLabel = planLabels[plan] || String(plan || 'Unavailable');
+    const expiryLabel = formatExpiry(plan, expiresAt);
     const text = [
       'Hi there!',
       '',
@@ -23,8 +43,13 @@ export class ResendDeliveryClient {
       '',
       'Your license is ready to use. Just open Image MetaHub, go to Settings → License, enter the email below and the key, and the app will activate immediately.',
       '',
+      `Plan: ${planLabel}`,
+      `Date of expiry: ${expiryLabel}`,
+      '',
       `Email: ${email}`,
       `License: ${licenseKey}`,
+      '',
+      'If you have a moment, I’d really appreciate it if you could fill out this short survey: https://licenses.imagemetahub.com/survey. Hearing directly from you helps me a lot in making the app better for everyone!',
       '',
       'If you have any issues activating the license, please let me know!',
       '',
@@ -35,8 +60,11 @@ export class ResendDeliveryClient {
       '<p>Hi there!</p>',
       '<p>Thank you for your purchase and for supporting the project!</p>',
       '<p>Your license is ready to use. Just open Image MetaHub, go to Settings → License, enter the email below and the key, and the app will activate immediately.</p>',
+      `<p><strong>Plan:</strong> ${escapeHtml(planLabel)}<br>`,
+      `<strong>Date of expiry:</strong> ${escapeHtml(expiryLabel)}</p>`,
       `<p><strong>Email:</strong> ${escapeHtml(email)}<br>`,
       `<strong>License:</strong> <code>${escapeHtml(licenseKey)}</code></p>`,
+      '<p>If you have a moment, I’d really appreciate it if you could fill out this short survey: <a href="https://licenses.imagemetahub.com/survey">https://licenses.imagemetahub.com/survey</a>. Hearing directly from you helps me a lot in making the app better for everyone!</p>',
       '<p>If you have any issues activating the license, please let me know!</p>',
       '<p>Best regards,<br>Lucas</p>',
     ].join('');
