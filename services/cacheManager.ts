@@ -198,6 +198,9 @@ function compactCacheMetadataEntry(rawEntry: CacheImageMetadata): CacheImageMeta
     const payload = metadata.imagemetahub_data as Record<string, unknown>;
     compactedMetadata.imagemetahub_data = {
       generator: payload.generator,
+      source_generator: payload.source_generator,
+      edited_at: payload.edited_at,
+      edit: payload.edit,
       analytics: payload.analytics,
       _analytics: payload._analytics,
       imh_pro: payload.imh_pro,

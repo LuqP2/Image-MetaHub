@@ -43,6 +43,7 @@ import { resolveLicenseRuntimeConfig } from './electron/licenseRuntimeConfig.mjs
 import { resetUserDataContents } from './electron/cacheReset.mjs';
 import { openAuthorizedCacheDirectory } from './electron/cacheDirectory.mjs';
 import { appendEmbeddingSegmentAtOffset } from './electron/embeddingSegmentFile.mjs';
+import { hashFileSha256 } from './electron/fileFingerprint.mjs';
 import {
   createPermanentDeleteGrantStore,
   permanentlyDeleteGrantedFiles,
@@ -6195,6 +6196,31 @@ function setupFileOperationHandlers() {
         errorType: isFileNotFound ? 'FILE_NOT_FOUND' : (isPermissionError ? 'PERMISSION_ERROR' : 'UNKNOWN_ERROR'),
         errorCode: error.code
       };
+    }
+  });
+
+  // Provenance fingerprints are deliberately on-demand. The main process streams
+  // the selected file so large media files never cross into renderer memory.
+  ipcMain.handle('hash-file-sha256', async (_event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      if (!isPathAllowed(filePath)) {
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
+      const sha256 = await hashFileSha256(filePath);
+      return { success: true, sha256 };
+    } catch (error) {
+      const errorCode = error?.code;
+      const errorType = errorCode === 'ENOENT'
+        ? 'FILE_NOT_FOUND'
+        : (errorCode === 'EACCES' || errorCode === 'EPERM')
+          ? 'PERMISSION_DENIED'
+          : 'READ_ERROR';
+      return { success: false, error: error?.message || 'Failed to calculate SHA-256.', errorType, errorCode };
     }
   });
 

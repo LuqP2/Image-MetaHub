@@ -18,6 +18,7 @@ import { getAvifCarrierConflicts } from '../utils/imageMetaHubAvifExtension.mjs'
 import { getElectronAbsoluteMediaPath, getRelativeImagePath, mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import ImageLineageSection from './ImageLineageSection';
+import ProvenanceSection from './ProvenanceSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
 import TagInputCombobox from './TagInputCombobox';
@@ -798,6 +799,11 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   setPreviewImage(targetImage);
                   setSelectedImage(targetImage);
                 }}
+              />
+              <ProvenanceSection
+                image={activeImage}
+                metadata={nMeta}
+                rawMetadata={activeImage.metadata}
               />
               <MetadataItem label="Format" value={nMeta.format} onCopy={(v) => copyToClipboard(v, "Format")} />
               <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />

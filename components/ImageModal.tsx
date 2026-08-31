@@ -58,6 +58,7 @@ import { useShadowMetadata } from '../hooks/useShadowMetadata';
 import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorModal';
 import BatchExportModal from './BatchExportModal';
 import ImageLineageSection from './ImageLineageSection';
+import ProvenanceSection from './ProvenanceSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
 import TagInputCombobox from './TagInputCombobox';
@@ -4261,6 +4262,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     setPreviewImage(targetImage);
                     setSelectedImage(targetImage);
                   }}
+                />
+                <ProvenanceSection
+                  image={liveImage}
+                  metadata={nMeta}
+                  rawMetadata={rawMetadataImage.metadata}
                 />
                 <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt', true)} />
                 <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', 'Negative Prompt', true)} />
