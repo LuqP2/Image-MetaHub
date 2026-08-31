@@ -2,6 +2,7 @@ import React from 'react';
 import { Copy, Fingerprint, LoaderCircle } from 'lucide-react';
 import { type BaseMetadata, type IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
+import { getRelativeImagePath } from '../utils/imagePaths';
 import {
   buildProvenanceViewModel,
   getProvenanceEvidenceLabel,
@@ -61,6 +62,12 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({ image, metadata, 
   );
   const images = useImageStore((state) => state.images);
   const filteredImages = useImageStore((state) => state.filteredImages);
+  const directoryPath = useImageStore(
+    React.useCallback(
+      (state) => state.directories.find((directory) => directory.id === image.directoryId)?.path || null,
+      [image.directoryId],
+    )
+  );
   const derivedImages = React.useMemo(
     () => derivedIds
       .map((id) => images.find((candidate) => candidate.id === id)
@@ -91,10 +98,20 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({ image, metadata, 
   }), [derivedImages, image, metadata, rawMetadata, resolvedLineage, sourceImage]);
 
   const calculateFingerprint = async () => {
-    if (!filePath || !window.electronAPI?.hashFileSha256 || isHashing) return;
+    if (!window.electronAPI?.hashFileSha256 || isHashing) return;
     setIsHashing(true);
     setHashError(null);
-    const result = await window.electronAPI.hashFileSha256(filePath);
+    let targetPath = filePath;
+    if (!targetPath && directoryPath && window.electronAPI.joinPaths) {
+      const joined = await window.electronAPI.joinPaths(directoryPath, getRelativeImagePath(image));
+      targetPath = joined.success && joined.path ? joined.path : null;
+    }
+    if (!targetPath) {
+      setIsHashing(false);
+      setHashError('The file path is unavailable. Reopen the library and try again.');
+      return;
+    }
+    const result = await window.electronAPI.hashFileSha256(targetPath);
     setIsHashing(false);
     if (result.success && result.sha256) {
       setSha256(result.sha256);
@@ -148,7 +165,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({ image, metadata, 
           ) : (
             <span className="text-xs text-gray-500 dark:text-gray-400">{hashError || 'Not calculated'}</span>
           )}
-          {filePath && window.electronAPI?.hashFileSha256 && !sha256 && (
+          {window.electronAPI?.hashFileSha256 && !sha256 && (
             <button
               type="button"
               disabled={isHashing}
