@@ -3923,25 +3923,44 @@ export const useImageStore = create<ImageState>((set, get) => {
 
             const state = get();
             const isIndexing = state.indexingState === 'indexing';
-            const isRefreshingDirectory = state.refreshingDirectories.size > 0;
-            if (isIndexing || isRefreshingDirectory) {
+            if (isIndexing) {
                 pendingMergeQueue.push(...updatedImages);
-                // Startup reconciliation already has a catalog the user can browse.
-                // Keep its enrichment replacements out of React until the directory
-                // refresh completes; otherwise tiny Phase B batches repeatedly rebuild
-                // a large virtualized library while the user is trying to scroll it.
-                if (!isRefreshingDirectory) {
-                    scheduleMergeFlush();
-                }
+                scheduleMergeFlush();
                 return;
             }
 
+            let updatesToApply = updatedImages;
+            if (state.refreshingDirectories.size > 0) {
+                const deferredUpdates: IndexedImage[] = [];
+                const immediateUpdates: IndexedImage[] = [];
+                for (const image of updatedImages) {
+                    if (image.directoryId && state.refreshingDirectories.has(image.directoryId)) {
+                        deferredUpdates.push(image);
+                    } else {
+                        immediateUpdates.push(image);
+                    }
+                }
+
+                // Startup reconciliation already has a catalog the user can browse.
+                // Keep only that directory's enrichment replacements out of React;
+                // edits and saves in other directories must remain immediately visible.
+                if (deferredUpdates.length > 0) {
+                    pendingMergeQueue.push(...deferredUpdates);
+                }
+                if (immediateUpdates.length === 0) {
+                    return;
+                }
+                updatesToApply = immediateUpdates;
+            }
+
             flushPendingImages(true);
-        flushPendingMerges();
-            set(state => _updateStateIncremental(state, { updated: updatedImages }));
+            if (get().refreshingDirectories.size === 0) {
+                flushPendingMerges();
+            }
+            set(state => _updateStateIncremental(state, { updated: updatesToApply }));
 
             if (get().isAnnotationsLoaded) {
-                void get().importMetadataTags(updatedImages);
+                void get().importMetadataTags(updatesToApply);
             }
             maybeQueueLineageBuild(700);
         },
