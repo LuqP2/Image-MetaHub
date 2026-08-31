@@ -513,6 +513,18 @@ class ThumbnailManager {
       return;
     }
 
+    // A decode failure is stable for this exact file version. Without this
+    // guard, every viewport change queues the same broken image again, causing
+    // repeated full-file reads, decode attempts and console/error storms while
+    // scrolling. A changed lastModified value invalidates the runtime state and
+    // allows a fresh attempt.
+    if (
+      activeState?.thumbnailStatus === 'error' ||
+      (!activeState && image.thumbnailStatus === 'error')
+    ) {
+      return;
+    }
+
     if (!activeState && image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
       return;
     }
@@ -576,7 +588,14 @@ class ThumbnailManager {
     detail: { priority: 'visible' | 'overscan' | 'single' }
   ): Promise<IndexedImage[]> {
     const candidates = this.dedupeImages(images)
-      .filter((image) => !this.hasReadyThumbnail(image) && !isAudioAsset(image) && !isModel3DAsset(image))
+      .filter((image) => {
+        const activeState = this.getActiveRuntimeState(image);
+        const thumbnailStatus = activeState?.thumbnailStatus ?? image.thumbnailStatus;
+        return thumbnailStatus !== 'error' &&
+          !this.hasReadyThumbnail(image) &&
+          !isAudioAsset(image) &&
+          !isModel3DAsset(image);
+      })
       .map((image) => getThumbnailCacheCandidate(image));
 
     if (candidates.length === 0) {

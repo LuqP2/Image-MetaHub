@@ -3921,10 +3921,18 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            const isIndexing = get().indexingState === 'indexing';
-            if (isIndexing) {
+            const state = get();
+            const isIndexing = state.indexingState === 'indexing';
+            const isRefreshingDirectory = state.refreshingDirectories.size > 0;
+            if (isIndexing || isRefreshingDirectory) {
                 pendingMergeQueue.push(...updatedImages);
-                scheduleMergeFlush();
+                // Startup reconciliation already has a catalog the user can browse.
+                // Keep its enrichment replacements out of React until the directory
+                // refresh completes; otherwise tiny Phase B batches repeatedly rebuild
+                // a large virtualized library while the user is trying to scroll it.
+                if (!isRefreshingDirectory) {
+                    scheduleMergeFlush();
+                }
                 return;
             }
 
@@ -5759,6 +5767,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                 }
                 return { refreshingDirectories: next };
             });
+            if (!isRefreshing && get().refreshingDirectories.size === 0) {
+                flushPendingMerges();
+            }
         },
 
         toggleImageSelection: (imageId) => {

@@ -561,6 +561,31 @@ describe('useImageStore tri-state filters', () => {
     expect(storedTarget?.rating).toBe(4);
   });
 
+  it('defers enrichment merges until startup directory refresh finishes', () => {
+    const original = createImage({
+      id: 'dir-1::refreshing.png',
+      name: 'refreshing.png',
+      prompt: 'catalog metadata',
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [original],
+      filteredImages: [original],
+      sortOrder: 'asc',
+    });
+
+    useImageStore.getState().setDirectoryRefreshing(directory.id, true);
+    useImageStore.getState().mergeImages([{ ...original, prompt: 'enriched metadata' }]);
+
+    expect(useImageStore.getState().images[0].prompt).toBe('catalog metadata');
+
+    useImageStore.getState().setDirectoryRefreshing(directory.id, false);
+
+    expect(useImageStore.getState().images[0].prompt).toBe('enriched metadata');
+  });
+
   it('ignores queued images and merges from removed directories', () => {
     useImageStore.getState().resetState();
     useImageStore.setState({

@@ -2934,8 +2934,6 @@ export async function processFiles(
     const resultsBatch: IndexedImage[] = [];
     const touchedChunks = new Set<number>();
     const DIRTY_CHUNK_FLUSH_THRESHOLD = 12;
-    const DIRTY_FLUSH_INTERVAL_MS = 350;
-    let lastFlushTime = performance.now();
     const canWriteCache = Boolean(cacheWriter);
     const DEFER_CACHE_FLUSH_THRESHOLD = 5000;
     const deferCacheFlush = canWriteCache && totalEnrichment >= DEFER_CACHE_FLUSH_THRESHOLD;
@@ -3085,14 +3083,11 @@ export async function processFiles(
         detail: { depth: queueLength - phaseBStats.processed }
       });
 
-      const now = performance.now();
       if (
         resultsBatch.length >= enrichmentBatchSize ||
-        (canWriteCache && !deferCacheFlush && touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD) ||
-        now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS
+        (canWriteCache && !deferCacheFlush && touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD)
       ) {
         await commitBatch();
-        lastFlushTime = now;
       }
 
       return merged;
