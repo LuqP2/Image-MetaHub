@@ -49,7 +49,7 @@ import {
   requestPermanentDeleteConfirmation,
 } from './electron/permanentDeletePolicy.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
-import { buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
+import { buildDetachedViewerLoadTarget, buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
 import {
   buildEmbeddingModelDownloadUrl,
   validateEmbeddingModelId,
@@ -2563,11 +2563,13 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   viewerWindow.__imageViewerCascadeSlot = cascadeSlot;
   const viewerWindowId = viewerWindow.id;
 
+  const viewerIndexPath = path.join(__dirname, 'dist', 'index.html');
   const viewerUrl = buildDetachedViewerUrl(
-    path.join(__dirname, 'dist', 'index.html'),
+    viewerIndexPath,
     sessionId,
     isDev,
   );
+  const viewerLoadTarget = buildDetachedViewerLoadTarget(viewerIndexPath, sessionId, isDev);
   configureDetachedViewerNavigationHandlers(viewerWindow, viewerUrl);
 
   detachedImageViewerWindows.set(sessionId, viewerWindow);
@@ -2631,7 +2633,11 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   });
 
   try {
-    await viewerWindow.loadURL(viewerUrl.toString());
+    if (viewerLoadTarget.method === 'url') {
+      await viewerWindow.loadURL(viewerLoadTarget.url);
+    } else {
+      await viewerWindow.loadFile(viewerLoadTarget.filePath, viewerLoadTarget.options);
+    }
     return { success: true };
   } catch (error) {
     detachedImageViewerWindows.delete(sessionId);

@@ -9,7 +9,7 @@ export interface ParserNode {
 export type ComfyNodeDataType =
   | 'MODEL' | 'CONDITIONING' | 'LATENT' | 'IMAGE' | 'VAE' | 'CLIP' | 'INT'
   | 'FLOAT' | 'STRING' | 'CONTROL_NET' | 'GUIDER' | 'SAMPLER' | 'SCHEDULER'
-  | 'SIGMAS' | 'NOISE' | 'UPSCALE_MODEL' | 'MASK' | 'ANY' | 'LORA_STACK' | 'SDXL_TUPLE';
+  | 'SIGMAS' | 'NOISE' | 'UPSCALE_MODEL' | 'MASK' | 'BOOLEAN' | 'ANY' | 'LORA_STACK' | 'SDXL_TUPLE';
 
 export type ComfyTraversableParam =
   | 'prompt' | 'negativePrompt' | 'seed' | 'steps' | 'cfg' | 'width' | 'height'
@@ -33,7 +33,8 @@ export type NodeBehavior = 'SOURCE' | 'SINK' | 'TRANSFORM' | 'PASS_THROUGH' | 'R
 
 export interface ConditionalRoutingRule {
   control_input: string;
-  dynamic_input_prefix: string;
+  dynamic_input_prefix?: string;
+  routes?: Record<string, string>;
 }
 
 export interface NodeDefinition {

@@ -10,6 +10,60 @@ interface TraversalState {
   visitedLinks: Set<string>;
 }
 
+function readScalarControlValue(node: ParserNode | null | undefined): unknown {
+  if (!node) return undefined;
+
+  for (const key of ['value', 'select', 'int']) {
+    const value = node.inputs?.[key];
+    if (value !== undefined && !Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  const nodeDef = NodeRegistry[node.class_type];
+  const preferredWidgetIndex = nodeDef?.widget_order?.findIndex((key) =>
+    key === 'value' || key === 'select' || key === 'int'
+  ) ?? -1;
+  if (preferredWidgetIndex >= 0 && node.widgets_values?.[preferredWidgetIndex] !== undefined) {
+    return node.widgets_values[preferredWidgetIndex];
+  }
+
+  const namedWidget = node.widgets_values?.find((widget) =>
+    widget && typeof widget === 'object' && ['value', 'select', 'int'].includes(widget.name)
+  );
+  if (namedWidget && typeof namedWidget === 'object') {
+    return namedWidget.value;
+  }
+
+  return undefined;
+}
+
+function resolveRoutingControlValue(
+  currentNode: ParserNode,
+  controlInputName: string,
+  state: TraversalState,
+  graph: Graph,
+): unknown {
+  const controlInput = currentNode.inputs?.[controlInputName];
+
+  if (Array.isArray(controlInput)) {
+    const controlNode = graph[String(controlInput[0])];
+    const scalarValue = readScalarControlValue(controlNode);
+    if (scalarValue !== undefined) {
+      return scalarValue;
+    }
+
+    const controlState = { ...createInitialState('steps'), visitedLinks: state.visitedLinks };
+    return traverseFromLink(controlInput as NodeLink, controlState, graph, []);
+  }
+
+  if (controlInput !== undefined) {
+    return controlInput;
+  }
+
+  return readScalarControlValue(currentNode);
+}
+
 // Helper para criar o estado inicial da travessia
 function createInitialState(param: ComfyTraversableParam): TraversalState {
     let expectedType: ComfyNodeDataType = 'ANY';
@@ -70,23 +124,23 @@ function traverse(
   // 3. Roteamento Dinâmico (Problema do "Switch")
   if (nodeDef.roles.includes('ROUTING') && nodeDef.conditional_routing) {
     const controlInputName = nodeDef.conditional_routing.control_input;
-    let controlValue: any = null;
-    
-    // Tenta resolver o valor de controle, que pode ser um widget ou um link
-    const controlLink = currentNode.inputs[controlInputName];
-    if (controlLink && Array.isArray(controlLink)) {
-      const controlState = { ...createInitialState('steps'), visitedLinks: state.visitedLinks }; // 'steps' -> INT
-      controlValue = traverseFromLink(controlLink as NodeLink, controlState, graph, []);
-    } else {
-        const widgetValue = currentNode.widgets_values?.find(w => typeof w === 'object' ? w.name === controlInputName : false) ?? currentNode.widgets_values?.[0];
-        controlValue = typeof widgetValue === 'object' ? widgetValue.value : widgetValue;
-    }
+    const controlValue = resolveRoutingControlValue(currentNode, controlInputName, state, graph);
 
     if (controlValue != null) {
-      const dynamicInputName = `${nodeDef.conditional_routing.dynamic_input_prefix}${controlValue}`;
+      const routeKey = String(controlValue).toLowerCase();
+      const dynamicInputName = nodeDef.conditional_routing.routes?.[routeKey]
+        ?? (nodeDef.conditional_routing.dynamic_input_prefix
+          ? `${nodeDef.conditional_routing.dynamic_input_prefix}${controlValue}`
+          : undefined);
+      if (!dynamicInputName) {
+        return state.targetParam === 'lora' ? accumulator : null;
+      }
       const targetLink = currentNode.inputs[dynamicInputName];
       if (targetLink && Array.isArray(targetLink)) {
         return traverseFromLink(targetLink as NodeLink, state, graph, accumulator);
+      }
+      if (targetLink !== undefined) {
+        return targetLink;
       }
     }
     return state.targetParam === 'lora' ? accumulator : null; // Rota dinâmica não encontrada

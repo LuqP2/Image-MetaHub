@@ -1,18 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { fileURLToPath } from 'url';
 
-import { buildDetachedViewerUrl } from '../utils/detachedViewerUrl.mjs';
+import { buildDetachedViewerLoadTarget } from '../utils/detachedViewerUrl.mjs';
 import { resolveNavigationAfterDeletion } from '../utils/viewerNavigation';
 
 describe('detached viewer hotfix helpers', () => {
-  it('builds a file URL for packaged macOS paths with spaces and Unicode', () => {
+  it('loads packaged macOS paths with spaces and Unicode through loadFile', () => {
     const indexPath = '/Applications/Image MetaHub á.app/Contents/Resources/app.asar/dist/index.html';
-    const url = buildDetachedViewerUrl(indexPath, 'session 1');
+    const target = buildDetachedViewerLoadTarget(indexPath, 'session 1');
 
-    expect(url.protocol).toBe('file:');
-    expect(fileURLToPath(url)).toBe(indexPath);
-    expect(url.searchParams.get('window')).toBe('image-modal');
-    expect(url.searchParams.get('sessionId')).toBe('session 1');
+    expect(target).toEqual({
+      method: 'file',
+      filePath: indexPath,
+      options: {
+        query: {
+          window: 'image-modal',
+          sessionId: 'session 1',
+        },
+      },
+    });
+  });
+
+  it('keeps loadURL for the development server', () => {
+    const target = buildDetachedViewerLoadTarget('/unused/index.html', 'session 1', true);
+
+    expect(target.method).toBe('url');
+    expect(new URL(target.url).origin).toBe('http://localhost:5173');
+    expect(new URL(target.url).searchParams.get('window')).toBe('image-modal');
+    expect(new URL(target.url).searchParams.get('sessionId')).toBe('session 1');
   });
 
   it('keeps the next item, then falls back to the previous item', () => {

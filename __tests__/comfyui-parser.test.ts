@@ -48,6 +48,79 @@ describe('ComfyUI Parser - Prompt Sources', () => {
     expect(result._telemetry.unknown_nodes_count).toBe(0);
   });
 
+  describe('Krea2 conditional prompt routing', () => {
+    const loadKreaFixture = () => loadFixture('krea2-switch-routing.json');
+
+    it('uses the executed false branch instead of a stale CLIP widget', () => {
+      const fixture = loadKreaFixture();
+      const result = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+
+      expect(result.prompt).toBe(fixture.expectedPrompt);
+      expect(result.prompt).not.toBe(fixture.staleWidgetPrompt);
+      expect(result.seed).toBe(4242);
+    });
+
+    it('passes through RBG conditioning without using its seed or target vibe', () => {
+      const fixture = loadKreaFixture();
+      fixture.workflow.nodes.push(
+        { id: 74, type: 'RBG_Smart_Seed_Variance', widgets_values: ['Balanced', 50, 999999] },
+        { id: 75, type: 'CLIPTextEncode', widgets_values: ['unrelated target vibe'] },
+      );
+      fixture.prompt['72'].inputs.positive = ['74', 0];
+      fixture.prompt['74'] = {
+        class_type: 'RBG_Smart_Seed_Variance',
+        inputs: {
+          seed: 999999,
+          conditioning: ['73', 0],
+          target_vibe: ['75', 0],
+        },
+      };
+      fixture.prompt['75'] = {
+        class_type: 'CLIPTextEncode',
+        inputs: { text: 'unrelated target vibe' },
+      };
+
+      const result = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+
+      expect(result.prompt).toBe(fixture.expectedPrompt);
+      expect(result.seed).toBe(4242);
+    });
+
+    it('supports direct boolean controls and the true LoRA concatenation branch', () => {
+      const fixture = loadKreaFixture();
+      fixture.prompt['70'].inputs.switch = true;
+
+      const result = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+
+      expect(result.prompt).toBe(`${fixture.expectedPrompt}, darkbrush`);
+    });
+
+    it('uses the source prompt when the runtime-only TextGenerate branch is active', () => {
+      const fixture = loadKreaFixture();
+      fixture.prompt['68'].inputs.value = true;
+
+      const result = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+
+      expect(result.prompt).toBe(fixture.expectedPrompt);
+      expect(result.prompt).not.toBe(fixture.staleWidgetPrompt);
+    });
+
+    it('preserves an explicit manual prompt over graph recovery', async () => {
+      const fixture = loadKreaFixture();
+      const result = await parseImageMetadata({
+        imagemetahub_data: {
+          generator: 'ComfyUI',
+          prompt: 'Curated manual prompt',
+          metadata_sources: { prompt: 'manual_override' },
+          workflow: fixture.workflow,
+          prompt_api: fixture.prompt,
+        },
+      } as any);
+
+      expect(result?.prompt).toBe('Curated manual prompt');
+    });
+  });
+
   it('preserves empty runtime prompt values over stale workflow text', () => {
     const workflow = {
       nodes: [
