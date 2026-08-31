@@ -1,4 +1,4 @@
-import { resolveAll, resolveFacts } from './comfyui/traversalEngine';
+import { collectActiveNodeIds, resolveAll, resolveFacts } from './comfyui/traversalEngine';
 import { NodeRegistry } from './comfyui/nodeRegistry';
 import type { ParserNode, WorkflowFacts } from './comfyui/types';
 import type { GenerationType, ImageLineage, SourceImageReference } from '../../types';
@@ -315,7 +315,7 @@ function extractAdvancedModel(node: ParserNode | null, graph: Graph): string | n
 /**
  * Extract ControlNet, LoRA, and VAE with weights and parameters
  */
-function extractAdvancedModifiers(graph: Graph): {
+function extractAdvancedModifiers(graph: Graph, activeLoraNodeIds: ReadonlySet<string>): {
   controlnets: Array<{ name: string; weight?: number; module?: string; applied_to?: string }>;
   loras: Array<{ name: string; weight?: number }>;
   vaes: Array<{ name: string }>;
@@ -401,7 +401,7 @@ function extractAdvancedModifiers(graph: Graph): {
     }
     
     // LoRA detection
-    if (classType.includes('lora')) {
+    if (classType.includes('lora') && activeLoraNodeIds.has(nodeId)) {
       if (node.class_type === 'Power Lora Loader (rgthree)') {
         addRgthreePowerLoras(node);
       } else {
@@ -913,7 +913,8 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   }
   
   // Extract modifiers (ControlNet, LoRA, VAE)
-  const modifiers = extractAdvancedModifiers(graph);
+  const activeNodeIds = collectActiveNodeIds({ startNode: terminalNode, graph });
+  const modifiers = extractAdvancedModifiers(graph, activeNodeIds);
   if (modifiers.controlnets.length > 0) {
     results.controlnets = modifiers.controlnets;
   }

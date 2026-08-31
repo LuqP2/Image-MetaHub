@@ -105,6 +105,29 @@ function getTraversableInputLinks(
   return links;
 }
 
+export function collectActiveNodeIds(args: { startNode: ParserNode, graph: Graph }): Set<string> {
+  const activeNodeIds = new Set<string>();
+  const routingState = createInitialState('lora');
+
+  const visit = (currentNode: ParserNode | null | undefined) => {
+    if (!currentNode || activeNodeIds.has(currentNode.id)) return;
+    if (currentNode.mode === 2 || currentNode.mode === 4) return;
+
+    activeNodeIds.add(currentNode.id);
+    for (const inputLink of getTraversableInputLinks(currentNode, routingState, args.graph)) {
+      const [sourceNodeId] = inputLink;
+      let nextNode = args.graph[sourceNodeId];
+      if (!nextNode && sourceNodeId.includes(':')) {
+        nextNode = args.graph[sourceNodeId.split(':')[0]];
+      }
+      visit(nextNode);
+    }
+  };
+
+  visit(args.startNode);
+  return activeNodeIds;
+}
+
 // Helper para criar o estado inicial da travessia
 function createInitialState(param: ComfyTraversableParam): TraversalState {
     let expectedType: ComfyNodeDataType = 'ANY';

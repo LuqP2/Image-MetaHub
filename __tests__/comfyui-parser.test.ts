@@ -131,6 +131,35 @@ describe('ComfyUI Parser - Prompt Sources', () => {
       expect(trueBranch.lora).not.toContain('active-a.safetensors');
     });
 
+    it('does not restore an inactive LoRA when the executed branch has none', () => {
+      const fixture = loadKreaFixture();
+      fixture.workflow.nodes.push(
+        { id: 56, type: 'UNETLoader', widgets_values: ['base.safetensors', 'default'] },
+        { id: 62, type: 'LoraLoaderModelOnly', widgets_values: ['inactive.safetensors', 0.9] },
+        { id: 66, type: 'ComfySwitchNode', widgets_values: [false] },
+      );
+      fixture.prompt['56'] = {
+        class_type: 'UNETLoader',
+        inputs: { unet_name: 'base.safetensors', weight_dtype: 'default' },
+      };
+      fixture.prompt['62'] = {
+        class_type: 'LoraLoaderModelOnly',
+        inputs: { lora_name: 'inactive.safetensors', strength_model: 0.9, model: ['56', 0] },
+      };
+      fixture.prompt['66'] = {
+        class_type: 'ComfySwitchNode',
+        inputs: { switch: ['67', 0], on_false: ['56', 0], on_true: ['62', 0] },
+      };
+      fixture.prompt['72'].inputs.model = ['66', 0];
+
+      const noLoraBranch = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+      expect(noLoraBranch.lora).not.toContain('inactive.safetensors');
+
+      fixture.prompt['67'].inputs.value = true;
+      const loraBranch = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+      expect(loraBranch.lora).toContain('inactive.safetensors');
+    });
+
     it('uses the source prompt when the runtime-only TextGenerate branch is active', () => {
       const fixture = loadKreaFixture();
       fixture.prompt['68'].inputs.value = true;
