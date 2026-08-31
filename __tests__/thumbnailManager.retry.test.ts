@@ -40,6 +40,7 @@ describe('thumbnailManager retry cooldown', () => {
       loras: [],
       directoryId: 'dir-1',
     } as IndexedImage;
+    const unsubscribe = thumbnailManager.subscribe(image.id, () => undefined);
 
     await thumbnailManager.ensureThumbnail(image);
     await Promise.resolve();
@@ -49,9 +50,9 @@ describe('thumbnailManager retry cooldown', () => {
     expect(getFile).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(30_000);
-    await thumbnailManager.ensureThumbnail(image);
     await Promise.resolve();
 
     expect(getFile).toHaveBeenCalledTimes(2);
+    unsubscribe();
   });
 });
