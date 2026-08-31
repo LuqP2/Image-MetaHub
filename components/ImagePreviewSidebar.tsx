@@ -804,6 +804,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 image={activeImage}
                 metadata={nMeta}
                 rawMetadata={activeImage.metadata}
+                displayMode="details-compact"
               />
               <MetadataItem label="Format" value={nMeta.format} onCopy={(v) => copyToClipboard(v, "Format")} />
               <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />

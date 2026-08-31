@@ -4267,6 +4267,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   image={liveImage}
                   metadata={nMeta}
                   rawMetadata={rawMetadataImage.metadata}
+                  displayMode="details-compact"
                 />
                 <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt', true)} />
                 <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', 'Negative Prompt', true)} />

@@ -13,6 +13,7 @@ interface ProvenanceSectionProps {
   image: IndexedImage;
   metadata?: BaseMetadata;
   rawMetadata?: unknown;
+  displayMode?: 'full' | 'details-compact';
 }
 
 const EMPTY_DERIVED_IDS: string[] = [];
@@ -44,7 +45,13 @@ const EvidenceBadge: React.FC<{ evidence: 'embedded' | 'metahub-operation' | 'in
   </span>
 );
 
-const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({ image, metadata, rawMetadata }) => {
+const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
+  image,
+  metadata,
+  rawMetadata,
+  displayMode = 'full',
+}) => {
+  const isDetailsCompact = displayMode === 'details-compact';
   const resolvedLineage = useImageStore(
     React.useCallback((state) => state.getResolvedLineage(image.id), [image.id])
   );
@@ -136,7 +143,9 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({ image, metadata, 
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Provenance</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400">What this file says, what Image MetaHub recorded, and what it inferred.</p>
+          {!isDetailsCompact && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">What this file says, what Image MetaHub recorded, and what it inferred.</p>
+          )}
         </div>
         <button
           type="button"
@@ -149,12 +158,14 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({ image, metadata, 
         </button>
       </div>
 
-      <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
-        <div><span className="font-medium text-gray-800 dark:text-gray-100">File:</span> {model.fileName}</div>
-        <div className="break-all"><span className="font-medium text-gray-800 dark:text-gray-100">Library item:</span> {model.imageId}</div>
-        {formatDate(model.lastModified) && <div><span className="font-medium text-gray-800 dark:text-gray-100">Last modified:</span> {formatDate(model.lastModified)}</div>}
-        {formatBytes(model.fileSize) && <div><span className="font-medium text-gray-800 dark:text-gray-100">File size:</span> {formatBytes(model.fileSize)}</div>}
-      </div>
+      {!isDetailsCompact && (
+        <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+          <div><span className="font-medium text-gray-800 dark:text-gray-100">File:</span> {model.fileName}</div>
+          <div className="break-all"><span className="font-medium text-gray-800 dark:text-gray-100">Library item:</span> {model.imageId}</div>
+          {formatDate(model.lastModified) && <div><span className="font-medium text-gray-800 dark:text-gray-100">Last modified:</span> {formatDate(model.lastModified)}</div>}
+          {formatBytes(model.fileSize) && <div><span className="font-medium text-gray-800 dark:text-gray-100">File size:</span> {formatBytes(model.fileSize)}</div>}
+        </div>
+      )}
 
       <div className="rounded-md border border-gray-200 bg-white/70 p-2 dark:border-gray-700/60 dark:bg-gray-950/30">
         <div className="flex flex-wrap items-center gap-2">
@@ -179,7 +190,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({ image, metadata, 
         </div>
       </div>
 
-      {model.generation.length > 0 && (
+      {!isDetailsCompact && model.generation.length > 0 && (
         <div className="space-y-2">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Generation information</div>
           <div className="space-y-2">
@@ -196,7 +207,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({ image, metadata, 
         </div>
       )}
 
-      {model.relationships.length > 0 && (
+      {!isDetailsCompact && model.relationships.length > 0 && (
         <div className="space-y-2">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Known relationships</div>
           {model.relationships.map((relationship, index) => (
