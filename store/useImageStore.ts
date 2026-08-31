@@ -5768,6 +5768,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return { refreshingDirectories: next };
             });
             if (!isRefreshing && get().refreshingDirectories.size === 0) {
+                // Catalog additions and their Phase B enrichment updates can both
+                // finish before the normal 100 ms add timer on a small refresh.
+                // Make the catalog records visible before applying replacements so
+                // an unmatched merge cannot be discarded for the current session.
+                flushPendingImages(true);
                 flushPendingMerges();
             }
         },

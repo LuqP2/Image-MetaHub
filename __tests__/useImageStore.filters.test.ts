@@ -562,7 +562,7 @@ describe('useImageStore tri-state filters', () => {
   });
 
   it('defers enrichment merges until startup directory refresh finishes', () => {
-    const original = createImage({
+    const catalogImage = createImage({
       id: 'dir-1::refreshing.png',
       name: 'refreshing.png',
       prompt: 'catalog metadata',
@@ -571,18 +571,20 @@ describe('useImageStore tri-state filters', () => {
     useImageStore.getState().resetState();
     useImageStore.setState({
       directories: [directory],
-      images: [original],
-      filteredImages: [original],
+      images: [],
+      filteredImages: [],
       sortOrder: 'asc',
     });
 
     useImageStore.getState().setDirectoryRefreshing(directory.id, true);
-    useImageStore.getState().mergeImages([{ ...original, prompt: 'enriched metadata' }]);
+    useImageStore.getState().addImages([catalogImage]);
+    useImageStore.getState().mergeImages([{ ...catalogImage, prompt: 'enriched metadata' }]);
 
-    expect(useImageStore.getState().images[0].prompt).toBe('catalog metadata');
+    expect(useImageStore.getState().images).toEqual([]);
 
     useImageStore.getState().setDirectoryRefreshing(directory.id, false);
 
+    expect(useImageStore.getState().images).toHaveLength(1);
     expect(useImageStore.getState().images[0].prompt).toBe('enriched metadata');
   });
 

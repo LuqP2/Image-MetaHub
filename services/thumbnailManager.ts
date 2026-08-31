@@ -17,6 +17,8 @@ const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 3;
 const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 1;
 const MAX_ACTIVE_THUMBNAIL_URLS = 200;
 const MAX_RENDERER_VIDEO_THUMBNAIL_BYTES = 80 * 1024 * 1024;
+const THUMBNAIL_RETRY_BASE_DELAY_MS = 30_000;
+const THUMBNAIL_RETRY_MAX_DELAY_MS = 5 * 60_000;
 
 type ElectronFileHandle = FileSystemFileHandle & { _filePath?: string };
 
@@ -25,6 +27,12 @@ type RuntimeThumbnailState = {
   thumbnailUrl: string | null;
   thumbnailStatus: ThumbnailStatus;
   thumbnailError: string | null;
+};
+
+type ThumbnailFailureState = {
+  lastModified: number;
+  failures: number;
+  retryAfter: number;
 };
 
 type ThumbnailJob = {
@@ -182,6 +190,7 @@ class ThumbnailManager {
   private inflight = new Map<string, Promise<void>>();
   private activeUrls = new Map<string, string>();
   private runtimeState = new Map<string, RuntimeThumbnailState>();
+  private failureState = new Map<string, ThumbnailFailureState>();
   private resolvedStateCache = new Map<string, {
     lastModified: number;
     thumbnailUrl: string | null;
@@ -513,15 +522,10 @@ class ThumbnailManager {
       return;
     }
 
-    // A decode failure is stable for this exact file version. Without this
-    // guard, every viewport change queues the same broken image again, causing
-    // repeated full-file reads, decode attempts and console/error storms while
-    // scrolling. A changed lastModified value invalidates the runtime state and
-    // allows a fresh attempt.
-    if (
-      activeState?.thumbnailStatus === 'error' ||
-      (!activeState && image.thumbnailStatus === 'error')
-    ) {
+    // Avoid retry storms while still allowing transient file, IPC and cache
+    // failures to recover. Repeated failures back off to a bounded five-minute
+    // cooldown; a changed file version retries immediately.
+    if (this.isFailureCoolingDown(image)) {
       return;
     }
 
@@ -589,9 +593,7 @@ class ThumbnailManager {
   ): Promise<IndexedImage[]> {
     const candidates = this.dedupeImages(images)
       .filter((image) => {
-        const activeState = this.getActiveRuntimeState(image);
-        const thumbnailStatus = activeState?.thumbnailStatus ?? image.thumbnailStatus;
-        return thumbnailStatus !== 'error' &&
+        return !this.isFailureCoolingDown(image) &&
           !this.hasReadyThumbnail(image) &&
           !isAudioAsset(image) &&
           !isModel3DAsset(image);
@@ -709,6 +711,37 @@ class ThumbnailManager {
     return runtimeState;
   }
 
+  private isFailureCoolingDown(image: IndexedImage): boolean {
+    const failure = this.failureState.get(image.id);
+    if (!failure) {
+      return false;
+    }
+
+    if (failure.lastModified !== image.lastModified) {
+      this.failureState.delete(image.id);
+      return false;
+    }
+
+    return Date.now() < failure.retryAfter;
+  }
+
+  private recordFailure(image: IndexedImage): void {
+    const current = this.failureState.get(image.id);
+    const failures = current?.lastModified === image.lastModified
+      ? current.failures + 1
+      : 1;
+    const delayMs = Math.min(
+      THUMBNAIL_RETRY_BASE_DELAY_MS * (2 ** Math.min(failures - 1, 4)),
+      THUMBNAIL_RETRY_MAX_DELAY_MS
+    );
+
+    this.failureState.set(image.id, {
+      lastModified: image.lastModified,
+      failures,
+      retryAfter: Date.now() + delayMs,
+    });
+  }
+
   private setRuntimeState(
     image: IndexedImage,
     payload: {
@@ -726,6 +759,10 @@ class ThumbnailManager {
         ? 'Failed to load thumbnail'
         : currentState?.thumbnailError ?? image.thumbnailError ?? null),
     };
+
+    if (payload.thumbnailStatus === 'ready') {
+      this.failureState.delete(image.id);
+    }
 
     if (
       currentState &&
@@ -968,6 +1005,9 @@ class ThumbnailManager {
       setSafe({ thumbnailStatus: 'ready', thumbnailUrl: url, thumbnailError: null });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown thumbnail error';
+      if (!this.isStale(image.id, token)) {
+        this.recordFailure(image);
+      }
       setSafe({ thumbnailStatus: 'error', thumbnailError: message });
     }
   }
