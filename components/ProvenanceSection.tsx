@@ -59,11 +59,14 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({ image, metadata, 
         ?? null;
     }, [image.id])
   );
-  const derivedImages = useImageStore(
-    React.useCallback((state) => derivedIds
-      .map((id) => state.images.find((candidate) => candidate.id === id)
-        ?? state.filteredImages.find((candidate) => candidate.id === id))
-      .filter((candidate): candidate is IndexedImage => Boolean(candidate)), [derivedIds])
+  const images = useImageStore((state) => state.images);
+  const filteredImages = useImageStore((state) => state.filteredImages);
+  const derivedImages = React.useMemo(
+    () => derivedIds
+      .map((id) => images.find((candidate) => candidate.id === id)
+        ?? filteredImages.find((candidate) => candidate.id === id))
+      .filter((candidate): candidate is IndexedImage => Boolean(candidate)),
+    [derivedIds, filteredImages, images],
   );
   const [sha256, setSha256] = React.useState<string | null>(null);
   const [hashError, setHashError] = React.useState<string | null>(null);
