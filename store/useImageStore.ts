@@ -3921,19 +3921,46 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            const isIndexing = get().indexingState === 'indexing';
+            const state = get();
+            const isIndexing = state.indexingState === 'indexing';
             if (isIndexing) {
                 pendingMergeQueue.push(...updatedImages);
                 scheduleMergeFlush();
                 return;
             }
 
+            let updatesToApply = updatedImages;
+            if (state.refreshingDirectories.size > 0) {
+                const deferredUpdates: IndexedImage[] = [];
+                const immediateUpdates: IndexedImage[] = [];
+                for (const image of updatedImages) {
+                    if (image.directoryId && state.refreshingDirectories.has(image.directoryId)) {
+                        deferredUpdates.push(image);
+                    } else {
+                        immediateUpdates.push(image);
+                    }
+                }
+
+                // Startup reconciliation already has a catalog the user can browse.
+                // Keep only that directory's enrichment replacements out of React;
+                // edits and saves in other directories must remain immediately visible.
+                if (deferredUpdates.length > 0) {
+                    pendingMergeQueue.push(...deferredUpdates);
+                }
+                if (immediateUpdates.length === 0) {
+                    return;
+                }
+                updatesToApply = immediateUpdates;
+            }
+
             flushPendingImages(true);
-        flushPendingMerges();
-            set(state => _updateStateIncremental(state, { updated: updatedImages }));
+            if (get().refreshingDirectories.size === 0) {
+                flushPendingMerges();
+            }
+            set(state => _updateStateIncremental(state, { updated: updatesToApply }));
 
             if (get().isAnnotationsLoaded) {
-                void get().importMetadataTags(updatedImages);
+                void get().importMetadataTags(updatesToApply);
             }
             maybeQueueLineageBuild(700);
         },
@@ -5759,6 +5786,14 @@ export const useImageStore = create<ImageState>((set, get) => {
                 }
                 return { refreshingDirectories: next };
             });
+            if (!isRefreshing && get().refreshingDirectories.size === 0) {
+                // Catalog additions and their Phase B enrichment updates can both
+                // finish before the normal 100 ms add timer on a small refresh.
+                // Make the catalog records visible before applying replacements so
+                // an unmatched merge cannot be discarded for the current session.
+                flushPendingImages(true);
+                flushPendingMerges();
+            }
         },
 
         toggleImageSelection: (imageId) => {

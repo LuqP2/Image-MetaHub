@@ -28,6 +28,7 @@ import {
   isSupportedMediaFileName,
 } from './utils/mediaTypes.js';
 import { normalizeBirthtimeMs, resolveFileSortDate } from './utils/fileTimestamps.js';
+import { PARSER_VERSION } from './utils/parserVersion.js';
 import { copyFilePreservingTimestamps } from './utils/fileCopy.mjs';
 import { readBasicMp4Metadata } from './utils/mp4Metadata.mjs';
 import {
@@ -134,10 +135,6 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 if (!gpuMitigationEnabled) {
   app.commandLine.appendSwitch('enable-unsafe-webgpu');
 }
-
-// Parser version - increment when parser logic changes
-// This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 11; // v11: Index 3D models and bounded GLB/GLTF/sidecar metadata
 
 const logMainPerf = (event, details = {}) => {
   console.log('[main:perf]', { event, ...details });

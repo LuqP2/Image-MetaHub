@@ -6,12 +6,9 @@ import {
   type ThumbnailGenerateToCacheRequest,
 } from '../types';
 import { isUsableTimestamp } from '../utils/fileTimestamps.js';
+import { PARSER_VERSION } from '../utils/parserVersion.js';
 
-/**
- * Parser version - increment when parser logic changes significantly
- * This ensures cache is invalidated when parsing rules change
- */
-export const PARSER_VERSION = 10; // v10: Parse AVIF XMP/EXIF metadata and compact Image MetaHub extensions
+export { PARSER_VERSION };
 
 // Simplified metadata structure for the JSON cache
 export interface CacheImageMetadata {
