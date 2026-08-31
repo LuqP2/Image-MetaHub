@@ -563,6 +563,24 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     pass_through_rules: [{ from_input: 'trigger_words', to_output: 'filtered_trigger_words' }],
     widget_order: ['group_mode', 'default_active', 'allow_strength_adjustment', 'toggle_trigger_words', 'orinalMessage']
   },
+  ComfySwitchNode: {
+    category: 'ROUTING',
+    roles: ['ROUTING'],
+    inputs: {
+      switch: { type: 'BOOLEAN' },
+      on_false: { type: 'ANY' },
+      on_true: { type: 'ANY' },
+    },
+    outputs: { output: { type: 'ANY' } },
+    conditional_routing: {
+      control_input: 'switch',
+      routes: {
+        false: 'on_false',
+        true: 'on_true',
+      },
+    },
+    widget_order: ['switch'],
+  },
   ImpactSwitch: {
     category: 'ROUTING', roles: ['ROUTING'],
     inputs: { select: { type: 'INT' }, input1: { type: 'ANY' }, input2: { type: 'ANY' } },
@@ -571,6 +589,17 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
         control_input: 'select',
         dynamic_input_prefix: 'input'
     }
+  },
+  RBG_Smart_Seed_Variance: {
+    category: 'CONDITIONING',
+    roles: ['PASS_THROUGH'],
+    inputs: { conditioning: { type: 'CONDITIONING' } },
+    outputs: { conditioning: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: { source: 'trace', input: 'conditioning' },
+      negativePrompt: { source: 'trace', input: 'conditioning' },
+    },
+    pass_through_rules: [{ from_input: 'conditioning', to_output: 'conditioning' }],
   },
 
   // --- IO NODES ---
@@ -623,6 +652,58 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       negativePrompt: { source: 'input', key: 'value' },
     },
     widget_order: ['value']
+  },
+  PrimitiveBoolean: {
+    category: 'UTILS',
+    roles: ['SOURCE'],
+    inputs: { value: { type: 'BOOLEAN' } },
+    outputs: { BOOLEAN: { type: 'BOOLEAN' } },
+    widget_order: ['value'],
+  },
+  PreviewAny: {
+    category: 'UTILS',
+    roles: ['PASS_THROUGH'],
+    inputs: { source: { type: 'ANY' } },
+    outputs: { STRING: { type: 'STRING' } },
+    param_mapping: {
+      prompt: { source: 'input', key: 'source' },
+      negativePrompt: { source: 'input', key: 'source' },
+    },
+    pass_through_rules: [{ from_input: 'source', to_output: 'STRING' }],
+  },
+  StringConcatenate: {
+    category: 'UTILS',
+    roles: ['TRANSFORM'],
+    inputs: {
+      string_a: { type: 'STRING' },
+      string_b: { type: 'STRING' },
+      delimiter: { type: 'STRING' },
+    },
+    outputs: { STRING: { type: 'STRING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) =>
+          extractors.concatTextExtractor(node, state, graph, traverse, ['string_a', 'string_b']),
+      },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) =>
+          extractors.concatTextExtractor(node, state, graph, traverse, ['string_a', 'string_b']),
+      },
+    },
+    widget_order: ['string_a', 'string_b', 'delimiter'],
+  },
+  TextGenerate: {
+    category: 'UTILS',
+    roles: ['PASS_THROUGH'],
+    inputs: { prompt: { type: 'STRING' } },
+    outputs: { generated_text: { type: 'STRING' } },
+    param_mapping: {
+      prompt: { source: 'input', key: 'prompt' },
+      negativePrompt: { source: 'input', key: 'prompt' },
+    },
+    pass_through_rules: [{ from_input: 'prompt', to_output: 'generated_text' }],
   },
   Ideogram4PromptBuilderKJ: {
     category: 'UTILS',

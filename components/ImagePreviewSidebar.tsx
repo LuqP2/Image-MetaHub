@@ -552,6 +552,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
           {isModel3D ? (
             <div className="h-80 w-full overflow-hidden rounded-lg">
               <Model3DViewer
+                key={activeImage.id}
                 image={activeImage}
                 directoryPath={activeImageDirectoryPath}
                 compact

@@ -10,6 +10,124 @@ interface TraversalState {
   visitedLinks: Set<string>;
 }
 
+function readScalarControlValue(node: ParserNode | null | undefined): unknown {
+  if (!node) return undefined;
+
+  for (const key of ['value', 'select', 'int']) {
+    const value = node.inputs?.[key];
+    if (value !== undefined && !Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  const nodeDef = NodeRegistry[node.class_type];
+  const preferredWidgetIndex = nodeDef?.widget_order?.findIndex((key) =>
+    key === 'value' || key === 'select' || key === 'int'
+  ) ?? -1;
+  if (preferredWidgetIndex >= 0 && node.widgets_values?.[preferredWidgetIndex] !== undefined) {
+    return node.widgets_values[preferredWidgetIndex];
+  }
+
+  const namedWidget = node.widgets_values?.find((widget) =>
+    widget && typeof widget === 'object' && ['value', 'select', 'int'].includes(widget.name)
+  );
+  if (namedWidget && typeof namedWidget === 'object') {
+    return namedWidget.value;
+  }
+
+  return undefined;
+}
+
+function resolveRoutingControlValue(
+  currentNode: ParserNode,
+  controlInputName: string,
+  state: TraversalState,
+  graph: Graph,
+): unknown {
+  const controlInput = currentNode.inputs?.[controlInputName];
+
+  if (Array.isArray(controlInput)) {
+    const controlNode = graph[String(controlInput[0])];
+    const scalarValue = readScalarControlValue(controlNode);
+    if (scalarValue !== undefined) {
+      return scalarValue;
+    }
+
+    const controlState = { ...createInitialState('steps'), visitedLinks: state.visitedLinks };
+    return traverseFromLink(controlInput as NodeLink, controlState, graph, []);
+  }
+
+  if (controlInput !== undefined) {
+    return controlInput;
+  }
+
+  return readScalarControlValue(currentNode);
+}
+
+function resolveConditionalRouteInputName(
+  currentNode: ParserNode,
+  state: TraversalState,
+  graph: Graph,
+): string | undefined {
+  const routingRule = NodeRegistry[currentNode.class_type]?.conditional_routing;
+  if (!routingRule) return undefined;
+
+  const controlValue = resolveRoutingControlValue(currentNode, routingRule.control_input, state, graph);
+  if (controlValue == null) return undefined;
+
+  const routeKey = String(controlValue).toLowerCase();
+  return routingRule.routes?.[routeKey]
+    ?? (routingRule.dynamic_input_prefix
+      ? `${routingRule.dynamic_input_prefix}${controlValue}`
+      : undefined);
+}
+
+function getTraversableInputLinks(
+  currentNode: ParserNode,
+  state: TraversalState,
+  graph: Graph,
+): NodeLink[] {
+  const nodeDef = NodeRegistry[currentNode.class_type];
+  if (nodeDef?.roles.includes('ROUTING') && nodeDef.conditional_routing) {
+    const selectedInputName = resolveConditionalRouteInputName(currentNode, state, graph);
+    const selectedInput = selectedInputName ? currentNode.inputs[selectedInputName] : undefined;
+    return Array.isArray(selectedInput) && selectedInput.length === 2
+      ? [selectedInput as NodeLink]
+      : [];
+  }
+
+  const links: NodeLink[] = [];
+  for (const input of Object.values(currentNode.inputs)) {
+    if (Array.isArray(input) && input.length === 2) {
+      links.push(input as NodeLink);
+    }
+  }
+  return links;
+}
+
+export function collectActiveNodeIds(args: { startNode: ParserNode, graph: Graph }): Set<string> {
+  const activeNodeIds = new Set<string>();
+  const routingState = createInitialState('lora');
+
+  const visit = (currentNode: ParserNode | null | undefined) => {
+    if (!currentNode || activeNodeIds.has(currentNode.id)) return;
+    if (currentNode.mode === 2 || currentNode.mode === 4) return;
+
+    activeNodeIds.add(currentNode.id);
+    for (const inputLink of getTraversableInputLinks(currentNode, routingState, args.graph)) {
+      const [sourceNodeId] = inputLink;
+      let nextNode = args.graph[sourceNodeId];
+      if (!nextNode && sourceNodeId.includes(':')) {
+        nextNode = args.graph[sourceNodeId.split(':')[0]];
+      }
+      visit(nextNode);
+    }
+  };
+
+  visit(args.startNode);
+  return activeNodeIds;
+}
+
 // Helper para criar o estado inicial da travessia
 function createInitialState(param: ComfyTraversableParam): TraversalState {
     let expectedType: ComfyNodeDataType = 'ANY';
@@ -69,24 +187,14 @@ function traverse(
 
   // 3. Roteamento Dinâmico (Problema do "Switch")
   if (nodeDef.roles.includes('ROUTING') && nodeDef.conditional_routing) {
-    const controlInputName = nodeDef.conditional_routing.control_input;
-    let controlValue: any = null;
-    
-    // Tenta resolver o valor de controle, que pode ser um widget ou um link
-    const controlLink = currentNode.inputs[controlInputName];
-    if (controlLink && Array.isArray(controlLink)) {
-      const controlState = { ...createInitialState('steps'), visitedLinks: state.visitedLinks }; // 'steps' -> INT
-      controlValue = traverseFromLink(controlLink as NodeLink, controlState, graph, []);
-    } else {
-        const widgetValue = currentNode.widgets_values?.find(w => typeof w === 'object' ? w.name === controlInputName : false) ?? currentNode.widgets_values?.[0];
-        controlValue = typeof widgetValue === 'object' ? widgetValue.value : widgetValue;
-    }
-
-    if (controlValue != null) {
-      const dynamicInputName = `${nodeDef.conditional_routing.dynamic_input_prefix}${controlValue}`;
-      const targetLink = currentNode.inputs[dynamicInputName];
+    const selectedInputName = resolveConditionalRouteInputName(currentNode, state, graph);
+    if (selectedInputName) {
+      const targetLink = currentNode.inputs[selectedInputName];
       if (targetLink && Array.isArray(targetLink)) {
         return traverseFromLink(targetLink as NodeLink, state, graph, accumulator);
+      }
+      if (targetLink !== undefined) {
+        return targetLink;
       }
     }
     return state.targetParam === 'lora' ? accumulator : null; // Rota dinâmica não encontrada
@@ -256,14 +364,11 @@ function collectValuesRecursive(
     }
 
     // 3. Continua a exploração para todos os caminhos possíveis
-    for (const inputName in currentNode.inputs) {
-        const inputLink = currentNode.inputs[inputName];
-        if (inputLink && Array.isArray(inputLink)) {
-            const [sourceNodeId] = inputLink;
-            const nextNode = graph[sourceNodeId];
-            if (nextNode) {
-                collectValuesRecursive(nextNode, state, graph, values, visited);
-            }
+    for (const inputLink of getTraversableInputLinks(currentNode, state, graph)) {
+        const [sourceNodeId] = inputLink;
+        const nextNode = graph[sourceNodeId];
+        if (nextNode) {
+            collectValuesRecursive(nextNode, state, graph, values, visited);
         }
     }
 }
@@ -336,22 +441,19 @@ export function resolve(args: { startNode: ParserNode, param: ComfyTraversablePa
             }
 
             // Continua explorando inputs
-            for (const inputName in currentNode.inputs) {
-                const inputLink = currentNode.inputs[inputName];
-                if (Array.isArray(inputLink) && inputLink.length === 2) {
-                    const [sourceNodeId] = inputLink;
-                    let nextNode = args.graph[sourceNodeId];
+            for (const inputLink of getTraversableInputLinks(currentNode, initialState, args.graph)) {
+                const [sourceNodeId] = inputLink;
+                let nextNode = args.graph[sourceNodeId];
 
-                    // Suporte para grouped nodes: keep exact prefixed ids (for example "98:17")
-                    // when present, and only fall back to the parent node if the exact child is absent.
-                    if (!nextNode && sourceNodeId.includes(':')) {
-                        const parentId = sourceNodeId.split(':')[0];
-                        nextNode = args.graph[parentId];
-                    }
+                // Suporte para grouped nodes: keep exact prefixed ids (for example "98:17")
+                // when present, and only fall back to the parent node if the exact child is absent.
+                if (!nextNode && sourceNodeId.includes(':')) {
+                    const parentId = sourceNodeId.split(':')[0];
+                    nextNode = args.graph[parentId];
+                }
 
-                    if (nextNode) {
-                        collectValues(nextNode);
-                    }
+                if (nextNode) {
+                    collectValues(nextNode);
                 }
             }
         };
@@ -377,6 +479,7 @@ function checkIfParamNeedsAccumulation(startNode: ParserNode | null, param: Comf
 
     // Check if any node in the graph has this param with accumulate: true
     const visited = new Set<string>();
+    const accumulationState = createInitialState(param);
 
     const check = (currentNode: ParserNode | null | undefined): boolean => {
         if (!currentNode) return false;
@@ -392,22 +495,19 @@ function checkIfParamNeedsAccumulation(startNode: ParserNode | null, param: Comf
         }
 
         // Check connected nodes
-        for (const inputName in currentNode.inputs) {
-            const inputLink = currentNode.inputs[inputName];
-            if (Array.isArray(inputLink) && inputLink.length === 2) {
-                const [sourceNodeId] = inputLink;
-                let nextNode = graph[sourceNodeId];
+        for (const inputLink of getTraversableInputLinks(currentNode, accumulationState, graph)) {
+            const [sourceNodeId] = inputLink;
+            let nextNode = graph[sourceNodeId];
 
-                // Keep exact prefixed ids (for example "98:17") when present, and only
-                // fall back to the parent node if the exact child is absent.
-                if (!nextNode && sourceNodeId.includes(':')) {
-                    const parentId = sourceNodeId.split(':')[0];
-                    nextNode = graph[parentId];
-                }
+            // Keep exact prefixed ids (for example "98:17") when present, and only
+            // fall back to the parent node if the exact child is absent.
+            if (!nextNode && sourceNodeId.includes(':')) {
+                const parentId = sourceNodeId.split(':')[0];
+                nextNode = graph[parentId];
+            }
 
-                if (nextNode && check(nextNode)) {
-                    return true;
-                }
+            if (nextNode && check(nextNode)) {
+                return true;
             }
         }
 

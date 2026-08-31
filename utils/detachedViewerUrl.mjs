@@ -8,3 +8,23 @@ export function buildDetachedViewerUrl(indexPath, sessionId, isDev = false) {
   url.searchParams.set('sessionId', sessionId);
   return url;
 }
+
+export function buildDetachedViewerLoadTarget(indexPath, sessionId, isDev = false) {
+  const query = {
+    window: 'image-modal',
+    sessionId,
+  };
+
+  if (isDev) {
+    return {
+      method: 'url',
+      url: buildDetachedViewerUrl(indexPath, sessionId, true).toString(),
+    };
+  }
+
+  return {
+    method: 'file',
+    filePath: indexPath,
+    options: { query },
+  };
+}

@@ -50,7 +50,7 @@ import {
   requestPermanentDeleteConfirmation,
 } from './electron/permanentDeletePolicy.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
-import { buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
+import { buildDetachedViewerLoadTarget, buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
 import {
   buildEmbeddingModelDownloadUrl,
   validateEmbeddingModelId,
@@ -80,6 +80,12 @@ const permanentDeleteGrants = createPermanentDeleteGrantStore({
 
 // Simple development check
 const isDev = !app.isPackaged;
+const PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID = 'packaged-detached-viewer-smoke';
+const packagedDetachedViewerSmokeImagePath = app.isPackaged
+  && process.env.GITHUB_ACTIONS === 'true'
+  && typeof process.env.IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE === 'string'
+  ? process.env.IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE.trim()
+  : '';
 const gpuMitigationEnabled = process.env.IMH_DISABLE_GPU === '1' || process.env.IMH_DISABLE_GPU === 'true';
 const mediaSafeModeEnabled = process.platform === 'darwin' && (process.env.IMH_MEDIA_SAFE_MODE === '1' || process.env.IMH_MEDIA_SAFE_MODE === 'true');
 const audioDiagnosticModeEnabled = process.platform === 'darwin' && (process.env.IMH_AUDIO_DIAGNOSTIC_MODE === '1' || process.env.IMH_AUDIO_DIAGNOSTIC_MODE === 'true');
@@ -600,6 +606,7 @@ let licenseManager;
 const detachedImageViewerWindows = new Map();
 const detachedImageViewerSnapshots = new Map();
 const detachedImageViewerRequestResolvers = new Map();
+let packagedDetachedViewerSmokeReadyResolver = null;
 let comfyUIView = null;
 let comfyUIViewConfiguredUrl = '';
 let comfyUIViewState = {
@@ -2559,12 +2566,20 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   viewerWindow.setMenu(null);
   viewerWindow.__imageViewerCascadeSlot = cascadeSlot;
   const viewerWindowId = viewerWindow.id;
+  if (sessionId === PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID) {
+    viewerWindow.once('show', () => {
+      packagedDetachedViewerSmokeReadyResolver?.();
+      packagedDetachedViewerSmokeReadyResolver = null;
+    });
+  }
 
+  const viewerIndexPath = path.join(__dirname, 'dist', 'index.html');
   const viewerUrl = buildDetachedViewerUrl(
-    path.join(__dirname, 'dist', 'index.html'),
+    viewerIndexPath,
     sessionId,
     isDev,
   );
+  const viewerLoadTarget = buildDetachedViewerLoadTarget(viewerIndexPath, sessionId, isDev);
   configureDetachedViewerNavigationHandlers(viewerWindow, viewerUrl);
 
   detachedImageViewerWindows.set(sessionId, viewerWindow);
@@ -2628,13 +2643,86 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   });
 
   try {
-    await viewerWindow.loadURL(viewerUrl.toString());
+    if (viewerLoadTarget.method === 'url') {
+      await viewerWindow.loadURL(viewerLoadTarget.url);
+    } else {
+      await viewerWindow.loadFile(viewerLoadTarget.filePath, viewerLoadTarget.options);
+    }
     return { success: true };
   } catch (error) {
     detachedImageViewerWindows.delete(sessionId);
     detachedImageViewerSnapshots.delete(sessionId);
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
     return { success: false, error: error?.message || 'Failed to load detached viewer.' };
+  }
+}
+
+async function runPackagedDetachedViewerSmokeTest() {
+  if (!packagedDetachedViewerSmokeImagePath) return;
+
+  let timeoutId;
+  try {
+    const imagePath = path.resolve(packagedDetachedViewerSmokeImagePath);
+    const imageStats = await fs.stat(imagePath);
+    if (!imageStats.isFile()) {
+      throw new Error(`Smoke image is not a file: ${imagePath}`);
+    }
+
+    const directoryPath = path.dirname(imagePath);
+    const imageName = path.basename(imagePath);
+    const readyPromise = new Promise((resolve, reject) => {
+      packagedDetachedViewerSmokeReadyResolver = resolve;
+      timeoutId = setTimeout(() => reject(new Error('Detached viewer did not become visible after its renderer-ready handshake.')), 20000);
+    });
+    const snapshot = {
+      sessionId: PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID,
+      revision: 1,
+      image: {
+        id: imagePath,
+        name: imageName,
+        metadata: { normalizedMetadata: {} },
+        metadataString: '',
+        lastModified: imageStats.mtimeMs,
+        models: [],
+        loras: [],
+        scheduler: '',
+        directoryId: directoryPath,
+        fileSize: imageStats.size,
+        fileType: 'image/png',
+      },
+      previousImage: null,
+      nextImage: null,
+      currentIndex: 0,
+      totalImages: 1,
+      directoryPath,
+      isIndexing: false,
+      startSlideshow: false,
+      closeOnSlideshowExit: false,
+      recentTags: [],
+      comparisonCount: 0,
+      comparisonImages: [],
+      collections: [],
+      selectedImageIds: [],
+    };
+
+    const openResult = await createDetachedImageViewer(PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID, snapshot);
+    if (!openResult.success) {
+      throw new Error(openResult.error || 'Failed to open detached viewer.');
+    }
+
+    await readyPromise;
+    console.log('[packaged-detached-viewer-smoke] renderer-ready');
+    closeAllDetachedImageViewers();
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+    app.exit(0);
+  } catch (error) {
+    console.error('[packaged-detached-viewer-smoke] failed:', error);
+    closeAllDetachedImageViewers();
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+    app.exit(1);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    packagedDetachedViewerSmokeReadyResolver = null;
   }
 }
 
@@ -2929,6 +3017,7 @@ app.whenReady().then(async () => {
   setupFileOperationHandlers();
   
   await createWindow(startupDirectory);
+  await runPackagedDetachedViewerSmokeTest();
 });
 
 function setupLicenseHandlers() {
