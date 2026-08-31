@@ -4263,12 +4263,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     setSelectedImage(targetImage);
                   }}
                 />
-                <ProvenanceSection
-                  image={liveImage}
-                  metadata={nMeta}
-                  rawMetadata={rawMetadataImage.metadata}
-                  displayMode="details-compact"
-                />
                 <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt', true)} />
                 <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', 'Negative Prompt', true)} />
                 
@@ -4486,6 +4480,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   )}
                 </div>
               )}
+
+              <ProvenanceSection
+                image={liveImage}
+                metadata={nMeta}
+                rawMetadata={rawMetadataImage.metadata}
+                displayMode="details-compact"
+              />
             </div>
           ) : (
             <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">

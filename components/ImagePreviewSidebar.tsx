@@ -800,12 +800,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   setSelectedImage(targetImage);
                 }}
               />
-              <ProvenanceSection
-                image={activeImage}
-                metadata={nMeta}
-                rawMetadata={activeImage.metadata}
-                displayMode="details-compact"
-              />
               <MetadataItem label="Format" value={nMeta.format} onCopy={(v) => copyToClipboard(v, "Format")} />
               <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
               <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
@@ -947,6 +941,13 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 )}
               </div>
             )}
+
+            <ProvenanceSection
+              image={activeImage}
+              metadata={nMeta}
+              rawMetadata={activeImage.metadata}
+              displayMode="details-compact"
+            />
 
             {/* A1111 Actions - Separate Buttons with Visual Hierarchy */}
             {showA1111Actions && (
