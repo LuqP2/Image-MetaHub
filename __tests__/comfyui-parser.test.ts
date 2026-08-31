@@ -95,6 +95,42 @@ describe('ComfyUI Parser - Prompt Sources', () => {
       expect(result.prompt).toBe(`${fixture.expectedPrompt}, darkbrush`);
     });
 
+    it('collects LoRAs only from the executed switch branch', () => {
+      const fixture = loadKreaFixture();
+      fixture.workflow.nodes.push(
+        { id: 56, type: 'UNETLoader', widgets_values: ['base.safetensors', 'default'] },
+        { id: 60, type: 'LoraLoaderModelOnly', widgets_values: ['active-a.safetensors', 0.8] },
+        { id: 62, type: 'LoraLoaderModelOnly', widgets_values: ['inactive-b.safetensors', 0.9] },
+        { id: 66, type: 'ComfySwitchNode', widgets_values: [false] },
+      );
+      fixture.prompt['56'] = {
+        class_type: 'UNETLoader',
+        inputs: { unet_name: 'base.safetensors', weight_dtype: 'default' },
+      };
+      fixture.prompt['60'] = {
+        class_type: 'LoraLoaderModelOnly',
+        inputs: { lora_name: 'active-a.safetensors', strength_model: 0.8, model: ['56', 0] },
+      };
+      fixture.prompt['62'] = {
+        class_type: 'LoraLoaderModelOnly',
+        inputs: { lora_name: 'inactive-b.safetensors', strength_model: 0.9, model: ['56', 0] },
+      };
+      fixture.prompt['66'] = {
+        class_type: 'ComfySwitchNode',
+        inputs: { switch: ['67', 0], on_false: ['60', 0], on_true: ['62', 0] },
+      };
+      fixture.prompt['72'].inputs.model = ['66', 0];
+
+      const falseBranch = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+      expect(falseBranch.lora).toContain('active-a.safetensors');
+      expect(falseBranch.lora).not.toContain('inactive-b.safetensors');
+
+      fixture.prompt['67'].inputs.value = true;
+      const trueBranch = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+      expect(trueBranch.lora).toContain('inactive-b.safetensors');
+      expect(trueBranch.lora).not.toContain('active-a.safetensors');
+    });
+
     it('uses the source prompt when the runtime-only TextGenerate branch is active', () => {
       const fixture = loadKreaFixture();
       fixture.prompt['68'].inputs.value = true;

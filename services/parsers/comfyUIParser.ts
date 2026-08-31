@@ -918,17 +918,18 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
     results.controlnets = modifiers.controlnets;
   }
   if (modifiers.loras.length > 0) {
-    // Merge with existing lora array from resolveAll
-    const existingLoras = results.lora || [];
-    results.loras = modifiers.loras; // Detailed lora info
-    const loraNameSet = new Set<string>();
-    for (let i = 0; i < existingLoras.length; i++) {
-      loraNameSet.add(existingLoras[i]);
-    }
-    for (let i = 0; i < modifiers.loras.length; i++) {
-      loraNameSet.add(modifiers.loras[i].name);
-    }
-    results.lora = Array.from(loraNameSet); // Backward compatibility
+    const resolvedLoras = Array.isArray(results.lora) ? results.lora : [];
+    const resolvedLoraNames = new Set(resolvedLoras.map((name: unknown) => String(name)));
+    // resolveAll follows executed routing. Keep the graph-wide modifier scan only
+    // as a fallback for legacy nodes that the traversal engine cannot resolve.
+    const activeModifiers = resolvedLoraNames.size > 0
+      ? modifiers.loras.filter((lora) => resolvedLoraNames.has(String(lora.name)))
+      : modifiers.loras;
+
+    results.loras = activeModifiers;
+    results.lora = resolvedLoraNames.size > 0
+      ? Array.from(resolvedLoraNames)
+      : activeModifiers.map((lora) => lora.name);
   }
   if (modifiers.vaes.length > 0) {
     results.vaes = modifiers.vaes;
