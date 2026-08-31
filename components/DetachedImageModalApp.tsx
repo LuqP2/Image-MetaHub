@@ -76,9 +76,13 @@ const DetachedImageModalApp: React.FC = () => {
     const applySnapshot = (next: ImageViewerSnapshot) => {
       if (next.sessionId !== sessionId || next.revision <= latestRevisionRef.current) return;
       latestRevisionRef.current = next.revision;
-      const images = [next.previousImage, next.image, next.nextImage]
+      const navigationImages = [next.previousImage, next.image, next.nextImage]
         .filter((candidate): candidate is ImageViewerSnapshot['image'] => Boolean(candidate))
         .map(asIndexedImage);
+      const lineageImages = (next.lineage?.images || []).map(asIndexedImage);
+      const images = Array.from(
+        new Map([...navigationImages, ...lineageImages].map((candidate) => [candidate.id, candidate])).values()
+      );
       const current = asIndexedImage(next.image);
       useImageStore.setState({
         images,
@@ -89,6 +93,8 @@ const DetachedImageModalApp: React.FC = () => {
         collections: next.collections,
         // Keeps bulk actions (apply metadata to selected) available in the viewer.
         selectedImages: new Set(next.selectedImageIds ?? []),
+        lineageResolvedByImageId: next.lineage?.resolvedByImageId ?? {},
+        lineageDerivedIdsBySourceId: next.lineage?.derivedIdsBySourceId ?? {},
         directories: [{
           id: current.directoryId || next.directoryPath,
           name: next.directoryPath.split(/[\\/]/).filter(Boolean).pop() || next.directoryPath,

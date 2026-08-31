@@ -1,4 +1,5 @@
 import type { IndexedImage, ImageRating, SmartCollection, BaseMetadata } from '../types';
+import type { ResolvedLineageEntry } from './lineageRegistry';
 import type { WorkflowOverrides } from './comfyUIApiClient';
 import type { ComfyUISourceImagePolicy, ComfyUIWorkflowMode } from './comfyUIWorkflowBuilder';
 
@@ -36,6 +37,16 @@ export interface ImageViewerSnapshot {
   collections: SmartCollection[];
   /** Ids only: the viewer needs the selection size and membership, not the records. */
   selectedImageIds: string[];
+  /**
+   * The detached renderer has its own small image store. Send only the current
+   * image's resolved lineage plus the directly related records it needs to show
+   * the same read-only lineage UI as the main window.
+   */
+  lineage?: {
+    resolvedByImageId: Record<string, ResolvedLineageEntry>;
+    derivedIdsBySourceId: Record<string, string[]>;
+    images: ImageModalImageDTO[];
+  };
 }
 
 /**
