@@ -142,6 +142,17 @@ describe('Provenance Summary view model', () => {
     expect(needsProvenanceMetadataHydration(model3d, {
       _provenanceMetadataSource: 'embedded',
     })).toBe(false);
+    expect(needsProvenanceMetadataHydration({ media_type: 'model3d' } as BaseMetadata, {})).toBe(false);
+  });
+
+  it('uses content modification time instead of the library sort date', () => {
+    const image = {
+      ...createImage('timestamps.png'),
+      lastModified: Date.UTC(2025, 0, 1),
+      contentModifiedMs: Date.UTC(2026, 0, 1),
+    };
+
+    expect(buildProvenanceViewModel({ image }).lastModified).toBe(image.contentModifiedMs);
   });
 
   it('hydrates incomplete compacted Image MetaHub operations', () => {

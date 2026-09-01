@@ -131,7 +131,16 @@ const hasLegacyUnknownSource = (
   metadata: BaseMetadata | undefined,
   rawMetadata: unknown,
 ): boolean => !readMetadataSource(rawMetadata) && (
-  metadata?.generator === 'Easy Diffusion' || metadata?.media_type === 'model3d'
+  metadata?.generator === 'Easy Diffusion'
+  || (
+    metadata?.media_type === 'model3d'
+    && Boolean(
+      nonBlank(metadata.generator)
+      || nonBlank(metadata.prompt)
+      || nonBlank(metadata.model)
+      || metadata.lineage
+    )
+  )
 );
 
 const explicitRelationshipEvidence = (
@@ -262,7 +271,11 @@ export const buildProvenanceViewModel = ({
   return {
     fileName: image.name,
     imageId: image.id,
-    lastModified: Number.isFinite(image.lastModified) ? image.lastModified : null,
+    lastModified: Number.isFinite(image.contentModifiedMs)
+      ? image.contentModifiedMs ?? null
+      : Number.isFinite(image.lastModified)
+        ? image.lastModified
+        : null,
     fileSize: Number.isFinite(image.fileSize) ? image.fileSize ?? null : null,
     generation,
     relationships,

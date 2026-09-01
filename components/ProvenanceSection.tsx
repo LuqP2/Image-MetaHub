@@ -102,6 +102,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
   const [isHydratingProvenance, setIsHydratingProvenance] = React.useState(false);
   const [hydratedProvenanceRevision, setHydratedProvenanceRevision] = React.useState<string | null>(null);
   const metadataHydrationRequestRef = React.useRef(0);
+  const attemptedHydrationRevisionRef = React.useRef<string | null>(null);
   const hashRequestRef = React.useRef(0);
   const activeFingerprintRequestIdRef = React.useRef<string | null>(null);
   const filePath = getElectronFilePath(image);
@@ -135,17 +136,20 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
   }, [cancelActiveFingerprint, fileRevision]);
 
   React.useEffect(() => {
+    if (!loadFullRawMetadata || !provenanceHydrationRequired) {
+      setHydratedRawMetadata(null);
+      setIsHydratingProvenance(false);
+      setHydratedProvenanceRevision(null);
+      return;
+    }
+    if (attemptedHydrationRevisionRef.current === fileRevision) return;
+
+    attemptedHydrationRevisionRef.current = fileRevision;
     const requestId = ++metadataHydrationRequestRef.current;
     let cancelled = false;
     setHydratedRawMetadata(null);
     setIsHydratingProvenance(false);
     setHydratedProvenanceRevision(null);
-    if (!loadFullRawMetadata || !provenanceHydrationRequired) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
     setIsHydratingProvenance(true);
     void loadFullRawMetadata({ force: true }).then((hydratedImage) => {
       if (cancelled || requestId !== metadataHydrationRequestRef.current) return;

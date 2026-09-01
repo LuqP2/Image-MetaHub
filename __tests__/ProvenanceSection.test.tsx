@@ -133,6 +133,38 @@ describe('ProvenanceSection evidence hydration', () => {
     expect((screen.getByRole('button', { name: 'Copy summary' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('attempts forced hydration only once for the same file revision', async () => {
+    const normalizedMetadata = {
+      media_type: 'model3d',
+      generator: 'Image MetaHub',
+      model: 'trellis',
+    } as BaseMetadata;
+    const image = createImage('legacy-model', { normalizedMetadata });
+    const firstLoader = vi.fn().mockResolvedValue(image);
+    const { rerender } = render(
+      <ProvenanceSection
+        image={image}
+        metadata={normalizedMetadata}
+        rawMetadata={image.metadata}
+        loadFullRawMetadata={firstLoader}
+      />,
+    );
+    await waitFor(() => expect(firstLoader).toHaveBeenCalledTimes(1));
+
+    const recreatedLoader = vi.fn().mockResolvedValue(image);
+    rerender(
+      <ProvenanceSection
+        image={image}
+        metadata={normalizedMetadata}
+        rawMetadata={image.metadata}
+        loadFullRawMetadata={recreatedLoader}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Copy summary' })).toBeTruthy());
+    expect(recreatedLoader).not.toHaveBeenCalled();
+  });
+
   it('caps derived relationships at four through the store lookup', () => {
     const source = createImage('source');
     const derived = Array.from({ length: 6 }, (_, index) => createImage(`derived-${index + 1}`));
