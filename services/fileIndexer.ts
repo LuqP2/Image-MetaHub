@@ -1701,6 +1701,12 @@ async function processSingleFileOptimized(
       fileSizeValue = fileSizeValue ?? file.size;
     }
 
+    // Metadata acquired from the media carrier is embedded. Sidecar fallbacks below
+    // replace this source explicitly when the file itself has no usable metadata.
+    if (rawMetadata && !('_provenanceMetadataSource' in rawMetadata)) {
+      rawMetadata = { ...rawMetadata, _provenanceMetadataSource: 'embedded' } as ImageMetadata;
+    }
+
     // Try to read sidecar JSON for Easy Diffusion (fallback if no embedded metadata)
     let resolvedAbsolutePath = absolutePath;
     if (!resolvedAbsolutePath && isElectron && (window as any).electronAPI?.joinPaths) {

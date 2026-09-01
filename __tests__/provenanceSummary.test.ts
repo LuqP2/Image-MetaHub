@@ -145,6 +145,23 @@ describe('Provenance Summary view model', () => {
     expect(needsProvenanceMetadataHydration({ media_type: 'model3d' } as BaseMetadata, {})).toBe(false);
   });
 
+  it('recognizes embedded Easy Diffusion parameters without sidecar hydration', () => {
+    const metadata = { generator: 'Easy Diffusion', prompt: 'embedded prompt' } as BaseMetadata;
+    for (const rawMetadata of [
+      { parameters: 'embedded generation parameters' },
+      { _rawMetadataCompacted: true, _rawMetadataKeys: ['parameters'] },
+    ]) {
+      expect(needsProvenanceMetadataHydration(metadata, rawMetadata)).toBe(false);
+      expect(buildProvenanceViewModel({
+        image: createImage('embedded-easy.png', metadata),
+        rawMetadata,
+      }).generation).toContainEqual(expect.objectContaining({
+        label: 'Positive prompt',
+        evidence: 'embedded',
+      }));
+    }
+  });
+
   it('uses content modification time instead of the library sort date', () => {
     const image = {
       ...createImage('timestamps.png'),

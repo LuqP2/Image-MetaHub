@@ -120,17 +120,27 @@ const readMetaHubOperation = (rawMetadata: unknown): ProvenanceOperation | null 
   };
 };
 
-const readMetadataSource = (rawMetadata: unknown): 'embedded' | 'sidecar' | null => {
+const readMetadataSource = (
+  rawMetadata: unknown,
+  metadata?: BaseMetadata,
+): 'embedded' | 'sidecar' | null => {
   const raw = asRecord(rawMetadata);
-  return raw?._provenanceMetadataSource === 'embedded' || raw?._provenanceMetadataSource === 'sidecar'
-    ? raw._provenanceMetadataSource
-    : null;
+  if (raw?._provenanceMetadataSource === 'embedded' || raw?._provenanceMetadataSource === 'sidecar') {
+    return raw._provenanceMetadataSource;
+  }
+  if (metadata?.generator === 'Easy Diffusion') {
+    const rawKeys = Array.isArray(raw?._rawMetadataKeys)
+      ? raw._rawMetadataKeys.filter((key): key is string => typeof key === 'string')
+      : [];
+    if (typeof raw?.parameters === 'string' || rawKeys.includes('parameters')) return 'embedded';
+  }
+  return null;
 };
 
 const hasLegacyUnknownSource = (
   metadata: BaseMetadata | undefined,
   rawMetadata: unknown,
-): boolean => !readMetadataSource(rawMetadata) && (
+): boolean => !readMetadataSource(rawMetadata, metadata) && (
   metadata?.generator === 'Easy Diffusion'
   || (
     metadata?.media_type === 'model3d'
@@ -146,7 +156,7 @@ const hasLegacyUnknownSource = (
 const explicitRelationshipEvidence = (
   metadata: BaseMetadata | undefined,
   rawMetadata: unknown,
-): ProvenanceEvidence => readMetadataSource(rawMetadata)
+): ProvenanceEvidence => readMetadataSource(rawMetadata, metadata)
   || (hasLegacyUnknownSource(metadata, rawMetadata) ? 'metadata' : 'embedded');
 
 export const needsProvenanceMetadataHydration = (
@@ -196,7 +206,7 @@ export const buildProvenanceViewModel = ({
   derivedImages = [],
 }: ProvenanceViewModelInput): ProvenanceViewModel => {
   const generation: ProvenanceField[] = [];
-  const source = readMetadataSource(rawMetadata);
+  const source = readMetadataSource(rawMetadata, metadata);
   const generationEvidence: ProvenanceEvidence = source
     || (hasLegacyUnknownSource(metadata, rawMetadata) ? 'metadata' : 'embedded');
   const add = (label: string, value: string | number | null | undefined) => {
