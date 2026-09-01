@@ -1,4 +1,5 @@
 import type { IndexedImage, ImageRating, SmartCollection, BaseMetadata } from '../types';
+import type { ResolvedLineageEntry } from './lineageRegistry';
 import type { WorkflowOverrides } from './comfyUIApiClient';
 import type { ComfyUISourceImagePolicy, ComfyUIWorkflowMode } from './comfyUIWorkflowBuilder';
 
@@ -36,6 +37,16 @@ export interface ImageViewerSnapshot {
   collections: SmartCollection[];
   /** Ids only: the viewer needs the selection size and membership, not the records. */
   selectedImageIds: string[];
+  /**
+   * The detached renderer has its own small image store. Send only the current
+   * image's resolved lineage plus the directly related records it needs to show
+   * the same read-only lineage UI as the main window.
+   */
+  lineage?: {
+    resolvedByImageId: Record<string, ResolvedLineageEntry>;
+    derivedIdsBySourceId: Record<string, string[]>;
+    images: ImageModalImageDTO[];
+  };
 }
 
 /**
@@ -143,6 +154,17 @@ export const toImageModalImageDTO = (image: IndexedImage): ImageModalImageDTO =>
   const metadata = image.metadata && typeof image.metadata === 'object'
     ? image.metadata as Record<string, unknown>
     : {};
+  const existingRawMetadataKeys = Array.isArray(metadata._rawMetadataKeys)
+    ? metadata._rawMetadataKeys.filter((key): key is string => typeof key === 'string')
+    : [];
+  const rawMetadataKeys = Array.from(new Set([
+    ...existingRawMetadataKeys,
+    ...Object.keys(metadata).filter((key) => key !== 'normalizedMetadata'),
+  ]));
+  const provenanceMetadataSource = metadata._provenanceMetadataSource === 'sidecar'
+    || metadata._provenanceMetadataSource === 'embedded'
+    ? metadata._provenanceMetadataSource
+    : undefined;
   return {
     ...dto,
     metadataString: '',
@@ -150,7 +172,8 @@ export const toImageModalImageDTO = (image: IndexedImage): ImageModalImageDTO =>
       normalizedMetadata: metadata.normalizedMetadata,
       _rawMetadataCompacted: true,
       _rawMetadataSizeBytes: typeof image.metadataString === 'string' ? image.metadataString.length : 0,
-      _rawMetadataKeys: Object.keys(metadata).filter((key) => key !== 'normalizedMetadata'),
+      _rawMetadataKeys: rawMetadataKeys,
+      ...(provenanceMetadataSource ? { _provenanceMetadataSource: provenanceMetadataSource } : {}),
     },
   } as ImageModalImageDTO;
 };

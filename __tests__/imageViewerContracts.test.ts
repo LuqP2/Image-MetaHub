@@ -40,6 +40,24 @@ describe('image viewer contracts', () => {
     expect(dto.id).toBe('directory::neutral.png');
   });
 
+  it('preserves compacted raw keys and the provenance source marker', () => {
+    const image = makeImage();
+    image.metadata = {
+      normalizedMetadata: { generator: 'Easy Diffusion' },
+      _rawMetadataCompacted: true,
+      _rawMetadataKeys: ['imagemetahub_data', 'workflow'],
+      _provenanceMetadataSource: 'sidecar',
+    } as IndexedImage['metadata'];
+
+    const metadata = toImageModalImageDTO(image).metadata as Record<string, unknown>;
+    expect(metadata._rawMetadataKeys).toEqual(expect.arrayContaining([
+      'imagemetahub_data',
+      'workflow',
+      '_provenanceMetadataSource',
+    ]));
+    expect(metadata._provenanceMetadataSource).toBe('sidecar');
+  });
+
   // Generation is executed by the main renderer, so the inpainting mask has to
   // survive structured cloning: a raw File would not make it across IPC.
   it('round-trips an inpainting mask through a clonable payload', async () => {

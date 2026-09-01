@@ -311,6 +311,7 @@ export default function App() {
   const error = useImageStore((state) => state.error);
   const success = useImageStore((state) => state.success);
   const transferProgress = useImageStore((state) => state.transferProgress);
+  const lineageLastBuiltAt = useImageStore((state) => state.lineageBuildState.lastBuiltAt);
 
   // Filter state selectors
   const searchQuery = useImageStore((state) => state.searchQuery);
@@ -3320,6 +3321,18 @@ export default function App() {
     const revision = (detachedViewerRevisionRef.current.get(modal.sessionId) ?? 0) + 1;
     detachedViewerRevisionRef.current.set(modal.sessionId, revision);
     const imageState = useImageStore.getState();
+    const resolvedLineage = imageState.lineageResolvedByImageId[modal.image.id];
+    const derivedIds = imageState.lineageDerivedIdsBySourceId[modal.image.id]?.slice(0, 4) || [];
+    const relatedImageIds = [resolvedLineage?.sourceImageId, ...derivedIds].filter(
+      (imageId): imageId is string => Boolean(imageId)
+    );
+    const imagesById = new Map(
+      [...imageState.images, ...imageState.filteredImages].map((candidate) => [candidate.id, candidate])
+    );
+    const lineageImages = relatedImageIds
+      .map((imageId) => imagesById.get(imageId))
+      .filter((candidate): candidate is IndexedImage => Boolean(candidate))
+      .map(toImageModalImageDTO);
     return {
       sessionId: modal.sessionId,
       revision,
@@ -3337,8 +3350,13 @@ export default function App() {
       comparisonImages: imageState.comparisonImages.map(toImageModalImageDTO),
       collections: imageState.collections,
       selectedImageIds: Array.from(selectedImages),
+      lineage: {
+        resolvedByImageId: resolvedLineage ? { [modal.image.id]: resolvedLineage } : {},
+        derivedIdsBySourceId: derivedIds.length > 0 ? { [modal.image.id]: derivedIds } : {},
+        images: lineageImages,
+      },
     };
-  }, [progress, resolveModalNavigationImages, selectedImages, viewerLicenseSyncToken, viewerSettingsSyncToken]);
+  }, [lineageLastBuiltAt, progress, resolveModalNavigationImages, selectedImages, viewerLicenseSyncToken, viewerSettingsSyncToken]);
 
   useEffect(() => {
     const api = window.electronAPI;

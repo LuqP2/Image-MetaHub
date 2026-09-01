@@ -187,6 +187,10 @@ function compactCacheMetadataEntry(rawEntry: CacheImageMetadata): CacheImageMeta
     _rawMetadataKeys: Object.keys(metadata).filter(key => key !== 'normalizedMetadata'),
   };
 
+  if (metadata._provenanceMetadataSource === 'sidecar' || metadata._provenanceMetadataSource === 'embedded') {
+    compactedMetadata._provenanceMetadataSource = metadata._provenanceMetadataSource;
+  }
+
   if (typeof metadata.parameters === 'string') {
     compactedMetadata.parametersPreview = metadata.parameters.slice(0, RAW_METADATA_PREVIEW_BYTES);
   }
@@ -195,6 +199,10 @@ function compactCacheMetadataEntry(rawEntry: CacheImageMetadata): CacheImageMeta
     const payload = metadata.imagemetahub_data as Record<string, unknown>;
     compactedMetadata.imagemetahub_data = {
       generator: payload.generator,
+      source_generator: payload.source_generator,
+      edited_at: payload.edited_at,
+      exported_at: payload.exported_at,
+      edit: payload.edit,
       analytics: payload.analytics,
       _analytics: payload._analytics,
       imh_pro: payload.imh_pro,
