@@ -25,7 +25,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { getElectronAbsoluteMediaPath, mediaSourceCache } from '../services/mediaSourceCache';
 import { mediaDecodeCache } from '../services/mediaDecodeCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
-import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
+import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata, type RawMetadataHydrationOptions } from '../services/rawMetadataHydration';
 import {
   toImageViewerMaskFileDTO,
   type ImageViewerGenerateRequest,
@@ -1336,17 +1336,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
     cropOverlayStyle;
   const rawMetadataImage = hydratedRawMetadataImage?.id === liveImage.id ? hydratedRawMetadataImage : liveImage;
 
-  const ensureFullRawMetadata = useCallback(async (): Promise<IndexedImage> => {
-    if (hydratedRawMetadataImage?.id === liveImage.id) {
+  const ensureFullRawMetadata = useCallback(async (
+    options: RawMetadataHydrationOptions = {},
+  ): Promise<IndexedImage> => {
+    if (!options.force && hydratedRawMetadataImage?.id === liveImage.id) {
       return hydratedRawMetadataImage;
     }
-    if (!hasCompactedRuntimeMetadata(liveImage)) {
+    if (!options.force && !hasCompactedRuntimeMetadata(liveImage)) {
       return liveImage;
     }
 
     setIsHydratingRawMetadata(true);
     try {
-      const hydrated = await hydrateImageRawMetadata(liveImage, directoryPath);
+      const hydrated = await hydrateImageRawMetadata(liveImage, directoryPath, options);
       setHydratedRawMetadataImage(hydrated);
       return hydrated;
     } finally {
@@ -4481,18 +4483,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </div>
               )}
 
-              <ProvenanceSection
-                image={liveImage}
-                metadata={nMeta}
-                rawMetadata={rawMetadataImage.metadata}
-                displayMode="details-compact"
-              />
             </div>
           ) : (
             <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">
                 No normalized metadata available.
             </div>
           )}
+
+          <ProvenanceSection
+            image={liveImage}
+            metadata={nMeta}
+            rawMetadata={rawMetadataImage.metadata}
+            loadFullRawMetadata={ensureFullRawMetadata}
+            displayMode="details-compact"
+          />
 
           <div className="grid grid-cols-2 gap-2 pt-2">
             <motion.button

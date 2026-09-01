@@ -6,17 +6,21 @@ import { getRelativeImagePath } from '../utils/imagePaths';
 import {
   buildProvenanceViewModel,
   getProvenanceEvidenceLabel,
+  needsProvenanceMetadataHydration,
   serializeProvenanceSummary,
+  type ProvenanceEvidence,
 } from '../services/provenanceSummary';
 
 interface ProvenanceSectionProps {
   image: IndexedImage;
   metadata?: BaseMetadata;
   rawMetadata?: unknown;
+  loadFullRawMetadata?: (options?: { force?: boolean }) => Promise<IndexedImage | null | undefined>;
   displayMode?: 'full' | 'details-compact';
 }
 
 const EMPTY_DERIVED_IDS: string[] = [];
+const MAX_DERIVED_RELATIONSHIPS = 4;
 
 const getElectronFilePath = (image: IndexedImage): string | null => (
   (image.handle as FileSystemFileHandle & { _filePath?: string } | undefined)?._filePath || null
@@ -33,13 +37,19 @@ const formatBytes = (bytes: number | null): string | null => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const EvidenceBadge: React.FC<{ evidence: 'embedded' | 'metahub-operation' | 'inferred' }> = ({ evidence }) => (
+const EvidenceBadge: React.FC<{ evidence: ProvenanceEvidence }> = ({ evidence }) => (
   <span className={
     evidence === 'inferred'
       ? 'rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300'
       : evidence === 'metahub-operation'
         ? 'rounded border border-violet-400/30 bg-violet-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:text-violet-300'
-        : 'rounded border border-blue-400/30 bg-blue-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300'
+        : evidence === 'sidecar'
+          ? 'rounded border border-cyan-400/30 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700 dark:text-cyan-300'
+          : evidence === 'file'
+            ? 'rounded border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300'
+            : evidence === 'metadata'
+              ? 'rounded border border-gray-400/30 bg-gray-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 dark:text-gray-300'
+              : 'rounded border border-blue-400/30 bg-blue-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300'
   }>
     {getProvenanceEvidenceLabel(evidence)}
   </span>
@@ -49,6 +59,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
   image,
   metadata,
   rawMetadata,
+  loadFullRawMetadata,
   displayMode = 'full',
 }) => {
   const isDetailsCompact = displayMode === 'details-compact';
@@ -67,8 +78,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
         ?? null;
     }, [image.id])
   );
-  const images = useImageStore((state) => state.images);
-  const filteredImages = useImageStore((state) => state.filteredImages);
+  const getDerivedImages = useImageStore((state) => state.getDerivedImages);
   const directoryPath = useImageStore(
     React.useCallback(
       (state) => state.directories.find((directory) => directory.id === image.directoryId)?.path || null,
@@ -76,17 +86,24 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
     )
   );
   const derivedImages = React.useMemo(
-    () => derivedIds
-      .map((id) => images.find((candidate) => candidate.id === id)
-        ?? filteredImages.find((candidate) => candidate.id === id))
-      .filter((candidate): candidate is IndexedImage => Boolean(candidate)),
-    [derivedIds, filteredImages, images],
+    () => getDerivedImages(image.id, MAX_DERIVED_RELATIONSHIPS),
+    [derivedIds, getDerivedImages, image.id],
   );
   const [sha256, setSha256] = React.useState<string | null>(null);
   const [hashError, setHashError] = React.useState<string | null>(null);
   const [isHashing, setIsHashing] = React.useState(false);
   const [copyStatus, setCopyStatus] = React.useState<string | null>(null);
+  const [hydratedRawMetadata, setHydratedRawMetadata] = React.useState<unknown>(null);
+  const [isHydratingProvenance, setIsHydratingProvenance] = React.useState(false);
+  const [hydratedProvenanceRevision, setHydratedProvenanceRevision] = React.useState<string | null>(null);
+  const metadataHydrationRequestRef = React.useRef(0);
   const filePath = getElectronFilePath(image);
+  const fileRevision = `${image.id}:${image.lastModified}:${image.contentModifiedMs ?? ''}:${image.fileSize ?? ''}`;
+  const provenanceHydrationRequired = Boolean(
+    loadFullRawMetadata && needsProvenanceMetadataHydration(metadata, rawMetadata)
+  );
+  const isProvenanceCopyBlocked = isHydratingProvenance
+    || (provenanceHydrationRequired && hydratedProvenanceRevision !== fileRevision);
 
   React.useEffect(() => {
     setSha256(null);
@@ -95,14 +112,43 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
     setCopyStatus(null);
   }, [image.id]);
 
+  React.useEffect(() => {
+    const requestId = ++metadataHydrationRequestRef.current;
+    let cancelled = false;
+    setHydratedRawMetadata(null);
+    setIsHydratingProvenance(false);
+    setHydratedProvenanceRevision(null);
+    if (!loadFullRawMetadata || !provenanceHydrationRequired) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setIsHydratingProvenance(true);
+    void loadFullRawMetadata({ force: true }).then((hydratedImage) => {
+      if (cancelled || requestId !== metadataHydrationRequestRef.current) return;
+      setHydratedRawMetadata(hydratedImage?.metadata ?? null);
+    }).catch(() => {
+      // Keep the neutral compact summary if the desktop re-read fails.
+    }).finally(() => {
+      if (cancelled || requestId !== metadataHydrationRequestRef.current) return;
+      setIsHydratingProvenance(false);
+      setHydratedProvenanceRevision(fileRevision);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fileRevision, loadFullRawMetadata, provenanceHydrationRequired]);
+
   const model = React.useMemo(() => buildProvenanceViewModel({
     image,
     metadata,
-    rawMetadata,
+    rawMetadata: hydratedRawMetadata ?? rawMetadata,
     resolvedLineage,
     sourceImage,
     derivedImages,
-  }), [derivedImages, image, metadata, rawMetadata, resolvedLineage, sourceImage]);
+  }), [derivedImages, hydratedRawMetadata, image, metadata, rawMetadata, resolvedLineage, sourceImage]);
 
   const calculateFingerprint = async () => {
     if (!window.electronAPI?.hashFileSha256 || isHashing) return;
@@ -128,6 +174,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
   };
 
   const copySummary = async () => {
+    if (isProvenanceCopyBlocked) return;
     const text = serializeProvenanceSummary(model, sha256);
     try {
       await navigator.clipboard.writeText(text);
@@ -150,11 +197,12 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
         <button
           type="button"
           onClick={() => void copySummary()}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-gray-800 px-2 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          disabled={isProvenanceCopyBlocked}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-gray-800 px-2 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-wait disabled:opacity-60"
           title="Copy provenance summary"
         >
-          <Copy size={13} />
-          {copyStatus || 'Copy summary'}
+          {isProvenanceCopyBlocked ? <LoaderCircle size={13} className="animate-spin" /> : <Copy size={13} />}
+          {isProvenanceCopyBlocked ? 'Loading…' : copyStatus || 'Copy summary'}
         </button>
       </div>
 

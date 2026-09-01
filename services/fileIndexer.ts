@@ -1623,12 +1623,20 @@ async function processSingleFileOptimized(
       const readModel3DMetadata = (window as any).electronAPI?.readModel3DMetadata;
       if (isElectron && absolutePath && readModel3DMetadata) {
         const result = await readModel3DMetadata({ filePath: absolutePath });
-        rawMetadata = result?.success && result.metadata ? result.metadata as ImageMetadata : null;
+        const modelMetadata = result?.success && result.metadata
+          ? result.metadata as ImageMetadata
+          : null;
+        rawMetadata = modelMetadata && (result.source === 'sidecar' || result.source === 'embedded')
+          ? { ...modelMetadata, _provenanceMetadataSource: result.source } as ImageMetadata
+          : modelMetadata;
       } else if (extension !== '.glb') {
         rawMetadata = null;
       } else {
         const file = await fileEntry.handle.getFile();
-        rawMetadata = await readGlbMetadataFromFile(file);
+        const modelMetadata = await readGlbMetadataFromFile(file);
+        rawMetadata = modelMetadata
+          ? { ...modelMetadata, _provenanceMetadataSource: 'embedded' } as ImageMetadata
+          : null;
         fileSizeValue = fileSizeValue ?? file.size;
       }
     } else if (isVideo || isAudio) {
@@ -1708,7 +1716,7 @@ async function processSingleFileOptimized(
     if (!rawMetadata) {
       sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, resolvedAbsolutePath);
       if (sidecarJson) {
-        rawMetadata = sidecarJson;
+        rawMetadata = { ...sidecarJson, _provenanceMetadataSource: 'sidecar' } as ImageMetadata;
       }
     }
     if (profile) {
@@ -1926,7 +1934,7 @@ if (rawMetadata) {
       sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, absolutePath);
     }
     if (sidecarJson) {
-      rawMetadata = sidecarJson;
+      rawMetadata = { ...sidecarJson, _provenanceMetadataSource: 'sidecar' } as ImageMetadata;
       normalizedMetadata = parseEasyDiffusionJson(sidecarJson);
     }
   }
@@ -2307,7 +2315,7 @@ function compactRawMetadataForRuntime(
     compactedRawMetadata.parametersPreview = rawMetadata.parameters.slice(0, RAW_METADATA_PREVIEW_BYTES);
   }
 
-  for (const key of ['_carrierFormat', '_carrierConflicts', 'imagemetahub_extension'] as const) {
+  for (const key of ['_carrierFormat', '_carrierConflicts', '_provenanceMetadataSource', 'imagemetahub_extension'] as const) {
     if (key in rawMetadata) {
       compactedRawMetadata[key] = (rawMetadata as Record<string, unknown>)[key];
     }

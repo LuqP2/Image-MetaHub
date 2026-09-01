@@ -3,6 +3,7 @@ import { parseA1111Metadata } from '../services/parsers/automatic1111Parser';
 import { parseInvokeAIMetadata } from '../services/parsers/invokeAIParser';
 import {
   buildProvenanceViewModel,
+  needsProvenanceMetadataHydration,
   serializeProvenanceSummary,
 } from '../services/provenanceSummary';
 import { type BaseMetadata, type IndexedImage, type InvokeAIMetadata } from '../types';
@@ -46,7 +47,7 @@ describe('Provenance Summary view model', () => {
       expect.objectContaining({ label: 'Generator/application', value: 'ComfyUI', evidence: 'embedded' }),
       expect.objectContaining({ label: 'Positive prompt', value: 'cinematic mountain lake' }),
       expect.objectContaining({ label: 'LoRAs', value: 'detailer (0.8)' }),
-      expect.objectContaining({ label: 'Dimensions', value: '1024x768' }),
+      expect.objectContaining({ label: 'Dimensions', value: '1024x768', evidence: 'file' }),
     ]));
   });
 
@@ -112,6 +113,72 @@ describe('Provenance Summary view model', () => {
     })]);
   });
 
+  it('keeps legacy sidecar evidence neutral until forced hydration records its source', () => {
+    const easyDiffusion = { generator: 'Easy Diffusion', prompt: 'sidecar prompt' } as BaseMetadata;
+    for (const rawMetadata of [{}, { _rawMetadataCompacted: true }]) {
+      expect(needsProvenanceMetadataHydration(easyDiffusion, rawMetadata)).toBe(true);
+      expect(buildProvenanceViewModel({
+        image: createImage('legacy-easy.png', easyDiffusion),
+        rawMetadata,
+      }).generation).toContainEqual(expect.objectContaining({
+        label: 'Positive prompt',
+        evidence: 'metadata',
+      }));
+    }
+
+    expect(needsProvenanceMetadataHydration(easyDiffusion, {
+      _provenanceMetadataSource: 'sidecar',
+    })).toBe(false);
+    expect(buildProvenanceViewModel({
+      image: createImage('hydrated-easy.png', easyDiffusion),
+      rawMetadata: { _provenanceMetadataSource: 'sidecar' },
+    }).generation).toContainEqual(expect.objectContaining({
+      label: 'Positive prompt',
+      evidence: 'sidecar',
+    }));
+
+    const model3d = { media_type: 'model3d', model: 'trellis' } as BaseMetadata;
+    expect(needsProvenanceMetadataHydration(model3d, {})).toBe(true);
+    expect(needsProvenanceMetadataHydration(model3d, {
+      _provenanceMetadataSource: 'embedded',
+    })).toBe(false);
+  });
+
+  it('hydrates incomplete compacted Image MetaHub operations', () => {
+    const metadata = { generator: 'Image MetaHub' } as BaseMetadata;
+    expect(needsProvenanceMetadataHydration(metadata, {
+      _rawMetadataCompacted: true,
+      imagemetahub_data: { generator: 'Image MetaHub', analytics: {} },
+    })).toBe(true);
+    expect(needsProvenanceMetadataHydration(metadata, {
+      _rawMetadataCompacted: true,
+      imagemetahub_data: { generator: 'Image MetaHub', edit: { tool: 'image-editor-v2' } },
+    })).toBe(false);
+    expect(needsProvenanceMetadataHydration(undefined, {
+      _rawMetadataCompacted: true,
+      _rawMetadataKeys: ['imagemetahub_data'],
+    })).toBe(true);
+  });
+
+  it('uses the child metadata source for explicit derived relationships', () => {
+    const source = createImage('source.glb');
+    const derived = createImage('derived.glb', {
+      media_type: 'model3d',
+      lineage: { detection: 'explicit', sourceImage: { fileName: source.name } },
+    });
+    derived.metadata = {
+      ...derived.metadata,
+      _provenanceMetadataSource: 'sidecar',
+    } as IndexedImage['metadata'];
+
+    expect(buildProvenanceViewModel({ image: source, derivedImages: [derived] }).relationships)
+      .toContainEqual(expect.objectContaining({
+        label: 'Derived image',
+        evidence: 'sidecar',
+        detail: 'Linked from sidecar lineage metadata.',
+      }));
+  });
+
   it('includes Image MetaHub edit information only when stored in metadata', () => {
     const image = createImage('edited.png');
     const model = buildProvenanceViewModel({
@@ -137,6 +204,26 @@ describe('Provenance Summary view model', () => {
       editedAt: '2026-08-30T12:00:00.000Z',
       recipeSummary: 'crop',
     });
+  });
+
+  it('does not report neutral adjustment defaults as an applied edit', () => {
+    const model = buildProvenanceViewModel({
+      image: createImage('crop-only.png'),
+      rawMetadata: {
+        imagemetahub_data: {
+          generator: 'Image MetaHub',
+          edit: {
+            tool: 'image-editor-v2',
+            recipe: {
+              adjustments: { brightness: 100, contrast: 100, saturation: 100, hue: 0 },
+              crop: { enabled: true },
+            },
+          },
+        },
+      },
+    });
+
+    expect(model.operation?.recipeSummary).toBe('crop');
   });
 
   it('serializes a concise copyable summary without calculating a fingerprint', () => {

@@ -1,7 +1,8 @@
-import { type BaseMetadata, type IndexedImage, type LoRAInfo } from '../types';
+import { type BaseMetadata, type ImageAdjustments, type IndexedImage, type LoRAInfo } from '../types';
+import { hasImageAdjustments } from './imageEditingService';
 import { type ResolvedLineageEntry } from './lineageRegistry';
 
-export type ProvenanceEvidence = 'embedded' | 'metahub-operation' | 'inferred';
+export type ProvenanceEvidence = 'embedded' | 'sidecar' | 'file' | 'metadata' | 'metahub-operation' | 'inferred';
 
 export interface ProvenanceField {
   label: string;
@@ -94,7 +95,7 @@ const readMetaHubOperation = (rawMetadata: unknown): ProvenanceOperation | null 
   const recipe = asRecord(edit?.recipe);
   const recipeParts: string[] = [];
   const adjustments = asRecord(recipe?.adjustments);
-  if (adjustments && Object.values(adjustments).some((value) => typeof value === 'number' && value !== 0)) {
+  if (adjustments && hasImageAdjustments(adjustments as Partial<ImageAdjustments>)) {
     recipeParts.push('adjustments');
   }
   const transform = asRecord(recipe?.transform);
@@ -119,10 +120,59 @@ const readMetaHubOperation = (rawMetadata: unknown): ProvenanceOperation | null 
   };
 };
 
+const readMetadataSource = (rawMetadata: unknown): 'embedded' | 'sidecar' | null => {
+  const raw = asRecord(rawMetadata);
+  return raw?._provenanceMetadataSource === 'embedded' || raw?._provenanceMetadataSource === 'sidecar'
+    ? raw._provenanceMetadataSource
+    : null;
+};
+
+const hasLegacyUnknownSource = (
+  metadata: BaseMetadata | undefined,
+  rawMetadata: unknown,
+): boolean => !readMetadataSource(rawMetadata) && (
+  metadata?.generator === 'Easy Diffusion' || metadata?.media_type === 'model3d'
+);
+
+const explicitRelationshipEvidence = (
+  metadata: BaseMetadata | undefined,
+  rawMetadata: unknown,
+): ProvenanceEvidence => readMetadataSource(rawMetadata)
+  || (hasLegacyUnknownSource(metadata, rawMetadata) ? 'metadata' : 'embedded');
+
+export const needsProvenanceMetadataHydration = (
+  metadata: BaseMetadata | undefined,
+  rawMetadata: unknown,
+): boolean => {
+  const raw = asRecord(rawMetadata);
+  if (hasLegacyUnknownSource(metadata, rawMetadata)) return true;
+  if (raw?._rawMetadataCompacted !== true) return false;
+
+  const payload = asRecord(raw.imagemetahub_data) || asRecord(raw.imagemetahub_extension);
+  if (!payload) {
+    const rawKeys = Array.isArray(raw._rawMetadataKeys)
+      ? raw._rawMetadataKeys.filter((key): key is string => typeof key === 'string')
+      : [];
+    return metadata?.generator === 'Image MetaHub'
+      || (!metadata?.generator && (
+        rawKeys.includes('imagemetahub_data')
+        || rawKeys.includes('imagemetahub_extension')
+      ));
+  }
+  if (nonBlank(payload.generator) !== 'Image MetaHub') return false;
+
+  return !asRecord(payload.edit)
+    && !nonBlank(payload.edited_at)
+    && !nonBlank(payload.source_generator);
+};
+
 export const getProvenanceEvidenceLabel = (evidence: ProvenanceEvidence): string => {
   switch (evidence) {
     case 'metahub-operation': return 'Image MetaHub operation';
     case 'inferred': return 'Inferred';
+    case 'sidecar': return 'Sidecar metadata';
+    case 'file': return 'File properties';
+    case 'metadata': return 'Metadata source not recorded';
     case 'embedded':
     default: return 'Embedded metadata';
   }
@@ -137,9 +187,12 @@ export const buildProvenanceViewModel = ({
   derivedImages = [],
 }: ProvenanceViewModelInput): ProvenanceViewModel => {
   const generation: ProvenanceField[] = [];
+  const source = readMetadataSource(rawMetadata);
+  const generationEvidence: ProvenanceEvidence = source
+    || (hasLegacyUnknownSource(metadata, rawMetadata) ? 'metadata' : 'embedded');
   const add = (label: string, value: string | number | null | undefined) => {
     if (value === null || value === undefined || value === '') return;
-    generation.push({ label, value: String(value), evidence: 'embedded' });
+    generation.push({ label, value: String(value), evidence: generationEvidence });
   };
 
   if (metadata) {
@@ -157,7 +210,11 @@ export const buildProvenanceViewModel = ({
     const cfg = metadata.cfg_scale ?? metadata.cfgScale;
     if (Number.isFinite(cfg)) add('CFG', cfg);
     if (Number.isFinite(metadata.width) && metadata.width > 0 && Number.isFinite(metadata.height) && metadata.height > 0) {
-      add('Dimensions', `${metadata.width}x${metadata.height}`);
+      generation.push({
+        label: 'Dimensions',
+        value: `${metadata.width}x${metadata.height}`,
+        evidence: 'file',
+      });
     }
     if (Array.isArray(metadata.loras) && metadata.loras.length > 0) {
       add('LoRAs', metadata.loras.map(formatLoRA).join(', '));
@@ -175,17 +232,30 @@ export const buildProvenanceViewModel = ({
         detail: sourceImage
           ? `Matched in this library (${resolvedLineage.sourceStatus}).`
           : `Registry status: ${resolvedLineage.sourceStatus}.`,
-        evidence: isExplicit ? 'embedded' : 'inferred',
+        evidence: isExplicit
+          ? explicitRelationshipEvidence(metadata, rawMetadata)
+          : 'inferred',
       });
     }
   }
 
   for (const derivedImage of derivedImages) {
+    const derivedMetadata = derivedImage.metadata?.normalizedMetadata as BaseMetadata | undefined;
+    const isExplicit = derivedMetadata?.lineage?.detection === 'explicit';
+    const evidence = isExplicit
+      ? explicitRelationshipEvidence(derivedMetadata, derivedImage.metadata)
+      : 'inferred';
     relationships.push({
       label: 'Derived image',
       value: derivedImage.name,
-      detail: 'Matched by the Image MetaHub lineage registry.',
-      evidence: 'inferred',
+      detail: isExplicit
+        ? evidence === 'sidecar'
+          ? 'Linked from sidecar lineage metadata.'
+          : evidence === 'metadata'
+            ? 'Linked from lineage metadata whose source was not recorded.'
+            : 'Linked from embedded lineage metadata.'
+        : 'Matched by the Image MetaHub lineage registry.',
+      evidence,
     });
   }
 

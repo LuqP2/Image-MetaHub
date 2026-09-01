@@ -33,7 +33,7 @@ import { copyEditableMetadata, readEditableMetadataClipboard } from '../services
 import { buildEffectiveMetadata, getEditableMetadataFields } from '../utils/editableMetadata';
 import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorModal';
 import BatchExportModal from './BatchExportModal';
-import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
+import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata, type RawMetadataHydrationOptions } from '../services/rawMetadataHydration';
 import { useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
 
 const formatLoRA = (lora: string | LoRAInfo): string => {
@@ -307,20 +307,22 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const nMeta: BaseMetadata | undefined = activeImage?.metadata?.normalizedMetadata;
   const effectiveMetadata = activeImage ? buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal) : undefined;
   const rawMetadataImage = hydratedRawMetadataImage?.id === activeImage?.id ? hydratedRawMetadataImage : activeImage;
-  const ensureFullRawMetadata = useCallback(async (): Promise<IndexedImage | null> => {
+  const ensureFullRawMetadata = useCallback(async (
+    options: RawMetadataHydrationOptions = {},
+  ): Promise<IndexedImage | null> => {
     if (!activeImage) {
       return null;
     }
-    if (hydratedRawMetadataImage?.id === activeImage.id) {
+    if (!options.force && hydratedRawMetadataImage?.id === activeImage.id) {
       return hydratedRawMetadataImage;
     }
-    if (!hasCompactedRuntimeMetadata(activeImage)) {
+    if (!options.force && !hasCompactedRuntimeMetadata(activeImage)) {
       return activeImage;
     }
 
     setIsHydratingRawMetadata(true);
     try {
-      const hydrated = await hydrateImageRawMetadata(activeImage, activeImageDirectoryPath);
+      const hydrated = await hydrateImageRawMetadata(activeImage, activeImageDirectoryPath, options);
       setHydratedRawMetadataImage(hydrated);
       return hydrated;
     } finally {
@@ -942,13 +944,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               </div>
             )}
 
-            <ProvenanceSection
-              image={activeImage}
-              metadata={nMeta}
-              rawMetadata={activeImage.metadata}
-              displayMode="details-compact"
-            />
-
             {/* A1111 Actions - Separate Buttons with Visual Hierarchy */}
             {showA1111Actions && (
               <div className="mt-4 space-y-2">
@@ -1194,6 +1189,14 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               No normalized metadata available.
           </div>
         )}
+
+        <ProvenanceSection
+          image={activeImage}
+          metadata={nMeta}
+          rawMetadata={rawMetadataImage?.metadata ?? activeImage.metadata}
+          loadFullRawMetadata={ensureFullRawMetadata}
+          displayMode="details-compact"
+        />
       </div>
 
       <MetadataEditorModal

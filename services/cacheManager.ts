@@ -190,6 +190,10 @@ function compactCacheMetadataEntry(rawEntry: CacheImageMetadata): CacheImageMeta
     _rawMetadataKeys: Object.keys(metadata).filter(key => key !== 'normalizedMetadata'),
   };
 
+  if (metadata._provenanceMetadataSource === 'sidecar' || metadata._provenanceMetadataSource === 'embedded') {
+    compactedMetadata._provenanceMetadataSource = metadata._provenanceMetadataSource;
+  }
+
   if (typeof metadata.parameters === 'string') {
     compactedMetadata.parametersPreview = metadata.parameters.slice(0, RAW_METADATA_PREVIEW_BYTES);
   }
