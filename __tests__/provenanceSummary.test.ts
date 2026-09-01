@@ -226,12 +226,48 @@ describe('Provenance Summary view model', () => {
     });
 
     expect(model.operation).toEqual({
+      kind: 'edit',
       tool: 'image-editor-v2',
       sourceGenerator: 'ComfyUI',
       sourceImageId: 'library::source.png',
       editedAt: '2026-08-30T12:00:00.000Z',
       recipeSummary: 'crop',
     });
+  });
+
+  it('represents a recorded MetaHub standard export as an export operation', () => {
+    const model = buildProvenanceViewModel({
+      image: createImage('exported.png'),
+      rawMetadata: {
+        imagemetahub_data: {
+          generator: 'Image MetaHub',
+          source_generator: 'ComfyUI',
+          exported_at: '2026-09-01T18:00:00.000Z',
+        },
+      },
+    });
+
+    expect(model.operation).toEqual({
+      kind: 'export',
+      sourceGenerator: 'ComfyUI',
+      exportedAt: '2026-09-01T18:00:00.000Z',
+      tool: undefined,
+      sourceImageId: undefined,
+      editedAt: undefined,
+      recipeSummary: undefined,
+    });
+    expect(serializeProvenanceSummary(model)).toContain(
+      'Image MetaHub export:\n- Original generator: ComfyUI [Image MetaHub operation]\n- Exported at: 2026-09-01T18:00:00.000Z',
+    );
+  });
+
+  it('does not create an empty operation from the generator name alone', () => {
+    const model = buildProvenanceViewModel({
+      image: createImage('plain-metahub.png'),
+      rawMetadata: { imagemetahub_data: { generator: 'Image MetaHub' } },
+    });
+
+    expect(model.operation).toBeNull();
   });
 
   it('does not report neutral adjustment defaults as an applied edit', () => {

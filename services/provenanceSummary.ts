@@ -18,10 +18,12 @@ export interface ProvenanceRelationship {
 }
 
 export interface ProvenanceOperation {
+  kind: 'edit' | 'export';
   tool?: string;
   sourceGenerator?: string;
   sourceImageId?: string;
   editedAt?: string;
+  exportedAt?: string;
   recipeSummary?: string;
 }
 
@@ -84,13 +86,13 @@ const readMetaHubOperation = (rawMetadata: unknown): ProvenanceOperation | null 
   if (!payload) return null;
 
   const edit = asRecord(payload.edit);
-  const generator = nonBlank(payload.generator);
   const tool = nonBlank(edit?.tool);
   const sourceGenerator = nonBlank(payload.source_generator);
   const sourceImageId = nonBlank(edit?.source_image_id);
   const editedAt = nonBlank(payload.edited_at);
+  const exportedAt = nonBlank(payload.exported_at);
 
-  if (generator !== 'Image MetaHub' && !edit && !editedAt) return null;
+  if (!edit && !editedAt && !exportedAt) return null;
 
   const recipe = asRecord(edit?.recipe);
   const recipeParts: string[] = [];
@@ -112,10 +114,12 @@ const readMetaHubOperation = (rawMetadata: unknown): ProvenanceOperation | null 
   }
 
   return {
+    kind: exportedAt && !edit && !editedAt ? 'export' : 'edit',
     tool: tool || undefined,
     sourceGenerator: sourceGenerator || undefined,
     sourceImageId: sourceImageId || undefined,
     editedAt: editedAt || undefined,
+    exportedAt: exportedAt || undefined,
     recipeSummary: recipe ? (recipeParts.length > 0 ? recipeParts.join(', ') : 'recorded') : undefined,
   };
 };
@@ -182,7 +186,7 @@ export const needsProvenanceMetadataHydration = (
 
   return !asRecord(payload.edit)
     && !nonBlank(payload.edited_at)
-    && !nonBlank(payload.source_generator);
+    && !nonBlank(payload.exported_at);
 };
 
 export const getProvenanceEvidenceLabel = (evidence: ProvenanceEvidence): string => {
@@ -322,11 +326,12 @@ export const serializeProvenanceSummary = (
   }
 
   if (model.operation) {
-    lines.push('', 'Image MetaHub operation:');
+    lines.push('', model.operation.kind === 'export' ? 'Image MetaHub export:' : 'Image MetaHub edit:');
     if (model.operation.tool) lines.push(`- Tool: ${model.operation.tool} [${getProvenanceEvidenceLabel('metahub-operation')}]`);
     if (model.operation.sourceGenerator) lines.push(`- Original generator: ${model.operation.sourceGenerator} [${getProvenanceEvidenceLabel('metahub-operation')}]`);
     if (model.operation.sourceImageId) lines.push(`- Editor source item: ${model.operation.sourceImageId} [${getProvenanceEvidenceLabel('metahub-operation')}]`);
     if (model.operation.editedAt) lines.push(`- Edited at: ${model.operation.editedAt} [${getProvenanceEvidenceLabel('metahub-operation')}]`);
+    if (model.operation.exportedAt) lines.push(`- Exported at: ${model.operation.exportedAt} [${getProvenanceEvidenceLabel('metahub-operation')}]`);
     if (model.operation.recipeSummary) lines.push(`- Edit recipe: ${model.operation.recipeSummary} [${getProvenanceEvidenceLabel('metahub-operation')}]`);
   }
 

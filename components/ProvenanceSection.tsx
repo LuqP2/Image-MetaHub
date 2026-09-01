@@ -322,7 +322,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
       {model.operation && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-            <span>Image MetaHub operation</span>
+            <span>{model.operation.kind === 'export' ? 'Image MetaHub export' : 'Image MetaHub edit'}</span>
             <EvidenceBadge evidence="metahub-operation" />
           </div>
           <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
@@ -330,6 +330,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
             {model.operation.sourceGenerator && <div><span className="font-medium text-gray-800 dark:text-gray-100">Original generator:</span> {model.operation.sourceGenerator}</div>}
             {model.operation.sourceImageId && <div className="break-all"><span className="font-medium text-gray-800 dark:text-gray-100">Editor source item:</span> {model.operation.sourceImageId}</div>}
             {model.operation.editedAt && <div><span className="font-medium text-gray-800 dark:text-gray-100">Edited at:</span> {model.operation.editedAt}</div>}
+            {model.operation.exportedAt && <div><span className="font-medium text-gray-800 dark:text-gray-100">Exported at:</span> {model.operation.exportedAt}</div>}
             {model.operation.recipeSummary && <div><span className="font-medium text-gray-800 dark:text-gray-100">Edit recipe:</span> {model.operation.recipeSummary}</div>}
           </div>
         </div>

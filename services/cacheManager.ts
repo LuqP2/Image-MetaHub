@@ -204,6 +204,7 @@ function compactCacheMetadataEntry(rawEntry: CacheImageMetadata): CacheImageMeta
       generator: payload.generator,
       source_generator: payload.source_generator,
       edited_at: payload.edited_at,
+      exported_at: payload.exported_at,
       edit: payload.edit,
       analytics: payload.analytics,
       _analytics: payload._analytics,
