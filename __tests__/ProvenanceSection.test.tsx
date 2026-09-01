@@ -1,6 +1,6 @@
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProvenanceSection from '../components/ProvenanceSection';
 import { useImageStore } from '../store/useImageStore';
 import type { BaseMetadata, IndexedImage } from '../types';
@@ -20,8 +20,82 @@ const createImage = (id: string, metadata: IndexedImage['metadata'] = {}): Index
 });
 
 describe('ProvenanceSection evidence hydration', () => {
+  const originalElectronApi = window.electronAPI;
+
   beforeEach(() => {
     useImageStore.getState().resetState();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: originalElectronApi,
+    });
+  });
+
+  it('cancels a pending fingerprint when navigation supersedes it', async () => {
+    let resolveHash: ((result: { success: boolean; sha256: string }) => void) | undefined;
+    const hashFileSha256 = vi.fn(() => new Promise<{ success: boolean; sha256: string }>((resolve) => {
+      resolveHash = resolve;
+    }));
+    const cancelFileSha256 = vi.fn();
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: { hashFileSha256, cancelFileSha256 },
+    });
+    const first = createImage('first');
+    const second = createImage('second');
+    const { rerender } = render(<ProvenanceSection image={first} displayMode="details-compact" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Calculate' }));
+    await waitFor(() => expect(hashFileSha256).toHaveBeenCalledTimes(1));
+    const requestId = hashFileSha256.mock.calls[0][1];
+
+    rerender(<ProvenanceSection image={second} displayMode="details-compact" />);
+    await waitFor(() => expect(cancelFileSha256).toHaveBeenCalledWith(requestId));
+    await act(async () => resolveHash?.({ success: true, sha256: 'stale-digest' }));
+
+    expect(screen.queryByText('stale-digest')).toBeNull();
+    expect(screen.getByText('Not calculated')).toBeTruthy();
+  });
+
+  it('cancels a pending fingerprint when the provenance view unmounts', async () => {
+    const hashFileSha256 = vi.fn(() => new Promise<{ success: boolean }>(() => {}));
+    const cancelFileSha256 = vi.fn();
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: { hashFileSha256, cancelFileSha256 },
+    });
+    const { unmount } = render(<ProvenanceSection image={createImage('closing')} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Calculate' }));
+    await waitFor(() => expect(hashFileSha256).toHaveBeenCalledTimes(1));
+    const requestId = hashFileSha256.mock.calls[0][1];
+    unmount();
+
+    expect(cancelFileSha256).toHaveBeenCalledWith(requestId);
+  });
+
+  it('invalidates a completed fingerprint when the file revision changes', async () => {
+    const hashFileSha256 = vi.fn().mockResolvedValue({ success: true, sha256: 'first-digest' });
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: { hashFileSha256, cancelFileSha256: vi.fn() },
+    });
+    const firstRevision = createImage('same-file');
+    const { rerender } = render(<ProvenanceSection image={firstRevision} displayMode="details-compact" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Calculate' }));
+    expect(await screen.findByText('first-digest')).toBeTruthy();
+
+    rerender(<ProvenanceSection
+      image={{ ...firstRevision, lastModified: 2, contentModifiedMs: 2, fileSize: 101 }}
+      displayMode="details-compact"
+    />);
+
+    expect(screen.queryByText('first-digest')).toBeNull();
+    expect(screen.getByText('Not calculated')).toBeTruthy();
   });
 
   it('forces legacy source hydration and blocks copying until it finishes', async () => {

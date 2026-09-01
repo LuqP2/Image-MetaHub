@@ -458,7 +458,8 @@ export interface ElectronAPI {
     error?: string;
   }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
-  hashFileSha256: (filePath: string) => Promise<{ success: boolean; sha256?: string; error?: string; errorType?: string; errorCode?: string }>;
+  hashFileSha256: (filePath: string, requestId: string) => Promise<{ success: boolean; sha256?: string; error?: string; errorType?: string; errorCode?: string }>;
+  cancelFileSha256: (requestId: string) => void;
   readFilesBatch: (args: string[] | ElectronReadFilesBatchArgs) => Promise<{ success: boolean; files?: ElectronReadFilesBatchItem[]; error?: string }>;
   readMediaMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   readModel3DMetadata: (args: { filePath: string }) => Promise<{ success: boolean; metadata?: Record<string, unknown> | null; source?: 'sidecar' | 'embedded' | 'none'; error?: string }>;

@@ -3309,6 +3309,12 @@ async function getFilesRecursively(directory, baseDirectory) {
 
 function setupFileOperationHandlers() {
   const approvedWriteRoots = new Set();
+  const activeFingerprintRequests = new Map();
+  const fingerprintRequestKey = (senderId, requestId) => `${senderId}:${requestId}`;
+  const cancelFingerprintRequest = (senderId, requestId) => {
+    if (typeof requestId !== 'string' || !requestId) return;
+    activeFingerprintRequests.get(fingerprintRequestKey(senderId, requestId))?.abort();
+  };
   const registerApprovedWriteRoot = (targetPath) => {
     if (!targetPath) return;
     const normalizedTarget = normalizeAllowedPath(targetPath);
@@ -6201,26 +6207,51 @@ function setupFileOperationHandlers() {
 
   // Provenance fingerprints are deliberately on-demand. The main process streams
   // the selected file so large media files never cross into renderer memory.
-  ipcMain.handle('hash-file-sha256', async (_event, filePath) => {
+  ipcMain.on('cancel-hash-file-sha256', (event, requestId) => {
+    cancelFingerprintRequest(event.sender.id, requestId);
+  });
+
+  ipcMain.handle('hash-file-sha256', async (event, args) => {
+    const filePath = args?.filePath;
+    const requestId = args?.requestId;
+    let controller;
+    let requestKey;
+    let abortOnDestroyed;
     try {
-      if (!filePath) {
-        return { success: false, error: 'No file path provided' };
+      if (!filePath || typeof requestId !== 'string' || !requestId) {
+        return { success: false, error: 'Invalid fingerprint request' };
       }
 
       if (!isPathAllowed(filePath)) {
         return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
       }
 
-      const sha256 = await hashFileSha256(filePath);
+      requestKey = fingerprintRequestKey(event.sender.id, requestId);
+      activeFingerprintRequests.get(requestKey)?.abort();
+      controller = new AbortController();
+      activeFingerprintRequests.set(requestKey, controller);
+      abortOnDestroyed = () => controller.abort();
+      event.sender.once('destroyed', abortOnDestroyed);
+
+      const sha256 = await hashFileSha256(filePath, { signal: controller.signal });
       return { success: true, sha256 };
     } catch (error) {
       const errorCode = error?.code;
-      const errorType = errorCode === 'ENOENT'
+      const errorType = error?.name === 'AbortError' || errorCode === 'ABORT_ERR'
+        ? 'CANCELLED'
+        : errorCode === 'ENOENT'
         ? 'FILE_NOT_FOUND'
         : (errorCode === 'EACCES' || errorCode === 'EPERM')
           ? 'PERMISSION_DENIED'
           : 'READ_ERROR';
       return { success: false, error: error?.message || 'Failed to calculate SHA-256.', errorType, errorCode };
+    } finally {
+      if (abortOnDestroyed && !event.sender.isDestroyed()) {
+        event.sender.removeListener('destroyed', abortOnDestroyed);
+      }
+      if (requestKey && activeFingerprintRequests.get(requestKey) === controller) {
+        activeFingerprintRequests.delete(requestKey);
+      }
     }
   });
 

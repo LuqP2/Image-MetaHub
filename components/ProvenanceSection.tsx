@@ -21,6 +21,11 @@ interface ProvenanceSectionProps {
 
 const EMPTY_DERIVED_IDS: string[] = [];
 const MAX_DERIVED_RELATIONSHIPS = 4;
+let fingerprintRequestSequence = 0;
+
+const createFingerprintRequestId = (): string => (
+  `provenance-${Date.now()}-${++fingerprintRequestSequence}`
+);
 
 const getElectronFilePath = (image: IndexedImage): string | null => (
   (image.handle as FileSystemFileHandle & { _filePath?: string } | undefined)?._filePath || null
@@ -97,20 +102,37 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
   const [isHydratingProvenance, setIsHydratingProvenance] = React.useState(false);
   const [hydratedProvenanceRevision, setHydratedProvenanceRevision] = React.useState<string | null>(null);
   const metadataHydrationRequestRef = React.useRef(0);
+  const hashRequestRef = React.useRef(0);
+  const activeFingerprintRequestIdRef = React.useRef<string | null>(null);
   const filePath = getElectronFilePath(image);
   const fileRevision = `${image.id}:${image.lastModified}:${image.contentModifiedMs ?? ''}:${image.fileSize ?? ''}`;
+  const currentFileRevisionRef = React.useRef(fileRevision);
   const provenanceHydrationRequired = Boolean(
     loadFullRawMetadata && needsProvenanceMetadataHydration(metadata, rawMetadata)
   );
   const isProvenanceCopyBlocked = isHydratingProvenance
     || (provenanceHydrationRequired && hydratedProvenanceRevision !== fileRevision);
+  currentFileRevisionRef.current = fileRevision;
+
+  const cancelActiveFingerprint = React.useCallback(() => {
+    const activeRequestId = activeFingerprintRequestIdRef.current;
+    if (!activeRequestId) return;
+    activeFingerprintRequestIdRef.current = null;
+    window.electronAPI?.cancelFileSha256?.(activeRequestId);
+  }, []);
 
   React.useEffect(() => {
+    hashRequestRef.current += 1;
+    cancelActiveFingerprint();
     setSha256(null);
     setHashError(null);
     setIsHashing(false);
     setCopyStatus(null);
-  }, [image.id]);
+    return () => {
+      hashRequestRef.current += 1;
+      cancelActiveFingerprint();
+    };
+  }, [cancelActiveFingerprint, fileRevision]);
 
   React.useEffect(() => {
     const requestId = ++metadataHydrationRequestRef.current;
@@ -152,25 +174,48 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
 
   const calculateFingerprint = async () => {
     if (!window.electronAPI?.hashFileSha256 || isHashing) return;
+    const resultRequestToken = ++hashRequestRef.current;
+    const isCurrentRequest = () => (
+      resultRequestToken === hashRequestRef.current
+      && currentFileRevisionRef.current === fileRevision
+    );
     setIsHashing(true);
     setHashError(null);
-    let targetPath = filePath;
-    if (!targetPath && directoryPath && window.electronAPI.joinPaths) {
-      const joined = await window.electronAPI.joinPaths(directoryPath, getRelativeImagePath(image));
-      targetPath = joined.success && joined.path ? joined.path : null;
-    }
-    if (!targetPath) {
+    let ipcRequestId: string | null = null;
+    try {
+      let targetPath = filePath;
+      if (!targetPath && directoryPath && window.electronAPI.joinPaths) {
+        const joined = await window.electronAPI.joinPaths(directoryPath, getRelativeImagePath(image));
+        targetPath = joined.success && joined.path ? joined.path : null;
+      }
+      if (!isCurrentRequest()) return;
+      if (!targetPath) {
+        setIsHashing(false);
+        setHashError('The file path is unavailable. Reopen the library and try again.');
+        return;
+      }
+
+      ipcRequestId = createFingerprintRequestId();
+      activeFingerprintRequestIdRef.current = ipcRequestId;
+      const result = await window.electronAPI.hashFileSha256(targetPath, ipcRequestId);
+      if (!isCurrentRequest()) return;
       setIsHashing(false);
-      setHashError('The file path is unavailable. Reopen the library and try again.');
-      return;
+      if (result.success && result.sha256) {
+        setSha256(result.sha256);
+        return;
+      }
+      if (result.errorType !== 'CANCELLED') {
+        setHashError(result.error || 'Could not calculate the file fingerprint.');
+      }
+    } catch {
+      if (!isCurrentRequest()) return;
+      setIsHashing(false);
+      setHashError('Could not calculate the file fingerprint.');
+    } finally {
+      if (ipcRequestId && activeFingerprintRequestIdRef.current === ipcRequestId) {
+        activeFingerprintRequestIdRef.current = null;
+      }
     }
-    const result = await window.electronAPI.hashFileSha256(targetPath);
-    setIsHashing(false);
-    if (result.success && result.sha256) {
-      setSha256(result.sha256);
-      return;
-    }
-    setHashError(result.error || 'Could not calculate the file fingerprint.');
   };
 
   const copySummary = async () => {

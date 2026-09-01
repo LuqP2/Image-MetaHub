@@ -19,4 +19,14 @@ describe('on-demand SHA-256 fingerprinting', () => {
     const directoryPath = path.dirname(fixturePath);
     await expect(hashFileSha256(directoryPath)).rejects.toMatchObject({ code: 'EISDIR' });
   });
+
+  it('aborts a fingerprint stream when its signal is cancelled', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(hashFileSha256(fixturePath, { signal: controller.signal })).rejects.toMatchObject({
+      name: 'AbortError',
+      code: 'ABORT_ERR',
+    });
+  });
 });
