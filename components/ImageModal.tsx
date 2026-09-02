@@ -2715,10 +2715,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
     slideshowTimeoutRef.current = null;
   }, []);
 
+  const showImagePreviewWhileLoading = !isPlayableMedia && imageViewerDefaultZoom !== 'actual';
+
   useEffect(() => {
     let isMounted = true;
     const hasPreview = !isPlayableMedia && Boolean(preferredThumbnailUrl);
-    const showPreviewWhileLoading = imageViewerDefaultZoom !== 'actual' && hasPreview;
+    const showPreviewWhileLoading = showImagePreviewWhileLoading && hasPreview;
     const sourceLoadStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     if (warmFullImageUrl) {
@@ -2790,7 +2792,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     // warmFullImageUrl is read from the closure on purpose. It is computed in the same render as
     // the image id change, so the run that matters already sees the right value; adding it here
     // would re-run the whole load when a later prefetch flips warmth for the image on screen.
-  }, [diagnosticsFlowId, liveImage.id, liveImage.handle, liveImage.thumbnailHandle, liveImage.name, liveImage.lastModified, directoryPath, preferredThumbnailUrl, imageViewerDefaultZoom, isPlayableMedia, isVideo]);
+  }, [diagnosticsFlowId, liveImage.id, liveImage.handle, liveImage.thumbnailHandle, liveImage.name, liveImage.lastModified, directoryPath, preferredThumbnailUrl, showImagePreviewWhileLoading, isPlayableMedia, isVideo]);
 
   // Decoded bitmaps are worth tens of megabytes, so they only stay alive while a modal is open.
   useEffect(() => {
