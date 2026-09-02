@@ -1990,7 +1990,12 @@ export default function App() {
     }
 
     if (modal.navigationSource === 'comfyui') {
-      return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
+      const workspaceImageIds = comfyUIWorkspaceNavigationImageIds ?? modal.navigationImageIds;
+      return sortImagesNewestFirst(
+        workspaceImageIds
+          .map((imageId) => getImageByIdFromStore(imageId))
+          .filter((candidate): candidate is IndexedImage => Boolean(candidate))
+      ).map((image) => image.id);
     }
 
     if (modal.navigationSource === 'find-similar') {
@@ -1998,7 +2003,7 @@ export default function App() {
     }
 
     return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
-  }, [activeScopeNavigationImageIds, filteredNavigationImageIds, getImageByIdFromStore, imageLookup]);
+  }, [activeScopeNavigationImageIds, comfyUIWorkspaceNavigationImageIds, filteredNavigationImageIds, getImageByIdFromStore, imageLookup]);
 
   const resolveModalNavigationIndex = useCallback((
     modal: OpenImageModalState,
@@ -3091,13 +3096,48 @@ export default function App() {
   }, []);
   const handleComfyUIWorkspaceViewFullMetadata = useCallback((image: IndexedImage) => {
     setComfyUIWorkspaceImageId(image.id);
+    const navigationImageIds = comfyUIWorkspaceNavigationImages.length > 0
+      ? comfyUIWorkspaceNavigationImages.map((candidate) => candidate.id)
+      : [image.id];
     const existing = openImageModals.find((modal) => modal.imageId === image.id);
     if (existing) {
+      setOpenImageModals((current) =>
+        current.map((modal) =>
+          modal.modalId === existing.modalId
+            ? { ...modal, navigationImageIds, navigationSource: 'comfyui' }
+            : modal
+        )
+      );
       handleActivateImageModal(existing.modalId);
       return;
     }
+
+    const modalId = `image-modal-${Date.now()}-${image.id}`;
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const host = resolveViewerHost();
+      return [
+        ...current,
+        {
+          sessionId: modalId,
+          modalId,
+          imageId: image.id,
+          navigationImageIds,
+          navigationSource: 'comfyui',
+          host,
+          nativeStatus: host === 'detached' ? 'pending' : undefined,
+          zIndex: highestZIndex + 1,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(image.id, 'comfyui-workspace'),
+        },
+      ];
+    });
+
+    setActiveImageModalId(modalId);
+    suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
-  }, [handleActivateImageModal, openImageModals, setSelectedImage]);
+  }, [beginModalOpenFlow, comfyUIWorkspaceNavigationImages, handleActivateImageModal, openImageModals, resolveViewerHost, setSelectedImage]);
   const handleComfyUIWorkspaceNavigate = useCallback((direction: 'next' | 'previous') => {
     if (comfyUIWorkspaceCurrentIndex === -1) {
       return;
