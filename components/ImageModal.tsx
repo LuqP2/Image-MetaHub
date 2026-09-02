@@ -2717,7 +2717,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     let isMounted = true;
-    const hasPreview = imageViewerDefaultZoom !== 'actual' && Boolean(preferredThumbnailUrl);
+    const hasPreview = !isPlayableMedia && Boolean(preferredThumbnailUrl);
+    const showPreviewWhileLoading = imageViewerDefaultZoom !== 'actual' && hasPreview;
     const sourceLoadStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     if (warmFullImageUrl) {
@@ -2727,7 +2728,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       setIsFullImageSourceReady(true);
     } else {
       setIsFullImageSourceReady(false);
-      setImageUrl(isPlayableMedia || !hasPreview ? null : preferredThumbnailUrl);
+      setImageUrl(isPlayableMedia || !showPreviewWhileLoading ? null : preferredThumbnailUrl);
     }
 
     const loadImage = async () => {
@@ -2737,9 +2738,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       if (!directoryPath && window.electronAPI && !electronAbsoluteMediaPath) {
         console.error('Cannot load image: directoryPath is undefined');
-        if (isMounted && !hasPreview) {
-          setImageUrl(null);
-          alert('Failed to load image: Directory path is not available.');
+        if (isMounted) {
+          if (hasPreview) {
+            setImageUrl(preferredThumbnailUrl);
+          } else {
+            setImageUrl(null);
+            alert('Failed to load image: Directory path is not available.');
+          }
         }
         return;
       }
@@ -2766,9 +2771,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           // The warm branch above marks the source ready before this confirms it, so a failure
           // here has to take that back: otherwise export and editing stay enabled over nothing.
           setIsFullImageSourceReady(false);
-          if (!hasPreview) {
-            setImageUrl(null);
-          }
+          setImageUrl(hasPreview ? preferredThumbnailUrl : null);
         }
       } finally {
         recordPerformanceDuration('modal.full-source-load', (typeof performance !== 'undefined' ? performance.now() : Date.now()) - sourceLoadStartedAt, {
