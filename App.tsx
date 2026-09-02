@@ -566,6 +566,7 @@ export default function App() {
   const [isSaveFilteredCollectionModalOpen, setIsSaveFilteredCollectionModalOpen] = useState(false);
   const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
   const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
+  const comfyUIWorkspaceModalIdRef = useRef<string | null>(null);
   const [findSimilarState, setFindSimilarState] = useState<FindSimilarState | null>(null);
   const [findSimilarGridFilter, setFindSimilarGridFilter] = useState<FindSimilarGridFilterState | null>(null);
   const [modelPromptPickerState, setModelPromptPickerState] = useState<{
@@ -2570,6 +2571,7 @@ export default function App() {
   useEffect(() => {
     if (libraryView !== 'comfyui') {
       setComfyUIWorkspaceNavigationImageIds(null);
+      comfyUIWorkspaceModalIdRef.current = null;
       return;
     }
 
@@ -3064,6 +3066,29 @@ export default function App() {
 
     return sortImagesNewestFirst(nextImages);
   }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImageIds, imageLookup]);
+  useEffect(() => {
+    if (libraryView !== 'comfyui' || !comfyUIWorkspaceModalIdRef.current) {
+      return;
+    }
+
+    const modalId = comfyUIWorkspaceModalIdRef.current;
+    const navigationImageIds = comfyUIWorkspaceNavigationImages.map((image) => image.id);
+    setOpenImageModals((current) => {
+      const targetModal = current.find((modal) => modal.modalId === modalId);
+      if (
+        !targetModal ||
+        targetModal.navigationSource !== 'comfyui' ||
+        !navigationImageIds.includes(targetModal.imageId) ||
+        areStringArraysEqual(targetModal.navigationImageIds, navigationImageIds)
+      ) {
+        return current;
+      }
+
+      return current.map((modal) =>
+        modal.modalId === modalId ? { ...modal, navigationImageIds } : modal
+      );
+    });
+  }, [comfyUIWorkspaceNavigationImages, libraryView]);
   const comfyUIWorkspaceCurrentIndex = useMemo(() => {
     if (!comfyUIWorkspaceImage) {
       return -1;
@@ -3091,13 +3116,50 @@ export default function App() {
   }, []);
   const handleComfyUIWorkspaceViewFullMetadata = useCallback((image: IndexedImage) => {
     setComfyUIWorkspaceImageId(image.id);
+    const navigationImageIds = comfyUIWorkspaceNavigationImages.length > 0
+      ? comfyUIWorkspaceNavigationImages.map((candidate) => candidate.id)
+      : [image.id];
     const existing = openImageModals.find((modal) => modal.imageId === image.id);
     if (existing) {
+      comfyUIWorkspaceModalIdRef.current = existing.modalId;
+      setOpenImageModals((current) =>
+        current.map((modal) =>
+          modal.modalId === existing.modalId
+            ? { ...modal, navigationImageIds, navigationSource: 'comfyui' }
+            : modal
+        )
+      );
       handleActivateImageModal(existing.modalId);
       return;
     }
+
+    const modalId = `image-modal-${Date.now()}-${image.id}`;
+    comfyUIWorkspaceModalIdRef.current = modalId;
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const host = resolveViewerHost();
+      return [
+        ...current,
+        {
+          sessionId: modalId,
+          modalId,
+          imageId: image.id,
+          navigationImageIds,
+          navigationSource: 'comfyui',
+          host,
+          nativeStatus: host === 'detached' ? 'pending' : undefined,
+          zIndex: highestZIndex + 1,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(image.id, 'comfyui-workspace'),
+        },
+      ];
+    });
+
+    setActiveImageModalId(modalId);
+    suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
-  }, [handleActivateImageModal, openImageModals, setSelectedImage]);
+  }, [beginModalOpenFlow, comfyUIWorkspaceNavigationImages, handleActivateImageModal, openImageModals, resolveViewerHost, setSelectedImage]);
   const handleComfyUIWorkspaceNavigate = useCallback((direction: 'next' | 'previous') => {
     if (comfyUIWorkspaceCurrentIndex === -1) {
       return;

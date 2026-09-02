@@ -1019,6 +1019,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
   const autoPlayMedia = useSettingsStore((state) => state.autoPlayMedia);
   const imageViewerDefaultZoom = useSettingsStore((state) => state.imageViewerDefaultZoom);
+  const setImageViewerDefaultZoom = useSettingsStore((state) => state.setImageViewerDefaultZoom);
   // A running slideshow and a repeat-all/shuffle chain both imply continuous playback, so they
   // start the media regardless of the auto-play preference.
   const shouldAutoPlayMedia = autoPlayMedia || isChainedPlayback || (isSlideshowMode && isSlideshowPlaying);
@@ -1078,7 +1079,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [enableAnimations, isMinimized, modalId, zIndex]);
 
   const [zoom, setZoom] = useState(1);
-  const [viewerZoomMode, setViewerZoomMode] = useState<ViewerZoomMode>('fit');
+  const [viewerZoomMode, setViewerZoomMode] = useState<ViewerZoomMode>(() => imageViewerDefaultZoom);
   const [windowZoomFactor, setWindowZoomFactor] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -1283,6 +1284,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
     ? editedPreviewUrl
     : (warmFullImageUrl ?? imageUrl);
 
+  useLayoutEffect(() => {
+    setDisplayedImageNaturalSize(null);
+  }, [displayedImageUrl]);
+
   useEffect(() => {
     let isMounted = true;
     setExternalMediaPath(null);
@@ -1385,7 +1390,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setImageEditRecipe(DEFAULT_IMAGE_EDIT_RECIPE);
     setImageEditorTab('adjust');
     setImageEditSourceDimensions(null);
-    setDisplayedImageNaturalSize(null);
     setCropImageBounds(null);
     setEditedPreviewUrl(null);
     setIsRenderingEditedPreview(false);
@@ -2139,7 +2143,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     openBatchExport();
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setZoom(1);
     setViewerZoomMode(imageViewerDefaultZoom);
     setPan({ x: 0, y: 0 });
@@ -2157,7 +2161,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setPan({ x: 0, y: 0 });
   }, [image.id, isSlideshowMode]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setZoom(1);
     setViewerZoomMode(isSlideshowMode ? 'fit' : imageViewerDefaultZoom);
     setPan({ x: 0, y: 0 });
@@ -2205,11 +2209,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    const frameId = window.requestAnimationFrame(() => {
-      setZoom(getActualSizeZoom());
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
+    setZoom(getActualSizeZoom());
   }, [getActualSizeZoom, viewerZoomMode, windowZoomFactor]);
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -2406,6 +2406,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   const handleFitToScreen = () => {
+    setImageViewerDefaultZoom('fit');
     setViewerZoomMode('fit');
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -2413,6 +2414,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const handleActualSize = () => {
     const nextZoom = getActualSizeZoom();
+    setImageViewerDefaultZoom('actual');
     setViewerZoomMode('actual');
     setZoom(nextZoom);
     if (Math.abs(nextZoom - 1) < 0.01) {
@@ -2713,9 +2715,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
     slideshowTimeoutRef.current = null;
   }, []);
 
+  const showImagePreviewWhileLoading = !isPlayableMedia && imageViewerDefaultZoom !== 'actual';
+
   useEffect(() => {
     let isMounted = true;
-    const hasPreview = Boolean(preferredThumbnailUrl);
+    const hasPreview = !isPlayableMedia && Boolean(preferredThumbnailUrl);
+    const showPreviewWhileLoading = showImagePreviewWhileLoading && hasPreview;
     const sourceLoadStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     if (warmFullImageUrl) {
@@ -2725,7 +2730,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       setIsFullImageSourceReady(true);
     } else {
       setIsFullImageSourceReady(false);
-      setImageUrl(isPlayableMedia ? null : (preferredThumbnailUrl ?? null));
+      setImageUrl(isPlayableMedia || !showPreviewWhileLoading ? null : preferredThumbnailUrl);
     }
 
     const loadImage = async () => {
@@ -2735,9 +2740,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       if (!directoryPath && window.electronAPI && !electronAbsoluteMediaPath) {
         console.error('Cannot load image: directoryPath is undefined');
-        if (isMounted && !hasPreview) {
-          setImageUrl(null);
-          alert('Failed to load image: Directory path is not available.');
+        if (isMounted) {
+          if (hasPreview) {
+            setImageUrl(preferredThumbnailUrl);
+          } else {
+            setImageUrl(null);
+            alert('Failed to load image: Directory path is not available.');
+          }
         }
         return;
       }
@@ -2764,9 +2773,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           // The warm branch above marks the source ready before this confirms it, so a failure
           // here has to take that back: otherwise export and editing stay enabled over nothing.
           setIsFullImageSourceReady(false);
-          if (!hasPreview) {
-            setImageUrl(null);
-          }
+          setImageUrl(hasPreview ? preferredThumbnailUrl : null);
         }
       } finally {
         recordPerformanceDuration('modal.full-source-load', (typeof performance !== 'undefined' ? performance.now() : Date.now()) - sourceLoadStartedAt, {
@@ -2785,7 +2792,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     // warmFullImageUrl is read from the closure on purpose. It is computed in the same render as
     // the image id change, so the run that matters already sees the right value; adding it here
     // would re-run the whole load when a later prefetch flips warmth for the image on screen.
-  }, [diagnosticsFlowId, liveImage.id, liveImage.handle, liveImage.thumbnailHandle, liveImage.name, liveImage.lastModified, directoryPath, preferredThumbnailUrl, isPlayableMedia, isVideo]);
+  }, [diagnosticsFlowId, liveImage.id, liveImage.handle, liveImage.thumbnailHandle, liveImage.name, liveImage.lastModified, directoryPath, preferredThumbnailUrl, showImagePreviewWhileLoading, isPlayableMedia, isVideo]);
 
   // Decoded bitmaps are worth tens of megabytes, so they only stay alive while a modal is open.
   useEffect(() => {
@@ -3767,7 +3774,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onDragStart={handleDragStart}
                   style={{
                     transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                    transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                    transition: isDragging || viewerZoomMode !== 'manual' ? 'none' : 'transform 0.1s ease-out',
+                    opacity: viewerZoomMode === 'actual' && (
+                      !displayedImageNaturalSize || Math.abs(zoom - actualSizeZoom) >= 0.05
+                    ) ? 0 : 1,
                   }}
                   title={hasImageEditChanges && editedPreviewUrl ? 'Hold to compare with the original image' : undefined}
                   draggable={canDragExternally && zoom === 1}
