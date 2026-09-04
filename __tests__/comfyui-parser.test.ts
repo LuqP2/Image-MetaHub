@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph, resolvePromptFromGraph, resolveWorkflowFactsFromGraph } from '../services/parsers/comfyUIParser';
+import { resolvePromptFromGraph as resolveEnginePromptFromGraph } from '../packages/metadata-engine/src/parsers/comfyUIParser';
 import { parseImageMetadata } from '../services/parsers/metadataParserFactory';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -46,6 +47,45 @@ describe('ComfyUI Parser - Prompt Sources', () => {
 
     expect(result.prompt).toBe('Visualize a long, eel-like mutant lizard with overlapping plates of translucent skin. Place it in a fossilized ocean desert where waves are frozen into glassy dunes.');
     expect(result._telemetry.unknown_nodes_count).toBe(0);
+  });
+
+  it('extracts positive and negative prompts from Krea2 Edit grounded encodes', () => {
+    const workflow = {
+      nodes: [
+        { id: 53, type: 'KSampler', widgets_values: [42, 'fixed', 10, 1, 'euler', 'simple', 1] },
+        { id: 84, type: 'Krea2EditGroundedEncode', widgets_values: ['Change her outfit to a red raincoat.', 768, ''] },
+        { id: 85, type: 'Krea2EditGroundedEncode', widgets_values: ['avoid artifacts', 768, ''] },
+      ],
+    };
+    const prompt = {
+      '53': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 42,
+          steps: 10,
+          cfg: 1,
+          sampler_name: 'euler',
+          scheduler: 'simple',
+          positive: ['84', 0],
+          negative: ['85', 0],
+        },
+      },
+      '84': {
+        class_type: 'Krea2EditGroundedEncode',
+        inputs: { prompt: 'Change her outfit to a red raincoat.', grounding_px: 768 },
+      },
+      '85': {
+        class_type: 'Krea2EditGroundedEncode',
+        inputs: { prompt: 'avoid artifacts', grounding_px: 768 },
+      },
+    };
+
+    for (const resolveGraph of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = resolveGraph(workflow, prompt);
+      expect(result.prompt).toBe('Change her outfit to a red raincoat.');
+      expect(result.negativePrompt).toBe('avoid artifacts');
+      expect(result._telemetry.unknown_nodes_count).toBe(0);
+    }
   });
 
   describe('Krea2 conditional prompt routing', () => {
