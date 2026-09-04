@@ -36,6 +36,23 @@ function resolveFirstTextInput(
   return null;
 }
 
+function extractKrea2GroundedPrompt(
+  node: ParserNode,
+  state: any,
+  graph: any,
+  traverse: any,
+): string | null {
+  const promptInput = node.inputs?.prompt;
+  if (Array.isArray(promptInput)) {
+    const resolved = traverse(promptInput, state, graph, []);
+    if (typeof resolved === 'string') return resolved;
+  }
+  if (typeof promptInput === 'string') return promptInput;
+
+  const widgetPrompt = node.widgets_values?.[0];
+  return typeof widgetPrompt === 'string' ? widgetPrompt : null;
+}
+
 function extractRgthreePowerLoras(node: ParserNode): string[] {
   const loras: string[] = [];
   const addLora = (value: unknown) => {
@@ -332,6 +349,24 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       }
     },
     widget_order: ['text']
+  },
+  Krea2EditGroundedEncode: {
+    category: 'CONDITIONING',
+    roles: ['SOURCE'],
+    inputs: {
+      clip: { type: 'CLIP' },
+      prompt: { type: 'STRING' },
+      image: { type: 'IMAGE' },
+      image_b: { type: 'IMAGE' },
+      grounding_px: { type: 'INT' },
+      system_prompt: { type: 'STRING' },
+    },
+    outputs: { CONDITIONING: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: { source: 'custom_extractor', extractor: extractKrea2GroundedPrompt },
+      negativePrompt: { source: 'custom_extractor', extractor: extractKrea2GroundedPrompt },
+    },
+    widget_order: ['prompt', 'grounding_px', 'system_prompt'],
   },
   'StylePromptEncoder2 //ZImagePowerNodes': {
     category: 'CONDITIONING',
