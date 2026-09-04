@@ -2305,9 +2305,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
     if (typeof window === 'undefined') {
       return;
     }
-    window.addEventListener('resize', updateCropImageBounds);
-    return () => window.removeEventListener('resize', updateCropImageBounds);
-  }, [updateCropImageBounds]);
+
+    const handleResize = () => {
+      updateCropImageBounds();
+      if (viewerZoomMode === 'actual') {
+        setZoom(getActualSizeZoom());
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [getActualSizeZoom, updateCropImageBounds, viewerZoomMode]);
 
   const handleCropDragStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!imageEditSourceDimensions || !normalizedImageEditRecipe.crop.rect) {
@@ -3775,9 +3783,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   style={{
                     transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                     transition: isDragging || viewerZoomMode !== 'manual' ? 'none' : 'transform 0.1s ease-out',
-                    opacity: viewerZoomMode === 'actual' && (
-                      !displayedImageNaturalSize || Math.abs(zoom - actualSizeZoom) >= 0.05
-                    ) ? 0 : 1,
+                    opacity: viewerZoomMode === 'actual' && !displayedImageNaturalSize ? 0 : 1,
                   }}
                   title={hasImageEditChanges && editedPreviewUrl ? 'Hold to compare with the original image' : undefined}
                   draggable={canDragExternally && zoom === 1}
