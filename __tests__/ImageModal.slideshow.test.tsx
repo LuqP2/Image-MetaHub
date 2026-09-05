@@ -84,7 +84,6 @@ vi.mock('../services/mediaDecodeCache', () => ({
     retain: vi.fn(),
     release: vi.fn(),
     isWarm: vi.fn(() => false),
-    getNaturalSize: vi.fn(() => ({ width: 1024, height: 768 })),
     warm: vi.fn(async () => undefined),
   },
 }));
@@ -162,8 +161,7 @@ describe('ImageModal slideshow behavior', () => {
     useImageStore.getState().resetState();
     vi.mocked(mediaSourceCache.getOrLoad).mockImplementation(async (image) => `blob:${image.id}`);
     vi.mocked(mediaSourceCache.peek).mockReturnValue(null);
-    vi.mocked(mediaDecodeCache.isWarm).mockReturnValue(true);
-    vi.mocked(mediaDecodeCache.getNaturalSize).mockReturnValue({ width: 1024, height: 768 });
+    vi.mocked(mediaDecodeCache.isWarm).mockReturnValue(false);
     vi.mocked(mediaDecodeCache.warm).mockResolvedValue(undefined);
     setFullscreen = vi.fn(async (isFullscreen: boolean) => ({ success: true, isFullscreen }));
     window.electronAPI = {

@@ -23,7 +23,6 @@ export interface ImageViewerSnapshot {
   sessionId: string;
   revision: number;
   image: ImageModalImageDTO;
-  previewUrl?: string | null;
   previousImage: ImageModalImageDTO | null;
   nextImage: ImageModalImageDTO | null;
   previousDirectoryPath: string | null;

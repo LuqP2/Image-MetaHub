@@ -193,7 +193,6 @@ const DetachedImageModalApp: React.FC = () => {
       onToggleAlwaysOnTop={() => void toggleAlwaysOnTop()}
       modalId={snapshot.sessionId}
       image={image}
-      previewUrl={snapshot.previewUrl}
       prefetchPrevious={prefetchPrevious}
       prefetchNext={prefetchNext}
       onClose={() => void window.electronAPI?.imageViewerWindowAction({ sessionId: snapshot.sessionId, action: 'close' })}

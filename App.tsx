@@ -28,7 +28,6 @@ import UpdateNotificationModal, { type UpdateNotificationStatus } from './compon
 import ComparisonModal from './components/ComparisonModal';
 import Footer from './components/Footer';
 import cacheManager from './services/cacheManager';
-import { thumbnailManager } from './services/thumbnailManager';
 import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import GenerationQueueSidebar from './components/GenerationQueueSidebar';
@@ -3400,7 +3399,6 @@ export default function App() {
   }, []);
 
   const buildDetachedViewerSnapshot = useCallback((modal: typeof openImageModalEntries[number]): ImageViewerSnapshot => {
-    const resolvedPreviewUrl = thumbnailManager.getResolvedState(modal.image)?.thumbnailUrl;
     const revision = (detachedViewerRevisionRef.current.get(modal.sessionId) ?? 0) + 1;
     detachedViewerRevisionRef.current.set(modal.sessionId, revision);
     const imageState = useImageStore.getState();
@@ -3420,7 +3418,6 @@ export default function App() {
       sessionId: modal.sessionId,
       revision,
       image: toImageModalImageDTO(modal.image),
-      previewUrl: resolvedPreviewUrl?.startsWith('imh-thumb://') ? resolvedPreviewUrl : null,
       previousImage: modal.prefetchPrevious ? toImageModalImageDTO(modal.prefetchPrevious.image) : null,
       nextImage: modal.prefetchNext ? toImageModalImageDTO(modal.prefetchNext.image) : null,
       previousDirectoryPath: modal.prefetchPrevious?.directoryPath ?? null,
