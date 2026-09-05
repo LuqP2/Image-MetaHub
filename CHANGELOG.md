@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.3] - [Unreleased]
+
+### Improved
+
+- **Library Refreshing and Thumbnails**: Keep browsing responsive while the library refreshes in the background and avoid repeatedly retrying a thumbnail that failed for the same file version.
+- **Viewer Zoom**: Choose Fit or 1:1 as the default image zoom, with more consistent mouse-wheel zoom behavior.
+
+### Fixed
+
+- **ComfyUI Krea2 Workflows**: Recover prompts and LoRAs from the executed route instead of inactive switch branches.
+- **Detached Viewer on macOS**: Packaged viewer windows now load app paths containing spaces or Unicode reliably.
+- **3D Model Preview**: Switching between models now reliably recreates the preview for the selected item.
+
 ## [0.19.2] - [2026-08-27]
 
 ### Improved

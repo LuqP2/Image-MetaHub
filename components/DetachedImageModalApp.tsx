@@ -76,14 +76,15 @@ const DetachedImageModalApp: React.FC = () => {
     const applySnapshot = (next: ImageViewerSnapshot) => {
       if (next.sessionId !== sessionId || next.revision <= latestRevisionRef.current) return;
       latestRevisionRef.current = next.revision;
-      const navigationImages = [next.previousImage, next.image, next.nextImage]
-        .filter((candidate): candidate is ImageViewerSnapshot['image'] => Boolean(candidate))
-        .map(asIndexedImage);
+      const previousImage = next.previousImage ? asIndexedImage(next.previousImage) : null;
+      const current = asIndexedImage(next.image);
+      const nextImage = next.nextImage ? asIndexedImage(next.nextImage) : null;
+      const navigationImages = [previousImage, current, nextImage]
+        .filter((candidate): candidate is IndexedImage => Boolean(candidate));
       const lineageImages = (next.lineage?.images || []).map(asIndexedImage);
       const images = Array.from(
         new Map([...navigationImages, ...lineageImages].map((candidate) => [candidate.id, candidate])).values()
       );
-      const current = asIndexedImage(next.image);
       useImageStore.setState({
         images,
         filteredImages: images,
@@ -164,6 +165,12 @@ const DetachedImageModalApp: React.FC = () => {
   }
 
   const image = asIndexedImage(snapshot.image);
+  const prefetchPrevious = snapshot.previousImage && snapshot.previousDirectoryPath
+    ? { image: asIndexedImage(snapshot.previousImage), directoryPath: snapshot.previousDirectoryPath }
+    : null;
+  const prefetchNext = snapshot.nextImage && snapshot.nextDirectoryPath
+    ? { image: asIndexedImage(snapshot.nextImage), directoryPath: snapshot.nextDirectoryPath }
+    : null;
   const navigate = (direction: 'next' | 'previous' | 'random', wrap = false) => {
     void sendCommand({ type: 'navigate', direction, wrap });
   };
@@ -186,6 +193,9 @@ const DetachedImageModalApp: React.FC = () => {
       onToggleAlwaysOnTop={() => void toggleAlwaysOnTop()}
       modalId={snapshot.sessionId}
       image={image}
+      previewUrl={snapshot.previewUrl}
+      prefetchPrevious={prefetchPrevious}
+      prefetchNext={prefetchNext}
       onClose={() => void window.electronAPI?.imageViewerWindowAction({ sessionId: snapshot.sessionId, action: 'close' })}
       onImageDeleted={(imageId) => void sendCommand({ type: 'image-deleted', imageId })}
       onImageRenamed={(oldImageId, newImageId, newRelativePath) => void sendCommand({ type: 'image-renamed', oldImageId, newImageId, newRelativePath })}

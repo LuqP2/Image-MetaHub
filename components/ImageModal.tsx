@@ -160,10 +160,36 @@ const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefi
   };
 };
 
+interface ImageNaturalSize {
+  width: number;
+  height: number;
+}
+
+interface ImageOriginalSourceState {
+  key: string;
+  url: string | null;
+  naturalSize: ImageNaturalSize | null;
+  error: boolean;
+}
+
+interface DisplayedImageNaturalSizeState {
+  key: string;
+  url: string;
+  size: ImageNaturalSize;
+}
+
+interface EditedPreviewState {
+  key: string;
+  url: string;
+}
+
 interface ImageModalProps {
   hostMode?: 'inline' | 'native-window';
   modalId?: string;
   image: IndexedImage;
+  previewUrl?: string | null;
+  prefetchPrevious?: { image: IndexedImage; directoryPath: string } | null;
+  prefetchNext?: { image: IndexedImage; directoryPath: string } | null;
   onClose: () => void;
   onFindSimilar?: (image: IndexedImage) => void;
   onOpenComfyUIWorkflow?: (image: IndexedImage) => void;
@@ -890,6 +916,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   hostMode = 'inline',
   modalId,
   image,
+  previewUrl = null,
+  prefetchPrevious = null,
+  prefetchNext = null,
   onClose,
   onFindSimilar,
   onOpenComfyUIWorkflow,
@@ -926,7 +955,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
   diagnosticsFlowId,
   onSlideshowStartAcknowledged,
 }) => {
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [originalSourceState, setOriginalSourceState] = useState<ImageOriginalSourceState>({
+    key: '',
+    url: null,
+    naturalSize: null,
+    error: false,
+  });
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
@@ -967,13 +1001,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [imageEditRecipe, setImageEditRecipe] = useState<ImageEditRecipe>(DEFAULT_IMAGE_EDIT_RECIPE);
   const [imageEditorTab, setImageEditorTab] = useState<'adjust' | 'crop' | 'transform' | 'enhance'>('adjust');
   const [imageEditSourceDimensions, setImageEditSourceDimensions] = useState<{ width: number; height: number } | null>(null);
-  const [displayedImageNaturalSize, setDisplayedImageNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const [displayedImageNaturalSizeState, setDisplayedImageNaturalSizeState] = useState<DisplayedImageNaturalSizeState | null>(null);
   const [cropImageBounds, setCropImageBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
-  const [editedPreviewUrl, setEditedPreviewUrl] = useState<string | null>(null);
+  const [editedPreviewState, setEditedPreviewState] = useState<EditedPreviewState | null>(null);
   const [isRenderingEditedPreview, setIsRenderingEditedPreview] = useState(false);
   const [isShowingOriginalForAdjustmentCompare, setIsShowingOriginalForAdjustmentCompare] = useState(false);
   const [isSavingEditedImage, setIsSavingEditedImage] = useState(false);
-  const [isFullImageSourceReady, setIsFullImageSourceReady] = useState(false);
   const [externalMediaPath, setExternalMediaPath] = useState<string | null>(null);
   const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => {
     if (initialWindowState) {
@@ -1188,7 +1221,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
     )
   );
   const liveImage = imageFromStore ?? image;
-  const thumbnail = useResolvedThumbnail(liveImage);
+  const sourceImage = liveImage.lastModified === image.lastModified ? liveImage : image;
+  const thumbnail = useResolvedThumbnail(sourceImage);
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
   const isModel3D = isModel3DFileName(image.name, image.fileType);
@@ -1206,7 +1240,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
   const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
-  const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
+  const imageSourceKey = `${directoryPath || ''}::${image.id}::${image.lastModified}`;
+  const locallyResolvedThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
+  const nativeSnapshotPreviewUrl = previewUrl?.startsWith('imh-thumb://') ? previewUrl : null;
+  const preferredThumbnailUrl = isNativeWindow
+    ? (nativeSnapshotPreviewUrl ?? locallyResolvedThumbnailUrl)
+    : locallyResolvedThumbnailUrl;
   const recentTagSuggestions = useMemo(() => getRecentTagChips({
     recentTags,
     excludedTags: currentTags,
@@ -1272,21 +1311,52 @@ const ImageModal: React.FC<ImageModalProps> = ({
   // Resolved during render, not in an effect: an effect runs after paint, which would cost the
   // frame this whole path exists to save. When the neighbour prefetch already decoded this
   // source, the <img> can swap straight to it in the same commit as the image id change.
-  const warmFullImageUrl = useMemo(() => {
-    if (isPlayableMedia) {
-      return null;
-    }
-
-    const cachedUrl = mediaSourceCache.peek(liveImage, directoryPath);
-    return cachedUrl && mediaDecodeCache.isWarm(cachedUrl) ? cachedUrl : null;
-  }, [liveImage, directoryPath, isPlayableMedia]);
-  const displayedImageUrl = shouldShowEditedPreview && editedPreviewUrl
+  const currentOriginalSourceState = originalSourceState.key === imageSourceKey
+    ? originalSourceState
+    : null;
+  const cachedOriginalUrl = !isPlayableMedia && !currentOriginalSourceState?.error
+    ? mediaSourceCache.peek(sourceImage, directoryPath)
+    : null;
+  const cachedOriginalNaturalSize = cachedOriginalUrl && mediaDecodeCache.isWarm(cachedOriginalUrl)
+    ? mediaDecodeCache.getNaturalSize(cachedOriginalUrl)
+    : null;
+  const warmFullImageUrl = cachedOriginalNaturalSize ? cachedOriginalUrl : null;
+  const resolvedOriginalUrl = !currentOriginalSourceState?.error
+    ? currentOriginalSourceState?.url ?? null
+    : null;
+  const originalImageUrl = warmFullImageUrl ?? resolvedOriginalUrl;
+  const originalImageNaturalSize = warmFullImageUrl
+    ? cachedOriginalNaturalSize
+    : currentOriginalSourceState?.naturalSize ?? null;
+  const editedPreviewUrl = editedPreviewState?.key === imageSourceKey
+    ? editedPreviewState.url
+    : null;
+  const displayedSourceKind: 'edited' | 'original' | 'preview' | 'none' =
+    shouldShowEditedPreview && editedPreviewUrl
+      ? 'edited'
+      : originalImageUrl
+        ? 'original'
+        : preferredThumbnailUrl
+          ? 'preview'
+          : 'none';
+  const displayedImageUrl = displayedSourceKind === 'edited'
     ? editedPreviewUrl
-    : (warmFullImageUrl ?? imageUrl);
-
-  useLayoutEffect(() => {
-    setDisplayedImageNaturalSize(null);
-  }, [displayedImageUrl]);
+    : displayedSourceKind === 'original'
+      ? originalImageUrl
+      : displayedSourceKind === 'preview'
+        ? preferredThumbnailUrl
+        : null;
+  const measuredDisplayedNaturalSize = displayedImageNaturalSizeState?.key === imageSourceKey
+    && displayedImageNaturalSizeState.url === displayedImageUrl
+      ? displayedImageNaturalSizeState.size
+      : null;
+  const displayedImageNaturalSize = displayedSourceKind === 'original'
+    ? (originalImageNaturalSize ?? measuredDisplayedNaturalSize)
+    : displayedSourceKind === 'edited'
+      ? measuredDisplayedNaturalSize
+      : null;
+  const imageUrl = originalImageUrl;
+  const isFullImageSourceReady = Boolean(originalImageUrl);
 
   useEffect(() => {
     let isMounted = true;
@@ -1391,7 +1461,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setImageEditorTab('adjust');
     setImageEditSourceDimensions(null);
     setCropImageBounds(null);
-    setEditedPreviewUrl(null);
+    setEditedPreviewState(null);
     setIsRenderingEditedPreview(false);
     setIsShowingOriginalForAdjustmentCompare(false);
     setIsAdjustmentPanelOpen(false);
@@ -1400,19 +1470,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [image.id]);
 
   useEffect(() => () => {
-    if (editedPreviewUrl) {
-      URL.revokeObjectURL(editedPreviewUrl);
+    if (editedPreviewState?.url) {
+      URL.revokeObjectURL(editedPreviewState.url);
     }
-  }, [editedPreviewUrl]);
+  }, [editedPreviewState]);
 
   useEffect(() => {
     if (!canEditImage || !hasImageEditChanges || !isFullImageSourceReady) {
-      setEditedPreviewUrl((current) => {
-        if (current) {
-          URL.revokeObjectURL(current);
-        }
-        return null;
-      });
+      setEditedPreviewState(null);
       setIsRenderingEditedPreview(false);
       return;
     }
@@ -1428,12 +1493,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           return;
         }
         const nextUrl = URL.createObjectURL(blob);
-        setEditedPreviewUrl((current) => {
-          if (current) {
-            URL.revokeObjectURL(current);
-          }
-          return nextUrl;
-        });
+        setEditedPreviewState({ key: imageSourceKey, url: nextUrl });
         editableSource.revoke();
       } catch (error) {
         if (!canceled) {
@@ -1454,6 +1514,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     canEditImage,
     directoryPath,
     hasImageEditChanges,
+    imageSourceKey,
     isFullImageSourceReady,
     liveImage,
     normalizedImageEditRecipe,
@@ -2723,36 +2784,45 @@ const ImageModal: React.FC<ImageModalProps> = ({
     slideshowTimeoutRef.current = null;
   }, []);
 
-  const showImagePreviewWhileLoading = !isPlayableMedia && imageViewerDefaultZoom !== 'actual';
-
   useEffect(() => {
     let isMounted = true;
-    const hasPreview = !isPlayableMedia && Boolean(preferredThumbnailUrl);
-    const showPreviewWhileLoading = showImagePreviewWhileLoading && hasPreview;
     const sourceLoadStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-
-    if (warmFullImageUrl) {
-      // Already fetched and decoded by the neighbour prefetch. Showing the thumbnail first would
-      // only add a second decode and a visible resolution pop, so go straight to the full source.
-      setImageUrl(warmFullImageUrl);
-      setIsFullImageSourceReady(true);
-    } else {
-      setIsFullImageSourceReady(false);
-      setImageUrl(isPlayableMedia || !showPreviewWhileLoading ? null : preferredThumbnailUrl);
-    }
 
     const loadImage = async () => {
       if (!isMounted) return;
 
-      const electronAbsoluteMediaPath = window.electronAPI ? getElectronAbsoluteMediaPath(liveImage) : null;
+      if (!isPlayableMedia) {
+        const cachedUrl = mediaSourceCache.peek(sourceImage, directoryPath);
+        const cachedNaturalSize = cachedUrl && mediaDecodeCache.isWarm(cachedUrl)
+          ? mediaDecodeCache.getNaturalSize(cachedUrl)
+          : null;
+        if (cachedUrl && cachedNaturalSize) {
+          setOriginalSourceState({
+            key: imageSourceKey,
+            url: cachedUrl,
+            naturalSize: cachedNaturalSize,
+            error: false,
+          });
+          markPerformanceFlow(diagnosticsFlowId, 'full-source-ready', {
+            imageId: liveImage.id,
+            isPlayableMedia,
+          });
+          return;
+        }
+      }
+
+      const electronAbsoluteMediaPath = window.electronAPI ? getElectronAbsoluteMediaPath(sourceImage) : null;
 
       if (!directoryPath && window.electronAPI && !electronAbsoluteMediaPath) {
         console.error('Cannot load image: directoryPath is undefined');
         if (isMounted) {
-          if (hasPreview) {
-            setImageUrl(preferredThumbnailUrl);
-          } else {
-            setImageUrl(null);
+          setOriginalSourceState({
+            key: imageSourceKey,
+            url: null,
+            naturalSize: null,
+            error: true,
+          });
+          if (!preferredThumbnailUrl) {
             alert('Failed to load image: Directory path is not available.');
           }
         }
@@ -2760,33 +2830,51 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
 
       try {
-        const url = await mediaSourceCache.getOrLoad(liveImage, directoryPath, { prioritize: true });
-        if (isMounted) {
-          setImageUrl(url);
-          setIsFullImageSourceReady(true);
-          markPerformanceFlow(diagnosticsFlowId, 'full-source-ready', {
-            imageId: liveImage.id,
-            isPlayableMedia,
-          });
+        const url = await mediaSourceCache.getOrLoad(sourceImage, directoryPath, { prioritize: true });
+        if (!isMounted) return;
 
-          // Keep the image we are showing in the decode cache too, so stepping back onto it is
-          // as instant as stepping forward. Neighbours are warmed by their own effect below.
-          if (!isPlayableMedia) {
-            void mediaDecodeCache.warm(url);
+        if (!isPlayableMedia) {
+          await mediaDecodeCache.warm(url);
+          if (!isMounted) return;
+
+          const naturalSize = mediaDecodeCache.getNaturalSize(url);
+          if (!mediaDecodeCache.isWarm(url) || !naturalSize) {
+            throw new Error('The full image could not be decoded.');
           }
+
+          setOriginalSourceState({
+            key: imageSourceKey,
+            url,
+            naturalSize,
+            error: false,
+          });
+        } else {
+          setOriginalSourceState({
+            key: imageSourceKey,
+            url,
+            naturalSize: null,
+            error: false,
+          });
         }
+
+        markPerformanceFlow(diagnosticsFlowId, 'full-source-ready', {
+          imageId: liveImage.id,
+          isPlayableMedia,
+        });
       } catch (loadError) {
         console.error('Failed to load full image source:', loadError);
         if (isMounted) {
-          // The warm branch above marks the source ready before this confirms it, so a failure
-          // here has to take that back: otherwise export and editing stay enabled over nothing.
-          setIsFullImageSourceReady(false);
-          setImageUrl(hasPreview ? preferredThumbnailUrl : null);
+          setOriginalSourceState({
+            key: imageSourceKey,
+            url: null,
+            naturalSize: null,
+            error: true,
+          });
         }
       } finally {
         recordPerformanceDuration('modal.full-source-load', (typeof performance !== 'undefined' ? performance.now() : Date.now()) - sourceLoadStartedAt, {
           imageId: liveImage.id,
-          hasPreview,
+          hasPreview: !isPlayableMedia && Boolean(preferredThumbnailUrl),
           isPlayableMedia,
         });
       }
@@ -2797,10 +2885,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
     return () => {
       isMounted = false;
     };
-    // warmFullImageUrl is read from the closure on purpose. It is computed in the same render as
-    // the image id change, so the run that matters already sees the right value; adding it here
-    // would re-run the whole load when a later prefetch flips warmth for the image on screen.
-  }, [diagnosticsFlowId, liveImage.id, liveImage.handle, liveImage.thumbnailHandle, liveImage.name, liveImage.lastModified, directoryPath, preferredThumbnailUrl, showImagePreviewWhileLoading, isPlayableMedia, isVideo]);
+    // Preview changes are deliberately excluded: resolving a thumbnail must not restart the
+    // original source load for this image revision.
+  }, [diagnosticsFlowId, directoryPath, imageSourceKey, isPlayableMedia, isVideo, sourceImage.handle, sourceImage.id, sourceImage.lastModified, sourceImage.name, sourceImage.thumbnailHandle]);
 
   // Decoded bitmaps are worth tens of megabytes, so they only stay alive while a modal is open.
   useEffect(() => {
@@ -2821,34 +2908,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    const state = useImageStore.getState();
-    const navigationImages = state.clusterNavigationContext || state.filteredImages;
-    const currentNavigationIndex = navigationImages.findIndex((candidate) => candidate.id === liveImage.id);
-
-    if (currentNavigationIndex === -1) {
-      return;
-    }
-
-    // The store's list is not always the one this modal navigates: a viewer opened from Find
-    // Similar, a ComfyUI workflow or a scope walks its own id list, and currentIndex/totalImages
-    // are the props derived from it. When they disagree, the neighbours here are somebody else's
-    // images — decoding them would evict the useful entries from a five-slot cache for nothing.
-    if (navigationImages.length !== totalImages || currentNavigationIndex !== currentIndex) {
-      return;
-    }
-
-    const step = navigationDirectionRef.current === 'previous' ? -1 : 1;
-    const directoryMap = new Map(state.directories.map((dir) => [dir.id, dir.path]));
-    // Two ahead, one behind: people rarely alternate directions, so spending the budget on the way
-    // they are heading buys a much better hit rate for the same number of decoded bitmaps.
-    const neighbors = [
-      navigationImages[currentNavigationIndex + step],
-      navigationImages[currentNavigationIndex + step * 2],
-      navigationImages[currentNavigationIndex - step],
-    ].filter((candidate): candidate is IndexedImage =>
-      Boolean(candidate)
-      && !isVideoFileName(candidate.name, candidate.fileType)
-      && !isAudioFileName(candidate.name, candidate.fileType));
+    const primaryNeighbor = navigationDirectionRef.current === 'previous'
+      ? prefetchPrevious
+      : prefetchNext;
+    const secondaryNeighbor = navigationDirectionRef.current === 'previous'
+      ? prefetchNext
+      : prefetchPrevious;
+    const neighbors = [primaryNeighbor, secondaryNeighbor].filter(
+      (candidate): candidate is { image: IndexedImage; directoryPath: string } =>
+        Boolean(candidate)
+        && !isVideoFileName(candidate.image.name, candidate.image.fileType)
+        && !isAudioFileName(candidate.image.name, candidate.image.fileType)
+        && !isModel3DFileName(candidate.image.name, candidate.image.fileType)
+    );
 
     if (neighbors.length === 0) {
       return;
@@ -2878,7 +2950,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       void (async () => {
         try {
           // No prioritize here: this must not pause the grid's background thumbnail work.
-          const url = await mediaSourceCache.getOrLoad(neighbor, directoryMap.get(neighbor.directoryId || ''));
+          const url = await mediaSourceCache.getOrLoad(neighbor.image, neighbor.directoryPath);
           if (isMounted) {
             await mediaDecodeCache.warm(url);
           }
@@ -2887,7 +2959,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           // and opening it directly still reports the failure through the load effect.
         }
 
-        // One at a time, so three multi-megabyte decodes never land on the main thread together.
+        // One at a time, so multiple multi-megabyte decodes never land on the main thread together.
         if (isMounted && queueIndex < neighbors.length) {
           scheduleIdle(warmNextNeighbor);
         }
@@ -2905,7 +2977,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
         window.clearTimeout(timeoutHandle);
       }
     };
-  }, [currentIndex, isFullImageSourceReady, isPlayableMedia, isRapidKeyboardNavigating, liveImage.id, totalImages]);
+  }, [
+    directoryPath,
+    isFullImageSourceReady,
+    isPlayableMedia,
+    isRapidKeyboardNavigating,
+    liveImage.id,
+    liveImage.lastModified,
+    prefetchNext?.directoryPath,
+    prefetchNext?.image.id,
+    prefetchNext?.image.lastModified,
+    prefetchPrevious?.directoryPath,
+    prefetchPrevious?.image.id,
+    prefetchPrevious?.image.lastModified,
+  ]);
 
   useEffect(() => {
     if (!preferredThumbnailUrl || hasMarkedPreviewVisibleRef.current) {
@@ -3127,24 +3212,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [isVideo, onNavigateNext, onNavigatePrevious, onNavigateRandom]);
 
   const scheduleKeyboardNavigation = useCallback((direction: 'next' | 'previous', isRepeatedKey = false) => {
+    if (!isRepeatedKey) {
+      if (keyboardNavigationFrameRef.current !== null) {
+        window.cancelAnimationFrame(keyboardNavigationFrameRef.current);
+        keyboardNavigationFrameRef.current = null;
+      }
+      pendingKeyboardNavigationRef.current = null;
+      navigateManually(direction);
+      return;
+    }
+
     pendingKeyboardNavigationRef.current = direction;
 
-    if (isRepeatedKey) {
-      if (!isRapidKeyboardNavigatingRef.current) {
-        isRapidKeyboardNavigatingRef.current = true;
-        setIsRapidKeyboardNavigating(true);
-      }
-
-      if (keyboardNavigationIdleTimeoutRef.current !== null) {
-        window.clearTimeout(keyboardNavigationIdleTimeoutRef.current);
-      }
-
-      keyboardNavigationIdleTimeoutRef.current = window.setTimeout(() => {
-        keyboardNavigationIdleTimeoutRef.current = null;
-        isRapidKeyboardNavigatingRef.current = false;
-        setIsRapidKeyboardNavigating(false);
-      }, RAPID_KEYBOARD_NAVIGATION_IDLE_MS);
+    if (!isRapidKeyboardNavigatingRef.current) {
+      isRapidKeyboardNavigatingRef.current = true;
+      setIsRapidKeyboardNavigating(true);
     }
+
+    if (keyboardNavigationIdleTimeoutRef.current !== null) {
+      window.clearTimeout(keyboardNavigationIdleTimeoutRef.current);
+    }
+
+    keyboardNavigationIdleTimeoutRef.current = window.setTimeout(() => {
+      keyboardNavigationIdleTimeoutRef.current = null;
+      isRapidKeyboardNavigatingRef.current = false;
+      setIsRapidKeyboardNavigating(false);
+    }, RAPID_KEYBOARD_NAVIGATION_IDLE_MS);
 
     if (keyboardNavigationFrameRef.current !== null) {
       return;
@@ -3687,7 +3780,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 }}
               />
             </div>
-          ) : imageUrl ? (
+          ) : (isPlayableMedia ? imageUrl : displayedImageUrl) ? (
             isAudio ? (
               <div data-no-window-drag="true" className="h-full w-full" onContextMenu={handleContextMenu}>
                 <AudioPlayer
@@ -3755,16 +3848,30 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     const target = event.currentTarget;
                     const naturalWidth = target.naturalWidth || target.width;
                     const naturalHeight = target.naturalHeight || target.height;
-                    if (naturalWidth > 0 && naturalHeight > 0) {
-                      setDisplayedImageNaturalSize({ width: naturalWidth, height: naturalHeight });
-                    }
                     const loadedUrl = target.currentSrc || target.src;
-                    const loadedSourceImage = Boolean(imageUrl && loadedUrl === imageUrl);
+                    const loadedSourceImage = Boolean(
+                      displayedSourceKind === 'original'
+                      && originalImageUrl
+                      && loadedUrl === originalImageUrl
+                    );
+                    if (
+                      (loadedSourceImage || displayedSourceKind === 'edited')
+                      && displayedImageUrl
+                      && loadedUrl === displayedImageUrl
+                      && naturalWidth > 0
+                      && naturalHeight > 0
+                    ) {
+                      setDisplayedImageNaturalSizeState({
+                        key: imageSourceKey,
+                        url: displayedImageUrl,
+                        size: { width: naturalWidth, height: naturalHeight },
+                      });
+                    }
                     if (isFullImageSourceReady && loadedSourceImage && naturalWidth > 0 && naturalHeight > 0) {
                       setImageEditSourceDimensions({ width: naturalWidth, height: naturalHeight });
                     }
                     updateCropImageBounds();
-                    if (!hasMarkedFullMediaReadyRef.current) {
+                    if (loadedSourceImage && !hasMarkedFullMediaReadyRef.current) {
                       hasMarkedFullMediaReadyRef.current = true;
                       markPerformanceFlow(diagnosticsFlowId, 'image-onload', { imageId: image.id });
                       finishPerformanceFlow(diagnosticsFlowId, {
@@ -3781,9 +3888,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onPointerLeave={hideOriginalForAdjustmentCompare}
                   onDragStart={handleDragStart}
                   style={{
-                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${viewerZoomMode === 'actual' && !displayedImageNaturalSize ? 1 : zoom})`,
                     transition: isDragging || viewerZoomMode !== 'manual' ? 'none' : 'transform 0.1s ease-out',
-                    opacity: viewerZoomMode === 'actual' && !displayedImageNaturalSize ? 0 : 1,
+                    opacity: displayedSourceKind === 'original' && viewerZoomMode === 'actual' && !displayedImageNaturalSize ? 0 : 1,
                   }}
                   title={hasImageEditChanges && editedPreviewUrl ? 'Hold to compare with the original image' : undefined}
                   draggable={canDragExternally && zoom === 1}
@@ -5234,9 +5341,19 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
   const propsEqual =
     prevProps.image.id === nextProps.image.id &&
     prevProps.image.name === nextProps.image.name &&
+    prevProps.image.lastModified === nextProps.image.lastModified &&
+    prevProps.image.handle === nextProps.image.handle &&
+    prevProps.image.thumbnailHandle === nextProps.image.thumbnailHandle &&
     prevProps.image.isFavorite === nextProps.image.isFavorite &&
     prevProps.image.rating === nextProps.image.rating &&
     tagsEqual(prevProps.image.tags, nextProps.image.tags) &&
+    prevProps.previewUrl === nextProps.previewUrl &&
+    prevProps.prefetchPrevious?.image.id === nextProps.prefetchPrevious?.image.id &&
+    prevProps.prefetchPrevious?.image.lastModified === nextProps.prefetchPrevious?.image.lastModified &&
+    prevProps.prefetchPrevious?.directoryPath === nextProps.prefetchPrevious?.directoryPath &&
+    prevProps.prefetchNext?.image.id === nextProps.prefetchNext?.image.id &&
+    prevProps.prefetchNext?.image.lastModified === nextProps.prefetchNext?.image.lastModified &&
+    prevProps.prefetchNext?.directoryPath === nextProps.prefetchNext?.directoryPath &&
     prevProps.currentIndex === nextProps.currentIndex &&
     prevProps.totalImages === nextProps.totalImages &&
     prevProps.directoryPath === nextProps.directoryPath &&
