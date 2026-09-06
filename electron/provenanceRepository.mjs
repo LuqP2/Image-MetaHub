@@ -29,7 +29,19 @@ function assertNonBlank(value, name) {
   if (typeof value !== 'string' || !value.trim()) {
     throw new ProvenanceRepositoryError('PROVENANCE_INVALID_INPUT', `${name} must be a non-empty string.`);
   }
-  return value.trim();
+  return value;
+}
+
+function normalizeOptionalTimestamp(value, name) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new ProvenanceRepositoryError('PROVENANCE_INVALID_INPUT', `${name} must be a non-negative, finite timestamp.`);
+  }
+  const normalized = Math.trunc(value);
+  if (!Number.isSafeInteger(normalized)) {
+    throw new ProvenanceRepositoryError('PROVENANCE_INVALID_INPUT', `${name} must be a non-negative, finite timestamp.`);
+  }
+  return normalized;
 }
 
 function assertUuid(value, name) {
@@ -444,6 +456,7 @@ export class AssetProvenanceRepository {
   }
 
   #insertRevision({ assetId, revisionId, sha256, hashState, byteSize, mimeType = null, width = null, height = null, contentModifiedMs = null, observedAt = null, timestamp }) {
+    const normalizedContentModifiedMs = normalizeOptionalTimestamp(contentModifiedMs, 'contentModifiedMs');
     this.database.prepare(`
       INSERT INTO asset_revisions (
         revision_id, asset_id, sha256, hash_state, byte_size, mime_type,
@@ -451,7 +464,7 @@ export class AssetProvenanceRepository {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       revisionId, assetId, sha256, hashState, byteSize, mimeType,
-      width, height, contentModifiedMs, observedAt || timestamp, timestamp,
+      width, height, normalizedContentModifiedMs, observedAt || timestamp, timestamp,
     );
   }
 

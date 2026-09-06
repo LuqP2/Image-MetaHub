@@ -120,6 +120,31 @@ describe('AssetProvenanceRepository production contract', () => {
     repository.close();
   });
 
+  it('normalizes filesystem timestamps while preserving opaque location whitespace', async () => {
+    const databasePath = resolveProvenanceCatalogPath(await temporaryUserData());
+    const repository = new AssetProvenanceRepository({ databasePath });
+    repository.open();
+
+    const created = repository.createAssetWithRevisionAndLocation(initialRecord({
+      relativePath: ' images/original.png ',
+      contentModifiedMs: 1_788_000_000_000.875,
+    }));
+    expect(created).toMatchObject({
+      revisions: [{ contentModifiedMs: 1_788_000_000_000 }],
+      locations: [{ relativePath: ' images/original.png ' }],
+    });
+
+    expect(repository.relocateLocation(initialRecord().locationId as string, {
+      rootId: 'library-root',
+      relativePath: ' renamed/original.png ',
+    })).toMatchObject({ relativePath: ' renamed/original.png ' });
+    expect(() => repository.relocateLocation(initialRecord().locationId as string, {
+      rootId: 'library-root',
+      relativePath: '   ',
+    })).toThrowError(expect.objectContaining({ code: 'PROVENANCE_INVALID_INPUT' }));
+    repository.close();
+  });
+
   it('migrates v1 to v2 transactionally, preserves records and retries after rollback', async () => {
     const databasePath = resolveProvenanceCatalogPath(await temporaryUserData());
     let repository = new AssetProvenanceRepository({
