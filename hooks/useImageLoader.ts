@@ -10,6 +10,7 @@ import { areFilesystemPathsEqual } from '../utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from '../utils/directoryActivity';
 import { inferMimeTypeFromName, isImageFileName } from '../utils/mediaTypes.js';
 import { normalizeBirthtimeMs } from '../utils/fileTimestamps.js';
+import { buildProvenanceIdentityLookupKey } from '../utils/provenancePath.mjs';
 
 // Configure logging level
 const DEBUG = false;
@@ -65,6 +66,8 @@ type DirectoryFileRecord = {
     birthtimeMs?: number;
     contentModifiedMs?: number;
 };
+
+type ProvenanceIdentity = Pick<IndexedImage, 'assetId' | 'revisionId' | 'provenanceLocationId' | 'provenanceRootId'>;
 
 const electronHandleGetFile = async function (this: { name: string; _filePath?: string }) {
     const electronAPI = window.electronAPI;
@@ -124,9 +127,14 @@ async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle
     return files;
 }
 
-async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, recursive: boolean): Promise<DirectoryFileRecord[]> {
+async function getDirectoryFiles(
+    directoryHandle: FileSystemDirectoryHandle,
+    directoryPath: string,
+    recursive: boolean,
+    provenanceRootPath: string = directoryPath,
+): Promise<DirectoryFileRecord[]> {
     if (getIsElectron()) {
-        const result = await (window as any).electronAPI.listDirectoryFiles({ dirPath: directoryPath, recursive });
+        const result = await (window as any).electronAPI.listDirectoryFiles({ dirPath: directoryPath, recursive, provenanceRootPath });
         if (result.success && result.files) {
             return result.files;
         }
@@ -276,6 +284,46 @@ export function useImageLoader() {
     const idleReconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const idleReconcileQueueRef = useRef<Directory[]>([]);
     const idleReconcileRunningRef = useRef(false);
+    const provenanceIdentityByLookupKeyRef = useRef(new Map<string, ProvenanceIdentity>());
+
+    const provenanceIdentityForPath = useCallback((directoryId: string, relativePath: string) =>
+        provenanceIdentityByLookupKeyRef.current.get(buildProvenanceIdentityLookupKey(directoryId, relativePath)), []);
+
+    useEffect(() => {
+        if (!window.electronAPI?.onProvenanceIdentitiesAssigned) return;
+        return window.electronAPI.onProvenanceIdentitiesAssigned((payload) => {
+            const directory = useImageStore.getState().directories.find((candidate) =>
+                areFilesystemPathsEqual(candidate.path, payload.rootPath)
+            );
+            if (!directory) return;
+
+            const updatedByPathKey = new Map<string, ProvenanceIdentity>();
+            for (const mapping of payload.mappings) {
+                const lookupKey = buildProvenanceIdentityLookupKey(directory.id, mapping.relativePath);
+                const identity = {
+                    assetId: mapping.assetId,
+                    revisionId: mapping.revisionId,
+                    provenanceLocationId: mapping.locationId,
+                    provenanceRootId: payload.rootId,
+                };
+                provenanceIdentityByLookupKeyRef.current.set(lookupKey, identity);
+                updatedByPathKey.set(lookupKey, identity);
+            }
+
+            const updates = useImageStore.getState().images.flatMap((image) => {
+                if (image.directoryId !== directory.id) return [];
+                const idPrefix = `${directory.id}::`;
+                const originalRelativePath = image.id.startsWith(idPrefix)
+                    ? image.id.slice(idPrefix.length)
+                    : image.name;
+                const identity = updatedByPathKey.get(
+                    buildProvenanceIdentityLookupKey(directory.id, originalRelativePath)
+                );
+                return identity ? [{ ...image, ...identity }] : [];
+            });
+            if (updates.length > 0) mergeImages(updates);
+        });
+    }, [mergeImages]);
 
     // Helper function to check if indexing should be cancelled
     const shouldCancelIndexing = useCallback((allowIdle = false) => {
@@ -568,7 +616,7 @@ export function useImageLoader() {
         await cacheManager.init();
 
         const listStart = performance.now();
-        const allCurrentFiles = await getDirectoryFiles(activeDirectory.handle, activeDirectory.path, shouldScanSubfolders);
+        const allCurrentFiles = await getDirectoryFiles(activeDirectory.handle, activeDirectory.path, shouldScanSubfolders, activeDirectory.path);
         logIndexingPerf('startup-reconcile:list-files', {
             directoryId: activeDirectory.id,
             directoryName: activeDirectory.name,
@@ -703,6 +751,7 @@ export function useImageLoader() {
                             mergeImages(batch);
                         },
                         hydratePreloadedImages: false,
+                        provenanceIdentityForPath: (relativePath) => provenanceIdentityForPath(activeDirectory.id, relativePath),
                     }
                 );
 
@@ -824,6 +873,7 @@ export function useImageLoader() {
                         mergeImages(batch);
                     },
                     hydratePreloadedImages: false,
+                    provenanceIdentityForPath: (relativePath) => provenanceIdentityForPath(activeDirectory.id, relativePath),
                 }
             );
 
@@ -849,7 +899,7 @@ export function useImageLoader() {
             setEnrichmentProgress(null);
             setProgress(null);
         }
-    }, [addImages, mergeImages, refreshLineageDirectorySignature, removeImages, scheduleLineageRebuild, setDirectoryRefreshing, setEnrichmentProgress, setProgress, waitWhilePaused]);
+    }, [addImages, mergeImages, provenanceIdentityForPath, refreshLineageDirectorySignature, removeImages, scheduleLineageRebuild, setDirectoryRefreshing, setEnrichmentProgress, setProgress, waitWhilePaused]);
 
     const runIdleReconcileQueue = useCallback(async () => {
         if (idleReconcileRunningRef.current) {
@@ -1126,7 +1176,7 @@ export function useImageLoader() {
             
             // Get files from disk (either full directory or specific subfolder)
             const listStart = performance.now();
-            let allCurrentFiles = await getDirectoryFiles(directory.handle, scanPath, shouldScanSubfolders);
+            let allCurrentFiles = await getDirectoryFiles(directory.handle, scanPath, shouldScanSubfolders, directory.path);
             logIndexingPerf('load-directory:list-files', {
                 directoryId: directory.id,
                 directoryName: directory.name,
@@ -1409,6 +1459,7 @@ export function useImageLoader() {
                         onEnrichmentBatch: handleEnrichmentBatch,
                         onEnrichmentProgress: handleEnrichmentProgress,
                         hydratePreloadedImages: shouldHydratePreloadedImages,
+                        provenanceIdentityForPath: (relativePath) => provenanceIdentityForPath(directory.id, relativePath),
                     }
                 );
                 logIndexingPerf('load-directory:phase-a-returned', {
@@ -1527,7 +1578,7 @@ export function useImageLoader() {
                 setProgress(null);
             }
         }
-    }, [addImages, mergeImages, removeImages, clearImages, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad, scheduleDirectoryThumbnailWarmup, setDirectoryProgress]);
+    }, [addImages, mergeImages, provenanceIdentityForPath, removeImages, clearImages, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad, scheduleDirectoryThumbnailWarmup, setDirectoryProgress]);
 
 
     // Helper function to detect if a path is a root disk

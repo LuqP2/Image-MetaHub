@@ -33,6 +33,10 @@ export interface CacheImageMetadata {
   enrichmentState?: 'catalog' | 'enriched';
   fileSize?: number;
   fileType?: string;
+  assetId?: string;
+  revisionId?: string;
+  provenanceLocationId?: string;
+  provenanceRootId?: string;
 
   // Smart Clustering & Auto-Tagging (Phase 1)
   clusterId?: string;
@@ -280,6 +284,10 @@ function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
     enrichmentState: img.enrichmentState,
     fileSize: img.fileSize,
     fileType: img.fileType,
+    assetId: img.assetId,
+    revisionId: img.revisionId,
+    provenanceLocationId: img.provenanceLocationId,
+    provenanceRootId: img.provenanceRootId,
 
     // Smart Clustering & Auto-Tagging (Phase 1)
     clusterId: img.clusterId,

@@ -173,12 +173,65 @@ describe('AssetProvenanceRepository production contract', () => {
     repository = new AssetProvenanceRepository({ databasePath });
     repository.open();
     repository.applyMigrations();
-    expect(repository.getStatus().schemaVersion).toBe(2);
+    expect(repository.getStatus().schemaVersion).toBe(PROVENANCE_SCHEMA_VERSION);
     expect(repository.getAsset('legacy-asset')).toMatchObject({
       assetId: 'legacy-asset',
       revisions: [{ revisionId: 'legacy-revision' }],
       locations: [],
     });
+    repository.close();
+  });
+
+  it('preserves a populated v2 catalog instead of guessing filesystem-root mappings', async () => {
+    const databasePath = resolveProvenanceCatalogPath(await temporaryUserData());
+    let repository = new AssetProvenanceRepository({ databasePath });
+    repository.open({ targetSchemaVersion: 2 });
+    repository.database.prepare('INSERT INTO assets VALUES (?, ?, ?, ?)')
+      .run('11111111-1111-4111-8111-111111111111', 'active', 'now', 'now');
+    repository.database.prepare('INSERT INTO asset_revisions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(
+        '22222222-2222-4222-8222-222222222222',
+        '11111111-1111-4111-8111-111111111111',
+        null,
+        'pending',
+        1024,
+        'image/png',
+        null,
+        null,
+        1_788_000_000_000,
+        'now',
+        'now',
+      );
+    repository.database.prepare('INSERT INTO asset_locations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(
+        '33333333-3333-4333-8333-333333333333',
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+        'legacy-library-root',
+        'images/original.png',
+        'present',
+        'now',
+        'now',
+        null,
+      );
+    repository.close();
+
+    repository = new AssetProvenanceRepository({ databasePath });
+    expect(() => repository.open()).toThrowError(expect.objectContaining({
+      code: 'PROVENANCE_MIGRATION_FAILED',
+      message: expect.stringContaining('Schema-v2 locations cannot be associated with filesystem roots safely'),
+      cause: expect.objectContaining({ code: 'PROVENANCE_LEGACY_LOCATIONS_UNMAPPABLE' }),
+    }));
+
+    repository = new AssetProvenanceRepository({ databasePath });
+    repository.open({ targetSchemaVersion: 2 });
+    expect(repository.getStatus().schemaVersion).toBe(2);
+    expect(repository.database.prepare('SELECT * FROM asset_locations').get()).toMatchObject({
+      location_id: '33333333-3333-4333-8333-333333333333',
+      root_id: 'legacy-library-root',
+      relative_path: 'images/original.png',
+    });
+    expect(repository.database.prepare("SELECT name FROM sqlite_master WHERE name = 'library_roots'").get()).toBeUndefined();
     repository.close();
   });
 
@@ -202,7 +255,7 @@ describe('AssetProvenanceRepository production contract', () => {
     })));
 
     const backupPath = path.join(userDataPath, 'backups', 'provenance.sqlite');
-    expect(lifecycle.createBackup(backupPath)).toMatchObject({ path: backupPath, schemaVersion: 2, created: true });
+    expect(lifecycle.createBackup(backupPath)).toMatchObject({ path: backupPath, schemaVersion: PROVENANCE_SCHEMA_VERSION, created: true });
     liveReader.database.exec('COMMIT');
     liveReader.close();
     lifecycle.run((repository) => repository.createAssetWithRevisionAndLocation(initialRecord({
@@ -254,7 +307,7 @@ describe('provenance repository lifecycle and cache independence', () => {
     lifecycle.close();
 
     const reopened = new ProvenanceRepositoryLifecycle({ userDataPath, logger: { error: vi.fn() } });
-    expect(reopened.initialize()).toMatchObject({ available: true, schemaVersion: 2 });
+    expect(reopened.initialize()).toMatchObject({ available: true, schemaVersion: PROVENANCE_SCHEMA_VERSION });
     expect(reopened.run((repository) => repository.getAsset(initialRecord().assetId as string))).not.toBeNull();
     reopened.close();
   });
