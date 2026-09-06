@@ -42,6 +42,7 @@ import { createLicenseManager } from './electron/licenseManager.mjs';
 import { licenseClientConfig } from './electron/licenseClientConfig.generated.mjs';
 import { resolveLicenseRuntimeConfig } from './electron/licenseRuntimeConfig.mjs';
 import { resetUserDataContents } from './electron/cacheReset.mjs';
+import { ProvenanceRepositoryLifecycle } from './electron/provenanceRepository.mjs';
 import { openAuthorizedCacheDirectory } from './electron/cacheDirectory.mjs';
 import { appendEmbeddingSegmentAtOffset } from './electron/embeddingSegmentFile.mjs';
 import { hashFileSha256 } from './electron/fileFingerprint.mjs';
@@ -604,6 +605,7 @@ async function readMediaMetadataWithFfprobe(filePath) {
 
 let mainWindow;
 let licenseManager;
+let provenanceRepositoryLifecycle;
 const detachedImageViewerWindows = new Map();
 const detachedImageViewerSnapshots = new Map();
 const detachedImageViewerRequestResolvers = new Map();
@@ -2944,6 +2946,11 @@ app.whenReady().then(async () => {
   registerMediaProtocol();
   registerThumbnailProtocol();
   registerModelProtocol();
+
+  provenanceRepositoryLifecycle = new ProvenanceRepositoryLifecycle({
+    userDataPath: app.getPath('userData'),
+  });
+  provenanceRepositoryLifecycle.initialize();
 
   const licenseRuntimeConfig = resolveLicenseRuntimeConfig({
     isPackaged: app.isPackaged,
@@ -7440,6 +7447,7 @@ app.on('before-quit', () => {
   // Stop all file watchers before quitting
   fileWatcher.stopAllWatchers();
   licenseManager?.dispose?.();
+  provenanceRepositoryLifecycle?.close();
 });
 
 app.on('activate', () => {
