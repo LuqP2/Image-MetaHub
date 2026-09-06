@@ -451,6 +451,33 @@ export class AssetProvenanceRepository {
           .run(storedPath, timestamp, existing.root_id);
         return serializeRoot(this.database.prepare('SELECT * FROM library_roots WHERE root_id = ?').get(existing.root_id));
       }
+
+      const legacyRootIds = this.database.prepare(`
+        SELECT DISTINCT locations.root_id AS root_id
+        FROM asset_locations AS locations
+        LEFT JOIN library_roots AS roots ON roots.root_id = locations.root_id
+        WHERE roots.root_id IS NULL
+        ORDER BY locations.root_id
+      `).all().map((row) => row.root_id);
+      const matchingLegacyRootIds = legacyRootIds.filter((legacyRootId) => (
+        legacyRootId === storedPath || legacyRootId === normalizedPathKey
+      ));
+      const legacyRootId = matchingLegacyRootIds.length === 1
+        ? matchingLegacyRootIds[0]
+        : matchingLegacyRootIds.length === 0 && legacyRootIds.length === 1
+          ? legacyRootIds[0]
+          : null;
+
+      if (!legacyRootId && legacyRootIds.length > 0) {
+        throw new ProvenanceRepositoryError(
+          'PROVENANCE_LEGACY_ROOT_AMBIGUOUS',
+          `Cannot associate ${legacyRootIds.length} legacy provenance roots with ${storedPath}.`,
+        );
+      }
+      if (legacyRootId) {
+        this.database.prepare('UPDATE asset_locations SET root_id = ? WHERE root_id = ?')
+          .run(normalizedRootId, legacyRootId);
+      }
       this.database.prepare('INSERT INTO library_roots VALUES (?, ?, ?, ?, ?)')
         .run(normalizedRootId, storedPath, normalizedPathKey, timestamp, timestamp);
       return serializeRoot(this.database.prepare('SELECT * FROM library_roots WHERE root_id = ?').get(normalizedRootId));
@@ -475,10 +502,10 @@ export class AssetProvenanceRepository {
 
       const location = this.database.prepare(`
         SELECT * FROM asset_locations
-        WHERE root_id = ? AND relative_path_key = ? AND state != 'removed'
+        WHERE root_id = ? AND (relative_path_key = ? OR relative_path = ?) AND state != 'removed'
         ORDER BY CASE state WHEN 'present' THEN 0 ELSE 1 END, last_observed_at DESC
         LIMIT 1
-      `).get(rootId, relativePathKey);
+      `).get(rootId, relativePathKey, relativePath);
 
       if (!location) {
         const assetId = assertUuid(this.randomUUID(), 'assetId');
@@ -517,9 +544,9 @@ export class AssetProvenanceRepository {
       if (unchanged) {
         this.database.prepare(`
           UPDATE asset_locations
-          SET relative_path = ?, state = 'present', last_observed_at = ?, missing_at = NULL
+          SET relative_path = ?, relative_path_key = ?, state = 'present', last_observed_at = ?, missing_at = NULL
           WHERE location_id = ?
-        `).run(relativePath, timestamp, location.location_id);
+        `).run(relativePath, relativePathKey, timestamp, location.location_id);
         this.database.prepare("UPDATE assets SET state = 'active', updated_at = ? WHERE asset_id = ?")
           .run(timestamp, location.asset_id);
         return {
@@ -543,9 +570,9 @@ export class AssetProvenanceRepository {
       });
       this.database.prepare(`
         UPDATE asset_locations
-        SET revision_id = ?, relative_path = ?, state = 'present', last_observed_at = ?, missing_at = NULL
+        SET revision_id = ?, relative_path = ?, relative_path_key = ?, state = 'present', last_observed_at = ?, missing_at = NULL
         WHERE location_id = ?
-      `).run(revisionId, relativePath, timestamp, location.location_id);
+      `).run(revisionId, relativePath, relativePathKey, timestamp, location.location_id);
       this.database.prepare("UPDATE assets SET state = 'active', updated_at = ? WHERE asset_id = ?")
         .run(timestamp, location.asset_id);
       return {

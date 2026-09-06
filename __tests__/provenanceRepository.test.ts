@@ -182,6 +182,68 @@ describe('AssetProvenanceRepository production contract', () => {
     repository.close();
   });
 
+  it('associates a migrated v2 location with its first registered library root', async () => {
+    const databasePath = resolveProvenanceCatalogPath(await temporaryUserData());
+    let repository = new AssetProvenanceRepository({ databasePath });
+    repository.open({ targetSchemaVersion: 2 });
+    repository.database.prepare('INSERT INTO assets VALUES (?, ?, ?, ?)')
+      .run('11111111-1111-4111-8111-111111111111', 'active', 'now', 'now');
+    repository.database.prepare('INSERT INTO asset_revisions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(
+        '22222222-2222-4222-8222-222222222222',
+        '11111111-1111-4111-8111-111111111111',
+        null,
+        'pending',
+        1024,
+        'image/png',
+        null,
+        null,
+        1_788_000_000_000,
+        'now',
+        'now',
+      );
+    repository.database.prepare('INSERT INTO asset_locations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(
+        '33333333-3333-4333-8333-333333333333',
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+        'legacy-library-root',
+        'Images/Original.PNG',
+        'present',
+        'now',
+        'now',
+        null,
+      );
+    repository.close();
+
+    repository = new AssetProvenanceRepository({ databasePath });
+    repository.open();
+    const root = repository.ensureLibraryRoot({
+      rootId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+      absolutePath: 'D:\\Library',
+      pathKey: 'd:\\library',
+    });
+    expect(repository.assignIndexedFile({
+      rootId: root.rootId,
+      relativePath: 'Images/Original.PNG',
+      relativePathKey: 'images/original.png',
+      byteSize: 1024,
+      mimeType: 'image/png',
+      contentModifiedMs: 1_788_000_000_000,
+    })).toEqual({
+      assetId: '11111111-1111-4111-8111-111111111111',
+      revisionId: '22222222-2222-4222-8222-222222222222',
+      locationId: '33333333-3333-4333-8333-333333333333',
+      needsHash: true,
+    });
+    expect(repository.database.prepare('SELECT COUNT(*) AS count FROM assets').get()).toEqual({ count: 1 });
+    expect(repository.database.prepare('SELECT root_id, relative_path_key FROM asset_locations').get()).toEqual({
+      root_id: root.rootId,
+      relative_path_key: 'images/original.png',
+    });
+    repository.close();
+  });
+
   it('creates a verified checkpointed backup and keeps the live writer usable', async () => {
     const userDataPath = await temporaryUserData();
     const lifecycle = new ProvenanceRepositoryLifecycle({ userDataPath, logger: { error: vi.fn() } });

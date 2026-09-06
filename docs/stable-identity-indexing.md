@@ -12,6 +12,7 @@ The integration is intentionally disabled by default. It can be enabled for synt
 - Relative paths use forward slashes, lexical dot-segment normalization, and a platform-aware comparison key. Unicode spelling is preserved so canonically distinct names remain distinct on case-sensitive filesystems. Absolute paths and paths escaping the root are rejected.
 - A location reuses its asset and revision when byte size and content modification time are unchanged. A changed signature creates a revision on the same asset.
 - Equal SHA-256 values never merge assets. Hashes describe revisions; they do not define asset identity.
+- On the first root registration after a schema-v2 upgrade, a sole legacy root (or one whose opaque key matches the selected path) is transactionally reassigned to the new root UUID. Multiple legacy roots without a verifiable match produce an explicit error instead of duplicating assets.
 
 ## Runtime flow
 
