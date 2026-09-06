@@ -182,7 +182,7 @@ describe('AssetProvenanceRepository production contract', () => {
     repository.close();
   });
 
-  it('associates a migrated v2 location with its first registered library root', async () => {
+  it('preserves a populated v2 catalog instead of guessing filesystem-root mappings', async () => {
     const databasePath = resolveProvenanceCatalogPath(await temporaryUserData());
     let repository = new AssetProvenanceRepository({ databasePath });
     repository.open({ targetSchemaVersion: 2 });
@@ -208,7 +208,7 @@ describe('AssetProvenanceRepository production contract', () => {
         '11111111-1111-4111-8111-111111111111',
         '22222222-2222-4222-8222-222222222222',
         'legacy-library-root',
-        'Images/Original.PNG',
+        'images/original.png',
         'present',
         'now',
         'now',
@@ -217,30 +217,21 @@ describe('AssetProvenanceRepository production contract', () => {
     repository.close();
 
     repository = new AssetProvenanceRepository({ databasePath });
-    repository.open();
-    const root = repository.ensureLibraryRoot({
-      rootId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
-      absolutePath: 'D:\\Library',
-      pathKey: 'd:\\library',
+    expect(() => repository.open()).toThrowError(expect.objectContaining({
+      code: 'PROVENANCE_MIGRATION_FAILED',
+      message: expect.stringContaining('Schema-v2 locations cannot be associated with filesystem roots safely'),
+      cause: expect.objectContaining({ code: 'PROVENANCE_LEGACY_LOCATIONS_UNMAPPABLE' }),
+    }));
+
+    repository = new AssetProvenanceRepository({ databasePath });
+    repository.open({ targetSchemaVersion: 2 });
+    expect(repository.getStatus().schemaVersion).toBe(2);
+    expect(repository.database.prepare('SELECT * FROM asset_locations').get()).toMatchObject({
+      location_id: '33333333-3333-4333-8333-333333333333',
+      root_id: 'legacy-library-root',
+      relative_path: 'images/original.png',
     });
-    expect(repository.assignIndexedFile({
-      rootId: root.rootId,
-      relativePath: 'Images/Original.PNG',
-      relativePathKey: 'images/original.png',
-      byteSize: 1024,
-      mimeType: 'image/png',
-      contentModifiedMs: 1_788_000_000_000,
-    })).toEqual({
-      assetId: '11111111-1111-4111-8111-111111111111',
-      revisionId: '22222222-2222-4222-8222-222222222222',
-      locationId: '33333333-3333-4333-8333-333333333333',
-      needsHash: true,
-    });
-    expect(repository.database.prepare('SELECT COUNT(*) AS count FROM assets').get()).toEqual({ count: 1 });
-    expect(repository.database.prepare('SELECT root_id, relative_path_key FROM asset_locations').get()).toEqual({
-      root_id: root.rootId,
-      relative_path_key: 'images/original.png',
-    });
+    expect(repository.database.prepare("SELECT name FROM sqlite_master WHERE name = 'library_roots'").get()).toBeUndefined();
     repository.close();
   });
 

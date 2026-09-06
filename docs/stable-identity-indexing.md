@@ -12,7 +12,7 @@ The integration is intentionally disabled by default. It can be enabled for synt
 - Relative paths use forward slashes, lexical dot-segment normalization, and a platform-aware comparison key. Unicode spelling is preserved so canonically distinct names remain distinct on case-sensitive filesystems. Absolute paths and paths escaping the root are rejected.
 - A location reuses its asset and revision when byte size and content modification time are unchanged. A changed signature creates a revision on the same asset.
 - Equal SHA-256 values never merge assets. Hashes describe revisions; they do not define asset identity.
-- On the first root registration after a schema-v2 upgrade, a sole legacy root (or one whose opaque key matches the selected path) is transactionally reassigned to the new root UUID. Multiple legacy roots without a verifiable match produce an explicit error instead of duplicating assets.
+- Schema v2 was never connected to product indexing and therefore has no reliable mapping from its opaque root IDs to filesystem paths. Empty v2 catalogs migrate normally; a populated v2 catalog is preserved and rejected explicitly instead of guessing a mapping or duplicating assets.
 
 ## Runtime flow
 
@@ -23,6 +23,8 @@ SHA-256 work uses a streaming reader in a single background queue. Pending revis
 ## Absence safety
 
 Identity assignment is allowed for complete or partial scans. Each root has a scan generation; starting a newer scan makes every older scan stale before it can assign another batch or reconcile. Missing-state reconciliation is allowed only for the current generation after a successful recursive scan of the entire registered root. A scoped refresh, flat scan, unreadable subdirectory, cancelled job, unavailable root, or superseded scan never turns unseen locations into missing assets.
+
+Auto-watch discoveries and filesystem mutations are intentionally outside this disabled integration. They will use the same catalog-assignment boundary in the follow-up that connects rename, move, copy, overwrite, and live watcher events before the feature flag can become a product default.
 
 ## Validation boundary
 
