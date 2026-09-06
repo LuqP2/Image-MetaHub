@@ -21,7 +21,7 @@ SHA-256 work uses a streaming reader in a single background queue. Pending revis
 
 ## Absence safety
 
-Identity assignment is allowed for complete or partial scans. Missing-state reconciliation is allowed only after a successful recursive scan of the entire registered root. A scoped refresh, flat scan, unreadable subdirectory, cancelled job, or unavailable root never turns unseen locations into missing assets.
+Identity assignment is allowed for complete or partial scans. Each root has a scan generation; starting a newer scan makes every older scan stale before it can assign another batch or reconcile. Missing-state reconciliation is allowed only for the current generation after a successful recursive scan of the entire registered root. A scoped refresh, flat scan, unreadable subdirectory, cancelled job, unavailable root, or superseded scan never turns unseen locations into missing assets.
 
 ## Validation boundary
 

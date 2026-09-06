@@ -192,6 +192,51 @@ describe('StableIdentityIndexer', () => {
     lifecycle.close();
   });
 
+  it('prevents an older overlapping scan from assigning after a newer scan begins', async () => {
+    const { userDataPath, rootPath } = await temporaryWorkspace();
+    await fs.writeFile(path.join(rootPath, 'kept.bin'), 'kept');
+    await fs.writeFile(path.join(rootPath, 'deleted.bin'), 'deleted');
+    const files = await Promise.all(['kept.bin', 'deleted.bin'].map((name) => fileRecord(rootPath, name)));
+    const lifecycle = new ProvenanceRepositoryLifecycle({ userDataPath });
+    lifecycle.initialize();
+    const indexer = new StableIdentityIndexer({ repositoryLifecycle: lifecycle, enabled: true, batchSize: 1 });
+    const initialMappings: IdentityMapping[] = [];
+    await indexer.indexScan({
+      rootPath,
+      files,
+      recursive: true,
+      scanComplete: true,
+      onBatch: ({ mappings }) => initialMappings.push(...mappings),
+    });
+    const deletedIdentity = initialMappings.find((mapping) => mapping.relativePath === 'deleted.bin');
+    expect(deletedIdentity).toBeDefined();
+    if (!deletedIdentity) throw new Error('Expected the synthetic deleted file to receive an identity.');
+
+    let releaseFirstOldBatch: (() => void) | undefined;
+    const firstOldBatch = new Promise<void>((resolve) => { releaseFirstOldBatch = resolve; });
+    const olderScan = indexer.indexScan({
+      rootPath,
+      files,
+      recursive: true,
+      scanComplete: true,
+      onBatch: () => releaseFirstOldBatch?.(),
+    });
+    await firstOldBatch;
+    const newerScan = indexer.indexScan({
+      rootPath,
+      files: [files[0]],
+      recursive: true,
+      scanComplete: true,
+    });
+
+    const [olderResult, newerResult] = await Promise.all([olderScan, newerScan]);
+    expect(olderResult).toMatchObject({ stale: true, reconciled: false });
+    expect(newerResult).toMatchObject({ stale: false, reconciled: true });
+    expect(lifecycle.run((repository) => repository.getAsset(deletedIdentity.assetId))?.state).toBe('missing');
+    indexer.stop();
+    lifecycle.close();
+  });
+
   it('normalizes separators and case keys without allowing root escape', () => {
     expect(normalizeRelativeCatalogPath('Folder\\Image.PNG', 'win32')).toEqual({
       relativePath: 'Folder/Image.PNG',

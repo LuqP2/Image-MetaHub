@@ -59,6 +59,7 @@ export class StableIdentityIndexer {
     this.queuedRevisionIds = new Set();
     this.hashDrainPromise = null;
     this.abortController = new AbortController();
+    this.scanGenerationByRootKey = new Map();
   }
 
   pause() {
@@ -85,13 +86,22 @@ export class StableIdentityIndexer {
     if (!this.enabled || this.stopped) return { enabled: false, assigned: 0, reconciled: false };
     const root = normalizeLibraryRootPath(rootPath, this.platform);
     const normalizedScan = normalizeLibraryRootPath(scanPath, this.platform);
+    const scanGeneration = (this.scanGenerationByRootKey.get(root.pathKey) ?? 0) + 1;
+    this.scanGenerationByRootKey.set(root.pathKey, scanGeneration);
+    const isLatestGeneration = () => this.scanGenerationByRootKey.get(root.pathKey) === scanGeneration;
+    const isCurrentScan = () => !this.stopped && isLatestGeneration();
     const rootRecord = this.repositoryLifecycle.run((repository) => repository.ensureLibraryRoot(root));
     const seenPathKeys = new Set();
     let assigned = 0;
 
     for (let offset = 0; offset < files.length; offset += this.batchSize) {
       await this.#waitWhilePaused();
-      if (this.stopped) return { enabled: true, assigned, reconciled: false, cancelled: true };
+      if (this.stopped) {
+        return { enabled: true, assigned, reconciled: false, cancelled: true, rootId: rootRecord.rootId };
+      }
+      if (!isLatestGeneration()) {
+        return { enabled: true, assigned, reconciled: false, stale: true, rootId: rootRecord.rootId };
+      }
       const mappings = [];
       for (const file of files.slice(offset, offset + this.batchSize)) {
         const absoluteFilePath = path.resolve(normalizedScan.absolutePath, ...String(file.name).replace(/\\/g, '/').split('/'));
@@ -122,12 +132,23 @@ export class StableIdentityIndexer {
       await new Promise((resolve) => setImmediate(resolve));
     }
 
-    const canReconcile = Boolean(scanComplete && recursive && normalizedScan.pathKey === root.pathKey && !this.stopped);
+    const canReconcile = Boolean(
+      scanComplete
+      && recursive
+      && normalizedScan.pathKey === root.pathKey
+      && isCurrentScan()
+    );
     if (canReconcile) {
       this.repositoryLifecycle.run((repository) => repository.reconcileRootLocations(rootRecord.rootId, seenPathKeys));
     }
     void this.#drainHashes();
-    return { enabled: true, assigned, reconciled: canReconcile, rootId: rootRecord.rootId };
+    return {
+      enabled: true,
+      assigned,
+      reconciled: canReconcile,
+      stale: !isLatestGeneration(),
+      rootId: rootRecord.rootId,
+    };
   }
 
   async waitForIdle() {
