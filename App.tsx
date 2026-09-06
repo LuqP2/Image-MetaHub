@@ -3345,12 +3345,32 @@ export default function App() {
           return null;
         }
 
+        const resolvePrefetchNeighbor = (index: number) => {
+          if (index < 0 || index >= navigationImageIds.length) {
+            return null;
+          }
+
+          const neighborImage = getImageByIdFromStore(navigationImageIds[index]);
+          if (!neighborImage) {
+            return null;
+          }
+
+          const neighborDirectoryPath = directoryPathById.get(neighborImage.directoryId);
+          return neighborDirectoryPath
+            ? { image: neighborImage, directoryPath: neighborDirectoryPath }
+            : null;
+        };
+        const prefetchPrevious = currentIndex === -1 ? null : resolvePrefetchNeighbor(currentIndex - 1);
+        const prefetchNext = currentIndex === -1 ? null : resolvePrefetchNeighbor(currentIndex + 1);
+
         return {
           ...modal,
           image,
           directoryPath,
           currentIndex: currentIndex === -1 ? 0 : currentIndex,
           totalImages: navigationImageIds.length,
+          prefetchPrevious,
+          prefetchNext,
         };
       })
       .filter(Boolean) as Array<OpenImageModalState & {
@@ -3358,6 +3378,8 @@ export default function App() {
         directoryPath: string;
         currentIndex: number;
         totalImages: number;
+        prefetchPrevious: { image: IndexedImage; directoryPath: string } | null;
+        prefetchNext: { image: IndexedImage; directoryPath: string } | null;
       }>;
   }, [directoryPathById, getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, resolveModalNavigationIndex]);
 
@@ -3377,9 +3399,6 @@ export default function App() {
   }, []);
 
   const buildDetachedViewerSnapshot = useCallback((modal: typeof openImageModalEntries[number]): ImageViewerSnapshot => {
-    const navigationImages = resolveModalNavigationImages(modal);
-    const previousImage = modal.currentIndex > 0 ? navigationImages[modal.currentIndex - 1] : null;
-    const nextImage = modal.currentIndex < navigationImages.length - 1 ? navigationImages[modal.currentIndex + 1] : null;
     const revision = (detachedViewerRevisionRef.current.get(modal.sessionId) ?? 0) + 1;
     detachedViewerRevisionRef.current.set(modal.sessionId, revision);
     const imageState = useImageStore.getState();
@@ -3399,8 +3418,10 @@ export default function App() {
       sessionId: modal.sessionId,
       revision,
       image: toImageModalImageDTO(modal.image),
-      previousImage: previousImage ? toImageModalImageDTO(previousImage) : null,
-      nextImage: nextImage ? toImageModalImageDTO(nextImage) : null,
+      previousImage: modal.prefetchPrevious ? toImageModalImageDTO(modal.prefetchPrevious.image) : null,
+      nextImage: modal.prefetchNext ? toImageModalImageDTO(modal.prefetchNext.image) : null,
+      previousDirectoryPath: modal.prefetchPrevious?.directoryPath ?? null,
+      nextDirectoryPath: modal.prefetchNext?.directoryPath ?? null,
       currentIndex: modal.currentIndex,
       totalImages: modal.totalImages,
       directoryPath: modal.directoryPath,
@@ -3418,7 +3439,7 @@ export default function App() {
         images: lineageImages,
       },
     };
-  }, [lineageLastBuiltAt, progress, resolveModalNavigationImages, selectedImages, viewerLicenseSyncToken, viewerSettingsSyncToken]);
+  }, [lineageLastBuiltAt, progress, selectedImages, viewerLicenseSyncToken, viewerSettingsSyncToken]);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -4550,6 +4571,8 @@ export default function App() {
             key={modal.modalId}
             modalId={modal.modalId}
             image={modal.image}
+            prefetchPrevious={modal.prefetchPrevious}
+            prefetchNext={modal.prefetchNext}
             onClose={() => handleCloseImageModal(modal.modalId, modal.image.id)}
             onImageDeleted={handleImageDeleted}
             onImageRenamed={handleImageRenamed}

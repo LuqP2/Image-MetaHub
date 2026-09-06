@@ -164,6 +164,8 @@ interface ImageModalProps {
   hostMode?: 'inline' | 'native-window';
   modalId?: string;
   image: IndexedImage;
+  prefetchPrevious?: { image: IndexedImage; directoryPath: string } | null;
+  prefetchNext?: { image: IndexedImage; directoryPath: string } | null;
   onClose: () => void;
   onFindSimilar?: (image: IndexedImage) => void;
   onOpenComfyUIWorkflow?: (image: IndexedImage) => void;
@@ -890,6 +892,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   hostMode = 'inline',
   modalId,
   image,
+  prefetchPrevious = null,
+  prefetchNext = null,
   onClose,
   onFindSimilar,
   onOpenComfyUIWorkflow,
@@ -2821,34 +2825,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    const state = useImageStore.getState();
-    const navigationImages = state.clusterNavigationContext || state.filteredImages;
-    const currentNavigationIndex = navigationImages.findIndex((candidate) => candidate.id === liveImage.id);
-
-    if (currentNavigationIndex === -1) {
-      return;
-    }
-
-    // The store's list is not always the one this modal navigates: a viewer opened from Find
-    // Similar, a ComfyUI workflow or a scope walks its own id list, and currentIndex/totalImages
-    // are the props derived from it. When they disagree, the neighbours here are somebody else's
-    // images — decoding them would evict the useful entries from a five-slot cache for nothing.
-    if (navigationImages.length !== totalImages || currentNavigationIndex !== currentIndex) {
-      return;
-    }
-
-    const step = navigationDirectionRef.current === 'previous' ? -1 : 1;
-    const directoryMap = new Map(state.directories.map((dir) => [dir.id, dir.path]));
-    // Two ahead, one behind: people rarely alternate directions, so spending the budget on the way
-    // they are heading buys a much better hit rate for the same number of decoded bitmaps.
-    const neighbors = [
-      navigationImages[currentNavigationIndex + step],
-      navigationImages[currentNavigationIndex + step * 2],
-      navigationImages[currentNavigationIndex - step],
-    ].filter((candidate): candidate is IndexedImage =>
-      Boolean(candidate)
-      && !isVideoFileName(candidate.name, candidate.fileType)
-      && !isAudioFileName(candidate.name, candidate.fileType));
+    const primaryNeighbor = navigationDirectionRef.current === 'previous'
+      ? prefetchPrevious
+      : prefetchNext;
+    const secondaryNeighbor = navigationDirectionRef.current === 'previous'
+      ? prefetchNext
+      : prefetchPrevious;
+    const neighbors = [primaryNeighbor, secondaryNeighbor].filter(
+      (candidate): candidate is { image: IndexedImage; directoryPath: string } =>
+        Boolean(candidate)
+        && !isVideoFileName(candidate.image.name, candidate.image.fileType)
+        && !isAudioFileName(candidate.image.name, candidate.image.fileType)
+        && !isModel3DFileName(candidate.image.name, candidate.image.fileType)
+    );
 
     if (neighbors.length === 0) {
       return;
@@ -2878,7 +2867,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       void (async () => {
         try {
           // No prioritize here: this must not pause the grid's background thumbnail work.
-          const url = await mediaSourceCache.getOrLoad(neighbor, directoryMap.get(neighbor.directoryId || ''));
+          const url = await mediaSourceCache.getOrLoad(neighbor.image, neighbor.directoryPath);
           if (isMounted) {
             await mediaDecodeCache.warm(url);
           }
@@ -2887,7 +2876,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           // and opening it directly still reports the failure through the load effect.
         }
 
-        // One at a time, so three multi-megabyte decodes never land on the main thread together.
+        // One at a time, so multiple multi-megabyte decodes never land on the main thread together.
         if (isMounted && queueIndex < neighbors.length) {
           scheduleIdle(warmNextNeighbor);
         }
@@ -2905,7 +2894,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
         window.clearTimeout(timeoutHandle);
       }
     };
-  }, [currentIndex, isFullImageSourceReady, isPlayableMedia, isRapidKeyboardNavigating, liveImage.id, totalImages]);
+  }, [
+    directoryPath,
+    isFullImageSourceReady,
+    isPlayableMedia,
+    isRapidKeyboardNavigating,
+    liveImage.id,
+    liveImage.lastModified,
+    prefetchNext?.directoryPath,
+    prefetchNext?.image.id,
+    prefetchNext?.image.lastModified,
+    prefetchPrevious?.directoryPath,
+    prefetchPrevious?.image.id,
+    prefetchPrevious?.image.lastModified,
+  ]);
 
   useEffect(() => {
     if (!preferredThumbnailUrl || hasMarkedPreviewVisibleRef.current) {
@@ -3127,24 +3129,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [isVideo, onNavigateNext, onNavigatePrevious, onNavigateRandom]);
 
   const scheduleKeyboardNavigation = useCallback((direction: 'next' | 'previous', isRepeatedKey = false) => {
+    if (!isRepeatedKey) {
+      if (keyboardNavigationFrameRef.current !== null) {
+        window.cancelAnimationFrame(keyboardNavigationFrameRef.current);
+        keyboardNavigationFrameRef.current = null;
+      }
+      pendingKeyboardNavigationRef.current = null;
+      navigateManually(direction);
+      return;
+    }
+
     pendingKeyboardNavigationRef.current = direction;
 
-    if (isRepeatedKey) {
-      if (!isRapidKeyboardNavigatingRef.current) {
-        isRapidKeyboardNavigatingRef.current = true;
-        setIsRapidKeyboardNavigating(true);
-      }
-
-      if (keyboardNavigationIdleTimeoutRef.current !== null) {
-        window.clearTimeout(keyboardNavigationIdleTimeoutRef.current);
-      }
-
-      keyboardNavigationIdleTimeoutRef.current = window.setTimeout(() => {
-        keyboardNavigationIdleTimeoutRef.current = null;
-        isRapidKeyboardNavigatingRef.current = false;
-        setIsRapidKeyboardNavigating(false);
-      }, RAPID_KEYBOARD_NAVIGATION_IDLE_MS);
+    if (!isRapidKeyboardNavigatingRef.current) {
+      isRapidKeyboardNavigatingRef.current = true;
+      setIsRapidKeyboardNavigating(true);
     }
+
+    if (keyboardNavigationIdleTimeoutRef.current !== null) {
+      window.clearTimeout(keyboardNavigationIdleTimeoutRef.current);
+    }
+
+    keyboardNavigationIdleTimeoutRef.current = window.setTimeout(() => {
+      keyboardNavigationIdleTimeoutRef.current = null;
+      isRapidKeyboardNavigatingRef.current = false;
+      setIsRapidKeyboardNavigating(false);
+    }, RAPID_KEYBOARD_NAVIGATION_IDLE_MS);
 
     if (keyboardNavigationFrameRef.current !== null) {
       return;

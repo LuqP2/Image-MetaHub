@@ -25,6 +25,8 @@ export interface ImageViewerSnapshot {
   image: ImageModalImageDTO;
   previousImage: ImageModalImageDTO | null;
   nextImage: ImageModalImageDTO | null;
+  previousDirectoryPath: string | null;
+  nextDirectoryPath: string | null;
   currentIndex: number;
   totalImages: number;
   directoryPath: string;
