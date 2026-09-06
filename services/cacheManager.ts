@@ -284,6 +284,10 @@ function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
     enrichmentState: img.enrichmentState,
     fileSize: img.fileSize,
     fileType: img.fileType,
+    assetId: img.assetId,
+    revisionId: img.revisionId,
+    provenanceLocationId: img.provenanceLocationId,
+    provenanceRootId: img.provenanceRootId,
 
     // Smart Clustering & Auto-Tagging (Phase 1)
     clusterId: img.clusterId,

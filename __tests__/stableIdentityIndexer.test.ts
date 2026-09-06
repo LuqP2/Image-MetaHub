@@ -7,6 +7,7 @@ import {
   StableIdentityIndexer,
   normalizeRelativeCatalogPath,
 } from '../electron/stableIdentityIndexer.mjs';
+import { buildProvenanceIdentityLookupKey } from '../utils/provenancePath.mjs';
 import { resetUserDataContents } from '../electron/cacheReset.mjs';
 
 const temporaryDirectories: string[] = [];
@@ -195,6 +196,9 @@ describe('StableIdentityIndexer', () => {
       relativePath: 'Folder/Image.PNG',
       relativePathKey: 'folder/image.png',
     });
+    expect(buildProvenanceIdentityLookupKey('root', 'Cafe\u0301/Image.PNG', 'win32'))
+      .toBe(buildProvenanceIdentityLookupKey('root', 'Café/image.png', 'win32'));
     expect(() => normalizeRelativeCatalogPath('../outside.png', 'linux')).toThrow(/inside/);
+    expect(() => normalizeRelativeCatalogPath('/outside.png', 'linux')).toThrow(/inside/);
   });
 });

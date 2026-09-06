@@ -13,6 +13,40 @@ describe('cacheManager workflowNodes hydration', () => {
     delete window.electronAPI;
   });
 
+  it('preserves provenance identities through the shared cache serializer', async () => {
+    const cacheData = vi.fn().mockResolvedValue({ success: true });
+    window.electronAPI = { cacheData };
+    (cacheManager as any).isElectron = true;
+
+    await cacheManager.cacheData(
+      'D:/library',
+      'Library',
+      [{
+        id: 'dir-1::a.png',
+        name: 'a.png',
+        handle: {} as any,
+        metadata: {},
+        metadataString: '{}',
+        lastModified: 1,
+        models: [],
+        loras: [],
+        scheduler: '',
+        assetId: 'asset-id',
+        revisionId: 'revision-id',
+        provenanceLocationId: 'location-id',
+        provenanceRootId: 'root-id',
+      } as any],
+      false,
+    );
+
+    expect(cacheData.mock.calls[0][0].data.metadata[0]).toMatchObject({
+      assetId: 'asset-id',
+      revisionId: 'revision-id',
+      provenanceLocationId: 'location-id',
+      provenanceRootId: 'root-id',
+    });
+  });
+
   it('preserves workflowNodes when hydrating unchanged cached images', async () => {
     window.electronAPI = {
       getCacheSummary: vi.fn().mockResolvedValue({

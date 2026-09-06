@@ -10,6 +10,7 @@ import { areFilesystemPathsEqual } from '../utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from '../utils/directoryActivity';
 import { inferMimeTypeFromName, isImageFileName } from '../utils/mediaTypes.js';
 import { normalizeBirthtimeMs } from '../utils/fileTimestamps.js';
+import { buildProvenanceIdentityLookupKey } from '../utils/provenancePath.mjs';
 
 // Configure logging level
 const DEBUG = false;
@@ -283,10 +284,10 @@ export function useImageLoader() {
     const idleReconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const idleReconcileQueueRef = useRef<Directory[]>([]);
     const idleReconcileRunningRef = useRef(false);
-    const provenanceIdentityByImageIdRef = useRef(new Map<string, ProvenanceIdentity>());
+    const provenanceIdentityByLookupKeyRef = useRef(new Map<string, ProvenanceIdentity>());
 
     const provenanceIdentityForPath = useCallback((directoryId: string, relativePath: string) =>
-        provenanceIdentityByImageIdRef.current.get(`${directoryId}::${relativePath}`), []);
+        provenanceIdentityByLookupKeyRef.current.get(buildProvenanceIdentityLookupKey(directoryId, relativePath)), []);
 
     useEffect(() => {
         if (!window.electronAPI?.onProvenanceIdentitiesAssigned) return;
@@ -296,21 +297,28 @@ export function useImageLoader() {
             );
             if (!directory) return;
 
-            const updatedById = new Map<string, ProvenanceIdentity>();
+            const updatedByPathKey = new Map<string, ProvenanceIdentity>();
             for (const mapping of payload.mappings) {
-                const imageId = `${directory.id}::${mapping.relativePath}`;
+                const lookupKey = buildProvenanceIdentityLookupKey(directory.id, mapping.relativePath);
                 const identity = {
                     assetId: mapping.assetId,
                     revisionId: mapping.revisionId,
                     provenanceLocationId: mapping.locationId,
                     provenanceRootId: payload.rootId,
                 };
-                provenanceIdentityByImageIdRef.current.set(imageId, identity);
-                updatedById.set(imageId, identity);
+                provenanceIdentityByLookupKeyRef.current.set(lookupKey, identity);
+                updatedByPathKey.set(lookupKey, identity);
             }
 
             const updates = useImageStore.getState().images.flatMap((image) => {
-                const identity = updatedById.get(image.id);
+                if (image.directoryId !== directory.id) return [];
+                const idPrefix = `${directory.id}::`;
+                const originalRelativePath = image.id.startsWith(idPrefix)
+                    ? image.id.slice(idPrefix.length)
+                    : image.name;
+                const identity = updatedByPathKey.get(
+                    buildProvenanceIdentityLookupKey(directory.id, originalRelativePath)
+                );
                 return identity ? [{ ...image, ...identity }] : [];
             });
             if (updates.length > 0) mergeImages(updates);

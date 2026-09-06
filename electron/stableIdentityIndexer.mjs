@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { normalizeRelativeCatalogPath } from '../utils/provenancePath.mjs';
+
+export { normalizeRelativeCatalogPath } from '../utils/provenancePath.mjs';
 
 const DEFAULT_BATCH_SIZE = 128;
 
@@ -12,20 +15,6 @@ export function normalizeLibraryRootPath(rootPath, platform = process.platform) 
   return {
     absolutePath: displayPath,
     pathKey: platform === 'win32' ? displayPath.toLocaleLowerCase('en-US') : displayPath,
-  };
-}
-
-export function normalizeRelativeCatalogPath(relativePath, platform = process.platform) {
-  if (typeof relativePath !== 'string' || !relativePath.trim() || relativePath.includes('\0')) {
-    throw new Error('A non-empty relative file path is required.');
-  }
-  const normalized = path.posix.normalize(relativePath.replace(/\\/g, '/')).normalize('NFC');
-  if (normalized === '.' || normalized.startsWith('/') || normalized === '..' || normalized.startsWith('../')) {
-    throw new Error(`Path must remain inside its library root: ${relativePath}`);
-  }
-  return {
-    relativePath: normalized,
-    relativePathKey: platform === 'win32' ? normalized.toLocaleLowerCase('en-US') : normalized,
   };
 }
 
