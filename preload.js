@@ -232,6 +232,12 @@ const electronAPI = {
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
   createSubfolder: (parentPath, folderName) => ipcRenderer.invoke('create-subfolder', { parentPath, folderName }),
   listDirectoryFiles: (args) => ipcRenderer.invoke('list-directory-files', args),
+  provenanceBackfillControl: (action) => ipcRenderer.invoke('provenance-backfill-control', action),
+  onProvenanceIdentitiesAssigned: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('provenance-identities-assigned', handler);
+    return () => ipcRenderer.removeListener('provenance-identities-assigned', handler);
+  },
   resolveMediaUrl: (filePath) => ipcRenderer.invoke('resolve-media-url', filePath),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   hashFileSha256: (filePath, requestId) => ipcRenderer.invoke('hash-file-sha256', { filePath, requestId }),

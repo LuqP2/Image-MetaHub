@@ -2260,6 +2260,7 @@ interface ProcessFilesOptions {
   enrichmentBatchSize?: number;
   onEnrichmentProgress?: (progress: { processed: number; total: number } | null) => void;
   hydratePreloadedImages?: boolean;
+  provenanceIdentityForPath?: (relativePath: string) => Pick<IndexedImage, 'assetId' | 'revisionId' | 'provenanceLocationId' | 'provenanceRootId'> | undefined;
 }
 
 export interface ProcessFilesResult {
@@ -2376,6 +2377,10 @@ function mapIndexedImageToCache(image: IndexedImage): CacheImageMetadata {
     enrichmentState: image.enrichmentState,
     fileSize: image.fileSize,
     fileType: image.fileType,
+    assetId: image.assetId,
+    revisionId: image.revisionId,
+    provenanceLocationId: image.provenanceLocationId,
+    provenanceRootId: image.provenanceRootId,
     clusterId: image.clusterId,
     clusterPosition: image.clusterPosition,
     autoTags: image.autoTags,
@@ -2710,6 +2715,7 @@ export async function processFiles(
       lastModified: sortDate,
     });
 
+    const provenanceIdentity = options.provenanceIdentityForPath?.(entry.path);
     return {
       id: `${directoryId}::${entry.path}`,
       name: entry.handle.name,
@@ -2737,6 +2743,7 @@ export async function processFiles(
       enrichmentState: needsEnrichment ? 'catalog' : 'enriched',
       fileSize,
       fileType: inferredType,
+      ...provenanceIdentity,
     };
   };
 

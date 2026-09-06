@@ -33,6 +33,10 @@ export interface CacheImageMetadata {
   enrichmentState?: 'catalog' | 'enriched';
   fileSize?: number;
   fileType?: string;
+  assetId?: string;
+  revisionId?: string;
+  provenanceLocationId?: string;
+  provenanceRootId?: string;
 
   // Smart Clustering & Auto-Tagging (Phase 1)
   clusterId?: string;

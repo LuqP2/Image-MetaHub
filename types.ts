@@ -452,11 +452,23 @@ export interface ElectronAPI {
   openCacheLocation: () => Promise<{ success: boolean; error?: string }>;
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string; realPath?: string }[]; error?: string }>;
   createSubfolder: (parentPath: string, folderName: string) => Promise<{ success: boolean; folder?: { name: string; path: string; realPath?: string }; error?: string }>;
-  listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
+  listDirectoryFiles: (args: { dirPath: string; recursive?: boolean; provenanceRootPath?: string }) => Promise<{
     success: boolean;
     files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number; contentModifiedMs?: number }[];
     error?: string;
   }>;
+  provenanceBackfillControl: (action: 'pause' | 'resume') => Promise<{ success: boolean; enabled: boolean; paused?: boolean; error?: string }>;
+  onProvenanceIdentitiesAssigned: (callback: (payload: {
+    rootId: string;
+    rootPath: string;
+    mappings: Array<{
+      relativePath: string;
+      relativePathKey: string;
+      assetId: string;
+      revisionId: string;
+      locationId: string;
+    }>;
+  }) => void) => () => void;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
   hashFileSha256: (filePath: string, requestId: string) => Promise<{ success: boolean; sha256?: string; error?: string; errorType?: string; errorCode?: string }>;
   cancelFileSha256: (requestId: string) => void;
@@ -1151,6 +1163,10 @@ export interface IndexedImage {
   enrichmentState?: 'catalog' | 'enriched';
   fileSize?: number;
   fileType?: string;
+  assetId?: string;
+  revisionId?: string;
+  provenanceLocationId?: string;
+  provenanceRootId?: string;
 
   // User Annotations (loaded from ImageAnnotations table)
   isFavorite?: boolean;          // Quick access to favorite status

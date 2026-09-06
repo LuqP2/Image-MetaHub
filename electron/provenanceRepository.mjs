@@ -9,7 +9,7 @@ import {
 } from './provenancePaths.mjs';
 
 export { PROVENANCE_DATABASE_NAME, PROVENANCE_DIRECTORY_NAME, resolveProvenanceCatalogPath };
-export const PROVENANCE_SCHEMA_VERSION = 2;
+export const PROVENANCE_SCHEMA_VERSION = 3;
 
 export const ASSET_STATES = Object.freeze(['active', 'missing', 'deleted']);
 export const LOCATION_STATES = Object.freeze(['present', 'missing', 'removed']);
@@ -132,7 +132,27 @@ function migrationTwo(database) {
   `);
 }
 
-const MIGRATIONS = new Map([[1, migrationOne], [2, migrationTwo]]);
+function migrationThree(database) {
+  database.exec(`
+    CREATE TABLE library_roots (
+      root_id TEXT PRIMARY KEY,
+      absolute_path TEXT NOT NULL,
+      path_key TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL
+    ) STRICT;
+
+    ALTER TABLE asset_locations ADD COLUMN relative_path_key TEXT;
+    UPDATE asset_locations SET relative_path_key = relative_path;
+    DROP INDEX asset_locations_present_path_idx;
+    CREATE UNIQUE INDEX asset_locations_present_path_key_idx
+      ON asset_locations(root_id, relative_path_key) WHERE state = 'present';
+    CREATE INDEX asset_locations_root_path_key_idx
+      ON asset_locations(root_id, relative_path_key);
+  `);
+}
+
+const MIGRATIONS = new Map([[1, migrationOne], [2, migrationTwo], [3, migrationThree]]);
 
 function serializeAsset(row) {
   return row ? {
@@ -166,10 +186,21 @@ function serializeLocation(row) {
     revisionId: row.revision_id,
     rootId: row.root_id,
     relativePath: row.relative_path,
+    relativePathKey: row.relative_path_key ?? row.relative_path,
     state: row.state,
     firstObservedAt: row.first_observed_at,
     lastObservedAt: row.last_observed_at,
     missingAt: row.missing_at,
+  } : null;
+}
+
+function serializeRoot(row) {
+  return row ? {
+    rootId: row.root_id,
+    absolutePath: row.absolute_path,
+    pathKey: row.path_key,
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
   } : null;
 }
 
@@ -287,6 +318,7 @@ export class AssetProvenanceRepository {
     const locationId = assertUuid(input.locationId || this.randomUUID(), 'locationId');
     const rootId = assertNonBlank(input.rootId, 'rootId');
     const relativePath = assertNonBlank(input.relativePath, 'relativePath');
+    const relativePathKey = assertNonBlank(input.relativePathKey || relativePath, 'relativePathKey');
     const hashState = input.hashState || (input.sha256 ? 'available' : 'pending');
     const sha256 = normalizeHash(input.sha256, hashState);
     const byteSize = Number(input.byteSize);
@@ -299,10 +331,10 @@ export class AssetProvenanceRepository {
       this.#insertRevision({ ...input, assetId, revisionId, sha256, hashState, byteSize, timestamp });
       this.database.prepare(`
         INSERT INTO asset_locations (
-          location_id, asset_id, revision_id, root_id, relative_path, state,
+          location_id, asset_id, revision_id, root_id, relative_path, relative_path_key, state,
           first_observed_at, last_observed_at, missing_at
-        ) VALUES (?, ?, ?, ?, ?, 'present', ?, ?, NULL)
-      `).run(locationId, assetId, revisionId, rootId, relativePath, timestamp, timestamp);
+        ) VALUES (?, ?, ?, ?, ?, ?, 'present', ?, ?, NULL)
+      `).run(locationId, assetId, revisionId, rootId, relativePath, relativePathKey, timestamp, timestamp);
     });
     return this.getAsset(assetId);
   }
@@ -351,15 +383,21 @@ export class AssetProvenanceRepository {
     return serializeRevision(this.database.prepare('SELECT * FROM asset_revisions WHERE revision_id = ?').get(revisionId));
   }
 
-  relocateLocation(locationId, { rootId, relativePath }) {
+  relocateLocation(locationId, { rootId, relativePath, relativePathKey = relativePath }) {
     this.#requireWritable();
     const timestamp = this.now().toISOString();
     return runTransaction(this.database, () => {
       const result = this.database.prepare(`
         UPDATE asset_locations
-        SET root_id = ?, relative_path = ?, state = 'present', last_observed_at = ?, missing_at = NULL
+        SET root_id = ?, relative_path = ?, relative_path_key = ?, state = 'present', last_observed_at = ?, missing_at = NULL
         WHERE location_id = ? AND state != 'removed'
-      `).run(assertNonBlank(rootId, 'rootId'), assertNonBlank(relativePath, 'relativePath'), timestamp, locationId);
+      `).run(
+        assertNonBlank(rootId, 'rootId'),
+        assertNonBlank(relativePath, 'relativePath'),
+        assertNonBlank(relativePathKey, 'relativePathKey'),
+        timestamp,
+        locationId,
+      );
       if (Number(result.changes) !== 1) throw new ProvenanceRepositoryError('PROVENANCE_LOCATION_NOT_FOUND', `Active location ${locationId} was not found.`);
       const location = this.database.prepare('SELECT * FROM asset_locations WHERE location_id = ?').get(locationId);
       this.database.prepare(`UPDATE assets SET state = 'active', updated_at = ? WHERE asset_id = ?`).run(timestamp, location.asset_id);
@@ -398,6 +436,171 @@ export class AssetProvenanceRepository {
       `).run(timestamp, timestamp, assetId);
     });
     return this.getAsset(assetId);
+  }
+
+  ensureLibraryRoot({ rootId = this.randomUUID(), absolutePath, pathKey }) {
+    this.#requireWritable();
+    const normalizedRootId = assertUuid(rootId, 'rootId');
+    const storedPath = assertNonBlank(absolutePath, 'absolutePath');
+    const normalizedPathKey = assertNonBlank(pathKey, 'pathKey');
+    const timestamp = this.now().toISOString();
+    return runTransaction(this.database, () => {
+      const existing = this.database.prepare('SELECT * FROM library_roots WHERE path_key = ?').get(normalizedPathKey);
+      if (existing) {
+        this.database.prepare('UPDATE library_roots SET absolute_path = ?, last_seen_at = ? WHERE root_id = ?')
+          .run(storedPath, timestamp, existing.root_id);
+        return serializeRoot(this.database.prepare('SELECT * FROM library_roots WHERE root_id = ?').get(existing.root_id));
+      }
+      this.database.prepare('INSERT INTO library_roots VALUES (?, ?, ?, ?, ?)')
+        .run(normalizedRootId, storedPath, normalizedPathKey, timestamp, timestamp);
+      return serializeRoot(this.database.prepare('SELECT * FROM library_roots WHERE root_id = ?').get(normalizedRootId));
+    });
+  }
+
+  assignIndexedFile(input) {
+    this.#requireWritable();
+    const rootId = assertUuid(input.rootId, 'rootId');
+    const relativePath = assertNonBlank(input.relativePath, 'relativePath');
+    const relativePathKey = assertNonBlank(input.relativePathKey, 'relativePathKey');
+    const byteSize = Number(input.byteSize);
+    if (!Number.isSafeInteger(byteSize) || byteSize < 0) {
+      throw new ProvenanceRepositoryError('PROVENANCE_INVALID_INPUT', 'byteSize must be a non-negative safe integer.');
+    }
+    const contentModifiedMs = normalizeOptionalTimestamp(input.contentModifiedMs, 'contentModifiedMs');
+    const timestamp = this.now().toISOString();
+
+    return runTransaction(this.database, () => {
+      const root = this.database.prepare('SELECT root_id FROM library_roots WHERE root_id = ?').get(rootId);
+      if (!root) throw new ProvenanceRepositoryError('PROVENANCE_ROOT_NOT_FOUND', `Library root ${rootId} was not found.`);
+
+      const location = this.database.prepare(`
+        SELECT * FROM asset_locations
+        WHERE root_id = ? AND relative_path_key = ? AND state != 'removed'
+        ORDER BY CASE state WHEN 'present' THEN 0 ELSE 1 END, last_observed_at DESC
+        LIMIT 1
+      `).get(rootId, relativePathKey);
+
+      if (!location) {
+        const assetId = assertUuid(this.randomUUID(), 'assetId');
+        const revisionId = assertUuid(this.randomUUID(), 'revisionId');
+        const locationId = assertUuid(this.randomUUID(), 'locationId');
+        this.database.prepare('INSERT INTO assets VALUES (?, ?, ?, ?)').run(assetId, 'active', timestamp, timestamp);
+        this.#insertRevision({
+          assetId,
+          revisionId,
+          sha256: null,
+          hashState: 'pending',
+          byteSize,
+          mimeType: input.mimeType ?? null,
+          contentModifiedMs,
+          timestamp,
+        });
+        this.database.prepare(`
+          INSERT INTO asset_locations (
+            location_id, asset_id, revision_id, root_id, relative_path, relative_path_key, state,
+            first_observed_at, last_observed_at, missing_at
+          ) VALUES (?, ?, ?, ?, ?, ?, 'present', ?, ?, NULL)
+        `).run(locationId, assetId, revisionId, rootId, relativePath, relativePathKey, timestamp, timestamp);
+        return {
+          assetId,
+          revisionId,
+          locationId,
+          needsHash: true,
+        };
+      }
+
+      const revision = this.database.prepare('SELECT * FROM asset_revisions WHERE revision_id = ?').get(location.revision_id);
+      const unchanged = revision
+        && Number(revision.byte_size) === byteSize
+        && (revision.content_modified_ms === null ? null : Number(revision.content_modified_ms)) === contentModifiedMs;
+
+      if (unchanged) {
+        this.database.prepare(`
+          UPDATE asset_locations
+          SET relative_path = ?, state = 'present', last_observed_at = ?, missing_at = NULL
+          WHERE location_id = ?
+        `).run(relativePath, timestamp, location.location_id);
+        this.database.prepare("UPDATE assets SET state = 'active', updated_at = ? WHERE asset_id = ?")
+          .run(timestamp, location.asset_id);
+        return {
+          assetId: location.asset_id,
+          revisionId: location.revision_id,
+          locationId: location.location_id,
+          needsHash: revision.hash_state !== 'available',
+        };
+      }
+
+      const revisionId = assertUuid(this.randomUUID(), 'revisionId');
+      this.#insertRevision({
+        assetId: location.asset_id,
+        revisionId,
+        sha256: null,
+        hashState: 'pending',
+        byteSize,
+        mimeType: input.mimeType ?? null,
+        contentModifiedMs,
+        timestamp,
+      });
+      this.database.prepare(`
+        UPDATE asset_locations
+        SET revision_id = ?, relative_path = ?, state = 'present', last_observed_at = ?, missing_at = NULL
+        WHERE location_id = ?
+      `).run(revisionId, relativePath, timestamp, location.location_id);
+      this.database.prepare("UPDATE assets SET state = 'active', updated_at = ? WHERE asset_id = ?")
+        .run(timestamp, location.asset_id);
+      return {
+        assetId: location.asset_id,
+        revisionId,
+        locationId: location.location_id,
+        needsHash: true,
+      };
+    });
+  }
+
+  completeRevisionHashIfUnchanged(revisionId, { sha256, byteSize, contentModifiedMs }) {
+    this.#requireWritable();
+    const normalizedRevisionId = assertUuid(revisionId, 'revisionId');
+    const normalizedHash = normalizeHash(sha256, 'available');
+    const normalizedModifiedMs = normalizeOptionalTimestamp(contentModifiedMs, 'contentModifiedMs');
+    const result = this.database.prepare(`
+      UPDATE asset_revisions
+      SET sha256 = ?, hash_state = 'available'
+      WHERE revision_id = ? AND byte_size = ? AND content_modified_ms IS ? AND hash_state != 'available'
+    `).run(normalizedHash, normalizedRevisionId, byteSize, normalizedModifiedMs);
+    return Number(result.changes) === 1;
+  }
+
+  reconcileRootLocations(rootId, seenRelativePathKeys) {
+    this.#requireWritable();
+    const normalizedRootId = assertUuid(rootId, 'rootId');
+    const seen = new Set(seenRelativePathKeys);
+    const timestamp = this.now().toISOString();
+    return runTransaction(this.database, () => {
+      const presentLocations = this.database.prepare(`
+        SELECT location_id, asset_id, relative_path_key FROM asset_locations
+        WHERE root_id = ? AND state = 'present'
+      `).all(normalizedRootId);
+      const missingAssetIds = new Set();
+      let missingCount = 0;
+      for (const location of presentLocations) {
+        if (seen.has(location.relative_path_key)) continue;
+        this.database.prepare(`
+          UPDATE asset_locations SET state = 'missing', last_observed_at = ?, missing_at = ? WHERE location_id = ?
+        `).run(timestamp, timestamp, location.location_id);
+        missingAssetIds.add(location.asset_id);
+        missingCount += 1;
+      }
+      for (const assetId of missingAssetIds) {
+        const presentCount = Number(this.database.prepare(`
+          SELECT COUNT(*) AS count FROM asset_locations WHERE asset_id = ? AND state = 'present'
+        `).get(assetId).count);
+        if (presentCount === 0) {
+          this.database.prepare("UPDATE assets SET state = 'missing', updated_at = ? WHERE asset_id = ?")
+            .run(timestamp, assetId);
+        }
+      }
+      return { missingCount };
+    });
   }
 
   getAsset(assetId) {

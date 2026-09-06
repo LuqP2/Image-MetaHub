@@ -173,7 +173,7 @@ describe('AssetProvenanceRepository production contract', () => {
     repository = new AssetProvenanceRepository({ databasePath });
     repository.open();
     repository.applyMigrations();
-    expect(repository.getStatus().schemaVersion).toBe(2);
+    expect(repository.getStatus().schemaVersion).toBe(PROVENANCE_SCHEMA_VERSION);
     expect(repository.getAsset('legacy-asset')).toMatchObject({
       assetId: 'legacy-asset',
       revisions: [{ revisionId: 'legacy-revision' }],
@@ -202,7 +202,7 @@ describe('AssetProvenanceRepository production contract', () => {
     })));
 
     const backupPath = path.join(userDataPath, 'backups', 'provenance.sqlite');
-    expect(lifecycle.createBackup(backupPath)).toMatchObject({ path: backupPath, schemaVersion: 2, created: true });
+    expect(lifecycle.createBackup(backupPath)).toMatchObject({ path: backupPath, schemaVersion: PROVENANCE_SCHEMA_VERSION, created: true });
     liveReader.database.exec('COMMIT');
     liveReader.close();
     lifecycle.run((repository) => repository.createAssetWithRevisionAndLocation(initialRecord({
@@ -254,7 +254,7 @@ describe('provenance repository lifecycle and cache independence', () => {
     lifecycle.close();
 
     const reopened = new ProvenanceRepositoryLifecycle({ userDataPath, logger: { error: vi.fn() } });
-    expect(reopened.initialize()).toMatchObject({ available: true, schemaVersion: 2 });
+    expect(reopened.initialize()).toMatchObject({ available: true, schemaVersion: PROVENANCE_SCHEMA_VERSION });
     expect(reopened.run((repository) => repository.getAsset(initialRecord().assetId as string))).not.toBeNull();
     reopened.close();
   });

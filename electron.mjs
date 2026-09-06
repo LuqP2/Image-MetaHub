@@ -43,6 +43,7 @@ import { licenseClientConfig } from './electron/licenseClientConfig.generated.mj
 import { resolveLicenseRuntimeConfig } from './electron/licenseRuntimeConfig.mjs';
 import { resetUserDataContents } from './electron/cacheReset.mjs';
 import { ProvenanceRepositoryLifecycle } from './electron/provenanceRepository.mjs';
+import { StableIdentityIndexer } from './electron/stableIdentityIndexer.mjs';
 import { openAuthorizedCacheDirectory } from './electron/cacheDirectory.mjs';
 import { appendEmbeddingSegmentAtOffset } from './electron/embeddingSegmentFile.mjs';
 import { hashFileSha256 } from './electron/fileFingerprint.mjs';
@@ -96,6 +97,8 @@ const macOSAudioMitigationOptOut = process.env.IMH_DISABLE_MACOS_AUDIO_MITIGATIO
   || process.env.IMH_ENABLE_OUT_OF_PROCESS_AUDIO === '1'
   || process.env.IMH_ENABLE_OUT_OF_PROCESS_AUDIO === 'true';
 const macOSAudioMitigationEnabled = process.platform === 'darwin' && app.isPackaged && !macOSAudioMitigationOptOut;
+const provenanceIndexingEnabled = process.env.IMH_ENABLE_PROVENANCE_INDEXING === '1'
+  || process.env.IMH_ENABLE_PROVENANCE_INDEXING === 'true';
 const enabledMediaCommandLineSwitches = [];
 const disabledChromiumFeatures = new Set();
 
@@ -606,6 +609,7 @@ async function readMediaMetadataWithFfprobe(filePath) {
 let mainWindow;
 let licenseManager;
 let provenanceRepositoryLifecycle;
+let stableIdentityIndexer;
 const detachedImageViewerWindows = new Map();
 const detachedImageViewerSnapshots = new Map();
 const detachedImageViewerRequestResolvers = new Map();
@@ -2951,6 +2955,10 @@ app.whenReady().then(async () => {
     userDataPath: app.getPath('userData'),
   });
   provenanceRepositoryLifecycle.initialize();
+  stableIdentityIndexer = new StableIdentityIndexer({
+    repositoryLifecycle: provenanceRepositoryLifecycle,
+    enabled: provenanceIndexingEnabled && provenanceRepositoryLifecycle.getStatus().available,
+  });
 
   const licenseRuntimeConfig = resolveLicenseRuntimeConfig({
     isPackaged: app.isPackaged,
@@ -3358,6 +3366,7 @@ async function getFilesRecursively(directory, baseDirectory) {
   const start = Date.now();
   let directoriesVisited = 0;
   let directoriesSkipped = 0;
+  let complete = true;
 
   while (directoriesToVisit.length > 0) {
     const currentDirectory = directoriesToVisit.pop();
@@ -3386,6 +3395,7 @@ async function getFilesRecursively(directory, baseDirectory) {
       files.push(...fileRecords);
     } catch (error) {
       // Ignore errors from directories we can't read, e.g. permissions
+      complete = false;
       console.warn(`Could not read directory ${currentDirectory}: ${error.message}`);
     }
   }
@@ -3397,7 +3407,7 @@ async function getFilesRecursively(directory, baseDirectory) {
     files: files.length,
     durationMs: elapsedMs(start),
   });
-  return files;
+  return { files, complete };
 }
 
 function setupFileOperationHandlers() {
@@ -6113,7 +6123,7 @@ function setupFileOperationHandlers() {
   });
 
   // Handle listing directory files
-  ipcMain.handle('list-directory-files', async (event, { dirPath, recursive = false }) => {
+  ipcMain.handle('list-directory-files', async (event, { dirPath, recursive = false, provenanceRootPath = dirPath }) => {
     const scanStart = Date.now();
     try {
       if (!dirPath) {
@@ -6121,9 +6131,12 @@ function setupFileOperationHandlers() {
       }
 
       let imageFiles = [];
+      let scanComplete = true;
 
       if (recursive) {
-        imageFiles = await getFilesRecursively(dirPath, dirPath);
+        const recursiveResult = await getFilesRecursively(dirPath, dirPath);
+        imageFiles = recursiveResult.files;
+        scanComplete = recursiveResult.complete;
       } else {
         const files = await fs.readdir(dirPath, { withFileTypes: true });
         imageFiles = await statMediaEntries(dirPath, files, dirPath);
@@ -6137,6 +6150,23 @@ function setupFileOperationHandlers() {
         durationMs: elapsedMs(scanStart),
       });
 
+      if (provenanceIndexingEnabled && stableIdentityIndexer) {
+        setImmediate(() => {
+          void stableIdentityIndexer.indexScan({
+            rootPath: provenanceRootPath,
+            scanPath: dirPath,
+            files: imageFiles,
+            scanComplete,
+            recursive,
+            onBatch: (payload) => {
+              if (!event.sender.isDestroyed()) event.sender.send('provenance-identities-assigned', payload);
+            },
+          }).catch((backfillError) => {
+            console.warn('Provenance identity backfill failed; library indexing remains available.', backfillError);
+          });
+        });
+      }
+
       return { success: true, files: imageFiles };
     } catch (error) {
       console.error('Error listing directory files:', error);
@@ -6148,6 +6178,13 @@ function setupFileOperationHandlers() {
       });
       return { success: false, error: error.message };
     }
+  });
+
+  ipcMain.handle('provenance-backfill-control', (_event, action) => {
+    if (!provenanceIndexingEnabled || !stableIdentityIndexer) return { success: false, enabled: false };
+    if (action === 'pause') return { success: true, ...stableIdentityIndexer.pause() };
+    if (action === 'resume') return { success: true, ...stableIdentityIndexer.resume() };
+    return { success: false, enabled: true, error: 'Unsupported provenance backfill action.' };
   });
 
   // ============================================================
@@ -7447,6 +7484,7 @@ app.on('before-quit', () => {
   // Stop all file watchers before quitting
   fileWatcher.stopAllWatchers();
   licenseManager?.dispose?.();
+  stableIdentityIndexer?.stop();
   provenanceRepositoryLifecycle?.close();
 });
 
