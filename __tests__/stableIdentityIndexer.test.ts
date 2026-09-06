@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ProvenanceRepositoryLifecycle } from '../electron/provenanceRepository.mjs';
 import {
   StableIdentityIndexer,
+  normalizeLibraryRootPath,
   normalizeRelativeCatalogPath,
 } from '../electron/stableIdentityIndexer.mjs';
 import { buildProvenanceIdentityLookupKey } from '../utils/provenancePath.mjs';
@@ -196,8 +197,12 @@ describe('StableIdentityIndexer', () => {
       relativePath: 'Folder/Image.PNG',
       relativePathKey: 'folder/image.png',
     });
-    expect(buildProvenanceIdentityLookupKey('root', 'Cafe\u0301/Image.PNG', 'win32'))
-      .toBe(buildProvenanceIdentityLookupKey('root', 'Café/image.png', 'win32'));
+    const decomposedPath = 'Cafe\u0301/Image.PNG';
+    expect(normalizeRelativeCatalogPath(decomposedPath, 'linux').relativePath).toBe(decomposedPath);
+    expect(buildProvenanceIdentityLookupKey('root', decomposedPath, 'linux'))
+      .not.toBe(buildProvenanceIdentityLookupKey('root', 'Café/Image.PNG', 'linux'));
+    expect(normalizeLibraryRootPath(`./${decomposedPath}`, 'linux').absolutePath.endsWith(decomposedPath.replace('/', path.sep)))
+      .toBe(true);
     expect(() => normalizeRelativeCatalogPath('../outside.png', 'linux')).toThrow(/inside/);
     expect(() => normalizeRelativeCatalogPath('/outside.png', 'linux')).toThrow(/inside/);
   });

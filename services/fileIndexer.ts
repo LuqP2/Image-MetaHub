@@ -2751,8 +2751,14 @@ export async function processFiles(
   const preloadedImages = options.preloadedImages ?? [];
   const hydratePreloadedImages = options.hydratePreloadedImages ?? true;
   for (const image of preloadedImages) {
+    const idPrefix = `${directoryId}::`;
+    const originalRelativePath = image.id.startsWith(idPrefix)
+      ? image.id.slice(idPrefix.length)
+      : image.name;
+    const provenanceIdentity = options.provenanceIdentityForPath?.(originalRelativePath);
     const stub = {
       ...image,
+      ...provenanceIdentity,
       directoryId,
       directoryName,
       enrichmentState: image.enrichmentState ?? 'enriched',

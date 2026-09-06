@@ -8,8 +8,8 @@ The integration is intentionally disabled by default. It can be enabled for synt
 
 - `IndexedImage.id` remains the existing directory-and-relative-path UI/cache key.
 - `assetId`, `revisionId`, `provenanceLocationId`, and `provenanceRootId` are separate durable identifiers supplied by the provenance catalog.
-- Library roots receive a stored UUID keyed by a normalized absolute path. Windows comparison keys are case-insensitive; stored paths retain their display spelling.
-- Relative paths use forward slashes, Unicode NFC, lexical dot-segment normalization, and a platform-aware comparison key. Absolute paths and paths escaping the root are rejected.
+- Library roots receive a stored UUID keyed by a normalized absolute path. Windows comparison keys are case-insensitive; stored paths retain their exact filesystem spelling.
+- Relative paths use forward slashes, lexical dot-segment normalization, and a platform-aware comparison key. Unicode spelling is preserved so canonically distinct names remain distinct on case-sensitive filesystems. Absolute paths and paths escaping the root are rejected.
 - A location reuses its asset and revision when byte size and content modification time are unchanged. A changed signature creates a revision on the same asset.
 - Equal SHA-256 values never merge assets. Hashes describe revisions; they do not define asset identity.
 

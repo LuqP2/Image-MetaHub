@@ -9,7 +9,7 @@ const DEFAULT_BATCH_SIZE = 128;
 
 export function normalizeLibraryRootPath(rootPath, platform = process.platform) {
   if (typeof rootPath !== 'string' || !rootPath.trim()) throw new Error('Library root path is required.');
-  const absolutePath = path.resolve(rootPath).normalize('NFC');
+  const absolutePath = path.resolve(rootPath);
   const parsed = path.parse(absolutePath);
   const displayPath = absolutePath === parsed.root ? absolutePath : absolutePath.replace(/[\\/]+$/, '');
   return {

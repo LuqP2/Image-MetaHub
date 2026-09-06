@@ -25,7 +25,7 @@ export function normalizeRelativeCatalogPath(relativePath, platform = runtimePla
     segments.push(segment);
   }
 
-  const normalized = segments.join('/').normalize('NFC');
+  const normalized = segments.join('/');
   if (!normalized || normalized.startsWith('/')) {
     throw new Error(`Path must remain inside its library root: ${relativePath}`);
   }
