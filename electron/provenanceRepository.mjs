@@ -9,7 +9,7 @@ import {
 } from './provenancePaths.mjs';
 
 export { PROVENANCE_DATABASE_NAME, PROVENANCE_DIRECTORY_NAME, resolveProvenanceCatalogPath };
-export const PROVENANCE_SCHEMA_VERSION = 3;
+export const PROVENANCE_SCHEMA_VERSION = 4;
 
 export const ASSET_STATES = Object.freeze(['active', 'missing', 'deleted']);
 export const LOCATION_STATES = Object.freeze(['present', 'missing', 'removed']);
@@ -159,7 +159,27 @@ function migrationThree(database) {
   `);
 }
 
-const MIGRATIONS = new Map([[1, migrationOne], [2, migrationTwo], [3, migrationThree]]);
+function migrationFour(database) {
+  database.exec(`
+    CREATE TABLE provenance_operations (
+      operation_id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('rename', 'move', 'copy', 'save_as', 'overwrite', 'delete')),
+      state TEXT NOT NULL CHECK (state IN ('intended', 'fs_applied', 'pending_recovery', 'completed', 'aborted')),
+      payload_json TEXT NOT NULL,
+      result_json TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      completed_at TEXT
+    ) STRICT;
+
+    CREATE INDEX provenance_operations_pending_idx
+      ON provenance_operations(state, updated_at)
+      WHERE state IN ('intended', 'fs_applied', 'pending_recovery');
+  `);
+}
+
+const MIGRATIONS = new Map([[1, migrationOne], [2, migrationTwo], [3, migrationThree], [4, migrationFour]]);
 
 function serializeAsset(row) {
   return row ? {
@@ -208,6 +228,29 @@ function serializeRoot(row) {
     pathKey: row.path_key,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
+  } : null;
+}
+
+function parseStoredJson(value, fallback = null) {
+  if (typeof value !== 'string') return fallback;
+  try { return JSON.parse(value); } catch { return fallback; }
+}
+
+function escapeLikePattern(value) {
+  return value.replace(/([\\%_])/g, '\\$1');
+}
+
+function serializeOperation(row) {
+  return row ? {
+    operationId: row.operation_id,
+    kind: row.kind,
+    state: row.state,
+    payload: parseStoredJson(row.payload_json, {}),
+    result: parseStoredJson(row.result_json),
+    lastError: row.last_error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at,
   } : null;
 }
 
@@ -470,6 +513,258 @@ export class AssetProvenanceRepository {
     });
   }
 
+  markLocationMissingByRootPath(rootId, relativePathKey) {
+    this.#requireWritable();
+    const location = this.getLocationByRootPath(rootId, relativePathKey);
+    if (!location) return null;
+    return this.markLocationMissing(location.locationId);
+  }
+
+  listLibraryRoots() {
+    this.#requireOpen();
+    return this.database.prepare('SELECT * FROM library_roots ORDER BY length(absolute_path) DESC, path_key').all()
+      .map(serializeRoot);
+  }
+
+  getLocationByRootPath(rootId, relativePathKey) {
+    this.#requireOpen();
+    const row = this.database.prepare(`
+      SELECT * FROM asset_locations
+      WHERE root_id = ? AND relative_path_key = ? AND state != 'removed'
+      ORDER BY CASE state WHEN 'present' THEN 0 ELSE 1 END, last_observed_at DESC
+      LIMIT 1
+    `).get(assertUuid(rootId, 'rootId'), assertNonBlank(relativePathKey, 'relativePathKey'));
+    return serializeLocation(row);
+  }
+
+  listPresentLocationsUnderPath(rootId, relativePathKey) {
+    this.#requireOpen();
+    const normalizedRootId = assertUuid(rootId, 'rootId');
+    const normalizedPathKey = assertNonBlank(relativePathKey, 'relativePathKey');
+    return this.database.prepare(`
+      SELECT * FROM asset_locations
+      WHERE root_id = ? AND state = 'present'
+        AND (relative_path_key = ? OR relative_path_key LIKE ? ESCAPE '\\')
+      ORDER BY relative_path_key
+    `).all(normalizedRootId, normalizedPathKey, `${escapeLikePattern(normalizedPathKey)}/%`).map(serializeLocation);
+  }
+
+  createFileOperationIntent({ operationId = this.randomUUID(), kind, payload }) {
+    this.#requireWritable();
+    const normalizedOperationId = assertUuid(operationId, 'operationId');
+    if (!['rename', 'move', 'copy', 'save_as', 'overwrite', 'delete'].includes(kind)) {
+      throw new ProvenanceRepositoryError('PROVENANCE_INVALID_INPUT', `Unsupported file operation kind: ${kind}.`);
+    }
+    let payloadJson;
+    try { payloadJson = JSON.stringify(payload); } catch (error) {
+      throw new ProvenanceRepositoryError('PROVENANCE_INVALID_INPUT', 'File operation payload must be serializable.', error);
+    }
+    const timestamp = this.now().toISOString();
+    this.database.prepare(`
+      INSERT INTO provenance_operations (
+        operation_id, kind, state, payload_json, result_json, last_error,
+        created_at, updated_at, completed_at
+      ) VALUES (?, ?, 'intended', ?, NULL, NULL, ?, ?, NULL)
+    `).run(normalizedOperationId, kind, payloadJson, timestamp, timestamp);
+    return this.getFileOperation(normalizedOperationId);
+  }
+
+  getFileOperation(operationId) {
+    this.#requireOpen();
+    return serializeOperation(this.database.prepare('SELECT * FROM provenance_operations WHERE operation_id = ?')
+      .get(assertUuid(operationId, 'operationId')));
+  }
+
+  listPendingFileOperations() {
+    this.#requireOpen();
+    return this.database.prepare(`
+      SELECT * FROM provenance_operations
+      WHERE state IN ('intended', 'fs_applied', 'pending_recovery')
+      ORDER BY created_at, operation_id
+    `).all().map(serializeOperation);
+  }
+
+  markFileOperationFileSystemApplied(operationId) {
+    return this.#setFileOperationState(operationId, 'fs_applied', null);
+  }
+
+  markFileOperationPending(operationId, error) {
+    const existing = this.getFileOperation(operationId);
+    return this.#setFileOperationState(
+      operationId,
+      existing?.state === 'fs_applied' ? 'fs_applied' : 'pending_recovery',
+      error,
+    );
+  }
+
+  abortFileOperation(operationId, error = null) {
+    return this.#setFileOperationState(operationId, 'aborted', error);
+  }
+
+  completeFileOperation(operationId, { observation = null } = {}) {
+    this.#requireWritable();
+    const normalizedOperationId = assertUuid(operationId, 'operationId');
+    const timestamp = this.now().toISOString();
+    return runTransaction(this.database, () => {
+      const operationRow = this.database.prepare('SELECT * FROM provenance_operations WHERE operation_id = ?')
+        .get(normalizedOperationId);
+      if (!operationRow) {
+        throw new ProvenanceRepositoryError('PROVENANCE_OPERATION_NOT_FOUND', `File operation ${normalizedOperationId} was not found.`);
+      }
+      const operation = serializeOperation(operationRow);
+      if (operation.state === 'completed') return operation;
+      if (operation.state === 'aborted') {
+        throw new ProvenanceRepositoryError('PROVENANCE_OPERATION_ABORTED', `File operation ${normalizedOperationId} was aborted.`);
+      }
+
+      const { source = null, destination = null, reserved = {} } = operation.payload;
+      let mapping = null;
+      if (operation.kind === 'rename' || operation.kind === 'move') {
+        if (!source?.locationId || !source?.assetId) {
+          throw new ProvenanceRepositoryError('PROVENANCE_OPERATION_INVALID', 'A move or rename intent requires a known source location.');
+        }
+        if (destination?.rootId) {
+          if (destination.existingLocationId && destination.existingLocationId !== source.locationId) {
+            this.database.prepare(`
+              UPDATE asset_locations
+              SET state = 'removed', last_observed_at = ?, missing_at = COALESCE(missing_at, ?)
+              WHERE location_id = ? AND state != 'removed'
+            `).run(timestamp, timestamp, destination.existingLocationId);
+            if (destination.existingAssetId) {
+              const remainingDestinationLocations = Number(this.database.prepare(`
+                SELECT COUNT(*) AS count FROM asset_locations WHERE asset_id = ? AND state = 'present'
+              `).get(destination.existingAssetId).count);
+              this.database.prepare('UPDATE assets SET state = ?, updated_at = ? WHERE asset_id = ?')
+                .run(remainingDestinationLocations ? 'active' : 'deleted', timestamp, destination.existingAssetId);
+            }
+          }
+          const moved = this.database.prepare(`
+            UPDATE asset_locations
+            SET root_id = ?, relative_path = ?, relative_path_key = ?, state = 'present',
+                last_observed_at = ?, missing_at = NULL
+            WHERE location_id = ? AND asset_id = ? AND state != 'removed'
+          `).run(
+            destination.rootId,
+            destination.relativePath,
+            destination.relativePathKey,
+            timestamp,
+            source.locationId,
+            source.assetId,
+          );
+          if (Number(moved.changes) !== 1) {
+            throw new ProvenanceRepositoryError('PROVENANCE_LOCATION_NOT_FOUND', `Source location ${source.locationId} was not available.`);
+          }
+          this.database.prepare("UPDATE assets SET state = 'active', updated_at = ? WHERE asset_id = ?")
+            .run(timestamp, source.assetId);
+          mapping = {
+            rootId: destination.rootId,
+            relativePath: destination.relativePath,
+            relativePathKey: destination.relativePathKey,
+            assetId: source.assetId,
+            revisionId: source.revisionId,
+            locationId: source.locationId,
+          };
+        } else {
+          this.#markLocationMissingWithinTransaction(source.locationId, timestamp);
+        }
+      } else if (operation.kind === 'delete') {
+        if (source?.assetId) {
+          this.database.prepare("UPDATE assets SET state = 'deleted', updated_at = ? WHERE asset_id = ?")
+            .run(timestamp, source.assetId);
+          this.database.prepare(`
+            UPDATE asset_locations
+            SET state = 'removed', last_observed_at = ?, missing_at = COALESCE(missing_at, ?)
+            WHERE asset_id = ?
+          `).run(timestamp, timestamp, source.assetId);
+        }
+      } else if (destination?.rootId) {
+        if (!observation || !Number.isSafeInteger(Number(observation.byteSize))) {
+          throw new ProvenanceRepositoryError('PROVENANCE_OPERATION_INVALID', 'A completed write or copy requires a destination observation.');
+        }
+        const byteSize = Number(observation.byteSize);
+        const contentModifiedMs = normalizeOptionalTimestamp(observation.contentModifiedMs, 'contentModifiedMs');
+        const destinationAssetId = destination.existingAssetId || reserved.assetId;
+        const destinationLocationId = destination.existingLocationId || reserved.locationId;
+        const revisionId = reserved.revisionId;
+        if (!destinationAssetId || !destinationLocationId || !revisionId) {
+          throw new ProvenanceRepositoryError('PROVENANCE_OPERATION_INVALID', 'Reserved destination identities are missing.');
+        }
+        if (destination.existingAssetId) {
+          this.#insertRevision({
+            assetId: destinationAssetId,
+            revisionId,
+            sha256: null,
+            hashState: 'pending',
+            byteSize,
+            mimeType: observation.mimeType ?? null,
+            contentModifiedMs,
+            timestamp,
+          });
+          this.database.prepare(`
+            UPDATE asset_locations
+            SET revision_id = ?, relative_path = ?, relative_path_key = ?, state = 'present',
+                last_observed_at = ?, missing_at = NULL
+            WHERE location_id = ? AND asset_id = ? AND state != 'removed'
+          `).run(
+            revisionId,
+            destination.relativePath,
+            destination.relativePathKey,
+            timestamp,
+            destinationLocationId,
+            destinationAssetId,
+          );
+          this.database.prepare("UPDATE assets SET state = 'active', updated_at = ? WHERE asset_id = ?")
+            .run(timestamp, destinationAssetId);
+        } else {
+          this.database.prepare('INSERT INTO assets VALUES (?, ?, ?, ?)')
+            .run(destinationAssetId, 'active', timestamp, timestamp);
+          this.#insertRevision({
+            assetId: destinationAssetId,
+            revisionId,
+            sha256: null,
+            hashState: 'pending',
+            byteSize,
+            mimeType: observation.mimeType ?? null,
+            contentModifiedMs,
+            timestamp,
+          });
+          this.database.prepare(`
+            INSERT INTO asset_locations (
+              location_id, asset_id, revision_id, root_id, relative_path, relative_path_key, state,
+              first_observed_at, last_observed_at, missing_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 'present', ?, ?, NULL)
+          `).run(
+            destinationLocationId,
+            destinationAssetId,
+            revisionId,
+            destination.rootId,
+            destination.relativePath,
+            destination.relativePathKey,
+            timestamp,
+            timestamp,
+          );
+        }
+        mapping = {
+          rootId: destination.rootId,
+          relativePath: destination.relativePath,
+          relativePathKey: destination.relativePathKey,
+          assetId: destinationAssetId,
+          revisionId,
+          locationId: destinationLocationId,
+        };
+      }
+
+      const result = { mapping, destinationScope: destination?.rootId ? 'registered' : 'outside' };
+      this.database.prepare(`
+        UPDATE provenance_operations
+        SET state = 'completed', result_json = ?, last_error = NULL, updated_at = ?, completed_at = ?
+        WHERE operation_id = ?
+      `).run(JSON.stringify(result), timestamp, timestamp, normalizedOperationId);
+      return serializeOperation(this.database.prepare('SELECT * FROM provenance_operations WHERE operation_id = ?')
+        .get(normalizedOperationId));
+    });
+  }
+
   assignIndexedFile(input) {
     this.#requireWritable();
     const rootId = assertUuid(input.rootId, 'rootId');
@@ -669,6 +964,38 @@ export class AssetProvenanceRepository {
   close() {
     if (!this.database) return;
     try { this.database.close(); } finally { this.database = null; }
+  }
+
+  #setFileOperationState(operationId, state, error) {
+    this.#requireWritable();
+    const normalizedOperationId = assertUuid(operationId, 'operationId');
+    const timestamp = this.now().toISOString();
+    const result = this.database.prepare(`
+      UPDATE provenance_operations
+      SET state = ?, last_error = ?, updated_at = ?, completed_at = CASE WHEN ? = 'aborted' THEN ? ELSE completed_at END
+      WHERE operation_id = ? AND state != 'completed'
+    `).run(state, error ? String(error?.message || error) : null, timestamp, state, timestamp, normalizedOperationId);
+    if (Number(result.changes) !== 1) {
+      const existing = this.getFileOperation(normalizedOperationId);
+      if (existing?.state === 'completed') return existing;
+      throw new ProvenanceRepositoryError('PROVENANCE_OPERATION_NOT_FOUND', `Pending file operation ${normalizedOperationId} was not found.`);
+    }
+    return this.getFileOperation(normalizedOperationId);
+  }
+
+  #markLocationMissingWithinTransaction(locationId, timestamp) {
+    const location = this.database.prepare('SELECT * FROM asset_locations WHERE location_id = ?').get(locationId);
+    if (!location || location.state === 'removed') {
+      throw new ProvenanceRepositoryError('PROVENANCE_LOCATION_NOT_FOUND', `Active location ${locationId} was not found.`);
+    }
+    this.database.prepare(`
+      UPDATE asset_locations SET state = 'missing', last_observed_at = ?, missing_at = ? WHERE location_id = ?
+    `).run(timestamp, timestamp, locationId);
+    const presentCount = Number(this.database.prepare(`
+      SELECT COUNT(*) AS count FROM asset_locations WHERE asset_id = ? AND state = 'present'
+    `).get(location.asset_id).count);
+    this.database.prepare('UPDATE assets SET state = ?, updated_at = ? WHERE asset_id = ?')
+      .run(presentCount ? 'active' : 'missing', timestamp, location.asset_id);
   }
 
   #insertRevision({ assetId, revisionId, sha256, hashState, byteSize, mimeType = null, width = null, height = null, contentModifiedMs = null, observedAt = null, timestamp }) {
