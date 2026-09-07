@@ -9,6 +9,7 @@ import { ProvenanceRepositoryLifecycle, resolveProvenanceCatalogPath } from '../
 import { StableIdentityIndexer } from '../electron/stableIdentityIndexer.mjs';
 import { StableIdentityFileOperationCoordinator } from '../electron/stableIdentityFileOperationCoordinator.mjs';
 import { runStableIdentityFileOperationsSmoke } from '../electron/stableIdentityFileOperationsSmoke.mjs';
+import { SUPPORTED_MEDIA_EXTENSIONS, inferMimeTypeFromName } from '../utils/mediaTypes.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -151,6 +152,32 @@ describe('stable identity file-operation coordination', () => {
     expect(overwritten.assetId).toBe(copy.assetId);
     expect(overwritten.revisionId).not.toBe(copy.revisionId);
     expect(lifecycle.run((repository) => repository.getAsset(copy.assetId))?.revisions).toHaveLength(2);
+    indexer.stop();
+    lifecycle.close();
+  });
+
+  it('persists the canonical MIME type for every supported media extension', async () => {
+    const { userDataPath, rootA } = await workspace();
+    const { lifecycle, indexer, coordinator } = createRuntime(userDataPath);
+    await registerRoot(indexer, rootA);
+    const root = lifecycle.run((repository) => repository.listLibraryRoots()[0])!;
+
+    for (const [index, extension] of SUPPORTED_MEDIA_EXTENSIONS.entries()) {
+      const relativePath = `synthetic-${index}${extension}`;
+      const destinationPath = path.join(rootA, relativePath);
+      await coordinator.executeKnownOperation({
+        kind: 'save_as',
+        destinationPath,
+        perform: () => fs.writeFile(destinationPath, `synthetic ${extension}`),
+      });
+      const location = lifecycle.run((repository) => (
+        repository.getLocationByRootPath(root.rootId, relativePath)
+      ))!;
+      const asset = lifecycle.run((repository) => repository.getAsset(location.assetId))!;
+      expect(asset.revisions.find((revision: any) => revision.revisionId === location.revisionId)?.mimeType)
+        .toBe(inferMimeTypeFromName(relativePath));
+    }
+
     indexer.stop();
     lifecycle.close();
   });
@@ -534,6 +561,74 @@ describe('stable identity file-operation coordination', () => {
     });
     expect(await recovery.initializeRecovery()).toMatchObject({ recovered: 1, pending: 0 });
     expect(runtime.lifecycle.run((repo) => repo.getAsset(deleted.assetId))?.state).toBe('deleted');
+    runtime.indexer.stop();
+    runtime.lifecycle.close();
+  });
+
+  it('isolates inaccessible recovery entries and continues recovering later operations', async () => {
+    const { userDataPath, rootA, rootB } = await workspace();
+    const blockedSourcePath = path.join(rootA, 'blocked-source.bin');
+    const blockedDestinationPath = path.join(rootB, 'blocked-destination.bin');
+    const deletedPath = path.join(rootA, 'recoverable-delete.bin');
+    await Promise.all([
+      fs.writeFile(blockedSourcePath, 'blocked'),
+      fs.writeFile(deletedPath, 'delete'),
+    ]);
+    const runtime = createRuntime(userDataPath, {
+      coordinator: { logger: { error: () => {}, warn: () => {} } },
+    });
+    await registerRoot(runtime.indexer, rootA, ['blocked-source.bin', 'recoverable-delete.bin']);
+    await registerRoot(runtime.indexer, rootB);
+
+    await expect(runtime.coordinator.executeKnownOperation({
+      kind: 'move',
+      sourcePath: blockedSourcePath,
+      destinationPath: blockedDestinationPath,
+      perform: async () => {
+        await fs.copyFile(blockedSourcePath, blockedDestinationPath);
+        throw new Error('synthetic source delete failure');
+      },
+    })).rejects.toThrow('synthetic source delete failure');
+
+    const repository = (runtime.lifecycle as any).repository;
+    const complete = repository.completeFileOperation.bind(repository);
+    let failOnce = true;
+    repository.completeFileOperation = (...args: unknown[]) => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error('synthetic delete catalog failure');
+      }
+      return complete(...args);
+    };
+    const deleted = await runtime.coordinator.executeKnownOperation({
+      kind: 'delete',
+      sourcePath: deletedPath,
+      perform: () => fs.unlink(deletedPath),
+    });
+    expect(deleted.provenance).toMatchObject({ pending: true });
+    repository.completeFileOperation = complete;
+
+    const inaccessiblePaths = new Set([blockedSourcePath, blockedDestinationPath].map((value) => path.resolve(value)));
+    const warnings: unknown[][] = [];
+    const recovery = new StableIdentityFileOperationCoordinator({
+      repositoryLifecycle: runtime.lifecycle,
+      indexer: runtime.indexer,
+      enabled: true,
+      fileSystem: {
+        stat: async (filePath: string) => {
+          if (inaccessiblePaths.has(path.resolve(filePath))) {
+            throw Object.assign(new Error('synthetic access denied'), { code: 'EACCES' });
+          }
+          return fs.stat(filePath);
+        },
+        realpath: (filePath: string) => fs.realpath(filePath),
+      },
+      logger: { warn: (...args: unknown[]) => warnings.push(args), error: () => {} },
+    });
+
+    expect(await recovery.initializeRecovery()).toMatchObject({ recovered: 1, pending: 1 });
+    expect(warnings).toHaveLength(1);
+    expect(runtime.lifecycle.run((repo) => repo.listPendingFileOperations())).toHaveLength(1);
     runtime.indexer.stop();
     runtime.lifecycle.close();
   });

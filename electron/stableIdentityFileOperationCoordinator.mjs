@@ -4,18 +4,10 @@ import path from 'node:path';
 import { normalizeLibraryRootPath } from './stableIdentityIndexer.mjs';
 import { normalizeRelativeCatalogPath } from '../utils/provenancePath.mjs';
 import { isRelativePathInsideRoot, pathApiForPlatform } from '../utils/pathContainment.mjs';
+import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
 
 function normalizedTimestamp(value) {
   return Number.isFinite(value) ? Math.trunc(value) : null;
-}
-
-function mimeTypeFromPath(filePath) {
-  const extension = path.extname(filePath).toLowerCase();
-  const known = {
-    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
-    '.gif': 'image/gif', '.avif': 'image/avif', '.mp4': 'video/mp4', '.webm': 'video/webm',
-  };
-  return known[extension] ?? null;
 }
 
 function signatureFromStat(stat) {
@@ -61,8 +53,15 @@ export class StableIdentityFileOperationCoordinator {
     for (const operation of operations) this.#blockOperationPaths(operation.payload);
     let recovered = 0;
     for (const operation of operations) {
-      const result = await this.#recoverOperation(operation);
-      if (result === 'completed' || result === 'aborted') recovered += 1;
+      try {
+        const result = await this.#recoverOperation(operation);
+        if (result === 'completed' || result === 'aborted') recovered += 1;
+      } catch (error) {
+        this.logger.warn(
+          `Provenance operation ${operation.operationId} could not be recovered and remains pending.`,
+          error,
+        );
+      }
     }
     const pending = this.repositoryLifecycle.run((repository) => repository.listPendingFileOperations()).length;
     return { enabled: true, recovered, pending };
@@ -255,15 +254,15 @@ export class StableIdentityFileOperationCoordinator {
           bytesChanged: bytesChanged && file.provenanceBytesChanged !== false,
         });
       } else {
-        if (bytesChanged && file.provenanceBytesChanged !== false) {
-          this.indexer.invalidateCatalogPath(rootPath, relativePath);
-        }
-        ready.push({ ...file, name: relativePath });
+        ready.push({
+          ...file,
+          name: relativePath,
+          provenanceBytesChanged: bytesChanged && file.provenanceBytesChanged !== false,
+        });
       }
     }
     if (ready.length === 0) return;
-    this.indexer.invalidateRoot(rootPath);
-    await this.indexer.observeFiles({ rootPath, files: ready, onBatch: this.publishMappings });
+    await this.#applyObservedFiles(rootPath, ready);
   }
 
   async observeWatcherRemovals({ rootPath, files = [], folders = [] }) {
@@ -424,7 +423,7 @@ export class StableIdentityFileOperationCoordinator {
   #observation(destination, stat) {
     return {
       ...signatureFromStat(stat),
-      mimeType: mimeTypeFromPath(destination.relativePath),
+      mimeType: inferMimeTypeFromName(destination.relativePath, null),
     };
   }
 
@@ -551,7 +550,7 @@ export class StableIdentityFileOperationCoordinator {
         size: stat.size,
         lastModified: stat.mtimeMs,
         contentModifiedMs: stat.mtimeMs,
-        type: mimeTypeFromPath(destination.relativePath),
+        type: inferMimeTypeFromName(destination.relativePath, null),
       }],
       onBatch: this.publishMappings,
     });
@@ -587,20 +586,27 @@ export class StableIdentityFileOperationCoordinator {
       } else {
         const stat = await this.#statOrNull(absolutePath);
         if (stat) {
-          await this.observeWatcherFiles({
-            rootPath: observation.rootPath,
-            files: [{
-              name: observation.relativePath,
-              size: stat.size,
-              lastModified: stat.mtimeMs,
-              contentModifiedMs: stat.mtimeMs,
-              type: mimeTypeFromPath(observation.relativePath),
-            }],
-            bytesChanged: observation.bytesChanged,
-          });
+          await this.#applyObservedFiles(observation.rootPath, [{
+            name: observation.relativePath,
+            size: stat.size,
+            lastModified: stat.mtimeMs,
+            contentModifiedMs: stat.mtimeMs,
+            type: inferMimeTypeFromName(observation.relativePath, null),
+            provenanceBytesChanged: observation.bytesChanged,
+          }]);
         }
       }
     }
+  }
+
+  async #applyObservedFiles(rootPath, files) {
+    for (const file of files) {
+      if (file.provenanceBytesChanged !== false) {
+        this.indexer.invalidateCatalogPath(rootPath, file.name);
+      }
+    }
+    this.indexer.invalidateRoot(rootPath);
+    await this.indexer.observeFiles({ rootPath, files, onBatch: this.publishMappings });
   }
 
   async #applyMissingObservation(observation, absolutePath = null) {
