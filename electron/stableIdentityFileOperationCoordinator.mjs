@@ -155,60 +155,32 @@ export class StableIdentityFileOperationCoordinator {
       }
 
       this.#blockOperationPaths(intent.payload);
+      let value;
       try {
-        const value = await perform();
-        const outcome = await this.#inspectOutcome(intent, { verifyExpectedOutput: false });
-        if (outcome.state !== 'completed') {
-          if (outcome.state === 'aborted') {
-            this.repositoryLifecycle.run((repository) => repository.abortFileOperation(intent.operationId, outcome.reason));
-            this.#unblockOperationPaths(intent.payload);
-            try { await this.#flushDeferredForOperation(intent.payload); } catch (error) {
-              this.logger.warn('Aborted provenance operation could not flush deferred observations.', error);
-            }
-          } else {
-            this.repositoryLifecycle.run((repository) => repository.markFileOperationPending(intent.operationId, outcome.reason));
-          }
-          return { value, provenance: { enabled: true, pending: outcome.state === 'pending_recovery' } };
-        }
-
-        let completed;
-        try {
-          this.repositoryLifecycle.run((repository) => repository.markFileOperationFileSystemApplied(intent.operationId));
-          completed = this.repositoryLifecycle.run((repository) => repository.completeFileOperation(intent.operationId, {
-            observation: outcome.observation,
-          }));
-        } catch (error) {
-          try {
-            this.repositoryLifecycle.run((repository) => repository.markFileOperationPending(intent.operationId, error));
-          } catch { /* the durable intent is already enough for startup recovery */ }
-          this.logger.error('Filesystem operation completed but provenance reconciliation remains pending.', error);
-          return {
-            value,
-            provenance: { enabled: true, available: true, pending: true, error: error?.message || String(error) },
-          };
-        }
-        this.#unblockOperationPaths(intent.payload);
-        try {
-          await this.#observeCompletedDestination(intent.payload);
-          await this.#flushDeferredForOperation(intent.payload);
-        } catch (error) {
-          this.logger.warn('Provenance operation committed, but post-operation observation will retry later.', error);
-        }
-        return { value, provenance: { enabled: true, available: true, operation: completed } };
+        value = await perform();
       } catch (error) {
-        const outcome = await this.#inspectOutcome(intent);
         try {
-          if (outcome.state === 'aborted') {
-            this.repositoryLifecycle.run((repository) => repository.abortFileOperation(intent.operationId, error));
-            this.#unblockOperationPaths(intent.payload);
-            await this.#flushDeferredForOperation(intent.payload);
-          } else {
-            this.repositoryLifecycle.run((repository) => repository.markFileOperationPending(intent.operationId, error));
-            if (error && typeof error === 'object') error.provenanceOperationId = intent.operationId;
-          }
+          const confirmsPrimaryDelete = intent.kind === 'delete' && error?.primaryDeleted === true;
+          const outcome = await this.#inspectOutcome(intent, { verifyExpectedOutput: !confirmsPrimaryDelete });
+          await this.#applyOperationOutcome(intent, outcome, { operationError: error });
         } catch { /* preserve the filesystem error */ }
         throw error;
       }
+
+      const outcome = await this.#inspectOutcome(intent, { verifyExpectedOutput: false });
+      const transition = await this.#applyOperationOutcome(intent, outcome);
+      if (transition.state === 'completed') {
+        return { value, provenance: { enabled: true, available: true, operation: transition.operation } };
+      }
+      return {
+        value,
+        provenance: {
+          enabled: true,
+          available: true,
+          pending: transition.state === 'pending_recovery',
+          error: transition.error,
+        },
+      };
     });
   }
 
@@ -296,27 +268,32 @@ export class StableIdentityFileOperationCoordinator {
 
   async observeWatcherRemovals({ rootPath, files = [], folders = [] }) {
     if (!this.#isAvailable()) return;
-    const relativePaths = [
-      ...files.map((file) => file.relativePath || file.name),
-      ...folders.flatMap((folder) => {
-        const prefix = String(folder.relativePath || folder.name).replace(/\\/g, '/').replace(/\/+$/, '');
-        return this.repositoryLifecycle.run((repository) => {
-          const rootKey = normalizeLibraryRootPath(rootPath, this.platform).pathKey;
-          const root = repository.listLibraryRoots().find((entry) => entry.pathKey === rootKey);
-          if (!root) return [];
-          const prefixKey = normalizeRelativeCatalogPath(prefix, this.platform).relativePathKey;
-          return repository.listPresentLocationsUnderPath(root.rootId, prefixKey)
-            .map((location) => location.relativePath);
-        });
-      }),
-    ];
+    const relativePaths = files.map((file) => file.relativePath ?? file.name);
+    const rootKey = normalizeLibraryRootPath(rootPath, this.platform).pathKey;
+    const root = this.repositoryLifecycle.run((repository) => (
+      repository.listLibraryRoots().find((entry) => entry.pathKey === rootKey)
+    ));
+    for (const folder of folders) {
+      const prefix = String(folder.relativePath ?? folder.name ?? '').replace(/\\/g, '/').replace(/\/+$/, '');
+      const folderPath = prefix ? path.resolve(rootPath, prefix) : path.resolve(rootPath);
+      const folderStat = await this.#statOrNull(folderPath);
+      if (folderStat) continue;
+      this.indexer.invalidateRoot(rootPath);
+      if (!root) continue;
+      const locations = prefix
+        ? this.repositoryLifecycle.run((repository) => {
+            const prefixKey = normalizeRelativeCatalogPath(prefix, this.platform).relativePathKey;
+            return repository.listPresentLocationsUnderPath(root.rootId, prefixKey);
+          })
+        : this.repositoryLifecycle.run((repository) => repository.listPresentLocations(root.rootId));
+      relativePaths.push(...locations.map((location) => location.relativePath));
+    }
     for (const relativePath of relativePaths) {
       const key = this.#absolutePathKey(path.resolve(rootPath, relativePath));
       if (this.activePathLocks.has(key) || this.recoveryBlockedPaths.has(key)) {
         this.deferredWatcherObservations.set(key, { kind: 'missing', rootPath, relativePath });
       } else {
-        const stat = await this.#statOrNull(path.resolve(rootPath, relativePath));
-        if (!stat) this.indexer.markExternalMissing({ rootPath, relativePath });
+        await this.#applyMissingObservation({ rootPath, relativePath });
       }
     }
   }
@@ -476,6 +453,59 @@ export class StableIdentityFileOperationCoordinator {
     return this.#matchesRecordedSource(stat, beforeEvidence?.sourceSignature);
   }
 
+  async #applyOperationOutcome(operation, outcome, { operationError = null } = {}) {
+    if (outcome.state === 'aborted') {
+      this.repositoryLifecycle.run((repository) => repository.abortFileOperation(
+        operation.operationId,
+        operationError ?? outcome.reason,
+      ));
+      this.#unblockOperationPaths(operation.payload);
+      try {
+        await this.#flushDeferredForOperation(operation.payload);
+      } catch (error) {
+        this.logger.warn('Aborted provenance operation could not flush deferred observations.', error);
+      }
+      return { state: 'aborted' };
+    }
+
+    if (outcome.state === 'pending_recovery') {
+      if (operationError && typeof operationError === 'object') {
+        operationError.provenanceOperationId = operation.operationId;
+      }
+      this.repositoryLifecycle.run((repository) => repository.markFileOperationPending(
+        operation.operationId,
+        operationError ?? outcome.reason,
+      ));
+      return { state: 'pending_recovery' };
+    }
+
+    let completed;
+    try {
+      this.repositoryLifecycle.run((repository) => repository.markFileOperationFileSystemApplied(operation.operationId));
+      completed = this.repositoryLifecycle.run((repository) => repository.completeFileOperation(operation.operationId, {
+        observation: outcome.observation,
+      }));
+    } catch (error) {
+      if (operationError && typeof operationError === 'object') {
+        operationError.provenanceOperationId = operation.operationId;
+      }
+      try {
+        this.repositoryLifecycle.run((repository) => repository.markFileOperationPending(operation.operationId, error));
+      } catch { /* the durable intent is already enough for startup recovery */ }
+      this.logger.error('Filesystem operation completed but provenance reconciliation remains pending.', error);
+      return { state: 'pending_recovery', error: error?.message || String(error) };
+    }
+
+    this.#unblockOperationPaths(operation.payload);
+    try {
+      await this.#observeCompletedDestination(operation.payload);
+      await this.#flushDeferredForOperation(operation.payload);
+    } catch (error) {
+      this.logger.warn('Provenance operation committed, but post-operation observation will retry later.', error);
+    }
+    return { state: 'completed', operation: completed };
+  }
+
   async #recoverOperation(operation) {
     const paths = this.#operationAbsolutePaths(operation.payload);
     return this.#withPathLocks(paths, async () => {
@@ -553,8 +583,7 @@ export class StableIdentityFileOperationCoordinator {
       if (!observation || this.recoveryBlockedPaths.has(key)) continue;
       this.deferredWatcherObservations.delete(key);
       if (observation.kind === 'missing') {
-        const stat = await this.#statOrNull(absolutePath);
-        if (!stat) this.indexer.markExternalMissing(observation);
+        await this.#applyMissingObservation(observation, absolutePath);
       } else {
         const stat = await this.#statOrNull(absolutePath);
         if (stat) {
@@ -572,6 +601,15 @@ export class StableIdentityFileOperationCoordinator {
         }
       }
     }
+  }
+
+  async #applyMissingObservation(observation, absolutePath = null) {
+    const resolvedPath = absolutePath ?? path.resolve(observation.rootPath, observation.relativePath);
+    const stat = await this.#statOrNull(resolvedPath);
+    if (stat) return false;
+    this.indexer.invalidateRoot(observation.rootPath);
+    this.indexer.markExternalMissing(observation);
+    return true;
   }
 
   #operationAbsolutePaths(payload) {

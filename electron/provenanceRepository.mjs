@@ -549,6 +549,15 @@ export class AssetProvenanceRepository {
     `).all(normalizedRootId, normalizedPathKey, `${escapeLikePattern(normalizedPathKey)}/%`).map(serializeLocation);
   }
 
+  listPresentLocations(rootId) {
+    this.#requireOpen();
+    return this.database.prepare(`
+      SELECT * FROM asset_locations
+      WHERE root_id = ? AND state = 'present'
+      ORDER BY relative_path_key
+    `).all(assertUuid(rootId, 'rootId')).map(serializeLocation);
+  }
+
   createFileOperationIntent({ operationId = this.randomUUID(), kind, payload }) {
     this.#requireWritable();
     const normalizedOperationId = assertUuid(operationId, 'operationId');

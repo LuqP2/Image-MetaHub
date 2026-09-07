@@ -24,12 +24,14 @@ describe('path containment', () => {
   });
 
   it('preserves watcher-relative dot-prefixed children on POSIX and Windows', () => {
+    expect(toRelativePath('/library', '/library', 'linux')).toBe('');
     expect(toRelativePath('/library', '/library/..archive/image.png', 'linux'))
       .toBe('..archive/image.png');
     expect(toRelativePath('/library', '/library/.../image.png', 'linux'))
       .toBe('.../image.png');
     expect(toRelativePath('/library', '/outside/image.png', 'linux')).toBe('image.png');
 
+    expect(toRelativePath('C:\\library', 'C:\\library', 'win32')).toBe('');
     expect(toRelativePath('C:\\library', 'C:\\library\\..archive\\image.png', 'win32'))
       .toBe('..archive/image.png');
     expect(toRelativePath('C:\\library', 'C:\\library\\...\\image.png', 'win32'))
