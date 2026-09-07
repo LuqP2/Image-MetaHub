@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 import { normalizeBirthtimeMs, resolveFileSortDate } from '../utils/fileTimestamps.js';
+import { isRelativePathInsideRoot, pathApiForPlatform } from '../utils/pathContainment.mjs';
 
 // Active watchers: directoryId -> watcher instance
 const activeWatchers = new Map();
@@ -77,13 +78,14 @@ export const findMediaFilesForSidecar = (sidecarPath) => {
   }
 };
 
-const toRelativePath = (rootPath, targetPath) => {
-  const relativePath = path.relative(rootPath, targetPath);
+export const toRelativePath = (rootPath, targetPath, platform = process.platform) => {
+  const pathApi = pathApiForPlatform(platform);
+  const relativePath = pathApi.relative(rootPath, targetPath);
   if (relativePath === '') {
     return '';
   }
-  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-    return path.basename(targetPath);
+  if (!isRelativePathInsideRoot(relativePath, platform)) {
+    return pathApi.basename(targetPath);
   }
   return relativePath.replace(/\\/g, '/');
 };

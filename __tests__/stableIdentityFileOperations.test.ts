@@ -256,6 +256,55 @@ describe('stable identity file-operation coordination', () => {
     lifecycle.close();
   });
 
+  it.each([
+    { kind: 'rename', destinationRoot: 'A' },
+    { kind: 'move', destinationRoot: 'B' },
+    { kind: 'delete', destinationRoot: null },
+  ])('does not journal a tracked $kind whose source was already absent', async ({ kind, destinationRoot }) => {
+    const { userDataPath, rootA, rootB } = await workspace();
+    const sourcePath = path.join(rootA, 'missing-before-operation.bin');
+    const destinationPath = destinationRoot
+      ? path.join(destinationRoot === 'A' ? rootA : rootB, 'destination.bin')
+      : null;
+    await fs.writeFile(sourcePath, 'original');
+    const { lifecycle, indexer, coordinator, mappings } = createRuntime(userDataPath);
+    const [original] = await registerRoot(indexer, rootA, ['missing-before-operation.bin']);
+    await registerRoot(indexer, rootB);
+    await indexer.waitForIdle();
+    await fs.unlink(sourcePath);
+
+    let performCalls = 0;
+    await expect(coordinator.executeKnownOperation({
+      kind,
+      sourcePath,
+      destinationPath,
+      perform: async () => {
+        performCalls += 1;
+        if (kind === 'delete') await fs.unlink(sourcePath);
+        else await fs.rename(sourcePath, destinationPath!);
+      },
+    })).rejects.toMatchObject({ code: 'ENOENT' });
+
+    expect(performCalls).toBe(1);
+    expect(lifecycle.run((repository) => repository.listPendingFileOperations())).toHaveLength(0);
+
+    await fs.writeFile(sourcePath, 'replacement with different bytes');
+    await coordinator.observeWatcherFiles({ rootPath: rootA, files: [await record(rootA, 'missing-before-operation.bin')] });
+    const root = lifecycle.run((repository) => repository.listLibraryRoots().find((entry) => entry.absolutePath === rootA))!;
+    const rediscovered = lifecycle.run((repository) => (
+      repository.getLocationByRootPath(root.rootId, 'missing-before-operation.bin')
+    ))!;
+    expect(rediscovered).toMatchObject({ assetId: original.assetId, state: 'present' });
+    expect(rediscovered.revisionId).not.toBe(original.revisionId);
+    expect(mappings.at(-1)).toMatchObject({
+      relativePath: 'missing-before-operation.bin',
+      assetId: original.assetId,
+      revisionId: rediscovered.revisionId,
+    });
+    indexer.stop();
+    lifecycle.close();
+  });
+
   it('reuses a pending delete when permanent fallback only needs to remove a sidecar', async () => {
     const { userDataPath, rootA } = await workspace();
     const modelPath = path.join(rootA, 'model.glb');
@@ -487,6 +536,139 @@ describe('stable identity file-operation coordination', () => {
     });
     expect(staleResult).toMatchObject({ stale: true, assigned: 0, reconciled: false });
     expect(lifecycle.run((repository) => repository.getAsset(source.assetId))?.revisions).toHaveLength(2);
+    indexer.stop();
+    lifecycle.close();
+  });
+
+  it('invalidates only the affected root scan for watcher add and no-byte-change observations', async () => {
+    const { userDataPath, rootA, rootB } = await workspace();
+    await Promise.all([
+      fs.writeFile(path.join(rootA, 'kept.bin'), 'kept'),
+      fs.writeFile(path.join(rootB, 'other.bin'), 'other'),
+    ]);
+    const { lifecycle, indexer, coordinator } = createRuntime(userDataPath);
+    const [kept] = await registerRoot(indexer, rootA, ['kept.bin']);
+    await registerRoot(indexer, rootB, ['other.bin']);
+    const staleSnapshot = [await record(rootA, 'kept.bin')];
+    const unaffectedToken = indexer.beginScan(rootB);
+    await fs.writeFile(path.join(rootA, 'watcher-added.bin'), 'added');
+
+    let releaseAddReconciliation!: () => void;
+    let reportAddReconciliation!: () => void;
+    const addReleased = new Promise<void>((resolve) => { releaseAddReconciliation = resolve; });
+    const addReached = new Promise<void>((resolve) => { reportAddReconciliation = resolve; });
+    const staleAddScan = indexer.indexScan({
+      rootPath: rootA,
+      files: staleSnapshot,
+      recursive: true,
+      scanComplete: true,
+      beforeReconcile: async () => {
+        reportAddReconciliation();
+        await addReleased;
+      },
+    });
+    await addReached;
+    await coordinator.observeWatcherFiles({
+      rootPath: rootA,
+      files: [await record(rootA, 'watcher-added.bin')],
+    });
+    releaseAddReconciliation();
+    expect(await staleAddScan).toMatchObject({ stale: true, reconciled: false });
+
+    const rootRecord = lifecycle.run((repository) => (
+      repository.listLibraryRoots().find((entry) => entry.absolutePath === rootA)
+    ))!;
+    const added = lifecycle.run((repository) => (
+      repository.getLocationByRootPath(rootRecord.rootId, 'watcher-added.bin')
+    ))!;
+    expect(added).toMatchObject({ state: 'present' });
+
+    const unaffected = await indexer.indexScan({
+      rootPath: rootB,
+      files: [await record(rootB, 'other.bin')],
+      recursive: true,
+      scanComplete: true,
+      scanToken: unaffectedToken,
+    });
+    expect(unaffected).toMatchObject({ stale: false, reconciled: true });
+
+    let releaseChangeReconciliation!: () => void;
+    let reportChangeReconciliation!: () => void;
+    const changeReleased = new Promise<void>((resolve) => { releaseChangeReconciliation = resolve; });
+    const changeReached = new Promise<void>((resolve) => { reportChangeReconciliation = resolve; });
+    const currentSnapshot = await Promise.all([
+      record(rootA, 'kept.bin'),
+      record(rootA, 'watcher-added.bin'),
+    ]);
+    const staleChangeScan = indexer.indexScan({
+      rootPath: rootA,
+      files: currentSnapshot,
+      recursive: true,
+      scanComplete: true,
+      beforeReconcile: async () => {
+        reportChangeReconciliation();
+        await changeReleased;
+      },
+    });
+    await changeReached;
+    await coordinator.observeWatcherFiles({
+      rootPath: rootA,
+      files: [{ ...await record(rootA, 'watcher-added.bin'), provenanceBytesChanged: false }],
+    });
+    releaseChangeReconciliation();
+    expect(await staleChangeScan).toMatchObject({ stale: true, reconciled: false });
+    expect(lifecycle.run((repository) => (
+      repository.getLocationByRootPath(rootRecord.rootId, 'watcher-added.bin')
+    ))).toMatchObject({ assetId: added.assetId, revisionId: added.revisionId, state: 'present' });
+
+    await fs.unlink(path.join(rootA, 'kept.bin'));
+    const finalScan = await indexer.indexScan({
+      rootPath: rootA,
+      files: [await record(rootA, 'watcher-added.bin')],
+      recursive: true,
+      scanComplete: true,
+    });
+    expect(finalScan).toMatchObject({ stale: false, reconciled: true });
+    expect(lifecycle.run((repository) => repository.getAsset(kept.assetId))?.state).toBe('missing');
+    expect(lifecycle.run((repository) => repository.getAsset(added.assetId))?.state).toBe('active');
+    indexer.stop();
+    lifecycle.close();
+  });
+
+  it('keeps dot-prefixed child folders distinct and coordinates files below them', async () => {
+    const { userDataPath, rootA } = await workspace();
+    await Promise.all([
+      fs.mkdir(path.join(rootA, '..archive')),
+      fs.mkdir(path.join(rootA, '...')),
+    ]);
+    await Promise.all([
+      fs.writeFile(path.join(rootA, 'image.png'), 'root'),
+      fs.writeFile(path.join(rootA, '..archive', 'image.png'), 'archive'),
+      fs.writeFile(path.join(rootA, '...', 'image.png'), 'ellipsis'),
+    ]);
+    const { lifecycle, indexer, coordinator } = createRuntime(userDataPath);
+    const identities = await registerRoot(indexer, rootA, [
+      'image.png',
+      '..archive/image.png',
+      '.../image.png',
+    ]);
+    expect(new Set(identities.map((identity) => identity.assetId)).size).toBe(3);
+    const archived = identities.find((identity) => identity.relativePath === '..archive/image.png')!;
+
+    await coordinator.executeKnownOperation({
+      kind: 'rename',
+      sourcePath: path.join(rootA, '..archive', 'image.png'),
+      destinationPath: path.join(rootA, '..archive', 'renamed.png'),
+      perform: () => fs.rename(
+        path.join(rootA, '..archive', 'image.png'),
+        path.join(rootA, '..archive', 'renamed.png'),
+      ),
+    });
+
+    const rootRecord = lifecycle.run((repository) => repository.listLibraryRoots()[0]);
+    expect(lifecycle.run((repository) => (
+      repository.getLocationByRootPath(rootRecord.rootId, '..archive/renamed.png')
+    ))).toMatchObject({ assetId: archived.assetId, revisionId: archived.revisionId, state: 'present' });
     indexer.stop();
     lifecycle.close();
   });

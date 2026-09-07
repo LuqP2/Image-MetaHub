@@ -120,7 +120,16 @@ export class StableIdentityIndexer {
     this.replacementHashTasksByRevision.clear();
   }
 
-  async indexScan({ rootPath, scanPath = rootPath, files, scanComplete, recursive, scanToken = null, onBatch = () => {} }) {
+  async indexScan({
+    rootPath,
+    scanPath = rootPath,
+    files,
+    scanComplete,
+    recursive,
+    scanToken = null,
+    onBatch = () => {},
+    beforeReconcile = null,
+  }) {
     if (!this.enabled || this.stopped) return { enabled: false, assigned: 0, reconciled: false };
     const root = normalizeLibraryRootPath(rootPath, this.platform);
     const normalizedScan = normalizeLibraryRootPath(scanPath, this.platform);
@@ -156,12 +165,16 @@ export class StableIdentityIndexer {
       await new Promise((resolve) => setImmediate(resolve));
     }
 
-    const canReconcile = Boolean(
+    const reconciliationEligible = Boolean(
       scanComplete
       && recursive
       && normalizedScan.pathKey === root.pathKey
       && isCurrentScan()
     );
+    if (reconciliationEligible && typeof beforeReconcile === 'function') {
+      await beforeReconcile();
+    }
+    const canReconcile = reconciliationEligible && isCurrentScan();
     if (canReconcile) {
       this.repositoryLifecycle.run((repository) => repository.reconcileRootLocations(rootRecord.rootId, seenPathKeys));
     }

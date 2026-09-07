@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { normalizeLibraryRootPath } from './stableIdentityIndexer.mjs';
 import { normalizeRelativeCatalogPath } from '../utils/provenancePath.mjs';
+import { isRelativePathInsideRoot, pathApiForPlatform } from '../utils/pathContainment.mjs';
 
 function normalizedTimestamp(value) {
   return Number.isFinite(value) ? Math.trunc(value) : null;
@@ -106,6 +107,17 @@ export class StableIdentityFileOperationCoordinator {
             available: true,
             tracked: false,
             reason: 'directory_operation_not_supported',
+          },
+        };
+      }
+      if (sourcePath && ['rename', 'move', 'delete'].includes(kind) && !sourceStat) {
+        return {
+          value: await perform(),
+          provenance: {
+            enabled: true,
+            available: true,
+            tracked: false,
+            reason: 'source_missing_before_operation',
           },
         };
       }
@@ -278,6 +290,7 @@ export class StableIdentityFileOperationCoordinator {
       }
     }
     if (ready.length === 0) return;
+    this.indexer.invalidateRoot(rootPath);
     await this.indexer.observeFiles({ rootPath, files: ready, onBatch: this.publishMappings });
   }
 
@@ -360,10 +373,10 @@ export class StableIdentityFileOperationCoordinator {
 
   #resolveCatalogPath(absolutePath, roots) {
     const resolved = path.resolve(absolutePath);
-    const pathApi = this.platform === 'win32' ? path.win32 : path;
+    const pathApi = pathApiForPlatform(this.platform);
     for (const root of roots) {
       const relative = pathApi.relative(root.absolutePath, resolved);
-      const inside = relative === '' || (!relative.startsWith('..') && !pathApi.isAbsolute(relative));
+      const inside = isRelativePathInsideRoot(relative, this.platform);
       if (!inside || relative === '') continue;
       const normalized = normalizeRelativeCatalogPath(relative, this.platform);
       return { rootId: root.rootId, rootPath: root.absolutePath, ...normalized };
