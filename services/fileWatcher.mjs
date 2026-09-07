@@ -1,7 +1,7 @@
 import chokidar from 'chokidar';
 import path from 'path';
 import fs from 'fs';
-import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
+import { SUPPORTED_MEDIA_EXTENSIONS, inferMimeTypeFromName } from '../utils/mediaTypes.js';
 import { normalizeBirthtimeMs, resolveFileSortDate } from '../utils/fileTimestamps.js';
 import { isRelativePathInsideRoot, pathApiForPlatform } from '../utils/pathContainment.mjs';
 
@@ -89,6 +89,11 @@ export const toRelativePath = (rootPath, targetPath, platform = process.platform
   }
   return relativePath.replace(/\\/g, '/');
 };
+
+export const toProvenanceFileInfo = (fileInfo) => ({
+  ...fileInfo,
+  type: inferMimeTypeFromName(fileInfo.path || fileInfo.name, null),
+});
 
 // Nothing in the renderer subscribes to the 'watcher-debug' channel (checked:
 // no electronAPI.onWatcherDebug call anywhere in the app), so sending it was
@@ -379,7 +384,8 @@ function processBatch(directoryId, dirPath, mainWindow, observers = {}) {
       directoryId,
       files: fileInfos
     });
-    void Promise.resolve(observers.onFilesObserved?.({ rootPath: dirPath, files: fileInfos }))
+    const provenanceFileInfos = fileInfos.map(toProvenanceFileInfo);
+    void Promise.resolve(observers.onFilesObserved?.({ rootPath: dirPath, files: provenanceFileInfos }))
       .catch((error) => console.warn('[FileWatcher] Provenance observation failed:', error));
   }
 

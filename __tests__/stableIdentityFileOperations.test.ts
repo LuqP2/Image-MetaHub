@@ -112,6 +112,59 @@ describe('stable identity file-operation coordination', () => {
     reopened.close();
   });
 
+  it.runIf(process.platform !== 'win32')('recognizes a case-only rename on a case-insensitive non-Windows volume', async () => {
+    const { userDataPath, rootA } = await workspace();
+    const sourcePath = path.join(rootA, 'Image.png');
+    const destinationPath = path.join(rootA, 'image.png');
+    await fs.writeFile(sourcePath, 'stable bytes');
+    const runtime = createRuntime(userDataPath);
+    const [original] = await registerRoot(runtime.indexer, rootA, ['Image.png']);
+    await runtime.indexer.waitForIdle();
+
+    const fileStat = await fs.stat(sourcePath);
+    const aliasKey = path.resolve(sourcePath).toLocaleLowerCase('en-US');
+    let actualPath = sourcePath;
+    const coordinator = new StableIdentityFileOperationCoordinator({
+      repositoryLifecycle: runtime.lifecycle,
+      indexer: runtime.indexer,
+      enabled: true,
+      fileSystem: {
+        stat: async (filePath: string) => (
+          path.resolve(filePath).toLocaleLowerCase('en-US') === aliasKey ? fileStat : fs.stat(filePath)
+        ),
+        realpath: async (filePath: string) => (
+          path.resolve(filePath).toLocaleLowerCase('en-US') === aliasKey ? actualPath : fs.realpath(filePath)
+        ),
+      },
+    });
+
+    const result = await coordinator.executeKnownOperation({
+      kind: 'rename',
+      sourcePath,
+      destinationPath,
+      perform: async () => {
+        await fs.rename(sourcePath, destinationPath);
+        actualPath = destinationPath;
+      },
+    });
+
+    expect(result.provenance).toMatchObject({ enabled: true, available: true });
+    expect(result.provenance.pending).not.toBe(true);
+    const root = runtime.lifecycle.run((repository) => repository.listLibraryRoots()[0])!;
+    expect(runtime.lifecycle.run((repository) => (
+      repository.getLocationByRootPath(root.rootId, 'image.png')
+    ))).toMatchObject({
+      assetId: original.assetId,
+      revisionId: original.revisionId,
+      locationId: original.locationId,
+      relativePath: 'image.png',
+      state: 'present',
+    });
+    expect(runtime.lifecycle.run((repository) => repository.listPendingFileOperations())).toHaveLength(0);
+    runtime.indexer.stop();
+    runtime.lifecycle.close();
+  });
+
   it('creates distinct copy and Save As assets, but advances an overwritten destination even with the same signature', async () => {
     const { userDataPath, rootA, rootB } = await workspace();
     const sourcePath = path.join(rootA, 'source.bin');

@@ -122,9 +122,19 @@ export class StableIdentityFileOperationCoordinator {
       }
       let intent;
       try {
+        const destinationStat = destinationPath
+          ? await this.#statOrNull(path.resolve(destinationPath))
+          : null;
         const beforeEvidence = {
           sourceSignature: signatureFromStat(sourceStat),
-          destinationSignature: destinationPath ? signatureFromStat(await this.#statOrNull(path.resolve(destinationPath))) : null,
+          destinationSignature: signatureFromStat(destinationStat),
+          sameFilePathAlias: await this.#isSameFilePathAlias({
+            kind,
+            sourcePath,
+            destinationPath,
+            sourceStat,
+            destinationStat,
+          }),
         };
         intent = this.#createIntent({ kind, sourcePath, destinationPath, expectedOutputSha256, beforeEvidence });
       } catch (error) {
@@ -372,7 +382,7 @@ export class StableIdentityFileOperationCoordinator {
       return { state: 'completed', observation: null };
     }
     if (operation.kind === 'rename' || operation.kind === 'move') {
-      if (operation.payload.samePathKey && destinationStat) {
+      if ((operation.payload.samePathKey || beforeEvidence.sameFilePathAlias) && destinationStat) {
         if (verifyExpectedOutput && operation.state !== 'fs_applied') {
           const actualPath = await this.#realPathOrNull(operation.payload.destinationAbsolutePath);
           if (!actualPath) {
@@ -647,6 +657,39 @@ export class StableIdentityFileOperationCoordinator {
   #absolutePathKey(value) {
     const normalized = path.resolve(value);
     return this.platform === 'win32' ? normalized.toLocaleLowerCase('en-US') : normalized;
+  }
+
+  async #isSameFilePathAlias({ kind, sourcePath, destinationPath, sourceStat, destinationStat }) {
+    if (kind !== 'rename' || !sourcePath || !destinationPath || !sourceStat || !destinationStat) {
+      return false;
+    }
+    const sourceAbsolutePath = path.resolve(sourcePath);
+    const destinationAbsolutePath = path.resolve(destinationPath);
+    if (
+      sourceAbsolutePath === destinationAbsolutePath
+      || sourceAbsolutePath.toLocaleLowerCase('en-US') !== destinationAbsolutePath.toLocaleLowerCase('en-US')
+    ) {
+      return false;
+    }
+    const sourceSignature = signatureFromStat(sourceStat);
+    const destinationSignature = signatureFromStat(destinationStat);
+    if (
+      sourceSignature.device === null
+      || sourceSignature.inode === null
+      || sourceSignature.device !== destinationSignature.device
+      || sourceSignature.inode !== destinationSignature.inode
+    ) {
+      return false;
+    }
+    const [sourceRealPath, destinationRealPath] = await Promise.all([
+      this.#realPathOrNull(sourceAbsolutePath),
+      this.#realPathOrNull(destinationAbsolutePath),
+    ]);
+    return Boolean(
+      sourceRealPath
+      && destinationRealPath
+      && path.resolve(sourceRealPath) === path.resolve(destinationRealPath)
+    );
   }
 
   async #statOrNull(filePath) {
