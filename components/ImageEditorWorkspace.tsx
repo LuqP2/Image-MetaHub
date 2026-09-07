@@ -929,7 +929,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       throw new Error('Saving edited images is only available in the desktop app.');
     }
     const outputBytes = await renderExportBytes();
-    const result = await window.electronAPI.writeFile(targetPath, outputBytes);
+    const result = await window.electronAPI.writeFile(targetPath, outputBytes, { kind: mode });
     if (!result.success) {
       throw new Error(result.error || 'Failed to write edited image.');
     }

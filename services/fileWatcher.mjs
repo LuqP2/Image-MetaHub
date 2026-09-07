@@ -117,7 +117,7 @@ const sendToRenderer = (mainWindow, channel, payload) => {
 /**
  * Start watching a directory.
  */
-export function startWatching(directoryId, dirPath, mainWindow) {
+export function startWatching(directoryId, dirPath, mainWindow, observers = {}) {
   if (activeWatchers.has(directoryId)) {
     return { success: true };
   }
@@ -163,7 +163,7 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       sendWatcherDebug(mainWindow, `[FileWatcher] Watcher ready for ${directoryId} - monitoring: ${dirPath}`);
     });
 
-    const enqueueMedia = (mediaPath, forceReindex = false) => {
+    const enqueueMedia = (mediaPath, forceReindex = false, provenanceBytesChanged = true) => {
       sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${mediaPath}`);
       if (!pendingFiles.has(directoryId)) {
         pendingFiles.set(directoryId, new Map());
@@ -171,14 +171,17 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       sendWatcherDebug(mainWindow, `[FileWatcher] Adding media to batch: ${mediaPath}`);
       const pendingMap = pendingFiles.get(directoryId);
       const existing = pendingMap.get(mediaPath);
-      pendingMap.set(mediaPath, { forceReindex: Boolean(existing?.forceReindex || forceReindex) });
+      pendingMap.set(mediaPath, {
+        forceReindex: Boolean(existing?.forceReindex || forceReindex),
+        provenanceBytesChanged: Boolean(existing?.provenanceBytesChanged || provenanceBytesChanged),
+      });
 
       if (processingTimeouts.has(directoryId)) {
         clearTimeout(processingTimeouts.get(directoryId));
       }
 
       processingTimeouts.set(directoryId, setTimeout(() => {
-        processBatch(directoryId, dirPath, mainWindow);
+        processBatch(directoryId, dirPath, mainWindow, observers);
       }, 500));
     };
 
@@ -190,7 +193,7 @@ export function startWatching(directoryId, dirPath, mainWindow) {
         if (matches.length === 0) {
           return;
         }
-        matches.forEach((match) => enqueueMedia(match, true));
+        matches.forEach((match) => enqueueMedia(match, true, false));
         return;
       }
 
@@ -205,7 +208,7 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       const ext = path.extname(filePath).toLowerCase();
 
       if (ext === '.json') {
-        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true));
+        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true, false));
         return;
       }
 
@@ -238,13 +241,13 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       }
 
       removalTimeouts.set(directoryId, setTimeout(() => {
-        processRemovalBatch(directoryId, mainWindow);
+        processRemovalBatch(directoryId, dirPath, mainWindow, observers);
       }, 500));
     };
 
     watcher.on('unlink', (filePath) => {
       if (path.extname(filePath).toLowerCase() === '.json') {
-        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true));
+        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true, false));
         return;
       }
       if (!isMediaFile(filePath)) {
@@ -334,7 +337,7 @@ export function getWatcherStatus(directoryId) {
 /**
  * Process a batch of detected files.
  */
-function processBatch(directoryId, dirPath, mainWindow) {
+function processBatch(directoryId, dirPath, mainWindow, observers = {}) {
   const files = pendingFiles.get(directoryId);
 
   if (!files || files.size === 0) return;
@@ -354,7 +357,9 @@ function processBatch(directoryId, dirPath, mainWindow) {
         contentModifiedMs: stats.mtimeMs,
         size: stats.size,
         type: path.extname(filePath).slice(1),
-        forceReindex: pendingInfo.forceReindex === true
+        forceReindex: pendingInfo.forceReindex === true,
+        provenanceBytesChanged: pendingInfo.provenanceBytesChanged !== false,
+        relativePath: toRelativePath(dirPath, filePath),
       };
     } catch (err) {
       if (isTransientVanishError(err)) {
@@ -372,13 +377,15 @@ function processBatch(directoryId, dirPath, mainWindow) {
       directoryId,
       files: fileInfos
     });
+    void Promise.resolve(observers.onFilesObserved?.({ rootPath: dirPath, files: fileInfos }))
+      .catch((error) => console.warn('[FileWatcher] Provenance observation failed:', error));
   }
 
   pendingFiles.delete(directoryId);
   processingTimeouts.delete(directoryId);
 }
 
-function processRemovalBatch(directoryId, mainWindow) {
+function processRemovalBatch(directoryId, dirPath, mainWindow, observers = {}) {
   const removals = pendingRemovals.get(directoryId);
 
   if (!removals || (removals.files.size === 0 && removals.folders.size === 0)) return;
@@ -392,6 +399,8 @@ function processRemovalBatch(directoryId, mainWindow) {
     files,
     folders,
   });
+  void Promise.resolve(observers.onPathsRemoved?.({ rootPath: dirPath, files, folders }))
+    .catch((error) => console.warn('[FileWatcher] Provenance removal observation failed:', error));
 
   pendingRemovals.delete(directoryId);
   removalTimeouts.delete(directoryId);

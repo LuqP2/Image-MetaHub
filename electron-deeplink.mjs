@@ -1,4 +1,5 @@
 import electron from 'electron';
+import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {
@@ -11,6 +12,8 @@ const SCHEME = 'imagemetahub';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const portableRuntime = resolvePortableRuntime();
+const packagedProvenanceSmokeEnabled = app.isPackaged
+  && process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE === '1';
 let portableStartupError = null;
 
 try {
@@ -142,7 +145,7 @@ function registerProtocol() {
 }
 
 if (!portableStartupError) {
-  const lock = app.requestSingleInstanceLock();
+  const lock = packagedProvenanceSmokeEnabled || app.requestSingleInstanceLock();
 
   if (!lock) {
     app.quit();
@@ -172,7 +175,27 @@ if (!portableStartupError) {
       dispatchTarget(getTargetFromLink(url));
     });
 
-    await import('./electron.mjs');
+    try {
+      await import('./electron.mjs');
+    } catch (error) {
+      console.error('[Electron bootstrap] Failed to import the main process:', error);
+      if (packagedProvenanceSmokeEnabled) {
+        const resultPath = process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE_RESULT?.trim();
+        if (resultPath) {
+          try {
+            fs.mkdirSync(path.dirname(resultPath), { recursive: true });
+            fs.writeFileSync(resultPath, JSON.stringify({
+              success: false,
+              error: error?.message || String(error),
+              stack: error?.stack || null,
+            }, null, 2), 'utf8');
+          } catch { /* stderr remains the fallback */ }
+        }
+        app.exit(1);
+      } else {
+        throw error;
+      }
+    }
     if (startupTarget?.type === 'file') {
       sendFileToRenderer(startupTarget.path);
     }
