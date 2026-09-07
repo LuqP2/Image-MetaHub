@@ -256,6 +256,80 @@ describe('stable identity file-operation coordination', () => {
     lifecycle.close();
   });
 
+  it('reuses a pending delete when permanent fallback only needs to remove a sidecar', async () => {
+    const { userDataPath, rootA } = await workspace();
+    const modelPath = path.join(rootA, 'model.glb');
+    const sidecarPath = `${modelPath}.imagemetahub.json`;
+    await Promise.all([fs.writeFile(modelPath, 'model'), fs.writeFile(sidecarPath, 'sidecar')]);
+    const { lifecycle, indexer, coordinator } = createRuntime(userDataPath);
+    const [model] = await registerRoot(indexer, rootA, ['model.glb']);
+
+    let pendingOperationId: string | undefined;
+    try {
+      await coordinator.executeKnownOperation({
+        kind: 'delete',
+        sourcePath: modelPath,
+        perform: async () => {
+          await fs.unlink(modelPath);
+          throw new Error('synthetic sidecar trash failure');
+        },
+      });
+    } catch (error: any) {
+      pendingOperationId = error.provenanceOperationId;
+    }
+
+    expect(pendingOperationId).toBeTruthy();
+    expect(lifecycle.run((repository) => repository.listPendingFileOperations())).toHaveLength(1);
+    const fallback = await coordinator.continuePendingDelete({
+      operationId: pendingOperationId,
+      sourcePath: modelPath,
+      perform: async () => {
+        await fs.unlink(sidecarPath);
+        return { primaryDeleted: true, failures: [] };
+      },
+    });
+
+    expect(fallback.value).toEqual({ primaryDeleted: true, failures: [] });
+    expect(lifecycle.run((repository) => repository.listPendingFileOperations())).toHaveLength(0);
+    expect(lifecycle.run((repository) => repository.getAsset(model.assetId))?.state).toBe('deleted');
+    await expect(fs.stat(sidecarPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    indexer.stop();
+    lifecycle.close();
+  });
+
+  it('bypasses file identity coordination for directory renames', async () => {
+    const { userDataPath, rootA } = await workspace();
+    const sourceDirectory = path.join(rootA, 'folder');
+    const destinationDirectory = path.join(rootA, 'renamed-folder');
+    await fs.mkdir(sourceDirectory);
+    await fs.writeFile(path.join(sourceDirectory, 'inside.bin'), 'inside');
+    const { lifecycle, indexer, coordinator } = createRuntime(userDataPath);
+    const [inside] = await registerRoot(indexer, rootA, ['folder/inside.bin']);
+    await indexer.waitForIdle();
+
+    const result = await coordinator.executeKnownOperation({
+      kind: 'rename',
+      sourcePath: sourceDirectory,
+      destinationPath: destinationDirectory,
+      perform: () => fs.rename(sourceDirectory, destinationDirectory),
+    });
+
+    expect(result.provenance).toMatchObject({
+      enabled: true,
+      available: true,
+      tracked: false,
+      reason: 'directory_operation_not_supported',
+    });
+    expect(lifecycle.run((repository) => repository.listPendingFileOperations())).toHaveLength(0);
+    expect(lifecycle.run((repository) => repository.getAsset(inside.assetId))?.locations[0].relativePath)
+      .toBe('folder/inside.bin');
+    const root = lifecycle.run((repository) => repository.listLibraryRoots()[0]);
+    expect(lifecycle.run((repository) => repository.getLocationByRootPath(root.rootId, 'renamed-folder'))).toBeNull();
+    await expect(fs.stat(path.join(destinationDirectory, 'inside.bin'))).resolves.toBeDefined();
+    indexer.stop();
+    lifecycle.close();
+  });
+
   it('does not claim a failed case-only rename and recovers a committed delete after a catalog failure', async () => {
     const { userDataPath, rootA } = await workspace();
     const renamePath = path.join(rootA, 'MixedCase.bin');
@@ -315,6 +389,8 @@ describe('stable identity file-operation coordination', () => {
     ]);
     const { lifecycle, indexer, coordinator } = createRuntime(userDataPath);
     const [inside, outside] = await registerRoot(indexer, rootA, ['folder_1/inside.bin', 'folderX1/outside.bin']);
+    await indexer.waitForIdle();
+    await fs.unlink(path.join(rootA, 'folder_1', 'inside.bin'));
 
     await coordinator.observeWatcherRemovals({
       rootPath: rootA,
@@ -322,6 +398,22 @@ describe('stable identity file-operation coordination', () => {
     });
     expect(lifecycle.run((repository) => repository.getAsset(inside.assetId))?.state).toBe('missing');
     expect(lifecycle.run((repository) => repository.getAsset(outside.assetId))?.state).toBe('active');
+    indexer.stop();
+    lifecycle.close();
+  });
+
+  it('ignores a stale watcher removal while the file still exists', async () => {
+    const { userDataPath, rootA } = await workspace();
+    await fs.writeFile(path.join(rootA, 'present.bin'), 'present');
+    const { lifecycle, indexer, coordinator } = createRuntime(userDataPath);
+    const [present] = await registerRoot(indexer, rootA, ['present.bin']);
+
+    await coordinator.observeWatcherRemovals({
+      rootPath: rootA,
+      files: [{ relativePath: 'present.bin' }],
+    });
+
+    expect(lifecycle.run((repository) => repository.getAsset(present.assetId))?.state).toBe('active');
     indexer.stop();
     lifecycle.close();
   });

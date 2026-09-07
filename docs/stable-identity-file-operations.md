@@ -4,16 +4,16 @@
 
 | Operation | Renderer entry | Filesystem mutation | Provenance integration |
 | --- | --- | --- | --- |
-| Rename, including case-only | `services/imageRenameService.ts` -> `services/fileOperations.ts` | `rename-file` in `electron.mjs` -> `fs.rename` / model sidecar helper | Coordinated `rename`; retain the source asset, revision, and location ID. |
+| File rename, including case-only | `services/imageRenameService.ts` -> `services/fileOperations.ts` | `rename-file` in `electron.mjs` -> `fs.rename` / model sidecar helper | Coordinated `rename`; retain the source asset, revision, and location ID. Directory renames explicitly bypass the file-only coordinator so a directory is never registered as a media asset; subtree identity migration remains a later activation gate. |
 | Move between folders/roots/volumes | `services/fileTransferService.ts` | `transfer-indexed-images` -> `fs.rename`, or copy plus `fs.unlink` after `EXDEV` | Coordinated `move`; relocate only after the source disappeared and destination exists. A failed cross-volume delete remains pending with both files unassociated as a completed move. |
 | Copy | `services/fileTransferService.ts` | `transfer-indexed-images` -> timestamp-preserving copy | Coordinated `copy`; reserve and create a distinct asset/revision/location. Existing destinations use overwrite semantics. |
 | Editor Save As | `ImageModal.tsx`, `ImageEditorWorkspace.tsx` | `write-file` -> `fs.writeFile` | Coordinated `save_as`; create a distinct asset inside a registered root, or advance the existing destination asset when the OS-approved path already exists. |
 | Editor overwrite | `ImageModal.tsx`, `ImageEditorWorkspace.tsx` | `write-file` -> `fs.writeFile` | Coordinated `overwrite`; reserve a revision before writing and advance the destination even when size and mtime are unchanged. |
 | Folder export / metadata rewrite | `BatchExportModal.tsx` | `export-images-batch` -> `fs.writeFile` / model sidecar helper | Each output is coordinated as a copy/new asset when it lands in a registered root. ZIP output and shadow metadata are outside the media catalog. |
 | 3D Save As/export | `Model3DViewer.tsx` | `write-model3d-export` -> model plus sidecar helper | Coordinate the primary model path; sidecar-only bytes do not create a primary-file revision. |
-| Trash and confirmed permanent deletion | `services/fileOperations.ts` | `trash-file` -> `shell.trashItem`; fallback `confirm-permanent-delete` -> verified `fs.unlink` helpers | Record deletion only after the primary path is absent. Cancellation/failure preserves catalog state. |
+| Trash and confirmed permanent deletion | `services/fileOperations.ts` | `trash-file` -> `shell.trashItem`; fallback `confirm-permanent-delete` -> verified `fs.unlink` helpers | Record deletion only after the primary path is absent. When only an associated sidecar remains, the authorized fallback reuses and completes the original pending delete instead of creating a conflicting journal row. Cancellation/failure preserves catalog state. |
 | External add/change | `services/fileWatcher.mjs` -> `new-images-detected` | Chokidar observation; renderer continues its current indexing path | Feed the same observed-file assignment used by scans. Repeated signatures reuse the revision. Sidecar-triggered refreshes do not force a byte revision. |
-| External removal | `services/fileWatcher.mjs` -> `watched-files-removed` | Chokidar observation | Mark the known location missing, never explicitly deleted. |
+| External removal | `services/fileWatcher.mjs` -> `watched-files-removed` | Chokidar observation | Confirm the observed path is absent before marking the known location missing, never explicitly deleted. |
 
 `write-file` is intentionally contextual: non-library writes keep their existing behavior, while editor callers identify Save As versus overwrite. Destinations outside registered roots never register a root, start hashing, or receive a catalog location. A known move out of all roots marks the prior location missing; a copy out of scope leaves the source identity unchanged.
 
@@ -50,6 +50,7 @@ The opt-in packaged mode runs before license initialization or window creation a
 | Check | Result |
 | --- | --- |
 | Focused repository/indexer/watcher/file-operation suite | 40 tests passed on Windows. |
+| Review regression subset | 29 tests passed on Windows, covering directory-rename bypass, pending-delete reuse, stale watcher removals, permanent-delete grants, and affected deletion flows. |
 | Static checks | TypeScript and JavaScript syntax passed; focused ESLint completed with no errors. |
 | Production renderer build | Passed. |
 | Packaged installed-equivalent smoke | Passed inside ASAR with a temporary `--user-data-dir`. |

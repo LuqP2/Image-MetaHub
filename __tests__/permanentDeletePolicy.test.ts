@@ -17,9 +17,13 @@ describe('permanent delete policy', () => {
       { path: 'image.png', dev: 1, ino: 2 },
       { path: 'image.png.imagemetahub.json', dev: 1, ino: 3 },
     ];
-    const token = store.issue(7, 'image.png', targetFiles);
+    const token = store.issue(7, 'image.png', targetFiles, true, 'operation-a');
 
     expect(store.inspect([token], 7)[0].targetFiles).toEqual(targetFiles);
+    expect(store.inspect([token], 7)[0]).toMatchObject({
+      primaryDeleted: true,
+      provenanceOperationId: 'operation-a',
+    });
     expect(() => store.inspect([token], 8)).toThrow('invalid or expired');
     now = 151;
     expect(() => store.inspect([token], 7)).toThrow('invalid or expired');

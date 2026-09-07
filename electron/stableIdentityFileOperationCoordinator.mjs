@@ -88,10 +88,31 @@ export class StableIdentityFileOperationCoordinator {
       if (blockedPath) {
         throw new Error(`A pending provenance recovery blocks another operation on ${blockedPath}.`);
       }
+      let sourceStat;
+      try {
+        sourceStat = sourcePath ? await this.#statOrNull(path.resolve(sourcePath)) : null;
+      } catch (error) {
+        this.logger.error('Provenance source evidence is unavailable; continuing the authorized file operation.', error);
+        return {
+          value: await perform(),
+          provenance: { enabled: true, available: false, error: error?.message || String(error) },
+        };
+      }
+      if (['rename', 'move'].includes(kind) && sourceStat?.isDirectory?.()) {
+        return {
+          value: await perform(),
+          provenance: {
+            enabled: true,
+            available: true,
+            tracked: false,
+            reason: 'directory_operation_not_supported',
+          },
+        };
+      }
       let intent;
       try {
         const beforeEvidence = {
-          sourceSignature: sourcePath ? signatureFromStat(await this.#statOrNull(path.resolve(sourcePath))) : null,
+          sourceSignature: signatureFromStat(sourceStat),
           destinationSignature: destinationPath ? signatureFromStat(await this.#statOrNull(path.resolve(destinationPath))) : null,
         };
         intent = this.#createIntent({ kind, sourcePath, destinationPath, expectedOutputSha256, beforeEvidence });
@@ -171,10 +192,68 @@ export class StableIdentityFileOperationCoordinator {
             await this.#flushDeferredForOperation(intent.payload);
           } else {
             this.repositoryLifecycle.run((repository) => repository.markFileOperationPending(intent.operationId, error));
+            if (error && typeof error === 'object') error.provenanceOperationId = intent.operationId;
           }
         } catch { /* preserve the filesystem error */ }
         throw error;
       }
+    });
+  }
+
+  async continuePendingDelete({ operationId, sourcePath, perform }) {
+    if (!operationId || !this.#isAvailable()) {
+      return this.executeKnownOperation({ kind: 'delete', sourcePath, perform });
+    }
+    const absoluteSourcePath = path.resolve(sourcePath);
+    return this.#withPathLocks([absoluteSourcePath], async () => {
+      const operation = this.repositoryLifecycle.run((repository) => repository.getFileOperation(operationId));
+      if (
+        !operation
+        || operation.kind !== 'delete'
+        || !['intended', 'fs_applied', 'pending_recovery'].includes(operation.state)
+        || typeof operation.payload?.sourceAbsolutePath !== 'string'
+        || this.#absolutePathKey(operation.payload?.sourceAbsolutePath) !== this.#absolutePathKey(absoluteSourcePath)
+      ) {
+        throw new Error('The pending provenance delete does not match this permanent-delete grant.');
+      }
+
+      const value = await perform();
+      const sourceStat = await this.#statOrNull(absoluteSourcePath);
+      if (sourceStat) {
+        return {
+          value,
+          provenance: { enabled: true, available: true, pending: true, operationId },
+        };
+      }
+
+      let completed;
+      try {
+        this.repositoryLifecycle.run((repository) => repository.markFileOperationFileSystemApplied(operationId));
+        completed = this.repositoryLifecycle.run((repository) => repository.completeFileOperation(operationId));
+      } catch (error) {
+        try {
+          this.repositoryLifecycle.run((repository) => repository.markFileOperationPending(operationId, error));
+        } catch { /* the durable intent is already enough for startup recovery */ }
+        this.logger.error('Permanent deletion completed but provenance reconciliation remains pending.', error);
+        return {
+          value,
+          provenance: {
+            enabled: true,
+            available: true,
+            pending: true,
+            operationId,
+            error: error?.message || String(error),
+          },
+        };
+      }
+
+      this.#unblockOperationPaths(operation.payload);
+      try {
+        await this.#flushDeferredForOperation(operation.payload);
+      } catch (error) {
+        this.logger.warn('Completed permanent deletion could not flush deferred observations.', error);
+      }
+      return { value, provenance: { enabled: true, available: true, operation: completed } };
     });
   }
 
@@ -223,7 +302,8 @@ export class StableIdentityFileOperationCoordinator {
       if (this.activePathLocks.has(key) || this.recoveryBlockedPaths.has(key)) {
         this.deferredWatcherObservations.set(key, { kind: 'missing', rootPath, relativePath });
       } else {
-        this.indexer.markExternalMissing({ rootPath, relativePath });
+        const stat = await this.#statOrNull(path.resolve(rootPath, relativePath));
+        if (!stat) this.indexer.markExternalMissing({ rootPath, relativePath });
       }
     }
   }

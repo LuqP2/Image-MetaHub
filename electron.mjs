@@ -625,6 +625,17 @@ async function executeWithStableIdentity(options) {
   }
   return stableIdentityFileOperationCoordinator.executeKnownOperation(options);
 }
+
+async function continuePendingStableIdentityDelete(options) {
+  if (!stableIdentityFileOperationCoordinator || !options.operationId) {
+    return executeWithStableIdentity({
+      kind: 'delete',
+      sourcePath: options.sourcePath,
+      perform: options.perform,
+    });
+  }
+  return stableIdentityFileOperationCoordinator.continuePendingDelete(options);
+}
 let packagedDetachedViewerSmokeReadyResolver = null;
 let comfyUIView = null;
 let comfyUIViewConfiguredUrl = '';
@@ -5730,6 +5741,7 @@ function setupFileOperationHandlers() {
         filePath,
         targetFiles,
         error?.primaryDeleted === true,
+        error?.provenanceOperationId ?? null,
       );
       return {
         success: false,
@@ -5771,8 +5783,8 @@ function setupFileOperationHandlers() {
       const failedTokens = [];
       const errors = [];
       for (const grant of authorizedGrants) {
-        const coordinated = await executeWithStableIdentity({
-          kind: 'delete',
+        const coordinated = await continuePendingStableIdentityDelete({
+          operationId: grant.provenanceOperationId,
           sourcePath: grant.requestedPath,
           perform: () => permanentlyDeleteGrantedFiles(fs, grant),
         });
