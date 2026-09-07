@@ -209,6 +209,42 @@ describe('stable identity file-operation coordination', () => {
     lifecycle.close();
   });
 
+  it('aborts an unchanged failed overwrite and immediately releases the destination', async () => {
+    const { userDataPath, rootA } = await workspace();
+    const destinationPath = path.join(rootA, 'destination.png');
+    await fs.writeFile(destinationPath, 'old bytes');
+    const runtime = createRuntime(userDataPath, {
+      coordinator: { logger: { error: () => {}, warn: () => {} } },
+    });
+    const [original] = await registerRoot(runtime.indexer, rootA, ['destination.png']);
+    const output = Buffer.from('new bytes');
+    const expectedOutputSha256 = crypto.createHash('sha256').update(output).digest('hex');
+
+    await expect(runtime.coordinator.executeKnownOperation({
+      kind: 'overwrite',
+      destinationPath,
+      expectedOutputSha256,
+      perform: async () => {
+        throw Object.assign(new Error('synthetic access denied'), { code: 'EACCES' });
+      },
+    })).rejects.toMatchObject({ code: 'EACCES' });
+
+    expect(await fs.readFile(destinationPath, 'utf8')).toBe('old bytes');
+    expect(runtime.lifecycle.run((repository) => repository.listPendingFileOperations())).toHaveLength(0);
+    expect(runtime.lifecycle.run((repository) => repository.getAsset(original.assetId))?.revisions).toHaveLength(1);
+
+    await runtime.coordinator.executeKnownOperation({
+      kind: 'overwrite',
+      destinationPath,
+      expectedOutputSha256,
+      perform: () => fs.writeFile(destinationPath, output),
+    });
+    expect(await fs.readFile(destinationPath, 'utf8')).toBe('new bytes');
+    expect(runtime.lifecycle.run((repository) => repository.getAsset(original.assetId))?.revisions).toHaveLength(2);
+    runtime.indexer.stop();
+    runtime.lifecycle.close();
+  });
+
   it('persists the canonical MIME type for every supported media extension', async () => {
     const { userDataPath, rootA } = await workspace();
     const { lifecycle, indexer, coordinator } = createRuntime(userDataPath);

@@ -417,6 +417,12 @@ export class StableIdentityFileOperationCoordinator {
     if (expectedOutputSha256 && verifyExpectedOutput) {
       const actual = await this.#hashFile(path.resolve(destination.rootPath, destination.relativePath));
       if (actual !== expectedOutputSha256) {
+        if (
+          operation.state !== 'fs_applied'
+          && this.#matchesRecordedSignature(destinationStat, beforeEvidence.destinationSignature)
+        ) {
+          return { state: 'aborted', reason: 'The destination is unchanged from its pre-operation state.' };
+        }
         return { state: 'pending_recovery', reason: 'Destination bytes do not match the recorded output evidence.' };
       }
     } else if (
@@ -446,6 +452,15 @@ export class StableIdentityFileOperationCoordinator {
       current.byteSize === recorded.byteSize
       && current.contentModifiedMs === recorded.contentModifiedMs
     );
+  }
+
+  #matchesRecordedSignature(stat, recorded) {
+    if (!stat || !recorded) return false;
+    const current = signatureFromStat(stat);
+    return current.byteSize === recorded.byteSize
+      && current.contentModifiedMs === recorded.contentModifiedMs
+      && current.device === recorded.device
+      && current.inode === recorded.inode;
   }
 
   #matchesRecordedMove(stat, beforeEvidence) {
