@@ -285,6 +285,7 @@ export function useImageLoader() {
     const idleReconcileQueueRef = useRef<Directory[]>([]);
     const idleReconcileRunningRef = useRef(false);
     const provenanceIdentityByLookupKeyRef = useRef(new Map<string, ProvenanceIdentity>());
+    const provenanceIdentityVersionByLookupKeyRef = useRef(new Map<string, number>());
 
     const provenanceIdentityForPath = useCallback((directoryId: string, relativePath: string) =>
         provenanceIdentityByLookupKeyRef.current.get(buildProvenanceIdentityLookupKey(directoryId, relativePath)), []);
@@ -300,6 +301,9 @@ export function useImageLoader() {
             const updatedByPathKey = new Map<string, ProvenanceIdentity>();
             for (const mapping of payload.mappings) {
                 const lookupKey = buildProvenanceIdentityLookupKey(directory.id, mapping.relativePath);
+                const observationVersion = Number(mapping.observationVersion ?? 0);
+                const currentVersion = provenanceIdentityVersionByLookupKeyRef.current.get(lookupKey) ?? -1;
+                if (observationVersion < currentVersion) continue;
                 const identity = {
                     assetId: mapping.assetId,
                     revisionId: mapping.revisionId,
@@ -307,6 +311,7 @@ export function useImageLoader() {
                     provenanceRootId: payload.rootId,
                 };
                 provenanceIdentityByLookupKeyRef.current.set(lookupKey, identity);
+                provenanceIdentityVersionByLookupKeyRef.current.set(lookupKey, observationVersion);
                 updatedByPathKey.set(lookupKey, identity);
             }
 

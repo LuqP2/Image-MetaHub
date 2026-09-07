@@ -44,6 +44,8 @@ import { resolveLicenseRuntimeConfig } from './electron/licenseRuntimeConfig.mjs
 import { resetUserDataContents } from './electron/cacheReset.mjs';
 import { ProvenanceRepositoryLifecycle } from './electron/provenanceRepository.mjs';
 import { StableIdentityIndexer } from './electron/stableIdentityIndexer.mjs';
+import { StableIdentityFileOperationCoordinator } from './electron/stableIdentityFileOperationCoordinator.mjs';
+import { runStableIdentityFileOperationsSmoke } from './electron/stableIdentityFileOperationsSmoke.mjs';
 import { openAuthorizedCacheDirectory } from './electron/cacheDirectory.mjs';
 import { appendEmbeddingSegmentAtOffset } from './electron/embeddingSegmentFile.mjs';
 import { hashFileSha256 } from './electron/fileFingerprint.mjs';
@@ -99,6 +101,8 @@ const macOSAudioMitigationOptOut = process.env.IMH_DISABLE_MACOS_AUDIO_MITIGATIO
 const macOSAudioMitigationEnabled = process.platform === 'darwin' && app.isPackaged && !macOSAudioMitigationOptOut;
 const provenanceIndexingEnabled = process.env.IMH_ENABLE_PROVENANCE_INDEXING === '1'
   || process.env.IMH_ENABLE_PROVENANCE_INDEXING === 'true';
+const packagedProvenanceFileOperationsSmokeEnabled = app.isPackaged
+  && process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE === '1';
 const enabledMediaCommandLineSwitches = [];
 const disabledChromiumFeatures = new Set();
 
@@ -610,9 +614,28 @@ let mainWindow;
 let licenseManager;
 let provenanceRepositoryLifecycle;
 let stableIdentityIndexer;
+let stableIdentityFileOperationCoordinator;
 const detachedImageViewerWindows = new Map();
 const detachedImageViewerSnapshots = new Map();
 const detachedImageViewerRequestResolvers = new Map();
+
+async function executeWithStableIdentity(options) {
+  if (!stableIdentityFileOperationCoordinator) {
+    return { value: await options.perform(), provenance: { enabled: false, available: false } };
+  }
+  return stableIdentityFileOperationCoordinator.executeKnownOperation(options);
+}
+
+async function continuePendingStableIdentityDelete(options) {
+  if (!stableIdentityFileOperationCoordinator || !options.operationId) {
+    return executeWithStableIdentity({
+      kind: 'delete',
+      sourcePath: options.sourcePath,
+      perform: options.perform,
+    });
+  }
+  return stableIdentityFileOperationCoordinator.continuePendingDelete(options);
+}
 let packagedDetachedViewerSmokeReadyResolver = null;
 let comfyUIView = null;
 let comfyUIViewConfiguredUrl = '';
@@ -2959,6 +2982,48 @@ app.whenReady().then(async () => {
     repositoryLifecycle: provenanceRepositoryLifecycle,
     enabled: provenanceIndexingEnabled && provenanceRepositoryLifecycle.getStatus().available,
   });
+  stableIdentityFileOperationCoordinator = new StableIdentityFileOperationCoordinator({
+    repositoryLifecycle: provenanceRepositoryLifecycle,
+    indexer: stableIdentityIndexer,
+    enabled: provenanceIndexingEnabled,
+    publishMappings: (payload) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+          window.webContents.send('provenance-identities-assigned', payload);
+        }
+      }
+    },
+  });
+  await stableIdentityFileOperationCoordinator.initializeRecovery();
+
+  if (packagedProvenanceFileOperationsSmokeEnabled) {
+    const smokeRoot = process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE_ROOT?.trim();
+    const resultPath = process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE_RESULT?.trim();
+    try {
+      if (!smokeRoot || !resultPath) throw new Error('Packaged provenance smoke paths are required.');
+      const result = await runStableIdentityFileOperationsSmoke({
+        rootPath: smokeRoot,
+        userDataPath: app.getPath('userData'),
+        repositoryLifecycle: provenanceRepositoryLifecycle,
+        indexer: stableIdentityIndexer,
+        coordinator: stableIdentityFileOperationCoordinator,
+      });
+      await fs.mkdir(path.dirname(resultPath), { recursive: true });
+      await fs.writeFile(resultPath, JSON.stringify(result, null, 2), 'utf8');
+      console.log('[packaged-provenance-file-operations-smoke] success');
+      app.exit(0);
+    } catch (error) {
+      console.error('[packaged-provenance-file-operations-smoke] failed', error);
+      if (resultPath) {
+        try {
+          await fs.mkdir(path.dirname(resultPath), { recursive: true });
+          await fs.writeFile(resultPath, JSON.stringify({ success: false, error: error?.message || String(error) }, null, 2), 'utf8');
+        } catch { /* console output remains the fallback diagnostic */ }
+      }
+      app.exit(1);
+    }
+    return;
+  }
 
   const licenseRuntimeConfig = resolveLicenseRuntimeConfig({
     isPackaged: app.isPackaged,
@@ -5630,17 +5695,23 @@ function setupFileOperationHandlers() {
       }
 
       console.log('Attempting to trash file:', filePath);
-      if (isModel3DFileName(filePath)) {
-        await trashModel3DWithSidecar(
-          fs,
-          (targetPath) => shell.trashItem(targetPath),
-          filePath,
-        );
-      } else {
-        trashAttempted = true;
-        await shell.trashItem(filePath);
-      }
-      return { success: true };
+      const coordinated = await executeWithStableIdentity({
+        kind: 'delete',
+        sourcePath: filePath,
+        perform: async () => {
+          if (isModel3DFileName(filePath)) {
+            await trashModel3DWithSidecar(
+              fs,
+              (targetPath) => shell.trashItem(targetPath),
+              filePath,
+            );
+          } else {
+            trashAttempted = true;
+            await shell.trashItem(filePath);
+          }
+        },
+      });
+      return { success: true, provenance: coordinated.provenance };
     } catch (error) {
       console.error('Error trashing file:', error);
       if (!trashAttempted && error?.trashAttempted !== true) {
@@ -5670,6 +5741,7 @@ function setupFileOperationHandlers() {
         filePath,
         targetFiles,
         error?.primaryDeleted === true,
+        error?.provenanceOperationId ?? null,
       );
       return {
         success: false,
@@ -5711,7 +5783,12 @@ function setupFileOperationHandlers() {
       const failedTokens = [];
       const errors = [];
       for (const grant of authorizedGrants) {
-        const result = await permanentlyDeleteGrantedFiles(fs, grant);
+        const coordinated = await continuePendingStableIdentityDelete({
+          operationId: grant.provenanceOperationId,
+          sourcePath: grant.requestedPath,
+          perform: () => permanentlyDeleteGrantedFiles(fs, grant),
+        });
+        const result = coordinated.value;
         errors.push(...result.failures.map(
           (failure) => `${path.basename(failure.path)}: ${failure.error.message}`,
         ));
@@ -5786,11 +5863,18 @@ function setupFileOperationHandlers() {
         }
       }
 
-      if (isModel3DFileName(oldPath)) {
-        await renameModel3DWithSidecar(fs, oldPath, newPath);
-      } else {
-        await fs.rename(oldPath, newPath);
-      }
+      const coordinated = await executeWithStableIdentity({
+        kind: 'rename',
+        sourcePath: oldPath,
+        destinationPath: newPath,
+        perform: async () => {
+          if (isModel3DFileName(oldPath)) {
+            await renameModel3DWithSidecar(fs, oldPath, newPath);
+          } else {
+            await fs.rename(oldPath, newPath);
+          }
+        },
+      });
 
       const normalizedOldAllowedPath = normalizeAllowedPath(oldPath);
       if (allowedDirectoryPaths.has(normalizedOldAllowedPath)) {
@@ -5798,7 +5882,7 @@ function setupFileOperationHandlers() {
         allowedDirectoryPaths.add(normalizeAllowedPath(newPath));
       }
 
-      return { success: true };
+      return { success: true, provenance: coordinated.provenance };
     } catch (error) {
       console.error('Error renaming file:', error);
       return { success: false, error: error.message };
@@ -6129,6 +6213,9 @@ function setupFileOperationHandlers() {
       if (!dirPath) {
         return { success: false, error: 'No directory path provided' };
       }
+      const provenanceScanToken = provenanceIndexingEnabled && stableIdentityIndexer
+        ? stableIdentityIndexer.beginScan(provenanceRootPath)
+        : null;
 
       let imageFiles = [];
       let scanComplete = true;
@@ -6158,6 +6245,7 @@ function setupFileOperationHandlers() {
             files: imageFiles,
             scanComplete,
             recursive,
+            scanToken: provenanceScanToken,
             onBatch: (payload) => {
               if (!event.sender.isDestroyed()) event.sender.send('provenance-identities-assigned', payload);
             },
@@ -6208,7 +6296,10 @@ function setupFileOperationHandlers() {
       return { success: false, error: 'No window available' };
     }
 
-    return fileWatcher.startWatching(directoryId, dirPath, mainWindow);
+    return fileWatcher.startWatching(directoryId, dirPath, mainWindow, {
+      onFilesObserved: (payload) => stableIdentityFileOperationCoordinator?.observeWatcherFiles(payload),
+      onPathsRemoved: (payload) => stableIdentityFileOperationCoordinator?.observeWatcherRemovals(payload),
+    });
   });
 
   ipcMain.handle('stop-watching-directory', async (event, args) => {
@@ -6896,7 +6987,7 @@ function setupFileOperationHandlers() {
   });
 
   // Handle writing file content
-  ipcMain.handle('write-file', async (event, filePath, data) => {
+  ipcMain.handle('write-file', async (event, filePath, data, provenanceContext = null) => {
     try {
       if (!filePath) {
         return { success: false, error: 'No file path provided' };
@@ -6919,6 +7010,18 @@ function setupFileOperationHandlers() {
 
       console.log('Writing file to:', normalizedFilePath, 'Size:', data.length);
 
+      if (provenanceContext?.kind === 'save_as' || provenanceContext?.kind === 'overwrite') {
+        const expectedOutputSha256 = crypto.createHash('sha256').update(Buffer.from(data)).digest('hex');
+        const coordinated = await executeWithStableIdentity({
+          kind: provenanceContext.kind,
+          sourcePath: provenanceContext.sourcePath || null,
+          destinationPath: normalizedFilePath,
+          expectedOutputSha256,
+          perform: () => fs.writeFile(normalizedFilePath, data),
+        });
+        return { success: true, provenance: coordinated.provenance };
+      }
+
       await fs.writeFile(normalizedFilePath, data);
       return { success: true };
     } catch (error) {
@@ -6939,8 +7042,14 @@ function setupFileOperationHandlers() {
       ) {
         return { success: false, error: 'Access denied: Cannot write the 3D export outside approved directories.' };
       }
-      await writeModel3DExportDataWithSidecar(fs, normalizedFilePath, modelData, sidecarData);
-      return { success: true };
+      const expectedOutputSha256 = crypto.createHash('sha256').update(Buffer.from(modelData)).digest('hex');
+      const coordinated = await executeWithStableIdentity({
+        kind: 'save_as',
+        destinationPath: normalizedFilePath,
+        expectedOutputSha256,
+        perform: () => writeModel3DExportDataWithSidecar(fs, normalizedFilePath, modelData, sidecarData),
+      });
+      return { success: true, provenance: coordinated.provenance };
     } catch (error) {
       console.error('Error writing 3D model export:', error);
       return { success: false, error: error.message };
@@ -7039,12 +7148,21 @@ function setupFileOperationHandlers() {
           });
           const uniqueName = getUniqueName(artifact.fileName, usedNames);
           const destPath = path.resolve(destDir, uniqueName);
-          if (metadataPolicy === 'preserve' && isModel3DFileName(sourcePath)) {
-            const sidecarPath = await getModel3DSidecarPathIfPresent(fs, sourcePath);
-            await writeModel3DExportWithSidecar(fs, destPath, artifact.buffer, sidecarPath);
-          } else {
-            await fs.writeFile(destPath, artifact.buffer);
-          }
+          const expectedOutputSha256 = crypto.createHash('sha256').update(artifact.buffer).digest('hex');
+          await executeWithStableIdentity({
+            kind: 'copy',
+            sourcePath,
+            destinationPath: destPath,
+            expectedOutputSha256,
+            perform: async () => {
+              if (metadataPolicy === 'preserve' && isModel3DFileName(sourcePath)) {
+                const sidecarPath = await getModel3DSidecarPathIfPresent(fs, sourcePath);
+                await writeModel3DExportWithSidecar(fs, destPath, artifact.buffer, sidecarPath);
+              } else {
+                await fs.writeFile(destPath, artifact.buffer);
+              }
+            },
+          });
           exportedCount += 1;
         } catch (error) {
           console.warn('[Electron] Failed to export file to folder:', file?.relativePath, error);
@@ -7375,16 +7493,23 @@ function setupFileOperationHandlers() {
           }
         };
 
-        if (isModel3DFileName(task.sourceAbsolutePath)) {
-          await transferModel3DWithSidecar(
-            fs,
-            task.sourceAbsolutePath,
-            task.destinationAbsolutePath,
-            mode,
-          );
-        } else {
-          await transferPath(task.sourceAbsolutePath, task.destinationAbsolutePath);
-        }
+        await executeWithStableIdentity({
+          kind: mode,
+          sourcePath: task.sourceAbsolutePath,
+          destinationPath: task.destinationAbsolutePath,
+          perform: async () => {
+            if (isModel3DFileName(task.sourceAbsolutePath)) {
+              await transferModel3DWithSidecar(
+                fs,
+                task.sourceAbsolutePath,
+                task.destinationAbsolutePath,
+                mode,
+              );
+            } else {
+              await transferPath(task.sourceAbsolutePath, task.destinationAbsolutePath);
+            }
+          },
+        });
 
         const stats = await fs.stat(task.destinationAbsolutePath);
         transferred.push({
@@ -7485,6 +7610,7 @@ app.on('before-quit', () => {
   fileWatcher.stopAllWatchers();
   licenseManager?.dispose?.();
   stableIdentityIndexer?.stop();
+  stableIdentityFileOperationCoordinator = null;
   provenanceRepositoryLifecycle?.close();
 });
 

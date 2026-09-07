@@ -2503,6 +2503,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const writeEditedImage = useCallback(async (
     targetPath: string,
+    mode: 'save_as' | 'overwrite',
     sourceMetadata?: BaseMetadata,
     sourceRawMetadata?: Record<string, unknown>,
   ) => {
@@ -2529,7 +2530,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       sourceRawMetadata,
       imageEditOutputDimensions || undefined,
     );
-    const result = await window.electronAPI.writeFile(targetPath, outputBytes);
+    const result = await window.electronAPI.writeFile(targetPath, outputBytes, { kind: mode });
     if (!result.success) {
       throw new Error(result.error || 'Failed to write edited image.');
     }
@@ -2568,7 +2569,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const sourceImageWithMetadata = await ensureFullRawMetadata();
       const sourceMetadata = getUsableNormalizedMetadata(sourceImageWithMetadata);
       const sourceRawMetadata = sourceImageWithMetadata.metadata as Record<string, unknown>;
-      await writeEditedImage(saveResult.path, sourceMetadata, sourceRawMetadata);
+      await writeEditedImage(saveResult.path, 'save_as', sourceMetadata, sourceRawMetadata);
 
       // A detached window only holds a three-image slice of the library, so the
       // authoritative indexing has to happen in the main renderer.
@@ -2669,7 +2670,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const sourceImageWithMetadata = await ensureFullRawMetadata();
       const sourceMetadata = getUsableNormalizedMetadata(sourceImageWithMetadata);
       const sourceRawMetadata = sourceImageWithMetadata.metadata as Record<string, unknown>;
-      await writeEditedImage(joined.path, sourceMetadata, sourceRawMetadata);
+      await writeEditedImage(joined.path, 'overwrite', sourceMetadata, sourceRawMetadata);
 
       if (onImageSaved) {
         // See Save As: the real library lives in the main renderer.
