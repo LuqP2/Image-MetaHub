@@ -2,6 +2,7 @@
 import { IndexedImage } from '../types';
 import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 import { getRelativeImagePath } from '../utils/imagePaths';
+import { prepareUserDataForImages } from './userDataPersistenceAdapter';
 
 // Check if we're running in Electron
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
@@ -25,6 +26,14 @@ export class FileOperations {
       }));
     }
 
+    try {
+      await prepareUserDataForImages(images);
+    } catch (error) {
+      const message = `Files were not deleted because their local user data could not be staged safely: ${error instanceof Error ? error.message : String(error)}`;
+      console.error(message, error);
+      return images.map(() => ({ success: false, error: message }));
+    }
+
     const attempts = await Promise.all(images.map(async (image) => {
       try {
         if (!image.directoryId) {
@@ -38,7 +47,18 @@ export class FileOperations {
             result: { success: false, error: `Failed to construct file path: ${joinResult.error}` },
           };
         }
-        const trashResult = await window.electronAPI!.trashFile(joinResult.path);
+        const trashResult = await window.electronAPI!.trashFile(joinResult.path, {
+          legacyImageId: image.id,
+          ...(image.assetId && image.revisionId && image.provenanceLocationId
+            ? {
+                stableReference: {
+                  assetId: image.assetId,
+                  revisionId: image.revisionId,
+                  locationId: image.provenanceLocationId,
+                },
+              }
+            : {}),
+        });
         return {
           result: trashResult.success
             ? { success: true }
@@ -146,7 +166,18 @@ export class FileOperations {
           return { success: false, error: `Failed to construct new file path: ${newPathResult.error}` };
         }
 
-        const result = await window.electronAPI.renameFile(oldPathResult.path, newPathResult.path);
+        const result = await window.electronAPI.renameFile(oldPathResult.path, newPathResult.path, {
+          legacyImageId: image.id,
+          ...(image.assetId && image.revisionId && image.provenanceLocationId
+            ? {
+                stableReference: {
+                  assetId: image.assetId,
+                  revisionId: image.revisionId,
+                  locationId: image.provenanceLocationId,
+                },
+              }
+            : {}),
+        });
         return { success: result.success, error: result.error };
       } else {
         // For browser environment, we can't rename files directly

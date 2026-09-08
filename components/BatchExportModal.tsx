@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, X } from 'lucide-react';
-import { getShadowMetadata } from '../services/imageAnnotationsStorage';
+import { getPersistedShadowMetadata } from '../services/userDataPersistenceAdapter';
 import { buildEffectiveMetadata } from '../utils/editableMetadata';
 import {
   type ExportFileDescriptor,
@@ -221,7 +221,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           return null;
         }
 
-        const shadowMetadata = applyShadowEdits ? await getShadowMetadata(image.id) : null;
+        const shadowMetadata = applyShadowEdits ? await getPersistedShadowMetadata(image) : null;
         const effectiveMetadata = metadataPolicy === 'metahub_standard'
           ? buildEffectiveMetadata(image.metadata?.normalizedMetadata, shadowMetadata)
           : null;

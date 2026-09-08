@@ -60,6 +60,7 @@ import { getFileExtension } from '../utils/mediaTypes.js';
 import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndexer';
 import cacheManager from '../services/cacheManager';
 import { useImageStore } from '../store/useImageStore';
+import { prepareUserDataForImages } from '../services/userDataPersistenceAdapter';
 
 interface ImageEditorWorkspaceProps {
   image: IndexedImage;
@@ -929,7 +930,19 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       throw new Error('Saving edited images is only available in the desktop app.');
     }
     const outputBytes = await renderExportBytes();
-    const result = await window.electronAPI.writeFile(targetPath, outputBytes, { kind: mode });
+    if (mode === 'overwrite') {
+      try {
+        await prepareUserDataForImages([image]);
+      } catch (error) {
+        throw new Error(`The image was not overwritten because its local user data could not be staged safely: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    const result = await window.electronAPI.writeFile(targetPath, outputBytes, {
+      kind: mode,
+      ...(mode === 'overwrite'
+        ? { sourcePath: targetPath, userDataContext: { legacyImageId: image.id } }
+        : {}),
+    });
     if (!result.success) {
       throw new Error(result.error || 'Failed to write edited image.');
     }

@@ -67,12 +67,23 @@ export class StableIdentityFileOperationCoordinator {
     return { enabled: true, recovered, pending };
   }
 
-  async executeKnownOperation({ kind, sourcePath = null, destinationPath = null, expectedOutputSha256 = null, perform }) {
+  async executeKnownOperation({
+    kind,
+    sourcePath = null,
+    destinationPath = null,
+    expectedOutputSha256 = null,
+    userDataContext = null,
+    perform,
+  }) {
+    const requiresUserDataJournal = Boolean(userDataContext?.legacyImageId);
     if (!this.enabled) {
       return { value: await perform(), provenance: { enabled: false, available: false } };
     }
     if (!this.#isAvailable()) {
       const status = this.repositoryLifecycle?.getStatus?.();
+      if (requiresUserDataJournal) {
+        throw new Error(status?.error?.message || status?.error || 'The stable user-data catalog is unavailable.');
+      }
       return {
         value: await perform(),
         provenance: {
@@ -92,6 +103,7 @@ export class StableIdentityFileOperationCoordinator {
       try {
         sourceStat = sourcePath ? await this.#statOrNull(path.resolve(sourcePath)) : null;
       } catch (error) {
+        if (requiresUserDataJournal) throw error;
         this.logger.error('Provenance source evidence is unavailable; continuing the authorized file operation.', error);
         return {
           value: await perform(),
@@ -136,8 +148,16 @@ export class StableIdentityFileOperationCoordinator {
             destinationStat,
           }),
         };
-        intent = this.#createIntent({ kind, sourcePath, destinationPath, expectedOutputSha256, beforeEvidence });
+        intent = this.#createIntent({
+          kind,
+          sourcePath,
+          destinationPath,
+          expectedOutputSha256,
+          beforeEvidence,
+          userDataContext,
+        });
       } catch (error) {
+        if (requiresUserDataJournal) throw error;
         this.logger.error('Provenance intent could not be persisted; continuing the authorized file operation.', error);
         return {
           value: await perform(),
@@ -308,16 +328,52 @@ export class StableIdentityFileOperationCoordinator {
   }
 
   #isAvailable() {
-    return Boolean(this.enabled && this.repositoryLifecycle?.getStatus?.().available && this.indexer?.enabled);
+    return Boolean(this.enabled && this.repositoryLifecycle?.getStatus?.().available && this.indexer);
   }
 
-  #createIntent({ kind, sourcePath, destinationPath, expectedOutputSha256, beforeEvidence }) {
+  #createIntent({ kind, sourcePath, destinationPath, expectedOutputSha256, beforeEvidence, userDataContext }) {
     return this.repositoryLifecycle.run((repository) => {
-      const roots = repository.listLibraryRoots();
+      let roots = repository.listLibraryRoots();
+      for (const candidateRoot of [userDataContext?.sourceRootPath, userDataContext?.destinationRootPath]) {
+        if (typeof candidateRoot !== 'string' || !candidateRoot.trim()) continue;
+        const normalizedRoot = normalizeLibraryRootPath(candidateRoot, this.platform);
+        const operationPath = candidateRoot === userDataContext?.sourceRootPath ? sourcePath : destinationPath;
+        if (!operationPath) continue;
+        const relative = pathApiForPlatform(this.platform).relative(normalizedRoot.absolutePath, path.resolve(operationPath));
+        if (!isRelativePathInsideRoot(relative, this.platform) && relative !== '') continue;
+        if (!roots.some((root) => root.pathKey === normalizedRoot.pathKey)) {
+          repository.ensureLibraryRoot(normalizedRoot);
+          roots = repository.listLibraryRoots();
+        }
+      }
       const source = sourcePath ? this.#resolveCatalogPath(sourcePath, roots) : null;
       const destination = destinationPath ? this.#resolveCatalogPath(destinationPath, roots) : null;
       if (source) {
-        const location = repository.getLocationByRootPath(source.rootId, source.relativePathKey);
+        let location = repository.getLocationByRootPath(source.rootId, source.relativePathKey);
+        if (!location && beforeEvidence?.sourceSignature) {
+          const assigned = repository.assignIndexedFile({
+            rootId: source.rootId,
+            relativePath: source.relativePath,
+            relativePathKey: source.relativePathKey,
+            byteSize: beforeEvidence.sourceSignature.byteSize,
+            contentModifiedMs: beforeEvidence.sourceSignature.contentModifiedMs,
+            mimeType: inferMimeTypeFromName(source.relativePath, null),
+          });
+          location = repository.getLocationByRootPath(source.rootId, source.relativePathKey);
+          if (location) {
+            this.publishMappings({
+              rootId: source.rootId,
+              rootPath: source.rootPath,
+              mappings: [{
+                relativePath: source.relativePath,
+                relativePathKey: source.relativePathKey,
+                assetId: assigned.assetId,
+                revisionId: assigned.revisionId,
+                locationId: assigned.locationId,
+              }],
+            });
+          }
+        }
         Object.assign(source, location ? {
           locationId: location.locationId,
           assetId: location.assetId,
@@ -332,6 +388,23 @@ export class StableIdentityFileOperationCoordinator {
           existingRevisionId: location.revisionId,
         } : {});
       }
+      const legacyImageId = typeof userDataContext?.legacyImageId === 'string'
+        ? userDataContext.legacyImageId
+        : null;
+      if (source?.assetId && legacyImageId) {
+        const reference = {
+          assetId: source.assetId,
+          revisionId: source.revisionId,
+          locationId: source.locationId,
+        };
+        repository.syncLegacyUserDataBatch([
+          { domain: 'annotation', legacyImageId, reference },
+          { domain: 'shadow', legacyImageId, reference },
+        ]);
+      }
+      const userDataSnapshot = source?.assetId && userDataContext?.copyUserData === true
+        ? repository.captureAssetUserDataSnapshot(source.assetId)
+        : null;
       const payload = {
         source,
         destination,
@@ -341,6 +414,8 @@ export class StableIdentityFileOperationCoordinator {
           && this.#absolutePathKey(sourcePath) === this.#absolutePathKey(destinationPath)),
         beforeEvidence,
         expectedOutputSha256,
+        sourceLegacyImageId: legacyImageId,
+        userDataSnapshot,
         reserved: {
           assetId: destination && !destination.existingAssetId ? this.randomUUID() : null,
           revisionId: destination && !['rename', 'move', 'delete'].includes(kind) ? this.randomUUID() : null,
@@ -509,6 +584,20 @@ export class StableIdentityFileOperationCoordinator {
       completed = this.repositoryLifecycle.run((repository) => repository.completeFileOperation(operation.operationId, {
         observation: outcome.observation,
       }));
+      const confirmedMapping = completed?.result?.mapping;
+      if (confirmedMapping && operation.payload.destination?.rootPath) {
+        this.publishMappings({
+          rootId: confirmedMapping.rootId,
+          rootPath: operation.payload.destination.rootPath,
+          mappings: [{
+            relativePath: confirmedMapping.relativePath,
+            relativePathKey: operation.payload.destination.relativePathKey,
+            assetId: confirmedMapping.assetId,
+            revisionId: confirmedMapping.revisionId,
+            locationId: confirmedMapping.locationId,
+          }],
+        });
+      }
     } catch (error) {
       if (operationError && typeof operationError === 'object') {
         operationError.provenanceOperationId = operation.operationId;

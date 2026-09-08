@@ -28,7 +28,7 @@ import { isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/me
 import AudioPlayer from './AudioPlayer';
 import Model3DViewer from './Model3DViewer';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
-import { bulkSaveShadowMetadata } from '../services/imageAnnotationsStorage';
+import { saveShadows } from '../services/userDataPersistenceAdapter';
 import { copyEditableMetadata, readEditableMetadataClipboard } from '../services/metadataClipboard';
 import { buildEffectiveMetadata, getEditableMetadataFields } from '../utils/editableMetadata';
 import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorModal';
@@ -211,7 +211,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const { a1111Enabled, comfyUIEnabled, singleVisibleProvider } = useGenerationProviderAvailability();
 
   const activeImage = previewImageFromStore || previewImage;
-  const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata } = useShadowMetadata(activeImage?.id);
+  const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata } = useShadowMetadata(activeImage);
   const allImages = useImageStore((state) => state.images);
   const thumbnail = useResolvedThumbnail(activeImage);
   const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
@@ -1207,11 +1207,12 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
         onSave={async (metadata) => { await saveShadowMetadata(metadata); }}
         onExportEditedCopy={openBatchExport}
         onApplyToSelected={exportSelectionIds.size > 1 ? async (metadata) => {
-          await bulkSaveShadowMetadata(Array.from(exportSelectionIds).map((imageId) => ({
+          const imagesById = new Map(allImages.map((candidate) => [candidate.id, candidate]));
+          await saveShadows(Array.from(exportSelectionIds).map((imageId) => ({
             ...metadata,
             imageId,
             updatedAt: Date.now(),
-          })));
+          })), imagesById);
         } : null}
         selectedImageCount={exportSelectionIds.size}
         onCopyEditableMetadata={(metadata) => {
