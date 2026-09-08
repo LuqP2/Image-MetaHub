@@ -235,6 +235,108 @@ function serializeRow(row) {
   };
 }
 
+function computeUserDataPatch({ domain, row, patch, expectedVersion, sequence, enforceFieldConflict = false, enforceSequencePrecedence = false, now }) {
+  const normalizedPatch = normalizePatch(domain, patch);
+  const currentVersion = row ? Number(row.record_version) : 0;
+  const fieldVersions = row ? parseJson(row.field_versions_json, {}) : {};
+  const fieldSequences = row ? parseJson(row.field_sequences_json, {}) : {};
+  const originalTouchedFields = new Set([...Object.keys(normalizedPatch.set), ...normalizedPatch.remove]);
+  if (
+    normalizedPatch.addTags.length || normalizedPatch.removeTags.length
+    || normalizedPatch.suppressTags.length || normalizedPatch.unsuppressTags.length
+    || normalizedPatch.importTags.length
+  ) originalTouchedFields.add('tags');
+  if (normalizedPatch.suppressTags.length || normalizedPatch.unsuppressTags.length || normalizedPatch.importTags.length) {
+    originalTouchedFields.add('suppressedMetadataTags');
+  }
+  if (normalizedPatch.deleteRecord) originalTouchedFields.add('*');
+  if (enforceFieldConflict && currentVersion !== expectedVersion) {
+    const conflict = [...originalTouchedFields]
+      .filter((field) => field !== 'updatedAt')
+      .some((field) => (field === '*'
+        ? Math.max(0, ...Object.values(fieldVersions).map(Number))
+        : Math.max(Number(fieldVersions[field] ?? 0), Number(fieldVersions['*'] ?? 0))) > expectedVersion);
+    if (conflict) {
+      throw new UserDataRepositoryError(
+        'USER_DATA_CONFLICT',
+        `${domain} changed after version ${expectedVersion}; reload before editing the same field.`,
+        { current: serializeRow(row) },
+      );
+    }
+  }
+
+  const fieldCanApply = (field) => !enforceSequencePrecedence || (
+    Number(fieldSequences[field] ?? 0) <= sequence
+    && Number(fieldSequences['*'] ?? 0) <= sequence
+  );
+  if (enforceSequencePrecedence) {
+    for (const key of Object.keys(normalizedPatch.set)) {
+      if (!fieldCanApply(key)) delete normalizedPatch.set[key];
+    }
+    normalizedPatch.remove = normalizedPatch.remove.filter(fieldCanApply);
+    if (!fieldCanApply('tags') || !fieldCanApply('suppressedMetadataTags')) {
+      normalizedPatch.addTags = [];
+      normalizedPatch.removeTags = [];
+      normalizedPatch.suppressTags = [];
+      normalizedPatch.unsuppressTags = [];
+      normalizedPatch.importTags = [];
+    }
+    if (normalizedPatch.deleteRecord) {
+      const newestFieldSequence = Math.max(0, ...Object.values(fieldSequences).map(Number));
+      if (newestFieldSequence > sequence) normalizedPatch.deleteRecord = false;
+    }
+  }
+  const touchedFields = new Set([...Object.keys(normalizedPatch.set), ...normalizedPatch.remove]);
+  if (
+    normalizedPatch.addTags.length || normalizedPatch.removeTags.length
+    || normalizedPatch.suppressTags.length || normalizedPatch.unsuppressTags.length
+    || normalizedPatch.importTags.length
+  ) touchedFields.add('tags');
+  if (normalizedPatch.suppressTags.length || normalizedPatch.unsuppressTags.length || normalizedPatch.importTags.length) {
+    touchedFields.add('suppressedMetadataTags');
+  }
+  if (normalizedPatch.deleteRecord) touchedFields.add('*');
+  if (touchedFields.size === 0) return null;
+
+  const defaultTimestamp = Number(normalizedPatch.set.updatedAt ?? normalizedPatch.set.addedAt ?? now.getTime());
+  let payload = row && !row.tombstone ? parseJson(row.payload_json, {}) : (
+    domain === 'annotation'
+      ? { isFavorite: false, tags: [], addedAt: defaultTimestamp, updatedAt: defaultTimestamp, suppressedMetadataTags: [] }
+      : { updatedAt: defaultTimestamp }
+  );
+  let tombstone = normalizedPatch.deleteRecord;
+  if (!tombstone) {
+    for (const [key, value] of Object.entries(normalizedPatch.set)) payload[key] = structuredClone(value);
+    for (const key of normalizedPatch.remove) delete payload[key];
+    if (domain === 'annotation') {
+      let tags = Array.isArray(payload.tags) ? [...payload.tags] : [];
+      let suppressed = Array.isArray(payload.suppressedMetadataTags) ? [...payload.suppressedMetadataTags] : [];
+      const add = new Set(normalizedPatch.addTags);
+      const remove = new Set(normalizedPatch.removeTags);
+      const suppress = new Set(normalizedPatch.suppressTags);
+      const unsuppress = new Set(normalizedPatch.unsuppressTags);
+      tags = [...new Set([...tags.filter((tag) => !remove.has(tag)), ...add])];
+      suppressed = [...new Set([...suppressed.filter((tag) => !unsuppress.has(tag)), ...suppress])];
+      for (const tag of normalizedPatch.importTags) {
+        if (!suppressed.includes(tag) && !tags.includes(tag)) tags.push(tag);
+      }
+      payload.tags = tags;
+      payload.suppressedMetadataTags = suppressed;
+    }
+    payload = normalizePayload(domain, payload, false);
+  } else {
+    payload = null;
+  }
+
+  const nextVersion = currentVersion + 1;
+  for (const field of touchedFields) {
+    fieldVersions[field] = nextVersion;
+    fieldSequences[field] = Math.max(Number(fieldSequences[field] ?? 0), sequence);
+  }
+  const lastMutationSequence = Math.max(Number(row?.last_mutation_sequence ?? 0), sequence);
+  return { payload, tombstone, nextVersion, fieldVersions, fieldSequences, lastMutationSequence };
+}
+
 export class StableIdentityUserDataRepository {
   constructor({ database, now = () => new Date() }) {
     this.database = database;
@@ -419,6 +521,24 @@ export class StableIdentityUserDataRepository {
           authority: 'sqlite',
         }));
       }
+      const pendingRows = this.database.prepare(`
+        SELECT * FROM legacy_user_data_pending WHERE domain = 'annotation' AND state = 'pending'
+      `).all();
+      for (const pending of pendingRows) {
+        const projected = this.#readPendingSnapshot(pending);
+        if (!projected?.payload?.tags?.includes(source)) continue;
+        const patch = normalizePatch('annotation', action === 'rename'
+          ? { removeTags: [source], addTags: [target], suppressTags: [source], unsuppressTags: [target], set: { updatedAt: sourceUpdatedAt } }
+          : { removeTags: [source], suppressTags: [source], set: { updatedAt: sourceUpdatedAt } });
+        const timestamp = this.now().toISOString();
+        // Preserve the source fingerprint: retries still acknowledge the same
+        // source snapshot. This durable patch is replayed at read/bind time.
+        this.database.prepare(`
+          INSERT INTO user_data_mutation_intents (
+            mutation_id, sequence, domain, legacy_image_id, patch_json, state, created_at, updated_at
+          ) VALUES (?, ?, 'annotation', ?, ?, 'finalized', ?, ?)
+        `).run(crypto.randomUUID(), this.#nextSequence(), pending.legacy_image_id, canonicalJson(patch), timestamp, timestamp);
+      }
       return changed;
     });
   }
@@ -488,6 +608,46 @@ export class StableIdentityUserDataRepository {
     }
   }
 
+  #readPendingSnapshot(pending) {
+    if (!pending || pending.state !== 'pending') return null;
+    const { domain, legacy_image_id: legacyImageId } = pending;
+    const intents = this.database.prepare(`
+      SELECT * FROM user_data_mutation_intents
+      WHERE domain = ? AND legacy_image_id = ? AND state = 'finalized'
+      ORDER BY sequence
+    `).all(domain, legacyImageId);
+    const fieldSequences = {};
+    // The source snapshot already contains these committed source edits. Global
+    // intents have no source_version and must be replayed, not adopted by it.
+    for (const intent of intents) {
+      if (intent.source_version === null || Number(intent.source_version) > Number(pending.source_version)) continue;
+      const patch = normalizePatch(domain, parseJson(intent.patch_json, {}));
+      const fields = new Set([...Object.keys(patch.set), ...patch.remove]);
+      if (patch.addTags.length || patch.removeTags.length || patch.suppressTags.length || patch.unsuppressTags.length || patch.importTags.length) fields.add('tags');
+      if (patch.suppressTags.length || patch.unsuppressTags.length || patch.importTags.length) fields.add('suppressedMetadataTags');
+      if (patch.deleteRecord) fields.add('*');
+      for (const field of fields) fieldSequences[field] = Math.max(Number(fieldSequences[field] ?? 0), Number(intent.sequence));
+    }
+    let row = { ...pending, record_version: 1, field_versions_json: '{}', field_sequences_json: JSON.stringify(fieldSequences) };
+    for (const intent of intents) {
+      if (intent.source_version !== null && Number(intent.source_version) <= Number(pending.source_version)) continue;
+      const next = computeUserDataPatch({
+        domain, row, patch: parseJson(intent.patch_json, {}), sequence: Number(intent.sequence),
+        enforceSequencePrecedence: true, now: this.now(),
+      });
+      if (!next) continue;
+      row = {
+        ...row, payload_json: next.tombstone ? null : JSON.stringify(next.payload), tombstone: next.tombstone,
+        record_version: next.nextVersion, field_versions_json: JSON.stringify(next.fieldVersions),
+        field_sequences_json: JSON.stringify(next.fieldSequences), last_mutation_sequence: next.lastMutationSequence,
+      };
+    }
+    return {
+      domain, legacyImageId, payload: row.tombstone ? null : parseJson(row.payload_json, {}),
+      tombstone: Boolean(row.tombstone), sourceVersion: Number(pending.source_version),
+    };
+  }
+
   #syncLegacyEntry(entry) {
     const domain = assertDomain(entry?.domain);
     const legacyImageId = assertNonBlank(entry?.legacyImageId, 'legacyImageId');
@@ -508,7 +668,14 @@ export class StableIdentityUserDataRepository {
     }
 
     if (!entry?.reference) {
-      return { domain, legacyImageId, status: pending?.state ?? 'unmapped', record: null };
+      const needsAck = this.database.prepare(`
+        SELECT 1 FROM user_data_mutation_intents
+        WHERE domain = ? AND legacy_image_id = ? AND state = 'reserved' LIMIT 1
+      `).get(domain, legacyImageId);
+      return {
+        domain, legacyImageId, status: needsAck ? 'source_ack_required' : pending?.state ?? 'unmapped',
+        record: null, pending: this.#readPendingSnapshot(pending),
+      };
     }
 
     const reference = this.#validateReference(entry.reference);
@@ -757,103 +924,13 @@ export class StableIdentityUserDataRepository {
     enforceSequencePrecedence = false,
     authority,
   }) {
-    const normalizedPatch = normalizePatch(domain, patch);
     const row = this.#rawRow(assetId, domain);
-    const currentVersion = row ? Number(row.record_version) : 0;
-    const fieldVersions = row ? parseJson(row.field_versions_json, {}) : {};
-    const fieldSequences = row ? parseJson(row.field_sequences_json, {}) : {};
-    const originalTouchedFields = new Set([...Object.keys(normalizedPatch.set), ...normalizedPatch.remove]);
-    if (
-      normalizedPatch.addTags.length || normalizedPatch.removeTags.length
-      || normalizedPatch.suppressTags.length || normalizedPatch.unsuppressTags.length
-      || normalizedPatch.importTags.length
-    ) originalTouchedFields.add('tags');
-    if (normalizedPatch.suppressTags.length || normalizedPatch.unsuppressTags.length || normalizedPatch.importTags.length) {
-      originalTouchedFields.add('suppressedMetadataTags');
-    }
-    if (normalizedPatch.deleteRecord) originalTouchedFields.add('*');
-    if (enforceFieldConflict && currentVersion !== expectedVersion) {
-      const conflict = [...originalTouchedFields]
-        .filter((field) => field !== 'updatedAt')
-        .some((field) => Number(fieldVersions[field] ?? fieldVersions['*'] ?? 0) > expectedVersion);
-      if (conflict) {
-        throw new UserDataRepositoryError(
-          'USER_DATA_CONFLICT',
-          `${domain} changed after version ${expectedVersion}; reload before editing the same field.`,
-          { current: serializeRow(row) },
-        );
-      }
-    }
-
-    const fieldCanApply = (field) => !enforceSequencePrecedence || (
-      Number(fieldSequences[field] ?? 0) <= sequence
-      && Number(fieldSequences['*'] ?? 0) <= sequence
-    );
-    if (enforceSequencePrecedence) {
-      for (const key of Object.keys(normalizedPatch.set)) {
-        if (!fieldCanApply(key)) delete normalizedPatch.set[key];
-      }
-      normalizedPatch.remove = normalizedPatch.remove.filter(fieldCanApply);
-      if (!fieldCanApply('tags') || !fieldCanApply('suppressedMetadataTags')) {
-        normalizedPatch.addTags = [];
-        normalizedPatch.removeTags = [];
-        normalizedPatch.suppressTags = [];
-        normalizedPatch.unsuppressTags = [];
-        normalizedPatch.importTags = [];
-      }
-      if (normalizedPatch.deleteRecord) {
-        const newestFieldSequence = Math.max(0, ...Object.values(fieldSequences).map(Number));
-        if (newestFieldSequence > sequence) normalizedPatch.deleteRecord = false;
-      }
-    }
-    const touchedFields = new Set([...Object.keys(normalizedPatch.set), ...normalizedPatch.remove]);
-    if (
-      normalizedPatch.addTags.length || normalizedPatch.removeTags.length
-      || normalizedPatch.suppressTags.length || normalizedPatch.unsuppressTags.length
-      || normalizedPatch.importTags.length
-    ) touchedFields.add('tags');
-    if (normalizedPatch.suppressTags.length || normalizedPatch.unsuppressTags.length || normalizedPatch.importTags.length) {
-      touchedFields.add('suppressedMetadataTags');
-    }
-    if (normalizedPatch.deleteRecord) touchedFields.add('*');
-    if (touchedFields.size === 0) return serializeRow(row);
-
-    const defaultTimestamp = Number(normalizedPatch.set.updatedAt ?? normalizedPatch.set.addedAt ?? this.now().getTime());
-    let payload = row && !row.tombstone ? parseJson(row.payload_json, {}) : (
-      domain === 'annotation'
-        ? { isFavorite: false, tags: [], addedAt: defaultTimestamp, updatedAt: defaultTimestamp, suppressedMetadataTags: [] }
-        : { updatedAt: defaultTimestamp }
-    );
-    let tombstone = normalizedPatch.deleteRecord;
-    if (!tombstone) {
-      for (const [key, value] of Object.entries(normalizedPatch.set)) payload[key] = structuredClone(value);
-      for (const key of normalizedPatch.remove) delete payload[key];
-      if (domain === 'annotation') {
-        let tags = Array.isArray(payload.tags) ? [...payload.tags] : [];
-        let suppressed = Array.isArray(payload.suppressedMetadataTags) ? [...payload.suppressedMetadataTags] : [];
-        const add = new Set(normalizedPatch.addTags);
-        const remove = new Set(normalizedPatch.removeTags);
-        const suppress = new Set(normalizedPatch.suppressTags);
-        const unsuppress = new Set(normalizedPatch.unsuppressTags);
-        tags = [...new Set([...tags.filter((tag) => !remove.has(tag)), ...add])];
-        suppressed = [...new Set([...suppressed.filter((tag) => !unsuppress.has(tag)), ...suppress])];
-        for (const tag of normalizedPatch.importTags) {
-          if (!suppressed.includes(tag) && !tags.includes(tag)) tags.push(tag);
-        }
-        payload.tags = tags;
-        payload.suppressedMetadataTags = suppressed;
-      }
-      payload = normalizePayload(domain, payload, false);
-    } else {
-      payload = null;
-    }
-
-    const nextVersion = currentVersion + 1;
-    for (const field of touchedFields) {
-      fieldVersions[field] = nextVersion;
-      fieldSequences[field] = Math.max(Number(fieldSequences[field] ?? 0), sequence);
-    }
-    const lastMutationSequence = Math.max(Number(row?.last_mutation_sequence ?? 0), sequence);
+    const computed = computeUserDataPatch({
+      domain, row, patch, expectedVersion, sequence, enforceFieldConflict,
+      enforceSequencePrecedence, now: this.now(),
+    });
+    if (!computed) return serializeRow(row);
+    const { payload, tombstone, nextVersion, fieldVersions, fieldSequences, lastMutationSequence } = computed;
     const timestamp = this.now().toISOString();
     this.database.prepare(`
       INSERT INTO asset_user_data (

@@ -5398,13 +5398,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const stableRecords = await mutateAnnotationTagGlobally('rename', normalizedSource, normalizedTarget);
                 if (stableRecords) {
                     updatedAnnotations.length = 0;
-                    for (const record of stableRecords) {
-                        for (const image of get().images) {
-                            if (image.assetId !== record.assetId) continue;
-                            const annotation = annotationFromStableRecord(record, image.id);
-                            if (annotation) updatedAnnotations.push(annotation);
-                        }
-                    }
+                    const hydrated = await loadAnnotationsForImages(get().images);
+                    updatedAnnotations.push(...hydrated.values());
                 } else if (updatedAnnotations.length > 0) {
                     const persisted = await persistAnnotationSnapshots(updatedAnnotations);
                     updatedAnnotations.splice(0, updatedAnnotations.length, ...persisted);
@@ -5487,13 +5482,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const stableRecords = await mutateAnnotationTagGlobally('remove', normalizedTag);
                 if (stableRecords) {
                     updatedAnnotations.length = 0;
-                    for (const record of stableRecords) {
-                        for (const image of get().images) {
-                            if (image.assetId !== record.assetId) continue;
-                            const annotation = annotationFromStableRecord(record, image.id);
-                            if (annotation) updatedAnnotations.push(annotation);
-                        }
-                    }
+                    const hydrated = await loadAnnotationsForImages(get().images);
+                    updatedAnnotations.push(...hydrated.values());
                 } else if (updatedAnnotations.length > 0) {
                     const persisted = await persistAnnotationSnapshots(updatedAnnotations);
                     updatedAnnotations.splice(0, updatedAnnotations.length, ...persisted);
@@ -5590,13 +5580,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const stableRecords = await mutateAnnotationTagGlobally('remove', normalizedTag);
                 if (stableRecords) {
                     updatedAnnotations.length = 0;
-                    for (const record of stableRecords) {
-                        for (const image of get().images) {
-                            if (image.assetId !== record.assetId) continue;
-                            const annotation = annotationFromStableRecord(record, image.id);
-                            if (annotation) updatedAnnotations.push(annotation);
-                        }
-                    }
+                    const hydrated = await loadAnnotationsForImages(get().images);
+                    updatedAnnotations.push(...hydrated.values());
                 } else if (updatedAnnotations.length > 0) {
                     const persisted = await persistAnnotationSnapshots(updatedAnnotations);
                     updatedAnnotations.splice(0, updatedAnnotations.length, ...persisted);

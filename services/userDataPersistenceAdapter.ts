@@ -12,15 +12,12 @@ import type {
   UserDataSemanticPatch,
 } from '../types';
 import {
-  deleteAnnotation as deleteLegacyAnnotation,
-  deleteShadowMetadata as deleteLegacyShadow,
+  patchLegacyUserData,
   ensureManualTagExists,
   getAllManualTagNames,
   getAnnotation as getLegacyAnnotation,
   getShadowMetadata as getLegacyShadow,
   loadAllAnnotations as loadAllLegacyAnnotations,
-  saveAnnotation as saveLegacyAnnotation,
-  saveShadowMetadata as saveLegacyShadow,
 } from './imageAnnotationsStorage';
 import {
   commitLegacyUserDataPatch,
@@ -282,6 +279,9 @@ async function syncImageDomains(
       if (outcome.record) cacheAndPublish([outcome.record]);
       if (outcome.record && outcome.status !== 'source_ack_required') {
         results.set(localKey(entry.legacyImageId, entry.domain), outcome.record);
+      } else if (outcome.pending && outcome.status !== 'source_ack_required') {
+        localPendingByImageDomain.set(localKey(entry.legacyImageId, entry.domain), outcome.pending);
+        results.set(localKey(entry.legacyImageId, entry.domain), outcome.pending);
       } else if (outcome.status !== 'source_ack_required' && effectiveStatus.legacyScanComplete) {
         results.set(localKey(entry.legacyImageId, entry.domain), null);
       } else {
@@ -316,11 +316,11 @@ async function syncImageDomains(
       const { entry, snapshot } = batch[index];
       if (outcome.record) cacheAndPublish([outcome.record]);
       if (!outcome.record && ['unmapped', 'pending'].includes(outcome.status)) {
-        localPendingByImageDomain.set(localKey(entry.legacyImageId, entry.domain), snapshot);
+        localPendingByImageDomain.set(localKey(entry.legacyImageId, entry.domain), outcome.pending ?? snapshot);
       }
       results.set(
         localKey(entry.legacyImageId, entry.domain),
-        outcome.record ?? (['unmapped', 'pending'].includes(outcome.status) ? snapshot : null),
+        outcome.record ?? outcome.pending ?? (['unmapped', 'pending'].includes(outcome.status) ? snapshot : null),
       );
     }
   }
@@ -377,42 +377,26 @@ async function persistUnmappedPatch(
   domain: StableUserDataDomain,
   imageId: string,
   patch: UserDataSemanticPatch,
-): Promise<LegacyUserDataSnapshot> {
+): Promise<StableUserDataRecord | LegacyUserDataSnapshot> {
   const mutationId = crypto.randomUUID();
   unwrap(await window.electronAPI.stableUserDataReserveLegacyMutation({ mutationId, domain, legacyImageId: imageId, patch }));
   const committed = await commitLegacyUserDataPatch(domain, imageId, patch, mutationId);
   localPendingByImageDomain.set(localKey(imageId, domain), committed);
   await finalizeOutbox(committed);
-  return committed;
-}
-
-function applyLocalPatch(
-  domain: StableUserDataDomain,
-  current: Record<string, unknown> | null,
-  patch: UserDataSemanticPatch,
-): Record<string, unknown> | null {
-  if (patch.deleteRecord) return null;
-  const timestamp = Number(patch.set?.updatedAt ?? patch.set?.addedAt ?? Date.now());
-  const next: Record<string, unknown> = current
-    ? structuredClone(current)
-    : domain === 'annotation'
-      ? { isFavorite: false, tags: [], addedAt: timestamp, updatedAt: timestamp, suppressedMetadataTags: [] }
-      : { updatedAt: timestamp };
-  for (const [key, value] of Object.entries(patch.set ?? {})) next[key] = structuredClone(value);
-  for (const key of patch.remove ?? []) delete next[key];
-  if (domain === 'annotation') {
-    const removed = new Set(patch.removeTags ?? []);
-    const tags = new Set((Array.isArray(next.tags) ? next.tags : []).filter((tag): tag is string => typeof tag === 'string' && !removed.has(tag)));
-    for (const tag of patch.addTags ?? []) tags.add(tag);
-    const unsuppressed = new Set(patch.unsuppressTags ?? []);
-    const suppressed = new Set((Array.isArray(next.suppressedMetadataTags) ? next.suppressedMetadataTags : [])
-      .filter((tag): tag is string => typeof tag === 'string' && !unsuppressed.has(tag)));
-    for (const tag of patch.suppressTags ?? []) suppressed.add(tag);
-    for (const tag of patch.importTags ?? []) if (!suppressed.has(tag)) tags.add(tag);
-    next.tags = [...tags];
-    next.suppressedMetadataTags = [...suppressed];
+  // A global tag operation can live in the SQLite journal without changing the
+  // retained IndexedDB source. Confirm the projected result, not that raw source.
+  const [outcome] = unwrap(await window.electronAPI.stableUserDataSync({
+    entries: [{ domain, legacyImageId: imageId, reference: referencesByImageId.get(imageId) }],
+  }));
+  if (outcome.record) {
+    cacheAndPublish([outcome.record]);
+    return outcome.record;
   }
-  return next;
+  if (outcome.pending) {
+    localPendingByImageDomain.set(localKey(imageId, domain), outcome.pending);
+    return outcome.pending;
+  }
+  throw new UserDataPersistenceError('USER_DATA_MAPPING_STALE', 'The committed user data could not be resolved to this image.');
 }
 
 async function mutateDomain(
@@ -421,19 +405,7 @@ async function mutateDomain(
   patch: UserDataSemanticPatch,
 ): Promise<StableUserDataRecord | LegacyUserDataSnapshot> {
   const status = await getUserDataPersistenceStatus();
-  if (status.authority !== 'sqlite') {
-    const current = domain === 'annotation' ? await getLegacyAnnotation(imageId) : await getLegacyShadow(imageId);
-    const payload = applyLocalPatch(domain, current ? { ...current, imageId: undefined } : null, patch);
-    if (!payload) {
-      if (domain === 'annotation') await deleteLegacyAnnotation(imageId);
-      else await deleteLegacyShadow(imageId);
-    } else if (domain === 'annotation') {
-      await saveLegacyAnnotation({ ...(payload as unknown as ImageAnnotations), imageId });
-    } else {
-      await saveLegacyShadow({ ...(payload as unknown as ShadowMetadata), imageId });
-    }
-    return { domain, legacyImageId: imageId, payload, tombstone: !payload, sourceVersion: 0 };
-  }
+  if (status.authority !== 'sqlite') return patchLegacyUserData(domain, imageId, patch);
   if (!status.available) {
     throw new UserDataPersistenceError('USER_DATA_UNAVAILABLE', statusErrorMessage(status));
   }
@@ -557,6 +529,7 @@ export async function mutateAnnotationTagGlobally(
   const status = await getUserDataPersistenceStatus();
   if (status.authority !== 'sqlite') return null;
   if (!status.available) throw new UserDataPersistenceError('USER_DATA_UNAVAILABLE', statusErrorMessage(status));
+  await stageAllLegacyUserDataIfNeeded(status);
   const records = unwrap(await window.electronAPI.stableUserDataGlobalTagMutation({
     action,
     sourceTag,

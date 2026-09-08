@@ -844,6 +844,13 @@ export interface StableUserDataSyncResult {
   legacyImageId: string;
   status: 'bound' | 'pending' | 'unmapped' | 'ambiguous' | 'source_ack_required';
   record: StableUserDataRecord | null;
+  pending?: {
+    domain: StableUserDataDomain;
+    legacyImageId: string;
+    payload: Record<string, unknown> | null;
+    tombstone: boolean;
+    sourceVersion: number;
+  } | null;
 }
 
 export interface StableUserDataMutationInput {

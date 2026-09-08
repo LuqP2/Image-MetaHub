@@ -195,7 +195,7 @@ export async function commitLegacyUserDataPatch(
   domain: LegacyUserDataDomain,
   imageId: string,
   patch: UserDataSemanticPatch,
-  mutationId: string,
+  mutationId?: string,
 ): Promise<LegacyUserDataSnapshot> {
   const db = await openMigrationDatabase();
   try {
@@ -224,7 +224,7 @@ export async function commitLegacyUserDataPatch(
           ? stripRendererKeys(domain, sourceValue)
           : null;
       const payload = applyPatch(domain, currentPayload, patch);
-      const sourceVersion = Number(outboxValue?.sourceVersion ?? 0) + 1;
+      const sourceVersion = mutationId ? Number(outboxValue?.sourceVersion ?? 0) + 1 : 0;
       result = {
         domain,
         legacyImageId: imageId,
@@ -236,11 +236,11 @@ export async function commitLegacyUserDataPatch(
       };
       if (payload === null) sourceStore.delete(imageId);
       else sourceStore.put({ ...structuredClone(payload), imageId });
-      outboxStore.put({ ...result, key: outboxKey(domain, imageId) } satisfies MigrationOutboxRecord);
+      if (mutationId) outboxStore.put({ ...result, key: outboxKey(domain, imageId) } satisfies MigrationOutboxRecord);
     };
 
     outboxRequest.onsuccess = () => {
-      outboxValue = outboxRequest.result as MigrationOutboxRecord | undefined;
+      outboxValue = mutationId ? outboxRequest.result as MigrationOutboxRecord | undefined : undefined;
       queueCommittedSnapshot();
     };
     sourceRequest.onsuccess = () => {

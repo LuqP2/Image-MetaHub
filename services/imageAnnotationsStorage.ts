@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 
-import type { ClusterPreference, ImageAnnotations, IndexedImage, ShadowMetadata, SmartCollection, TagInfo } from '../types';
+import type { ClusterPreference, ImageAnnotations, IndexedImage, ShadowMetadata, SmartCollection, TagInfo, UserDataSemanticPatch } from '../types';
+import { commitLegacyUserDataPatch, type LegacyUserDataDomain } from './legacyUserDataMigrationSource';
 import {
   getIndexedDbErrorName,
   openPreferencesDatabase,
@@ -21,6 +22,18 @@ type ManualTagRecord = {
 };
 
 const inMemoryAnnotations: Map<string, ImageAnnotations> = new Map();
+
+export async function patchLegacyUserData(domain: LegacyUserDataDomain, imageId: string, patch: UserDataSemanticPatch) {
+  const committed = await commitLegacyUserDataPatch(domain, imageId, patch);
+  if (domain === 'annotation') {
+    if (committed.payload) {
+      inMemoryAnnotations.set(imageId, { ...committed.payload, imageId } as unknown as ImageAnnotations);
+    } else {
+      inMemoryAnnotations.delete(imageId);
+    }
+  }
+  return committed;
+}
 const inMemoryManualTags: Set<string> = new Set();
 let isPersistenceDisabled = false;
 let hasResetAttempted = false;

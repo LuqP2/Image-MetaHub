@@ -257,3 +257,67 @@ describe('stable user-data persistence adapter', () => {
     }
   });
 });
+
+
+it('reads unmapped annotations and shadows from SQLite after checkpoint and opt-out', async () => {
+  await saveAnnotation({ imageId: 'pending-visible', isFavorite: true, tags: ['keep'], addedAt: 10, updatedAt: 20 });
+  await saveShadowMetadata({ imageId: 'pending-visible', prompt: '', seed: 0, updatedAt: 20 });
+  const { service } = await stableBridge();
+  const unmapped = image({ imageId: 'pending-visible', assetId: '', revisionId: '', locationId: '' });
+  await loadAnnotationsForImages([]);
+  service.migrationEnabled = false;
+  __resetUserDataPersistenceAdapterForTests();
+  const indexedDb = globalThis.indexedDB;
+  Object.defineProperty(globalThis, 'indexedDB', { value: undefined, configurable: true, writable: true });
+  try {
+    const hydrated = await hydrateUserDataForImages([unmapped]);
+    expect(hydrated.annotations.get(unmapped.id)).toMatchObject({ isFavorite: true, tags: ['keep'] });
+    expect(hydrated.shadows.get(unmapped.id)).toMatchObject({ prompt: '', seed: 0 });
+  } finally {
+    Object.defineProperty(globalThis, 'indexedDB', { value: indexedDb, configurable: true, writable: true });
+  }
+});
+
+it.each(['rename', 'remove'] as const)('keeps global tag %s on pending data through retries and mapping', async (action) => {
+  await saveAnnotation({ imageId: 'pending-tag', isFavorite: false, tags: ['old'], addedAt: 1, updatedAt: 2 });
+  const { lifecycle, ids } = await stableBridge();
+  const adapter = await import('../services/userDataPersistenceAdapter');
+  // The global operation itself must stage the legacy source before changing it.
+  await adapter.mutateAnnotationTagGlobally(action, 'old', action === 'rename' ? 'new' : undefined);
+  const expectedTags = action === 'rename' ? ['new'] : [];
+  const unmapped = image({ imageId: 'pending-tag', assetId: '', revisionId: '', locationId: '' });
+  expect((await hydrateUserDataForImages([unmapped])).annotations.get(unmapped.id)?.tags).toEqual(expectedTags);
+  lifecycle.run((repo) => repo.syncLegacyUserDataBatch([{
+    domain: 'annotation', legacyImageId: unmapped.id, payload: { isFavorite: false, tags: ['old'], addedAt: 1, updatedAt: 2 }, sourceVersion: 0,
+  }]));
+  const mapped = image({ imageId: unmapped.id, ...ids });
+  const hydrated = await hydrateUserDataForImages([mapped]);
+  expect(hydrated.annotations.get(mapped.id)).toMatchObject({ tags: expectedTags, suppressedMetadataTags: ['old'] });
+  expect((await patchAnnotation(mapped.id, { importTags: ['old'] }))?.tags).toEqual(expectedTags);
+});
+
+it('preserves simultaneous independent legacy patches and creates no migration outbox', async () => {
+  await saveAnnotation({ imageId: 'legacy-concurrent', isFavorite: false, tags: [], addedAt: 1, updatedAt: 2 });
+  await Promise.all([
+    patchAnnotation('legacy-concurrent', { set: { isFavorite: true } }),
+    patchAnnotation('legacy-concurrent', { addTags: ['keep'] }),
+    patchShadowMetadata('legacy-concurrent', { set: { prompt: 'keep' } }),
+    patchShadowMetadata('legacy-concurrent', { set: { seed: 0 } }),
+  ]);
+  const { getAnnotation, getShadowMetadata } = await import('../services/imageAnnotationsStorage');
+  const { readLegacyUserDataSnapshot } = await import('../services/legacyUserDataMigrationSource');
+  expect(await getAnnotation('legacy-concurrent')).toMatchObject({ isFavorite: true, tags: ['keep'] });
+  expect(await getShadowMetadata('legacy-concurrent')).toMatchObject({ prompt: 'keep', seed: 0 });
+  expect(await readLegacyUserDataSnapshot('annotation', 'legacy-concurrent')).toMatchObject({ sourceVersion: 0 });
+  expect(await readLegacyUserDataSnapshot('annotation', 'legacy-concurrent')).not.toHaveProperty('mutationId');
+});
+
+
+it('confirms the projected pending tags after a later favorite edit', async () => {
+  await saveAnnotation({ imageId: 'pending-edit', isFavorite: false, tags: ['old'], addedAt: 1, updatedAt: 2 });
+  await stableBridge();
+  const adapter = await import('../services/userDataPersistenceAdapter');
+  await adapter.mutateAnnotationTagGlobally('rename', 'old', 'new');
+  expect(await patchAnnotation('pending-edit', { set: { isFavorite: true } }))
+    .toMatchObject({ isFavorite: true, tags: ['new'], suppressedMetadataTags: ['old'] });
+});

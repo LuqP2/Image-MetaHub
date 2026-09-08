@@ -209,3 +209,49 @@ describe('stable identity user-data repository', () => {
     repository.close();
   });
 });
+
+
+it.each(['delete-first', 'edit-first'] as const)('rejects stale shadow mutations across whole-record deletion: %s', async (order) => {
+  const repository = await createRepository();
+  repository.syncLegacyUserDataBatch([{ domain: 'shadow', legacyImageId: 'one', reference, payload: { prompt: 'initial', updatedAt: 1 }, sourceVersion: 0 }]);
+  const deletion = { deleteRecord: true };
+  const edit = { set: { prompt: 'new', updatedAt: 2 } };
+  const first = repository.mutateAssetUserData({ domain: 'shadow', legacyImageId: 'one', reference, expectedVersion: 1, patch: order === 'delete-first' ? deletion : edit });
+  expect(() => repository.mutateAssetUserData({ domain: 'shadow', legacyImageId: 'one', reference, expectedVersion: 1, patch: order === 'delete-first' ? edit : deletion }))
+    .toThrowError(expect.objectContaining({ code: 'USER_DATA_CONFLICT' }));
+  expect(repository.syncLegacyUserDataBatch([{ domain: 'shadow', legacyImageId: 'one', reference }])[0].record).toEqual(first);
+  // An explicit retry using the confirmed current version remains valid.
+  expect(repository.mutateAssetUserData({ domain: 'shadow', legacyImageId: 'one', reference, expectedVersion: first.version, patch: order === 'delete-first' ? edit : deletion }).tombstone)
+    .toBe(order !== 'delete-first');
+});
+
+it.each(['before', 'after'] as const)('orders a pending source mutation reserved %s a global tag rename', async (order) => {
+  const repository = await createRepository();
+  repository.syncLegacyUserDataBatch([{ domain: 'annotation', legacyImageId: 'pending', payload: annotation({ tags: ['old'] }), sourceVersion: 0 }]);
+  const mutationId = '77777777-7777-4777-8777-777777777777';
+  const reserve = () => repository.reserveLegacyUserDataMutation({ mutationId, domain: 'annotation', legacyImageId: 'pending', patch: { unsuppressTags: ['old'], set: { tags: ['old'], updatedAt: 40 } } });
+  if (order === 'before') reserve();
+  repository.mutateAnnotationTagGlobally({ action: 'rename', sourceTag: 'old', targetTag: 'new', updatedAt: 30 });
+  if (order === 'after') reserve();
+  repository.finalizeLegacyUserDataMutation({ mutationId, sourceVersion: 1, payload: annotation({ tags: ['old'], updatedAt: 40 }), tombstone: false });
+  const pending = repository.syncLegacyUserDataBatch([{ domain: 'annotation', legacyImageId: 'pending' }])[0].pending;
+  const bound = repository.syncLegacyUserDataBatch([{ domain: 'annotation', legacyImageId: 'pending', reference }])[0].record;
+  expect(bound?.payload).toEqual(pending?.payload);
+  expect(bound?.payload?.tags).toEqual(order === 'before' ? ['new'] : ['old']);
+});
+
+
+it('keeps a global pending rename when a later source edit changes only favorite', async () => {
+  const repository = await createRepository();
+  repository.syncLegacyUserDataBatch([{ domain: 'annotation', legacyImageId: 'pending', payload: annotation({ tags: ['old'] }), sourceVersion: 0 }]);
+  repository.mutateAnnotationTagGlobally({ action: 'rename', sourceTag: 'old', targetTag: 'new', updatedAt: 30 });
+  const mutationId = '77777777-7777-4777-8777-777777777777';
+  repository.reserveLegacyUserDataMutation({ mutationId, domain: 'annotation', legacyImageId: 'pending', patch: { set: { isFavorite: true, updatedAt: 40 } } });
+  repository.finalizeLegacyUserDataMutation({ mutationId, sourceVersion: 1, payload: annotation({ isFavorite: true, tags: ['old'], updatedAt: 40 }), tombstone: false });
+  repository.close();
+  repository.open();
+  expect(repository.syncLegacyUserDataBatch([{ domain: 'annotation', legacyImageId: 'pending' }])[0].pending?.payload)
+    .toMatchObject({ isFavorite: true, tags: ['new'], updatedAt: 40 });
+  expect(repository.syncLegacyUserDataBatch([{ domain: 'annotation', legacyImageId: 'pending', reference }])[0].record?.payload)
+    .toMatchObject({ isFavorite: true, tags: ['new'], updatedAt: 40 });
+});

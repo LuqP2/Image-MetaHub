@@ -7,12 +7,14 @@ type FakeStoreState = {
 type FakeDatabaseState = {
   version: number;
   stores: Map<string, FakeStoreState>;
+  transactionTail?: Promise<void>;
 };
 
 type FakeTransaction = IDBTransaction & {
   __requestStarted: () => void;
   __requestFinished: () => void;
   __whenComplete: (callback: () => void) => void;
+  __enqueue: (callback: () => void) => void;
 };
 
 const cloneValue = <T>(value: T): T => (
@@ -50,14 +52,21 @@ function createTransaction(
   const internalCompletionHandlers: Array<() => void> = [];
   const allowed = storeNames ? new Set(storeNames) : null;
   const transaction = {} as FakeTransaction;
+  // Serialize database transactions, including connections opened by different
+  // callers. Real IndexedDB serializes overlapping read/write scopes.
+  const ready = state.transactionTail ?? Promise.resolve();
+  let release: () => void;
+  state.transactionTail = new Promise<void>((resolve) => { release = resolve; });
+  const enqueue = (callback: () => void) => { void ready.then(callback); };
 
   const scheduleCompletion = () => {
     if (completionScheduled || completed) return;
     completionScheduled = true;
-    queueMicrotask(() => {
+    enqueue(() => {
       completionScheduled = false;
       if (completed || pending !== 0) return;
       completed = true;
+      release();
       transaction.oncomplete?.(new Event('complete'));
       for (const handler of internalCompletionHandlers) handler();
     });
@@ -75,6 +84,7 @@ function createTransaction(
     abort: () => {
       if (completed) return;
       completed = true;
+      release();
       transaction.onabort?.(new Event('abort'));
     },
     commit: () => scheduleCompletion(),
@@ -96,6 +106,7 @@ function createTransaction(
       scheduleCompletion();
     },
     __whenComplete: (callback: () => void) => internalCompletionHandlers.push(callback),
+    __enqueue: enqueue,
   } as unknown as FakeTransaction);
 
   scheduleCompletion();
@@ -113,7 +124,7 @@ function createObjectStore(
   const request = <T>(operation: () => T): IDBRequest<T> => {
     transaction.__requestStarted();
     const result = makeRequest<T>();
-    queueMicrotask(() => {
+    transaction.__enqueue(() => {
       try {
         result.result = cloneValue(operation());
         result.readyState = 'done';
