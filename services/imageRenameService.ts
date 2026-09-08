@@ -1,6 +1,11 @@
 import type { IndexedImage } from '../types';
 import cacheManager from './cacheManager';
 import { transferImagePersistence } from './imageAnnotationsStorage';
+import {
+  getUserDataPersistenceStatus,
+  prepareUserDataForImages,
+  registerStableUserDataImages,
+} from './userDataPersistenceAdapter';
 import { FileOperations } from './fileOperations';
 import { useImageStore } from '../store/useImageStore';
 import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
@@ -70,6 +75,15 @@ export async function renameIndexedImage(
     }
   }
 
+  try {
+    await prepareUserDataForImages([image]);
+  } catch (error) {
+    return {
+      success: false,
+      error: `The file was not renamed because its local user data could not be staged safely: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
   const { fileName: newFileName } = splitRelativePath(newRelativePath);
   const renameResult = await FileOperations.renameFile(image, newFileName);
   if (!renameResult.success) {
@@ -81,7 +95,11 @@ export async function renameIndexedImage(
     return { success: false, error: 'Renamed file, but failed to update the library record.' };
   }
 
-  await transferImagePersistence(oldImageId, renamedImage.id, 'move');
+  registerStableUserDataImages([renamedImage]);
+  const userDataStatus = await getUserDataPersistenceStatus();
+  if (userDataStatus.authority !== 'sqlite') {
+    await transferImagePersistence(oldImageId, renamedImage.id, 'move');
+  }
 
   // Move the visual-search vector to the new id. The embedding is unchanged, so
   // this only rebinds the row; without it every rename would orphan a vector and

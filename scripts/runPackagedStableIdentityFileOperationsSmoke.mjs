@@ -69,7 +69,16 @@ try {
   const execution = await runExecutable(executablePath, args, env);
   if (execution.code !== 0) fail(`process exited with ${execution.code}.\n${execution.stdout}\n${execution.stderr}`);
   const result = JSON.parse(await fs.readFile(resultPath, 'utf8'));
-  if (!result.success || result.pendingOperations !== 0 || result.schemaVersion !== 4) fail('invalid result payload');
+  if (
+    !result.success
+    || result.pendingOperations !== 0
+    || result.schemaVersion !== 5
+    || result.userData?.authority !== 'sqlite'
+    || result.userData?.legacyScanComplete !== true
+    || result.userData?.copiedRating !== 2
+    || result.userData?.copiedShadowSeed !== 0
+    || result.userData?.reopened !== true
+  ) fail('invalid result payload');
   if (!path.resolve(result.paths.syntheticRoot).startsWith(path.resolve(temporaryRoot))) fail('synthetic data escaped the temporary root');
   if (mode === 'portable') {
     const expectedUserData = path.join(temporaryRoot, 'ImageMetaHubData');

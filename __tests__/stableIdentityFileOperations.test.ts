@@ -9,6 +9,7 @@ import { ProvenanceRepositoryLifecycle, resolveProvenanceCatalogPath } from '../
 import { StableIdentityIndexer } from '../electron/stableIdentityIndexer.mjs';
 import { StableIdentityFileOperationCoordinator } from '../electron/stableIdentityFileOperationCoordinator.mjs';
 import { runStableIdentityFileOperationsSmoke } from '../electron/stableIdentityFileOperationsSmoke.mjs';
+import { StableIdentityUserDataService } from '../electron/stableIdentityUserDataService.mjs';
 import { SUPPORTED_MEDIA_EXTENSIONS, inferMimeTypeFromName } from '../utils/mediaTypes.js';
 
 const temporaryDirectories: string[] = [];
@@ -207,6 +208,89 @@ describe('stable identity file-operation coordination', () => {
     expect(lifecycle.run((repository) => repository.getAsset(copy.assetId))?.revisions).toHaveLength(2);
     indexer.stop();
     lifecycle.close();
+  });
+
+  it('recovers a copied user-data snapshot after renderer loss without overwriting a later destination edit', async () => {
+    const { userDataPath, rootA, rootB } = await workspace();
+    const sourcePath = path.join(rootA, 'source-with-user-data.bin');
+    const destinationPath = path.join(rootB, 'copied-with-user-data.bin');
+    await fs.writeFile(sourcePath, 'copy recovery bytes');
+    const runtime = createRuntime(userDataPath, {
+      coordinator: { logger: { error: () => {}, warn: () => {} } },
+    });
+    const [source] = await registerRoot(runtime.indexer, rootA, ['source-with-user-data.bin']);
+    await registerRoot(runtime.indexer, rootB);
+    runtime.lifecycle.run((repository) => repository.syncLegacyUserDataBatch([
+      {
+        domain: 'annotation', legacyImageId: 'legacy-source',
+        payload: { isFavorite: true, tags: ['copied'], rating: 5, addedAt: 10, updatedAt: 20 },
+        sourceVersion: 0,
+      },
+      {
+        domain: 'shadow', legacyImageId: 'legacy-source',
+        payload: { prompt: '', resources: [], tags: [], notes: '', updatedAt: 20 },
+        sourceVersion: 0,
+      },
+    ]));
+
+    const repository = (runtime.lifecycle as any).repository;
+    const complete = repository.completeFileOperation.bind(repository);
+    let failOnce = true;
+    repository.completeFileOperation = (...args: unknown[]) => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error('synthetic lost renderer acknowledgement');
+      }
+      return complete(...args);
+    };
+    const copied = await runtime.coordinator.executeKnownOperation({
+      kind: 'copy',
+      sourcePath,
+      destinationPath,
+      userDataContext: { legacyImageId: 'legacy-source', copyUserData: true },
+      perform: () => fs.copyFile(sourcePath, destinationPath),
+    });
+    expect(copied.provenance).toMatchObject({ pending: true });
+    const [pending] = runtime.lifecycle.run((repo) => repo.listPendingFileOperations());
+    expect(pending.payload.userDataSnapshot).toHaveLength(2);
+    repository.completeFileOperation = complete;
+    runtime.indexer.stop();
+    runtime.lifecycle.close();
+
+    const reopened = createRuntime(userDataPath);
+    expect(await reopened.coordinator.initializeRecovery()).toMatchObject({ recovered: 1, pending: 0 });
+    const destinationRoot = reopened.lifecycle.run((repo) => (
+      repo.listLibraryRoots().find((entry) => entry.absolutePath === rootB)
+    ))!;
+    const destination = reopened.lifecycle.run((repo) => (
+      repo.getLocationByRootPath(destinationRoot.rootId, 'copied-with-user-data.bin')
+    ))!;
+    expect(destination.assetId).not.toBe(source.assetId);
+    const destinationReference = {
+      assetId: destination.assetId,
+      revisionId: destination.revisionId,
+      locationId: destination.locationId,
+    };
+    const [annotation, shadow] = reopened.lifecycle.run((repo) => repo.syncLegacyUserDataBatch([
+      { domain: 'annotation', legacyImageId: 'copy-ui-id', reference: destinationReference },
+      { domain: 'shadow', legacyImageId: 'copy-ui-id', reference: destinationReference },
+    ]));
+    expect(annotation.record?.payload).toMatchObject({ isFavorite: true, tags: ['copied'], rating: 5, addedAt: 10 });
+    expect(shadow.record?.payload).toMatchObject({ prompt: '', resources: [], tags: [], notes: '' });
+    expect(shadow.record?.payload.updatedAt).toBeGreaterThan(20);
+
+    const edited = reopened.lifecycle.run((repo) => repo.mutateAssetUserData({
+      domain: 'annotation', legacyImageId: 'copy-ui-id', reference: destinationReference,
+      expectedVersion: annotation.record.version,
+      patch: { set: { rating: 2, updatedAt: 30 } },
+    }));
+    reopened.lifecycle.run((repo) => repo.completeFileOperation(pending.operationId));
+    const afterRetry = reopened.lifecycle.run((repo) => repo.syncLegacyUserDataBatch([
+      { domain: 'annotation', legacyImageId: 'copy-ui-id', reference: destinationReference },
+    ]))[0].record;
+    expect(afterRetry).toMatchObject({ version: edited.version, payload: { rating: 2 } });
+    reopened.indexer.stop();
+    reopened.lifecycle.close();
   });
 
   it('aborts an unchanged failed overwrite and immediately releases the destination', async () => {
@@ -481,6 +565,12 @@ describe('stable identity file-operation coordination', () => {
     await Promise.all([fs.writeFile(modelPath, 'model'), fs.writeFile(sidecarPath, 'sidecar')]);
     const { lifecycle, indexer, coordinator } = createRuntime(userDataPath);
     const [model] = await registerRoot(indexer, rootA, ['cancelled-model.glb']);
+    lifecycle.run((repository) => repository.syncLegacyUserDataBatch([{
+      domain: 'annotation', legacyImageId: 'reused-path-ui-id',
+      reference: { assetId: model.assetId, revisionId: model.revisionId, locationId: model.locationId },
+      payload: { isFavorite: true, tags: ['historical'], addedAt: 10, updatedAt: 20 },
+      sourceVersion: 0,
+    }]));
 
     await expect(coordinator.executeKnownOperation({
       kind: 'delete',
@@ -503,9 +593,16 @@ describe('stable identity file-operation coordination', () => {
     await fs.writeFile(modelPath, 'replacement');
     await coordinator.observeWatcherFiles({ rootPath: rootA, files: [await record(rootA, 'cancelled-model.glb')] });
     const root = lifecycle.run((repository) => repository.listLibraryRoots()[0]);
-    expect(lifecycle.run((repository) => (
+    const replacement = lifecycle.run((repository) => (
       repository.getLocationByRootPath(root.rootId, 'cancelled-model.glb')
-    ))).toMatchObject({ state: 'present' });
+    ))!;
+    expect(replacement).toMatchObject({ state: 'present' });
+    expect(replacement.assetId).not.toBe(model.assetId);
+    const rebound = lifecycle.run((repository) => repository.syncLegacyUserDataBatch([{
+      domain: 'annotation', legacyImageId: 'reused-path-ui-id',
+      reference: { assetId: replacement.assetId, revisionId: replacement.revisionId, locationId: replacement.locationId },
+    }]))[0];
+    expect(rebound).toMatchObject({ status: 'ambiguous', record: null });
     indexer.stop();
     lifecycle.close();
   });
@@ -1317,6 +1414,49 @@ describe('stable identity file-operation coordination', () => {
     lifecycle.close();
   });
 
+  it('coordinates an explicit unmapped rename for an already-migrated flag-off profile without scanning or hashing', async () => {
+    const { userDataPath, rootA } = await workspace();
+    const sourcePath = path.join(rootA, 'unmapped-before-rename.bin');
+    const destinationPath = path.join(rootA, 'renamed-without-scan.bin');
+    await fs.writeFile(sourcePath, 'known operation bytes');
+    const lifecycle = new ProvenanceRepositoryLifecycle({ userDataPath });
+    lifecycle.initialize();
+    lifecycle.run((repository) => {
+      repository.activateUserDataAuthority();
+      repository.syncLegacyUserDataBatch([{
+        domain: 'annotation', legacyImageId: 'legacy-unmapped',
+        payload: { isFavorite: true, tags: ['pending'], addedAt: 10, updatedAt: 20 },
+        sourceVersion: 0,
+      }]);
+    });
+    const indexer = new StableIdentityIndexer({ repositoryLifecycle: lifecycle, enabled: false });
+    const coordinator = new StableIdentityFileOperationCoordinator({ repositoryLifecycle: lifecycle, indexer, enabled: true });
+
+    const result = await coordinator.executeKnownOperation({
+      kind: 'rename',
+      sourcePath,
+      destinationPath,
+      userDataContext: {
+        legacyImageId: 'legacy-unmapped',
+        sourceRootPath: rootA,
+        destinationRootPath: rootA,
+      },
+      perform: () => fs.rename(sourcePath, destinationPath),
+    });
+    expect(result.provenance).toMatchObject({ enabled: true, available: true });
+    const root = lifecycle.run((repository) => repository.listLibraryRoots()[0]);
+    const renamed = lifecycle.run((repository) => repository.getLocationByRootPath(root.rootId, 'renamed-without-scan.bin'))!;
+    const record = lifecycle.run((repository) => repository.syncLegacyUserDataBatch([{
+      domain: 'annotation', legacyImageId: 'legacy-unmapped',
+      reference: { assetId: renamed.assetId, revisionId: renamed.revisionId, locationId: renamed.locationId },
+    }]))[0].record;
+    expect(record?.payload).toMatchObject({ isFavorite: true, tags: ['pending'] });
+    expect(lifecycle.run((repository) => repository.getAsset(renamed.assetId))?.revisions[0].hashState).toBe('pending');
+    await indexer.waitForIdle();
+    indexer.stop();
+    lifecycle.close();
+  });
+
   it('keeps the filesystem result when intent persistence is unavailable', async () => {
     const { userDataPath, rootA } = await workspace();
     const sourcePath = path.join(rootA, 'source.bin');
@@ -1358,12 +1498,36 @@ describe('stable identity file-operation coordination', () => {
     await expect(fs.stat(destinationPath)).resolves.toBeDefined();
   });
 
+  it('does not mutate the filesystem when stable user data requires an unavailable journal', async () => {
+    const { rootA } = await workspace();
+    const sourcePath = path.join(rootA, 'source-with-user-data.bin');
+    const destinationPath = path.join(rootA, 'renamed-with-user-data.bin');
+    await fs.writeFile(sourcePath, 'bytes');
+    const coordinator = new StableIdentityFileOperationCoordinator({
+      repositoryLifecycle: {
+        getStatus: () => ({ available: false, error: new Error('synthetic catalog unavailable') }),
+      },
+      indexer: { enabled: false },
+      enabled: true,
+    });
+
+    await expect(coordinator.executeKnownOperation({
+      kind: 'rename',
+      sourcePath,
+      destinationPath,
+      userDataContext: { legacyImageId: 'synthetic-ui-id' },
+      perform: () => fs.rename(sourcePath, destinationPath),
+    })).rejects.toThrow('synthetic catalog unavailable');
+    await expect(fs.stat(sourcePath)).resolves.toBeDefined();
+    await expect(fs.stat(destinationPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('stores the recovery journal outside disposable cache paths', async () => {
     const { userDataPath } = await workspace();
     const lifecycle = new ProvenanceRepositoryLifecycle({ userDataPath });
     lifecycle.initialize();
     expect(resolveProvenanceCatalogPath(userDataPath)).toContain(path.join('provenance', 'catalog.sqlite'));
-    expect(lifecycle.run((repository) => repository.getStatus().schemaVersion)).toBe(4);
+    expect(lifecycle.run((repository) => repository.getStatus().schemaVersion)).toBe(5);
     lifecycle.close();
   });
 
@@ -1374,10 +1538,19 @@ describe('stable identity file-operation coordination', () => {
       rootPath: rootA,
       userDataPath,
       repositoryLifecycle: lifecycle,
+      userDataService: (() => {
+        const service = new StableIdentityUserDataService({
+          repositoryLifecycle: lifecycle,
+          userDataPath,
+          migrationEnabled: true,
+        });
+        service.initialize();
+        return service;
+      })(),
       indexer,
       coordinator,
     });
-    expect(result).toMatchObject({ success: true, schemaVersion: 4, pendingOperations: 0 });
+    expect(result).toMatchObject({ success: true, schemaVersion: 5, pendingOperations: 0 });
     indexer.stop();
     lifecycle.close();
   });

@@ -45,6 +45,7 @@ import { resetUserDataContents } from './electron/cacheReset.mjs';
 import { ProvenanceRepositoryLifecycle } from './electron/provenanceRepository.mjs';
 import { StableIdentityIndexer } from './electron/stableIdentityIndexer.mjs';
 import { StableIdentityFileOperationCoordinator } from './electron/stableIdentityFileOperationCoordinator.mjs';
+import { StableIdentityUserDataService } from './electron/stableIdentityUserDataService.mjs';
 import { runStableIdentityFileOperationsSmoke } from './electron/stableIdentityFileOperationsSmoke.mjs';
 import { openAuthorizedCacheDirectory } from './electron/cacheDirectory.mjs';
 import { appendEmbeddingSegmentAtOffset } from './electron/embeddingSegmentFile.mjs';
@@ -615,6 +616,7 @@ let licenseManager;
 let provenanceRepositoryLifecycle;
 let stableIdentityIndexer;
 let stableIdentityFileOperationCoordinator;
+let stableIdentityUserDataService;
 const detachedImageViewerWindows = new Map();
 const detachedImageViewerSnapshots = new Map();
 const detachedImageViewerRequestResolvers = new Map();
@@ -2978,14 +2980,37 @@ app.whenReady().then(async () => {
     userDataPath: app.getPath('userData'),
   });
   provenanceRepositoryLifecycle.initialize();
+  stableIdentityUserDataService = new StableIdentityUserDataService({
+    repositoryLifecycle: provenanceRepositoryLifecycle,
+    userDataPath: app.getPath('userData'),
+    migrationEnabled: provenanceIndexingEnabled,
+    publishChanges: (payload) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+          window.webContents.send('stable-user-data-changed', payload);
+        }
+      }
+    },
+  });
+  try {
+    stableIdentityUserDataService.initialize();
+  } catch (error) {
+    console.error('Stable-identity user-data migration could not initialize; application startup will continue.', error);
+  }
   stableIdentityIndexer = new StableIdentityIndexer({
     repositoryLifecycle: provenanceRepositoryLifecycle,
     enabled: provenanceIndexingEnabled && provenanceRepositoryLifecycle.getStatus().available,
   });
+  const stableUserDataStatus = stableIdentityUserDataService.getStatus();
   stableIdentityFileOperationCoordinator = new StableIdentityFileOperationCoordinator({
     repositoryLifecycle: provenanceRepositoryLifecycle,
     indexer: stableIdentityIndexer,
-    enabled: provenanceIndexingEnabled,
+    // A profile that already crossed the user-data authority boundary must keep
+    // journaling known file operations even when indexing is later disabled.
+    // The indexer stays disabled, so this does not restart scans or hashing.
+    enabled: provenanceIndexingEnabled || (
+      stableUserDataStatus.authority === 'sqlite' && stableUserDataStatus.available
+    ),
     publishMappings: (payload) => {
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
@@ -3005,6 +3030,7 @@ app.whenReady().then(async () => {
         rootPath: smokeRoot,
         userDataPath: app.getPath('userData'),
         repositoryLifecycle: provenanceRepositoryLifecycle,
+        userDataService: stableIdentityUserDataService,
         indexer: stableIdentityIndexer,
         coordinator: stableIdentityFileOperationCoordinator,
       });
@@ -3327,6 +3353,29 @@ const isPathAllowed = (filePath) => {
   if (allowedDirectoryPaths.size === 0 || !filePath) return false;
   const normalizedFilePath = normalizeAllowedPath(filePath);
   return Array.from(allowedDirectoryPaths).some((allowedPath) => isSameOrChildPath(normalizedFilePath, allowedPath));
+};
+
+const findAllowedDirectoryRoot = (filePath) => {
+  if (!filePath) return null;
+  const normalizedFilePath = normalizeAllowedPath(filePath);
+  return Array.from(allowedDirectoryPaths)
+    .filter((allowedPath) => isSameOrChildPath(normalizedFilePath, allowedPath))
+    .sort((left, right) => right.length - left.length)[0] ?? null;
+};
+
+const stableFileUserDataContext = ({ legacyImageId, sourcePath = null, destinationPath = null, copyUserData = false } = {}) => {
+  if (typeof legacyImageId !== 'string' || !legacyImageId.trim()) return null;
+  const stableStatus = stableIdentityUserDataService?.getStatus?.();
+  return {
+    legacyImageId,
+    copyUserData,
+    ...(stableStatus?.authority === 'sqlite' && sourcePath
+      ? { sourceRootPath: findAllowedDirectoryRoot(sourcePath) }
+      : {}),
+    ...(stableStatus?.authority === 'sqlite' && destinationPath
+      ? { destinationRootPath: findAllowedDirectoryRoot(destinationPath) }
+      : {}),
+  };
 };
 
 // Symlink-aware containment check for write operations (e.g. creating a folder).
@@ -5686,7 +5735,7 @@ function setupFileOperationHandlers() {
   });
 
   // Handle file deletion (move to trash)
-  ipcMain.handle('trash-file', async (event, filePath) => {
+  ipcMain.handle('trash-file', async (event, filePath, userDataContext = null) => {
     let trashAttempted = false;
     try {
       if (!isPathAllowed(filePath)) {
@@ -5698,6 +5747,10 @@ function setupFileOperationHandlers() {
       const coordinated = await executeWithStableIdentity({
         kind: 'delete',
         sourcePath: filePath,
+        userDataContext: stableFileUserDataContext({
+          legacyImageId: userDataContext?.legacyImageId,
+          sourcePath: filePath,
+        }),
         perform: async () => {
           if (isModel3DFileName(filePath)) {
             await trashModel3DWithSidecar(
@@ -5833,7 +5886,7 @@ function setupFileOperationHandlers() {
   });
 
   // Handle file renaming
-  ipcMain.handle('rename-file', async (event, oldPath, newPath) => {
+  ipcMain.handle('rename-file', async (event, oldPath, newPath, userDataContext = null) => {
     try {
       if (!isAllowedOrInternal(oldPath) || !isRenameTargetAllowed(oldPath, newPath)) {
         console.error('SECURITY VIOLATION: Attempted to rename file outside of allowed directories.');
@@ -5867,6 +5920,11 @@ function setupFileOperationHandlers() {
         kind: 'rename',
         sourcePath: oldPath,
         destinationPath: newPath,
+        userDataContext: stableFileUserDataContext({
+          legacyImageId: userDataContext?.legacyImageId,
+          sourcePath: oldPath,
+          destinationPath: newPath,
+        }),
         perform: async () => {
           if (isModel3DFileName(oldPath)) {
             await renameModel3DWithSidecar(fs, oldPath, newPath);
@@ -6274,6 +6332,51 @@ function setupFileOperationHandlers() {
     if (action === 'resume') return { success: true, ...stableIdentityIndexer.resume() };
     return { success: false, enabled: true, error: 'Unsupported provenance backfill action.' };
   });
+
+  const handleStableUserDataRequest = (operation) => {
+    try {
+      if (!stableIdentityUserDataService) throw new Error('Stable user-data service is unavailable.');
+      return { success: true, value: operation(stableIdentityUserDataService) };
+    } catch (error) {
+      return {
+        success: false,
+        error: error?.message || String(error),
+        code: error?.code || 'USER_DATA_OPERATION_FAILED',
+        details: error?.details ?? null,
+      };
+    }
+  };
+
+  ipcMain.handle('stable-user-data-status', () => (
+    stableIdentityUserDataService?.getStatus?.() ?? {
+      initialized: false,
+      authority: 'legacy',
+      available: true,
+      migrationEnabled: provenanceIndexingEnabled,
+      indexingEnabled: provenanceIndexingEnabled,
+    }
+  ));
+  ipcMain.handle('stable-user-data-sync', (_event, { entries } = {}) => (
+    handleStableUserDataRequest((service) => service.syncLegacyBatch(entries))
+  ));
+  ipcMain.handle('stable-user-data-mutate', (_event, input) => (
+    handleStableUserDataRequest((service) => service.mutate(input))
+  ));
+  ipcMain.handle('stable-user-data-reserve-legacy-mutation', (_event, input) => (
+    handleStableUserDataRequest((service) => service.reserveLegacyMutation(input))
+  ));
+  ipcMain.handle('stable-user-data-finalize-legacy-mutation', (_event, input) => (
+    handleStableUserDataRequest((service) => service.finalizeLegacyMutation(input))
+  ));
+  ipcMain.handle('stable-user-data-complete-legacy-scan', () => (
+    handleStableUserDataRequest((service) => service.completeLegacyScan())
+  ));
+  ipcMain.handle('stable-user-data-global-tag-mutation', (_event, input) => (
+    handleStableUserDataRequest((service) => service.mutateAnnotationTagGlobally(input))
+  ));
+  ipcMain.handle('stable-user-data-tag-counts', () => (
+    handleStableUserDataRequest((service) => service.getTagCounts())
+  ));
 
   // ============================================================
   // File Watching Handlers
@@ -7017,6 +7120,11 @@ function setupFileOperationHandlers() {
           sourcePath: provenanceContext.sourcePath || null,
           destinationPath: normalizedFilePath,
           expectedOutputSha256,
+          userDataContext: stableFileUserDataContext({
+            legacyImageId: provenanceContext.userDataContext?.legacyImageId,
+            sourcePath: provenanceContext.sourcePath || normalizedFilePath,
+            destinationPath: normalizedFilePath,
+          }),
           perform: () => fs.writeFile(normalizedFilePath, data),
         });
         return { success: true, provenance: coordinated.provenance };
@@ -7460,7 +7568,8 @@ function setupFileOperationHandlers() {
             destinationDirectoryPath: destDir,
             destinationRelativePath: candidate,
             destinationAbsolutePath: candidatePath,
-            fileName: candidate
+            fileName: candidate,
+            legacyImageId: typeof file.legacyImageId === 'string' ? file.legacyImageId : null,
           });
         } catch {
           failedCount += 1;
@@ -7493,10 +7602,16 @@ function setupFileOperationHandlers() {
           }
         };
 
-        await executeWithStableIdentity({
+        const coordinated = await executeWithStableIdentity({
           kind: mode,
           sourcePath: task.sourceAbsolutePath,
           destinationPath: task.destinationAbsolutePath,
+          userDataContext: stableFileUserDataContext({
+            legacyImageId: task.legacyImageId,
+            sourcePath: task.sourceAbsolutePath,
+            destinationPath: task.destinationAbsolutePath,
+            copyUserData: mode === 'copy',
+          }),
           perform: async () => {
             if (isModel3DFileName(task.sourceAbsolutePath)) {
               await transferModel3DWithSidecar(
@@ -7523,6 +7638,7 @@ function setupFileOperationHandlers() {
           lastModified: stats.mtimeMs,
           birthtimeMs: normalizeBirthtimeMs(stats.birthtimeMs),
           type: getMimeTypeFromName(task.fileName),
+          provenance: coordinated.provenance,
         });
       };
 
@@ -7611,6 +7727,7 @@ app.on('before-quit', () => {
   licenseManager?.dispose?.();
   stableIdentityIndexer?.stop();
   stableIdentityFileOperationCoordinator = null;
+  stableIdentityUserDataService = null;
   provenanceRepositoryLifecycle?.close();
 });
 

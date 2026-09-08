@@ -269,7 +269,7 @@ export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
         removeImages, addImages, appendImagesRaw, mergeImages, clearImages, replaceDirectoryImagesRaw, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress,
-        recomputeDerivedState,
+        recomputeDerivedState, hydrateAnnotationsForImages,
         setLineageDirectorySignature, setLineageRebuildSuspended, hydratePersistedLineageSnapshot, scheduleLineageRebuild
     } = useImageStore();
 
@@ -326,9 +326,12 @@ export function useImageLoader() {
                 );
                 return identity ? [{ ...image, ...identity }] : [];
             });
-            if (updates.length > 0) mergeImages(updates);
+            if (updates.length > 0) {
+                mergeImages(updates);
+                void hydrateAnnotationsForImages(updates);
+            }
         });
-    }, [mergeImages]);
+    }, [hydrateAnnotationsForImages, mergeImages]);
 
     // Helper function to check if indexing should be cancelled
     const shouldCancelIndexing = useCallback((allowIdle = false) => {

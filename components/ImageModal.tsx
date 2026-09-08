@@ -48,7 +48,7 @@ import {
   renderEditedImageToPngBytes,
 } from '../services/imageEditingService';
 
-import { bulkSaveShadowMetadata } from '../services/imageAnnotationsStorage';
+import { prepareUserDataForImages, saveShadows } from '../services/userDataPersistenceAdapter';
 import { copyEditableMetadata, readEditableMetadataClipboard } from '../services/metadataClipboard';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { getAvifCarrierConflicts } from '../utils/imageMetaHubAvifExtension.mjs';
@@ -1180,7 +1180,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const selectedNodes = useImageStore((state) => state.selectedNodes);
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
 
-  const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -1192,6 +1191,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     )
   );
   const liveImage = imageFromStore ?? image;
+  const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(liveImage);
   const thumbnail = useResolvedThumbnail(liveImage);
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
@@ -2530,7 +2530,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
       sourceRawMetadata,
       imageEditOutputDimensions || undefined,
     );
-    const result = await window.electronAPI.writeFile(targetPath, outputBytes, { kind: mode });
+    if (mode === 'overwrite') {
+      try {
+        await prepareUserDataForImages([liveImage]);
+      } catch (error) {
+        throw new Error(`The image was not overwritten because its local user data could not be staged safely: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    const result = await window.electronAPI.writeFile(targetPath, outputBytes, {
+      kind: mode,
+      ...(mode === 'overwrite'
+        ? { sourcePath: targetPath, userDataContext: { legacyImageId: liveImage.id } }
+        : {}),
+    });
     if (!result.success) {
       throw new Error(result.error || 'Failed to write edited image.');
     }
@@ -4987,11 +4999,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
           onSave={async (metadata) => { await saveShadowMetadata(metadata); }}
           onExportEditedCopy={openBatchExport}
           onApplyToSelected={exportSelectionIds.size > 1 ? async (metadata) => {
-            await bulkSaveShadowMetadata(Array.from(exportSelectionIds).map((imageId) => ({
+            const imagesById = new Map(allImages.map((candidate) => [candidate.id, candidate]));
+            await saveShadows(Array.from(exportSelectionIds).map((imageId) => ({
               ...metadata,
               imageId,
               updatedAt: Date.now(),
-            })));
+            })), imagesById);
           } : null}
           selectedImageCount={exportSelectionIds.size}
           onCopyEditableMetadata={(metadata) => {

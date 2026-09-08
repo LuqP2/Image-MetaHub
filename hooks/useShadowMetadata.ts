@@ -1,97 +1,87 @@
-
-import { useState, useEffect, useCallback } from 'react';
-import { ShadowMetadata } from '../types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { IndexedImage, ShadowMetadata, UserDataSemanticPatch } from '../types';
 import {
-  getShadowMetadata,
-  saveShadowMetadata as saveToStorage,
-  deleteShadowMetadata as deleteFromStorage,
-} from '../services/imageAnnotationsStorage';
-import { applyShadowMetadataUpdates } from '../utils/editableMetadata';
+  getPersistedShadowMetadata,
+  patchShadowMetadata,
+  registerStableUserDataImages,
+  shadowFromStableRecord,
+  subscribeStableUserDataChanges,
+} from '../services/userDataPersistenceAdapter';
 
-export function useShadowMetadata(imageId?: string) {
+export function useShadowMetadata(image?: IndexedImage | string) {
+  const imageId = typeof image === 'string' ? image : image?.id;
+  const identityKey = typeof image === 'string'
+    ? image
+    : `${image?.id ?? ''}\0${image?.assetId ?? ''}\0${image?.revisionId ?? ''}\0${image?.provenanceLocationId ?? ''}`;
+  const requestGeneration = useRef(0);
   const [metadata, setMetadata] = useState<ShadowMetadata | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  // Fetch metadata when imageId changes
-  useEffect(() => {
-    let isMounted = true;
+  const currentImage = useMemo(() => image, [identityKey]);
 
+  useEffect(() => {
+    const generation = ++requestGeneration.current;
     if (!imageId) {
       setMetadata(null);
       return;
     }
+    if (typeof currentImage !== 'string') registerStableUserDataImages([currentImage]);
+    setIsLoading(true);
+    setError(null);
+    void getPersistedShadowMetadata(currentImage).then((value) => {
+      if (requestGeneration.current === generation) setMetadata(value);
+    }).catch((cause) => {
+      if (requestGeneration.current !== generation) return;
+      console.error('Failed to fetch shadow metadata:', cause);
+      setError(cause instanceof Error ? cause : new Error('Unknown error'));
+      setMetadata(null);
+    }).finally(() => {
+      if (requestGeneration.current === generation) setIsLoading(false);
+    });
 
-    const fetchMetadata = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const data = await getShadowMetadata(imageId);
-        if (isMounted) {
-          setMetadata(data);
-        }
-      } catch (err) {
-        if (isMounted) {
-          console.error('Failed to fetch shadow metadata:', err);
-          setError(err instanceof Error ? err : new Error('Unknown error'));
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
+    return () => { requestGeneration.current += 1; };
+  }, [currentImage, identityKey, imageId]);
 
-    fetchMetadata();
+  useEffect(() => subscribeStableUserDataChanges((records) => {
+    if (!imageId || typeof currentImage === 'string' || !currentImage.assetId) return;
+    for (const record of records) {
+      if (record.domain !== 'shadow' || record.assetId !== currentImage.assetId) continue;
+      setMetadata(shadowFromStableRecord(record, imageId));
+    }
+  }), [currentImage, identityKey, imageId]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [imageId]);
+  const saveMetadata = useCallback(async (updates: Partial<ShadowMetadata>) => {
+    if (!imageId) return undefined;
+    const set: Record<string, unknown> = {};
+    const remove: string[] = [];
+    for (const [key, value] of Object.entries(updates)) {
+      if (key === 'imageId' || key === 'assetId' || key === 'persistenceVersion') continue;
+      if (value === null || value === undefined) remove.push(key);
+      else set[key] = value;
+    }
+    try {
+      const saved = await patchShadowMetadata(currentImage, { set, remove } satisfies UserDataSemanticPatch);
+      setMetadata(saved);
+      return saved ?? undefined;
+    } catch (cause) {
+      console.error('Failed to save shadow metadata:', cause);
+      setError(cause instanceof Error ? cause : new Error('Unknown error'));
+      throw cause;
+    }
+  }, [currentImage, imageId, identityKey]);
 
-  // Save metadata
-  const saveMetadata = useCallback(
-    async (updates: Partial<ShadowMetadata>) => {
-      if (!imageId) return;
-
-      try {
-        const newMetadata = applyShadowMetadataUpdates(metadata, {
-          ...updates,
-          imageId,
-          updatedAt: Date.now(),
-        });
-
-        await saveToStorage(newMetadata);
-        setMetadata(newMetadata);
-        return newMetadata;
-      } catch (err) {
-        console.error('Failed to save shadow metadata:', err);
-        setError(err instanceof Error ? err : new Error('Unknown error'));
-        throw err;
-      }
-    },
-    [imageId, metadata]
-  );
-
-  // Delete metadata
   const deleteMetadata = useCallback(async () => {
     if (!imageId) return;
-
     try {
-      await deleteFromStorage(imageId);
+      await patchShadowMetadata(currentImage, { deleteRecord: true });
       setMetadata(null);
-    } catch (err) {
-        console.error('Failed to delete shadow metadata:', err);
-        setError(err instanceof Error ? err : new Error('Unknown error'));
-        throw err;
+    } catch (cause) {
+      console.error('Failed to delete shadow metadata:', cause);
+      setError(cause instanceof Error ? cause : new Error('Unknown error'));
+      throw cause;
     }
-  }, [imageId]);
+  }, [currentImage, imageId, identityKey]);
 
-  return {
-    metadata,
-    isLoading,
-    error,
-    saveMetadata,
-    deleteMetadata,
-  };
+  return { metadata, isLoading, error, saveMetadata, deleteMetadata };
 }

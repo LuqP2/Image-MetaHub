@@ -112,27 +112,31 @@ const DetachedImageModalApp: React.FC = () => {
 
     useImageStore.setState({
       toggleFavorite: async (imageId: string) => {
+        const result = await sendCommand({ type: 'toggle-favorite', imageId });
+        if (!result.success) throw new Error(result.error || 'Favorite was not saved.');
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
           entry.id === imageId ? { ...entry, isFavorite: !entry.isFavorite } : entry) }));
-        await sendCommand({ type: 'toggle-favorite', imageId });
       },
       setImageRating: async (imageId: string, rating) => {
+        const result = await sendCommand({ type: 'set-rating', imageId, rating });
+        if (!result.success) throw new Error(result.error || 'Rating was not saved.');
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
           entry.id === imageId ? { ...entry, rating } : entry) }));
-        await sendCommand({ type: 'set-rating', imageId, rating });
       },
       addTagToImage: async (imageId: string, tag: string) => {
         const normalized = tag.trim().toLowerCase();
+        const result = await sendCommand({ type: 'add-tag', imageId, tag });
+        if (!result.success) throw new Error(result.error || 'Tag was not saved.');
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
           entry.id === imageId && normalized && !entry.tags?.includes(normalized)
             ? { ...entry, tags: [...(entry.tags || []), normalized] }
             : entry) }));
-        await sendCommand({ type: 'add-tag', imageId, tag });
       },
       removeTagFromImage: async (imageId: string, tag: string) => {
+        const result = await sendCommand({ type: 'remove-tag', imageId, tag });
+        if (!result.success) throw new Error(result.error || 'Tag removal was not saved.');
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
           entry.id === imageId ? { ...entry, tags: (entry.tags || []).filter((value) => value !== tag) } : entry) }));
-        await sendCommand({ type: 'remove-tag', imageId, tag });
       },
       removeAutoTagFromImage: (imageId: string, tag: string) => {
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>

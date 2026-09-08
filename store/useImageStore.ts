@@ -1,12 +1,8 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode, type ImageScope, type ExploreDimension, type SortOrder, type SemanticSearchResult } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode, type ImageScope, type ExploreDimension, type SortOrder, type SemanticSearchResult, type UserDataSemanticPatch } from '../types';
 import { resolveScopeImageIds, filterImagesByScope, getScopeToastMessage } from '../utils/imageScope';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
-  loadAllAnnotations,
-  saveAnnotation,
-  bulkSaveAnnotations,
-  getAllTags,
   ensureManualTagExists,
   renameManualTag,
   deleteManualTag,
@@ -22,6 +18,18 @@ import {
   resolveSmartCollectionImages,
   saveSmartCollection,
 } from '../services/imageAnnotationsStorage';
+import {
+  annotationFromStableRecord,
+  getAllAuthoritativeTags,
+  hydrateUserDataForImages,
+  loadAnnotationsForImages,
+  mutateAnnotationTagGlobally,
+  patchAnnotation,
+  registerStableUserDataImages,
+  saveAnnotations,
+  subscribeStableUserDataChanges,
+  UserDataBatchPersistenceError,
+} from '../services/userDataPersistenceAdapter';
 import {
     deleteAutomationRule,
     getAllAutomationRules,
@@ -331,25 +339,6 @@ const drainPendingMetadataTagImports = (): IndexedImage[] => {
     const images = Array.from(pendingMetadataTagImportMap.values());
     pendingMetadataTagImportMap.clear();
     return images;
-};
-
-const buildAnnotationRecord = (
-    imageId: string,
-    currentAnnotation: ImageAnnotations | undefined,
-    overrides: Partial<Pick<ImageAnnotations, 'isFavorite' | 'tags' | 'rating'>>,
-): ImageAnnotations => {
-    const hasFavoriteOverride = Object.prototype.hasOwnProperty.call(overrides, 'isFavorite');
-    const hasTagsOverride = Object.prototype.hasOwnProperty.call(overrides, 'tags');
-    const hasRatingOverride = Object.prototype.hasOwnProperty.call(overrides, 'rating');
-
-    return {
-        imageId,
-        isFavorite: hasFavoriteOverride ? overrides.isFavorite ?? false : currentAnnotation?.isFavorite ?? false,
-        tags: hasTagsOverride ? overrides.tags ?? [] : currentAnnotation?.tags ?? [],
-        rating: hasRatingOverride ? overrides.rating : currentAnnotation?.rating,
-        addedAt: currentAnnotation?.addedAt ?? Date.now(),
-        updatedAt: Date.now(),
-    };
 };
 
 type ManualTagFilterState = Pick<ImageState, 'selectedTags' | 'excludedTags'>;
@@ -1106,6 +1095,7 @@ interface ImageState {
 
   // Annotations Actions
   loadAnnotations: () => Promise<void>;
+  hydrateAnnotationsForImages: (images: IndexedImage[]) => Promise<void>;
   toggleFavorite: (imageId: string) => Promise<void>;
   bulkToggleFavorite: (imageIds: string[], isFavorite: boolean) => Promise<void>;
   addTagToImage: (imageId: string, tag: string) => Promise<void>;
@@ -1178,6 +1168,7 @@ export const useImageStore = create<ImageState>((set, get) => {
     let searchDatasetSourceImages: IndexedImage[] | null = null;
     let searchWorkerSyncedDatasetVersion = -1;
     let latestSearchCriteriaKey = '';
+    let stableUserDataUnsubscribe: (() => void) | null = null;
 
     const clearPendingQueue = () => {
         pendingImagesQueue = [];
@@ -1281,7 +1272,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         // Import tags from metadata only after annotations are available.
         if (addedImages.length > 0) {
             if (get().isAnnotationsLoaded) {
-                void get().importMetadataTags(addedImages);
+                void get().hydrateAnnotationsForImages(addedImages)
+                    .then(() => get().importMetadataTags(addedImages));
             } else {
                 queueMetadataTagImports(addedImages);
             }
@@ -1359,7 +1351,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         });
 
         if (get().isAnnotationsLoaded) {
-            void get().importMetadataTags(updatesToMerge);
+            void get().hydrateAnnotationsForImages(updatesToMerge)
+                .then(() => get().importMetadataTags(updatesToMerge));
         }
         maybeQueueLineageBuild(700);
 
@@ -1679,14 +1672,26 @@ export const useImageStore = create<ImageState>((set, get) => {
             return { ...newState, ...filterAndSort(newState) };
         });
 
+        let annotationPersistenceFailed = false;
         await Promise.all([
-            annotationsToPersist.length > 0 ? bulkSaveAnnotations(annotationsToPersist) : Promise.resolve(),
+            annotationsToPersist.length > 0
+                ? persistAnnotationSnapshots(annotationsToPersist)
+                : Promise.resolve(),
             ...Array.from(tagCatalogUpdates).map((tagName) => ensureManualTagExists(tagName)),
             ...collectionsToPersist.map((collection) => saveSmartCollection(collection)),
             updatedRule ? saveAutomationRule(updatedRule) : Promise.resolve(),
         ]).catch(error => {
             console.error('Failed to apply automation rule:', error);
+            annotationPersistenceFailed = annotationsToPersist.length > 0;
         });
+
+        if (annotationPersistenceFailed) {
+            await get().hydrateAnnotationsForImages(
+                annotationsToPersist
+                    .map((annotation) => getImageById(get(), annotation.imageId))
+                    .filter((image): image is IndexedImage => Boolean(image)),
+            );
+        }
 
         if (annotationsToPersist.length > 0 || tagCatalogUpdates.size > 0) {
             await get().refreshAvailableTags();
@@ -3373,6 +3378,84 @@ export const useImageStore = create<ImageState>((set, get) => {
         return snapshot;
     };
 
+    const applyConfirmedAnnotations = (confirmed: ImageAnnotations[]) => {
+        if (confirmed.length === 0) return;
+        set(state => {
+            const annotations = new Map(state.annotations);
+            for (const annotation of confirmed) annotations.set(annotation.imageId, annotation);
+            const images = applyAnnotationsToImages(state.images, annotations);
+            const newState = { ...state, annotations, images };
+            return { ...newState, ...filterAndSort(newState) };
+        });
+    };
+
+    const persistAnnotationPatchBatch = async (
+        updates: Array<{ imageId: string; patch: UserDataSemanticPatch }>,
+    ): Promise<ImageAnnotations[]> => {
+        const outcomes = await Promise.allSettled(
+            updates.map(({ imageId, patch }) => patchAnnotation(imageId, patch)),
+        );
+        const confirmed = outcomes
+            .filter((outcome): outcome is PromiseFulfilledResult<ImageAnnotations | null> => outcome.status === 'fulfilled')
+            .map((outcome) => outcome.value)
+            .filter((annotation): annotation is ImageAnnotations => Boolean(annotation));
+        applyConfirmedAnnotations(confirmed);
+        const failures = outcomes.filter((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected');
+        if (failures.length > 0) {
+            throw new AggregateError(
+                failures.map((failure) => failure.reason),
+                `${failures.length} annotation update${failures.length === 1 ? '' : 's'} failed.`,
+            );
+        }
+        return confirmed;
+    };
+
+    const persistAnnotationSnapshots = async (records: ImageAnnotations[]): Promise<ImageAnnotations[]> => {
+        try {
+            const confirmed = await saveAnnotations(records);
+            applyConfirmedAnnotations(confirmed);
+            return confirmed;
+        } catch (error) {
+            if (error instanceof UserDataBatchPersistenceError) applyConfirmedAnnotations(error.persisted);
+            throw error;
+        }
+    };
+
+    const ensureStableUserDataSubscription = () => {
+        if (stableUserDataUnsubscribe) return;
+        stableUserDataUnsubscribe = subscribeStableUserDataChanges((records) => {
+            const state = get();
+            const confirmed: ImageAnnotations[] = [];
+            const removedImageIds = new Set<string>();
+            for (const record of records) {
+                if (record.domain !== 'annotation') continue;
+                for (const image of state.images) {
+                    if (image.assetId !== record.assetId) continue;
+                    const annotation = annotationFromStableRecord(record, image.id);
+                    if (annotation) confirmed.push(annotation);
+                    else removedImageIds.add(image.id);
+                }
+            }
+            if (confirmed.length === 0 && removedImageIds.size === 0) return;
+            set(current => {
+                const annotations = new Map(current.annotations);
+                for (const imageId of removedImageIds) annotations.delete(imageId);
+                for (const annotation of confirmed) annotations.set(annotation.imageId, annotation);
+                const images = current.images.map((image) => {
+                    if (removedImageIds.has(image.id)) {
+                        return { ...image, isFavorite: false, tags: [], rating: undefined };
+                    }
+                    const annotation = annotations.get(image.id);
+                    return annotation
+                        ? { ...image, isFavorite: annotation.isFavorite, tags: annotation.tags, rating: annotation.rating }
+                        : image;
+                });
+                const newState = { ...current, annotations, images };
+                return { ...newState, ...filterAndSort(newState) };
+            });
+        });
+    };
+
 
     return {
         // Initial State
@@ -3960,7 +4043,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             set(state => _updateStateIncremental(state, { updated: updatesToApply }));
 
             if (get().isAnnotationsLoaded) {
-                void get().importMetadataTags(updatesToApply);
+                void get().hydrateAnnotationsForImages(updatesToApply)
+                    .then(() => get().importMetadataTags(updatesToApply));
             }
             maybeQueueLineageBuild(700);
         },
@@ -4066,7 +4150,6 @@ export const useImageStore = create<ImageState>((set, get) => {
                     annotations.set(nextImageId, {
                         ...annotation,
                         imageId: nextImageId,
-                        updatedAt: Date.now(),
                     });
                 }
 
@@ -5009,8 +5092,24 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         // Annotations Actions
         loadAnnotations: async () => {
-            const annotationsMap = await loadAllAnnotations();
-            const tags = await getAllTags();
+            const images = get().images;
+            registerStableUserDataImages(images);
+            ensureStableUserDataSubscription();
+            let annotationsMap: Map<string, ImageAnnotations>;
+            let tags: TagInfo[];
+            try {
+                annotationsMap = await loadAnnotationsForImages(images);
+                tags = await getAllAuthoritativeTags();
+            } catch (error) {
+                console.error('Authoritative user data is unavailable:', error);
+                set({
+                    annotations: new Map(),
+                    availableTags: [],
+                    isAnnotationsLoaded: true,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+                return;
+            }
             const queuedMetadataImports = drainPendingMetadataTagImports();
 
             set(state => {
@@ -5033,109 +5132,88 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
         },
 
+        hydrateAnnotationsForImages: async (images) => {
+            if (images.length === 0) return;
+            const requestedIdentity = new Map(images.map((image) => [
+                image.id,
+                `${image.assetId ?? ''}\0${image.revisionId ?? ''}\0${image.provenanceLocationId ?? ''}`,
+            ]));
+            registerStableUserDataImages(images);
+            ensureStableUserDataSubscription();
+            try {
+                const hydrated = await hydrateUserDataForImages(images);
+                set(state => {
+                    const annotations = new Map(state.annotations);
+                    const currentHydratedIds = new Set(state.images
+                        .filter((image) => requestedIdentity.get(image.id) === `${image.assetId ?? ''}\0${image.revisionId ?? ''}\0${image.provenanceLocationId ?? ''}`)
+                        .map((image) => image.id));
+                    for (const imageId of currentHydratedIds) annotations.delete(imageId);
+                    for (const annotation of hydrated.annotations.values()) {
+                        if (currentHydratedIds.has(annotation.imageId)) annotations.set(annotation.imageId, annotation);
+                    }
+                    const nextImages = state.images.map((image) => {
+                        if (!currentHydratedIds.has(image.id)) return image;
+                        const annotation = annotations.get(image.id);
+                        return annotation
+                            ? { ...image, isFavorite: annotation.isFavorite, tags: annotation.tags, rating: annotation.rating }
+                            : { ...image, isFavorite: false, tags: [], rating: undefined };
+                    });
+                    const newState = { ...state, annotations, images: nextImages };
+                    return { ...newState, ...filterAndSort(newState) };
+                });
+            } catch (error) {
+                console.error('Failed to hydrate stable user data:', error);
+                set({ error: error instanceof Error ? error.message : String(error) });
+            }
+        },
+
         toggleFavorite: async (imageId) => {
             const { annotations } = get();
 
             const currentAnnotation = annotations.get(imageId);
             const newIsFavorite = !(currentAnnotation?.isFavorite ?? false);
 
-            const updatedAnnotation = buildAnnotationRecord(imageId, currentAnnotation, {
-                isFavorite: newIsFavorite,
-            });
-
-            // Update in-memory state
-            set(state => {
-                const newAnnotations = new Map(state.annotations);
-                newAnnotations.set(imageId, updatedAnnotation);
-
-                const updatedImages = state.images.map(img =>
-                    img.id === imageId ? { ...img, isFavorite: newIsFavorite, rating: updatedAnnotation.rating } : img
-                );
-
-                const newState = {
-                    ...state,
-                    annotations: newAnnotations,
-                    images: updatedImages,
-                };
-
-                return { ...newState, ...filterAndSort(newState) };
-            });
-
-            // Persist to IndexedDB (async, don't await)
-            saveAnnotation(updatedAnnotation).catch(error => {
+            try {
+                const updatedAnnotation = await patchAnnotation(imageId, { set: { isFavorite: newIsFavorite } });
+                if (updatedAnnotation) applyConfirmedAnnotations([updatedAnnotation]);
+            } catch (error) {
                 console.error('Failed to save annotation:', error);
-            });
+                set({ error: error instanceof Error ? error.message : String(error) });
+                throw error;
+            }
         },
 
         bulkToggleFavorite: async (imageIds, isFavorite) => {
-            const { annotations } = get();
-            const updatedAnnotations: ImageAnnotations[] = [];
-
-            for (const imageId of imageIds) {
-                const current = annotations.get(imageId);
-                updatedAnnotations.push(buildAnnotationRecord(imageId, current, {
-                    isFavorite,
-                }));
-            }
-
-            // Update state
-            set(state => {
-                const newAnnotations = new Map(state.annotations);
-                for (const annotation of updatedAnnotations) {
-                    newAnnotations.set(annotation.imageId, annotation);
-                }
-
-                const updatedImages = state.images.map(img => {
-                    const annotation = newAnnotations.get(img.id);
-                    if (annotation && imageIds.includes(img.id)) {
-                        return { ...img, isFavorite: annotation.isFavorite, rating: annotation.rating };
-                    }
-                    return img;
-                });
-
-                const newState = {
-                    ...state,
-                    annotations: newAnnotations,
-                    images: updatedImages,
-                };
-
-                return { ...newState, ...filterAndSort(newState) };
-            });
-
-            // Persist to IndexedDB
-            bulkSaveAnnotations(updatedAnnotations).catch(error => {
+            try {
+                await persistAnnotationPatchBatch(imageIds.map((imageId) => ({
+                    imageId,
+                    patch: { set: { isFavorite } },
+                })));
+            } catch (error) {
                 console.error('Failed to bulk save annotations:', error);
-            });
+                set({ error: error instanceof Error ? error.message : String(error) });
+            }
         },
 
         setImageRating: async (imageId, rating) => {
-            const { annotations } = get();
-            const currentAnnotation = annotations.get(imageId);
-            const normalizedRating = rating ?? undefined;
-            const updatedAnnotation = buildAnnotationRecord(imageId, currentAnnotation, {
-                rating: normalizedRating,
-            });
-
-            set(state => {
-                const newAnnotations = new Map(state.annotations);
-                newAnnotations.set(imageId, updatedAnnotation);
-
-                const updatedImages = state.images.map(img =>
-                    img.id === imageId ? { ...img, rating: normalizedRating } : img
-                );
-
-                const newState = {
-                    ...state,
-                    annotations: newAnnotations,
-                    images: updatedImages,
+            try {
+                const state = get();
+                const currentAnnotation = state.annotations.get(imageId);
+                const currentImage = getImageById(state, imageId);
+                const initialSet = currentAnnotation ? {} : {
+                    isFavorite: currentImage?.isFavorite === true,
+                    tags: [...(currentImage?.tags ?? [])],
+                    addedAt: Date.now(),
                 };
-
-                return { ...newState, ...filterAndSort(newState) };
-            });
-
-            saveAnnotation(updatedAnnotation).catch(error => {
+                const updatedAnnotation = await patchAnnotation(imageId, rating === null
+                    ? { set: initialSet, remove: ['rating'] }
+                    : { set: { ...initialSet, rating } });
+                if (updatedAnnotation) applyConfirmedAnnotations([updatedAnnotation]);
+            } catch (error) {
                 console.error('Failed to save image rating:', error);
-            });
+                set({ error: error instanceof Error ? error.message : String(error) });
+                throw error;
+            }
         },
 
         bulkSetImageRating: async (imageIds, rating) => {
@@ -5143,37 +5221,27 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            const { annotations } = get();
-            const normalizedRating = rating ?? undefined;
-            const updatedAnnotations = imageIds.map(imageId =>
-                buildAnnotationRecord(imageId, annotations.get(imageId), {
-                    rating: normalizedRating,
-                })
-            );
-
-            set(state => {
-                const newAnnotations = new Map(state.annotations);
-                for (const annotation of updatedAnnotations) {
-                    newAnnotations.set(annotation.imageId, annotation);
-                }
-
-                const imageIdsSet = new Set(imageIds);
-                const updatedImages = state.images.map(img =>
-                    imageIdsSet.has(img.id) ? { ...img, rating: normalizedRating } : img
-                );
-
-                const newState = {
-                    ...state,
-                    annotations: newAnnotations,
-                    images: updatedImages,
-                };
-
-                return { ...newState, ...filterAndSort(newState) };
-            });
-
-            bulkSaveAnnotations(updatedAnnotations).catch(error => {
+            try {
+                await persistAnnotationPatchBatch(imageIds.map((imageId) => ({
+                    imageId,
+                    patch: (() => {
+                        const state = get();
+                        const currentAnnotation = state.annotations.get(imageId);
+                        const currentImage = getImageById(state, imageId);
+                        const initialSet = currentAnnotation ? {} : {
+                            isFavorite: currentImage?.isFavorite === true,
+                            tags: [...(currentImage?.tags ?? [])],
+                            addedAt: Date.now(),
+                        };
+                        return rating === null
+                            ? { set: initialSet, remove: ['rating'] }
+                            : { set: { ...initialSet, rating } };
+                    })(),
+                })));
+            } catch (error) {
                 console.error('Failed to bulk save image ratings:', error);
-            });
+                set({ error: error instanceof Error ? error.message : String(error) });
+            }
         },
 
         addTagToImage: async (imageId, tag) => {
@@ -5188,41 +5256,21 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            const updatedAnnotation = buildAnnotationRecord(imageId, currentAnnotation, {
-                tags: [...(currentAnnotation?.tags ?? []), normalizedTag],
-            });
-
-            let nextRecentTags = get().recentTags;
-
-            // Update state
-            set(state => {
-                const newAnnotations = new Map(state.annotations);
-                newAnnotations.set(imageId, updatedAnnotation);
-
-                const updatedImages = state.images.map(img =>
-                    img.id === imageId ? { ...img, tags: updatedAnnotation.tags, rating: updatedAnnotation.rating } : img
-                );
-
-                nextRecentTags = updateRecentTags(state.recentTags, normalizedTag);
-                const newState = {
-                    ...state,
-                    annotations: newAnnotations,
-                    images: updatedImages,
-                    recentTags: nextRecentTags,
-                };
-
-                return { ...newState, ...filterAndSort(newState) };
-            });
-
-            persistRecentTags(nextRecentTags);
-
-            // Persist and refresh tags
-            await Promise.all([
-                saveAnnotation(updatedAnnotation),
-                ensureManualTagExists(normalizedTag),
-            ]).catch(error => {
+            try {
+                const updatedAnnotation = await patchAnnotation(imageId, {
+                    addTags: [normalizedTag],
+                    unsuppressTags: [normalizedTag],
+                });
+                if (updatedAnnotation) applyConfirmedAnnotations([updatedAnnotation]);
+                const nextRecentTags = updateRecentTags(get().recentTags, normalizedTag);
+                set({ recentTags: nextRecentTags });
+                persistRecentTags(nextRecentTags);
+                await ensureManualTagExists(normalizedTag);
+            } catch (error) {
                 console.error('Failed to save annotation:', error);
-            });
+                set({ error: error instanceof Error ? error.message : String(error) });
+                throw error;
+            }
             await get().refreshAvailableTags();
         },
 
@@ -5234,35 +5282,18 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            const updatedAnnotation: ImageAnnotations = {
-                ...currentAnnotation,
-                tags: currentAnnotation.tags.filter(t => t !== tag),
-                updatedAt: Date.now(),
-            };
-
-            // Update state
-            set(state => {
-                const newAnnotations = new Map(state.annotations);
-                newAnnotations.set(imageId, updatedAnnotation);
-
-                const updatedImages = state.images.map(img =>
-                    img.id === imageId ? { ...img, tags: updatedAnnotation.tags, rating: updatedAnnotation.rating } : img
-                );
-
-                const newState = {
-                    ...state,
-                    annotations: newAnnotations,
-                    images: updatedImages,
-                };
-
-                return { ...newState, ...filterAndSort(newState) };
-            });
-
-            // Persist and refresh tags
-            saveAnnotation(updatedAnnotation).catch(error => {
+            try {
+                const updatedAnnotation = await patchAnnotation(imageId, {
+                    removeTags: [tag],
+                    suppressTags: [tag],
+                });
+                if (updatedAnnotation) applyConfirmedAnnotations([updatedAnnotation]);
+            } catch (error) {
                 console.error('Failed to save annotation:', error);
-            });
-            get().refreshAvailableTags();
+                set({ error: error instanceof Error ? error.message : String(error) });
+                throw error;
+            }
+            await get().refreshAvailableTags();
         },
 
         removeAutoTagFromImage: (imageId, tag) => {
@@ -5290,105 +5321,33 @@ export const useImageStore = create<ImageState>((set, get) => {
             const normalizedTag = normalizeTagName(tag);
             if (!normalizedTag || imageIds.length === 0) return;
 
-            const { annotations } = get();
-            const updatedAnnotations: ImageAnnotations[] = [];
-
-            for (const imageId of imageIds) {
-                const current = annotations.get(imageId);
-                if (current?.tags.includes(normalizedTag)) {
-                    continue; // Skip if already tagged
-                }
-
-                updatedAnnotations.push(buildAnnotationRecord(imageId, current, {
-                    tags: [...(current?.tags ?? []), normalizedTag],
-                }));
-            }
-
-            let nextRecentTags = get().recentTags;
-
-            // Update state
-            set(state => {
-                const newAnnotations = new Map(state.annotations);
-                for (const annotation of updatedAnnotations) {
-                    newAnnotations.set(annotation.imageId, annotation);
-                }
-
-                const updatedImages = state.images.map(img => {
-                    const annotation = newAnnotations.get(img.id);
-                    if (annotation && imageIds.includes(img.id)) {
-                        return { ...img, tags: annotation.tags, rating: annotation.rating };
-                    }
-                    return img;
-                });
-
-                nextRecentTags = updateRecentTags(state.recentTags, normalizedTag);
-                const newState = {
-                    ...state,
-                    annotations: newAnnotations,
-                    images: updatedImages,
-                    recentTags: nextRecentTags,
-                };
-
-                return { ...newState, ...filterAndSort(newState) };
-            });
-
-            persistRecentTags(nextRecentTags);
-
-            // Persist and refresh tags
-            await Promise.all([
-                bulkSaveAnnotations(updatedAnnotations),
-                ensureManualTagExists(normalizedTag),
-            ]).catch(error => {
+            try {
+                await persistAnnotationPatchBatch(imageIds.map((imageId) => ({
+                    imageId,
+                    patch: { addTags: [normalizedTag], unsuppressTags: [normalizedTag] },
+                })));
+                const nextRecentTags = updateRecentTags(get().recentTags, normalizedTag);
+                set({ recentTags: nextRecentTags });
+                persistRecentTags(nextRecentTags);
+                await ensureManualTagExists(normalizedTag);
+            } catch (error) {
                 console.error('Failed to bulk save annotations:', error);
-            });
+                set({ error: error instanceof Error ? error.message : String(error) });
+            }
             await get().refreshAvailableTags();
         },
 
         bulkRemoveTag: async (imageIds, tag) => {
-            const { annotations } = get();
-            const updatedAnnotations: ImageAnnotations[] = [];
-
-            for (const imageId of imageIds) {
-                const current = annotations.get(imageId);
-                if (!current || !current.tags.includes(tag)) {
-                    continue; // Skip if doesn't have this tag
-                }
-
-                updatedAnnotations.push({
-                    ...current,
-                    tags: current.tags.filter(t => t !== tag),
-                    updatedAt: Date.now(),
-                });
-            }
-
-            // Update state
-            set(state => {
-                const newAnnotations = new Map(state.annotations);
-                for (const annotation of updatedAnnotations) {
-                    newAnnotations.set(annotation.imageId, annotation);
-                }
-
-                const updatedImages = state.images.map(img => {
-                    const annotation = newAnnotations.get(img.id);
-                    if (annotation && imageIds.includes(img.id)) {
-                        return { ...img, tags: annotation.tags, rating: annotation.rating };
-                    }
-                    return img;
-                });
-
-                const newState = {
-                    ...state,
-                    annotations: newAnnotations,
-                    images: updatedImages,
-                };
-
-                return { ...newState, ...filterAndSort(newState) };
-            });
-
-            // Persist and refresh tags
-            await bulkSaveAnnotations(updatedAnnotations).catch(error => {
+            const targets = imageIds.filter((imageId) => get().annotations.get(imageId)?.tags.includes(tag));
+            try {
+                await persistAnnotationPatchBatch(targets.map((imageId) => ({
+                    imageId,
+                    patch: { removeTags: [tag], suppressTags: [tag] },
+                })));
+            } catch (error) {
                 console.error('Failed to bulk save annotations:', error);
-            });
+                set({ error: error instanceof Error ? error.message : String(error) });
+            }
             await get().refreshAvailableTags();
         },
 
@@ -5435,6 +5394,22 @@ export const useImageStore = create<ImageState>((set, get) => {
                 });
             }
 
+            try {
+                const stableRecords = await mutateAnnotationTagGlobally('rename', normalizedSource, normalizedTarget);
+                if (stableRecords) {
+                    updatedAnnotations.length = 0;
+                    const hydrated = await loadAnnotationsForImages(get().images);
+                    updatedAnnotations.push(...hydrated.values());
+                } else if (updatedAnnotations.length > 0) {
+                    const persisted = await persistAnnotationSnapshots(updatedAnnotations);
+                    updatedAnnotations.splice(0, updatedAnnotations.length, ...persisted);
+                }
+            } catch (error) {
+                console.error('Failed to persist renamed annotation tags:', error);
+                set({ error: error instanceof Error ? error.message : String(error) });
+                return;
+            }
+
             let nextRecentTags = get().recentTags;
 
             set(state => {
@@ -5474,7 +5449,6 @@ export const useImageStore = create<ImageState>((set, get) => {
             persistRecentTags(nextRecentTags);
 
             await Promise.all([
-                updatedAnnotations.length > 0 ? bulkSaveAnnotations(updatedAnnotations) : Promise.resolve(),
                 renameManualTag(normalizedSource, normalizedTarget),
                 ...updatedCollections.map((collection) => saveSmartCollection(collection)),
             ]).catch(error => {
@@ -5504,6 +5478,22 @@ export const useImageStore = create<ImageState>((set, get) => {
                 });
             }
 
+            try {
+                const stableRecords = await mutateAnnotationTagGlobally('remove', normalizedTag);
+                if (stableRecords) {
+                    updatedAnnotations.length = 0;
+                    const hydrated = await loadAnnotationsForImages(get().images);
+                    updatedAnnotations.push(...hydrated.values());
+                } else if (updatedAnnotations.length > 0) {
+                    const persisted = await persistAnnotationSnapshots(updatedAnnotations);
+                    updatedAnnotations.splice(0, updatedAnnotations.length, ...persisted);
+                }
+            } catch (error) {
+                console.error('Failed to persist cleared annotation tag:', error);
+                set({ error: error instanceof Error ? error.message : String(error) });
+                return;
+            }
+
             set(state => {
                 const newAnnotations = new Map(state.annotations);
                 for (const annotation of updatedAnnotations) {
@@ -5524,7 +5514,6 @@ export const useImageStore = create<ImageState>((set, get) => {
 
             await Promise.all([
                 ensureManualTagExists(normalizedTag),
-                updatedAnnotations.length > 0 ? bulkSaveAnnotations(updatedAnnotations) : Promise.resolve(),
             ]).catch(error => {
                 console.error('Failed to clear tag:', error);
             });
@@ -5587,6 +5576,22 @@ export const useImageStore = create<ImageState>((set, get) => {
                 });
             }
 
+            try {
+                const stableRecords = await mutateAnnotationTagGlobally('remove', normalizedTag);
+                if (stableRecords) {
+                    updatedAnnotations.length = 0;
+                    const hydrated = await loadAnnotationsForImages(get().images);
+                    updatedAnnotations.push(...hydrated.values());
+                } else if (updatedAnnotations.length > 0) {
+                    const persisted = await persistAnnotationSnapshots(updatedAnnotations);
+                    updatedAnnotations.splice(0, updatedAnnotations.length, ...persisted);
+                }
+            } catch (error) {
+                console.error('Failed to persist purged annotation tag:', error);
+                set({ error: error instanceof Error ? error.message : String(error) });
+                return;
+            }
+
             let nextRecentTags = get().recentTags;
 
             set(state => {
@@ -5612,7 +5617,6 @@ export const useImageStore = create<ImageState>((set, get) => {
             persistRecentTags(nextRecentTags);
 
             await Promise.all([
-                updatedAnnotations.length > 0 ? bulkSaveAnnotations(updatedAnnotations) : Promise.resolve(),
                 deleteManualTag(normalizedTag),
             ]).catch(error => {
                 console.error('Failed to purge tag:', error);
@@ -5662,8 +5666,16 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         refreshAvailableTags: async () => {
-            const tags = await getAllTags();
-            set({ availableTags: tags });
+            try {
+                const tags = await getAllAuthoritativeTags();
+                set({ availableTags: tags });
+            } catch (error) {
+                console.error('Failed to load authoritative tags:', error);
+                set({
+                    availableTags: [],
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
         },
 
         refreshAvailableAutoTags: () => {
@@ -5716,52 +5728,32 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 const currentAnnotation = annotations.get(image.id);
                 const existingTags = currentAnnotation?.tags ?? [];
+                const suppressedTags = currentAnnotation?.suppressedMetadataTags ?? [];
 
                 // Normalize and filter out duplicates
                 const newTags = metadataTags
                     .map(tag => normalizeTagName(tag))
-                    .filter(tag => tag && !existingTags.includes(tag));
+                    .filter(tag => tag && !existingTags.includes(tag) && !suppressedTags.includes(tag));
 
                 if (newTags.length === 0) continue;
 
-                const updatedAnnotation = buildAnnotationRecord(image.id, currentAnnotation, {
-                    tags: [...existingTags, ...newTags],
-                });
-
-                updatedAnnotations.push(updatedAnnotation);
+                try {
+                    const updatedAnnotation = await patchAnnotation(image.id, { importTags: newTags });
+                    if (updatedAnnotation) updatedAnnotations.push(updatedAnnotation);
+                } catch (error) {
+                    console.error(`Failed to import metadata tags for ${image.id}:`, error);
+                    set({ error: error instanceof Error ? error.message : String(error) });
+                }
             }
 
             if (updatedAnnotations.length > 0) {
-                // Update state
-                set(state => {
-                    const newAnnotations = new Map(state.annotations);
-                    for (const annotation of updatedAnnotations) {
-                        newAnnotations.set(annotation.imageId, annotation);
-                    }
-
-                    const updatedImages = state.images.map(img => {
-                        const annotation = newAnnotations.get(img.id);
-                        return annotation ? { ...img, tags: annotation.tags, rating: annotation.rating } : img;
-                    });
-
-                    const newState = {
-                        ...state,
-                        annotations: newAnnotations,
-                        images: updatedImages,
-                    };
-
-                    return { ...newState, ...filterAndSort(newState) };
-                });
+                applyConfirmedAnnotations(updatedAnnotations);
 
                 const importedTagNames = Array.from(new Set(
                     updatedAnnotations.flatMap(annotation => annotation.tags)
                 ));
 
-                // Persist annotations
-                await Promise.all([
-                    bulkSaveAnnotations(updatedAnnotations),
-                    ...importedTagNames.map(tagName => ensureManualTagExists(tagName)),
-                ]).catch(error => {
+                await Promise.all(importedTagNames.map(tagName => ensureManualTagExists(tagName))).catch(error => {
                     console.error('Failed to import metadata tags:', error);
                 });
 

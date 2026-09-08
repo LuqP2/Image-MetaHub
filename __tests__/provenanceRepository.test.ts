@@ -240,6 +240,16 @@ describe('AssetProvenanceRepository production contract', () => {
     const lifecycle = new ProvenanceRepositoryLifecycle({ userDataPath, logger: { error: vi.fn() } });
     expect(lifecycle.initialize()).toMatchObject({ available: true });
     lifecycle.run((repository) => repository.createAssetWithRevisionAndLocation(initialRecord({ sha256: sha('e') })));
+    lifecycle.run((repository) => repository.syncLegacyUserDataBatch([{
+      domain: 'annotation', legacyImageId: 'backup-ui-id',
+      reference: {
+        assetId: initialRecord().assetId,
+        revisionId: initialRecord().revisionId,
+        locationId: initialRecord().locationId,
+      },
+      payload: { isFavorite: true, tags: ['backup'], rating: 5, addedAt: 10, updatedAt: 20 },
+      sourceVersion: 0,
+    }]));
 
     const liveReader = new AssetProvenanceRepository({ databasePath: resolveProvenanceCatalogPath(userDataPath), readOnly: true });
     liveReader.open();
@@ -271,6 +281,8 @@ describe('AssetProvenanceRepository production contract', () => {
     expect(backup.getAsset(initialRecord().assetId as string)).not.toBeNull();
     expect(backup.getAsset('55555555-5555-4555-8555-555555555555')).not.toBeNull();
     expect(backup.getAsset('88888888-8888-4888-8888-888888888888')).toBeNull();
+    expect(backup.captureAssetUserDataSnapshot(initialRecord().assetId as string, 30)[0]?.payload)
+      .toMatchObject({ isFavorite: true, tags: ['backup'], rating: 5, addedAt: 10 });
     backup.close();
     expect(lifecycle.run((repository) => repository.getAsset('88888888-8888-4888-8888-888888888888'))).not.toBeNull();
     lifecycle.close();
@@ -285,6 +297,16 @@ describe('AssetProvenanceRepository production contract', () => {
     });
     lifecycle.initialize();
     lifecycle.run((repository) => repository.createAssetWithRevisionAndLocation(initialRecord()));
+    lifecycle.run((repository) => repository.syncLegacyUserDataBatch([{
+      domain: 'annotation', legacyImageId: 'reset-ui-id',
+      reference: {
+        assetId: initialRecord().assetId,
+        revisionId: initialRecord().revisionId,
+        locationId: initialRecord().locationId,
+      },
+      payload: { isFavorite: false, tags: [], addedAt: 10, updatedAt: 20 },
+      sourceVersion: 0,
+    }]));
 
     expect(() => lifecycle.createBackup(path.join(userDataPath, 'backup.sqlite')))
       .toThrowError(expect.objectContaining({ code: 'PROVENANCE_BACKUP_FAILED' }));
@@ -299,6 +321,16 @@ describe('provenance repository lifecycle and cache independence', () => {
     const lifecycle = new ProvenanceRepositoryLifecycle({ userDataPath, logger: { error: vi.fn() } });
     lifecycle.initialize();
     lifecycle.run((repository) => repository.createAssetWithRevisionAndLocation(initialRecord()));
+    lifecycle.run((repository) => repository.syncLegacyUserDataBatch([{
+      domain: 'annotation', legacyImageId: 'reset-ui-id',
+      reference: {
+        assetId: initialRecord().assetId,
+        revisionId: initialRecord().revisionId,
+        locationId: initialRecord().locationId,
+      },
+      payload: { isFavorite: false, tags: [], addedAt: 10, updatedAt: 20 },
+      sourceVersion: 0,
+    }]));
     await fs.writeFile(path.join(userDataPath, 'disposable-cache.json'), '{}', 'utf8');
 
     await resetUserDataContents({ userDataDir: userDataPath });
@@ -309,6 +341,8 @@ describe('provenance repository lifecycle and cache independence', () => {
     const reopened = new ProvenanceRepositoryLifecycle({ userDataPath, logger: { error: vi.fn() } });
     expect(reopened.initialize()).toMatchObject({ available: true, schemaVersion: PROVENANCE_SCHEMA_VERSION });
     expect(reopened.run((repository) => repository.getAsset(initialRecord().assetId as string))).not.toBeNull();
+    expect(reopened.run((repository) => repository.captureAssetUserDataSnapshot(initialRecord().assetId as string, 30))[0]?.payload)
+      .toMatchObject({ isFavorite: false, tags: [], addedAt: 10 });
     reopened.close();
   });
 

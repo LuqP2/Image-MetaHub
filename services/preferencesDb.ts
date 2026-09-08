@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 export const PREFERENCES_DB_NAME = 'image-metahub-preferences';
-export const PREFERENCES_DB_VERSION = 7;
+export const PREFERENCES_DB_VERSION = 8;
 
 export const PREFERENCES_STORE_NAMES = {
   folderSelection: 'folderSelection',
@@ -10,6 +10,7 @@ export const PREFERENCES_STORE_NAMES = {
   clusterPreferences: 'clusterPreferences',
   smartCollections: 'smartCollections',
   shadowMetadata: 'shadowMetadata',
+  userDataMigrationOutbox: 'userDataMigrationOutbox',
   automationRules: 'automationRules',
 } as const;
 
@@ -175,6 +176,7 @@ function upgradePreferencesDatabase(request: IDBOpenDBRequest, oldVersion: numbe
   ensureIndex(smartCollectionsStore, 'type', 'type', { unique: false });
 
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.shadowMetadata, { keyPath: 'imageId' });
+  ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.userDataMigrationOutbox, { keyPath: 'key' });
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.automationRules, { keyPath: 'id' });
 
   const manualTagsStore = ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.manualTags, { keyPath: 'name' });
@@ -182,8 +184,8 @@ function upgradePreferencesDatabase(request: IDBOpenDBRequest, oldVersion: numbe
     seedManualTagsFromAnnotations(annotationStore, manualTagsStore);
   }
 
-  if (oldVersion < 7) {
-    console.log('Shared preferences database upgraded to v7.');
+  if (oldVersion < 8) {
+    console.log('Shared preferences database upgraded to v8.');
   }
 }
 
