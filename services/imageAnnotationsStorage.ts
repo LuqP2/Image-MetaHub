@@ -193,21 +193,19 @@ export async function loadAllAnnotations(): Promise<Map<string, ImageAnnotations
  * Save a single annotation to IndexedDB
  */
 export async function saveAnnotation(annotation: ImageAnnotations): Promise<void> {
-  inMemoryAnnotations.set(annotation.imageId, annotation);
-
   if (isPersistenceDisabled) {
-    return;
+    throw new Error('Image annotation persistence is unavailable for this session.');
   }
 
   const db = await openDatabase();
   if (!db) {
-    return;
+    throw new Error('Image annotation persistence is unavailable.');
   }
 
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
-    const request = store.put(annotation);
+    store.put(annotation);
 
     const close = () => {
       try {
@@ -217,18 +215,23 @@ export async function saveAnnotation(annotation: ImageAnnotations): Promise<void
       }
     };
 
-    transaction.oncomplete = close;
-    transaction.onabort = close;
-    transaction.onerror = close;
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => {
-      console.error('Failed to save image annotation', request.error);
-      reject(request.error);
+    transaction.oncomplete = () => {
+      inMemoryAnnotations.set(annotation.imageId, annotation);
+      close();
+      resolve();
+    };
+    transaction.onabort = () => {
+      close();
+      reject(transaction.error ?? new Error('Image annotation transaction was aborted.'));
+    };
+    transaction.onerror = () => {
+      close();
+      reject(transaction.error ?? new Error('Image annotation transaction failed.'));
     };
   }).catch((error) => {
     console.error('IndexedDB save error for image annotation:', error);
     disablePersistence(error);
+    throw error;
   });
 }
 
@@ -240,18 +243,14 @@ export async function saveAnnotation(annotation: ImageAnnotations): Promise<void
  * Bulk delete multiple annotations in a single transaction
  */
 export async function bulkDeleteAnnotations(imageIds: string[]): Promise<void> {
-  // Update in-memory cache
-  for (const imageId of imageIds) {
-    inMemoryAnnotations.delete(imageId);
-  }
-
-  if (isPersistenceDisabled || imageIds.length === 0) {
+  if (imageIds.length === 0) {
     return;
   }
+  if (isPersistenceDisabled) throw new Error('Image annotation persistence is unavailable for this session.');
 
   const db = await openDatabase();
   if (!db) {
-    return;
+    throw new Error('Image annotation persistence is unavailable.');
   }
 
   return new Promise<void>((resolve, reject) => {
@@ -259,6 +258,8 @@ export async function bulkDeleteAnnotations(imageIds: string[]): Promise<void> {
     const store = transaction.objectStore(STORE_NAME);
 
     transaction.oncomplete = () => {
+      for (const imageId of imageIds) inMemoryAnnotations.delete(imageId);
+      db.close();
       resolve();
     };
     transaction.onerror = () => {
@@ -273,25 +274,24 @@ export async function bulkDeleteAnnotations(imageIds: string[]): Promise<void> {
   }).catch((error) => {
     console.error('IndexedDB bulk delete error for image annotations:', error);
     disablePersistence(error);
+    throw error;
   });
 }
 
 export async function deleteAnnotation(imageId: string): Promise<void> {
-  inMemoryAnnotations.delete(imageId);
-
   if (isPersistenceDisabled) {
-    return;
+    throw new Error('Image annotation persistence is unavailable for this session.');
   }
 
   const db = await openDatabase();
   if (!db) {
-    return;
+    throw new Error('Image annotation persistence is unavailable.');
   }
 
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
-    const request = store.delete(imageId);
+    store.delete(imageId);
 
     const close = () => {
       try {
@@ -301,18 +301,23 @@ export async function deleteAnnotation(imageId: string): Promise<void> {
       }
     };
 
-    transaction.oncomplete = close;
-    transaction.onabort = close;
-    transaction.onerror = close;
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => {
-      console.error('Failed to delete image annotation', request.error);
-      reject(request.error);
+    transaction.oncomplete = () => {
+      inMemoryAnnotations.delete(imageId);
+      close();
+      resolve();
+    };
+    transaction.onabort = () => {
+      close();
+      reject(transaction.error ?? new Error('Image annotation delete transaction was aborted.'));
+    };
+    transaction.onerror = () => {
+      close();
+      reject(transaction.error ?? new Error('Image annotation delete transaction failed.'));
     };
   }).catch((error) => {
     console.error('IndexedDB delete error for image annotation:', error);
     disablePersistence(error);
+    throw error;
   });
 }
 
@@ -337,9 +342,6 @@ export async function bulkTransferImagePersistence(
   mode: 'copy' | 'move'
 ): Promise<void> {
   if (transfers.length === 0) return;
-
-  // 1. Get all current annotations and shadow metadata
-  const sourceImageIds = transfers.map(t => t.sourceImageId);
 
   // We can just loop and get them sequentially for simplicity, or we could do a bulkGet.
   // Given we have in-memory cache for annotations, sequential is relatively fast.
@@ -423,18 +425,13 @@ export async function transferImagePersistence(
  * Bulk save multiple annotations in a single transaction (for performance)
  */
 export async function bulkSaveAnnotations(annotations: ImageAnnotations[]): Promise<void> {
-  // Update in-memory cache
-  for (const annotation of annotations) {
-    inMemoryAnnotations.set(annotation.imageId, annotation);
-  }
-
   if (isPersistenceDisabled) {
-    return;
+    throw new Error('Image annotation persistence is unavailable for this session.');
   }
 
   const db = await openDatabase();
   if (!db) {
-    return;
+    throw new Error('Image annotation persistence is unavailable.');
   }
 
   await new Promise<void>((resolve, reject) => {
@@ -450,6 +447,7 @@ export async function bulkSaveAnnotations(annotations: ImageAnnotations[]): Prom
     };
 
     transaction.oncomplete = () => {
+      for (const annotation of annotations) inMemoryAnnotations.set(annotation.imageId, annotation);
       close();
       resolve();
     };
@@ -470,6 +468,7 @@ export async function bulkSaveAnnotations(annotations: ImageAnnotations[]): Prom
   }).catch((error) => {
     console.error('IndexedDB bulk save error for image annotations:', error);
     disablePersistence(error);
+    throw error;
   });
 }
 
@@ -1427,7 +1426,7 @@ export async function saveShadowMetadata(metadata: ShadowMetadata): Promise<void
   const db = await openDatabase();
   if (!db) return;
 
-  metadata.updatedAt = Date.now();
+  const record = { ...metadata, updatedAt: metadata.updatedAt ?? Date.now() };
 
   return new Promise((resolve, reject) => {
      // Check if store exists
@@ -1438,13 +1437,11 @@ export async function saveShadowMetadata(metadata: ShadowMetadata): Promise<void
 
     const transaction = db.transaction([SHADOW_METADATA_STORE_NAME], 'readwrite');
     const store = transaction.objectStore(SHADOW_METADATA_STORE_NAME);
-    const request = store.put(metadata);
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => {
-      console.error('Error saving shadow metadata:', request.error);
-      reject(request.error);
-    };
+    const transactionDone = () => db.close();
+    store.put(record);
+    transaction.oncomplete = () => { transactionDone(); resolve(); };
+    transaction.onabort = () => { transactionDone(); reject(transaction.error ?? new Error('Shadow metadata transaction was aborted.')); };
+    transaction.onerror = () => { transactionDone(); reject(transaction.error ?? new Error('Shadow metadata transaction failed.')); };
   });
 }
 
@@ -1465,19 +1462,16 @@ export async function bulkSaveShadowMetadata(metadataRecords: ShadowMetadata[]):
     const store = transaction.objectStore(SHADOW_METADATA_STORE_NAME);
 
     for (const record of metadataRecords) {
-      const cleanedRecord = Object.fromEntries(
-        Object.entries(record).filter(([, value]) => value !== null && value !== undefined),
-      ) as ShadowMetadata;
-
       store.put({
-        ...cleanedRecord,
-        updatedAt: Date.now(),
+        ...record,
+        updatedAt: record.updatedAt ?? Date.now(),
       });
     }
 
-    transaction.oncomplete = () => resolve();
+    transaction.oncomplete = () => { db.close(); resolve(); };
     transaction.onerror = () => {
       console.error('Error bulk saving shadow metadata:', transaction.error);
+      db.close();
       reject(transaction.error);
     };
   });
@@ -1504,9 +1498,10 @@ export async function bulkDeleteShadowMetadata(imageIds: string[]): Promise<void
     const transaction = db.transaction([SHADOW_METADATA_STORE_NAME], 'readwrite');
     const store = transaction.objectStore(SHADOW_METADATA_STORE_NAME);
 
-    transaction.oncomplete = () => resolve();
+    transaction.oncomplete = () => { db.close(); resolve(); };
     transaction.onerror = () => {
       console.error('Error bulk deleting shadow metadata:', transaction.error);
+      db.close();
       reject(transaction.error);
     };
 
@@ -1529,13 +1524,10 @@ export async function deleteShadowMetadata(imageId: string): Promise<void> {
 
     const transaction = db.transaction([SHADOW_METADATA_STORE_NAME], 'readwrite');
     const store = transaction.objectStore(SHADOW_METADATA_STORE_NAME);
-    const request = store.delete(imageId);
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => {
-      console.error('Error deleting shadow metadata:', request.error);
-      reject(request.error);
-    };
+    store.delete(imageId);
+    transaction.oncomplete = () => { db.close(); resolve(); };
+    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error('Shadow metadata delete transaction was aborted.')); };
+    transaction.onerror = () => { db.close(); reject(transaction.error ?? new Error('Shadow metadata delete transaction failed.')); };
   });
 }
 

@@ -281,6 +281,26 @@ export interface IndexedImageTransferResultItem {
   lastModified?: number;
   birthtimeMs?: number;
   type?: string;
+  provenance?: {
+    enabled: boolean;
+    available?: boolean;
+    pending?: boolean;
+    error?: string;
+    operation?: {
+      operationId: string;
+      kind: IndexedImageTransferMode;
+      state: string;
+      result?: {
+        mapping?: {
+          assetId: string;
+          revisionId: string;
+          locationId: string;
+          rootId: string;
+          relativePath: string;
+        } | null;
+      } | null;
+    };
+  };
 }
 
 export interface UpdateReleaseNote {
@@ -429,7 +449,7 @@ export interface TrialActivationResult {
 }
 
 export interface ElectronAPI {
-  trashFile: (filename: string) => Promise<{
+  trashFile: (filename: string, userDataContext?: StableUserDataOperationContext) => Promise<{
     success: boolean;
     error?: string;
     permanentDeleteToken?: string;
@@ -443,7 +463,11 @@ export interface ElectronAPI {
     failedTokens: string[];
     error?: string;
   }>;
-  renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
+  renameFile: (
+    oldName: string,
+    newName: string,
+    userDataContext?: StableUserDataOperationContext,
+  ) => Promise<{ success: boolean; error?: string }>;
   setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
@@ -470,6 +494,30 @@ export interface ElectronAPI {
       observationVersion?: number;
     }>;
   }) => void) => () => void;
+  stableUserDataStatus: () => Promise<StableUserDataStatus>;
+  stableUserDataSync: (args: { entries: StableUserDataSyncEntry[] }) => Promise<StableUserDataIpcResult<StableUserDataSyncResult[]>>;
+  stableUserDataMutate: (input: StableUserDataMutationInput) => Promise<StableUserDataIpcResult<StableUserDataRecord>>;
+  stableUserDataReserveLegacyMutation: (input: {
+    mutationId: string;
+    domain: StableUserDataDomain;
+    legacyImageId: string;
+    patch: UserDataSemanticPatch;
+  }) => Promise<StableUserDataIpcResult<{ mutationId: string; sequence: number; state: string }>>;
+  stableUserDataFinalizeLegacyMutation: (input: {
+    mutationId: string;
+    sourceVersion: number;
+    payload: Record<string, unknown> | null;
+    tombstone: boolean;
+  }) => Promise<StableUserDataIpcResult<{ mutationId: string; sequence: number; state: string; record?: StableUserDataRecord | null }>>;
+  stableUserDataCompleteLegacyScan: () => Promise<StableUserDataIpcResult<StableUserDataStatus>>;
+  stableUserDataGlobalTagMutation: (input: {
+    action: 'rename' | 'remove';
+    sourceTag: string;
+    targetTag?: string;
+    updatedAt: number;
+  }) => Promise<StableUserDataIpcResult<StableUserDataRecord[]>>;
+  stableUserDataTagCounts: () => Promise<StableUserDataIpcResult<TagInfo[]>>;
+  onStableUserDataChanged: (callback: (payload: { records: StableUserDataRecord[] }) => void) => () => void;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
   hashFileSha256: (filePath: string, requestId: string) => Promise<{ success: boolean; sha256?: string; error?: string; errorType?: string; errorCode?: string }>;
   cancelFileSha256: (requestId: string) => void;
@@ -481,14 +529,23 @@ export interface ElectronAPI {
   writeFile: (
     filePath: string,
     data: any,
-    provenanceContext?: { kind: 'save_as' | 'overwrite'; sourcePath?: string },
+    provenanceContext?: {
+      kind: 'save_as' | 'overwrite';
+      sourcePath?: string;
+      userDataContext?: StableUserDataOperationContext;
+    },
   ) => Promise<{ success: boolean; error?: string; provenance?: { enabled: boolean; available?: boolean; pending?: boolean; error?: string } }>;
   writeModel3DExport: (args: { filePath: string; modelData: Uint8Array; sidecarData?: Uint8Array }) => Promise<{ success: boolean; error?: string }>;
   exportBatchToFolder: (args: ExportBatchRequest & { destDir: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   exportBatchToZip: (args: ExportBatchRequest & { destZipPath: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   cancelBatchExport: (args: { exportId: string }) => Promise<{ success: boolean; error?: string }>;
   transferIndexedImages: (args: {
-    files: { directoryPath: string; relativePath: string }[];
+    files: {
+      directoryPath: string;
+      relativePath: string;
+      legacyImageId?: string;
+      stableReference?: StableUserDataReference;
+    }[];
     destDir: string;
     mode: IndexedImageTransferMode;
     transferId?: string;
@@ -713,6 +770,88 @@ export interface EditableMetadataFields {
 export interface ShadowMetadata extends EditableMetadataFields {
   imageId: string; // Key, links to IndexedImage.id
   updatedAt: number;
+  assetId?: string;
+  persistenceVersion?: number;
+}
+
+export type StableUserDataDomain = 'annotation' | 'shadow';
+
+export interface StableUserDataReference {
+  assetId: string;
+  revisionId: string;
+  locationId: string;
+}
+
+export interface StableUserDataOperationContext {
+  legacyImageId: string;
+  stableReference?: StableUserDataReference;
+  copyUserData?: boolean;
+}
+
+export interface UserDataSemanticPatch {
+  set?: Record<string, unknown>;
+  remove?: string[];
+  deleteRecord?: boolean;
+  addTags?: string[];
+  removeTags?: string[];
+  suppressTags?: string[];
+  unsuppressTags?: string[];
+  importTags?: string[];
+}
+
+export interface StableUserDataRecord {
+  assetId: string;
+  domain: StableUserDataDomain;
+  payload: Record<string, unknown> | null;
+  tombstone: boolean;
+  version: number;
+  authority: 'legacy' | 'sqlite';
+  legacySourceVersion: number;
+  migratedAt: string | null;
+  updatedAt: string;
+}
+
+export interface StableUserDataStatus {
+  initialized: boolean;
+  authority: 'legacy' | 'sqlite';
+  available: boolean;
+  migrationEnabled: boolean;
+  indexingEnabled: boolean;
+  legacyScanComplete?: boolean;
+  legacyScanCompletedAt?: string | null;
+  error?: { code?: string; message?: string } | null;
+}
+
+export interface StableUserDataIpcResult<T> {
+  success: boolean;
+  value?: T;
+  error?: string;
+  code?: string;
+  details?: { current?: StableUserDataRecord } | null;
+}
+
+export interface StableUserDataSyncEntry {
+  domain: StableUserDataDomain;
+  legacyImageId: string;
+  reference?: StableUserDataReference;
+  payload?: Record<string, unknown> | null;
+  tombstone?: boolean;
+  sourceVersion?: number;
+}
+
+export interface StableUserDataSyncResult {
+  domain: StableUserDataDomain;
+  legacyImageId: string;
+  status: 'bound' | 'pending' | 'unmapped' | 'ambiguous' | 'source_ack_required';
+  record: StableUserDataRecord | null;
+}
+
+export interface StableUserDataMutationInput {
+  domain: StableUserDataDomain;
+  legacyImageId: string;
+  reference: StableUserDataReference;
+  expectedVersion: number;
+  patch: UserDataSemanticPatch;
 }
 
 export interface MetadataClipboardPayload {
@@ -1203,6 +1342,9 @@ export interface ImageAnnotations {
   rating?: ImageRating;          // Optional 1-5 user rating
   addedAt: number;               // Timestamp when first annotated
   updatedAt: number;             // Timestamp of last update
+  assetId?: string;
+  persistenceVersion?: number;
+  suppressedMetadataTags?: string[];
 }
 
 /**

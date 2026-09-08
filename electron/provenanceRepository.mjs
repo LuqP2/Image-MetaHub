@@ -7,9 +7,10 @@ import {
   PROVENANCE_DIRECTORY_NAME,
   resolveProvenanceCatalogPath,
 } from './provenancePaths.mjs';
+import { StableIdentityUserDataRepository } from './stableIdentityUserDataRepository.mjs';
 
 export { PROVENANCE_DATABASE_NAME, PROVENANCE_DIRECTORY_NAME, resolveProvenanceCatalogPath };
-export const PROVENANCE_SCHEMA_VERSION = 4;
+export const PROVENANCE_SCHEMA_VERSION = 5;
 
 export const ASSET_STATES = Object.freeze(['active', 'missing', 'deleted']);
 export const LOCATION_STATES = Object.freeze(['present', 'missing', 'removed']);
@@ -179,7 +180,110 @@ function migrationFour(database) {
   `);
 }
 
-const MIGRATIONS = new Map([[1, migrationOne], [2, migrationTwo], [3, migrationThree], [4, migrationFour]]);
+function migrationFive(database) {
+  database.exec(`
+    CREATE TABLE user_data_profile_state (
+      singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+      authority TEXT NOT NULL CHECK (authority IN ('legacy', 'sqlite')),
+      activated_at TEXT,
+      legacy_scan_complete INTEGER NOT NULL DEFAULT 0 CHECK (legacy_scan_complete IN (0, 1)),
+      legacy_scan_completed_at TEXT,
+      updated_at TEXT NOT NULL
+    ) STRICT;
+
+    INSERT INTO user_data_profile_state (
+      singleton_id, authority, activated_at, legacy_scan_complete, legacy_scan_completed_at, updated_at
+    ) VALUES (1, 'legacy', NULL, 0, NULL, CURRENT_TIMESTAMP);
+
+    CREATE TABLE user_data_sequence (
+      singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+      next_value INTEGER NOT NULL CHECK (next_value >= 1)
+    ) STRICT;
+
+    INSERT INTO user_data_sequence (singleton_id, next_value) VALUES (1, 1);
+
+    CREATE TABLE asset_user_data (
+      asset_id TEXT NOT NULL,
+      domain TEXT NOT NULL CHECK (domain IN ('annotation', 'shadow')),
+      payload_json TEXT,
+      tombstone INTEGER NOT NULL CHECK (tombstone IN (0, 1)),
+      record_version INTEGER NOT NULL CHECK (record_version >= 1),
+      field_versions_json TEXT NOT NULL,
+      field_sequences_json TEXT NOT NULL,
+      authority TEXT NOT NULL CHECK (authority IN ('legacy', 'sqlite')),
+      legacy_source_version INTEGER NOT NULL DEFAULT -1,
+      legacy_source_fingerprint TEXT,
+      last_mutation_sequence INTEGER NOT NULL DEFAULT 0,
+      migrated_at TEXT,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (asset_id, domain),
+      FOREIGN KEY (asset_id) REFERENCES assets(asset_id) ON DELETE RESTRICT,
+      CHECK ((tombstone = 1 AND payload_json IS NULL) OR (tombstone = 0 AND payload_json IS NOT NULL))
+    ) STRICT;
+
+    CREATE INDEX asset_user_data_domain_idx ON asset_user_data(domain, tombstone);
+
+    CREATE TABLE legacy_user_data_aliases (
+      domain TEXT NOT NULL CHECK (domain IN ('annotation', 'shadow')),
+      legacy_image_id TEXT NOT NULL,
+      asset_id TEXT NOT NULL,
+      location_id TEXT NOT NULL,
+      revision_id TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('bound', 'ambiguous')),
+      first_bound_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      PRIMARY KEY (domain, legacy_image_id),
+      FOREIGN KEY (asset_id) REFERENCES assets(asset_id) ON DELETE RESTRICT,
+      FOREIGN KEY (location_id) REFERENCES asset_locations(location_id) ON DELETE RESTRICT
+    ) STRICT;
+
+    CREATE INDEX legacy_user_data_alias_asset_idx
+      ON legacy_user_data_aliases(asset_id, domain);
+
+    CREATE TABLE legacy_user_data_pending (
+      domain TEXT NOT NULL CHECK (domain IN ('annotation', 'shadow')),
+      legacy_image_id TEXT NOT NULL,
+      payload_json TEXT,
+      tombstone INTEGER NOT NULL CHECK (tombstone IN (0, 1)),
+      source_version INTEGER NOT NULL CHECK (source_version >= 0),
+      source_fingerprint TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('pending', 'ambiguous', 'imported')),
+      updated_at TEXT NOT NULL,
+      migrated_at TEXT,
+      PRIMARY KEY (domain, legacy_image_id),
+      CHECK ((tombstone = 1 AND payload_json IS NULL) OR (tombstone = 0 AND payload_json IS NOT NULL))
+    ) STRICT;
+
+    CREATE TABLE user_data_mutation_intents (
+      mutation_id TEXT PRIMARY KEY,
+      sequence INTEGER NOT NULL UNIQUE,
+      domain TEXT NOT NULL CHECK (domain IN ('annotation', 'shadow')),
+      legacy_image_id TEXT NOT NULL,
+      patch_json TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('reserved', 'finalized', 'applied', 'ignored')),
+      source_version INTEGER,
+      source_fingerprint TEXT,
+      result_payload_json TEXT,
+      result_tombstone INTEGER CHECK (result_tombstone IS NULL OR result_tombstone IN (0, 1)),
+      applied_asset_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (applied_asset_id) REFERENCES assets(asset_id) ON DELETE RESTRICT
+    ) STRICT;
+
+    CREATE INDEX user_data_mutation_pending_idx
+      ON user_data_mutation_intents(domain, legacy_image_id, sequence)
+      WHERE state = 'finalized';
+  `);
+}
+
+const MIGRATIONS = new Map([
+  [1, migrationOne],
+  [2, migrationTwo],
+  [3, migrationThree],
+  [4, migrationFour],
+  [5, migrationFive],
+]);
 
 function serializeAsset(row) {
   return row ? {
@@ -282,6 +386,7 @@ export class AssetProvenanceRepository {
     this.now = now;
     this.backupDatabase = backupDatabase;
     this.database = null;
+    this.userData = null;
   }
 
   open({ failMigrationVersion = null, targetSchemaVersion = PROVENANCE_SCHEMA_VERSION } = {}) {
@@ -309,6 +414,12 @@ export class AssetProvenanceRepository {
         }
         this.database.exec('PRAGMA synchronous = NORMAL');
         this.applyMigrations({ failMigrationVersion, targetSchemaVersion });
+      }
+      if (readSchemaVersion(this.database) >= 5) {
+        this.userData = new StableIdentityUserDataRepository({
+          database: this.database,
+          now: this.now,
+        });
       }
       return this.getStatus();
     } catch (error) {
@@ -364,6 +475,63 @@ export class AssetProvenanceRepository {
       databasePath: this.databasePath,
       schemaVersion: open ? readSchemaVersion(this.database) : null,
     };
+  }
+
+  getUserDataAuthority() {
+    this.#requireUserDataRepository();
+    return this.userData.getAuthority();
+  }
+
+  activateUserDataAuthority() {
+    this.#requireWritable();
+    this.#requireUserDataRepository();
+    return this.userData.activateAuthority();
+  }
+
+  completeLegacyUserDataScan() {
+    this.#requireWritable();
+    this.#requireUserDataRepository();
+    return this.userData.completeLegacyScan();
+  }
+
+  syncLegacyUserDataBatch(entries) {
+    this.#requireWritable();
+    this.#requireUserDataRepository();
+    return this.userData.syncLegacyBatch(entries);
+  }
+
+  mutateAssetUserData(input) {
+    this.#requireWritable();
+    this.#requireUserDataRepository();
+    return this.userData.mutate(input);
+  }
+
+  reserveLegacyUserDataMutation(input) {
+    this.#requireWritable();
+    this.#requireUserDataRepository();
+    return this.userData.reserveLegacyMutation(input);
+  }
+
+  finalizeLegacyUserDataMutation(input) {
+    this.#requireWritable();
+    this.#requireUserDataRepository();
+    return this.userData.finalizeLegacyMutation(input);
+  }
+
+  mutateAnnotationTagGlobally(input) {
+    this.#requireWritable();
+    this.#requireUserDataRepository();
+    return this.userData.mutateAnnotationTagGlobally(input);
+  }
+
+  getUserDataTagCounts() {
+    this.#requireUserDataRepository();
+    return this.userData.getTagCounts();
+  }
+
+  captureAssetUserDataSnapshot(assetId, copiedAt = this.now().getTime()) {
+    this.#requireUserDataRepository();
+    return this.userData.captureCopySnapshot(assetId, copiedAt);
   }
 
   createAssetWithRevisionAndLocation(input) {
@@ -761,6 +929,10 @@ export class AssetProvenanceRepository {
           revisionId,
           locationId: destinationLocationId,
         };
+        if (operation.payload.userDataSnapshot) {
+          this.#requireUserDataRepository();
+          this.userData.applyCopySnapshot(operation.payload.userDataSnapshot, destinationAssetId);
+        }
       }
 
       const result = { mapping, destinationScope: destination?.rootId ? 'registered' : 'outside' };
@@ -972,7 +1144,10 @@ export class AssetProvenanceRepository {
 
   close() {
     if (!this.database) return;
-    try { this.database.close(); } finally { this.database = null; }
+    try { this.database.close(); } finally {
+      this.database = null;
+      this.userData = null;
+    }
   }
 
   #setFileOperationState(operationId, state, error) {
@@ -1033,6 +1208,15 @@ export class AssetProvenanceRepository {
   #requireWritable() {
     this.#requireOpen();
     if (this.readOnly) throw new ProvenanceRepositoryError('PROVENANCE_READ_ONLY', 'Provenance repository is read-only.');
+  }
+
+  #requireUserDataRepository() {
+    if (!this.userData) {
+      throw new ProvenanceRepositoryError(
+        'PROVENANCE_USER_DATA_UNAVAILABLE',
+        'Stable-identity user-data storage is unavailable for this catalog schema.',
+      );
+    }
   }
 
 }

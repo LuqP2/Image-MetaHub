@@ -220,9 +220,9 @@ const electronAPI = {
   // --- Invokable renderer-to-main functions ---
   getTheme: () => ipcRenderer.invoke('get-theme'),
   getZoomFactor: () => ipcRenderer.invoke('get-zoom-factor'),
-  trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
+  trashFile: (filePath, userDataContext) => ipcRenderer.invoke('trash-file', filePath, userDataContext),
   confirmPermanentDelete: (args) => ipcRenderer.invoke('confirm-permanent-delete', args),
-  renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
+  renameFile: (oldPath, newPath, userDataContext) => ipcRenderer.invoke('rename-file', oldPath, newPath, userDataContext),
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),
   updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
@@ -237,6 +237,19 @@ const electronAPI = {
     const handler = (_event, payload) => callback(payload);
     ipcRenderer.on('provenance-identities-assigned', handler);
     return () => ipcRenderer.removeListener('provenance-identities-assigned', handler);
+  },
+  stableUserDataStatus: () => ipcRenderer.invoke('stable-user-data-status'),
+  stableUserDataSync: (args) => ipcRenderer.invoke('stable-user-data-sync', args),
+  stableUserDataMutate: (input) => ipcRenderer.invoke('stable-user-data-mutate', input),
+  stableUserDataReserveLegacyMutation: (input) => ipcRenderer.invoke('stable-user-data-reserve-legacy-mutation', input),
+  stableUserDataFinalizeLegacyMutation: (input) => ipcRenderer.invoke('stable-user-data-finalize-legacy-mutation', input),
+  stableUserDataCompleteLegacyScan: () => ipcRenderer.invoke('stable-user-data-complete-legacy-scan'),
+  stableUserDataGlobalTagMutation: (input) => ipcRenderer.invoke('stable-user-data-global-tag-mutation', input),
+  stableUserDataTagCounts: () => ipcRenderer.invoke('stable-user-data-tag-counts'),
+  onStableUserDataChanged: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('stable-user-data-changed', handler);
+    return () => ipcRenderer.removeListener('stable-user-data-changed', handler);
   },
   resolveMediaUrl: (filePath) => ipcRenderer.invoke('resolve-media-url', filePath),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
