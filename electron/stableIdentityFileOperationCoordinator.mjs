@@ -642,7 +642,7 @@ export class StableIdentityFileOperationCoordinator {
         if (
           verifyExpectedOutput
           && operation.state !== 'fs_applied'
-          && !this.#matchesRecordedMove(destinationStat, beforeEvidence)
+          && !this.#matchesRecordedDirectoryMove(destinationStat, beforeEvidence)
         ) {
           return { state: 'pending_recovery', reason: 'Destination directory evidence does not match the recorded source.' };
         }
@@ -1015,6 +1015,13 @@ export class StableIdentityFileOperationCoordinator {
   #absolutePathKey(value) {
     const normalized = path.resolve(value);
     return this.platform === 'win32' ? normalized.toLocaleLowerCase('en-US') : normalized;
+  }
+
+  #matchesRecordedDirectoryMove(stat, beforeEvidence) {
+    const source = beforeEvidence?.sourceSignature;
+    const current = signatureFromStat(stat);
+    return source?.device !== null && source?.inode !== null
+      && current.device === source.device && current.inode === source.inode;
   }
 
   #directoryOperationScopes(payload) {

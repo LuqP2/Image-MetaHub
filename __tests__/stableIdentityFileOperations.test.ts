@@ -770,6 +770,7 @@ describe('stable identity file-operation coordination', () => {
     await fs.writeFile(path.join(sourceDirectory, 'inside.bin'), 'inside');
     const runtime = createRuntime(userDataPath, { coordinator: { logger: { error: () => {}, warn: () => {} } } });
     const [original] = await registerRoot(runtime.indexer, rootA, ['recover me/inside.bin']);
+    await runtime.indexer.waitForIdle();
     const repository = (runtime.lifecycle as any).repository;
     const complete = repository.completeFileOperation.bind(repository);
     let failOnce = true;

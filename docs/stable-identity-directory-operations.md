@@ -38,7 +38,7 @@ Destinations outside registered roots remain outside the catalog. The coordinato
 
 - Stable file-operation suite: 47 tests passed and one platform-specific test was skipped. The directory matrix covers nested trees, registered and nested roots, cross-root/out-of-scope moves, spaces/accents/`..archive`, destination conflict, permission failure, watcher/backfill interleavings, an in-flight hash, catalog failure after filesystem success, repeated recovery, partial copy-then-delete, user data, and flag-off behavior.
 - Repository, indexer, and stable user-data suites: 26 tests passed when run as separate suites. A parallel aggregate run produced only known Windows five-second resource-contention timeouts; the same files passed separately.
-- TypeScript, JavaScript syntax, focused ESLint, and the production renderer build passed. ESLint retained only pre-existing non-blocking test warnings.
+- TypeScript, JavaScript syntax, focused ESLint, and the production renderer build passed. ESLint retained only non-blocking test-file `no-explicit-any` warnings.
 - Windows unpacked and real portable packaged smokes passed using generated temporary paths with spaces and `ç`. Both preserved a directory descendant's asset/revision/location and annotation across reopen with an empty recovery queue.
 - Packaged runtime: Electron 38.8.6, Node 22.22.0, SQLite 3.50.4.
 - Visual validation was not automated. Linux and macOS were not executed.
