@@ -4,7 +4,7 @@
 
 | Operation | Renderer entry | Filesystem mutation | Provenance integration |
 | --- | --- | --- | --- |
-| File rename, including case-only | `services/imageRenameService.ts` -> `services/fileOperations.ts` | `rename-file` in `electron.mjs` -> `fs.rename` / model sidecar helper | Coordinated `rename`; retain the source asset, revision, and location ID. Directory renames explicitly bypass the file-only coordinator so a directory is never registered as a media asset; subtree identity migration remains a later activation gate. |
+| File or supported folder rename, including case-only | `services/imageRenameService.ts`, `components/DirectoryList.tsx` -> `services/fileOperations.ts` or preload | `rename-file` in `electron.mjs` -> `fs.rename` / model sidecar helper | Files retain their source asset, revision, and location ID. A folder operation snapshots and atomically remaps descendant locations; a registered root retains its root ID and relocates nested registered roots with it. |
 | Move between folders/roots/volumes | `services/fileTransferService.ts` | `transfer-indexed-images` -> `fs.rename`, or copy plus `fs.unlink` after `EXDEV` | Coordinated `move`; relocate only after the source disappeared and destination exists. A failed cross-volume delete remains pending with both files unassociated as a completed move. |
 | Copy | `services/fileTransferService.ts` | `transfer-indexed-images` -> timestamp-preserving copy | Coordinated `copy`; reserve and create a distinct asset/revision/location. Existing destinations use overwrite semantics. |
 | Editor Save As | `ImageModal.tsx`, `ImageEditorWorkspace.tsx` | `write-file` -> `fs.writeFile` | Coordinated `save_as`; create a distinct asset inside a registered root, or advance the existing destination asset when the OS-approved path already exists. |
@@ -29,7 +29,7 @@ If intent persistence is unavailable, the existing authorized filesystem operati
 
 ## Activation boundary
 
-`IMH_ENABLE_PROVENANCE_INDEXING` remains off by default. No annotation/shadow-metadata migration, provenance graph, product audit history, C2PA, IPTC, MCP, or UI redesign is introduced here. Visual acceptance remains manual. Linux and macOS packaged validation remain pending until executed on those platforms.
+`IMH_ENABLE_PROVENANCE_INDEXING` remains off by default. Directory/subtree identity preservation and asset-owned annotation/shadow persistence are implemented, but public activation remains separate. No provenance graph, product audit history, C2PA, IPTC, MCP, or UI redesign is introduced here. Visual acceptance remains manual. Linux and macOS packaged validation remain pending until executed on those platforms.
 
 ## Reproducible packaged smoke
 
