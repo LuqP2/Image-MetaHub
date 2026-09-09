@@ -478,12 +478,10 @@ export class StableIdentityFileOperationCoordinator {
 
     const mode = sourceRoot ? 'root' : 'subtree';
     const pathApi = pathApiForPlatform(this.platform);
-    const affectedRoots = mode === 'root'
-      ? roots.filter((root) => {
-          const relative = pathApi.relative(sourceAbsolutePath, root.absolutePath);
-          return relative === '' || isRelativePathInsideRoot(relative, this.platform);
-        })
-      : [];
+    const affectedRoots = roots.filter((root) => {
+      const relative = pathApi.relative(sourceAbsolutePath, root.absolutePath);
+      return relative === '' || isRelativePathInsideRoot(relative, this.platform);
+    });
     const affectedRootIds = new Set(affectedRoots.map((root) => root.rootId));
     const destinationRoot = mode === 'root'
       ? sourceRoot
@@ -496,14 +494,17 @@ export class StableIdentityFileOperationCoordinator {
       if (conflict) throw new Error('The destination is already registered as another library root.');
     }
 
-    const locations = mode === 'root'
-      ? affectedRoots.flatMap((root) => repository.listPresentLocations(root.rootId).map((location) => ({
-          ...location,
-          sourceRootId: root.rootId,
-        })))
-      : repository.listPresentLocationsUnderPath(sourceDirectory.rootId, sourceDirectory.relativePathKey);
+    const locations = [
+      ...(mode === 'subtree'
+        ? repository.listPresentLocationsUnderPath(sourceDirectory.rootId, sourceDirectory.relativePathKey)
+        : []),
+      ...affectedRoots.flatMap((root) => repository.listPresentLocations(root.rootId).map((location) => ({
+        ...location,
+        sourceRootId: root.rootId,
+      }))),
+    ];
     const entries = locations.map((location) => {
-      if (mode === 'root') {
+      if (affectedRootIds.has(location.sourceRootId)) {
         return {
           locationId: location.locationId,
           assetId: location.assetId,
@@ -534,7 +535,7 @@ export class StableIdentityFileOperationCoordinator {
         destinationRelativePathKey: normalizedDestination?.relativePathKey ?? null,
       };
     });
-    if (mode === 'subtree' && entries.length === 0) {
+    if (mode === 'subtree' && entries.length === 0 && affectedRoots.length === 0) {
       return {
         operationId: null,
         kind,
@@ -546,30 +547,28 @@ export class StableIdentityFileOperationCoordinator {
     const normalizedDestinationRoot = mode === 'root'
       ? normalizeLibraryRootPath(destinationAbsolutePath, this.platform)
       : null;
-    const rootRelocations = mode === 'root'
-      ? affectedRoots.map((root) => {
-          const suffix = pathApi.relative(sourceAbsolutePath, root.absolutePath);
-          const relocatedPath = suffix ? pathApi.resolve(destinationAbsolutePath, suffix) : destinationAbsolutePath;
-          const normalized = normalizeLibraryRootPath(relocatedPath, this.platform);
-          return {
-            rootId: root.rootId,
-            sourceRootPath: root.absolutePath,
-            sourceRootPathKey: root.pathKey,
-            destinationRootPath: normalized.absolutePath,
-            destinationRootPathKey: normalized.pathKey,
-          };
-        })
-      : [];
-    if (mode === 'root') {
-      for (const relocation of rootRelocations) {
-        const conflict = roots.find((root) => (
-          root.pathKey === relocation.destinationRootPathKey && !affectedRootIds.has(root.rootId)
-        ));
-        if (conflict) throw new Error('The destination would overlap another registered library root.');
-      }
-    } else if (destinationRoot) {
+    const rootRelocations = affectedRoots.map((root) => {
+      const suffix = pathApi.relative(sourceAbsolutePath, root.absolutePath);
+      const relocatedPath = suffix ? pathApi.resolve(destinationAbsolutePath, suffix) : destinationAbsolutePath;
+      const normalized = normalizeLibraryRootPath(relocatedPath, this.platform);
+      return {
+        rootId: root.rootId,
+        sourceRootPath: root.absolutePath,
+        sourceRootPathKey: root.pathKey,
+        destinationRootPath: normalized.absolutePath,
+        destinationRootPathKey: normalized.pathKey,
+      };
+    });
+    for (const relocation of rootRelocations) {
+      const conflict = roots.find((root) => (
+        root.pathKey === relocation.destinationRootPathKey && !affectedRootIds.has(root.rootId)
+      ));
+      if (conflict) throw new Error('The destination would overlap another registered library root.');
+    }
+    if (mode === 'subtree' && destinationRoot) {
       const movedLocationIds = new Set(entries.map((entry) => entry.locationId));
       for (const entry of entries) {
+        if (affectedRootIds.has(entry.sourceRootId)) continue;
         const conflict = repository.getLocationByRootPath(destinationRoot.rootId, entry.destinationRelativePathKey);
         if (conflict?.state === 'present' && !movedLocationIds.has(conflict.locationId)) {
           throw new Error(`A catalog location already occupies ${entry.destinationRelativePath}.`);
@@ -1027,13 +1026,10 @@ export class StableIdentityFileOperationCoordinator {
   #directoryOperationScopes(payload) {
     const directory = payload.directory;
     if (!directory) return [];
-    if (directory.mode === 'root' && Array.isArray(directory.rootRelocations)) {
-      return directory.rootRelocations.flatMap((relocation) => [
-        { absolutePath: relocation.sourceRootPath, rootPath: relocation.sourceRootPath, relativePath: '' },
-        { absolutePath: relocation.destinationRootPath, rootPath: relocation.destinationRootPath, relativePath: '' },
-      ]);
-    }
-    const scopes = [];
+    const scopes = (directory.rootRelocations ?? []).flatMap((relocation) => [
+      { absolutePath: relocation.sourceRootPath, rootPath: relocation.sourceRootPath, relativePath: '' },
+      { absolutePath: relocation.destinationRootPath, rootPath: relocation.destinationRootPath, relativePath: '' },
+    ]);
     if (directory.sourceRootPath !== null && directory.sourceRootPath !== undefined) {
       scopes.push({
         absolutePath: directory.sourceAbsolutePath,
@@ -1059,6 +1055,8 @@ export class StableIdentityFileOperationCoordinator {
 
   #retireDirectorySource(payload) {
     if (!payload.directory) return;
+    if (this.#absolutePathKey(payload.directory.sourceAbsolutePath)
+      === this.#absolutePathKey(payload.directory.destinationAbsolutePath)) return;
     this.retiredDirectoryScopes.add(this.#absolutePathKey(payload.directory.sourceAbsolutePath));
   }
 

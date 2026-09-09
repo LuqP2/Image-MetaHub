@@ -762,6 +762,79 @@ describe('stable identity file-operation coordination', () => {
     runtime.lifecycle.close();
   });
 
+  it.each([false, true])('relocates nested registered roots during a subtree rename (empty: %s)', async (empty) => {
+    const { userDataPath, rootA } = await workspace();
+    const source = path.join(rootA, 'parent');
+    const destination = path.join(rootA, 'renamed');
+    const nested = path.join(source, 'nested');
+    const relocatedNested = path.join(destination, 'nested');
+    await fs.mkdir(nested, { recursive: true });
+    if (!empty) await fs.writeFile(path.join(nested, 'inside.bin'), 'inside');
+    const runtime = createRuntime(userDataPath);
+    const parentMappings = await registerRoot(runtime.indexer, rootA, empty ? [] : ['parent/nested/inside.bin']);
+    const nestedMappings = await registerRoot(runtime.indexer, nested, empty ? [] : ['inside.bin']);
+    await runtime.indexer.waitForIdle();
+    const originalRoots = runtime.lifecycle.run((repo) => repo.listLibraryRoots());
+    const nestedRoot = originalRoots.find((root) => root.absolutePath === nested)!;
+
+    const result = await runtime.coordinator.executeKnownOperation({
+      kind: 'rename', sourcePath: source, destinationPath: destination,
+      perform: async () => {
+        if (!empty) {
+          expect(await runtime.indexer.observeFiles({
+            rootPath: nested,
+            files: [{ name: 'inside.bin', size: 123, contentModifiedMs: 1 }],
+          })).toMatchObject({ assigned: 0 });
+        }
+        await fs.rename(source, destination);
+      },
+    });
+    expect(result.provenance.operation?.state).toBe('completed');
+    const rescanned = await registerRoot(runtime.indexer, relocatedNested, empty ? [] : ['inside.bin']);
+    expect(rescanned).toEqual(nestedMappings.map(({ assetId, revisionId, locationId }) => (
+      expect.objectContaining({ assetId, revisionId, locationId })
+    )));
+    if (!empty) {
+      const parentRoot = originalRoots.find((root) => root.absolutePath === rootA)!;
+      expect(runtime.lifecycle.run((repo) => repo.getLocationByRootPath(parentRoot.rootId, 'renamed/nested/inside.bin')))
+        .toMatchObject({ assetId: parentMappings[0].assetId, locationId: parentMappings[0].locationId });
+    }
+    await runtime.indexer.waitForIdle();
+    runtime.indexer.stop();
+    runtime.lifecycle.close();
+
+    const reopened = createRuntime(userDataPath);
+    expect(await reopened.coordinator.initializeRecovery()).toMatchObject({ pending: 0 });
+    const roots = reopened.lifecycle.run((repo) => repo.listLibraryRoots());
+    expect(roots).toHaveLength(2);
+    expect(roots.find((root) => root.rootId === nestedRoot.rootId)?.absolutePath).toBe(relocatedNested);
+    reopened.indexer.stop();
+    reopened.lifecycle.close();
+  });
+
+  it.runIf(process.platform === 'win32')('observes external deletions after a case-only directory rename', async () => {
+    const { userDataPath, rootA } = await workspace();
+    const source = path.join(rootA, 'Mixed');
+    const destination = path.join(rootA, 'MIXED');
+    await fs.mkdir(source);
+    await fs.writeFile(path.join(source, 'inside.bin'), 'inside');
+    const runtime = createRuntime(userDataPath);
+    const [original] = await registerRoot(runtime.indexer, rootA, ['Mixed/inside.bin']);
+    await runtime.indexer.waitForIdle();
+    await runtime.coordinator.executeKnownOperation({
+      kind: 'rename', sourcePath: source, destinationPath: destination,
+      perform: () => fs.rename(source, destination),
+    });
+    await fs.unlink(path.join(destination, 'inside.bin'));
+    await runtime.coordinator.observeWatcherRemovals({
+      rootPath: rootA, files: [{ relativePath: 'MIXED/inside.bin' }],
+    });
+    expect(runtime.lifecycle.run((repo) => repo.getAsset(original.assetId))?.locations[0])
+      .toMatchObject({ locationId: original.locationId, state: 'missing' });
+    runtime.indexer.stop();
+    runtime.lifecycle.close();
+  });
+
   it('recovers a directory rename after filesystem success and catalog failure without repeating the rename', async () => {
     const { userDataPath, rootA } = await workspace();
     const sourceDirectory = path.join(rootA, 'recover me');

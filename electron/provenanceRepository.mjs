@@ -1196,15 +1196,15 @@ export class AssetProvenanceRepository {
       throw new ProvenanceRepositoryError('PROVENANCE_OPERATION_INVALID', 'Directory relocation payload is invalid.');
     }
     const entries = directory.entries;
-    if (directory.mode === 'root') {
-      const rootRelocations = Array.isArray(directory.rootRelocations) && directory.rootRelocations.length > 0
-        ? directory.rootRelocations
-        : [{
-            rootId: directory.sourceRootId,
-            destinationRootPath: directory.destinationRootPath,
-            destinationRootPathKey: directory.destinationRootPathKey,
-          }];
-      const relocatingRootIds = new Set(rootRelocations.map((relocation) => assertUuid(relocation.rootId, 'directory rootId')));
+    const rootRelocations = Array.isArray(directory.rootRelocations) && directory.rootRelocations.length > 0
+      ? directory.rootRelocations
+      : directory.mode === 'root' ? [{
+          rootId: directory.sourceRootId,
+          destinationRootPath: directory.destinationRootPath,
+          destinationRootPathKey: directory.destinationRootPathKey,
+        }] : [];
+    const relocatingRootIds = new Set(rootRelocations.map((relocation) => assertUuid(relocation.rootId, 'directory rootId')));
+    if (rootRelocations.length > 0) {
       for (const relocation of rootRelocations) {
         const rootId = assertUuid(relocation.rootId, 'directory rootId');
         assertNonBlank(relocation.destinationRootPath, 'directory destinationRootPath');
@@ -1242,6 +1242,7 @@ export class AssetProvenanceRepository {
 
     if (destinationRootId && directory.mode === 'subtree') {
       for (const entry of entries) {
+        if (relocatingRootIds.has(entry.sourceRootId)) continue;
         const destinationPathKey = assertNonBlank(entry.destinationRelativePathKey, 'directory entry destinationRelativePathKey');
         const conflict = this.database.prepare(`
           SELECT location_id FROM asset_locations
@@ -1274,7 +1275,8 @@ export class AssetProvenanceRepository {
         throw new ProvenanceRepositoryError('PROVENANCE_LOCATION_NOT_FOUND', `Directory descendant location ${locationId} is no longer current.`);
       }
 
-      const entryDestinationRootId = directory.mode === 'root'
+      const relocatesRoot = relocatingRootIds.has(entry.sourceRootId);
+      const entryDestinationRootId = relocatesRoot
         ? assertUuid(entry.destinationRootId, 'directory entry destinationRootId')
         : destinationRootId;
       if (!entryDestinationRootId) {
@@ -1282,10 +1284,10 @@ export class AssetProvenanceRepository {
         continue;
       }
 
-      const relativePath = directory.mode === 'root'
+      const relativePath = relocatesRoot
         ? current.relative_path
         : assertNonBlank(entry.destinationRelativePath, 'directory entry destinationRelativePath');
-      const relativePathKey = directory.mode === 'root'
+      const relativePathKey = relocatesRoot
         ? current.relative_path_key
         : assertNonBlank(entry.destinationRelativePathKey, 'directory entry destinationRelativePathKey');
       this.database.prepare(`
