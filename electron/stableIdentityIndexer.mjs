@@ -63,6 +63,7 @@ export class StableIdentityIndexer {
     this.scanGenerationByRootKey = new Map();
     this.pathVersionByCatalogKey = new Map();
     this.blockedCatalogPathKeys = new Set();
+    this.blockedCatalogSubtreeKeys = new Set();
   }
 
   beginScan(rootPath) {
@@ -97,6 +98,34 @@ export class StableIdentityIndexer {
 
   unblockCatalogPath(rootPath, relativePath) {
     this.blockedCatalogPathKeys.delete(this.#catalogPathKey(rootPath, relativePath));
+  }
+
+  invalidateCatalogSubtree(rootPath, relativePath = '') {
+    const subtreeKey = this.#catalogSubtreeKey(rootPath, relativePath);
+    for (const catalogPathKey of this.pathVersionByCatalogKey.keys()) {
+      if (this.#catalogKeyIsWithinSubtree(catalogPathKey, subtreeKey)) {
+        this.pathVersionByCatalogKey.set(
+          catalogPathKey,
+          (this.pathVersionByCatalogKey.get(catalogPathKey) ?? 0) + 1,
+        );
+      }
+    }
+    this.hashQueue = this.hashQueue.filter((task) => {
+      if (!this.#catalogKeyIsWithinSubtree(task.catalogPathKey, subtreeKey)) return true;
+      this.queuedRevisionIds.delete(task.revisionId);
+      this.replacementHashTasksByRevision.delete(task.revisionId);
+      return false;
+    });
+  }
+
+  blockCatalogSubtree(rootPath, relativePath = '') {
+    const subtreeKey = this.#catalogSubtreeKey(rootPath, relativePath);
+    this.blockedCatalogSubtreeKeys.add(subtreeKey);
+    this.invalidateCatalogSubtree(rootPath, relativePath);
+  }
+
+  unblockCatalogSubtree(rootPath, relativePath = '') {
+    this.blockedCatalogSubtreeKeys.delete(this.#catalogSubtreeKey(rootPath, relativePath));
   }
 
   pause() {
@@ -204,9 +233,12 @@ export class StableIdentityIndexer {
     const root = normalizeLibraryRootPath(rootPath, this.platform);
     const normalizedPath = normalizeRelativeCatalogPath(relativePath, this.platform);
     const catalogPathKey = `${root.pathKey}\0${normalizedPath.relativePathKey}`;
-    if (this.blockedCatalogPathKeys.has(catalogPathKey)) return null;
+    if (this.#isCatalogPathBlocked(catalogPathKey)) return null;
     this.invalidateCatalogPath(rootPath, relativePath);
-    const rootRecord = this.repositoryLifecycle.run((repository) => repository.ensureLibraryRoot(root));
+    const rootRecord = this.repositoryLifecycle.run((repository) => (
+      repository.listLibraryRoots().find((entry) => entry.pathKey === root.pathKey) ?? null
+    ));
+    if (!rootRecord) return null;
     return this.repositoryLifecycle.run((repository) => (
       repository.markLocationMissingByRootPath(rootRecord.rootId, normalizedPath.relativePathKey)
     ));
@@ -231,6 +263,27 @@ export class StableIdentityIndexer {
     return `${root.pathKey}\0${normalizedPath.relativePathKey}`;
   }
 
+  #catalogSubtreeKey(rootPath, relativePath = '') {
+    const root = normalizeLibraryRootPath(rootPath, this.platform);
+    if (!relativePath) return `${root.pathKey}\0`;
+    const normalizedPath = normalizeRelativeCatalogPath(relativePath, this.platform);
+    return `${root.pathKey}\0${normalizedPath.relativePathKey}`;
+  }
+
+  #catalogKeyIsWithinSubtree(catalogPathKey, subtreeKey) {
+    return subtreeKey.endsWith('\0')
+      ? catalogPathKey.startsWith(subtreeKey)
+      : catalogPathKey === subtreeKey || catalogPathKey.startsWith(`${subtreeKey}/`);
+  }
+
+  #isCatalogPathBlocked(catalogPathKey) {
+    if (this.blockedCatalogPathKeys.has(catalogPathKey)) return true;
+    for (const subtreeKey of this.blockedCatalogSubtreeKeys) {
+      if (this.#catalogKeyIsWithinSubtree(catalogPathKey, subtreeKey)) return true;
+    }
+    return false;
+  }
+
   #assignObservedFiles({ root, rootRecord, scanPath, files, requiredScanGeneration = null }) {
     const mappings = [];
     for (const file of files) {
@@ -242,7 +295,10 @@ export class StableIdentityIndexer {
       const rootRelativePath = path.relative(root.absolutePath, absoluteFilePath).replace(/\\/g, '/');
       const normalizedPath = normalizeRelativeCatalogPath(rootRelativePath, this.platform);
       const catalogPathKey = `${root.pathKey}\0${normalizedPath.relativePathKey}`;
-      if (this.blockedCatalogPathKeys.has(catalogPathKey)) continue;
+      if (this.#isCatalogPathBlocked(catalogPathKey)) continue;
+      if (!this.pathVersionByCatalogKey.has(catalogPathKey)) {
+        this.pathVersionByCatalogKey.set(catalogPathKey, 0);
+      }
       const pathVersion = this.pathVersionByCatalogKey.get(catalogPathKey) ?? 0;
       const contentModifiedMs = normalizedTimestamp(file.contentModifiedMs ?? file.lastModified);
       const identity = this.repositoryLifecycle.run((repository) => repository.assignIndexedFile({
@@ -292,7 +348,7 @@ export class StableIdentityIndexer {
           });
           const after = await this.stat(task.filePath);
           if (!sameFileSignature(after, task)) continue;
-          if (this.blockedCatalogPathKeys.has(task.catalogPathKey)) continue;
+          if (this.#isCatalogPathBlocked(task.catalogPathKey)) continue;
           if ((this.pathVersionByCatalogKey.get(task.catalogPathKey) ?? 0) !== task.pathVersion) continue;
           this.repositoryLifecycle.run((repository) => repository.completeRevisionHashIfUnchanged(task.revisionId, {
             sha256,
@@ -301,7 +357,7 @@ export class StableIdentityIndexer {
           }));
         } catch (error) {
           const stillCurrent = (this.pathVersionByCatalogKey.get(task.catalogPathKey) ?? 0) === task.pathVersion;
-          if (!this.stopped && stillCurrent && !this.blockedCatalogPathKeys.has(task.catalogPathKey)) {
+          if (!this.stopped && stillCurrent && !this.#isCatalogPathBlocked(task.catalogPathKey)) {
             this.logger.warn('Could not hash provenance revision; it remains pending for a later scan.', error);
           }
         } finally {

@@ -794,9 +794,12 @@ export class AssetProvenanceRepository {
         throw new ProvenanceRepositoryError('PROVENANCE_OPERATION_ABORTED', `File operation ${normalizedOperationId} was aborted.`);
       }
 
-      const { source = null, destination = null, reserved = {} } = operation.payload;
+      const { source = null, destination = null, reserved = {}, directory = null } = operation.payload;
       let mapping = null;
-      if (operation.kind === 'rename' || operation.kind === 'move') {
+      let mappings = null;
+      if ((operation.kind === 'rename' || operation.kind === 'move') && directory) {
+        mappings = this.#completeDirectoryRelocation(directory, timestamp);
+      } else if (operation.kind === 'rename' || operation.kind === 'move') {
         if (!source?.locationId || !source?.assetId) {
           throw new ProvenanceRepositoryError('PROVENANCE_OPERATION_INVALID', 'A move or rename intent requires a known source location.');
         }
@@ -935,7 +938,13 @@ export class AssetProvenanceRepository {
         }
       }
 
-      const result = { mapping, destinationScope: destination?.rootId ? 'registered' : 'outside' };
+      const result = {
+        mapping,
+        ...(mappings ? { mappings } : {}),
+        destinationScope: directory
+          ? (directory.destinationRootId || directory.mode === 'root' ? 'registered' : 'outside')
+          : (destination?.rootId ? 'registered' : 'outside'),
+      };
       this.database.prepare(`
         UPDATE provenance_operations
         SET state = 'completed', result_json = ?, last_error = NULL, updated_at = ?, completed_at = ?
@@ -1180,6 +1189,125 @@ export class AssetProvenanceRepository {
     `).get(location.asset_id).count);
     this.database.prepare('UPDATE assets SET state = ?, updated_at = ? WHERE asset_id = ?')
       .run(presentCount ? 'active' : 'missing', timestamp, location.asset_id);
+  }
+
+  #completeDirectoryRelocation(directory, timestamp) {
+    if (!directory || !['root', 'subtree'].includes(directory.mode) || !Array.isArray(directory.entries)) {
+      throw new ProvenanceRepositoryError('PROVENANCE_OPERATION_INVALID', 'Directory relocation payload is invalid.');
+    }
+    const entries = directory.entries;
+    const rootRelocations = Array.isArray(directory.rootRelocations) && directory.rootRelocations.length > 0
+      ? directory.rootRelocations
+      : directory.mode === 'root' ? [{
+          rootId: directory.sourceRootId,
+          destinationRootPath: directory.destinationRootPath,
+          destinationRootPathKey: directory.destinationRootPathKey,
+        }] : [];
+    const relocatingRootIds = new Set(rootRelocations.map((relocation) => assertUuid(relocation.rootId, 'directory rootId')));
+    if (rootRelocations.length > 0) {
+      for (const relocation of rootRelocations) {
+        const rootId = assertUuid(relocation.rootId, 'directory rootId');
+        assertNonBlank(relocation.destinationRootPath, 'directory destinationRootPath');
+        const destinationPathKey = assertNonBlank(relocation.destinationRootPathKey, 'directory destinationRootPathKey');
+        const currentRoot = this.database.prepare('SELECT * FROM library_roots WHERE root_id = ?').get(rootId);
+        if (!currentRoot) {
+          throw new ProvenanceRepositoryError('PROVENANCE_ROOT_NOT_FOUND', `Library root ${rootId} was not found.`);
+        }
+        const conflictingRoot = this.database.prepare('SELECT root_id FROM library_roots WHERE path_key = ? AND root_id != ?')
+          .get(destinationPathKey, rootId);
+        if (conflictingRoot && !relocatingRootIds.has(conflictingRoot.root_id)) {
+          throw new ProvenanceRepositoryError('PROVENANCE_PATH_CONFLICT', 'The destination is already registered as another library root.');
+        }
+      }
+      for (const relocation of rootRelocations) {
+        this.database.prepare('UPDATE library_roots SET path_key = ? WHERE root_id = ?')
+          .run(`__relocating__:${relocation.rootId}`, relocation.rootId);
+      }
+      for (const relocation of rootRelocations) {
+        this.database.prepare(`
+          UPDATE library_roots SET absolute_path = ?, path_key = ?, last_seen_at = ? WHERE root_id = ?
+        `).run(
+          relocation.destinationRootPath,
+          relocation.destinationRootPathKey,
+          timestamp,
+          relocation.rootId,
+        );
+      }
+    }
+
+    const destinationRootId = directory.mode === 'root'
+      ? null
+      : (directory.destinationRootId ? assertUuid(directory.destinationRootId, 'directory.destinationRootId') : null);
+    const movedLocationIds = new Set(entries.map((entry) => assertUuid(entry.locationId, 'directory entry locationId')));
+
+    if (destinationRootId && directory.mode === 'subtree') {
+      for (const entry of entries) {
+        if (relocatingRootIds.has(entry.sourceRootId)) continue;
+        const destinationPathKey = assertNonBlank(entry.destinationRelativePathKey, 'directory entry destinationRelativePathKey');
+        const conflict = this.database.prepare(`
+          SELECT location_id FROM asset_locations
+          WHERE root_id = ? AND relative_path_key = ? AND state = 'present'
+          LIMIT 1
+        `).get(destinationRootId, destinationPathKey);
+        if (conflict && !movedLocationIds.has(conflict.location_id)) {
+          throw new ProvenanceRepositoryError('PROVENANCE_PATH_CONFLICT', `A catalog location already occupies ${entry.destinationRelativePath}.`);
+        }
+      }
+    }
+
+    const mappings = [];
+    for (const entry of entries) {
+      const locationId = assertUuid(entry.locationId, 'directory entry locationId');
+      const assetId = assertUuid(entry.assetId, 'directory entry assetId');
+      const revisionId = assertUuid(entry.revisionId, 'directory entry revisionId');
+      const current = this.database.prepare(`
+        SELECT * FROM asset_locations
+        WHERE location_id = ? AND asset_id = ? AND revision_id = ?
+          AND root_id = ? AND relative_path_key = ? AND state != 'removed'
+      `).get(
+        locationId,
+        assetId,
+        revisionId,
+        assertUuid(entry.sourceRootId, 'directory entry sourceRootId'),
+        assertNonBlank(entry.sourceRelativePathKey, 'directory entry sourceRelativePathKey'),
+      );
+      if (!current) {
+        throw new ProvenanceRepositoryError('PROVENANCE_LOCATION_NOT_FOUND', `Directory descendant location ${locationId} is no longer current.`);
+      }
+
+      const relocatesRoot = relocatingRootIds.has(entry.sourceRootId);
+      const entryDestinationRootId = relocatesRoot
+        ? assertUuid(entry.destinationRootId, 'directory entry destinationRootId')
+        : destinationRootId;
+      if (!entryDestinationRootId) {
+        this.#markLocationMissingWithinTransaction(locationId, timestamp);
+        continue;
+      }
+
+      const relativePath = relocatesRoot
+        ? current.relative_path
+        : assertNonBlank(entry.destinationRelativePath, 'directory entry destinationRelativePath');
+      const relativePathKey = relocatesRoot
+        ? current.relative_path_key
+        : assertNonBlank(entry.destinationRelativePathKey, 'directory entry destinationRelativePathKey');
+      this.database.prepare(`
+        UPDATE asset_locations
+        SET root_id = ?, relative_path = ?, relative_path_key = ?, state = 'present',
+            last_observed_at = ?, missing_at = NULL
+        WHERE location_id = ? AND asset_id = ? AND revision_id = ? AND state != 'removed'
+      `).run(entryDestinationRootId, relativePath, relativePathKey, timestamp, locationId, assetId, revisionId);
+      this.database.prepare("UPDATE assets SET state = 'active', updated_at = ? WHERE asset_id = ?")
+        .run(timestamp, assetId);
+      mappings.push({
+        rootId: entryDestinationRootId,
+        relativePath,
+        relativePathKey,
+        assetId,
+        revisionId,
+        locationId,
+      });
+    }
+    return mappings;
   }
 
   #insertRevision({ assetId, revisionId, sha256, hashState, byteSize, mimeType = null, width = null, height = null, contentModifiedMs = null, observedAt = null, timestamp }) {

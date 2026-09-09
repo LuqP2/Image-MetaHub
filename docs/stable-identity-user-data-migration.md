@@ -34,7 +34,7 @@ Shadow metadata remains a set of local overrides, not byte history. Missing fiel
 
 File-operation recovery reuses `provenance_operations`; no second filesystem coordinator is introduced. A transfer intent can bind pending legacy data before mutation and carries the source user-data snapshot needed to finish a copy after renderer exit. Missing library entries never delete durable rows, and a deleted asset retains its tombstoned or historical user data without exposing it to a new asset at the same path.
 
-The feature flag remains off by default. Directory/subtree rename, Linux/macOS packaged validation, and public activation remain separate gates. This phase does not add provenance edges, audit history, generation runs, C2PA, IPTC, MCP, parser changes, or UI redesign.
+The feature flag remains off by default. Directory/subtree rename is implemented by the follow-up directory-operation contract; Linux/macOS packaged validation and public activation remain separate gates. This phase does not add provenance edges, audit history, generation runs, C2PA, IPTC, MCP, parser changes, or UI redesign.
 
 ## Acceptance evidence
 
@@ -69,4 +69,4 @@ All automated fixtures use generated temporary profiles, SQLite catalogs, Indexe
 
 ## Roadmap state
 
-This delivery closes the phase 2 user-data migration portion of **Stable asset identity foundation**. Public activation remains gated separately by directory/subtree rename support, platform validation, and manual visual acceptance. Phase 3 remains lineage/provenance/audit. C2PA, IPTC, and MCP were not implemented here.
+The user-data migration and directory/subtree operation follow-up close the implementation portions of phase 2 **Stable asset identity foundation**. Public activation remains gated separately by platform validation and manual visual acceptance. Phase 3 remains lineage/provenance/audit. C2PA, IPTC, and MCP were not implemented here.
