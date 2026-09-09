@@ -43,6 +43,7 @@ export class StableIdentityFileOperationCoordinator {
     this.activePathLocks = new Map();
     this.recoveryBlockedPaths = new Set();
     this.deferredWatcherObservations = new Map();
+    this.retiredDirectoryScopes = new Set();
   }
 
   async initializeRecovery() {
@@ -95,7 +96,7 @@ export class StableIdentityFileOperationCoordinator {
     }
     const absolutePaths = [sourcePath, destinationPath].filter(Boolean).map((value) => path.resolve(value));
     return this.#withPathLocks(absolutePaths, async () => {
-      const blockedPath = absolutePaths.find((value) => this.recoveryBlockedPaths.has(this.#absolutePathKey(value)));
+      const blockedPath = absolutePaths.find((value) => this.#isRecoveryBlocked(this.#absolutePathKey(value)));
       if (blockedPath) {
         throw new Error(`A pending provenance recovery blocks another operation on ${blockedPath}.`);
       }
@@ -110,17 +111,9 @@ export class StableIdentityFileOperationCoordinator {
           provenance: { enabled: true, available: false, error: error?.message || String(error) },
         };
       }
-      if (['rename', 'move'].includes(kind) && sourceStat?.isDirectory?.()) {
-        return {
-          value: await perform(),
-          provenance: {
-            enabled: true,
-            available: true,
-            tracked: false,
-            reason: 'directory_operation_not_supported',
-          },
-        };
-      }
+      const requiresDirectoryJournal = Boolean(
+        sourceStat?.isDirectory?.() && ['rename', 'move'].includes(kind)
+      );
       if (sourcePath && ['rename', 'move', 'delete'].includes(kind) && !sourceStat) {
         return {
           value: await perform(),
@@ -148,6 +141,9 @@ export class StableIdentityFileOperationCoordinator {
             destinationStat,
           }),
         };
+        if (requiresDirectoryJournal && destinationStat && !beforeEvidence.sameFilePathAlias) {
+          throw Object.assign(new Error('A file with that name already exists.'), { code: 'EEXIST' });
+        }
         intent = this.#createIntent({
           kind,
           sourcePath,
@@ -155,9 +151,10 @@ export class StableIdentityFileOperationCoordinator {
           expectedOutputSha256,
           beforeEvidence,
           userDataContext,
+          sourceIsDirectory: Boolean(sourceStat?.isDirectory?.()),
         });
       } catch (error) {
-        if (requiresUserDataJournal) throw error;
+        if (requiresUserDataJournal || requiresDirectoryJournal) throw error;
         this.logger.error('Provenance intent could not be persisted; continuing the authorized file operation.', error);
         return {
           value: await perform(),
@@ -276,14 +273,14 @@ export class StableIdentityFileOperationCoordinator {
     for (const file of files) {
       const relativePath = file.relativePath || file.name;
       const key = this.#absolutePathKey(path.resolve(rootPath, relativePath));
-      if (this.activePathLocks.has(key) || this.recoveryBlockedPaths.has(key)) {
+      if (this.#isPathLocked(key) || this.#isRecoveryBlocked(key)) {
         this.deferredWatcherObservations.set(key, {
           kind: 'observed',
           rootPath,
           relativePath,
           bytesChanged: bytesChanged && file.provenanceBytesChanged !== false,
         });
-      } else {
+      } else if (!(await this.#isRetiredStaleObservation(path.resolve(rootPath, relativePath)))) {
         ready.push({
           ...file,
           name: relativePath,
@@ -307,6 +304,10 @@ export class StableIdentityFileOperationCoordinator {
       const folderPath = prefix ? path.resolve(rootPath, prefix) : path.resolve(rootPath);
       const folderStat = await this.#statOrNull(folderPath);
       if (folderStat) continue;
+      const retiredFolderKey = this.#absolutePathKey(folderPath);
+      for (const retiredScope of [...this.retiredDirectoryScopes]) {
+        if (this.#pathsOverlap(retiredFolderKey, retiredScope)) this.retiredDirectoryScopes.delete(retiredScope);
+      }
       this.indexer.invalidateRoot(rootPath);
       if (!root) continue;
       const locations = prefix
@@ -319,7 +320,10 @@ export class StableIdentityFileOperationCoordinator {
     }
     for (const relativePath of relativePaths) {
       const key = this.#absolutePathKey(path.resolve(rootPath, relativePath));
-      if (this.activePathLocks.has(key) || this.recoveryBlockedPaths.has(key)) {
+      if (await this.#isRetiredStaleObservation(path.resolve(rootPath, relativePath), { removal: true })) {
+        continue;
+      }
+      if (this.#isPathLocked(key) || this.#isRecoveryBlocked(key)) {
         this.deferredWatcherObservations.set(key, { kind: 'missing', rootPath, relativePath });
       } else {
         await this.#applyMissingObservation({ rootPath, relativePath });
@@ -331,7 +335,7 @@ export class StableIdentityFileOperationCoordinator {
     return Boolean(this.enabled && this.repositoryLifecycle?.getStatus?.().available && this.indexer);
   }
 
-  #createIntent({ kind, sourcePath, destinationPath, expectedOutputSha256, beforeEvidence, userDataContext }) {
+  #createIntent({ kind, sourcePath, destinationPath, expectedOutputSha256, beforeEvidence, userDataContext, sourceIsDirectory }) {
     return this.repositoryLifecycle.run((repository) => {
       let roots = repository.listLibraryRoots();
       for (const candidateRoot of [userDataContext?.sourceRootPath, userDataContext?.destinationRootPath]) {
@@ -345,6 +349,16 @@ export class StableIdentityFileOperationCoordinator {
           repository.ensureLibraryRoot(normalizedRoot);
           roots = repository.listLibraryRoots();
         }
+      }
+      if (sourceIsDirectory && ['rename', 'move'].includes(kind)) {
+        return this.#createDirectoryIntent({
+          repository,
+          roots,
+          kind,
+          sourcePath,
+          destinationPath,
+          beforeEvidence,
+        });
       }
       const source = sourcePath ? this.#resolveCatalogPath(sourcePath, roots) : null;
       const destination = destinationPath ? this.#resolveCatalogPath(destinationPath, roots) : null;
@@ -445,8 +459,200 @@ export class StableIdentityFileOperationCoordinator {
     return null;
   }
 
+  #createDirectoryIntent({ repository, roots, kind, sourcePath, destinationPath, beforeEvidence }) {
+    const sourceAbsolutePath = path.resolve(sourcePath);
+    const destinationAbsolutePath = path.resolve(destinationPath);
+    const normalizedSourceRoot = normalizeLibraryRootPath(sourceAbsolutePath, this.platform);
+    const sourceRoot = roots.find((root) => root.pathKey === normalizedSourceRoot.pathKey) ?? null;
+    const sourceDirectory = sourceRoot
+      ? { rootId: sourceRoot.rootId, rootPath: sourceRoot.absolutePath, relativePath: '', relativePathKey: '' }
+      : this.#resolveCatalogDirectoryPath(sourceAbsolutePath, roots);
+    if (!sourceDirectory) {
+      return {
+        operationId: null,
+        kind,
+        state: 'untracked',
+        payload: { sourceAbsolutePath, destinationAbsolutePath, beforeEvidence },
+      };
+    }
+
+    const mode = sourceRoot ? 'root' : 'subtree';
+    const pathApi = pathApiForPlatform(this.platform);
+    const affectedRoots = mode === 'root'
+      ? roots.filter((root) => {
+          const relative = pathApi.relative(sourceAbsolutePath, root.absolutePath);
+          return relative === '' || isRelativePathInsideRoot(relative, this.platform);
+        })
+      : [];
+    const affectedRootIds = new Set(affectedRoots.map((root) => root.rootId));
+    const destinationRoot = mode === 'root'
+      ? sourceRoot
+      : this.#resolveCatalogDirectoryPath(destinationAbsolutePath, roots);
+    if (mode === 'root') {
+      const normalizedDestinationRoot = normalizeLibraryRootPath(destinationAbsolutePath, this.platform);
+      const conflict = roots.find((root) => (
+        root.pathKey === normalizedDestinationRoot.pathKey && !affectedRootIds.has(root.rootId)
+      ));
+      if (conflict) throw new Error('The destination is already registered as another library root.');
+    }
+
+    const locations = mode === 'root'
+      ? affectedRoots.flatMap((root) => repository.listPresentLocations(root.rootId).map((location) => ({
+          ...location,
+          sourceRootId: root.rootId,
+        })))
+      : repository.listPresentLocationsUnderPath(sourceDirectory.rootId, sourceDirectory.relativePathKey);
+    const entries = locations.map((location) => {
+      if (mode === 'root') {
+        return {
+          locationId: location.locationId,
+          assetId: location.assetId,
+          revisionId: location.revisionId,
+          sourceRootId: location.sourceRootId,
+          destinationRootId: location.sourceRootId,
+          sourceRelativePath: location.relativePath,
+          sourceRelativePathKey: location.relativePathKey,
+          destinationRelativePath: location.relativePath,
+          destinationRelativePathKey: location.relativePathKey,
+        };
+      }
+      const suffix = location.relativePath.slice(sourceDirectory.relativePath.length).replace(/^\/+/, '');
+      const destinationRelativePath = destinationRoot
+        ? [destinationRoot.relativePath, suffix].filter(Boolean).join('/')
+        : null;
+      const normalizedDestination = destinationRelativePath
+        ? normalizeRelativeCatalogPath(destinationRelativePath, this.platform)
+        : null;
+      return {
+        locationId: location.locationId,
+        assetId: location.assetId,
+        revisionId: location.revisionId,
+        sourceRootId: sourceDirectory.rootId,
+        sourceRelativePath: location.relativePath,
+        sourceRelativePathKey: location.relativePathKey,
+        destinationRelativePath: normalizedDestination?.relativePath ?? null,
+        destinationRelativePathKey: normalizedDestination?.relativePathKey ?? null,
+      };
+    });
+    if (mode === 'subtree' && entries.length === 0) {
+      return {
+        operationId: null,
+        kind,
+        state: 'untracked',
+        payload: { sourceAbsolutePath, destinationAbsolutePath, beforeEvidence },
+      };
+    }
+
+    const normalizedDestinationRoot = mode === 'root'
+      ? normalizeLibraryRootPath(destinationAbsolutePath, this.platform)
+      : null;
+    const rootRelocations = mode === 'root'
+      ? affectedRoots.map((root) => {
+          const suffix = pathApi.relative(sourceAbsolutePath, root.absolutePath);
+          const relocatedPath = suffix ? pathApi.resolve(destinationAbsolutePath, suffix) : destinationAbsolutePath;
+          const normalized = normalizeLibraryRootPath(relocatedPath, this.platform);
+          return {
+            rootId: root.rootId,
+            sourceRootPath: root.absolutePath,
+            sourceRootPathKey: root.pathKey,
+            destinationRootPath: normalized.absolutePath,
+            destinationRootPathKey: normalized.pathKey,
+          };
+        })
+      : [];
+    if (mode === 'root') {
+      for (const relocation of rootRelocations) {
+        const conflict = roots.find((root) => (
+          root.pathKey === relocation.destinationRootPathKey && !affectedRootIds.has(root.rootId)
+        ));
+        if (conflict) throw new Error('The destination would overlap another registered library root.');
+      }
+    } else if (destinationRoot) {
+      const movedLocationIds = new Set(entries.map((entry) => entry.locationId));
+      for (const entry of entries) {
+        const conflict = repository.getLocationByRootPath(destinationRoot.rootId, entry.destinationRelativePathKey);
+        if (conflict?.state === 'present' && !movedLocationIds.has(conflict.locationId)) {
+          throw new Error(`A catalog location already occupies ${entry.destinationRelativePath}.`);
+        }
+      }
+    }
+    const directory = {
+      mode,
+      sourceRootId: sourceDirectory.rootId,
+      sourceRootPath: sourceDirectory.rootPath,
+      sourceRelativePath: sourceDirectory.relativePath,
+      sourceRelativePathKey: sourceDirectory.relativePathKey,
+      destinationRootId: destinationRoot?.rootId ?? null,
+      destinationRootPath: mode === 'root'
+        ? normalizedDestinationRoot.absolutePath
+        : destinationRoot?.rootPath ?? null,
+      destinationRootPathKey: mode === 'root' ? normalizedDestinationRoot.pathKey : null,
+      destinationRelativePath: mode === 'subtree' ? destinationRoot?.relativePath ?? null : '',
+      destinationRelativePathKey: mode === 'subtree' ? destinationRoot?.relativePathKey ?? null : '',
+      rootRelocations,
+      sourceAbsolutePath,
+      destinationAbsolutePath,
+      entries,
+    };
+    const payload = {
+      source: sourceDirectory,
+      destination: destinationRoot,
+      sourceAbsolutePath,
+      destinationAbsolutePath,
+      samePathKey: this.#absolutePathKey(sourceAbsolutePath) === this.#absolutePathKey(destinationAbsolutePath),
+      beforeEvidence,
+      directory,
+      expectedOutputSha256: null,
+      reserved: {},
+    };
+    return repository.createFileOperationIntent({ operationId: this.randomUUID(), kind, payload });
+  }
+
+  #resolveCatalogDirectoryPath(absolutePath, roots) {
+    const resolved = path.resolve(absolutePath);
+    const pathApi = pathApiForPlatform(this.platform);
+    for (const root of roots) {
+      const relative = pathApi.relative(root.absolutePath, resolved);
+      if (!isRelativePathInsideRoot(relative, this.platform) || relative === '') continue;
+      const normalized = normalizeRelativeCatalogPath(relative, this.platform);
+      return { rootId: root.rootId, rootPath: root.absolutePath, ...normalized };
+    }
+    return null;
+  }
+
   async #inspectOutcome(operation, { verifyExpectedOutput = true } = {}) {
     const { source, destination, expectedOutputSha256, beforeEvidence = {} } = operation.payload;
+    if (operation.payload.directory) {
+      const sourceStat = await this.#statOrNull(operation.payload.directory.sourceAbsolutePath);
+      const destinationStat = await this.#statOrNull(operation.payload.directory.destinationAbsolutePath);
+      if ((operation.payload.samePathKey || beforeEvidence.sameFilePathAlias) && destinationStat?.isDirectory?.()) {
+        if (verifyExpectedOutput && operation.state !== 'fs_applied') {
+          const actualPath = await this.#realPathOrNull(operation.payload.directory.destinationAbsolutePath);
+          if (!actualPath) return { state: 'pending_recovery', reason: 'Directory rename spelling could not be verified.' };
+          if (path.resolve(actualPath) === path.resolve(operation.payload.directory.sourceAbsolutePath)) {
+            return { state: 'aborted', reason: 'Case-only directory rename was not applied.' };
+          }
+          if (path.resolve(actualPath) !== path.resolve(operation.payload.directory.destinationAbsolutePath)) {
+            return { state: 'pending_recovery', reason: 'Directory rename spelling is ambiguous.' };
+          }
+        }
+        return { state: 'completed', observation: null };
+      }
+      if (!sourceStat && destinationStat?.isDirectory?.()) {
+        if (
+          verifyExpectedOutput
+          && operation.state !== 'fs_applied'
+          && !this.#matchesRecordedMove(destinationStat, beforeEvidence)
+        ) {
+          return { state: 'pending_recovery', reason: 'Destination directory evidence does not match the recorded source.' };
+        }
+        return { state: 'completed', observation: null };
+      }
+      if (sourceStat?.isDirectory?.() && !destinationStat) {
+        return { state: 'aborted', reason: 'Filesystem directory mutation was not applied.' };
+      }
+      return { state: 'pending_recovery', reason: 'Directory move outcome is ambiguous; no destructive recovery was attempted.' };
+    }
     const sourceStat = source ? await this.#statOrNull(path.resolve(source.rootPath, source.relativePath)) : null;
     const destinationStat = destination ? await this.#statOrNull(path.resolve(destination.rootPath, destination.relativePath)) : null;
     if (operation.kind === 'delete') {
@@ -598,6 +804,20 @@ export class StableIdentityFileOperationCoordinator {
           }],
         });
       }
+      const confirmedMappings = completed?.result?.mappings;
+      if (Array.isArray(confirmedMappings) && confirmedMappings.length > 0) {
+        const roots = this.repositoryLifecycle.run((repository) => repository.listLibraryRoots());
+        const grouped = new Map();
+        for (const confirmed of confirmedMappings) {
+          const batch = grouped.get(confirmed.rootId) ?? [];
+          batch.push(confirmed);
+          grouped.set(confirmed.rootId, batch);
+        }
+        for (const [rootId, mappings] of grouped) {
+          const root = roots.find((entry) => entry.rootId === rootId);
+          if (root) this.publishMappings({ rootId, rootPath: root.absolutePath, mappings });
+        }
+      }
     } catch (error) {
       if (operationError && typeof operationError === 'object') {
         operationError.provenanceOperationId = operation.operationId;
@@ -610,6 +830,7 @@ export class StableIdentityFileOperationCoordinator {
     }
 
     this.#unblockOperationPaths(operation.payload);
+    this.#retireDirectorySource(operation.payload);
     try {
       await this.#observeCompletedDestination(operation.payload);
       await this.#flushDeferredForOperation(operation.payload);
@@ -632,6 +853,7 @@ export class StableIdentityFileOperationCoordinator {
           this.repositoryLifecycle.run((repository) => repository.markFileOperationPending(operation.operationId, error));
           return 'pending_recovery';
         }
+        this.#retireDirectorySource(operation.payload);
         this.#unblockOperationPaths(operation.payload);
         try {
           await this.#observeCompletedDestination(operation.payload);
@@ -652,6 +874,7 @@ export class StableIdentityFileOperationCoordinator {
   }
 
   async #observeCompletedDestination(payload) {
+    if (payload.directory) return;
     const destination = payload.destination;
     if (!destination?.rootId) return;
     const absolutePath = path.resolve(destination.rootPath, destination.relativePath);
@@ -671,6 +894,14 @@ export class StableIdentityFileOperationCoordinator {
   }
 
   #blockOperationPaths(payload) {
+    if (payload.directory) {
+      for (const scope of this.#directoryOperationScopes(payload)) {
+        this.recoveryBlockedPaths.add(this.#absolutePathKey(scope.absolutePath));
+        this.indexer.invalidateRoot(scope.rootPath);
+        this.indexer.blockCatalogSubtree(scope.rootPath, scope.relativePath);
+      }
+      return;
+    }
     for (const entry of [payload.source, payload.destination]) {
       if (!entry?.rootPath || !entry.relativePath) continue;
       const absolute = path.resolve(entry.rootPath, entry.relativePath);
@@ -681,6 +912,13 @@ export class StableIdentityFileOperationCoordinator {
   }
 
   #unblockOperationPaths(payload) {
+    if (payload.directory) {
+      for (const scope of this.#directoryOperationScopes(payload)) {
+        this.recoveryBlockedPaths.delete(this.#absolutePathKey(scope.absolutePath));
+        this.indexer.unblockCatalogSubtree(scope.rootPath, scope.relativePath);
+      }
+      return;
+    }
     for (const entry of [payload.source, payload.destination]) {
       if (!entry?.rootPath || !entry.relativePath) continue;
       const absolute = path.resolve(entry.rootPath, entry.relativePath);
@@ -690,6 +928,15 @@ export class StableIdentityFileOperationCoordinator {
   }
 
   async #flushDeferredForOperation(payload) {
+    if (payload.directory) {
+      const scopes = this.#operationAbsolutePaths(payload).map((value) => this.#absolutePathKey(value));
+      for (const key of [...this.deferredWatcherObservations.keys()]) {
+        if (scopes.some((scope) => this.#pathsOverlap(key, scope))) {
+          this.deferredWatcherObservations.delete(key);
+        }
+      }
+      return;
+    }
     for (const absolutePath of this.#operationAbsolutePaths(payload)) {
       const key = this.#absolutePathKey(absolutePath);
       const observation = this.deferredWatcherObservations.get(key);
@@ -733,6 +980,11 @@ export class StableIdentityFileOperationCoordinator {
   }
 
   #operationAbsolutePaths(payload) {
+    if (payload.directory) {
+      return [payload.directory.sourceAbsolutePath, payload.directory.destinationAbsolutePath]
+        .filter(Boolean)
+        .map((entry) => path.resolve(entry));
+    }
     return [payload.source, payload.destination]
       .filter((entry) => entry?.rootPath && entry.relativePath)
       .map((entry) => path.resolve(entry.rootPath, entry.relativePath));
@@ -741,7 +993,9 @@ export class StableIdentityFileOperationCoordinator {
   async #withPathLocks(absolutePaths, operation) {
     const keys = [...new Set(absolutePaths.map((value) => this.#absolutePathKey(value)))].sort();
     while (true) {
-      const blockers = keys.map((key) => this.activePathLocks.get(key)).filter(Boolean);
+      const blockers = [...this.activePathLocks.entries()]
+        .filter(([activeKey]) => keys.some((key) => this.#pathsOverlap(activeKey, key)))
+        .map(([, blocker]) => blocker);
       if (blockers.length === 0) break;
       await Promise.race(blockers);
     }
@@ -761,6 +1015,79 @@ export class StableIdentityFileOperationCoordinator {
   #absolutePathKey(value) {
     const normalized = path.resolve(value);
     return this.platform === 'win32' ? normalized.toLocaleLowerCase('en-US') : normalized;
+  }
+
+  #directoryOperationScopes(payload) {
+    const directory = payload.directory;
+    if (!directory) return [];
+    if (directory.mode === 'root' && Array.isArray(directory.rootRelocations)) {
+      return directory.rootRelocations.flatMap((relocation) => [
+        { absolutePath: relocation.sourceRootPath, rootPath: relocation.sourceRootPath, relativePath: '' },
+        { absolutePath: relocation.destinationRootPath, rootPath: relocation.destinationRootPath, relativePath: '' },
+      ]);
+    }
+    const scopes = [];
+    if (directory.sourceRootPath !== null && directory.sourceRootPath !== undefined) {
+      scopes.push({
+        absolutePath: directory.sourceAbsolutePath,
+        rootPath: directory.sourceRootPath,
+        relativePath: directory.sourceRelativePath ?? '',
+      });
+    }
+    if (directory.mode === 'root') {
+      scopes.push({
+        absolutePath: directory.destinationAbsolutePath,
+        rootPath: directory.destinationRootPath,
+        relativePath: '',
+      });
+    } else if (directory.destinationRootPath) {
+      scopes.push({
+        absolutePath: directory.destinationAbsolutePath,
+        rootPath: directory.destinationRootPath,
+        relativePath: directory.destinationRelativePath ?? '',
+      });
+    }
+    return scopes;
+  }
+
+  #retireDirectorySource(payload) {
+    if (!payload.directory) return;
+    this.retiredDirectoryScopes.add(this.#absolutePathKey(payload.directory.sourceAbsolutePath));
+  }
+
+  #pathsOverlap(left, right) {
+    const separator = path.sep;
+    return left === right || left.startsWith(`${right}${separator}`) || right.startsWith(`${left}${separator}`);
+  }
+
+  #isAbsolutePathWithin(candidate, scope) {
+    const separator = path.sep;
+    return candidate === scope || candidate.startsWith(`${scope}${separator}`);
+  }
+
+  #isPathLocked(candidate) {
+    for (const scope of this.activePathLocks.keys()) {
+      if (this.#pathsOverlap(candidate, scope)) return true;
+    }
+    return false;
+  }
+
+  #isRecoveryBlocked(candidate) {
+    for (const scope of this.recoveryBlockedPaths) {
+      if (this.#pathsOverlap(candidate, scope)) return true;
+    }
+    return false;
+  }
+
+  async #isRetiredStaleObservation(absolutePath, { removal = false } = {}) {
+    const candidate = this.#absolutePathKey(absolutePath);
+    const retired = [...this.retiredDirectoryScopes].filter((scope) => this.#isAbsolutePathWithin(candidate, scope));
+    if (retired.length === 0) return false;
+    if (removal) return true;
+    const stat = await this.#statOrNull(absolutePath);
+    if (!stat) return true;
+    for (const scope of retired) this.retiredDirectoryScopes.delete(scope);
+    return false;
   }
 
   async #isSameFilePathAlias({ kind, sourcePath, destinationPath, sourceStat, destinationStat }) {
