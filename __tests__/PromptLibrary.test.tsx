@@ -87,6 +87,21 @@ describe('PromptLibrary', () => {
     expect(screen.getByText('1 of 2')).toBeTruthy();
   });
 
+  it('opens the detail modal from the card while Copy stays in-place and shows feedback', async () => {
+    serviceMocks.list.mockResolvedValue([prompt('prompt-1', 'card prompt', 'card negative')]);
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    const card = (await screen.findByText('card prompt')).closest('article') as HTMLElement;
+
+    fireEvent.click(card);
+    expect(screen.getByRole('dialog', { name: 'Saved prompt details' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close prompt details' }));
+    expect(document.activeElement).toBe(card);
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Copy' }));
+    expect(await within(card).findByRole('button', { name: 'Copied' })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Saved prompt details' })).toBeNull();
+  });
+
   it('shows a resolved source thumbnail and opens the resolved file', async () => {
     const record = prompt('prompt-1', 'source prompt');
     record.source = {
@@ -119,10 +134,10 @@ describe('PromptLibrary', () => {
     expect(onViewSource).toHaveBeenCalledWith('D:/synthetic/source.png');
 
     fireEvent.click(screen.getByRole('button', { name: 'Random' }));
-    const dialog = screen.getByRole('dialog', { name: 'Random saved prompt' });
+    const dialog = screen.getByRole('dialog', { name: 'Saved prompt details' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'View Source' }));
     expect(onViewSource).toHaveBeenCalledTimes(2);
-    expect(screen.queryByRole('dialog', { name: 'Random saved prompt' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Saved prompt details' })).toBeNull();
   });
 
   it('Random opens a modal, avoids immediate repetition, and closes without scrolling the grid', async () => {
@@ -133,13 +148,13 @@ describe('PromptLibrary', () => {
     await screen.findByText('one');
     fireEvent.click(screen.getByRole('button', { name: 'Random' }));
     expect(useSavedPromptStore.getState().selectedPromptId).toBe('prompt-2');
-    expect(screen.getByRole('dialog', { name: 'Random saved prompt' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Saved prompt details' })).toBeTruthy();
     expect(screen.getAllByText('two')).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Another' })).toBeTruthy();
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
 
-    fireEvent.mouseDown(screen.getByRole('dialog', { name: 'Random saved prompt' }).parentElement as HTMLElement);
-    expect(screen.queryByRole('dialog', { name: 'Random saved prompt' })).toBeNull();
+    fireEvent.mouseDown(screen.getByRole('dialog', { name: 'Saved prompt details' }).parentElement as HTMLElement);
+    expect(screen.queryByRole('dialog', { name: 'Saved prompt details' })).toBeNull();
     expect(screen.getByText('one')).toBeTruthy();
   });
 
@@ -182,6 +197,10 @@ describe('PromptLibrary', () => {
     serviceMocks.list.mockResolvedValue([prompt('prompt-1', 'one'), prompt('prompt-2', 'two')]);
     render(<PromptLibrary onViewSource={vi.fn()} />);
     await screen.findByText('one');
+    expect(screen.queryByRole('button', { name: 'Remove saved prompt' })).toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Prompt actions' })[0]);
+    expect(screen.getByRole('button', { name: 'Remove saved prompt' })).toBeTruthy();
+    fireEvent.mouseDown(document.body);
     expect(screen.queryByRole('button', { name: 'Remove saved prompt' })).toBeNull();
     fireEvent.click(screen.getAllByRole('button', { name: 'Prompt actions' })[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Remove saved prompt' }));

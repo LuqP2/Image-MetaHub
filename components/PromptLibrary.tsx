@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   Bookmark,
+  Check,
   ChevronDown,
   ChevronUp,
   Copy,
@@ -114,18 +115,22 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [randomPromptId, setRandomPromptId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [copiedActionKey, setCopiedActionKey] = useState<string | null>(null);
   const [sourcePresentations, setSourcePresentations] = useState<Record<string, SourcePresentation>>({});
   const sourcePresentationsRef = useRef<Record<string, SourcePresentation>>({});
   const sourceRequestsRef = useRef(new Map<string, Promise<void>>());
   const sourceObjectUrlsRef = useRef(new Set<string>());
   const isMountedRef = useRef(true);
   const randomButtonRef = useRef<HTMLButtonElement>(null);
+  const modalTriggerRef = useRef<HTMLElement | null>(null);
+  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => initializeSavedPromptSynchronization(), []);
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
       for (const url of sourceObjectUrlsRef.current) URL.revokeObjectURL(url);
     };
   }, []);
@@ -212,20 +217,24 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
     });
   }, [prompts, query, sortBy, sortDirection]);
 
+  const openPrompt = useCallback((prompt: SavedPrompt) => {
+    select(prompt.id);
+    setRandomPromptId(prompt.id);
+    void ensureSource(prompt);
+  }, [ensureSource, select]);
+
   const chooseRandom = useCallback((excludeId: string | null = selectedPromptId) => {
     if (visiblePrompts.length === 0) return;
     const candidates = visiblePrompts.length > 1
       ? visiblePrompts.filter((prompt) => prompt.id !== excludeId)
       : visiblePrompts;
     const selected = candidates[Math.floor(Math.random() * candidates.length)];
-    select(selected.id);
-    setRandomPromptId(selected.id);
-    void ensureSource(selected);
-  }, [ensureSource, select, selectedPromptId, visiblePrompts]);
+    openPrompt(selected);
+  }, [openPrompt, selectedPromptId, visiblePrompts]);
 
   const closeRandom = useCallback(() => {
     setRandomPromptId(null);
-    randomButtonRef.current?.focus({ preventScroll: true });
+    (modalTriggerRef.current ?? randomButtonRef.current)?.focus({ preventScroll: true });
   }, []);
 
   useEffect(() => {
@@ -237,9 +246,27 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [closeRandom, randomPromptId]);
 
-  const handleCopy = useCallback(async (text: string) => {
+  useEffect(() => {
+    if (!menuId) return undefined;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-prompt-actions]')) return;
+      setMenuId(null);
+      setConfirmingId(null);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuId]);
+
+  const handleCopy = useCallback(async (text: string, actionKey: string) => {
     const result = await copyTextToClipboard(text);
-    if (!result.success) setActionError(result.error || 'Could not copy the prompt.');
+    if (!result.success) {
+      setActionError(result.error || 'Could not copy the prompt.');
+      return;
+    }
+    setCopiedActionKey(actionKey);
+    if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
+    copyFeedbackTimeoutRef.current = setTimeout(() => setCopiedActionKey(null), 1400);
   }, []);
 
   const randomPrompt = randomPromptId
@@ -300,7 +327,10 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
           <button
             ref={randomButtonRef}
             type="button"
-            onClick={() => chooseRandom()}
+            onClick={(event) => {
+              modalTriggerRef.current = event.currentTarget;
+              chooseRandom();
+            }}
             disabled={visiblePrompts.length === 0}
             className="app-top-pill h-9 px-3 text-sm disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -339,8 +369,27 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
             {visiblePrompts.map((prompt) => {
               const expanded = expandedId === prompt.id;
               const menuOpen = menuId === prompt.id;
+              const positiveCopyKey = `positive:${prompt.id}`;
+              const negativeCopyKey = `negative:${prompt.id}`;
               return (
-                <article key={prompt.id} className="relative overflow-visible rounded-xl border border-gray-800 bg-gray-900/75 shadow-sm transition-colors hover:border-gray-700">
+                <article
+                  key={prompt.id}
+                  tabIndex={0}
+                  aria-label="Open saved prompt"
+                  onClick={(event) => {
+                    const target = event.target;
+                    if (target instanceof Element && target.closest('button, a, input, select, textarea, [data-prompt-actions]')) return;
+                    modalTriggerRef.current = event.currentTarget;
+                    openPrompt(prompt);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+                    event.preventDefault();
+                    modalTriggerRef.current = event.currentTarget;
+                    openPrompt(prompt);
+                  }}
+                  className="relative cursor-pointer overflow-visible rounded-xl border border-gray-800 bg-gray-900/75 shadow-sm transition-colors hover:border-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
                   <div className="overflow-hidden rounded-t-xl border-b border-gray-800">
                     <PromptSourcePreview
                       prompt={prompt}
@@ -360,8 +409,13 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
                           <div>
                             <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Negative prompt</div>
                             <p className="whitespace-pre-wrap break-words text-sm leading-5 text-gray-300">{prompt.negativePrompt}</p>
-                            <button type="button" className="mt-2 inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-100" onClick={() => void handleCopy(prompt.negativePrompt)}>
-                              <Copy size={12} /> Copy Negative
+                            <button
+                              type="button"
+                              className={`mt-2 inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${copiedActionKey === negativeCopyKey ? 'bg-accent text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}
+                              onClick={() => void handleCopy(prompt.negativePrompt, negativeCopyKey)}
+                            >
+                              {copiedActionKey === negativeCopyKey ? <Check size={12} /> : <Copy size={12} />}
+                              {copiedActionKey === negativeCopyKey ? 'Copied' : 'Copy Negative'}
                             </button>
                           </div>
                         ) : (
@@ -375,8 +429,13 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
                     )}
 
                     <div className="mt-3 flex items-center gap-1.5">
-                      <button type="button" className="app-top-pill px-2.5 py-1.5 text-xs" onClick={() => void handleCopy(prompt.positivePrompt)}>
-                        <Copy size={13} /> Copy
+                      <button
+                        type="button"
+                        className={`app-top-pill px-2.5 py-1.5 text-xs ${copiedActionKey === positiveCopyKey ? 'border-accent bg-accent text-white hover:bg-accent/90' : ''}`}
+                        onClick={() => void handleCopy(prompt.positivePrompt, positiveCopyKey)}
+                      >
+                        {copiedActionKey === positiveCopyKey ? <Check size={13} /> : <Copy size={13} />}
+                        {copiedActionKey === positiveCopyKey ? 'Copied' : 'Copy'}
                       </button>
                       <button
                         type="button"
@@ -387,7 +446,7 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
                         {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                         {expanded ? 'Less' : 'Details'}
                       </button>
-                      <div className="relative ml-auto">
+                      <div className="relative ml-auto" data-prompt-actions>
                         <button
                           type="button"
                           className="app-top-icon-button h-8 w-8 text-gray-500 hover:text-gray-200"
@@ -448,7 +507,7 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
             if (event.target === event.currentTarget) closeRandom();
           }}
         >
-          <div role="dialog" aria-modal="true" aria-label="Random saved prompt" className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl shadow-black/60">
+          <div role="dialog" aria-modal="true" aria-label="Saved prompt details" className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl shadow-black/60">
             <div className="relative border-b border-gray-800">
               <PromptSourcePreview
                 prompt={randomPrompt}
@@ -457,7 +516,7 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
                 onViewSource={onViewSource}
                 large
               />
-              <button type="button" onClick={closeRandom} className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/70 text-gray-200 backdrop-blur-sm hover:bg-black/90" aria-label="Close random prompt">
+              <button type="button" onClick={closeRandom} className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/70 text-gray-200 backdrop-blur-sm hover:bg-black/90" aria-label="Close prompt details">
                 <X size={17} />
               </button>
             </div>
@@ -472,12 +531,22 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2 border-t border-gray-800 bg-gray-950/50 px-5 py-3">
-              <button type="button" className="app-top-pill px-3 py-2 text-sm" onClick={() => void handleCopy(randomPrompt.positivePrompt)}>
-                <Copy size={14} /> Copy
+              <button
+                type="button"
+                className={`app-top-pill px-3 py-2 text-sm ${copiedActionKey === `positive:${randomPrompt.id}` ? 'border-accent bg-accent text-white hover:bg-accent/90' : ''}`}
+                onClick={() => void handleCopy(randomPrompt.positivePrompt, `positive:${randomPrompt.id}`)}
+              >
+                {copiedActionKey === `positive:${randomPrompt.id}` ? <Check size={14} /> : <Copy size={14} />}
+                {copiedActionKey === `positive:${randomPrompt.id}` ? 'Copied' : 'Copy'}
               </button>
               {randomPrompt.negativePrompt && (
-                <button type="button" className="app-top-pill px-3 py-2 text-sm" onClick={() => void handleCopy(randomPrompt.negativePrompt)}>
-                  <Copy size={14} /> Copy Negative
+                <button
+                  type="button"
+                  className={`app-top-pill px-3 py-2 text-sm ${copiedActionKey === `negative:${randomPrompt.id}` ? 'border-accent bg-accent text-white hover:bg-accent/90' : ''}`}
+                  onClick={() => void handleCopy(randomPrompt.negativePrompt, `negative:${randomPrompt.id}`)}
+                >
+                  {copiedActionKey === `negative:${randomPrompt.id}` ? <Check size={14} /> : <Copy size={14} />}
+                  {copiedActionKey === `negative:${randomPrompt.id}` ? 'Copied' : 'Copy Negative'}
                 </button>
               )}
               <button

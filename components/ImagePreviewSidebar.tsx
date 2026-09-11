@@ -35,7 +35,7 @@ import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorM
 import BatchExportModal from './BatchExportModal';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata, type RawMetadataHydrationOptions } from '../services/rawMetadataHydration';
 import { useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
-import { useSavePrompt } from '../hooks/useSavePrompt';
+import { useIsPromptSaved, useSavePrompt } from '../hooks/useSavePrompt';
 
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
@@ -310,6 +310,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   // Calculate these BEFORE the early return to maintain hook order
   const nMeta: BaseMetadata | undefined = activeImage?.metadata?.normalizedMetadata;
   const effectiveMetadata = activeImage ? buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal) : undefined;
+  const isPromptSaved = useIsPromptSaved(effectiveMetadata?.prompt, effectiveMetadata?.negativePrompt);
   const rawMetadataImage = hydratedRawMetadataImage?.id === activeImage?.id ? hydratedRawMetadataImage : activeImage;
   const ensureFullRawMetadata = useCallback(async (
     options: RawMetadataHydrationOptions = {},
@@ -827,9 +828,10 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                       setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
                     }
                   }}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${isPromptSaved ? 'border-accent bg-accent text-white hover:bg-accent/90' : 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'}`}
+                  aria-pressed={isPromptSaved}
                 >
-                  <Bookmark size={14} /> Save Prompt
+                  <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} /> {isPromptSaved ? 'Saved' : 'Save Prompt'}
                 </button>
               )}
               <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />

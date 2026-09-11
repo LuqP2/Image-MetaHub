@@ -80,3 +80,18 @@ export function useSavePrompt() {
     ));
   }, [persist]);
 }
+
+export function useIsPromptSaved(
+  positivePrompt: unknown,
+  negativePrompt: unknown,
+): boolean {
+  const positive = typeof positivePrompt === 'string' ? positivePrompt : '';
+  const negative = typeof negativePrompt === 'string' ? negativePrompt : '';
+  return useSavedPromptStore((state) => (
+    Boolean(positive.trim())
+    && state.prompts.some((prompt) => (
+      prompt.positivePrompt === positive
+      && prompt.negativePrompt === negative
+    ))
+  ));
+}

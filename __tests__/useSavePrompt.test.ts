@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { renderHook } from '@testing-library/react';
 import type { IndexedImage, ShadowMetadata } from '../types';
-import { buildSavedPromptSource, composeSavedPromptInput } from '../hooks/useSavePrompt';
+import { buildSavedPromptSource, composeSavedPromptInput, useIsPromptSaved } from '../hooks/useSavePrompt';
+import { useSavedPromptStore } from '../store/useSavedPromptStore';
 
 const image = (overrides: Partial<IndexedImage> = {}): IndexedImage => ({
   id: 'directory::nested/image.png',
@@ -19,7 +21,10 @@ const image = (overrides: Partial<IndexedImage> = {}): IndexedImage => ({
 });
 
 describe('saved prompt composition', () => {
-  afterEach(() => { delete window.electronAPI; });
+  afterEach(() => {
+    delete window.electronAPI;
+    useSavedPromptStore.setState({ prompts: [] });
+  });
 
   it('captures effective shadow text literally and defaults a missing negative to empty', () => {
     const shadow = { imageId: 'directory::nested/image.png', prompt: '  shadow\npositive  ', negativePrompt: '', updatedAt: 1 } as ShadowMetadata;
@@ -64,5 +69,27 @@ describe('saved prompt composition', () => {
         directoryPath: 'D:\\Library', relativePath: 'nested/image.png', fileSize: 8, contentModifiedMs: 9,
       },
     });
+  });
+
+  it('reports a saved state only for the exact positive and negative prompt pair', () => {
+    useSavedPromptStore.setState({
+      prompts: [{
+        id: 'saved-prompt',
+        createdAt: 1,
+        sourceCreatedAt: null,
+        positivePrompt: '  exact prompt  ',
+        negativePrompt: 'exact negative',
+        textBasis: 'effective',
+        source: null,
+      }],
+    });
+
+    const { result, rerender } = renderHook(
+      ({ positive, negative }) => useIsPromptSaved(positive, negative),
+      { initialProps: { positive: '  exact prompt  ', negative: 'exact negative' } },
+    );
+    expect(result.current).toBe(true);
+    rerender({ positive: 'exact prompt', negative: 'exact negative' });
+    expect(result.current).toBe(false);
   });
 });
