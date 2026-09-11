@@ -518,6 +518,11 @@ export interface ElectronAPI {
   }) => Promise<StableUserDataIpcResult<StableUserDataRecord[]>>;
   stableUserDataTagCounts: () => Promise<StableUserDataIpcResult<TagInfo[]>>;
   onStableUserDataChanged: (callback: (payload: { records: StableUserDataRecord[] }) => void) => () => void;
+  savedPromptsList: () => Promise<SavedPromptIpcResult<SavedPrompt[]>>;
+  savedPromptsSave: (input: SavePromptInput) => Promise<SavedPromptIpcResult<SavedPromptSaveResult>>;
+  savedPromptsRemove: (id: string) => Promise<SavedPromptIpcResult<{ id: string; removed: boolean }>>;
+  savedPromptsResolveSource: (id: string) => Promise<SavedPromptIpcResult<SavedPromptSourceResolution>>;
+  onSavedPromptsChanged: (callback: () => void) => () => void;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
   hashFileSha256: (filePath: string, requestId: string) => Promise<{ success: boolean; sha256?: string; error?: string; errorType?: string; errorCode?: string }>;
   cancelFileSha256: (requestId: string) => void;
@@ -727,6 +732,58 @@ export interface ElectronAPI {
   onWatchedFilesRemoved: (callback: (data: WatchedFileRemovalPayload) => void) => () => void;
   onWatcherDebug: (callback: (data: { message: string }) => void) => () => void;
 }
+
+export interface SourcePathSnapshot {
+  directoryPath: string;
+  relativePath: string;
+  fileSize: number | null;
+  contentModifiedMs: number | null;
+}
+
+export type SavedPromptSource =
+  | {
+      kind: 'stable';
+      reference: {
+        assetId: string;
+        revisionId: string;
+        locationId: string;
+        rootId: string;
+      };
+      pathAtSave: SourcePathSnapshot;
+    }
+  | {
+      kind: 'path';
+      pathAtSave: SourcePathSnapshot;
+    };
+
+export interface SavedPrompt {
+  id: string;
+  createdAt: number;
+  positivePrompt: string;
+  negativePrompt: string;
+  textBasis: 'effective' | 'original';
+  source: SavedPromptSource | null;
+}
+
+export interface SavePromptInput {
+  positivePrompt: string;
+  negativePrompt: string;
+  textBasis: 'effective' | 'original';
+  source: SavedPromptSource | null;
+}
+
+export interface SavedPromptSaveResult {
+  status: 'saved' | 'already-saved';
+  prompt: SavedPrompt;
+}
+
+export type SavedPromptSourceResolution =
+  | { status: 'available'; absolutePath: string; sourceChanged: boolean }
+  | { status: 'unavailable'; reason: string };
+
+export type SavedPromptIpcResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: string; errorCode?: string };
 
 declare global {
   interface Window {

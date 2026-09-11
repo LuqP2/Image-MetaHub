@@ -251,6 +251,15 @@ const electronAPI = {
     ipcRenderer.on('stable-user-data-changed', handler);
     return () => ipcRenderer.removeListener('stable-user-data-changed', handler);
   },
+  savedPromptsList: () => ipcRenderer.invoke('saved-prompts:list'),
+  savedPromptsSave: (input) => ipcRenderer.invoke('saved-prompts:save', input),
+  savedPromptsRemove: (id) => ipcRenderer.invoke('saved-prompts:remove', id),
+  savedPromptsResolveSource: (id) => ipcRenderer.invoke('saved-prompts:resolve-source', id),
+  onSavedPromptsChanged: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('saved-prompts:changed', subscription);
+    return () => ipcRenderer.removeListener('saved-prompts:changed', subscription);
+  },
   resolveMediaUrl: (filePath) => ipcRenderer.invoke('resolve-media-url', filePath),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   hashFileSha256: (filePath, requestId) => ipcRenderer.invoke('hash-file-sha256', { filePath, requestId }),

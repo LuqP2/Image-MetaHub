@@ -171,8 +171,17 @@ function createObjectStore(
     },
     index,
     get: (key: IDBValidKey | IDBKeyRange) => request(() => store.records.get(String(key))),
+    getKey: (key: IDBValidKey | IDBKeyRange) => request(() => (
+      store.records.has(String(key)) ? String(key) : undefined
+    )),
     getAll: () => request(() => [...store.records.values()]),
     getAllKeys: () => request(() => [...store.records.keys()]),
+    add: (value: unknown) => request(() => {
+      const key = String((value as Record<string, unknown>)[store.keyPath]);
+      if (store.records.has(key)) throw new DOMException(`Key ${key} already exists.`, 'ConstraintError');
+      store.records.set(key, cloneValue(value));
+      return key;
+    }),
     put: (value: unknown) => request(() => {
       const key = String((value as Record<string, unknown>)[store.keyPath]);
       store.records.set(key, cloneValue(value));

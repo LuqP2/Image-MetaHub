@@ -14,6 +14,8 @@ const __dirname = path.dirname(__filename);
 const portableRuntime = resolvePortableRuntime();
 const packagedProvenanceSmokeEnabled = app.isPackaged
   && process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE === '1';
+const packagedSavedPromptSmokeEnabled = app.isPackaged
+  && process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE === '1';
 let portableStartupError = null;
 
 try {
@@ -145,7 +147,7 @@ function registerProtocol() {
 }
 
 if (!portableStartupError) {
-  const lock = packagedProvenanceSmokeEnabled || app.requestSingleInstanceLock();
+  const lock = packagedProvenanceSmokeEnabled || packagedSavedPromptSmokeEnabled || app.requestSingleInstanceLock();
 
   if (!lock) {
     app.quit();
@@ -179,8 +181,11 @@ if (!portableStartupError) {
       await import('./electron.mjs');
     } catch (error) {
       console.error('[Electron bootstrap] Failed to import the main process:', error);
-      if (packagedProvenanceSmokeEnabled) {
-        const resultPath = process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE_RESULT?.trim();
+      if (packagedProvenanceSmokeEnabled || packagedSavedPromptSmokeEnabled) {
+        const resultPath = (
+          process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE_RESULT
+          || process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE_RESULT
+        )?.trim();
         if (resultPath) {
           try {
             fs.mkdirSync(path.dirname(resultPath), { recursive: true });

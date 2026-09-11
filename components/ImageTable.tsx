@@ -5,7 +5,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Sparkles, Star, Workflow, Image as ImageIcon } from 'lucide-react';
+import { Copy, Folder, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Sparkles, Star, Workflow, Image as ImageIcon, Bookmark } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -29,6 +29,7 @@ import { getFileExtension, isAudioFileName, isModel3DFileName, isVideoFileName }
 import Model3DThumbnail from './Model3DThumbnail';
 import { groupImages, type ImageGroupByMode, type ImageGroupingSortOrder, type ImageGroupRenderItem } from '../utils/imageGrouping';
 import { clearInternalImageDragData, setInternalImageDragData } from '../utils/internalImageDrag';
+import { useSavePrompt } from '../hooks/useSavePrompt';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -101,6 +102,9 @@ const ImageTable: React.FC<ImageTableProps> = ({
   jumpToGroupRequest = null,
 }) => {
   const directories = useImageStore((state) => state.directories);
+  const setSuccess = useImageStore((state) => state.setSuccess);
+  const setError = useImageStore((state) => state.setError);
+  const savePrompt = useSavePrompt();
   const transferProgress = useImageStore((state) => state.transferProgress);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
@@ -142,6 +146,19 @@ const ImageTable: React.FC<ImageTableProps> = ({
   } = useContextMenu();
 
   const submenuHorizontalClass = contextMenu.horizontalDirection === 'left' ? 'right-full' : 'left-full';
+
+  const handleSaveContextPrompt = useCallback(async () => {
+    const target = contextMenu.image;
+    if (!target) return;
+    const directoryPath = directories.find((directory) => directory.id === target.directoryId)?.path;
+    hideContextMenu();
+    try {
+      const result = await savePrompt(target, { directoryPath, readAuthoritativeShadow: true });
+      setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
+    }
+  }, [contextMenu.image, directories, hideContextMenu, savePrompt, setError, setSuccess]);
 
   useEffect(() => {
     if (!contextMenu.visible && isCopySubmenuOpen) {
@@ -646,6 +663,14 @@ const ImageTable: React.FC<ImageTableProps> = ({
           >
             <Copy className="w-4 h-4" />
             Copy to Clipboard
+          </button>
+
+          <button
+            onClick={() => void handleSaveContextPrompt()}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Bookmark className="w-4 h-4" />
+            Save Prompt
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { ProvenanceRepositoryLifecycle } from './provenanceRepository.mjs';
+import { PROVENANCE_SCHEMA_VERSION, ProvenanceRepositoryLifecycle } from './provenanceRepository.mjs';
 import { StableIdentityUserDataService } from './stableIdentityUserDataService.mjs';
 
 function assertSmoke(condition, message) {
@@ -148,6 +148,12 @@ export async function runStableIdentityFileOperationsSmoke({
           patch: { set: { rating: 2, updatedAt: 30 } },
         })
       : null;
+    const savedPrompt = repository.savePrompt({
+      positivePrompt: 'packaged smoke prompt',
+      negativePrompt: '',
+      textBasis: 'effective',
+      source: null,
+    }).prompt;
     return {
       root,
       renamed,
@@ -159,6 +165,7 @@ export async function runStableIdentityFileOperationsSmoke({
       copiedAnnotation,
       copiedShadow,
       editedCopy,
+      savedPrompt,
       pendingOperations: repository.listPendingFileOperations(),
       status: repository.getStatus(),
     };
@@ -196,17 +203,27 @@ export async function runStableIdentityFileOperationsSmoke({
     const sourceData = repository.captureAssetUserDataSnapshot(initial.assetId, 40);
     const copiedData = copied ? repository.captureAssetUserDataSnapshot(copied.assetId, 40) : [];
     const directoryData = repository.captureAssetUserDataSnapshot(directoryInitial.assetId, 40);
-    return { status: repository.getStatus(), copied, renamedDirectoryDescendant, sourceData, copiedData, directoryData };
+    return {
+      status: repository.getStatus(),
+      copied,
+      renamedDirectoryDescendant,
+      sourceData,
+      copiedData,
+      directoryData,
+      savedPrompts: repository.listSavedPrompts(),
+    };
   });
   reopenedLifecycle.close();
   assertSmoke(reopenedUserDataStatus.authority === 'sqlite', 'SQLite authority did not survive a flag-off reopen');
   assertSmoke(reopenedUserDataStatus.legacyScanComplete === true, 'legacy scan checkpoint did not survive reopen');
-  assertSmoke(reopened.status.schemaVersion === 5, 'reopened catalog schema is not current');
+  assertSmoke(reopened.status.schemaVersion === PROVENANCE_SCHEMA_VERSION, 'reopened catalog schema is not current');
   assertSmoke(reopened.sourceData.find((entry) => entry.domain === 'annotation')?.payload?.rating === 5, 'source annotation changed with its copy');
   assertSmoke(reopened.copiedData.find((entry) => entry.domain === 'annotation')?.payload?.rating === 2, 'copied annotation did not survive reopen');
   assertSmoke(reopened.copiedData.find((entry) => entry.domain === 'shadow')?.payload?.seed === 0, 'copied shadow metadata did not survive reopen');
   assertSmoke(reopened.renamedDirectoryDescendant?.assetId === directoryInitial.assetId, 'directory descendant identity did not survive reopen');
   assertSmoke(reopened.directoryData.find((entry) => entry.domain === 'annotation')?.payload?.rating === 4, 'directory descendant annotation did not survive reopen');
+  assertSmoke(reopened.savedPrompts.length === 1, 'saved prompt did not survive reopen');
+  assertSmoke(reopened.savedPrompts[0]?.id === snapshot.savedPrompt.id, 'saved prompt identity changed after reopen');
 
   return {
     success: true,

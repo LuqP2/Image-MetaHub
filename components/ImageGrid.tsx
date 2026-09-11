@@ -19,7 +19,8 @@ import { Heart, Info, Copy, CheckCircle, Folder, Clipboard, Sparkles, GitCompare
   RefreshCw,
   Image as ImageIcon,
   Workflow,
-  Trash2
+  Trash2,
+  Bookmark
 } from 'lucide-react';
 import { copyTextToClipboard } from '../utils/imageUtils';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
@@ -61,6 +62,7 @@ import {
 import { clearInternalImageDragData, setInternalImageDragData } from '../utils/internalImageDrag';
 import { isMacPlatform } from '../utils/platform';
 import { canNativeDragIndexedFile } from '../utils/model3DTransfer';
+import { useSavePrompt } from '../hooks/useSavePrompt';
 
 // macOS ignores Electron's startDrag() unless it is invoked synchronously from the
 // dragstart handler, so native external drag has to be kicked off differently there
@@ -1158,6 +1160,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
   const directories = useImageStore((state) => state.directories);
+  const setSuccess = useImageStore((state) => state.setSuccess);
+  const setError = useImageStore((state) => state.setError);
+  const savePrompt = useSavePrompt();
   const filterAndSortImages = useImageStore((state) => state.filterAndSortImages);
 
   const focusedImageIndex = useImageStore((state) => state.focusedImageIndex);
@@ -1245,6 +1250,19 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   } = useContextMenu();
 
   const submenuHorizontalClass = contextMenu.horizontalDirection === 'left' ? 'right-full' : 'left-full';
+
+  const handleSaveContextPrompt = useCallback(async () => {
+    const target = contextMenu.image;
+    if (!target) return;
+    const directoryPath = directories.find((directory) => directory.id === target.directoryId)?.path;
+    hideContextMenu();
+    try {
+      const result = await savePrompt(target, { directoryPath, readAuthoritativeShadow: true });
+      setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
+    }
+  }, [contextMenu.image, directories, hideContextMenu, savePrompt, setError, setSuccess]);
 
   const getGridScrollElement = useCallback(() => gridScrollRef.current ?? gridScopeRef.current, []);
 
@@ -2399,6 +2417,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           >
             <Copy className="w-4 h-4" />
             Copy to Clipboard
+          </button>
+
+          <button
+            onClick={() => void handleSaveContextPrompt()}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Bookmark className="w-4 h-4" />
+            Save Prompt
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>

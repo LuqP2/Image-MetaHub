@@ -1,6 +1,6 @@
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import ImageTable from '../components/ImageTable';
 import { useImageSelection } from '../hooks/useImageSelection';
 import { useImageStore } from '../store/useImageStore';
@@ -16,6 +16,8 @@ const contextMenuStateMock = {
   image: undefined as IndexedImage | undefined,
   directoryPath: 'D:/library',
 };
+
+afterEach(() => cleanup());
 
 vi.mock('../hooks/useContextMenu', () => ({
   useContextMenu: () => ({
@@ -123,6 +125,7 @@ describe('ImageTable context menu', () => {
       showFullFilePath: false,
     } as any);
   });
+
 
   it('does not mount 3D thumbnail renderers when thumbnails are disabled', () => {
     const image = createImage({ id: 'model-1', name: 'model.glb', fileType: 'model/gltf-binary' });

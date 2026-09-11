@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageGrid from '../components/ImageGrid';
 import { useImageSelection } from '../hooks/useImageSelection';
 import { useImageStore } from '../store/useImageStore';
@@ -21,6 +21,8 @@ const contextMenuStateMock = {
   image: undefined as IndexedImage | undefined,
   directoryPath: 'D:/library',
 };
+
+afterEach(() => cleanup());
 
 vi.mock('../hooks/useContextMenu', () => ({
   useContextMenu: () => ({

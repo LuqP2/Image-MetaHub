@@ -8,9 +8,10 @@ import {
   resolveProvenanceCatalogPath,
 } from './provenancePaths.mjs';
 import { StableIdentityUserDataRepository } from './stableIdentityUserDataRepository.mjs';
+import { SavedPromptRepository } from './savedPromptRepository.mjs';
 
 export { PROVENANCE_DATABASE_NAME, PROVENANCE_DIRECTORY_NAME, resolveProvenanceCatalogPath };
-export const PROVENANCE_SCHEMA_VERSION = 5;
+export const PROVENANCE_SCHEMA_VERSION = 6;
 
 export const ASSET_STATES = Object.freeze(['active', 'missing', 'deleted']);
 export const LOCATION_STATES = Object.freeze(['present', 'missing', 'removed']);
@@ -277,12 +278,31 @@ function migrationFive(database) {
   `);
 }
 
+function migrationSix(database) {
+  database.exec(`
+    CREATE TABLE saved_prompts (
+      id TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL CHECK (created_at >= 0),
+      positive_prompt TEXT NOT NULL,
+      negative_prompt TEXT NOT NULL,
+      text_basis TEXT NOT NULL CHECK (text_basis IN ('effective', 'original')),
+      source_json TEXT,
+      prompt_digest TEXT NOT NULL,
+      CHECK (length(trim(positive_prompt)) > 0)
+    ) STRICT;
+
+    CREATE INDEX saved_prompts_digest_idx ON saved_prompts(prompt_digest);
+    CREATE INDEX saved_prompts_created_idx ON saved_prompts(created_at DESC, id DESC);
+  `);
+}
+
 const MIGRATIONS = new Map([
   [1, migrationOne],
   [2, migrationTwo],
   [3, migrationThree],
   [4, migrationFour],
   [5, migrationFive],
+  [6, migrationSix],
 ]);
 
 function serializeAsset(row) {
@@ -387,6 +407,7 @@ export class AssetProvenanceRepository {
     this.backupDatabase = backupDatabase;
     this.database = null;
     this.userData = null;
+    this.savedPrompts = null;
   }
 
   open({ failMigrationVersion = null, targetSchemaVersion = PROVENANCE_SCHEMA_VERSION } = {}) {
@@ -419,6 +440,13 @@ export class AssetProvenanceRepository {
         this.userData = new StableIdentityUserDataRepository({
           database: this.database,
           now: this.now,
+        });
+      }
+      if (readSchemaVersion(this.database) >= 6) {
+        this.savedPrompts = new SavedPromptRepository({
+          database: this.database,
+          randomUUID: this.randomUUID,
+          now: () => this.now().getTime(),
         });
       }
       return this.getStatus();
@@ -527,6 +555,28 @@ export class AssetProvenanceRepository {
   getUserDataTagCounts() {
     this.#requireUserDataRepository();
     return this.userData.getTagCounts();
+  }
+
+  listSavedPrompts() {
+    this.#requireSavedPromptRepository();
+    return this.savedPrompts.list();
+  }
+
+  savePrompt(input) {
+    this.#requireWritable();
+    this.#requireSavedPromptRepository();
+    return this.savedPrompts.save(input);
+  }
+
+  removeSavedPrompt(id) {
+    this.#requireWritable();
+    this.#requireSavedPromptRepository();
+    return this.savedPrompts.remove(id);
+  }
+
+  resolveSavedPromptSource(id) {
+    this.#requireSavedPromptRepository();
+    return this.savedPrompts.resolveSource(id);
   }
 
   captureAssetUserDataSnapshot(assetId, copiedAt = this.now().getTime()) {
@@ -1156,6 +1206,7 @@ export class AssetProvenanceRepository {
     try { this.database.close(); } finally {
       this.database = null;
       this.userData = null;
+      this.savedPrompts = null;
     }
   }
 
@@ -1343,6 +1394,15 @@ export class AssetProvenanceRepository {
       throw new ProvenanceRepositoryError(
         'PROVENANCE_USER_DATA_UNAVAILABLE',
         'Stable-identity user-data storage is unavailable for this catalog schema.',
+      );
+    }
+  }
+
+  #requireSavedPromptRepository() {
+    if (!this.savedPrompts) {
+      throw new ProvenanceRepositoryError(
+        'SAVED_PROMPTS_UNAVAILABLE',
+        'Saved-prompt storage is unavailable for this catalog schema.',
       );
     }
   }

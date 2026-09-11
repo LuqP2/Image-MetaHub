@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ProvenanceRepositoryLifecycle, resolveProvenanceCatalogPath } from '../electron/provenanceRepository.mjs';
+import { PROVENANCE_SCHEMA_VERSION, ProvenanceRepositoryLifecycle, resolveProvenanceCatalogPath } from '../electron/provenanceRepository.mjs';
 import { StableIdentityIndexer } from '../electron/stableIdentityIndexer.mjs';
 import { StableIdentityFileOperationCoordinator } from '../electron/stableIdentityFileOperationCoordinator.mjs';
 import { runStableIdentityFileOperationsSmoke } from '../electron/stableIdentityFileOperationsSmoke.mjs';
@@ -1903,7 +1903,7 @@ describe('stable identity file-operation coordination', () => {
     const lifecycle = new ProvenanceRepositoryLifecycle({ userDataPath });
     lifecycle.initialize();
     expect(resolveProvenanceCatalogPath(userDataPath)).toContain(path.join('provenance', 'catalog.sqlite'));
-    expect(lifecycle.run((repository) => repository.getStatus().schemaVersion)).toBe(5);
+    expect(lifecycle.run((repository) => repository.getStatus().schemaVersion)).toBe(PROVENANCE_SCHEMA_VERSION);
     lifecycle.close();
   });
 
@@ -1926,7 +1926,7 @@ describe('stable identity file-operation coordination', () => {
       indexer,
       coordinator,
     });
-    expect(result).toMatchObject({ success: true, schemaVersion: 5, pendingOperations: 0 });
+    expect(result).toMatchObject({ success: true, schemaVersion: PROVENANCE_SCHEMA_VERSION, pendingOperations: 0 });
     indexer.stop();
     lifecycle.close();
   });
