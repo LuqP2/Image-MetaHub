@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Bug, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon, Compass, Library } from 'lucide-react';
+import { Settings, Bug, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon, Compass, Bookmark } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -310,7 +310,6 @@ const Header: React.FC<HeaderProps> = ({
   const viewTabs = useMemo(
     () => [
       { id: 'library' as const, label: 'Library' },
-      { id: 'prompts' as const, label: 'Prompts', icon: Library },
       { id: 'explore' as const, label: 'Explore', icon: Compass },
       { id: 'editor' as const, label: 'Image Editor', icon: ImageIcon },
       { id: 'comfyui' as const, label: 'ComfyUI', icon: Workflow },
@@ -368,8 +367,8 @@ const Header: React.FC<HeaderProps> = ({
                   const Icon = 'icon' in tab ? tab.icon : null;
                   const isComfyUITab = tab.id === 'comfyui';
                   return (
+                    <React.Fragment key={tab.id}>
                     <button
-                      key={tab.id}
                       onClick={() => handleViewTabClick(tab.id)}
                       onDragEnter={isComfyUITab ? (event) => {
                         if (hasInternalImageDragType(event.dataTransfer)) {
@@ -416,6 +415,20 @@ const Header: React.FC<HeaderProps> = ({
                       {Icon && <Icon size={14} />}
                       <span>{tab.label}</span>
                     </button>
+                    {tab.id === 'library' && (
+                      <button
+                        type="button"
+                        onClick={() => handleViewTabClick('prompts')}
+                        className={`app-top-segment px-2.5 ${
+                          libraryView === 'prompts' ? 'app-top-segment-active' : ''
+                        }`}
+                        title="Prompt Library"
+                        aria-label="Prompt Library"
+                      >
+                        <Bookmark size={14} />
+                      </button>
+                    )}
+                    </React.Fragment>
                   );
                 })}
                 {classicTabs.map((tab) => (
