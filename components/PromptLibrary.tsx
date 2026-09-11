@@ -280,11 +280,11 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
             <select
               value={sortBy}
               onChange={(event) => setSortBy(event.target.value as 'saved' | 'created')}
-              className="bg-transparent font-medium text-gray-200 outline-none"
+              className="rounded bg-gray-900 font-medium text-gray-200 outline-none [color-scheme:dark]"
               aria-label="Sort prompts by"
             >
-              <option value="saved">Saved</option>
-              <option value="created">Created</option>
+              <option value="saved" className="bg-gray-900 text-gray-100">Saved</option>
+              <option value="created" className="bg-gray-900 text-gray-100">Created</option>
             </select>
           </label>
           <button
