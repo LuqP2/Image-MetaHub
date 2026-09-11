@@ -72,7 +72,7 @@ try {
   if (
     !result.success
     || result.pendingOperations !== 0
-    || result.schemaVersion !== 6
+    || result.schemaVersion !== 7
     || result.userData?.authority !== 'sqlite'
     || result.userData?.legacyScanComplete !== true
     || result.userData?.copiedRating !== 2

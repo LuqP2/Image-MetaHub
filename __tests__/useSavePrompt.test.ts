@@ -28,6 +28,7 @@ describe('saved prompt composition', () => {
       negativePrompt: '',
       textBasis: 'effective',
       source: null,
+      sourceCreatedAt: 10,
     });
   });
 
@@ -37,7 +38,12 @@ describe('saved prompt composition', () => {
       positivePrompt: 'original positive',
       negativePrompt: 'original negative',
       textBasis: 'original',
+      sourceCreatedAt: 10,
     });
+  });
+
+  it('stores no source creation timestamp when the image date is invalid', () => {
+    expect(composeSavedPromptInput(image({ lastModified: 0 }), null)).toMatchObject({ sourceCreatedAt: null });
   });
 
   it('uses trim only to reject an empty positive prompt', () => {

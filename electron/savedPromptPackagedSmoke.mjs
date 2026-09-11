@@ -15,6 +15,7 @@ export function runSavedPromptPackagedSmoke({
       negativePrompt: '',
       textBasis: 'effective',
       source: null,
+      sourceCreatedAt: 1_700_000_000_000,
     });
     const duplicate = repository.savePrompt({
       positivePrompt: '  packaged literal prompt\nsecond line  ',
@@ -38,6 +39,7 @@ export function runSavedPromptPackagedSmoke({
   assertSmoke(reopened.length === 1, 'saved prompt did not survive reopen exactly once');
   assertSmoke(reopened[0]?.id === first.id, 'saved prompt identity changed after reopen');
   assertSmoke(reopened[0]?.positivePrompt === first.positivePrompt, 'literal prompt text changed after reopen');
+  assertSmoke(reopened[0]?.sourceCreatedAt === first.sourceCreatedAt, 'source creation timestamp changed after reopen');
 
   const removed = reopenedLifecycle.run((repository) => repository.removeSavedPrompt(first.id));
   const removedAgain = reopenedLifecycle.run((repository) => repository.removeSavedPrompt(first.id));
@@ -55,6 +57,7 @@ export function runSavedPromptPackagedSmoke({
     reopened: true,
     duplicatePreservedIdentity: true,
     literalTextPreserved: true,
+    sourceCreatedAtPreserved: true,
     idempotentRemove: true,
   };
 }

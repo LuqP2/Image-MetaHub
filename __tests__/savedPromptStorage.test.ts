@@ -13,6 +13,7 @@ describe('browser saved prompt storage', () => {
       positivePrompt: '  Literal\nPrompt  ',
       negativePrompt: '',
       textBasis: 'original' as const,
+      sourceCreatedAt: 1_700_000_000_000,
       source: {
         kind: 'path' as const,
         pathAtSave: {
@@ -31,6 +32,7 @@ describe('browser saved prompt storage', () => {
         positivePrompt: input.positivePrompt,
         negativePrompt: '',
         textBasis: 'original',
+        sourceCreatedAt: 1_700_000_000_000,
         source: null,
       },
     });
@@ -41,13 +43,16 @@ describe('browser saved prompt storage', () => {
 
   it('serializes concurrent exact saves while keeping distinct whitespace', async () => {
     const storage = await import('../services/savedPromptStorage');
-    const input = { positivePrompt: 'same', negativePrompt: 'pair', textBasis: 'effective' as const, source: null };
+    const input = {
+      positivePrompt: 'same', negativePrompt: 'pair', textBasis: 'effective' as const, source: null, sourceCreatedAt: 100,
+    };
     const results = await Promise.all([
       storage.saveBrowserPrompt(input),
       storage.saveBrowserPrompt(input),
     ]);
     expect(results.map((result) => result.status).sort()).toEqual(['already-saved', 'saved']);
     expect(new Set(results.map((result) => result.prompt.id)).size).toBe(1);
+    expect(results.every((result) => result.prompt.sourceCreatedAt === 100)).toBe(true);
 
     const whitespace = await storage.saveBrowserPrompt({ ...input, positivePrompt: 'same ' });
     expect(whitespace.status).toBe('saved');

@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import PromptLibrary from '../components/PromptLibrary';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import type { SavedPrompt } from '../types';
@@ -25,9 +25,15 @@ vi.mock('../utils/imageUtils', () => ({
   copyTextToClipboard: vi.fn().mockResolvedValue({ success: true }),
 }));
 
-const prompt = (id: string, positivePrompt: string, negativePrompt = ''): SavedPrompt => ({
+const prompt = (
+  id: string,
+  positivePrompt: string,
+  negativePrompt = '',
+  sourceCreatedAt: number | null = null,
+): SavedPrompt => ({
   id,
   createdAt: Number(id.replace(/\D/g, '')) || 1,
+  sourceCreatedAt,
   positivePrompt,
   negativePrompt,
   textBasis: 'effective',
@@ -103,13 +109,23 @@ describe('PromptLibrary', () => {
     Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), configurable: true });
     const onViewSource = vi.fn();
 
-    render(<PromptLibrary onViewSource={onViewSource} />);
+    render(
+      <React.StrictMode>
+        <PromptLibrary onViewSource={onViewSource} />
+      </React.StrictMode>,
+    );
     expect((await screen.findByAltText('Current source') as HTMLImageElement).src).toContain('blob:thumbnail');
     fireEvent.click(screen.getByRole('button', { name: 'View Source' }));
     expect(onViewSource).toHaveBeenCalledWith('D:/synthetic/source.png');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Random' }));
+    const dialog = screen.getByRole('dialog', { name: 'Random saved prompt' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'View Source' }));
+    expect(onViewSource).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('dialog', { name: 'Random saved prompt' })).toBeNull();
   });
 
-  it('Random avoids the currently selected prompt when alternatives exist', async () => {
+  it('Random opens a modal, avoids immediate repetition, and closes without scrolling the grid', async () => {
     const records = [prompt('prompt-1', 'one'), prompt('prompt-2', 'two')];
     serviceMocks.list.mockResolvedValue(records);
     useSavedPromptStore.setState({ selectedPromptId: 'prompt-1' });
@@ -117,9 +133,49 @@ describe('PromptLibrary', () => {
     await screen.findByText('one');
     fireEvent.click(screen.getByRole('button', { name: 'Random' }));
     expect(useSavedPromptStore.getState().selectedPromptId).toBe('prompt-2');
-    expect(screen.getByText('two').closest('article')?.getAttribute('aria-current')).toBe('true');
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
-    expect(document.activeElement).toBe(screen.getByText('two').closest('article'));
+    expect(screen.getByRole('dialog', { name: 'Random saved prompt' })).toBeTruthy();
+    expect(screen.getAllByText('two')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Another' })).toBeTruthy();
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+
+    fireEvent.mouseDown(screen.getByRole('dialog', { name: 'Random saved prompt' }).parentElement as HTMLElement);
+    expect(screen.queryByRole('dialog', { name: 'Random saved prompt' })).toBeNull();
+    expect(screen.getByText('one')).toBeTruthy();
+  });
+
+  it('shows complete positive and negative text in the Random modal and Another changes the result', async () => {
+    const first = prompt('prompt-1', 'first complete prompt', 'first negative');
+    const second = prompt('prompt-2', 'second complete prompt', 'second negative');
+    serviceMocks.list.mockResolvedValue([first, second]);
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    await screen.findByText('first complete prompt');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Random' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getAllByText('second complete prompt')).toHaveLength(2);
+    expect(screen.getByText('second negative')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button', { name: 'Another' }));
+    expect(screen.getAllByText('first complete prompt')).toHaveLength(2);
+    expect(screen.getByText('first negative')).toBeTruthy();
+  });
+
+  it('sorts by saved or source-created time in either direction with unknown created dates last', async () => {
+    const savedLater = prompt('prompt-2', 'saved later', '', 100);
+    const createdLater = prompt('prompt-1', 'created later', '', 300);
+    const unknown = prompt('prompt-3', 'unknown created');
+    serviceMocks.list.mockResolvedValue([savedLater, createdLater, unknown]);
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    await screen.findByText('saved later');
+
+    const cardPrompts = () => screen.getAllByRole('article').map((card) => card.querySelector('p')?.textContent);
+    expect(cardPrompts()).toEqual(['unknown created', 'saved later', 'created later']);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sort prompts by' }), { target: { value: 'created' } });
+    expect(cardPrompts()).toEqual(['created later', 'saved later', 'unknown created']);
+    fireEvent.click(screen.getByRole('button', { name: 'Sort direction: Newest' }));
+    expect(cardPrompts()).toEqual(['saved later', 'created later', 'unknown created']);
   });
 
   it('keeps removal behind a discreet action menu and requires confirmation', async () => {

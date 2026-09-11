@@ -759,6 +759,7 @@ export type SavedPromptSource =
 export interface SavedPrompt {
   id: string;
   createdAt: number;
+  sourceCreatedAt: number | null;
   positivePrompt: string;
   negativePrompt: string;
   textBasis: 'effective' | 'original';
@@ -770,6 +771,7 @@ export interface SavePromptInput {
   negativePrompt: string;
   textBasis: 'effective' | 'original';
   source: SavedPromptSource | null;
+  sourceCreatedAt?: number | null;
 }
 
 export interface SavedPromptSaveResult {

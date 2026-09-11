@@ -55,6 +55,9 @@ export function composeSavedPromptInput(
     negativePrompt,
     textBasis: showOriginal ? 'original' : 'effective',
     source: buildSavedPromptSource(image, directoryPath),
+    sourceCreatedAt: Number.isFinite(image.lastModified) && image.lastModified > 0
+      ? Math.trunc(image.lastModified)
+      : null,
   };
 }
 

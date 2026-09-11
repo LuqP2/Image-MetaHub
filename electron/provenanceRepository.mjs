@@ -11,7 +11,7 @@ import { StableIdentityUserDataRepository } from './stableIdentityUserDataReposi
 import { SavedPromptRepository } from './savedPromptRepository.mjs';
 
 export { PROVENANCE_DATABASE_NAME, PROVENANCE_DIRECTORY_NAME, resolveProvenanceCatalogPath };
-export const PROVENANCE_SCHEMA_VERSION = 6;
+export const PROVENANCE_SCHEMA_VERSION = 7;
 
 export const ASSET_STATES = Object.freeze(['active', 'missing', 'deleted']);
 export const LOCATION_STATES = Object.freeze(['present', 'missing', 'removed']);
@@ -296,6 +296,14 @@ function migrationSix(database) {
   `);
 }
 
+function migrationSeven(database) {
+  database.exec(`
+    ALTER TABLE saved_prompts
+    ADD COLUMN source_created_at INTEGER
+    CHECK (source_created_at IS NULL OR source_created_at > 0);
+  `);
+}
+
 const MIGRATIONS = new Map([
   [1, migrationOne],
   [2, migrationTwo],
@@ -303,6 +311,7 @@ const MIGRATIONS = new Map([
   [4, migrationFour],
   [5, migrationFive],
   [6, migrationSix],
+  [7, migrationSeven],
 ]);
 
 function serializeAsset(row) {

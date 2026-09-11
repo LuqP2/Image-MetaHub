@@ -2,9 +2,9 @@ import type { SavedPrompt, SavedPromptSaveResult, SavePromptInput } from '../typ
 
 export const SAVED_PROMPTS_DATABASE_NAME = 'image-metahub-saved-prompts';
 const STORE_NAME = 'saved_prompts';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 
-type StoredPrompt = SavedPrompt & { promptDigest: string };
+type StoredPrompt = Omit<SavedPrompt, 'sourceCreatedAt'> & { sourceCreatedAt?: number | null; promptDigest: string };
 
 const requestResult = <T>(request: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
   request.onsuccess = () => resolve(request.result);
@@ -41,7 +41,12 @@ export const savedPromptDigest = (positivePrompt: string, negativePrompt: string
   return (hash >>> 0).toString(16).padStart(8, '0');
 };
 
-const withoutDigest = ({ promptDigest: _promptDigest, ...prompt }: StoredPrompt): SavedPrompt => prompt;
+const withoutDigest = ({ promptDigest: _promptDigest, ...prompt }: StoredPrompt): SavedPrompt => ({
+  ...prompt,
+  sourceCreatedAt: typeof prompt.sourceCreatedAt === 'number' && Number.isFinite(prompt.sourceCreatedAt)
+    ? prompt.sourceCreatedAt
+    : null,
+});
 
 export async function listBrowserSavedPrompts(): Promise<SavedPrompt[]> {
   const database = await openDatabase();
@@ -77,6 +82,11 @@ export async function saveBrowserPrompt(input: SavePromptInput): Promise<SavedPr
     const prompt: StoredPrompt = {
       id: crypto.randomUUID(),
       createdAt: Date.now(),
+      sourceCreatedAt: typeof input.sourceCreatedAt === 'number'
+        && Number.isFinite(input.sourceCreatedAt)
+        && input.sourceCreatedAt > 0
+        ? Math.trunc(input.sourceCreatedAt)
+        : null,
       positivePrompt,
       negativePrompt,
       textBasis: input.textBasis === 'original' ? 'original' : 'effective',

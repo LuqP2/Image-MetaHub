@@ -54,6 +54,7 @@ function serializeRow(row) {
   return {
     id: row.id,
     createdAt: Number(row.created_at),
+    sourceCreatedAt: row.source_created_at == null ? null : Number(row.source_created_at),
     positivePrompt: row.positive_prompt,
     negativePrompt: row.negative_prompt,
     textBasis: row.text_basis,
@@ -115,6 +116,11 @@ export class SavedPromptRepository {
       const prompt = {
         id: this.randomUUID(),
         createdAt: Math.trunc(this.now()),
+        sourceCreatedAt: typeof input?.sourceCreatedAt === 'number'
+          && Number.isFinite(input.sourceCreatedAt)
+          && input.sourceCreatedAt > 0
+          ? Math.trunc(input.sourceCreatedAt)
+          : null,
         positivePrompt,
         negativePrompt,
         textBasis,
@@ -125,10 +131,10 @@ export class SavedPromptRepository {
       }
       this.database.prepare(`
         INSERT INTO saved_prompts (
-          id, created_at, positive_prompt, negative_prompt, text_basis, source_json, prompt_digest
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          id, created_at, source_created_at, positive_prompt, negative_prompt, text_basis, source_json, prompt_digest
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        prompt.id.toLowerCase(), prompt.createdAt, prompt.positivePrompt, prompt.negativePrompt,
+        prompt.id.toLowerCase(), prompt.createdAt, prompt.sourceCreatedAt, prompt.positivePrompt, prompt.negativePrompt,
         prompt.textBasis, prompt.source ? JSON.stringify(prompt.source) : null, promptDigest,
       );
       return { status: 'saved', prompt: { ...prompt, id: prompt.id.toLowerCase() } };

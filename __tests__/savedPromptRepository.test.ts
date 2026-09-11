@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe('saved prompt repository', () => {
-  it('migrates to v6 and preserves literal prompts across reopen and idempotent removal', () => {
+  it('migrates to the current schema and preserves literal prompts across reopen and idempotent removal', () => {
     const directory = makeTempDirectory();
     const databasePath = path.join(directory, 'catalog.sqlite');
     const repository = new AssetProvenanceRepository({ databasePath, randomUUID: () => uuid(1) });
@@ -32,8 +32,12 @@ describe('saved prompt repository', () => {
       negativePrompt: '',
       textBasis: 'effective',
       source: null,
+      sourceCreatedAt: 1_700_000_000_000,
     });
-    expect(result).toMatchObject({ status: 'saved', prompt: { positivePrompt: '  Literal\nPrompt  ', negativePrompt: '' } });
+    expect(result).toMatchObject({
+      status: 'saved',
+      prompt: { positivePrompt: '  Literal\nPrompt  ', negativePrompt: '', sourceCreatedAt: 1_700_000_000_000 },
+    });
     repository.close();
 
     const reopened = new AssetProvenanceRepository({ databasePath });
@@ -42,6 +46,27 @@ describe('saved prompt repository', () => {
     expect(reopened.removeSavedPrompt(result.prompt.id)).toEqual({ id: result.prompt.id, removed: true });
     expect(reopened.removeSavedPrompt(result.prompt.id)).toEqual({ id: result.prompt.id, removed: false });
     reopened.close();
+  });
+
+  it('migrates v6 bookmarks without inventing an image creation timestamp', () => {
+    const directory = makeTempDirectory();
+    const databasePath = path.join(directory, 'catalog.sqlite');
+    let repository = new AssetProvenanceRepository({ databasePath });
+    repository.open({ targetSchemaVersion: 6 });
+    repository.database.prepare(`
+      INSERT INTO saved_prompts (
+        id, created_at, positive_prompt, negative_prompt, text_basis, source_json, prompt_digest
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(uuid(2), 100, 'legacy prompt', '', 'effective', null, 'legacy-digest');
+    repository.close();
+
+    repository = new AssetProvenanceRepository({ databasePath });
+    expect(repository.open().schemaVersion).toBe(PROVENANCE_SCHEMA_VERSION);
+    expect(repository.listSavedPrompts()).toEqual([expect.objectContaining({
+      id: uuid(2),
+      sourceCreatedAt: null,
+    })]);
+    repository.close();
   });
 
   it('deduplicates only exact pairs and remains correct under digest collisions', () => {
@@ -73,11 +98,16 @@ describe('saved prompt repository', () => {
     repository.open();
     const sourceA = { kind: 'path' as const, pathAtSave: { directoryPath: directory, relativePath: 'a.png', fileSize: 1, contentModifiedMs: 2 } };
     const sourceB = { kind: 'path' as const, pathAtSave: { directoryPath: directory, relativePath: 'b.png', fileSize: 3, contentModifiedMs: 4 } };
-    const first = repository.savePrompt({ positivePrompt: 'same', negativePrompt: '', textBasis: 'effective', source: sourceA });
-    const duplicate = repository.savePrompt({ positivePrompt: 'same', negativePrompt: '', textBasis: 'effective', source: sourceB });
+    const first = repository.savePrompt({
+      positivePrompt: 'same', negativePrompt: '', textBasis: 'effective', source: sourceA, sourceCreatedAt: 100,
+    });
+    const duplicate = repository.savePrompt({
+      positivePrompt: 'same', negativePrompt: '', textBasis: 'effective', source: sourceB, sourceCreatedAt: 200,
+    });
     expect(duplicate.status).toBe('already-saved');
     expect(duplicate.prompt.id).toBe(first.prompt.id);
     expect(duplicate.prompt.source).toEqual(sourceA);
+    expect(duplicate.prompt.sourceCreatedAt).toBe(100);
     repository.close();
   });
 

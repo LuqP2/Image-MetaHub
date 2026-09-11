@@ -68,11 +68,12 @@ try {
     if (
       !result.success
       || result.indexingEnabled !== indexingEnabled
-      || result.schemaVersion !== 6
+      || result.schemaVersion !== 7
       || result.authority !== 'sqlite'
       || result.reopened !== true
       || result.duplicatePreservedIdentity !== true
       || result.literalTextPreserved !== true
+      || result.sourceCreatedAtPreserved !== true
       || result.idempotentRemove !== true
     ) fail(`flag ${variant} returned an invalid result payload`);
     results.push(result);
