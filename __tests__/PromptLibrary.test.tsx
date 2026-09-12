@@ -102,6 +102,31 @@ describe('PromptLibrary', () => {
     expect(screen.queryByRole('dialog', { name: 'Saved prompt details' })).toBeNull();
   });
 
+  it('navigates the ordered prompt list with buttons and arrow keys without wrapping', async () => {
+    serviceMocks.list.mockResolvedValue([
+      prompt('prompt-1', 'one'),
+      prompt('prompt-2', 'two'),
+      prompt('prompt-3', 'three'),
+    ]);
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    const middleCard = (await screen.findByText('two')).closest('article') as HTMLElement;
+
+    fireEvent.click(middleCard);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(screen.getAllByText('three')).toHaveLength(2);
+    expect((screen.getByRole('button', { name: 'Previous' }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(screen.getAllByText('two')).toHaveLength(2);
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(screen.getAllByText('one')).toHaveLength(2);
+    expect((screen.getByRole('button', { name: 'Next' }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(screen.getAllByText('two')).toHaveLength(2);
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it('shows a resolved source thumbnail and opens the resolved file', async () => {
     const record = prompt('prompt-1', 'source prompt');
     record.source = {

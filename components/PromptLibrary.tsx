@@ -5,6 +5,8 @@ import {
   Bookmark,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Copy,
   Dices,
@@ -237,14 +239,36 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
     (modalTriggerRef.current ?? randomButtonRef.current)?.focus({ preventScroll: true });
   }, []);
 
+  const activePromptIndex = randomPromptId
+    ? visiblePrompts.findIndex((prompt) => prompt.id === randomPromptId)
+    : -1;
+  const canGoPrevious = activePromptIndex > 0;
+  const canGoNext = activePromptIndex >= 0 && activePromptIndex < visiblePrompts.length - 1;
+  const navigatePrompt = useCallback((direction: -1 | 1) => {
+    if (!randomPromptId) return;
+    const currentIndex = visiblePrompts.findIndex((prompt) => prompt.id === randomPromptId);
+    const nextPrompt = visiblePrompts[currentIndex + direction];
+    if (nextPrompt) openPrompt(nextPrompt);
+  }, [openPrompt, randomPromptId, visiblePrompts]);
+
   useEffect(() => {
     if (!randomPromptId) return undefined;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeRandom();
+      if (event.key === 'Escape') {
+        closeRandom();
+        return;
+      }
+      if (event.key === 'ArrowLeft' && canGoPrevious) {
+        event.preventDefault();
+        navigatePrompt(-1);
+      } else if (event.key === 'ArrowRight' && canGoNext) {
+        event.preventDefault();
+        navigatePrompt(1);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [closeRandom, randomPromptId]);
+  }, [canGoNext, canGoPrevious, closeRandom, navigatePrompt, randomPromptId]);
 
   useEffect(() => {
     if (!menuId) return undefined;
@@ -562,9 +586,29 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
               >
                 <ExternalLink size={14} /> View Source
               </button>
-              <button type="button" className="app-top-pill ml-auto px-3 py-2 text-sm" onClick={() => chooseRandom(randomPrompt.id)}>
-                <Dices size={14} /> Another
-              </button>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  className="app-top-pill px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={!canGoPrevious}
+                  onClick={() => navigatePrompt(-1)}
+                  title="Previous prompt (Left arrow)"
+                >
+                  <ChevronLeft size={14} /> Previous
+                </button>
+                <button
+                  type="button"
+                  className="app-top-pill px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={!canGoNext}
+                  onClick={() => navigatePrompt(1)}
+                  title="Next prompt (Right arrow)"
+                >
+                  Next <ChevronRight size={14} />
+                </button>
+                <button type="button" className="app-top-pill px-3 py-2 text-sm" onClick={() => chooseRandom(randomPrompt.id)}>
+                  <Dices size={14} /> Another
+                </button>
+              </div>
             </div>
           </div>
         </div>
