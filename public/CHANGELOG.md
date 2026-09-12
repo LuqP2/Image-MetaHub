@@ -5,18 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.19.3] - [Unreleased]
+## [0.19.3] - [09-12-2026]
+
+### Added
+
+- **Prompt Library**: Save prompts from your library into a dedicated collection, then search, sort, copy, remove, or jump back to the source image. Random lets you rediscover saved prompts with their positive and negative text and source preview.
+- **Image Provenance**: Added a read-only provenance view for inspecting available source and lineage information, with on-demand SHA-256 fingerprinting and copyable provenance summaries.
 
 ### Improved
 
-- **Library Refreshing and Thumbnails**: Keep browsing responsive while the library refreshes in the background and avoid repeatedly retrying a thumbnail that failed for the same file version.
-- **Viewer Zoom**: Choose Fit or 1:1 as the default image zoom, with more consistent mouse-wheel zoom behavior.
+- **Image Viewer Navigation**: Arrow-key navigation is more responsive, with better neighboring-image preloading and smoother browsing while moving quickly through images.
+- **Viewer Zoom**: Choose Fit or 1:1 as the default image zoom. Images configured for 1:1 open directly at their native zoom, and mouse-wheel zoom uses more consistent increments.
+- **ComfyUI Workspace Navigation**: Viewer navigation from the ComfyUI workspace follows the workspace's newest-first order independently from the main Library sort and stays current as new images arrive.
+- **Library Startup and Refreshing**: Library caches remain valid across launches when their parser version matches, while startup enrichment and background refreshes perform fewer unnecessary recomputations.
+- **Thumbnail Loading**: Failed thumbnail decodes are cached for the current file version, avoiding repeated decode attempts while browsing.
 
 ### Fixed
 
-- **ComfyUI Krea2 Workflows**: Recover prompts and LoRAs from the executed route instead of inactive switch branches.
-- **Detached Viewer on macOS**: Packaged viewer windows now load app paths containing spaces or Unicode reliably.
-- **3D Model Preview**: Switching between models now reliably recreates the preview for the selected item.
+- **ComfyUI Krea2 Workflows**: Prompt, negative prompt, and LoRA extraction follows the executed Krea2 workflow route, including grounded encode nodes and switch-based workflows.
+- **Detached Viewer on macOS**: Packaged viewer windows load application paths containing spaces or Unicode characters correctly.
+- **3D Model Preview**: Switching between 3D models recreates the preview for the currently selected item.
+- **Library Cache Persistence**: Compatible parser caches are reused on subsequent launches instead of triggering a full library reindex.
+- **ComfyUI Workspace Thumbnails**: Single-clicking a thumbnail opens it in the workspace inspector, while double-clicking or pressing Enter opens the configured full viewer and keeps the workspace active.
+- **Detached Viewer Deletion**: Deleting the current image advances directly to the next available image in the same viewer window.
+- **Image Grid Deletion**: The image-grid context menu includes Delete, applying to the clicked image or the current multi-selection.
+- **Light Mode and Viewer Themes**: Text, headings, surfaces, and viewer actions maintain appropriate contrast across Light, Dark, Dracula, Nord, and Ocean themes.
 
 ## [0.19.2] - [2026-08-27]
 
