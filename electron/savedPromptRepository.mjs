@@ -207,7 +207,7 @@ export class SavedPromptRepository {
     }
     const absolutePath = path.resolve(row.absolute_path, row.relative_path);
     const withinRoot = path.relative(path.resolve(row.absolute_path), absolutePath);
-    if (withinRoot.startsWith('..') || path.isAbsolute(withinRoot)) {
+    if (withinRoot === '..' || withinRoot.startsWith(`..${path.sep}`) || path.isAbsolute(withinRoot)) {
       return { status: 'unavailable', reason: 'invalid-location' };
     }
     try {
