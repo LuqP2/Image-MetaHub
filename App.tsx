@@ -4,6 +4,7 @@ import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useSemanticStore } from './store/useSemanticStore';
 import { useLicenseStore } from './store/useLicenseStore';
+import { initializeSavedPromptSynchronization } from './store/useSavedPromptStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
 import { useClusterCacheRestore } from './hooks/useClusterCacheRestore';
@@ -271,6 +272,8 @@ export default function App() {
   useGenerationQueueSync();
   useComfyUIQueueMonitor();
   useComfyUIEmbeddedProgress();
+
+  useEffect(() => initializeSavedPromptSynchronization(), []);
 
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles } = useImageLoader();

@@ -181,6 +181,34 @@ describe('saved prompt repository', () => {
     repository.close();
   });
 
+  it('accepts in-root names beginning with two dots while rejecting an actual parent traversal', () => {
+    const directory = makeTempDirectory();
+    const repository = new AssetProvenanceRepository({ databasePath: path.join(directory, 'catalog.sqlite') });
+    repository.open();
+    const inRootPath = path.join('..drafts', 'image.png');
+    const accepted = repository.savePrompt({
+      positivePrompt: 'in-root dotted folder', negativePrompt: '', textBasis: 'effective',
+      source: {
+        kind: 'path',
+        pathAtSave: { directoryPath: directory, relativePath: inRootPath, fileSize: null, contentModifiedMs: null },
+      },
+    });
+    expect(accepted.prompt.source).toEqual({
+      kind: 'path',
+      pathAtSave: { directoryPath: directory, relativePath: inRootPath, fileSize: null, contentModifiedMs: null },
+    });
+
+    const rejected = repository.savePrompt({
+      positivePrompt: 'actual parent traversal', negativePrompt: '', textBasis: 'effective',
+      source: {
+        kind: 'path',
+        pathAtSave: { directoryPath: directory, relativePath: path.join('..', 'outside.png'), fileSize: null, contentModifiedMs: null },
+      },
+    });
+    expect(rejected.prompt.source).toBeNull();
+    repository.close();
+  });
+
   it('serializes duplicate saves and includes prompts in verified catalog backups', async () => {
     const directory = makeTempDirectory();
     const databasePath = path.join(directory, 'catalog.sqlite');

@@ -34,7 +34,7 @@ function normalizePathSnapshot(value) {
   }
   const absolutePath = path.resolve(directoryPath, relativePath);
   const relativeCheck = path.relative(path.resolve(directoryPath), absolutePath);
-  if (relativeCheck.startsWith('..') || path.isAbsolute(relativeCheck)) {
+  if (relativeCheck === '..' || relativeCheck.startsWith(`..${path.sep}`) || path.isAbsolute(relativeCheck)) {
     throw new SavedPromptRepositoryError('SAVED_PROMPT_INVALID_SOURCE', 'The source path escapes its directory.');
   }
   return {

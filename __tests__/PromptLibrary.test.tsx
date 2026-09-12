@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render as renderView, screen, waitFor, within } from '@testing-library/react';
 import PromptLibrary from '../components/PromptLibrary';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import type { SavedPrompt } from '../types';
@@ -39,6 +39,12 @@ const prompt = (
   textBasis: 'effective',
   source: null,
 });
+
+const render = (ui: React.ReactElement) => {
+  // App owns the production bootstrap; preload the store before mounting this isolated view.
+  void useSavedPromptStore.getState().load();
+  return renderView(ui);
+};
 
 describe('PromptLibrary', () => {
   beforeEach(() => {

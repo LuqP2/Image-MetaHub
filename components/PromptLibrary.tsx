@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import type { SavedPrompt } from '../types';
 import { resolveSavedPromptSource } from '../services/savedPromptService';
-import { initializeSavedPromptSynchronization, useSavedPromptStore } from '../store/useSavedPromptStore';
+import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import { copyTextToClipboard } from '../utils/imageUtils';
 
 interface PromptLibraryProps {
@@ -127,7 +127,6 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
   const modalTriggerRef = useRef<HTMLElement | null>(null);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => initializeSavedPromptSynchronization(), []);
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
