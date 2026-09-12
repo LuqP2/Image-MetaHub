@@ -4,6 +4,7 @@ import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useSemanticStore } from './store/useSemanticStore';
 import { useLicenseStore } from './store/useLicenseStore';
+import { initializeSavedPromptSynchronization } from './store/useSavedPromptStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
 import { useClusterCacheRestore } from './hooks/useClusterCacheRestore';
@@ -44,6 +45,7 @@ import ModelPromptPickerModal from './components/ModelPromptPickerModal';
 import CollectionsWorkspace from './components/CollectionsWorkspace';
 import ComfyUIWorkspace from './components/ComfyUIWorkspace';
 import ImageEditorWorkspace from './components/ImageEditorWorkspace';
+import PromptLibrary from './components/PromptLibrary';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
@@ -270,6 +272,8 @@ export default function App() {
   useGenerationQueueSync();
   useComfyUIQueueMonitor();
   useComfyUIEmbeddedProgress();
+
+  useEffect(() => initializeSavedPromptSynchronization(), []);
 
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles } = useImageLoader();
@@ -543,7 +547,7 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'explore' | 'collections' | 'comfyui' | 'editor'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'prompts' | 'explore' | 'collections' | 'comfyui' | 'editor'>('library');
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -707,8 +711,8 @@ export default function App() {
     }
   }, [activeImageScope, clusters, collections, safeImages, validateActiveImageScope]);
 
-  const hasLeftSidebar = hasDirectories && libraryView !== 'comfyui' && libraryView !== 'editor';
-  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && libraryView !== 'comfyui' && libraryView !== 'editor'));
+  const hasLeftSidebar = hasDirectories && !['prompts', 'comfyui', 'editor'].includes(libraryView);
+  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && !['prompts', 'comfyui', 'editor'].includes(libraryView)));
   const previousHasRightSidebarRef = useRef(hasRightSidebar);
   const rightSidebarVisibilityChanged = previousHasRightSidebarRef.current !== hasRightSidebar;
   useLayoutEffect(() => {
@@ -4181,9 +4185,9 @@ export default function App() {
             </div>
           )}
 
-          {!isStartupHydrating && !isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}
+          {!isStartupHydrating && !isLoading && !hasDirectories && libraryView !== 'prompts' && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
-          {hasDirectories && (
+          {(hasDirectories || libraryView === 'prompts') && (
             <>
                 {libraryView === 'library' && (
                   <AnalyticsSummaryStrip
@@ -4389,6 +4393,8 @@ export default function App() {
                           jumpToGroupRequest={pendingJumpGroupRequest}
                         />
                   )
+                ) : libraryView === 'prompts' ? (
+                  <PromptLibrary onViewSource={handleOpenFileFromDeepLink} />
                 ) : libraryView === 'explore' ? (
                   <ExploreWorkspace
                     onNavigateToLibrary={() => {

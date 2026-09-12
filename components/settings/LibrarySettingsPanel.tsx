@@ -162,6 +162,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         '',
         'Your image files will not be deleted.',
         'Your license and trial state will be kept.',
+        'Saved prompts will be kept.',
         'The app will reload after the reset.',
         '',
         'This action cannot be undone.',

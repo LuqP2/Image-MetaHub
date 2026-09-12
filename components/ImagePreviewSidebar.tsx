@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, FC } from 'react';
 import { motion } from 'framer-motion';
-import { AlertTriangle, Clipboard, Sparkles, ChevronDown, ChevronRight, Heart, X, Zap, CheckCircle, ArrowUp, Copy, Search, Pencil, Download, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Clipboard, Sparkles, ChevronDown, ChevronRight, Heart, X, Zap, CheckCircle, ArrowUp, Copy, Search, Pencil, Download, Eye, EyeOff, ExternalLink, Bookmark } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type BaseMetadata, type IndexedImage, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
@@ -35,6 +35,7 @@ import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorM
 import BatchExportModal from './BatchExportModal';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata, type RawMetadataHydrationOptions } from '../services/rawMetadataHydration';
 import { useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
+import { useIsPromptSaved, useSavePrompt } from '../hooks/useSavePrompt';
 
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
@@ -168,6 +169,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     setSelectedImage,
   } = useImageStore();
   const recentTags = useImageStore((state) => state.recentTags);
+  const setSuccess = useImageStore((state) => state.setSuccess);
+  const setError = useImageStore((state) => state.setError);
   const directories = useImageStore((state) => state.directories);
   const filteredImages = useImageStore((state) => state.filteredImages);
   const selectedImages = useImageStore((state) => state.selectedImages);
@@ -211,7 +214,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const { a1111Enabled, comfyUIEnabled, singleVisibleProvider } = useGenerationProviderAvailability();
 
   const activeImage = previewImageFromStore || previewImage;
-  const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata } = useShadowMetadata(activeImage);
+  const { metadata: shadowMetadata, isLoading: isShadowLoading, error: shadowError, saveMetadata: saveShadowMetadata } = useShadowMetadata(activeImage);
+  const savePrompt = useSavePrompt();
   const allImages = useImageStore((state) => state.images);
   const thumbnail = useResolvedThumbnail(activeImage);
   const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
@@ -306,6 +310,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   // Calculate these BEFORE the early return to maintain hook order
   const nMeta: BaseMetadata | undefined = activeImage?.metadata?.normalizedMetadata;
   const effectiveMetadata = activeImage ? buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal) : undefined;
+  const isPromptSaved = useIsPromptSaved(effectiveMetadata?.prompt, effectiveMetadata?.negativePrompt);
   const rawMetadataImage = hydratedRawMetadataImage?.id === activeImage?.id ? hydratedRawMetadataImage : activeImage;
   const ensureFullRawMetadata = useCallback(async (
     options: RawMetadataHydrationOptions = {},
@@ -805,6 +810,30 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               />
               <MetadataItem label="Format" value={nMeta.format} onCopy={(v) => copyToClipboard(v, "Format")} />
               <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
+              {effectiveMetadata?.prompt && (
+                <button
+                  type="button"
+                  disabled={isShadowLoading || Boolean(shadowError)}
+                  onClick={async () => {
+                    if (!activeImage) return;
+                    try {
+                      const result = await savePrompt(activeImage, {
+                        directoryPath: activeImageDirectoryPath,
+                        showOriginal,
+                        shadowMetadata,
+                        shadowReady: !isShadowLoading && !shadowError,
+                      });
+                      setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
+                    } catch (cause) {
+                      setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
+                    }
+                  }}
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${isPromptSaved ? 'border-accent bg-accent text-white hover:bg-accent/90' : 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'}`}
+                  aria-pressed={isPromptSaved}
+                >
+                  <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} /> {isPromptSaved ? 'Saved' : 'Save Prompt'}
+                </button>
+              )}
               <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
               <MetadataItem label="Model" value={effectiveMetadata?.model} onCopy={(v) => copyToClipboard(v, "Model")} />
               {((nMeta as any).vae || (nMeta as any).vaes?.[0]?.name) && (

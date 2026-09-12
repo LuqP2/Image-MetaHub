@@ -7,6 +7,7 @@
 
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { SAVED_PROMPTS_DATABASE_NAME } from '../services/savedPromptStorage';
 
 const LICENSE_STORAGE_KEY = 'image-metahub-license';
 
@@ -78,7 +79,7 @@ export async function resetAllCaches(): Promise<void> {
     
     // Delete each database
     for (const db of databases) {
-      if (db.name) {
+      if (db.name && db.name !== SAVED_PROMPTS_DATABASE_NAME) {
         console.log(`🗑️ Deleting database: ${db.name}`);
         const deleteRequest = indexedDB.deleteDatabase(db.name);
         
@@ -99,6 +100,7 @@ export async function resetAllCaches(): Promise<void> {
         });
       }
     }
+    console.log(`✅ Preserved database: ${SAVED_PROMPTS_DATABASE_NAME}`);
 
   } catch (error) {
     console.error('❌ Error clearing IndexedDB:', error);

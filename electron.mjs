@@ -47,6 +47,7 @@ import { StableIdentityIndexer } from './electron/stableIdentityIndexer.mjs';
 import { StableIdentityFileOperationCoordinator } from './electron/stableIdentityFileOperationCoordinator.mjs';
 import { StableIdentityUserDataService } from './electron/stableIdentityUserDataService.mjs';
 import { runStableIdentityFileOperationsSmoke } from './electron/stableIdentityFileOperationsSmoke.mjs';
+import { runSavedPromptPackagedSmoke } from './electron/savedPromptPackagedSmoke.mjs';
 import { openAuthorizedCacheDirectory } from './electron/cacheDirectory.mjs';
 import { appendEmbeddingSegmentAtOffset } from './electron/embeddingSegmentFile.mjs';
 import { hashFileSha256 } from './electron/fileFingerprint.mjs';
@@ -104,6 +105,8 @@ const provenanceIndexingEnabled = process.env.IMH_ENABLE_PROVENANCE_INDEXING ===
   || process.env.IMH_ENABLE_PROVENANCE_INDEXING === 'true';
 const packagedProvenanceFileOperationsSmokeEnabled = app.isPackaged
   && process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE === '1';
+const packagedSavedPromptSmokeEnabled = app.isPackaged
+  && process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE === '1';
 const enabledMediaCommandLineSwitches = [];
 const disabledChromiumFeatures = new Set();
 
@@ -3020,6 +3023,32 @@ app.whenReady().then(async () => {
     },
   });
   await stableIdentityFileOperationCoordinator.initializeRecovery();
+
+  if (packagedSavedPromptSmokeEnabled) {
+    const resultPath = process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE_RESULT?.trim();
+    try {
+      if (!resultPath) throw new Error('Packaged saved-prompt smoke result path is required.');
+      const result = runSavedPromptPackagedSmoke({
+        userDataPath: app.getPath('userData'),
+        repositoryLifecycle: provenanceRepositoryLifecycle,
+        indexingEnabled: provenanceIndexingEnabled,
+      });
+      await fs.mkdir(path.dirname(resultPath), { recursive: true });
+      await fs.writeFile(resultPath, JSON.stringify(result, null, 2), 'utf8');
+      console.log('[packaged-saved-prompt-smoke] success');
+      app.exit(0);
+    } catch (error) {
+      console.error('[packaged-saved-prompt-smoke] failed', error);
+      if (resultPath) {
+        try {
+          await fs.mkdir(path.dirname(resultPath), { recursive: true });
+          await fs.writeFile(resultPath, JSON.stringify({ success: false, error: error?.message || String(error) }, null, 2), 'utf8');
+        } catch { /* console output remains the fallback diagnostic */ }
+      }
+      app.exit(1);
+    }
+    return;
+  }
 
   if (packagedProvenanceFileOperationsSmokeEnabled) {
     const smokeRoot = process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE_ROOT?.trim();
@@ -6376,6 +6405,40 @@ function setupFileOperationHandlers() {
   ));
   ipcMain.handle('stable-user-data-tag-counts', () => (
     handleStableUserDataRequest((service) => service.getTagCounts())
+  ));
+
+  const handleSavedPromptRequest = (operation) => {
+    try {
+      return { success: true, data: provenanceRepositoryLifecycle.run(operation) };
+    } catch (error) {
+      return {
+        success: false,
+        error: error?.message || String(error),
+        errorCode: error?.code || 'SAVED_PROMPT_OPERATION_FAILED',
+      };
+    }
+  };
+  const notifySavedPromptsChanged = () => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send('saved-prompts:changed');
+    }
+  };
+
+  ipcMain.handle('saved-prompts:list', () => (
+    handleSavedPromptRequest((repository) => repository.listSavedPrompts())
+  ));
+  ipcMain.handle('saved-prompts:save', (_event, input) => {
+    const result = handleSavedPromptRequest((repository) => repository.savePrompt(input));
+    if (result.success && result.data.status === 'saved') notifySavedPromptsChanged();
+    return result;
+  });
+  ipcMain.handle('saved-prompts:remove', (_event, id) => {
+    const result = handleSavedPromptRequest((repository) => repository.removeSavedPrompt(id));
+    if (result.success && result.data.removed) notifySavedPromptsChanged();
+    return result;
+  });
+  ipcMain.handle('saved-prompts:resolve-source', (_event, id) => (
+    handleSavedPromptRequest((repository) => repository.resolveSavedPromptSource(id))
   ));
 
   // ============================================================

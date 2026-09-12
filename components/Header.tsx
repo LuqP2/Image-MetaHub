@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Bug, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon, Compass } from 'lucide-react';
+import { Settings, Bug, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon, Compass, Bookmark } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -12,7 +12,7 @@ import type { ExploreDimension } from '../types';
 import { useLicenseStore } from '../store/useLicenseStore';
 import { formatLicenseValidity } from '../utils/licenseDisplay';
 
-type LibraryView = 'library' | 'explore' | 'collections' | 'comfyui' | 'editor';
+type LibraryView = 'library' | 'prompts' | 'explore' | 'collections' | 'comfyui' | 'editor';
 
 interface HeaderProps {
     onOpenSettings: () => void;
@@ -367,8 +367,8 @@ const Header: React.FC<HeaderProps> = ({
                   const Icon = 'icon' in tab ? tab.icon : null;
                   const isComfyUITab = tab.id === 'comfyui';
                   return (
+                    <React.Fragment key={tab.id}>
                     <button
-                      key={tab.id}
                       onClick={() => handleViewTabClick(tab.id)}
                       onDragEnter={isComfyUITab ? (event) => {
                         if (hasInternalImageDragType(event.dataTransfer)) {
@@ -415,6 +415,20 @@ const Header: React.FC<HeaderProps> = ({
                       {Icon && <Icon size={14} />}
                       <span>{tab.label}</span>
                     </button>
+                    {tab.id === 'library' && (
+                      <button
+                        type="button"
+                        onClick={() => handleViewTabClick('prompts')}
+                        className={`app-top-segment px-2.5 ${
+                          libraryView === 'prompts' ? 'app-top-segment-active' : ''
+                        }`}
+                        title="Prompt Library"
+                        aria-label="Prompt Library"
+                      >
+                        <Bookmark size={14} />
+                      </button>
+                    )}
+                    </React.Fragment>
                   );
                 })}
                 {classicTabs.map((tab) => (
