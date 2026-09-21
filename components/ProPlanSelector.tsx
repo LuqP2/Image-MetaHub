@@ -35,7 +35,7 @@ export const ProPlanCheckoutOptions: React.FC<ProPlanCheckoutOptionsProps> = ({
         className={`${checkoutLinkClassName} w-full gap-2 bg-purple-600 px-4 py-3 text-white hover:bg-purple-700`}
       >
         <Crown className="h-4 w-4" />
-        Get Lifetime — $39
+        Get Lifetime License — $39
       </a>
       <p className="text-center text-xs text-gray-400">One-time payment · no renewal</p>
 
