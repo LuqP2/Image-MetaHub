@@ -204,10 +204,10 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
     : info.contextLine;
 
   const modalContent = (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg mx-4 border border-gray-700">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col rounded-xl border border-gray-700 bg-gray-900 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-700 p-6">
           <div className="p-2 bg-purple-600/20 rounded-lg">
             <Crown className="w-6 h-6 text-purple-400" />
           </div>
@@ -222,7 +222,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="min-h-0 space-y-6 overflow-y-auto p-6">
           {/* Feature Info */}
           <div>
             <div className="inline-flex p-2.5 bg-purple-600/10 rounded-full mb-3">
