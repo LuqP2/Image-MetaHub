@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, ExternalLink } from 'lucide-react';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { buildProLicenseUrl } from '../utils/creatorAttribution';
+import { ProPlanSelectorModal } from './ProPlanSelector';
 
 interface ChangelogModalProps {
   isOpen: boolean;
@@ -12,8 +12,8 @@ interface ChangelogModalProps {
 const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, currentVersion }) => {
   const [changelog, setChangelog] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [isPlanSelectorOpen, setIsPlanSelectorOpen] = useState(false);
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'about');
 
   useEffect(() => {
     if (isOpen) {
@@ -137,6 +137,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
       <div 
         className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col border border-gray-700"
@@ -200,14 +201,13 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 
                   {/* Badges */}
                   <div className="flex gap-3 mt-6 pt-4 border-t border-blue-500/20 flex-wrap">
-                    <a
-                      href={proLicenseUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => setIsPlanSelectorOpen(true)}
                       className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
                     >
                       Get Pro
-                    </a>
+                    </button>
                     <a
                       href="https://discord.gg/2MXWxjKyJ5"
                       target="_blank"
@@ -247,7 +247,14 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
           </button>
         </div>
       </div>
-    </div>
+      </div>
+      <ProPlanSelectorModal
+        isOpen={isPlanSelectorOpen}
+        onClose={() => setIsPlanSelectorOpen(false)}
+        token={creatorAttributionToken}
+        ctx="about"
+      />
+    </>
   );
 };
 

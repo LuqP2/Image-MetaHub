@@ -4,8 +4,8 @@ import { useLicenseStore } from '../../store/useLicenseStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { SettingsPanel } from './SettingsPanel';
 import { SettingsSectionCard } from './SettingsSectionCard';
-import { buildProLicenseUrl } from '../../utils/creatorAttribution';
 import { formatLicenseValidity, licensePlanLabel } from '../../utils/licenseDisplay';
+import { ProPlanCheckoutOptions } from '../ProPlanSelector';
 
 const licenseStatusClassName: Record<string, string> = {
   free: 'border-gray-700 bg-gray-800 text-gray-300',
@@ -32,7 +32,6 @@ export const LicenseSettingsPanel: React.FC = () => {
   const licenseStoreMessage = useLicenseStore((state) => state.licenseMessage);
   const activateLicense = useLicenseStore((state) => state.activateLicense);
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'settings');
   const paidPlanLabel = licenseStatus === 'pro' || licenseStatus === 'lifetime'
     ? licensePlanLabel(licensePlan)
     : licenseStatusLabel[licenseStatus];
@@ -137,17 +136,14 @@ export const LicenseSettingsPanel: React.FC = () => {
             <Crown size={14} />
             {isActivatingLicense ? 'Activating...' : 'Activate license'}
           </button>
-          <a
-            href={proLicenseUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-blue-300 hover:text-blue-200"
-          >
-            Get Pro license
-          </a>
           {creatorAttributionToken ? (
             <span className="text-xs text-gray-500">Creator attribution detected.</span>
           ) : null}
+        </div>
+
+        <div className="border-t border-gray-800 pt-4">
+          <p className="mb-2 text-sm font-medium text-gray-200">Purchase Pro</p>
+          <ProPlanCheckoutOptions token={creatorAttributionToken} ctx="settings" compact />
         </div>
 
         {licenseMessage ? <p className="text-sm text-gray-300">{licenseMessage}</p> : null}

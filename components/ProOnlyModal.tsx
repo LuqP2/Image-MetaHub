@@ -4,7 +4,7 @@ import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download, Tag,
 import { ProFeature, CLUSTERING_FREE_TIER_LIMIT, SEMANTIC_FREE_TIER_LIMIT, useProModalStore } from '../hooks/useFeatureAccess';
 import { TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { buildProLicenseUrl } from '../utils/creatorAttribution';
+import { ProPlanCheckoutOptions } from './ProPlanSelector';
 
 interface ProOnlyModalProps {
   isOpen: boolean;
@@ -185,7 +185,6 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
 }) => {
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
   const blockedAttempts = useProModalStore((state) => state.blockedAttempts[feature] ?? 0);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'lockedfeature', feature);
 
   if (!isOpen) return null;
 
@@ -205,10 +204,10 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
     : info.contextLine;
 
   const modalContent = (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg mx-4 border border-gray-700">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col rounded-xl border border-gray-700 bg-gray-900 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-700 p-6">
           <div className="p-2 bg-purple-600/20 rounded-lg">
             <Crown className="w-6 h-6 text-purple-400" />
           </div>
@@ -223,7 +222,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="min-h-0 space-y-6 overflow-y-auto p-6">
           {/* Feature Info */}
           <div>
             <div className="inline-flex p-2.5 bg-purple-600/10 rounded-full mb-3">
@@ -264,29 +263,23 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
                   Start {TRIAL_DURATION_DAYS}-day trial
                 </button>
                 <p className="text-center text-xs text-gray-400">No card, no account.</p>
-                <a
-                  href={proLicenseUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-center text-xs text-gray-500 hover:text-gray-400 underline"
-                >
-                  Or get the lifetime license now — $39
-                </a>
+                <div className="border-t border-gray-800 pt-3">
+                  <p className="mb-2 text-center text-xs text-gray-400">Or choose a Pro plan now</p>
+                  <ProPlanCheckoutOptions
+                    token={creatorAttributionToken}
+                    ctx="lockedfeature"
+                    feature={feature}
+                    compact
+                  />
+                </div>
               </>
             ) : (
               <>
-                <p className="text-center text-xs text-gray-400">
-                  $39 · one-time, no subscription · includes every Pro feature and all future updates
-                </p>
-                <a
-                  href={proLicenseUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-                >
-                  <Crown className="w-5 h-5" />
-                  Get Lifetime License — $39
-                </a>
+                <ProPlanCheckoutOptions
+                  token={creatorAttributionToken}
+                  ctx="lockedfeature"
+                  feature={feature}
+                />
                 <p className="text-center text-xs text-gray-500">
                   14-day refund, no questions asked · Open source, MPL 2.0
                 </p>

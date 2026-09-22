@@ -6,7 +6,7 @@ import { useImageStore } from '../store/useImageStore';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
-import { buildProLicenseUrl } from '../utils/creatorAttribution';
+import { ProPlanSelectorModal } from './ProPlanSelector';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
 import type { ExploreDimension } from '../types';
 import { useLicenseStore } from '../store/useLicenseStore';
@@ -60,7 +60,6 @@ const Header: React.FC<HeaderProps> = ({
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
   const licensePlan = useLicenseStore((state) => state.licensePlan);
   const licenseExpiresAt = useLicenseStore((state) => state.licenseExpiresAt);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'menu');
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
   const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
   const viewingStackPrompt = useImageStore((state) => state.viewingStackPrompt);
@@ -77,6 +76,7 @@ const Header: React.FC<HeaderProps> = ({
   );
   const [isLaunchingGenerator, setIsLaunchingGenerator] = useState(false);
   const [isComfyUIDragTarget, setIsComfyUIDragTarget] = useState(false);
+  const [isPlanSelectorOpen, setIsPlanSelectorOpen] = useState(false);
   const launchPollingDeadlineRef = useRef<number | null>(null);
   const relevantServerUrl =
     detectedGenerator.runtimeFamily === 'comfyui'
@@ -494,14 +494,13 @@ const Header: React.FC<HeaderProps> = ({
           </button>
 
           {!isPro && (
-            <a
-              href={proLicenseUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => setIsPlanSelectorOpen(true)}
               className="app-top-pill hidden h-9 border-amber-700/30 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 hover:border-amber-600/40 hover:bg-amber-500/15 hover:text-amber-100 lg:inline-flex"
             >
               Get Pro
-            </a>
+            </button>
           )}
 
           <div className="app-top-segmented">
@@ -532,6 +531,12 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
     </header>
+    <ProPlanSelectorModal
+      isOpen={isPlanSelectorOpen}
+      onClose={() => setIsPlanSelectorOpen(false)}
+      token={creatorAttributionToken}
+      ctx="menu"
+    />
     </>
   );
 };

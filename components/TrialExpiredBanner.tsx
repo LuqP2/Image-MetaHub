@@ -2,7 +2,7 @@ import React from 'react';
 import { Crown, X } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { buildProLicenseUrl } from '../utils/creatorAttribution';
+import { buildProCheckoutUrl } from '../utils/creatorAttribution';
 
 /**
  * Shown once to users whose Pro trial ended, until they dismiss it. Deliberately plain:
@@ -11,7 +11,9 @@ import { buildProLicenseUrl } from '../utils/creatorAttribution';
 const TrialExpiredBanner: React.FC = () => {
   const { showTrialExpiredNotice, dismissTrialExpiredNotice } = useFeatureAccess();
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'trial_expired');
+  const lifetimeCheckoutUrl = buildProCheckoutUrl('lifetime', creatorAttributionToken, 'trial_expired');
+  const annualCheckoutUrl = buildProCheckoutUrl('annual', creatorAttributionToken, 'trial_expired');
+  const monthlyCheckoutUrl = buildProCheckoutUrl('monthly', creatorAttributionToken, 'trial_expired');
 
   if (!showTrialExpiredNotice) return null;
 
@@ -33,7 +35,7 @@ const TrialExpiredBanner: React.FC = () => {
       <div className="flex shrink-0 items-center gap-3">
         <div className="text-right">
           <a
-            href={proLicenseUrl}
+            href={lifetimeCheckoutUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
@@ -44,6 +46,24 @@ const TrialExpiredBanner: React.FC = () => {
           <p className="mt-1 text-xs text-amber-100/60">
             One-time, no subscription · 14-day refund, no questions asked
           </p>
+          <div className="mt-1.5 flex justify-end gap-2 text-xs">
+            <a
+              href={annualCheckoutUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-100/70 underline-offset-2 hover:text-amber-50 hover:underline"
+            >
+              Annual — $19.99/year
+            </a>
+            <a
+              href={monthlyCheckoutUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-100/70 underline-offset-2 hover:text-amber-50 hover:underline"
+            >
+              Monthly — $4.99/month
+            </a>
+          </div>
         </div>
 
         <button
