@@ -44,6 +44,14 @@ describe('smart library cluster state', () => {
     expect(buildClusterSourceSignature([makeImage(2), makeImage(1)])).toBe(baseline);
   });
 
+  it('tracks which images entered a limited clustering run', () => {
+    const images = Array.from({ length: 501 }, (_, index) => makeImage(index));
+    const reordered = [images[500], ...images.slice(1, 500), images[0]];
+
+    expect(buildClusterSourceSignature(reordered)).toBe(buildClusterSourceSignature(images));
+    expect(buildClusterSourceSignature(reordered, 500)).not.toBe(buildClusterSourceSignature(images, 500));
+  });
+
   it('trims restored clusters to the free preview range', () => {
     const images = Array.from({ length: 510 }, (_, index) => makeImage(index));
     const clusters = [

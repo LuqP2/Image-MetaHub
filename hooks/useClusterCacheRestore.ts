@@ -8,6 +8,7 @@ import {
   buildClusterStateSignature,
   buildClusteringMetadata,
   getPromptImagesForClustering,
+  getClusterProcessingLimit,
   isClusterCacheCompatible,
 } from '../utils/smartLibraryClusterState';
 
@@ -44,8 +45,8 @@ export function useClusterCacheRestore(): void {
     [images, hasClusters],
   );
   const clusterSourceSignature = useMemo(
-    () => (hasClusters ? '' : buildClusterSourceSignature(images)),
-    [images, hasClusters],
+    () => (hasClusters ? '' : buildClusterSourceSignature(images, getClusterProcessingLimit(canUseFullClustering))),
+    [images, hasClusters, canUseFullClustering],
   );
   const currentClusteringMetadata = useMemo(
     () => buildClusteringMetadata(images, canUseFullClustering),

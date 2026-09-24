@@ -205,6 +205,7 @@ const DetachedImageModalApp: React.FC = () => {
   return (
     <>
     <ImageModal
+      key={snapshot.sessionId}
       hostMode="native-window"
       isAlwaysOnTop={isAlwaysOnTop}
       onToggleAlwaysOnTop={() => void toggleAlwaysOnTop()}

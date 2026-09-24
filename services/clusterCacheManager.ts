@@ -190,8 +190,9 @@ export async function loadClusterCache(
       const cache: ClusterCacheEntry = JSON.parse(content);
 
       // Validate cache version
-      if (cache.clusterCacheVersion != null && cache.clusterCacheVersion !== CLUSTER_CACHE_VERSION) {
-        console.warn(`Cluster cache version mismatch. Expected ${CLUSTER_CACHE_VERSION}, got ${cache.clusterCacheVersion}. Invalidating cache.`);
+      const cacheVersion = cache.clusterCacheVersion ?? 1;
+      if (cacheVersion !== CLUSTER_CACHE_VERSION) {
+        console.warn(`Cluster cache version mismatch. Expected ${CLUSTER_CACHE_VERSION}, got ${cacheVersion}. Invalidating cache.`);
         await invalidateClusterCache(directoryPath, scanSubfolders, 'version_mismatch');
         return null;
       }

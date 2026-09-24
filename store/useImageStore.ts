@@ -4766,7 +4766,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const processingLimit = (isPro || isTrialActive) ? Infinity : CLUSTERING_PREVIEW_LIMIT;
             const limitedImages = imagesWithPrompts.slice(0, processingLimit);
             const remainingCount = Math.max(0, imagesWithPrompts.length - processingLimit);
-            const clusterSourceSignature = buildClusterSourceSignature(imagesWithPrompts);
+            const clusterSourceSignature = buildClusterSourceSignature(imagesWithPrompts, processingLimit);
 
             // Track which images are in the locked preview range.
             const lockedImageIds = new Set<string>();

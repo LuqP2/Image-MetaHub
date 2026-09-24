@@ -138,4 +138,25 @@ describe('clusterCacheManager smart library IPC', () => {
     expect(restored?.clusters).toEqual(clusters);
     expect(deleteSmartLibraryCache).not.toHaveBeenCalled();
   });
+
+  it('invalidates a cluster cache with an incompatible clustering version', async () => {
+    const directoryPath = 'D:/images';
+    const deleteSmartLibraryCache = vi.fn().mockResolvedValue({ success: true });
+    (window as any).electronAPI = {
+      readSmartLibraryCache: vi.fn().mockResolvedValue({
+        success: true,
+        data: JSON.stringify({
+          clusters: [], sourceSignature: 'same-library',
+          parserVersion: PARSER_VERSION, clusterCacheVersion: 2,
+        }),
+      }),
+      writeSmartLibraryCache: vi.fn(),
+      deleteSmartLibraryCache,
+    };
+
+    expect(await loadClusterCache(directoryPath, true, 'same-library')).toBeNull();
+    expect(deleteSmartLibraryCache).toHaveBeenCalledWith({
+      cacheId: generateDirectoryIdHash(directoryPath, true), kind: 'clusters',
+    });
+  });
 });
