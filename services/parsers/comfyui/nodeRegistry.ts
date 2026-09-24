@@ -63,7 +63,7 @@ function extractQwenImage21Prompt(
   const input = node.inputs?.[key];
   if (Array.isArray(input)) {
     const resolved = traverse(input, state, graph, []);
-    return typeof resolved === 'string' ? resolved : null;
+    if (typeof resolved === 'string') return resolved;
   }
   if (typeof input === 'string') return input;
 

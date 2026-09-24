@@ -59,6 +59,29 @@ describe('Qwen Image 2.1 metadata', () => {
     }
   });
 
+  it('uses workflow widget text only when a linked Qwen prompt cannot be resolved', () => {
+    const workflow = { nodes: [{
+      id: 3, type: 'TextEncodeQwenImage21',
+      widgets_values: ['widget positive', 'widget negative', 1024],
+    }] };
+    const prompt: any = makePrompt();
+    prompt['3'].inputs.prompt = ['8', 0];
+    prompt['3'].inputs.negative_prompt = ['9', 0];
+    prompt['8'] = { class_type: 'UnregisteredCustomString', inputs: {} };
+    prompt['9'] = { class_type: 'UnregisteredCustomString', inputs: {} };
+
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = parse(workflow, prompt);
+      expect(result.prompt).toBe('widget positive');
+      expect(result.negativePrompt).toBe('widget negative');
+    }
+
+    prompt['3'].inputs.negative_prompt = ['5', 0];
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      expect(parse(workflow, prompt).negativePrompt).toBe('');
+    }
+  });
+
   it('recovers prompts from ordinary ComfyUI metadata and an existing Save Node chunk', async () => {
     const prompt = makePrompt();
     const ordinary = await parseImageMetadata({ prompt } as any);
