@@ -1486,6 +1486,16 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       scheduler: { source: 'trace', input: 'sigmas' },
       steps: { source: 'trace', input: 'sigmas' },
       prompt: { source: 'trace', input: 'guider' },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          const guiderLink = node.inputs?.guider;
+          if (!Array.isArray(guiderLink)) return null;
+          const guider = graph[String(guiderLink[0])];
+          if (!guider?.inputs || !('negative' in guider.inputs)) return null;
+          return traverse(guiderLink as any, { ...state, targetParam: 'negativePrompt' }, graph, []);
+        },
+      },
       cfg: { source: 'trace', input: 'guider' },
       model: { source: 'trace', input: 'guider' }
     }
