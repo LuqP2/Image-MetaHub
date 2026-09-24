@@ -4,7 +4,7 @@ import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, copyTextToClipboard, showInExplorer } from '../utils/imageUtils';
 import { motion } from 'framer-motion';
-import { AlertTriangle, Copy, Pencil, Pin, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink, Bookmark } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Copy, Pencil, Pin, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink, Bookmark } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -3531,6 +3531,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
             onPointerDown={isNativeWindow ? undefined : handleWindowSurfacePointerDown}
             onDoubleClick={isNativeWindow ? undefined : toggleWindowMaximize}
           >
+            {!isNativeWindow && (
+              <button
+                type="button"
+                onClick={onClose}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="shrink-0 rounded-md p-2 text-gray-300 hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                title="Exit viewer (Esc)"
+                aria-label="Exit viewer"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            )}
             <div className="min-w-0 flex-1">
               {isRenaming ? (
                 <div
@@ -3965,8 +3977,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 >
                   <Minimize2 className="h-4 w-4" />
                 </button>
-                {!isNativeWindow && (
-                  <button
+                <button
                     onClick={onClose}
                     className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
                     aria-label="Close image"
@@ -3974,7 +3985,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   >
                     <X className="w-4 h-4" />
                   </button>
-                )}
               </div>
             ) : (
               <div className="flex flex-row items-center gap-2">
@@ -4038,6 +4048,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   aria-label={`Fullscreen (${toggleFullscreenKeybinding})`}
                 >
                   <Maximize2 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={onClose}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                  aria-label="Close image"
+                  title="Close (Esc)"
+                >
+                  <X className="h-4 w-4" />
                 </button>
               </div>
             )}

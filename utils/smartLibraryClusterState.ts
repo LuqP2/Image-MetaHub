@@ -38,7 +38,8 @@ export const buildClusterSourceSignature = (images: IndexedImage[]): string => {
   const promptImages = getPromptImagesForClustering(images);
   let hash = updateHash(FNV_OFFSET, `${promptImages.length}`);
 
-  for (const image of promptImages) {
+  // Library hydration and sorting can return the same files in a different order.
+  for (const image of [...promptImages].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     hash = updateHash(hash, '\u0000');
     hash = updateHash(hash, image.id);
     hash = updateHash(hash, '\u0001');

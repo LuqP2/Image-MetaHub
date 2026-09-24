@@ -622,6 +622,7 @@ let stableIdentityFileOperationCoordinator;
 let stableIdentityUserDataService;
 const detachedImageViewerWindows = new Map();
 const detachedImageViewerSnapshots = new Map();
+const idleMacImageViewerWindows = new Set();
 const detachedImageViewerRequestResolvers = new Map();
 
 async function executeWithStableIdentity(options) {
@@ -2576,6 +2577,21 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     return { success: true, existing: true };
   }
 
+  if (process.platform === 'darwin') {
+    const reusable = Array.from(idleMacImageViewerWindows).find((window) => !window.isDestroyed());
+    if (reusable) {
+      idleMacImageViewerWindows.delete(reusable);
+      reusable.__imageViewerSessionId = sessionId;
+      reusable.__imageViewerRebinding = true;
+      detachedImageViewerWindows.set(sessionId, reusable);
+      detachedImageViewerSnapshots.set(sessionId, snapshot);
+      // The renderer acknowledges the new snapshot through image-viewer-ready.
+      // Keep the hidden window hidden until it has bound the new session.
+      reusable.webContents.send('image-viewer-snapshot', snapshot);
+      return { success: true, reused: true };
+    }
+  }
+
   const settings = await readSettings();
   const cascadeSlot = pickDetachedViewerCascadeSlot();
   const initialState = resolveDetachedImageViewerState(settings, cascadeSlot);
@@ -2600,6 +2616,7 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   });
   viewerWindow.setMenu(null);
   viewerWindow.__imageViewerCascadeSlot = cascadeSlot;
+  viewerWindow.__imageViewerSessionId = sessionId;
   const viewerWindowId = viewerWindow.id;
   if (sessionId === PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID) {
     viewerWindow.once('show', () => {
@@ -2637,9 +2654,10 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     // The explicit renderer handshake remains authoritative; this only marks native loading.
   });
   viewerWindow.__markImageViewerRendererReady = () => {
+    const wasReady = rendererReady;
     rendererReady = true;
     clearTimeout(rendererReadyTimeout);
-    showWhenReady();
+    if (!wasReady) showWhenReady();
   };
   viewerWindow.webContents.on('did-fail-load', (_event, errorCode, description, _validatedURL, isMainFrame) => {
     // Sub-frame failures and aborted loads (ERR_ABORTED, fired whenever a load is
@@ -2651,11 +2669,11 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     viewerWindow.destroy();
   });
 
-  viewerWindow.on('focus', () => sendDetachedViewerEvent(sessionId, 'focus'));
-  viewerWindow.on('minimize', () => sendDetachedViewerEvent(sessionId, 'minimize'));
-  viewerWindow.on('restore', () => sendDetachedViewerEvent(sessionId, 'restore'));
-  viewerWindow.on('maximize', () => sendDetachedViewerEvent(sessionId, 'maximize'));
-  viewerWindow.on('unmaximize', () => sendDetachedViewerEvent(sessionId, 'unmaximize'));
+  viewerWindow.on('focus', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'focus'));
+  viewerWindow.on('minimize', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'minimize'));
+  viewerWindow.on('restore', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'restore'));
+  viewerWindow.on('maximize', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'maximize'));
+  viewerWindow.on('unmaximize', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'unmaximize'));
   viewerWindow.on('enter-full-screen', () => {
     if (!viewerWindow.isDestroyed()) viewerWindow.webContents.send('fullscreen-changed', { isFullscreen: true });
   });
@@ -2666,15 +2684,35 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   viewerWindow.on('resize', () => queueDetachedViewerStatePersist(viewerWindow));
   viewerWindow.webContents.on('render-process-gone', (_event, details) => {
     viewerWindow.__suppressImageViewerClosedEvent = true;
-    sendDetachedViewerEvent(sessionId, rendererReady ? 'render-process-gone' : 'load-failed', { reason: details?.reason || 'unknown' });
+    const activeSessionId = viewerWindow.__imageViewerSessionId;
+    idleMacImageViewerWindows.delete(viewerWindow);
+    if (activeSessionId) sendDetachedViewerEvent(activeSessionId, rendererReady ? 'render-process-gone' : 'load-failed', { reason: details?.reason || 'unknown' });
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
+  });
+  viewerWindow.on('close', (event) => {
+    if (process.platform !== 'darwin' || viewerWindow.__destroyImageViewer) return;
+    const activeSessionId = viewerWindow.__imageViewerSessionId;
+    if (!activeSessionId) return;
+    event.preventDefault();
+    if (viewerWindow.isFullScreen()) viewerWindow.setFullScreen(false);
+    if (viewerWindow.isAlwaysOnTop()) viewerWindow.setAlwaysOnTop(false);
+    viewerWindow.hide();
+    detachedImageViewerWindows.delete(activeSessionId);
+    detachedImageViewerSnapshots.delete(activeSessionId);
+    viewerWindow.__imageViewerSessionId = null;
+    idleMacImageViewerWindows.add(viewerWindow);
+    sendDetachedViewerEvent(activeSessionId, 'closed');
   });
   viewerWindow.on('closed', () => {
     clearTimeout(rendererReadyTimeout);
     cancelDetachedViewerStatePersist(viewerWindowId);
-    detachedImageViewerWindows.delete(sessionId);
-    detachedImageViewerSnapshots.delete(sessionId);
-    if (!viewerWindow.__suppressImageViewerClosedEvent) sendDetachedViewerEvent(sessionId, 'closed');
+    idleMacImageViewerWindows.delete(viewerWindow);
+    const activeSessionId = viewerWindow.__imageViewerSessionId;
+    if (activeSessionId) {
+      detachedImageViewerWindows.delete(activeSessionId);
+      detachedImageViewerSnapshots.delete(activeSessionId);
+      if (!viewerWindow.__suppressImageViewerClosedEvent) sendDetachedViewerEvent(activeSessionId, 'closed');
+    }
   });
 
   try {
@@ -2747,6 +2785,26 @@ async function runPackagedDetachedViewerSmokeTest() {
 
     await readyPromise;
     console.log('[packaged-detached-viewer-smoke] renderer-ready');
+    if (process.platform === 'darwin') {
+      let activeSessionId = PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID;
+      const stableWindow = detachedImageViewerWindows.get(activeSessionId);
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        stableWindow.close();
+        if (!idleMacImageViewerWindows.has(stableWindow)) throw new Error('Viewer did not enter the reusable idle state.');
+        activeSessionId = `${PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID}-${attempt}`;
+        const reboundSnapshot = { ...snapshot, sessionId: activeSessionId, revision: 1 };
+        const shown = new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Rebound viewer did not become visible.')), 15000);
+          stableWindow.once('show', () => { clearTimeout(timer); resolve(); });
+        });
+        const reopened = await createDetachedImageViewer(activeSessionId, reboundSnapshot);
+        if (!reopened.success || !reopened.reused || detachedImageViewerWindows.get(activeSessionId) !== stableWindow) {
+          throw new Error('Viewer reopen created a new renderer.');
+        }
+        await shown;
+      }
+      console.log('[packaged-detached-viewer-smoke] reopen x3 passed');
+    }
     closeAllDetachedImageViewers();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     app.exit(0);
@@ -2762,11 +2820,13 @@ async function runPackagedDetachedViewerSmokeTest() {
 }
 
 function closeAllDetachedImageViewers() {
-  for (const viewerWindow of detachedImageViewerWindows.values()) {
+  for (const viewerWindow of new Set([...detachedImageViewerWindows.values(), ...idleMacImageViewerWindows])) {
+    viewerWindow.__destroyImageViewer = true;
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
   }
   detachedImageViewerWindows.clear();
   detachedImageViewerSnapshots.clear();
+  idleMacImageViewerWindows.clear();
 }
 
 async function persistWindowState() {
@@ -3281,6 +3341,11 @@ function setupImageViewerHandlers() {
     if (!snapshot) return { success: false, error: 'Image viewer snapshot is unavailable.' };
     viewerWindow.webContents.send('image-viewer-snapshot', snapshot);
     viewerWindow.__markImageViewerRendererReady?.();
+    if (viewerWindow.__imageViewerRebinding) {
+      viewerWindow.__imageViewerRebinding = false;
+      viewerWindow.show();
+      viewerWindow.focus();
+    }
     return { success: true };
   });
 

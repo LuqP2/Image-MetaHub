@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PARSER_VERSION } from '../services/cacheManager';
+import type { ImageCluster } from '../types';
 import {
   loadClusterCache,
   saveClusterCache,
@@ -102,6 +103,39 @@ describe('clusterCacheManager smart library IPC', () => {
     const cache = await loadClusterCache(directoryPath, true, 'partial-library');
 
     expect(cache).toBeNull();
+    expect(deleteSmartLibraryCache).not.toHaveBeenCalled();
+  });
+
+  it('restores generated clusters after restart despite an unrelated parser version change', async () => {
+    const stored = new Map<string, unknown>();
+    const directoryPath = 'D:/images';
+    const deleteSmartLibraryCache = vi.fn();
+    const clusters: ImageCluster[] = [{
+      id: 'cluster-1', promptHash: 'cluster-1', basePrompt: 'prompt',
+      imageIds: ['a', 'b', 'c'], coverImageId: 'a', size: 3,
+      similarityThreshold: 0.75, createdAt: 1, updatedAt: 1,
+    }];
+    (window as any).electronAPI = {
+      readSmartLibraryCache: vi.fn(async ({ cacheId, kind }: { cacheId: string; kind: string }) => ({
+        success: true,
+        data: JSON.stringify(stored.get(`${cacheId}:${kind}`)),
+      })),
+      writeSmartLibraryCache: vi.fn(async ({ cacheId, kind, data }: { cacheId: string; kind: string; data: unknown }) => {
+        stored.set(`${cacheId}:${kind}`, data);
+        return { success: true };
+      }),
+      deleteSmartLibraryCache,
+    };
+
+    await saveClusterCache(directoryPath, true, clusters, 0.75, 'same-library', 3, 3);
+    const cacheId = generateDirectoryIdHash(directoryPath, true);
+    stored.set(`${cacheId}:clusters`, {
+      ...(stored.get(`${cacheId}:clusters`) as object),
+      parserVersion: PARSER_VERSION - 1,
+    });
+
+    const restored = await loadClusterCache(directoryPath, true, 'same-library');
+    expect(restored?.clusters).toEqual(clusters);
     expect(deleteSmartLibraryCache).not.toHaveBeenCalled();
   });
 });

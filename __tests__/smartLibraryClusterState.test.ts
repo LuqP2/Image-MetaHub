@@ -41,7 +41,7 @@ describe('smart library cluster state', () => {
 
     expect(buildClusterSourceSignature([...images, makeImage(3)])).not.toBe(baseline);
     expect(buildClusterSourceSignature([makeImage(1, 'changed'), makeImage(2)])).not.toBe(baseline);
-    expect(buildClusterSourceSignature([makeImage(2), makeImage(1)])).not.toBe(baseline);
+    expect(buildClusterSourceSignature([makeImage(2), makeImage(1)])).toBe(baseline);
   });
 
   it('trims restored clusters to the free preview range', () => {
