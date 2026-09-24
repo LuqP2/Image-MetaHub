@@ -53,6 +53,24 @@ function extractKrea2GroundedPrompt(
   return typeof widgetPrompt === 'string' ? widgetPrompt : null;
 }
 
+function extractQwenImage21Prompt(
+  node: ParserNode,
+  state: any,
+  graph: any,
+  traverse: any,
+  key: 'prompt' | 'negative_prompt',
+): string | null {
+  const input = node.inputs?.[key];
+  if (Array.isArray(input)) {
+    const resolved = traverse(input, state, graph, []);
+    if (typeof resolved === 'string') return resolved;
+  }
+  if (typeof input === 'string') return input;
+
+  const widget = node.widgets_values?.[key === 'prompt' ? 0 : 1];
+  return typeof widget === 'string' ? widget : null;
+}
+
 function extractRgthreePowerLoras(node: ParserNode): string[] {
   const loras: string[] = [];
   const addLora = (value: unknown) => {
@@ -347,6 +365,18 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       }
     },
     widget_order: ['text']
+  },
+  TextEncodeQwenImage21: {
+    category: 'CONDITIONING', roles: ['SOURCE'],
+    inputs: { clip: { type: 'CLIP' }, prompt: { type: 'STRING' }, negative_prompt: { type: 'STRING' } },
+    outputs: { positive: { type: 'CONDITIONING' }, negative: { type: 'CONDITIONING' }, latent: { type: 'LATENT' } },
+    param_mapping: {
+      prompt: { source: 'custom_extractor', extractor: (node, state, graph, traverse) =>
+        extractQwenImage21Prompt(node, state, graph, traverse, 'prompt') },
+      negativePrompt: { source: 'custom_extractor', extractor: (node, state, graph, traverse) =>
+        extractQwenImage21Prompt(node, state, graph, traverse, 'negative_prompt') },
+    },
+    widget_order: ['prompt', 'negative_prompt', 'resolution'],
   },
   Krea2EditGroundedEncode: {
     category: 'CONDITIONING',

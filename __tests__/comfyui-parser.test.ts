@@ -24,6 +24,86 @@ function loadFixture(name: string): any {
   return JSON.parse(content);
 }
 
+describe('Qwen Image 2.1 metadata', () => {
+  const makePrompt = (negativePrompt: unknown = 'direct negative') => ({
+    '1': { class_type: 'UNETLoader', inputs: { unet_name: 'qwen_image_2.1.safetensors' } },
+    '2': { class_type: 'String Literal', inputs: { string: 'linked positive' } },
+    '3': { class_type: 'TextEncodeQwenImage21', inputs: {
+      prompt: ['2', 0], negative_prompt: negativePrompt,
+    } },
+    '4': { class_type: 'KSampler', inputs: {
+      model: ['1', 0], positive: ['3', 0], negative: ['3', 1],
+      seed: 42, steps: 25, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1,
+    } },
+    '5': { class_type: 'String Literal', inputs: { string: '' } },
+  });
+
+  it('keeps positive and negative outputs separate in both graph parsers', () => {
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = parse({}, makePrompt());
+      expect(result.prompt).toBe('linked positive');
+      expect(result.negativePrompt).toBe('direct negative');
+      expect(result.model).toBe('qwen_image_2.1.safetensors');
+      expect(result.seed).toBe(42);
+      expect(result.steps).toBe(25);
+      expect(result.cfg).toBe(1);
+      expect(result.sampler_name).toBe('euler');
+      expect(result.scheduler).toBe('simple');
+    }
+  });
+
+  it('preserves an intentionally empty negative prompt in both parsers', () => {
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      expect(parse({}, makePrompt('')).negativePrompt).toBe('');
+      expect(parse({}, makePrompt(['5', 0])).negativePrompt).toBe('');
+    }
+  });
+
+  it('uses workflow widget text only when a linked Qwen prompt cannot be resolved', () => {
+    const workflow = { nodes: [{
+      id: 3, type: 'TextEncodeQwenImage21',
+      widgets_values: ['widget positive', 'widget negative', 1024],
+    }] };
+    const prompt: any = makePrompt();
+    prompt['3'].inputs.prompt = ['8', 0];
+    prompt['3'].inputs.negative_prompt = ['9', 0];
+    prompt['8'] = { class_type: 'UnregisteredCustomString', inputs: {} };
+    prompt['9'] = { class_type: 'UnregisteredCustomString', inputs: {} };
+
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = parse(workflow, prompt);
+      expect(result.prompt).toBe('widget positive');
+      expect(result.negativePrompt).toBe('widget negative');
+    }
+
+    prompt['3'].inputs.negative_prompt = ['5', 0];
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      expect(parse(workflow, prompt).negativePrompt).toBe('');
+    }
+  });
+
+  it('recovers prompts from ordinary ComfyUI metadata and an existing Save Node chunk', async () => {
+    const prompt = makePrompt();
+    const ordinary = await parseImageMetadata({ prompt } as any);
+    expect(ordinary?.prompt).toBe('linked positive');
+    expect(ordinary?.negativePrompt).toBe('direct negative');
+
+    const saved = await parseImageMetadata({ imagemetahub_data: {
+      generator: 'ComfyUI', prompt: '', negativePrompt: '', prompt_api: prompt,
+    } } as any);
+    expect(saved?.prompt).toBe('linked positive');
+    expect(saved?.negativePrompt).toBe('direct negative');
+
+    const manual = await parseImageMetadata({ imagemetahub_data: {
+      generator: 'ComfyUI', prompt: 'manual positive', negativePrompt: 'manual negative',
+      metadata_sources: { positive: 'manual_override', negative: 'manual_override' },
+      prompt_api: prompt,
+    } } as any);
+    expect(manual?.prompt).toBe('manual positive');
+    expect(manual?.negativePrompt).toBe('manual negative');
+  });
+});
+
 describe('ComfyUI Parser - Basic Workflows', () => {
   it('should parse basic KSampler workflow', () => {
     const fixture = loadFixture('basic-ksampler.json');
