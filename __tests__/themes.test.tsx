@@ -100,6 +100,7 @@ describe('new theme palette contrast', () => {
     const color = (token: string) => channels(id, token);
     expect(contrast(color('gray-500'), color('gray-800'))).toBeGreaterThanOrEqual(4.5);
     expect(contrast(color('gray-400'), color('gray-800'))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(color('gray-300'), color('gray-800'))).toBeGreaterThanOrEqual(4.5);
     expect(contrast(color('gray-700'), color('gray-900'))).toBeGreaterThanOrEqual(3);
     expect(contrast(color('blue-500'), color('gray-950'))).toBeGreaterThanOrEqual(3);
     expect(contrast(color('gray-950'), color('blue-500'))).toBeGreaterThanOrEqual(4.5);
