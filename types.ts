@@ -703,7 +703,7 @@ export interface ElectronAPI {
   getPathForFile: (file: File) => string;
   onSettingsUpdated: (callback: () => void) => () => void;
   onLicenseStatusChanged: (callback: (status: LicenseClientStatus) => void) => () => void;
-  onImageViewerSnapshot: (callback: (snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot) => void) => () => void;
+  onImageViewerSnapshot: (callback: (snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot | null) => void) => () => void;
   onImageViewerEvent: (callback: (event: { sessionId: string; type: string; reason?: string }) => void) => () => void;
   onImageViewerCommand: (callback: (payload: { sessionId: string; requestId: string; command: import('./services/imageViewerContracts').ImageViewerCommand }) => void) => () => void;
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
