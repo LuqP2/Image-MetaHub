@@ -34,7 +34,7 @@ export const getPromptImagesForClustering = (images: IndexedImage[]): IndexedIma
 export const getClusterProcessingLimit = (canUseFullClustering: boolean): number =>
   canUseFullClustering ? Infinity : CLUSTERING_PREVIEW_LIMIT;
 
-export const buildClusterSourceSignature = (images: IndexedImage[], processingLimit = Infinity): string => {
+export const buildClusterSourceSignatures = (images: IndexedImage[], processingLimit = Infinity): { full: string; limited: string } => {
   const promptImages = getPromptImagesForClustering(images);
   let hash = updateHash(FNV_OFFSET, `${promptImages.length}`);
 
@@ -47,6 +47,7 @@ export const buildClusterSourceSignature = (images: IndexedImage[], processingLi
     hash = updateHash(hash, '\u0001');
     hash = updateHash(hash, image.prompt?.trim() ?? '');
   }
+  const full = `${promptImages.length}:${toHashString(hash)}`;
 
   // A limited clustering run only processes the first N images. Record that
   // subset as well, so a reordered library cannot restore incomplete clusters.
@@ -58,8 +59,11 @@ export const buildClusterSourceSignature = (images: IndexedImage[], processingLi
     }
   }
 
-  return `${promptImages.length}:${toHashString(hash)}`;
+  return { full, limited: `${promptImages.length}:${toHashString(hash)}` };
 };
+
+export const buildClusterSourceSignature = (images: IndexedImage[], processingLimit = Infinity): string =>
+  buildClusterSourceSignatures(images, processingLimit).limited;
 
 export const buildClusteringMetadata = (
   images: IndexedImage[],

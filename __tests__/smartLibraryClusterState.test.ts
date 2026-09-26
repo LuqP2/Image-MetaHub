@@ -3,6 +3,7 @@ import type { ImageCluster, IndexedImage } from '../types';
 import {
   buildClusteringMetadata,
   buildClusterSourceSignature,
+  buildClusterSourceSignatures,
   isClusterCacheCompatible,
   limitClustersForAccess,
 } from '../utils/smartLibraryClusterState';
@@ -50,6 +51,8 @@ describe('smart library cluster state', () => {
 
     expect(buildClusterSourceSignature(reordered)).toBe(buildClusterSourceSignature(images));
     expect(buildClusterSourceSignature(reordered, 500)).not.toBe(buildClusterSourceSignature(images, 500));
+    expect(buildClusterSourceSignatures(images, 500).full).toBe(buildClusterSourceSignature(images));
+    expect(buildClusterSourceSignatures(images, 500).limited).toBe(buildClusterSourceSignature(images, 500));
   });
 
   it('trims restored clusters to the free preview range', () => {

@@ -74,7 +74,14 @@ const DetachedImageModalApp: React.FC = () => {
     const sessionId = sessionIdRef.current;
     if (!api?.imageViewerReady || !api.onImageViewerSnapshot || !sessionId) return;
 
-    const applySnapshot = (next: ImageViewerSnapshot) => {
+    const applySnapshot = (next: ImageViewerSnapshot | null) => {
+      if (!next) {
+        document.querySelectorAll('audio, video').forEach((media) => {
+          (media as HTMLMediaElement).pause();
+        });
+        setSnapshot(null);
+        return;
+      }
       if (next.sessionId !== sessionIdRef.current) {
         sessionIdRef.current = next.sessionId;
         latestRevisionRef.current = -1;

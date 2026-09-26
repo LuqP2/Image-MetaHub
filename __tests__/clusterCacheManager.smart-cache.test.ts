@@ -106,6 +106,29 @@ describe('clusterCacheManager smart library IPC', () => {
     expect(deleteSmartLibraryCache).not.toHaveBeenCalled();
   });
 
+  it('accepts a full-run cache as a compatible source after a license downgrade', async () => {
+    const directoryPath = 'D:/images';
+    const fullSignature = '501:full';
+    (window as any).electronAPI = {
+      readSmartLibraryCache: vi.fn().mockResolvedValue({
+        success: true,
+        data: JSON.stringify({
+          clusters: [{ id: 'full-cluster' }],
+          sourceSignature: fullSignature,
+          sourceImageCount: 501,
+          processedImageCount: 501,
+          clusterCacheVersion: 1,
+        }),
+      }),
+      writeSmartLibraryCache: vi.fn(),
+      deleteSmartLibraryCache: vi.fn(),
+    };
+
+    const cache = await loadClusterCache(directoryPath, true, ['501:limited', fullSignature]);
+    expect(cache?.clusters[0].id).toBe('full-cluster');
+    expect(await loadClusterCache(directoryPath, true, ['501:limited'])).toBeNull();
+  });
+
   it('restores generated clusters after restart despite an unrelated parser version change', async () => {
     const stored = new Map<string, unknown>();
     const directoryPath = 'D:/images';

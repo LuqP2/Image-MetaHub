@@ -623,6 +623,7 @@ let stableIdentityUserDataService;
 const detachedImageViewerWindows = new Map();
 const detachedImageViewerSnapshots = new Map();
 const idleMacImageViewerWindows = new Set();
+const MAX_IDLE_MAC_IMAGE_VIEWERS = 1;
 const detachedImageViewerRequestResolvers = new Map();
 
 async function executeWithStableIdentity(options) {
@@ -2583,6 +2584,7 @@ async function createDetachedImageViewer(sessionId, snapshot) {
       idleMacImageViewerWindows.delete(reusable);
       reusable.__imageViewerSessionId = sessionId;
       reusable.__imageViewerRebinding = true;
+      reusable.webContents.setAudioMuted(true);
       detachedImageViewerWindows.set(sessionId, reusable);
       detachedImageViewerSnapshots.set(sessionId, snapshot);
       // The renderer acknowledges the new snapshot through image-viewer-ready.
@@ -2694,6 +2696,10 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     const activeSessionId = viewerWindow.__imageViewerSessionId;
     if (!activeSessionId) return;
     event.preventDefault();
+    // The renderer stays loaded for reuse, but its active media and slideshow
+    // must be unmounted before another session is bound to this window.
+    viewerWindow.webContents.setAudioMuted(true);
+    viewerWindow.webContents.send('image-viewer-snapshot', null);
     if (viewerWindow.isFullScreen()) viewerWindow.setFullScreen(false);
     if (viewerWindow.isAlwaysOnTop()) viewerWindow.setAlwaysOnTop(false);
     viewerWindow.hide();
@@ -2701,6 +2707,12 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     detachedImageViewerSnapshots.delete(activeSessionId);
     viewerWindow.__imageViewerSessionId = null;
     idleMacImageViewerWindows.add(viewerWindow);
+    while (idleMacImageViewerWindows.size > MAX_IDLE_MAC_IMAGE_VIEWERS) {
+      const surplus = idleMacImageViewerWindows.values().next().value;
+      idleMacImageViewerWindows.delete(surplus);
+      surplus.__destroyImageViewer = true;
+      if (!surplus.isDestroyed()) surplus.destroy();
+    }
     sendDetachedViewerEvent(activeSessionId, 'closed');
   });
   viewerWindow.on('closed', () => {
@@ -2804,6 +2816,24 @@ async function runPackagedDetachedViewerSmokeTest() {
         await shown;
       }
       console.log('[packaged-detached-viewer-smoke] reopen x3 passed');
+      const secondSessionId = `${PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID}-concurrent`;
+      const secondResult = await createDetachedImageViewer(secondSessionId, { ...snapshot, sessionId: secondSessionId });
+      const secondWindow = detachedImageViewerWindows.get(secondSessionId);
+      if (!secondResult.success || !secondWindow || secondWindow === stableWindow) {
+        throw new Error('Concurrent viewer did not create a separate window.');
+      }
+      if (!secondWindow.isVisible()) {
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Concurrent viewer did not become visible.')), 15000);
+          secondWindow.once('show', () => { clearTimeout(timer); resolve(); });
+        });
+      }
+      stableWindow.close();
+      secondWindow.close();
+      if (idleMacImageViewerWindows.size !== 1 || !stableWindow.isDestroyed() || !idleMacImageViewerWindows.has(secondWindow)) {
+        throw new Error('Idle viewer pool retained more than one renderer.');
+      }
+      console.log('[packaged-detached-viewer-smoke] idle pool bound passed');
     }
     closeAllDetachedImageViewers();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
@@ -3343,6 +3373,7 @@ function setupImageViewerHandlers() {
     viewerWindow.__markImageViewerRendererReady?.();
     if (viewerWindow.__imageViewerRebinding) {
       viewerWindow.__imageViewerRebinding = false;
+      viewerWindow.webContents.setAudioMuted(false);
       viewerWindow.show();
       viewerWindow.focus();
     }

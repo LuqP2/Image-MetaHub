@@ -4,7 +4,7 @@ import { useFeatureAccess } from './useFeatureAccess';
 import { loadClusterCache } from '../services/clusterCacheManager';
 import type { IndexedImage } from '../types';
 import {
-  buildClusterSourceSignature,
+  buildClusterSourceSignatures,
   buildClusterStateSignature,
   buildClusteringMetadata,
   getPromptImagesForClustering,
@@ -44,10 +44,11 @@ export function useClusterCacheRestore(): void {
     () => (hasClusters ? EMPTY_IMAGES : getPromptImagesForClustering(images)),
     [images, hasClusters],
   );
-  const clusterSourceSignature = useMemo(
-    () => (hasClusters ? '' : buildClusterSourceSignature(images, getClusterProcessingLimit(canUseFullClustering))),
+  const clusterSourceSignatures = useMemo(
+    () => (hasClusters ? { full: '', limited: '' } : buildClusterSourceSignatures(images, getClusterProcessingLimit(canUseFullClustering))),
     [images, hasClusters, canUseFullClustering],
   );
+  const clusterSourceSignature = clusterSourceSignatures.limited;
   const currentClusteringMetadata = useMemo(
     () => buildClusteringMetadata(images, canUseFullClustering),
     [canUseFullClustering, images],
@@ -79,7 +80,11 @@ export function useClusterCacheRestore(): void {
 
     let cancelled = false;
 
-    loadClusterCache(primaryPath, scanSubfolders, clusterSourceSignature)
+    // A full-run cache remains a valid superset when Pro/trial access expires.
+    const acceptedSignatures = canUseFullClustering
+      ? [clusterSourceSignature]
+      : [clusterSourceSignature, clusterSourceSignatures.full];
+    loadClusterCache(primaryPath, scanSubfolders, acceptedSignatures)
       .then((cache) => {
         if (cancelled) {
           return;
@@ -110,6 +115,7 @@ export function useClusterCacheRestore(): void {
   }, [
     canUseFullClustering,
     clusterSourceSignature,
+    clusterSourceSignatures.full,
     clusters.length,
     currentClusteringMetadata,
     indexingState,
