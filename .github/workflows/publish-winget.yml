@@ -1,0 +1,71 @@
+name: Publish release to WinGet
+
+on:
+  workflow_run:
+    workflows:
+      - Build and publish release (All Platforms)
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to submit (for example, v0.19.3)
+        required: true
+        type: string
+
+jobs:
+  submit-winget:
+    name: Submit WinGet update
+    if: >-
+      github.repository == 'LuqP2/Image-MetaHub' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')))
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || inputs.tag }}
+
+    steps:
+      - name: Synchronize WinGet fork
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
+        run: |
+          gh api `
+            --method POST `
+            "repos/${{ github.repository_owner }}/winget-pkgs/merge-upstream" `
+            -f branch=master
+
+      - name: Download WinGetCreate
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            -Uri "https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe" `
+            -OutFile "wingetcreate.exe"
+
+          $actualHash = (Get-FileHash .\wingetcreate.exe -Algorithm SHA256).Hash
+          $expectedHash = "24042BD37915805615E6CF969AC57C6439124C3FE85823327F5F3FB24BD9FFEA"
+
+          if ($actualHash -ne $expectedHash) {
+            throw "WinGetCreate integrity check failed."
+          }
+
+      - name: Submit WinGet manifest
+        shell: pwsh
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Invalid release tag: $env:RELEASE_TAG"
+          }
+
+          $version = $env:RELEASE_TAG -replace '^v', ''
+          $installerUrl = "https://github.com/${{ github.repository }}/releases/download/$env:RELEASE_TAG/ImageMetaHub-Setup-$version.exe"
+          $installerSpec = "$installerUrl|x64|user"
+
+          .\wingetcreate.exe update LuqP2.ImageMetaHub `
+            --version $version `
+            --urls $installerSpec `
+            --submit
