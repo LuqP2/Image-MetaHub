@@ -221,7 +221,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
                   onClick={() => handleAddTag(inputValue)}
                   onKeyDown={handleKeyDown}
                   disabled={!inputValue.trim() || isSubmitting}
-                  className="absolute right-1.5 top-1.5 p-1.5 bg-blue-600 hover:bg-blue-500 text-gray-950 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="absolute right-1.5 top-1.5 p-1.5 bg-blue-600 hover:bg-blue-500 text-white hover:text-gray-950 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   aria-label="Add tags"
                 >
                   <Plus size={16} />
