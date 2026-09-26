@@ -29,6 +29,7 @@ export default {
         'blue-500': 'rgb(var(--blue-500) / <alpha-value>)',
         'blue-600': 'rgb(var(--blue-600, 37 99 235) / <alpha-value>)',
         'accent': 'rgb(var(--accent) / <alpha-value>)',
+        'accent-strong': 'rgb(var(--accent-strong, 29 78 216) / <alpha-value>)',
       }
     },
   },

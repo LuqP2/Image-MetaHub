@@ -235,7 +235,7 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
               disabled={!isSideBySide}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
                 syncEnabled
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-500'
+                  ? 'bg-blue-600 hover:bg-accent-strong text-white border-blue-500'
                   : 'bg-gray-700/50 hover:bg-gray-700 text-gray-300 border-gray-600/50'
               } ${!isSideBySide ? 'opacity-60 cursor-not-allowed' : ''}`}
               title={isSideBySide ? 'Toggle zoom synchronization (S)' : 'Sync is available in compare mode'}

@@ -93,6 +93,7 @@
   --blue-500: 230 180 80;
   --accent: 230 180 80;
   --blue-600: 154 104 12;
+  --accent-strong: 124 82 8;
 }
 
 [data-theme="catppuccin"] {
@@ -110,6 +111,7 @@
   --blue-500: 203 166 247;
   --accent: 203 166 247;
   --blue-600: 126 68 165;
+  --accent-strong: 107 53 143;
 }
 
 [data-theme="github"] {
@@ -127,6 +129,7 @@
   --blue-500: 88 166 255;
   --accent: 88 166 255;
   --blue-600: 31 111 235;
+  --accent-strong: 26 86 183;
 }
 
 [data-theme="matrix"] {
@@ -144,6 +147,7 @@
   --blue-500: 74 222 128;
   --accent: 74 222 128;
   --blue-600: 21 128 61;
+  --accent-strong: 17 99 47;
 }
 
 [data-theme="monokai"] {
@@ -161,6 +165,7 @@
   --blue-500: 166 226 46;
   --accent: 166 226 46;
   --blue-600: 84 123 0;
+  --accent-strong: 70 104 0;
 }
 
 [data-theme="oscurange"] {
@@ -178,6 +183,7 @@
   --blue-500: 243 156 105;
   --accent: 243 156 105;
   --blue-600: 173 73 27;
+  --accent-strong: 143 59 25;
 }
 
 [data-theme="raycast"] {
@@ -195,6 +201,7 @@
   --blue-500: 255 103 125;
   --accent: 255 103 125;
   --blue-600: 166 36 75;
+  --accent-strong: 138 30 62;
 }
 
 [data-theme="solarized"] {
@@ -212,6 +219,7 @@
   --blue-500: 85 189 174;
   --accent: 85 189 174;
   --blue-600: 15 118 110;
+  --accent-strong: 11 91 85;
 }
 
 [data-theme="temple"] {
@@ -229,6 +237,7 @@
   --blue-500: 197 217 77;
   --accent: 197 217 77;
   --blue-600: 82 111 15;
+  --accent-strong: 62 86 12;
 }
 
 [data-theme="tokyo-night"] {
@@ -246,4 +255,5 @@
   --blue-500: 122 162 247;
   --accent: 122 162 247;
   --blue-600: 52 86 173;
+  --accent-strong: 41 70 142;
 }

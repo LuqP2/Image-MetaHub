@@ -106,6 +106,7 @@ describe('new theme palette contrast', () => {
     expect(contrast(color('blue-500'), color('gray-800'))).toBeGreaterThanOrEqual(4.5);
     expect(contrast(color('gray-950'), color('blue-500'))).toBeGreaterThanOrEqual(4.5);
     expect(contrast([255, 255, 255], color('blue-600'))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast([255, 255, 255], color('accent-strong'))).toBeGreaterThanOrEqual(4.5);
     const option = themeOptions.find((theme) => theme.id === id)!;
     expect(color('gray-950')).toEqual(channelsFromHex(option.colors[0]));
     expect(color('blue-500')).toEqual(channelsFromHex(option.colors[1]));
