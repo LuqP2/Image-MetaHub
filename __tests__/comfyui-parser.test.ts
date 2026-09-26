@@ -52,6 +52,33 @@ describe('Qwen Image 2.1 metadata', () => {
     }
   });
 
+  it('keeps both Qwen prompts separate through CFGGuider and SamplerCustomAdvanced', () => {
+    const prompt = {
+      '1': { class_type: 'TextEncodeQwenImage21', inputs: {
+        prompt: 'positive text', negative_prompt: 'negative text',
+      } },
+      '2': { class_type: 'CFGGuider', inputs: {
+        positive: ['1', 0], negative: ['1', 1], cfg: 1,
+      } },
+      '3': { class_type: 'SamplerCustomAdvanced', inputs: { guider: ['2', 0] } },
+    };
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = parse({}, prompt);
+      expect(result.prompt).toBe('positive text');
+      expect(result.negativePrompt).toBe('negative text');
+    }
+
+    const basicGuiderPrompt = {
+      ...prompt,
+      '2': { class_type: 'BasicGuider', inputs: { conditioning: ['1', 0] } },
+    };
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = parse({}, basicGuiderPrompt);
+      expect(result.prompt).toBe('positive text');
+      expect(result.negativePrompt).toBeNull();
+    }
+  });
+
   it('preserves an intentionally empty negative prompt in both parsers', () => {
     for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
       expect(parse({}, makePrompt('')).negativePrompt).toBe('');
