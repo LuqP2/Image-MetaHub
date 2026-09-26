@@ -3199,7 +3199,7 @@ app.whenReady().then(async () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('theme-updated', themePayload);
     }
-    for (const viewerWindow of detachedImageViewerWindows.values()) {
+    for (const viewerWindow of new Set([...detachedImageViewerWindows.values(), ...idleMacImageViewerWindows])) {
       if (!viewerWindow.isDestroyed()) viewerWindow.webContents.send('theme-updated', themePayload);
     }
   });

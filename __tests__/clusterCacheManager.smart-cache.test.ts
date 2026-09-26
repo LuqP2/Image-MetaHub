@@ -129,6 +129,38 @@ describe('clusterCacheManager smart library IPC', () => {
     expect(await loadClusterCache(directoryPath, true, ['501:limited'])).toBeNull();
   });
 
+  it('accepts a legacy signature only for an unversioned cache', async () => {
+    const directoryPath = 'D:/images';
+    const readSmartLibraryCache = vi.fn();
+    (window as any).electronAPI = {
+      readSmartLibraryCache,
+      writeSmartLibraryCache: vi.fn(),
+      deleteSmartLibraryCache: vi.fn(),
+    };
+    const legacySignature = vi.fn(() => '2:legacy-order');
+    const oldCache = {
+      clusters: [{ id: 'restored-cluster' }],
+      sourceSignature: '2:legacy-order',
+      sourceImageCount: 2,
+      processedImageCount: 2,
+    };
+    readSmartLibraryCache.mockResolvedValue({
+      success: true,
+      data: JSON.stringify(oldCache),
+    });
+
+    expect((await loadClusterCache(directoryPath, true, '2:stable-order', legacySignature))?.clusters[0].id)
+      .toBe('restored-cluster');
+    expect(legacySignature).toHaveBeenCalledOnce();
+
+    readSmartLibraryCache.mockResolvedValue({
+      success: true,
+      data: JSON.stringify({ ...oldCache, clusterCacheVersion: 1 }),
+    });
+    expect(await loadClusterCache(directoryPath, true, '2:stable-order', legacySignature)).toBeNull();
+    expect(legacySignature).toHaveBeenCalledOnce();
+  });
+
   it('restores generated clusters after restart despite an unrelated parser version change', async () => {
     const stored = new Map<string, unknown>();
     const directoryPath = 'D:/images';

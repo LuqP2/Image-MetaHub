@@ -5,6 +5,7 @@ import { loadClusterCache } from '../services/clusterCacheManager';
 import type { IndexedImage } from '../types';
 import {
   buildClusterSourceSignatures,
+  buildLegacyClusterSourceSignature,
   buildClusterStateSignature,
   buildClusteringMetadata,
   getPromptImagesForClustering,
@@ -84,7 +85,7 @@ export function useClusterCacheRestore(): void {
     const acceptedSignatures = canUseFullClustering
       ? [clusterSourceSignature]
       : [clusterSourceSignature, clusterSourceSignatures.full];
-    loadClusterCache(primaryPath, scanSubfolders, acceptedSignatures)
+    loadClusterCache(primaryPath, scanSubfolders, acceptedSignatures, () => buildLegacyClusterSourceSignature(images))
       .then((cache) => {
         if (cancelled) {
           return;
@@ -119,6 +120,7 @@ export function useClusterCacheRestore(): void {
     clusters.length,
     currentClusteringMetadata,
     indexingState,
+    images,
     isClustering,
     isLicenseInitialized,
     isLoading,

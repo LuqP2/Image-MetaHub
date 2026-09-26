@@ -4,6 +4,7 @@ import {
   buildClusteringMetadata,
   buildClusterSourceSignature,
   buildClusterSourceSignatures,
+  buildLegacyClusterSourceSignature,
   isClusterCacheCompatible,
   limitClustersForAccess,
 } from '../utils/smartLibraryClusterState';
@@ -43,6 +44,14 @@ describe('smart library cluster state', () => {
     expect(buildClusterSourceSignature([...images, makeImage(3)])).not.toBe(baseline);
     expect(buildClusterSourceSignature([makeImage(1, 'changed'), makeImage(2)])).not.toBe(baseline);
     expect(buildClusterSourceSignature([makeImage(2), makeImage(1)])).toBe(baseline);
+  });
+
+  it('reproduces the order-sensitive signature stored by older cluster caches', () => {
+    const images = [makeImage(2), makeImage(1)];
+
+    expect(buildLegacyClusterSourceSignature(images)).not.toBe(buildLegacyClusterSourceSignature([...images].reverse()));
+    expect(buildClusterSourceSignature(images)).toBe(buildClusterSourceSignature([...images].reverse()));
+    expect(buildLegacyClusterSourceSignature(images)).not.toBe(buildClusterSourceSignature(images));
   });
 
   it('tracks which images entered a limited clustering run', () => {

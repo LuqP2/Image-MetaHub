@@ -177,7 +177,8 @@ export async function getCacheDirectory(): Promise<string> {
 export async function loadClusterCache(
   directoryPath: string,
   scanSubfolders: boolean,
-  expectedSourceSignature?: string | string[]
+  expectedSourceSignature?: string | string[],
+  legacySourceSignature?: () => string,
 ): Promise<ClusterCacheEntry | null> {
   try {
     const idHash = generateDirectoryIdHash(directoryPath, scanSubfolders);
@@ -200,7 +201,10 @@ export async function loadClusterCache(
       const acceptedSignatures = typeof expectedSourceSignature === 'string'
         ? [expectedSourceSignature]
         : expectedSourceSignature;
-      if (acceptedSignatures && !acceptedSignatures.includes(cache.sourceSignature)) {
+      const matchesCurrent = !acceptedSignatures || acceptedSignatures.includes(cache.sourceSignature);
+      const matchesLegacy = !matchesCurrent && cache.clusterCacheVersion == null &&
+        legacySourceSignature && cache.sourceSignature === legacySourceSignature();
+      if (!matchesCurrent && !matchesLegacy) {
         console.warn('Cluster cache source signature mismatch. Skipping restore.');
         return null;
       }
