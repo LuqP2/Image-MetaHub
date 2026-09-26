@@ -828,7 +828,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                       setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
                     }
                   }}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${isPromptSaved ? 'border-accent bg-accent text-white hover:bg-accent/90' : 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'}`}
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${isPromptSaved ? 'border-accent bg-accent text-gray-950 hover:bg-accent/90' : 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'}`}
                   aria-pressed={isPromptSaved}
                 >
                   <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} /> {isPromptSaved ? 'Saved' : 'Save Prompt'}
@@ -987,7 +987,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   setIsGenerateModalOpen(true);
                 }}
                 disabled={canUseA1111 && !effectiveMetadata?.prompt}
-                className="flex w-full items-center justify-center gap-2 rounded-md border border-blue-500 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-md border border-blue-500 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isGenerating && canUseA1111 ? (
                   <>
@@ -1088,7 +1088,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   setIsComfyUIGenerateModalOpen(true);
                 }}
                 disabled={canUseComfyUI && !effectiveMetadata?.prompt}
-                className="mb-2 flex w-full items-center justify-center gap-2 rounded-md border border-blue-500 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mb-2 flex w-full items-center justify-center gap-2 rounded-md border border-blue-500 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isGeneratingComfyUI && canUseComfyUI ? (
                   <>

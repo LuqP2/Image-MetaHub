@@ -168,7 +168,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
               type="button"
               onClick={handleTestA1111Connection}
               disabled={isTestingA1111Connection}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:bg-gray-700"
             >
               {isTestingA1111Connection ? 'Testing...' : 'Test connection'}
             </button>
@@ -211,7 +211,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
               type="button"
               onClick={handleTestComfyUIConnection}
               disabled={isTestingComfyUIConnection}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:bg-gray-700"
             >
               {isTestingComfyUIConnection ? 'Testing...' : 'Test connection'}
             </button>

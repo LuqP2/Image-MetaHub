@@ -1474,7 +1474,7 @@ export default function DirectoryList({
                 Cancel
               </button>
               <button
-                className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-gray-950 rounded transition-colors"
                 onClick={() => {
                   folderPrompt.onConfirm(folderPromptValue);
                   setFolderPrompt(null);

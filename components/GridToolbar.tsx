@@ -1020,7 +1020,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                                   {date.getDate()}
                                   {markerCount > 0 && (
                                     <span className={`absolute -right-1 -top-1 min-w-[16px] rounded-full px-1 text-[10px] leading-4 ${
-                                      isSelected ? 'bg-white text-blue-700' : 'bg-blue-500 text-white'
+                                      isSelected ? 'bg-white text-blue-700' : 'bg-blue-500 text-gray-950'
                                     }`}>
                                       {markerCount}
                                     </span>

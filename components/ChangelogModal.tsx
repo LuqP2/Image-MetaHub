@@ -241,7 +241,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-accent hover:bg-blue-700 text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="px-4 py-2 bg-accent hover:bg-blue-700 text-gray-950 hover:text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             Got it!
           </button>

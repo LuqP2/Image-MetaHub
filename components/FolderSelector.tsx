@@ -34,7 +34,7 @@ const FolderSelector: React.FC<FolderSelectorProps> = ({ onSelectFolder }) => {
       </div>
       <button
         onClick={onSelectFolder}
-        className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
+        className="bg-blue-500 hover:bg-blue-600 text-gray-950 hover:text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
       >
         Select Image Folder
       </button>

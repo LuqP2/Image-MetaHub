@@ -6,6 +6,7 @@ import { useImageStore } from '../store/useImageStore';
 import type { IndexedImage } from '../types';
 import type { ImageViewerCommand, ImageViewerSnapshot } from '../services/imageViewerContracts';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { resolveTheme } from '../src/theme/themeRegistry';
 import { useLicenseStore } from '../store/useLicenseStore';
 
 const getSessionId = () => new URLSearchParams(window.location.search).get('sessionId') || '';
@@ -34,16 +35,24 @@ const DetachedImageModalApp: React.FC = () => {
   } = useFeatureAccess();
 
   useEffect(() => {
+    let active = true;
     const applyTheme = (systemShouldUseDark: boolean) => {
-      const isDark = ['dark', 'dracula', 'nord', 'ocean'].includes(theme)
-        || (theme === 'system' && systemShouldUseDark);
-      document.documentElement.classList.toggle('dark', isDark);
-      document.documentElement.setAttribute('data-theme', theme === 'system' ? (systemShouldUseDark ? 'dark' : 'light') : theme);
+      const resolved = resolveTheme(theme, systemShouldUseDark);
+      document.documentElement.classList.toggle('dark', resolved.dark);
+      document.documentElement.setAttribute('data-theme', resolved.id);
     };
     const api = window.electronAPI;
     if (!api) return;
-    void api.getTheme().then(({ shouldUseDarkColors }) => applyTheme(shouldUseDarkColors));
-    return api.onThemeUpdated(({ shouldUseDarkColors }) => applyTheme(shouldUseDarkColors));
+    void api.getTheme().then(({ shouldUseDarkColors }) => {
+      if (active) applyTheme(shouldUseDarkColors);
+    });
+    const unsubscribe = api.onThemeUpdated(({ shouldUseDarkColors }) => {
+      if (active) applyTheme(shouldUseDarkColors);
+    });
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
   }, [theme]);
 
   useEffect(() => {

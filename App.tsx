@@ -2,6 +2,7 @@ import React, { startTransition, useState, useEffect, useLayoutEffect, useCallba
 import { flushSync } from 'react-dom';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
+import { resolveTheme } from './src/theme/themeRegistry';
 import { useSemanticStore } from './store/useSemanticStore';
 import { useLicenseStore } from './store/useLicenseStore';
 import { initializeSavedPromptSynchronization } from './store/useSavedPromptStore';
@@ -916,44 +917,34 @@ export default function App() {
 
   // --- Effects ---
   useEffect(() => {
-    const applyTheme = (themeValue: string, systemShouldUseDark: boolean) => {
-      // Determine if we should be in "dark mode" for Tailwind utilities
-      const isDark =
-        themeValue === 'dark' ||
-        themeValue === 'dracula' ||
-        themeValue === 'nord' ||
-        themeValue === 'ocean' ||
-        (themeValue === 'system' && systemShouldUseDark);
-
-      if (isDark) {
+    let active = true;
+    const applyTheme = (systemShouldUseDark: boolean) => {
+      const resolved = resolveTheme(theme, systemShouldUseDark);
+      if (resolved.dark) {
         document.documentElement.classList.add('dark');
       } else {
         document.documentElement.classList.remove('dark');
       }
 
-      // Apply the data-theme attribute for CSS variables
-      if (themeValue === 'system') {
-        document.documentElement.setAttribute('data-theme', systemShouldUseDark ? 'dark' : 'light');
-      } else {
-        document.documentElement.setAttribute('data-theme', themeValue);
-      }
+      document.documentElement.setAttribute('data-theme', resolved.id);
     };
 
     if (window.electronAPI) {
       window.electronAPI.getTheme().then(({ shouldUseDarkColors }) => {
-        applyTheme(theme, shouldUseDarkColors);
+        if (active) applyTheme(shouldUseDarkColors);
       });
 
       const unsubscribe = window.electronAPI.onThemeUpdated(({ shouldUseDarkColors }) => {
-        applyTheme(theme, shouldUseDarkColors);
+        if (active) applyTheme(shouldUseDarkColors);
       });
 
       return () => {
+        active = false;
         if (unsubscribe) unsubscribe();
       };
     } else {
       // Fallback for browser
-      applyTheme(theme, window.matchMedia('(prefers-color-scheme: dark)').matches);
+      applyTheme(window.matchMedia('(prefers-color-scheme: dark)').matches);
     }
   }, [theme]);
 
@@ -4345,7 +4336,7 @@ export default function App() {
                       </p>
                       <button
                         onClick={handleClearAllFilters}
-                        className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-800"
+                        className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 hover:text-gray-950 focus:outline-none focus:ring-4 focus:ring-blue-800"
                       >
                         Clear All Filters
                       </button>

@@ -539,8 +539,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           whileTap={{ scale: 0.85 }}
           className={`absolute top-2 left-2 z-20 p-1 rounded transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
             isSelected
-              ? 'bg-blue-500 text-white opacity-100'
-              : `bg-black/50 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-blue-500/80 ${isFocused ? 'opacity-100' : ''}`
+              ? 'bg-blue-500 text-gray-950 opacity-100'
+              : `bg-black/50 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-blue-500 hover:text-gray-950 ${isFocused ? 'opacity-100' : ''}`
           }`}
           title={isSelected ? 'Deselect image' : 'Select image'}
           aria-label={isSelected ? 'Deselect image' : 'Select image'}
@@ -560,7 +560,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         <motion.button
           onClick={handlePreviewClick}
           whileTap={{ scale: 0.85 }}
-          className={`absolute top-11 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white transition-opacity hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:opacity-100 opacity-0 group-hover:opacity-100 ${isFocused ? 'opacity-100' : ''}`}
+          className={`absolute top-11 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white transition-opacity hover:bg-blue-500 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:opacity-100 opacity-0 group-hover:opacity-100 ${isFocused ? 'opacity-100' : ''}`}
           title="Show details"
           aria-label="Show details"
         >

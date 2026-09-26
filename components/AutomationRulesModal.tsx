@@ -415,7 +415,7 @@ export default function AutomationRulesModal({
               <button
                 type="button"
                 onClick={() => loadRuleForEditing(null)}
-                className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500"
+                className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950"
               >
                 <Plus className="h-4 w-4" />
                 New Rule
@@ -583,7 +583,7 @@ const WhenBuilder: React.FC<WhenBuilderProps> = ({ rows, valueSource, onAdd, onI
         <button type="button" onClick={onImport} className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">
           Import current sidebar filters
         </button>
-        <button type="button" onClick={onAdd} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">
+        <button type="button" onClick={onAdd} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 hover:text-gray-950">
           <Plus className="h-3.5 w-3.5" />
           Add condition
         </button>
@@ -753,7 +753,7 @@ const ThenActions: React.FC<ThenActionsProps> = ({
             <button
               type="button"
               onClick={() => addTagsFromInput(tagInput)}
-              className="absolute right-1.5 top-1.5 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
+              className="absolute right-1.5 top-1.5 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500 hover:text-gray-950"
             >
               Add
             </button>
@@ -888,7 +888,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         onClick={() => void onSave()}
         disabled={!canSave}
         title={!canSave ? "Add a name, at least one condition, and an action to save" : "Save Rule"}
-        className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Save Rule
       </button>
