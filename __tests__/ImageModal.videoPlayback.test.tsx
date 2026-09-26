@@ -175,7 +175,7 @@ describe('ImageModal video playback controls', () => {
     expect(container.querySelector('[data-resize-handle="true"]')).toBeNull();
     expect(screen.queryByTitle('Minimize window')).toBeNull();
     expect(screen.queryByTitle('Maximize window')).toBeNull();
-    expect(screen.queryByTitle('Close (Esc)')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Close image' })).toBeTruthy();
     const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
     expect(dialog.className).toContain('inset-0');
     expect(dialog.style.left).toBe('');

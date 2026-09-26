@@ -34,11 +34,12 @@ export const getPromptImagesForClustering = (images: IndexedImage[]): IndexedIma
 export const getClusterProcessingLimit = (canUseFullClustering: boolean): number =>
   canUseFullClustering ? Infinity : CLUSTERING_PREVIEW_LIMIT;
 
-export const buildClusterSourceSignature = (images: IndexedImage[]): string => {
+export const buildClusterSourceSignatures = (images: IndexedImage[], processingLimit = Infinity): { full: string; limited: string } => {
   const promptImages = getPromptImagesForClustering(images);
   let hash = updateHash(FNV_OFFSET, `${promptImages.length}`);
 
-  for (const image of promptImages) {
+  // Library hydration and sorting can return the same files in a different order.
+  for (const image of [...promptImages].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     hash = updateHash(hash, '\u0000');
     hash = updateHash(hash, image.id);
     hash = updateHash(hash, '\u0001');
@@ -46,9 +47,23 @@ export const buildClusterSourceSignature = (images: IndexedImage[]): string => {
     hash = updateHash(hash, '\u0001');
     hash = updateHash(hash, image.prompt?.trim() ?? '');
   }
+  const full = `${promptImages.length}:${toHashString(hash)}`;
 
-  return `${promptImages.length}:${toHashString(hash)}`;
+  // A limited clustering run only processes the first N images. Record that
+  // subset as well, so a reordered library cannot restore incomplete clusters.
+  if (promptImages.length > processingLimit) {
+    hash = updateHash(hash, '\u0002');
+    for (const id of promptImages.slice(0, processingLimit).map((image) => image.id).sort()) {
+      hash = updateHash(hash, id);
+      hash = updateHash(hash, '\u0000');
+    }
+  }
+
+  return { full, limited: `${promptImages.length}:${toHashString(hash)}` };
 };
+
+export const buildClusterSourceSignature = (images: IndexedImage[], processingLimit = Infinity): string =>
+  buildClusterSourceSignatures(images, processingLimit).limited;
 
 export const buildClusteringMetadata = (
   images: IndexedImage[],

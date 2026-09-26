@@ -9,6 +9,9 @@
 import { ImageCluster, AutoTag, TFIDFModel } from '../types';
 import { PARSER_VERSION } from './cacheManager';
 
+// Cluster output depends on the clustering algorithm, not metadata parser revisions.
+const CLUSTER_CACHE_VERSION = 1;
+
 /**
  * Cluster cache entry structure
  */
@@ -21,7 +24,8 @@ export interface ClusterCacheEntry {
   sourceImageCount: number;             // Total prompt-bearing images at generation time
   processedImageCount: number;          // Images actually clustered under the active license
   lastGenerated: number;                // Timestamp
-  parserVersion: number;                // Track clustering version
+  parserVersion: number;                // Legacy metadata parser version; no longer invalidates clusters
+  clusterCacheVersion?: number;         // Clustering cache format/algorithm version
   similarityThreshold: number;          // Threshold used
 }
 
@@ -173,7 +177,7 @@ export async function getCacheDirectory(): Promise<string> {
 export async function loadClusterCache(
   directoryPath: string,
   scanSubfolders: boolean,
-  expectedSourceSignature?: string
+  expectedSourceSignature?: string | string[]
 ): Promise<ClusterCacheEntry | null> {
   try {
     const idHash = generateDirectoryIdHash(directoryPath, scanSubfolders);
@@ -186,13 +190,17 @@ export async function loadClusterCache(
       const cache: ClusterCacheEntry = JSON.parse(content);
 
       // Validate cache version
-      if (cache.parserVersion !== PARSER_VERSION) {
-        console.warn(`Cluster cache version mismatch. Expected ${PARSER_VERSION}, got ${cache.parserVersion}. Invalidating cache.`);
+      const cacheVersion = cache.clusterCacheVersion ?? 1;
+      if (cacheVersion !== CLUSTER_CACHE_VERSION) {
+        console.warn(`Cluster cache version mismatch. Expected ${CLUSTER_CACHE_VERSION}, got ${cacheVersion}. Invalidating cache.`);
         await invalidateClusterCache(directoryPath, scanSubfolders, 'version_mismatch');
         return null;
       }
 
-      if (expectedSourceSignature && cache.sourceSignature !== expectedSourceSignature) {
+      const acceptedSignatures = typeof expectedSourceSignature === 'string'
+        ? [expectedSourceSignature]
+        : expectedSourceSignature;
+      if (acceptedSignatures && !acceptedSignatures.includes(cache.sourceSignature)) {
         console.warn('Cluster cache source signature mismatch. Skipping restore.');
         return null;
       }
@@ -234,6 +242,7 @@ export async function saveClusterCache(
       processedImageCount,
       lastGenerated: Date.now(),
       parserVersion: PARSER_VERSION,
+      clusterCacheVersion: CLUSTER_CACHE_VERSION,
       similarityThreshold,
     };
 

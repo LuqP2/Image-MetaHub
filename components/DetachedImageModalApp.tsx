@@ -16,6 +16,7 @@ const asIndexedImage = (image: ImageViewerSnapshot['image']): IndexedImage => im
 const DetachedImageModalApp: React.FC = () => {
   const sessionIdRef = useRef(getSessionId());
   const latestRevisionRef = useRef(-1);
+  const pendingRebindSessionRef = useRef<string | null>(null);
   const [snapshot, setSnapshot] = useState<ImageViewerSnapshot | null>(null);
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
   const theme = useSettingsStore((state) => state.theme);
@@ -82,8 +83,21 @@ const DetachedImageModalApp: React.FC = () => {
     const sessionId = sessionIdRef.current;
     if (!api?.imageViewerReady || !api.onImageViewerSnapshot || !sessionId) return;
 
-    const applySnapshot = (next: ImageViewerSnapshot) => {
-      if (next.sessionId !== sessionId || next.revision <= latestRevisionRef.current) return;
+    const applySnapshot = (next: ImageViewerSnapshot | null) => {
+      if (!next) {
+        document.querySelectorAll('audio, video').forEach((media) => {
+          (media as HTMLMediaElement).pause();
+        });
+        setSnapshot(null);
+        return;
+      }
+      if (next.sessionId !== sessionIdRef.current) {
+        sessionIdRef.current = next.sessionId;
+        latestRevisionRef.current = -1;
+        setIsAlwaysOnTop(false);
+        pendingRebindSessionRef.current = next.sessionId;
+      }
+      if (next.revision <= latestRevisionRef.current) return;
       latestRevisionRef.current = next.revision;
       const previousImage = next.previousImage ? asIndexedImage(next.previousImage) : null;
       const current = asIndexedImage(next.image);
@@ -173,6 +187,12 @@ const DetachedImageModalApp: React.FC = () => {
     return unsubscribe;
   }, [sendCommand]);
 
+  useEffect(() => {
+    if (!snapshot || pendingRebindSessionRef.current !== snapshot.sessionId) return;
+    pendingRebindSessionRef.current = null;
+    void window.electronAPI?.imageViewerReady(snapshot.sessionId);
+  }, [snapshot]);
+
   if (!snapshot) {
     return <div className="flex h-screen items-center justify-center bg-gray-950 text-sm text-gray-400">Opening image…</div>;
   }
@@ -201,6 +221,7 @@ const DetachedImageModalApp: React.FC = () => {
   return (
     <>
     <ImageModal
+      key={snapshot.sessionId}
       hostMode="native-window"
       isAlwaysOnTop={isAlwaysOnTop}
       onToggleAlwaysOnTop={() => void toggleAlwaysOnTop()}
