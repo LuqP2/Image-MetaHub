@@ -622,7 +622,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
           </button>
           <button
             onClick={handleGenerate}
-            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
+            className="bg-blue-600 hover:bg-accent-strong px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
           >
             {isGenerating ? (
               <>

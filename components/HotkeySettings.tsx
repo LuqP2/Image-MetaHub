@@ -207,7 +207,7 @@ export const HotkeySettings = () => {
         <input type="file" id="import-keymap" className="hidden" accept=".json" onChange={handleImport} />
         <button
             onClick={() => document.getElementById('import-keymap')?.click()}
-            className="px-4 py-2 text-sm font-semibold rounded-md bg-blue-500 text-white hover:bg-blue-600"
+            className="px-4 py-2 text-sm font-semibold rounded-md bg-blue-500 text-gray-950 hover:bg-blue-600 hover:text-white"
         >
             Import
         </button>

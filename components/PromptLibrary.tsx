@@ -434,7 +434,7 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
                             <p className="whitespace-pre-wrap break-words text-sm leading-5 text-gray-300">{prompt.negativePrompt}</p>
                             <button
                               type="button"
-                              className={`mt-2 inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${copiedActionKey === negativeCopyKey ? 'bg-accent text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}
+                              className={`mt-2 inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${copiedActionKey === negativeCopyKey ? 'bg-accent text-gray-950' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}
                               onClick={() => void handleCopy(prompt.negativePrompt, negativeCopyKey)}
                             >
                               {copiedActionKey === negativeCopyKey ? <Check size={12} /> : <Copy size={12} />}
@@ -454,7 +454,7 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
                     <div className="mt-3 flex items-center gap-1.5">
                       <button
                         type="button"
-                        className={`app-top-pill px-2.5 py-1.5 text-xs ${copiedActionKey === positiveCopyKey ? 'border-accent bg-accent text-white hover:bg-accent/90' : ''}`}
+                        className={`app-top-pill px-2.5 py-1.5 text-xs ${copiedActionKey === positiveCopyKey ? 'border-accent bg-accent text-gray-950 hover:bg-accent/90' : ''}`}
                         onClick={() => void handleCopy(prompt.positivePrompt, positiveCopyKey)}
                       >
                         {copiedActionKey === positiveCopyKey ? <Check size={13} /> : <Copy size={13} />}
@@ -556,7 +556,7 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
             <div className="flex flex-wrap items-center gap-2 border-t border-gray-800 bg-gray-950/50 px-5 py-3">
               <button
                 type="button"
-                className={`app-top-pill px-3 py-2 text-sm ${copiedActionKey === `positive:${randomPrompt.id}` ? 'border-accent bg-accent text-white hover:bg-accent/90' : ''}`}
+                className={`app-top-pill px-3 py-2 text-sm ${copiedActionKey === `positive:${randomPrompt.id}` ? 'border-accent bg-accent text-gray-950 hover:bg-accent/90' : ''}`}
                 onClick={() => void handleCopy(randomPrompt.positivePrompt, `positive:${randomPrompt.id}`)}
               >
                 {copiedActionKey === `positive:${randomPrompt.id}` ? <Check size={14} /> : <Copy size={14} />}
@@ -565,7 +565,7 @@ const PromptLibrary: React.FC<PromptLibraryProps> = ({ onViewSource }) => {
               {randomPrompt.negativePrompt && (
                 <button
                   type="button"
-                  className={`app-top-pill px-3 py-2 text-sm ${copiedActionKey === `negative:${randomPrompt.id}` ? 'border-accent bg-accent text-white hover:bg-accent/90' : ''}`}
+                  className={`app-top-pill px-3 py-2 text-sm ${copiedActionKey === `negative:${randomPrompt.id}` ? 'border-accent bg-accent text-gray-950 hover:bg-accent/90' : ''}`}
                   onClick={() => void handleCopy(randomPrompt.negativePrompt, `negative:${randomPrompt.id}`)}
                 >
                   {copiedActionKey === `negative:${randomPrompt.id}` ? <Check size={14} /> : <Copy size={14} />}

@@ -804,7 +804,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
 
               <button
                 onClick={addResource}
-                className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded transition-colors"
+                className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white hover:text-gray-950 px-3 py-1.5 rounded transition-colors"
               >
                 <Plus size={14} /> Add Resource
               </button>
@@ -917,7 +917,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                 <button
                   onClick={handleCopyEditableMetadata}
                   disabled={isCopying}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 hover:text-gray-950 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Copy size={14} /> {isCopying ? 'Copying...' : 'Copy JSON'}
                 </button>
@@ -990,7 +990,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white hover:text-gray-950 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSaving ? (
                   'Saving...'

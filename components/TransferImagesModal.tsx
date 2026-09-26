@@ -476,7 +476,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                     type="button"
                     onClick={() => void handleCreateFolder()}
                     disabled={isSubmittingNewFolder || newFolderName.trim().length === 0}
-                    className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                    className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-accent-strong disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                   >
                     {isSubmittingNewFolder ? 'Creating...' : 'Create'}
                   </button>
@@ -529,7 +529,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
             </button>
             <button
               onClick={() => selectedDirectory && onConfirm(selectedDirectory)}
-              className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-accent-strong transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               disabled={!selectedDirectory || isSubmitting}
             >
               {isSubmitting

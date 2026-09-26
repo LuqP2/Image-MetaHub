@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
+import type { ThemeId } from '../src/theme/themeRegistry';
 import {
   DEFAULT_RECENT_TAG_CHIP_LIMIT,
   DEFAULT_TAG_SUGGESTION_LIMIT,
@@ -150,7 +151,7 @@ interface SettingsState {
   autoUpdate: boolean;
   viewMode: 'grid' | 'list';
   groupBy: ImageGroupByMode;
-  theme: 'light' | 'dark' | 'system' | 'dracula' | 'nord' | 'ocean';
+  theme: ThemeId;
   keymap: Keymap;
   lastViewedVersion: string | null;
   indexingConcurrency: number;
@@ -231,7 +232,7 @@ interface SettingsState {
   toggleAutoUpdate: () => void;
   toggleViewMode: () => void;
   setGroupBy: (value: ImageGroupByMode) => void;
-  setTheme: (theme: 'light' | 'dark' | 'system' | 'dracula' | 'nord' | 'ocean') => void;
+  setTheme: (theme: ThemeId) => void;
   updateKeybinding: (scope: string, action: string, keybinding: string) => void;
   resetKeymap: () => void;
   setLastViewedVersion: (version: string) => void;

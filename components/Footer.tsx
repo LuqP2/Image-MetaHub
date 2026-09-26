@@ -505,7 +505,7 @@ const Footer: React.FC<FooterProps> = ({
             >
               <ListChecks className="h-4 w-4" />
               {queueCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-blue-500 text-white text-[10px] font-bold flex items-center justify-center shadow-sm">
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-blue-500 text-gray-950 text-[10px] font-bold flex items-center justify-center shadow-sm">
                   {queueCount}
                 </span>
               )}
