@@ -12,7 +12,7 @@ export const themeOptions = [
   { id: 'monokai', name: 'Monokai', dark: true, colors: ['#272822', '#a6e22e', '#f8f8f2'] },
   { id: 'oscurange', name: 'Oscurange', dark: true, colors: ['#211a17', '#f39c69', '#f5e7df'] },
   { id: 'raycast', name: 'Raycast', dark: true, colors: ['#191922', '#ff677d', '#f3eef6'] },
-  { id: 'solarized', name: 'Solarized', dark: true, colors: ['#002b36', '#4cb5a6', '#eee8d5'] },
+  { id: 'solarized', name: 'Solarized', dark: true, colors: ['#002b36', '#55bdae', '#eee8d5'] },
   { id: 'temple', name: 'Temple', dark: true, colors: ['#171a12', '#c5d94d', '#edf0d8'] },
   { id: 'tokyo-night', name: 'Tokyo Night', dark: true, colors: ['#1a1b26', '#7aa2f7', '#c0caf5'] },
 ] as const;

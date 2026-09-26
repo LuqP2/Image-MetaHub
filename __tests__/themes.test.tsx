@@ -103,6 +103,7 @@ describe('new theme palette contrast', () => {
     expect(contrast(color('gray-300'), color('gray-800'))).toBeGreaterThanOrEqual(4.5);
     expect(contrast(color('gray-700'), color('gray-900'))).toBeGreaterThanOrEqual(3);
     expect(contrast(color('blue-500'), color('gray-950'))).toBeGreaterThanOrEqual(3);
+    expect(contrast(color('blue-500'), color('gray-800'))).toBeGreaterThanOrEqual(4.5);
     expect(contrast(color('gray-950'), color('blue-500'))).toBeGreaterThanOrEqual(4.5);
     expect(contrast([255, 255, 255], color('blue-600'))).toBeGreaterThanOrEqual(4.5);
     const option = themeOptions.find((theme) => theme.id === id)!;
