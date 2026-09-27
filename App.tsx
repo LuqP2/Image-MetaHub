@@ -3630,6 +3630,14 @@ export default function App() {
           case 'reparse-image':
             await reparseViewerImages([requireImage(viewerCommand.imageId)]);
             break;
+          case 'auto-tag-image': {
+            const image = requireImage(viewerCommand.imageId);
+            if (!image.prompt?.trim()) throw new Error('This image has no prompt to auto-tag.');
+            if (state.isAutoTagging) throw new Error('Auto-tagging is already in progress.');
+            const success = await state.startAutoTaggingForImage(image.id);
+            if (!success) throw new Error(useImageStore.getState().error || 'Could not auto-tag this image.');
+            break;
+          }
           case 'add-comparison': {
             const image = requireImage(viewerCommand.imageId);
             const beforeCount = state.comparisonImages.length;

@@ -93,6 +93,9 @@ const packagedDetachedViewerSmokeImagePath = app.isPackaged
   && typeof process.env.IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE === 'string'
   ? process.env.IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE.trim()
   : '';
+const packagedAutoTagSmokeEnabled = app.isPackaged
+  && process.env.GITHUB_ACTIONS === 'true'
+  && process.env.IMH_PACKAGED_AUTOTAG_SMOKE === '1';
 const gpuMitigationEnabled = process.env.IMH_DISABLE_GPU === '1' || process.env.IMH_DISABLE_GPU === 'true';
 const mediaSafeModeEnabled = process.platform === 'darwin' && (process.env.IMH_MEDIA_SAFE_MODE === '1' || process.env.IMH_MEDIA_SAFE_MODE === 'true');
 const audioDiagnosticModeEnabled = process.platform === 'darwin' && (process.env.IMH_AUDIO_DIAGNOSTIC_MODE === '1' || process.env.IMH_AUDIO_DIAGNOSTIC_MODE === 'true');
@@ -2797,6 +2800,51 @@ async function runPackagedDetachedViewerSmokeTest() {
 
     await readyPromise;
     console.log('[packaged-detached-viewer-smoke] renderer-ready');
+    if (packagedAutoTagSmokeEnabled) {
+      const workerAsset = (await fs.readdir(path.join(__dirname, 'dist', 'assets')))
+        .find((name) => /^autoTaggingWorker-[\w-]+\.js$/.test(name));
+      if (!workerAsset) throw new Error('Packaged auto-tag worker asset was not emitted.');
+      const viewerWindow = detachedImageViewerWindows.get(PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID);
+      const workerTag = await viewerWindow.webContents.executeJavaScript(`
+        new Promise((resolve, reject) => {
+          const worker = new Worker(new URL('./assets/' + ${JSON.stringify(workerAsset)}, location.href), { type: 'module' });
+          const timer = setTimeout(() => { worker.terminate(); reject(new Error('Auto-tag worker timed out.')); }, 15000);
+          worker.onerror = (event) => { clearTimeout(timer); worker.terminate(); reject(new Error(event.message || 'Auto-tag worker failed.')); };
+          worker.onmessage = (event) => {
+            if (event.data.type === 'error') {
+              clearTimeout(timer); worker.terminate(); reject(new Error(event.data.payload.error));
+            } else if (event.data.type === 'complete') {
+              clearTimeout(timer);
+              worker.terminate();
+              resolve(event.data.payload.autoTags.synthetic?.[0]?.tag);
+            }
+          };
+          worker.postMessage({ type: 'start', payload: {
+            images: [{ id: 'synthetic', prompt: 'pine forest, golden retriever' }],
+            targetImageId: 'synthetic',
+          } });
+        })
+      `);
+      if (workerTag !== 'pine forest') throw new Error(`Packaged auto-tag worker returned ${workerTag}.`);
+      console.log('[packaged-detached-viewer-smoke] auto-tag-worker-ready');
+
+      // This smoke viewer is created directly by the main process, so App must
+      // reject its command as an unknown session. A timely response proves the
+      // detached -> main -> detached IPC path is live in the packaged renderer.
+      const commandResponse = await viewerWindow.webContents.executeJavaScript(`
+        Promise.race([
+          window.electronAPI.imageViewerCommand({
+            sessionId: ${JSON.stringify(PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID)},
+            command: { type: 'auto-tag-image', imageId: ${JSON.stringify(imagePath)} },
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Auto-tag IPC timed out.')), 15000)),
+        ])
+      `);
+      if (commandResponse?.error !== 'Unknown image viewer session.') {
+        throw new Error(`Unexpected packaged auto-tag IPC response: ${JSON.stringify(commandResponse)}`);
+      }
+      console.log('[packaged-detached-viewer-smoke] auto-tag-ipc-round-trip');
+    }
     if (process.platform === 'darwin') {
       let activeSessionId = PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID;
       const stableWindow = detachedImageViewerWindows.get(activeSessionId);
@@ -3423,7 +3471,7 @@ function setupImageViewerHandlers() {
       const timeout = setTimeout(() => {
         detachedImageViewerRequestResolvers.delete(requestId);
         resolve({ success: false, error: 'Image viewer command timed out.' });
-      }, 15000);
+      }, payload.command.type === 'auto-tag-image' ? 120000 : 15000);
       detachedImageViewerRequestResolvers.set(requestId, (response) => {
         clearTimeout(timeout);
         resolve(response);

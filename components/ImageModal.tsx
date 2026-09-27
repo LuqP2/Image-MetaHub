@@ -176,6 +176,7 @@ interface ImageModalProps {
   onRequestDelete?: (imageId: string) => Promise<{ success: boolean; error?: string; handledNavigation?: boolean }>;
   onRequestRename?: (imageId: string, newName: string) => Promise<{ success: boolean; error?: string; newImageId?: string; newRelativePath?: string }>;
   onRequestReparse?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
+  onRequestAutoTag?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
   onRequestTagSuggestions?: (query: string) => Promise<TagInfo[]>;
   onRequestGenerate?: (request: ImageViewerGenerateRequest) => Promise<{ success: boolean; error?: string }>;
   onImageSaved?: (request: ImageViewerSaveRequest) => Promise<ImageViewerSaveResult>;
@@ -904,6 +905,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onRequestDelete,
   onRequestRename,
   onRequestReparse,
+  onRequestAutoTag,
   onRequestTagSuggestions,
   onRequestGenerate,
   onImageSaved,
@@ -1159,6 +1161,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const addTagToImage = useImageStore((state) => state.addTagToImage);
   const removeTagFromImage = useImageStore((state) => state.removeTagFromImage);
   const removeAutoTagFromImage = useImageStore((state) => state.removeAutoTagFromImage);
+  const startAutoTaggingForImage = useImageStore((state) => state.startAutoTaggingForImage);
+  const isAutoTagging = useImageStore((state) => state.isAutoTagging);
+  const autoTaggingImageId = useImageStore((state) => state.autoTaggingImageId);
   const availableTags = useImageStore((state) => state.availableTags);
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const recentTags = useImageStore((state) => state.recentTags);
@@ -1184,6 +1189,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
+  const [requestedAutoTagImageId, setRequestedAutoTagImageId] = useState<string | null>(null);
+  const [autoTagError, setAutoTagError] = useState<{ imageId: string; message: string } | null>(null);
 
   const imageFromStore = useImageStore(
     useCallback(
@@ -3438,6 +3445,26 @@ const ImageModal: React.FC<ImageModalProps> = ({
     removeAutoTagFromImage(image.id, tag);
   };
 
+  const handleAutoTagImage = async () => {
+    if (!liveImage.prompt?.trim() || isAutoTagging || requestedAutoTagImageId) return;
+    const imageId = liveImage.id;
+    setRequestedAutoTagImageId(imageId);
+    setAutoTagError(null);
+    try {
+      const result = onRequestAutoTag
+        ? await onRequestAutoTag(imageId)
+        : { success: await startAutoTaggingForImage(imageId) };
+      if (!result.success) setAutoTagError({
+        imageId,
+        message: result.error || useImageStore.getState().error || 'Could not generate auto tags.',
+      });
+    } catch (error) {
+      setAutoTagError({ imageId, message: error instanceof Error ? error.message : 'Could not generate auto tags.' });
+    } finally {
+      setRequestedAutoTagImageId(null);
+    }
+  };
+
   const handleMinimizeWithAnimation = useCallback(async () => {
     if (!onMinimize || isMinimizeAnimatingRef.current) {
       return;
@@ -4242,9 +4269,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   </div>
                 )}
 
-                {currentAutoTags && currentAutoTags.length > 0 && (
-                  <div className="space-y-1">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
                     <p className="text-[10px] uppercase tracking-wider text-purple-300">Auto tags</p>
+                    <button
+                      type="button"
+                      onClick={() => void handleAutoTagImage()}
+                      disabled={!liveImage.prompt?.trim() || isAutoTagging || requestedAutoTagImageId !== null}
+                      className="text-xs text-purple-300 hover:text-purple-100 disabled:cursor-not-allowed disabled:text-gray-500"
+                      title={!liveImage.prompt?.trim()
+                        ? 'This image has no prompt to auto-tag'
+                        : currentAutoTags.length > 0
+                          ? 'Show other descriptive tags from this prompt'
+                          : 'Generate auto tags for this image only'}
+                      aria-label={currentAutoTags.length > 0 ? 'Regenerate auto tags for this image' : 'Generate auto tags for this image'}
+                    >
+                      {requestedAutoTagImageId === liveImage.id || autoTaggingImageId === liveImage.id
+                        ? 'Generating…'
+                        : currentAutoTags.length > 0 ? 'Regenerate' : 'Generate'}
+                    </button>
+                  </div>
+                  {autoTagError?.imageId === liveImage.id && <p role="alert" className="text-xs text-red-400">{autoTagError.message}</p>}
+                  {currentAutoTags.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {currentAutoTags.map(tag => (
                         <div key={`auto-${tag}`} className="inline-flex items-center bg-purple-600/20 border border-purple-500/40 rounded-full overflow-hidden">
@@ -4266,8 +4312,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>

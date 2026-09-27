@@ -9,6 +9,7 @@
 import { ImageCluster, AutoTag, TFIDFModel } from '../types';
 import { PARSER_VERSION } from './cacheManager';
 
+const AUTO_TAGGING_VERSION = 4;
 // Cluster output depends on the clustering algorithm, not metadata parser revisions.
 const CLUSTER_CACHE_VERSION = 1;
 
@@ -39,7 +40,7 @@ export interface AutoTagCacheEntry {
   autoTags: Record<string, AutoTag[]>;  // imageId → tags
   tfidfModel: TFIDFModelSerialized;     // Cached IDF scores (serialized)
   lastGenerated: number;                // Timestamp
-  parserVersion: number;                // Track tagging version
+  taggingVersion: number;               // Independent of metadata parser changes
 }
 
 /**
@@ -277,10 +278,7 @@ export async function loadAutoTagCache(
       }
       const cache: AutoTagCacheEntry = JSON.parse(content);
 
-      // Validate cache version
-      if (cache.parserVersion !== PARSER_VERSION) {
-        console.warn(`Auto-tag cache version mismatch. Expected ${PARSER_VERSION}, got ${cache.parserVersion}. Invalidating cache.`);
-        await invalidateAutoTagCache(directoryPath, scanSubfolders, 'version_mismatch');
+      if (cache.taggingVersion !== AUTO_TAGGING_VERSION) {
         return null;
       }
 
@@ -322,7 +320,7 @@ export async function saveAutoTagCache(
       autoTags,
       tfidfModel: serializedModel,
       lastGenerated: Date.now(),
-      parserVersion: PARSER_VERSION,
+      taggingVersion: AUTO_TAGGING_VERSION,
     };
 
     if (typeof window !== 'undefined' && window.electronAPI) {
