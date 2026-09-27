@@ -51,11 +51,11 @@ const BOILERPLATE_FRAGMENTS = new Set([
 
 // Comma-delimited prompts can also contain unfinished prose. Keep a fragment
 // only when it can stand on its own as a descriptive tag.
-// An imperative before an internal comma ("Visualize a long, ...") is prose,
-// not a standalone descriptive fragment.
+// An imperative cut by an internal comma is prose, not a standalone fragment.
 const CLAUSE_START = /^(?:and|or|but|while|which|that|who|whose|where|when|with|without|his|her|their|its|featuring|showing|depicting|including|visualize|imagine|create|generate|describe|depict|draw|render)\b/u;
 const LIST_CLAUSE_START = /^(?:featuring|showing|depicting|including)\s+(.+)$/u;
 const PRONOUN_ONLY = /^(?:i|you|he|she|it|we|they|this|that|these|those)$/u;
+const SUBJECT_PRONOUN_START = /^(?:i|you|he|she|it|we|they)\s+/u;
 const INCOMPLETE_END = /\b(?:a|an|the|and|or|but|of|in|on|at|to|for|from|with|without|against|between|beneath|under|over|through|as|very|single|oversized|harsh)$/u;
 const SENTENCE_VERB = /\b(?:is|are|was|were|has|have|had)\b|\b(?:casts|shows|depicts|features|contrasts|fills|illuminates|surrounds)\s+(?:a|an|the|this|that|his|her|their|its)\b/u;
 
@@ -71,7 +71,9 @@ function extractPromptFragments(prompt: string): string[] {
   cleaned = cleaned.replace(WEIGHT_BEFORE_CLOSING_REGEX, '');
   const fragments: string[] = [];
 
-  for (const raw of cleaned.split(',')) {
+  // A comma fragment may cross a sentence boundary. Split there too, while
+  // leaving decimal points in weights, lens values and similar terms intact.
+  for (const raw of cleaned.split(/,|[.!?]+(?=\s|$)/u)) {
     const normalized = normalizeWhitespace(raw
       .replace(TRAILING_WEIGHT_REGEX, '')
       .replace(/_/g, ' ')
@@ -94,6 +96,7 @@ function extractPromptFragments(prompt: string): string[] {
       const concept = normalizeWhitespace(candidate.replace(/^(?:a|an|the)\s+/u, ''));
       if (concept.length < 2 || /^\d+$/.test(concept)) continue;
       if (PRONOUN_ONLY.test(concept)) continue;
+      if (SUBJECT_PRONOUN_START.test(concept)) continue;
       if (concept.split(' ').length > MAX_FRAGMENT_WORDS) continue;
       if (BOILERPLATE_FRAGMENTS.has(concept)) continue;
       if (/^score(?:\s*\d+)?(?:\s*up)?$/.test(concept)) continue;

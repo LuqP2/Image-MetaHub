@@ -9,7 +9,7 @@
 import { ImageCluster, AutoTag, TFIDFModel } from '../types';
 import { PARSER_VERSION } from './cacheManager';
 
-const AUTO_TAGGING_VERSION = 3;
+const AUTO_TAGGING_VERSION = 4;
 // Cluster output depends on the clustering algorithm, not metadata parser revisions.
 const CLUSTER_CACHE_VERSION = 1;
 
