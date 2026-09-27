@@ -87,6 +87,17 @@ describe('AutoTaggingEngine', () => {
     ]);
   });
 
+  it('does not turn the subject of a copular sentence into a tag', () => {
+    const image = {
+      id: '1',
+      prompt: 'This is a digital artwork, It is softly lit, these are distant trees, pine forest',
+    };
+    const model = buildTFIDFModel([image]);
+
+    expect(model.vocabulary).toEqual(['pine forest']);
+    expect(extractAutoTags(image, model).map(tag => tag.tag)).toEqual(['pine forest']);
+  });
+
   it('offers the next ranked fragments instead of repeating current auto-tags', () => {
     const image = { id: '1', prompt: 'pine forest, golden retriever, mountain trail' };
     const model = buildTFIDFModel([image]);

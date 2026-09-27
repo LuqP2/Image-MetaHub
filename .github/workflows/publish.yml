@@ -16,9 +16,6 @@ jobs:
     env:
       IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
       IMH_LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
-    outputs:
-      release-created: true
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -91,52 +88,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish Release
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "Publishing release v$VERSION..."
-          gh release edit v$VERSION --draft=false --latest
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  submit-winget:
-    name: Submit WinGet update
-    needs: build-windows
-    if: github.repository == 'LuqP2/Image-MetaHub' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Download WinGetCreate
-        shell: pwsh
-        run: |
-          Invoke-WebRequest `
-            -Uri "https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe" `
-            -OutFile "wingetcreate.exe"
-
-          $actualHash = (Get-FileHash .\wingetcreate.exe -Algorithm SHA256).Hash
-          $expectedHash = "24042BD37915805615E6CF969AC57C6439124C3FE85823327F5F3FB24BD9FFEA"
-
-          if ($actualHash -ne $expectedHash) {
-            throw "WinGetCreate integrity check failed."
-          }
-
-      - name: Submit WinGet manifest
-        shell: pwsh
-        env:
-          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
-        run: |
-          $version = "${{ github.ref_name }}" -replace '^v', ''
-          $installerUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/ImageMetaHub-Setup-$version.exe"
-          $installerSpec = "$installerUrl|x64|user"
-
-          .\wingetcreate.exe update LuqP2.ImageMetaHub `
-            --version $version `
-            --urls $installerSpec `
-            --submit
-
   build-macos:
     name: Build macOS
     runs-on: macos-latest
@@ -173,7 +124,6 @@ jobs:
           npx electron-builder --mac --publish=never
           echo "macOS build completed!"
           ls -la dist-electron/
-        continue-on-error: true
 
       - name: Upload macOS assets
         if: success()
@@ -227,7 +177,6 @@ jobs:
           npx electron-builder --linux --publish=never
           echo "Linux build completed!"
           ls -la dist-electron/
-        continue-on-error: true
 
       - name: Upload Linux assets
         if: success()
@@ -240,5 +189,24 @@ jobs:
               gh release upload v$VERSION "$file" --clobber
             fi
           done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-release:
+    name: Publish Release
+    needs:
+      - build-windows
+      - build-macos
+      - build-linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Publish completed release
+        shell: bash
+        run: |
+          echo "Publishing release ${{ github.ref_name }}..."
+          gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

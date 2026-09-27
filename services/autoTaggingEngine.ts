@@ -53,6 +53,7 @@ const BOILERPLATE_FRAGMENTS = new Set([
 // only when it can stand on its own as a descriptive tag.
 const CLAUSE_START = /^(?:and|or|but|while|which|that|who|whose|where|when|with|without|his|her|their|its|featuring|showing|depicting|including)\b/u;
 const LIST_CLAUSE_START = /^(?:featuring|showing|depicting|including)\s+(.+)$/u;
+const PRONOUN_ONLY = /^(?:i|you|he|she|it|we|they|this|that|these|those)$/u;
 const INCOMPLETE_END = /\b(?:a|an|the|and|or|but|of|in|on|at|to|for|from|with|without|against|between|beneath|under|over|through|as|very|single|oversized|harsh)$/u;
 const SENTENCE_VERB = /\b(?:is|are|was|were|has|have|had)\b|\b(?:casts|shows|depicts|features|contrasts|fills|illuminates|surrounds)\s+(?:a|an|the|this|that|his|her|their|its)\b/u;
 
@@ -90,6 +91,7 @@ function extractPromptFragments(prompt: string): string[] {
     for (const candidate of candidates) {
       const concept = normalizeWhitespace(candidate.replace(/^(?:a|an|the)\s+/u, ''));
       if (concept.length < 2 || /^\d+$/.test(concept)) continue;
+      if (PRONOUN_ONLY.test(concept)) continue;
       if (concept.split(' ').length > MAX_FRAGMENT_WORDS) continue;
       if (BOILERPLATE_FRAGMENTS.has(concept)) continue;
       if (/^score(?:\s*\d+)?(?:\s*up)?$/.test(concept)) continue;
