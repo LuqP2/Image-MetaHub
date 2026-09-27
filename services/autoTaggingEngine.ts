@@ -51,7 +51,9 @@ const BOILERPLATE_FRAGMENTS = new Set([
 
 // Comma-delimited prompts can also contain unfinished prose. Keep a fragment
 // only when it can stand on its own as a descriptive tag.
-const CLAUSE_START = /^(?:and|or|but|while|which|that|who|whose|where|when|with|without|his|her|their|its|featuring|showing|depicting|including)\b/u;
+// An imperative before an internal comma ("Visualize a long, ...") is prose,
+// not a standalone descriptive fragment.
+const CLAUSE_START = /^(?:and|or|but|while|which|that|who|whose|where|when|with|without|his|her|their|its|featuring|showing|depicting|including|visualize|imagine|create|generate|describe|depict|draw|render)\b/u;
 const LIST_CLAUSE_START = /^(?:featuring|showing|depicting|including)\s+(.+)$/u;
 const PRONOUN_ONLY = /^(?:i|you|he|she|it|we|they|this|that|these|those)$/u;
 const INCOMPLETE_END = /\b(?:a|an|the|and|or|but|of|in|on|at|to|for|from|with|without|against|between|beneath|under|over|through|as|very|single|oversized|harsh)$/u;

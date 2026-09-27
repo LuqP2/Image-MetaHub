@@ -98,6 +98,17 @@ describe('AutoTaggingEngine', () => {
     expect(extractAutoTags(image, model).map(tag => tag.tag)).toEqual(['pine forest']);
   });
 
+  it('rejects imperative prefixes cut off by an internal comma', () => {
+    const image = {
+      id: '1',
+      prompt: 'Visualize a long, eel-like mutant lizard with six limbs winding through a ruined city, pine forest, Create a single, red fox',
+    };
+    const model = buildTFIDFModel([image]);
+
+    expect(model.vocabulary).toEqual(['pine forest', 'red fox']);
+    expect(extractAutoTags(image, model).map(tag => tag.tag)).toEqual(['pine forest', 'red fox']);
+  });
+
   it('offers the next ranked fragments instead of repeating current auto-tags', () => {
     const image = { id: '1', prompt: 'pine forest, golden retriever, mountain trail' };
     const model = buildTFIDFModel([image]);
