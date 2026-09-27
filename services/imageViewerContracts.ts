@@ -115,6 +115,7 @@ export type ImageViewerCommand =
   | { type: 'delete-image'; imageId: string }
   | { type: 'rename-image'; imageId: string; newName: string }
   | { type: 'reparse-image'; imageId: string }
+  | { type: 'auto-tag-image'; imageId: string }
   | { type: 'add-comparison'; imageId: string }
   | { type: 'add-to-collection'; collectionId: string; imageIds: string[] }
   | { type: 'create-collection'; collection: Record<string, unknown> }

@@ -3327,7 +3327,7 @@ function setupImageViewerHandlers() {
       const timeout = setTimeout(() => {
         detachedImageViewerRequestResolvers.delete(requestId);
         resolve({ success: false, error: 'Image viewer command timed out.' });
-      }, 15000);
+      }, payload.command.type === 'auto-tag-image' ? 120000 : 15000);
       detachedImageViewerRequestResolvers.set(requestId, (response) => {
         clearTimeout(timeout);
         resolve(response);

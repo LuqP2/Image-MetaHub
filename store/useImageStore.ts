@@ -961,6 +961,7 @@ interface ImageState {
   autoTaggingProgress: { current: number; total: number; message: string } | null;
   autoTaggingWorker: Worker | null;
   isAutoTagging: boolean;
+  autoTaggingImageId: string | null;
   lineageWorker: Worker | null;
   isLineageRebuildSuspended: boolean;
 
@@ -1079,8 +1080,9 @@ interface ImageState {
   startAutoTagging: (
     directoryPath: string,
     scanSubfolders: boolean,
-    options?: { topN?: number; minScore?: number }
-  ) => Promise<void>;
+    options?: { topN?: number; minScore?: number; targetImageId?: string }
+  ) => Promise<boolean>;
+  startAutoTaggingForImage: (imageId: string) => Promise<boolean>;
   cancelAutoTagging: () => void;
   setAutoTaggingProgress: (progress: { current: number; total: number; message: string } | null) => void;
 
@@ -1143,6 +1145,7 @@ interface ImageState {
 }
 
 export const useImageStore = create<ImageState>((set, get) => {
+    let settleAutoTaggingJob: ((success: boolean) => void) | null = null;
     // --- Throttle map to prevent excessive setImageThumbnail calls ---
     const thumbnailUpdateTimestamps = new Map<string, { count: number; lastUpdate: number }>();
     const thumbnailUpdateInProgress = new Set<string>();
@@ -3548,6 +3551,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         autoTaggingProgress: null,
         autoTaggingWorker: null,
         isAutoTagging: false,
+        autoTaggingImageId: null,
         lineageWorker: null,
         isLineageRebuildSuspended: false,
 
@@ -4921,10 +4925,12 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         // Auto-Tagging Actions (Phase 3)
         startAutoTagging: async (directoryPath, scanSubfolders, options) => {
-            const { images, autoTaggingWorker: existingWorker } = get();
-
-            if (existingWorker) {
-                existingWorker.terminate();
+            const { images, isAutoTagging } = get();
+            if (isAutoTagging) return false;
+            const targetImageId = options?.targetImageId;
+            const targetImage = targetImageId ? images.find(image => image.id === targetImageId) : undefined;
+            if (targetImageId && !targetImage?.prompt?.trim()) {
+                return false;
             }
 
             const worker = new Worker(
@@ -4935,9 +4941,19 @@ export const useImageStore = create<ImageState>((set, get) => {
             set({
                 autoTaggingWorker: worker,
                 isAutoTagging: true,
-                autoTaggingProgress: { current: 0, total: images.length, message: 'Initializing...' }
+                autoTaggingImageId: targetImageId ?? null,
+                error: null,
+                autoTaggingProgress: { current: 0, total: targetImageId ? 1 : images.length, message: 'Initializing...' }
             });
 
+            return new Promise<boolean>(resolve => {
+            settleAutoTaggingJob = resolve;
+            const finish = (success: boolean) => {
+                worker.terminate();
+                set({ autoTaggingWorker: null, autoTaggingImageId: null });
+                settleAutoTaggingJob?.(success);
+                settleAutoTaggingJob = null;
+            };
             worker.onmessage = (e: MessageEvent) => {
                 const { type, payload } = e.data;
 
@@ -4978,21 +4994,46 @@ export const useImageStore = create<ImageState>((set, get) => {
                                 };
                             });
 
-                            return {
+                            const updatedImages = updateList(state.images);
+                            const availableTags = new Set<string>();
+                            for (const image of updatedImages) {
+                                for (const tag of image.autoTags ?? []) availableTags.add(tag);
+                            }
+                            const nextState = {
                                 ...state,
-                                images: updateList(state.images),
+                                images: updatedImages,
                                 filteredImages: updateList(state.filteredImages),
+                                selectedAutoTags: state.selectedAutoTags.filter(tag => availableTags.has(tag)),
+                                excludedAutoTags: state.excludedAutoTags.filter(tag => availableTags.has(tag)),
                                 tfidfModel: payload.tfidfModel ?? null,
                                 autoTaggingProgress: null,
                                 isAutoTagging: false,
                             };
+                            return state.selectedAutoTags.length || state.excludedAutoTags.length
+                                ? { ...nextState, ...filterAndSort(nextState) }
+                                : nextState;
                         });
 
-                        worker.terminate();
-                        set({ autoTaggingWorker: null });
+                        finish(true);
                         console.log(`Auto-tagging complete: ${tagMap.size} images tagged`);
 
-                        if (payload.autoTags && payload.tfidfModel) {
+                        if (targetImage) {
+                            const latestState = get();
+                            const directory = latestState.directories.find(entry => entry.id === targetImage.directoryId);
+                            const updatedImage = latestState.images.find(image => image.id === targetImageId);
+                            if (directory && !directory.transient && updatedImage) {
+                                void import('../services/cacheManager')
+                                    .then(({ default: cacheManager }) => cacheManager.patchCachedImages(
+                                        directory.path,
+                                        directory.name,
+                                        [updatedImage],
+                                        latestState.scanSubfolders,
+                                    ))
+                                    .catch(error => console.warn('Failed to persist image auto-tags:', error));
+                            }
+                        }
+
+                        if (!targetImageId && payload.autoTags && payload.tfidfModel) {
                             import('../services/clusterCacheManager')
                                 .then(({ saveAutoTagCache }) => saveAutoTagCache(directoryPath, scanSubfolders, payload.autoTags, payload.tfidfModel))
                                 .catch(error => {
@@ -5008,17 +5049,22 @@ export const useImageStore = create<ImageState>((set, get) => {
                             isAutoTagging: false,
                             error: `Auto-tagging failed: ${payload.error}`,
                         });
-                        worker.terminate();
-                        set({ autoTaggingWorker: null });
+                        finish(false);
                         break;
                 }
+            };
+            worker.onerror = () => {
+                set({
+                    autoTaggingProgress: null,
+                    isAutoTagging: false,
+                    error: 'Auto-tagging worker failed.',
+                });
+                finish(false);
             };
 
             const taggingImages = images.map(img => ({
                 id: img.id,
                 prompt: img.prompt,
-                models: img.models,
-                loras: img.loras,
             }));
 
             worker.postMessage({
@@ -5027,9 +5073,14 @@ export const useImageStore = create<ImageState>((set, get) => {
                     images: taggingImages,
                     topN: options?.topN,
                     minScore: options?.minScore,
+                    targetImageId,
+                    excludeTags: targetImage?.autoTags,
                 },
             });
+            });
         },
+
+        startAutoTaggingForImage: (imageId) => get().startAutoTagging('', false, { targetImageId: imageId }),
 
         cancelAutoTagging: () => {
             const { autoTaggingWorker } = get();
@@ -5040,7 +5091,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                     autoTaggingWorker: null,
                     autoTaggingProgress: null,
                     isAutoTagging: false,
+                    autoTaggingImageId: null,
                 });
+                settleAutoTaggingJob?.(false);
+                settleAutoTaggingJob = null;
             }
         },
 
@@ -5315,6 +5369,19 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 return { ...newState, ...filterAndSort(newState) };
             });
+            const state = get();
+            const image = state.images.find(entry => entry.id === imageId);
+            const directory = state.directories.find(entry => entry.id === image?.directoryId);
+            if (image && directory && !directory.transient) {
+                void import('../services/cacheManager')
+                    .then(({ default: cacheManager }) => cacheManager.patchCachedImages(
+                        directory.path,
+                        directory.name,
+                        [image],
+                        state.scanSubfolders,
+                    ))
+                    .catch(error => console.warn('Failed to persist removed auto-tag:', error));
+            }
         },
 
         bulkAddTag: async (imageIds, tag) => {
@@ -5934,6 +6001,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             autoTaggingProgress: null,
             autoTaggingWorker: null,
             isAutoTagging: false,
+            autoTaggingImageId: null,
             lineageWorker: null,
             isLineageRebuildSuspended: false,
         });
