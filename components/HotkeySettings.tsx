@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { getDefaultKeymap, hotkeyConfig } from '../services/hotkeyConfig';
+import { hotkeyConfig } from '../services/hotkeyConfig';
 import { Keymap } from '../types';
-import { findHotkeyConflict } from '../services/hotkeyBindings';
+import { findHotkeyConflict, mergeKeymapWithDefaults } from '../services/hotkeyBindings';
 
 const formatRecordedKey = (key: string): string => {
   if (key === ' ') return 'space';
@@ -146,19 +146,7 @@ export const HotkeySettings = () => {
       try {
         const importedKeymap = JSON.parse(e.target?.result as string) as Keymap;
         // Add validation for the imported keymap structure here
-        const defaults = getDefaultKeymap();
-        useSettingsStore.setState({ keymap: {
-          ...defaults,
-          ...importedKeymap,
-          global: {
-            ...(defaults.global as Record<string, string>),
-            ...(typeof importedKeymap.global === 'object' ? importedKeymap.global : {}),
-          },
-          preview: {
-            ...(defaults.preview as Record<string, string>),
-            ...(typeof importedKeymap.preview === 'object' ? importedKeymap.preview : {}),
-          },
-        } });
+        useSettingsStore.setState({ keymap: mergeKeymapWithDefaults(importedKeymap) });
       } catch (error) {
         console.error('Failed to parse keymap file:', error);
         // Add user-facing error message here

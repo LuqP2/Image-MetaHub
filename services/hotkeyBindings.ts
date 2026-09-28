@@ -1,5 +1,5 @@
 import type { ImageRating, Keymap } from '../types';
-import { hotkeyConfig, type HotkeyDefinition } from './hotkeyConfig';
+import { getDefaultKeymap, hotkeyConfig, type HotkeyDefinition } from './hotkeyConfig';
 import { eventMatchesKeybinding } from '../utils/hotkeyUtils';
 
 export const expandHotkeyBindings = (key: string, definition: HotkeyDefinition): string[] => {
@@ -34,6 +34,26 @@ export const findHotkeyConflict = (
     const otherKey = (keymap[other.scope] as Record<string, string> | undefined)?.[other.id] ?? other.defaultKey;
     return expandHotkeyBindings(otherKey, other).some((binding) => proposedBindings.has(binding));
   }) ?? null;
+};
+
+export const mergeKeymapWithDefaults = (persistedKeymap?: Keymap): Keymap => {
+  const defaults = getDefaultKeymap();
+  const merged: Keymap = { ...defaults, ...persistedKeymap };
+  for (const scope of ['global', 'preview'] as const) {
+    const saved = persistedKeymap?.[scope] as Record<string, string> | undefined;
+    merged[scope] = {
+      ...Object.fromEntries(Object.keys(defaults[scope] as Record<string, string>).map((id) => [id, ''])),
+      ...saved,
+    };
+  }
+
+  for (const action of hotkeyConfig) {
+    const saved = persistedKeymap?.[action.scope] as Record<string, string> | undefined;
+    if (saved && Object.hasOwn(saved, action.id)) continue;
+    const binding = findHotkeyConflict(merged, action.id, action.defaultKey) ? '' : action.defaultKey;
+    (merged[action.scope] as Record<string, string>)[action.id] = binding;
+  }
+  return merged;
 };
 
 export type AnnotationShortcut = { type: 'rating'; rating: ImageRating | null } | { type: 'toggle-rejected' };

@@ -116,4 +116,41 @@ describe('useSettingsStore persistence helpers', () => {
       useSettingsStore.getState().resetState();
     }
   });
+
+  it('keeps legacy bindings and leaves colliding new shortcuts unbound during hydration', async () => {
+    useSettingsStore.getState().resetState();
+    const originalStorage = useSettingsStore.persist.getOptions().storage;
+    const legacyKeymap: Keymap = {
+      version: '1.0',
+      global: { quickSearch: 'x', focusSidebar: '0' },
+      preview: { toggleFavoriteInViewer: '1', navigateNext: '2' },
+    };
+    useSettingsStore.persist.setOptions({ storage: {
+      getItem: async () => ({ state: { keymap: legacyKeymap } as ReturnType<typeof useSettingsStore.getState>, version: 0 }),
+      setItem: async () => {},
+      removeItem: async () => {},
+    } });
+    let notifiedKeymap: Keymap | null = null;
+    const unsubscribe = useSettingsStore.subscribe((state) => { notifiedKeymap = state.keymap; });
+
+    try {
+      await useSettingsStore.persist.rehydrate();
+      const global = notifiedKeymap?.global as Record<string, string> | undefined;
+      const preview = notifiedKeymap?.preview as Record<string, string> | undefined;
+      expect(global).toMatchObject({
+        quickSearch: 'x',
+        focusSidebar: '0',
+        rateImage1: '',
+        rateImage2: '',
+        rateImage3: '3',
+        clearRating: '',
+        toggleRejected: '',
+      });
+      expect(preview).toMatchObject({ toggleFavoriteInViewer: '1', navigateNext: '2' });
+    } finally {
+      unsubscribe();
+      useSettingsStore.persist.setOptions({ storage: originalStorage });
+      useSettingsStore.getState().resetState();
+    }
+  });
 });

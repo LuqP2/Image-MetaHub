@@ -287,6 +287,7 @@ interface SettingsState {
 const isElectron = !!window.electronAPI;
 
 import { getDefaultKeymap } from '../services/hotkeyConfig';
+import { mergeKeymapWithDefaults } from '../services/hotkeyBindings';
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -520,23 +521,10 @@ export const useSettingsStore = create<SettingsState>()(
       storage: createJSONStorage(() => isElectron ? electronStorage : localStorage),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState ?? {}) as Partial<SettingsState>;
-        const defaults = getDefaultKeymap();
-        const persistedKeymap = persisted.keymap;
         return {
           ...currentState,
           ...persisted,
-          keymap: {
-            ...defaults,
-            ...persistedKeymap,
-            global: {
-              ...(defaults.global as Record<string, string>),
-              ...((persistedKeymap?.global as Record<string, string> | undefined) ?? {}),
-            },
-            preview: {
-              ...(defaults.preview as Record<string, string>),
-              ...((persistedKeymap?.preview as Record<string, string> | undefined) ?? {}),
-            },
-          },
+          keymap: mergeKeymapWithDefaults(persisted.keymap),
         };
       },
       onRehydrateStorage: () => (state) => {
