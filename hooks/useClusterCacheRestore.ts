@@ -85,9 +85,25 @@ export function useClusterCacheRestore(): void {
     const acceptedSignatures = canUseFullClustering
       ? [clusterSourceSignature]
       : [clusterSourceSignature, clusterSourceSignatures.full];
-    loadClusterCache(primaryPath, scanSubfolders, acceptedSignatures, () => buildLegacyClusterSourceSignature(images))
+    loadClusterCache(
+      primaryPath,
+      scanSubfolders,
+      acceptedSignatures,
+      () => buildLegacyClusterSourceSignature(useImageStore.getState().images),
+    )
       .then((cache) => {
         if (cancelled) {
+          return;
+        }
+
+        const currentImages = useImageStore.getState().images;
+        const currentSignatures = buildClusterSourceSignatures(
+          currentImages,
+          getClusterProcessingLimit(canUseFullClustering),
+        );
+        // Image hydration can continue while the IPC read is pending. Do not
+        // restore a snapshot for a source that has changed in the meantime.
+        if (currentSignatures.limited !== clusterSourceSignature) {
           return;
         }
 
@@ -103,8 +119,9 @@ export function useClusterCacheRestore(): void {
           return;
         }
 
-        clusterMetadataSignatureRef.current = buildClusterStateSignature(cache.clusters, currentClusteringMetadata);
-        setClusters(cache.clusters, currentClusteringMetadata);
+        const metadata = buildClusteringMetadata(currentImages, canUseFullClustering);
+        clusterMetadataSignatureRef.current = buildClusterStateSignature(cache.clusters, metadata);
+        setClusters(cache.clusters, metadata);
       })
       .catch((error) => {
         console.warn('Failed to restore cluster cache:', error);
@@ -118,9 +135,7 @@ export function useClusterCacheRestore(): void {
     clusterSourceSignature,
     clusterSourceSignatures.full,
     clusters.length,
-    currentClusteringMetadata,
     indexingState,
-    images,
     isClustering,
     isLicenseInitialized,
     isLoading,
