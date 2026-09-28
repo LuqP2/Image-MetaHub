@@ -7,7 +7,7 @@ import {
   updatePromptNodeLiteralValue,
   type ComfyUIModelResource,
 } from '../services/comfyUIWorkflowBuilder';
-import { buildVisualWorkflowGraph } from '../services/comfyUIVisualWorkflow';
+import { buildVisualWorkflowGraph, organizeVisualWorkflowGraph } from '../services/comfyUIVisualWorkflow';
 import { type BaseMetadata, type IndexedImage } from '../types';
 
 const createImage = (metadata: any): IndexedImage => ({
@@ -473,6 +473,30 @@ describe('ComfyUI workflow builder', () => {
     expect(graph?.nodes.find((node) => node.id === '5')?.category).toBe('sampler');
     expect(graph?.nodes.find((node) => node.id === '5')?.fields.some((field) => field.key === 'steps')).toBe(true);
     expect(graph?.edges.some((edge) => edge.from === '1' && edge.to === '5' && edge.label === 'model')).toBe(true);
+  });
+
+  it('preserves usable embedded positions and can organize the preview separately', () => {
+    const prompt = {
+      '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'base.safetensors' } },
+      '2': { class_type: 'CLIPTextEncode', inputs: { text: 'positive', clip: ['1', 1] } },
+    };
+    const graph = buildVisualWorkflowGraph(prompt, {
+      last_node_id: 2,
+      last_link_id: 0,
+      nodes: [
+        { id: 1, type: 'CheckpointLoaderSimple', pos: [100, 200], size: { 0: 220, 1: 140 } },
+        { id: 2, type: 'CLIPTextEncode', pos: [380, 200], size: { 0: 220, 1: 140 } },
+      ],
+    });
+
+    expect(graph?.nodes.map(({ id, x, y }) => ({ id, x, y }))).toEqual([
+      { id: '1', x: 100, y: 200 },
+      { id: '2', x: 380, y: 200 },
+    ]);
+    const organized = organizeVisualWorkflowGraph(graph!);
+    expect(organized.get('1')).toEqual({ x: 0, y: 0 });
+    expect(organized.get('2')).toEqual({ x: 360, y: 0 });
+    expect(graph?.nodes[0].x).toBe(100);
   });
 
   it('keeps auto-layout progressing when prompt inputs reference missing upstream nodes', () => {
