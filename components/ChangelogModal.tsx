@@ -168,6 +168,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
           ) : (
             <>
               {/* Message for the Dev */}
+              {currentVersion === '0.19.3' && (
               <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
                 <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
                 <div className="space-y-3 text-sm leading-relaxed">
@@ -219,6 +220,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                   </div>
                 </div>
               </div>
+              )}
 
               {/* Changelog Content */}
               <div className="prose prose-invert prose-sm max-w-none">
