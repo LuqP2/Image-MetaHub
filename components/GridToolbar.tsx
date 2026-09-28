@@ -448,6 +448,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     await reparseImages(selectedImagesList);
   };
 
+  const selectedFolders = useImageStore((state) => state.selectedFolders);
   const selectedModels = useImageStore((state) => state.selectedModels);
   const excludedModels = useImageStore((state) => state.excludedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
@@ -576,6 +577,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   }, [activeJumpDateKey, calendarDateKeys, isJumpMenuOpen, jumpCalendarMonth, selectedJumpDateKey, useCalendarJump]);
 
   const hasActiveFilters = 
+      selectedFolders.size > 0 ||
       selectedModels.length > 0 ||
       excludedModels.length > 0 ||
       selectedLoras.length > 0 ||

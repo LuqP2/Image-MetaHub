@@ -4,7 +4,6 @@ import { ChevronDown, ChevronLeft, Plus } from 'lucide-react';
 import SemanticSearchBar from './SemanticSearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
-import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -305,11 +304,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-sidebar">
-        <div className="border-b border-gray-800/80">
-          <ActiveFilters onClearAll={onClearAllFilters} />
-        </div>
-
-
         {/* Folders (Add Folder lives with the folder list) */}
         {onAddFolder && (
           <div className="px-3 pb-2">
