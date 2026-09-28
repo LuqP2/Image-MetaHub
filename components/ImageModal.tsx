@@ -1216,6 +1216,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const currentAutoTags = liveImage.autoTags || [];
   const currentIsFavorite = liveImage.isFavorite ?? false;
   const currentRating = liveImage.rating ?? null;
+  const isRejected = currentTags.includes('rejected');
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
   const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
@@ -4206,6 +4207,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </motion.button>
                 <div className="h-5 w-px bg-gray-700/70" />
                 <RatingStars rating={currentRating} onChange={handleSetRating} size={16} />
+                <button
+                  type="button"
+                  onClick={() => void (isRejected ? removeTagFromImage(image.id, 'rejected') : addTagToImage(image.id, 'rejected'))}
+                  className={`rounded border px-2 py-1 text-xs font-medium ${isRejected ? 'border-amber-500/60 bg-amber-900/30 text-amber-200' : 'border-gray-700 text-gray-400 hover:border-amber-500/60 hover:text-amber-200'}`}
+                  aria-pressed={isRejected}
+                  title={isRejected ? 'Restore candidate' : 'Reject candidate without deleting the file'}
+                >
+                  {isRejected ? 'Rejected · Restore' : 'Reject Candidate'}
+                </button>
               </div>
 
               {/* Tags Pills */}

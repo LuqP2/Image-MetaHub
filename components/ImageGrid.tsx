@@ -1184,6 +1184,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
+  const bulkAddTag = useImageStore((state) => state.bulkAddTag);
+  const bulkRemoveTag = useImageStore((state) => state.bulkRemoveTag);
 
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
@@ -1671,6 +1673,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     bulkSetImageRating(targetImageIds, rating);
     hideContextMenu();
   }, [bulkSetImageRating, contextMenu.image?.id, hideContextMenu, selectedImages]);
+
+  const rejectTargetIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
+  const rejectTargetsAreRejected = rejectTargetIds.length > 0 && rejectTargetIds.every((id) =>
+    useImageStore.getState().annotations.get(id)?.tags.includes('rejected')
+  );
+  const handleToggleRejected = useCallback(() => {
+    const ids = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
+    if (ids.length === 0) return;
+    void (rejectTargetsAreRejected ? bulkRemoveTag(ids, 'rejected') : bulkAddTag(ids, 'rejected'));
+    hideContextMenu();
+  }, [bulkAddTag, bulkRemoveTag, contextMenu.image?.id, hideContextMenu, rejectTargetsAreRejected, selectedImages]);
 
   const handleReparseMetadata = useCallback(async () => {
     const targetImages = getContextTargetImages();
@@ -2549,6 +2562,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               </button>
             </div>
           </div>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          <button
+            onClick={handleToggleRejected}
+            className="w-full text-left px-4 py-2 text-sm text-amber-200 hover:bg-amber-900/20 transition-colors"
+            title={rejectTargetsAreRejected ? 'Remove the rejected tag' : 'Mark as rejected without deleting files'}
+          >
+            {rejectTargetsAreRejected ? 'Restore Candidate' : 'Reject Candidate'}{rejectTargetIds.length > 1 ? ` (${rejectTargetIds.length})` : ''}
+          </button>
 
           <div className="border-t border-gray-600 my-1"></div>
 

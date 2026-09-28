@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { hotkeyConfig } from '../services/hotkeyConfig';
+import { getDefaultKeymap, hotkeyConfig } from '../services/hotkeyConfig';
 import { Keymap } from '../types';
 
 const formatRecordedKey = (key: string): string => {
@@ -149,7 +149,19 @@ export const HotkeySettings = () => {
       try {
         const importedKeymap = JSON.parse(e.target?.result as string) as Keymap;
         // Add validation for the imported keymap structure here
-        useSettingsStore.setState({ keymap: importedKeymap });
+        const defaults = getDefaultKeymap();
+        useSettingsStore.setState({ keymap: {
+          ...defaults,
+          ...importedKeymap,
+          global: {
+            ...(defaults.global as Record<string, string>),
+            ...(typeof importedKeymap.global === 'object' ? importedKeymap.global : {}),
+          },
+          preview: {
+            ...(defaults.preview as Record<string, string>),
+            ...(typeof importedKeymap.preview === 'object' ? importedKeymap.preview : {}),
+          },
+        } });
       } catch (error) {
         console.error('Failed to parse keymap file:', error);
         // Add user-facing error message here

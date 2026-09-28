@@ -52,31 +52,6 @@ const createTransferDestination = (directories: Directory[], destinationPath: st
   };
 };
 
-const isEditableHotkeyTarget = (target: EventTarget | null) => {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return (
-    target.isContentEditable ||
-    target.tagName === 'INPUT' ||
-    target.tagName === 'TEXTAREA' ||
-    target.tagName === 'SELECT'
-  );
-};
-
-const getRatingFromKeyboardEvent = (event: KeyboardEvent): ImageRating | null => {
-  if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.repeat) {
-    return null;
-  }
-
-  if (!['1', '2', '3', '4', '5'].includes(event.key)) {
-    return null;
-  }
-
-  return Number(event.key) as ImageRating;
-};
-
 export const useHotkeys = ({
   isCommandPaletteOpen,
   setIsCommandPaletteOpen,
@@ -158,6 +133,33 @@ export const useHotkeys = ({
       handleDeleteSelectedImages().catch((error) => {
         console.error('Error deleting selected images:', error);
       });
+    });
+    const getAnnotationTargetIds = () => {
+      const state = useImageStore.getState();
+      if (isCommandPaletteOpen || isHotkeyHelpOpen || isSettingsModalOpen ||
+        (Boolean(document.querySelector('[role="dialog"]')) && !state.selectedImage)) return [];
+      return state.selectedImage
+        ? [state.selectedImage.id]
+        : state.selectedImages.size > 0
+          ? Array.from(state.selectedImages)
+          : state.previewImage ? [state.previewImage.id] : [];
+    };
+    const registerRating = (rating: ImageRating | null, action: string) => {
+      hotkeyManager.registerAction(action, (event) => {
+        if (event.repeat) return;
+        const ids = getAnnotationTargetIds();
+        if (ids.length > 0) void useImageStore.getState().bulkSetImageRating(ids, rating);
+      });
+    };
+    ([1, 2, 3, 4, 5] as ImageRating[]).forEach((rating) => registerRating(rating, `rateImage${rating}`));
+    registerRating(null, 'clearRating');
+    hotkeyManager.registerAction('toggleRejected', (event) => {
+      if (event.repeat) return;
+      const ids = getAnnotationTargetIds();
+      if (ids.length === 0) return;
+      const state = useImageStore.getState();
+      const allRejected = ids.every((id) => state.annotations.get(id)?.tags.includes('rejected'));
+      void (allRejected ? state.bulkRemoveTag(ids, 'rejected') : state.bulkAddTag(ids, 'rejected'));
     });
     hotkeyManager.registerAction('toggleQuickPreview', () => {
       if (selectedImage) {
@@ -271,6 +273,7 @@ export const useHotkeys = ({
       }
     };
 
+    handleFocusChange();
     document.addEventListener('focusin', handleFocusChange);
 
     // Subscribe to keymap changes and re-bind hotkeys
@@ -308,49 +311,6 @@ export const useHotkeys = ({
     setIsHotkeyHelpOpen,
     setIsSettingsModalOpen,
   ]);
-
-  useEffect(() => {
-    const handleRatingHotkey = (event: KeyboardEvent) => {
-      const rating = getRatingFromKeyboardEvent(event);
-      if (rating === null || isEditableHotkeyTarget(event.target)) {
-        return;
-      }
-
-      const state = useImageStore.getState();
-      const hasBlockingModal =
-        hotkeyManager.areHotkeysPaused() ||
-        isCommandPaletteOpen ||
-        isHotkeyHelpOpen ||
-        isSettingsModalOpen ||
-        (Boolean(document.querySelector('[role="dialog"]')) && !state.selectedImage);
-
-      if (hasBlockingModal) {
-        return;
-      }
-
-      const targetImageIds = state.selectedImage
-        ? [state.selectedImage.id]
-        : state.selectedImages.size > 0
-          ? Array.from(state.selectedImages)
-          : state.previewImage
-            ? [state.previewImage.id]
-            : [];
-
-      if (targetImageIds.length === 0) {
-        return;
-      }
-
-      event.preventDefault();
-      state.bulkSetImageRating(targetImageIds, rating).catch((error) => {
-        console.error('Failed to apply rating hotkey:', error);
-      });
-    };
-
-    document.addEventListener('keydown', handleRatingHotkey);
-    return () => {
-      document.removeEventListener('keydown', handleRatingHotkey);
-    };
-  }, [isCommandPaletteOpen, isHotkeyHelpOpen, isSettingsModalOpen]);
 
   const commands = useMemo(() => [
     { id: 'toggle-theme', name: 'Toggle Theme', description: 'Switch between light and dark mode', action: () => {

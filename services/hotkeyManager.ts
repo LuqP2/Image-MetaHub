@@ -57,8 +57,8 @@ const bindAllActions = () => {
     if (!key) return; // No keybinding for this action
 
     // Handle platform differences (Ctrl/Cmd)
-    const platformKey = key.replace('ctrl', 'cmd');
-    const keysToRegister = key.includes('cmd') ? key : `${key}, ${platformKey}`;
+    const platformKey = key.replace(/\bctrl\b/g, 'cmd');
+    const keysToRegister = key.includes('ctrl') && !key.includes('cmd') ? `${key}, ${platformKey}` : key;
 
     hotkeys(keysToRegister, { scope: action.scope, keyup: false, keydown: true }, (event, handler) => {
       // If hotkeys are paused, don't execute any actions
@@ -68,7 +68,7 @@ const bindAllActions = () => {
 
       // Don't block keys in text inputs for typing operations
       const target = event.target as HTMLElement;
-      const isTypingContext = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      const isTypingContext = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
 
       if (isTypingContext && !hotkeysAllowedInTypingContext.has(action.id)) {
         return;
