@@ -6,6 +6,7 @@ interface RegisteredAction {
   id: string;
   scope: string;
   activeScopes: string[];
+  numpadEquivalent: boolean;
   callback: KeyHandler;
 }
 
@@ -60,6 +61,14 @@ const bindAllActions = () => {
     // Handle platform differences (Ctrl/Cmd)
     const platformKey = key.replace(/\bctrl\b/g, 'cmd');
     const keysToRegister = key.includes('ctrl') && !key.includes('cmd') ? `${key}, ${platformKey}` : key;
+    const bindings = keysToRegister.split(',').map((binding) => binding.trim()).filter(Boolean);
+    const expandedBindings = action.numpadEquivalent
+      ? bindings.flatMap((binding) => {
+          const numpadAlias = binding.replace(/(^|\+)([0-9])$/, '$1num_$2');
+          return numpadAlias === binding ? [binding] : [binding, numpadAlias];
+        })
+      : bindings;
+    const effectiveKeys = [...new Set(expandedBindings)].join(', ');
 
     const handleKey: KeyHandler = (event, handler) => {
       // If hotkeys are paused, don't execute any actions
@@ -90,7 +99,7 @@ const bindAllActions = () => {
       action.callback(event, handler);
     };
     for (const scope of action.activeScopes) {
-      hotkeys(keysToRegister, { scope, keyup: false, keydown: true }, handleKey);
+      hotkeys(effectiveKeys, { scope, keyup: false, keydown: true }, handleKey);
     }
   });
 };
@@ -108,7 +117,13 @@ const registerAction = (id: string, callback: KeyHandler) => {
     return;
   }
 
-  registeredActions.set(id, { id, scope: config.scope, activeScopes: config.activeScopes ?? [config.scope], callback });
+  registeredActions.set(id, {
+    id,
+    scope: config.scope,
+    activeScopes: config.activeScopes ?? [config.scope],
+    numpadEquivalent: config.numpadEquivalent === true,
+    callback,
+  });
 };
 
 /**

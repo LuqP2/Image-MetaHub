@@ -112,9 +112,38 @@ describe('hotkeyManager pause state', () => {
     expect(rateImage).not.toHaveBeenCalled();
     press('4', 52);
     expect(rateImage).toHaveBeenCalledTimes(1);
+    press('4', 100);
+    expect(rateImage).toHaveBeenCalledTimes(2);
 
     hotkeyManager.setScope('preview');
     press('4', 52);
-    expect(rateImage).toHaveBeenCalledTimes(2);
+    press('4', 100);
+    expect(rateImage).toHaveBeenCalledTimes(4);
+  });
+
+  it('accepts numpad 1–5 and 0 for rating and clearing in both scopes', () => {
+    useSettingsStore.getState().resetKeymap();
+    const actions = [1, 2, 3, 4, 5, 0].map((digit) => ({
+      digit,
+      callback: vi.fn(),
+      id: digit === 0 ? 'clearRating' : `rateImage${digit}`,
+    }));
+    actions.forEach(({ id, callback }) => hotkeyManager.registerAction(id, callback));
+    hotkeyManager.bindAllActions();
+
+    for (const [scopeIndex, scope] of (['global', 'preview'] as const).entries()) {
+      hotkeyManager.setScope(scope);
+      for (const { digit, callback } of actions) {
+        const options = { key: String(digit), code: `Numpad${digit}`, location: 3, bubbles: true, cancelable: true };
+        const keydown = new KeyboardEvent('keydown', options);
+        const keyup = new KeyboardEvent('keyup', options);
+        for (const event of [keydown, keyup]) {
+          Object.defineProperty(event, 'keyCode', { value: 96 + digit });
+          Object.defineProperty(event, 'which', { value: 96 + digit });
+          document.body.dispatchEvent(event);
+        }
+        expect(callback).toHaveBeenCalledTimes(scopeIndex + 1);
+      }
+    }
   });
 });
