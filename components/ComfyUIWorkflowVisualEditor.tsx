@@ -1,10 +1,11 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Eye, Maximize2, Minimize2, Move, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Eye, Maximize2, Minimize2, Move, RotateCcw, WandSparkles, ZoomIn, ZoomOut } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
 import {
   type VisualWorkflowField,
   type VisualWorkflowGraph,
   type VisualWorkflowNode,
+  organizeVisualWorkflowGraph,
 } from '../services/comfyUIVisualWorkflow';
 
 interface ComfyUIWorkflowVisualEditorProps {
@@ -144,7 +145,9 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
   onFieldChange,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isOrganized, setIsOrganized] = useState(false);
   const [nodeOffsets, setNodeOffsets] = useState<Record<string, { x: number; y: number }>>({});
+  const organizedLayout = useMemo(() => graph ? organizeVisualWorkflowGraph(graph) : null, [graph]);
   const dragState = useRef<{
     nodeId: string;
     startClientX: number;
@@ -220,8 +223,10 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
     let minX = Infinity;
     let minY = Infinity;
     for (const node of graph.nodes) {
-      if (node.x < minX) minX = node.x;
-      if (node.y < minY) minY = node.y;
+      const position = isOrganized ? organizedLayout?.get(node.id) : node;
+      if (!position) continue;
+      if (position.x < minX) minX = position.x;
+      if (position.y < minY) minY = position.y;
     }
 
     const normalizedNodes: Array<typeof graph.nodes[0]> = [];
@@ -233,10 +238,11 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
     const nodeMap = new Map<typeof graph.nodes[0]['id'], typeof graph.nodes[0]>();
 
     for (const node of graph.nodes) {
+      const position = isOrganized ? organizedLayout?.get(node.id) || node : node;
       const normalizedNode = {
         ...node,
-        x: node.x - minX + 80 + (nodeOffsets[node.id]?.x || 0),
-        y: node.y - minY + 60 + (nodeOffsets[node.id]?.y || 0),
+        x: position.x - minX + 80 + (nodeOffsets[node.id]?.x || 0),
+        y: position.y - minY + 60 + (nodeOffsets[node.id]?.y || 0),
       };
       normalizedNodes.push(normalizedNode);
       nodeMap.set(normalizedNode.id, normalizedNode);
@@ -256,7 +262,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
       nodes: normalizedNodes,
       nodeMap,
     };
-  }, [graph, nodeOffsets]);
+  }, [graph, organizedLayout, isOrganized, nodeOffsets]);
 
   const selectedNode = scene?.nodeMap.get(selectedNodeId || '') || scene?.nodes[0] || null;
 
@@ -283,14 +289,23 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
             <div className="text-sm font-semibold text-gray-100">Workflow Overview</div>
             <div className="text-xs text-gray-400">
               {graph.nodes.length} nodes, {graph.edges.length} connections
-              {graph.hasStoredLayout ? ' • using embedded layout' : ' • using auto-layout'}
+              {isOrganized ? ' • using organized layout' : graph.hasStoredLayout ? ' • using embedded layout' : ' • using auto-layout'}
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setNodeOffsets({})}
-              disabled={Object.keys(nodeOffsets).length === 0}
+              onClick={() => { setIsOrganized(true); setNodeOffsets({}); }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-2 text-xs text-gray-200 transition-colors hover:bg-gray-700"
+              title="Arrange nodes into a compact layout without changing the embedded workflow"
+            >
+              <WandSparkles size={14} />
+              <span>Organize nodes</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setIsOrganized(false); setNodeOffsets({}); }}
+              disabled={!isOrganized && Object.keys(nodeOffsets).length === 0}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-2 text-xs text-gray-200 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
               title="Restore the workflow preview layout"
             >
@@ -319,6 +334,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
           style={{ height: isExpanded ? 'calc(100vh - 112px)' : `${Math.max(viewportHeight, 640)}px` }}
         >
           <TransformWrapper
+            key={isOrganized ? 'organized' : 'original'}
             minScale={0.35}
             maxScale={2.5}
             centerOnInit

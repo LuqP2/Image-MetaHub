@@ -226,40 +226,12 @@ function average(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function hasCompleteStoredLayout(
-  promptNodeIds: string[],
-  storedLayout: Map<string, { x: number; y: number }>
-): boolean {
-  return promptNodeIds.every((nodeId) => storedLayout.has(nodeId));
-}
-
 function positionsOverlap(
   left: { x: number; y: number },
   right: { x: number; y: number }
 ): boolean {
   return Math.abs(left.x - right.x) < MAX_NODE_WIDTH + 20
     && Math.abs(left.y - right.y) < MAX_NODE_HEIGHT + 10;
-}
-
-function removeStoredLayoutCollisions(
-  promptNodeIds: string[],
-  storedLayout: Map<string, { x: number; y: number }>
-): Map<string, { x: number; y: number }> {
-  const collisionSafeLayout = new Map<string, { x: number; y: number }>();
-  const occupiedPositions: Array<{ x: number; y: number }> = [];
-
-  for (const nodeId of sortNodeIds(promptNodeIds)) {
-    const storedPosition = storedLayout.get(nodeId);
-    if (!storedPosition) {
-      continue;
-    }
-
-    const position = resolveHybridCollision(storedPosition, occupiedPositions);
-    collisionSafeLayout.set(nodeId, position);
-    occupiedPositions.push(position);
-  }
-
-  return collisionSafeLayout;
 }
 
 function resolveHybridCollision(
@@ -296,11 +268,15 @@ function buildHybridLayout(
     return autoLayout;
   }
 
-  if (storedLayout.size >= promptNodeIds.length && hasCompleteStoredLayout(promptNodeIds, storedLayout)) {
-    return removeStoredLayoutCollisions(promptNodeIds, storedLayout);
+  if (promptNodeIds.every((nodeId) => storedLayout.has(nodeId))) {
+    return storedLayout;
   }
 
-  const hybridLayout = removeStoredLayoutCollisions(promptNodeIds, storedLayout);
+  // Embedded positions belong to the original workflow. Only place nodes that
+  // lack a usable position; moving stored nodes changes the author's layout.
+  const hybridLayout = new Map(
+    Array.from(storedLayout.entries()).filter(([nodeId]) => Object.hasOwn(prompt, nodeId))
+  );
   const unresolved = new Set(
     promptNodeIds.filter((nodeId) => !hybridLayout.has(nodeId))
   );
@@ -385,8 +361,8 @@ function buildHybridLayout(
   return hybridLayout;
 }
 
-function buildAutoLayout(prompt: ComfyUIPromptGraph, edges: VisualWorkflowEdge[]): Map<string, { x: number; y: number }> {
-  const nodeIds = sortNodeIds(Object.keys(prompt));
+function buildAutoLayout(nodeIdsInput: string[], edges: VisualWorkflowEdge[]): Map<string, { x: number; y: number }> {
+  const nodeIds = sortNodeIds(nodeIdsInput);
   const upstreamMap = new Map<string, string[]>();
 
   for (const nodeId of nodeIds) {
@@ -514,7 +490,7 @@ export function buildVisualWorkflowGraph(
   }
 
   const storedLayout = buildStoredLayout(workflow);
-  const autoLayout = buildAutoLayout(prompt, edges);
+  const autoLayout = buildAutoLayout(Object.keys(prompt), edges);
   const finalLayout = buildHybridLayout(prompt, edges, storedLayout, autoLayout);
 
   const nodes = sortNodeIds(Object.keys(prompt)).map((nodeId) => {
@@ -543,4 +519,8 @@ export function buildVisualWorkflowGraph(
     edges,
     hasStoredLayout: storedLayout.size > 0,
   };
+}
+
+export function organizeVisualWorkflowGraph(graph: VisualWorkflowGraph): Map<string, { x: number; y: number }> {
+  return buildAutoLayout(graph.nodes.map((node) => node.id), graph.edges);
 }
