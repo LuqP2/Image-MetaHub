@@ -89,4 +89,32 @@ describe('hotkeyManager pause state', () => {
     pressX(select);
     expect(toggleRejected).toHaveBeenCalledTimes(1);
   });
+
+  it('uses the configured rating key in both grid and preview scopes', () => {
+    const rateImage = vi.fn();
+    useSettingsStore.getState().updateKeybinding('global', 'rateImage3', '4');
+    hotkeyManager.registerAction('rateImage3', rateImage);
+    hotkeyManager.bindAllActions();
+
+    const press = (key: string, keyCode: number) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'keyCode', { value: keyCode });
+      Object.defineProperty(event, 'which', { value: keyCode });
+      document.body.dispatchEvent(event);
+      const keyup = new KeyboardEvent('keyup', { key, bubbles: true });
+      Object.defineProperty(keyup, 'keyCode', { value: keyCode });
+      Object.defineProperty(keyup, 'which', { value: keyCode });
+      document.body.dispatchEvent(keyup);
+    };
+
+    hotkeyManager.setScope('global');
+    press('3', 51);
+    expect(rateImage).not.toHaveBeenCalled();
+    press('4', 52);
+    expect(rateImage).toHaveBeenCalledTimes(1);
+
+    hotkeyManager.setScope('preview');
+    press('4', 52);
+    expect(rateImage).toHaveBeenCalledTimes(2);
+  });
 });

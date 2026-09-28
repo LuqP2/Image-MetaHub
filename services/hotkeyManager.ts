@@ -5,6 +5,7 @@ import { hotkeyConfig, HotkeyDefinition } from './hotkeyConfig';
 interface RegisteredAction {
   id: string;
   scope: string;
+  activeScopes: string[];
   callback: KeyHandler;
 }
 
@@ -60,7 +61,7 @@ const bindAllActions = () => {
     const platformKey = key.replace(/\bctrl\b/g, 'cmd');
     const keysToRegister = key.includes('ctrl') && !key.includes('cmd') ? `${key}, ${platformKey}` : key;
 
-    hotkeys(keysToRegister, { scope: action.scope, keyup: false, keydown: true }, (event, handler) => {
+    const handleKey: KeyHandler = (event, handler) => {
       // If hotkeys are paused, don't execute any actions
       if (hotkeysPauseCount > 0) {
         return;
@@ -87,7 +88,10 @@ const bindAllActions = () => {
       }
 
       action.callback(event, handler);
-    });
+    };
+    for (const scope of action.activeScopes) {
+      hotkeys(keysToRegister, { scope, keyup: false, keydown: true }, handleKey);
+    }
   });
 };
 
@@ -104,7 +108,7 @@ const registerAction = (id: string, callback: KeyHandler) => {
     return;
   }
 
-  registeredActions.set(id, { id, scope: config.scope, callback });
+  registeredActions.set(id, { id, scope: config.scope, activeScopes: config.activeScopes ?? [config.scope], callback });
 };
 
 /**
