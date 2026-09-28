@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mergeSettingsWithExisting, stripLicenseFromSettings, useSettingsStore } from '../store/useSettingsStore';
+import type { Keymap } from '../types';
 
 describe('useSettingsStore persistence helpers', () => {
   it('strips license data before hydrating the settings store', () => {
@@ -78,5 +79,41 @@ describe('useSettingsStore persistence helpers', () => {
 
     unsubscribe();
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('notifies subscribers with migrated shortcuts after async hydration', async () => {
+    useSettingsStore.getState().resetState();
+    const originalStorage = useSettingsStore.persist.getOptions().storage;
+    const legacyKeymap: Keymap = {
+      version: '1.0',
+      global: { openCommandPalette: 'alt+p' },
+      preview: { navigateNext: 'n' },
+    };
+    useSettingsStore.persist.setOptions({ storage: {
+      getItem: async () => ({ state: { keymap: legacyKeymap } as ReturnType<typeof useSettingsStore.getState>, version: 0 }),
+      setItem: async () => {},
+      removeItem: async () => {},
+    } });
+    let notifiedKeymap: Keymap | null = null;
+    const unsubscribe = useSettingsStore.subscribe((state) => {
+      notifiedKeymap = state.keymap;
+    });
+
+    try {
+      await useSettingsStore.persist.rehydrate();
+      const global = notifiedKeymap?.global as Record<string, string> | undefined;
+      const preview = notifiedKeymap?.preview as Record<string, string> | undefined;
+      expect(global).toMatchObject({
+        openCommandPalette: 'alt+p',
+        rateImage1: '1',
+        clearRating: '0',
+        toggleRejected: 'x',
+      });
+      expect(preview?.navigateNext).toBe('n');
+    } finally {
+      unsubscribe();
+      useSettingsStore.persist.setOptions({ storage: originalStorage });
+      useSettingsStore.getState().resetState();
+    }
   });
 });

@@ -518,23 +518,28 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'image-metahub-settings',
       storage: createJSONStorage(() => isElectron ? electronStorage : localStorage),
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          const defaultKeymap = getDefaultKeymap();
-          state.keymap = {
-            ...defaultKeymap,
-            ...state.keymap,
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<SettingsState>;
+        const defaults = getDefaultKeymap();
+        const persistedKeymap = persisted.keymap;
+        return {
+          ...currentState,
+          ...persisted,
+          keymap: {
+            ...defaults,
+            ...persistedKeymap,
             global: {
-              ...(defaultKeymap.global as Record<string, string>),
-              ...((state.keymap?.global as Record<string, string> | undefined) ?? {}),
+              ...(defaults.global as Record<string, string>),
+              ...((persistedKeymap?.global as Record<string, string> | undefined) ?? {}),
             },
             preview: {
-              ...(defaultKeymap.preview as Record<string, string>),
-              ...((state.keymap?.preview as Record<string, string> | undefined) ?? {}),
+              ...(defaults.preview as Record<string, string>),
+              ...((persistedKeymap?.preview as Record<string, string> | undefined) ?? {}),
             },
-          };
-        }
-
+          },
+        };
+      },
+      onRehydrateStorage: () => (state) => {
         // Migration: Fix invalid itemsPerPage values from older versions
         if (state && (typeof state.itemsPerPage !== 'number' || (state.itemsPerPage <= 0 && state.itemsPerPage !== -1) || state.itemsPerPage > 100)) {
           state.itemsPerPage = 100;
