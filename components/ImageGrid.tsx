@@ -45,6 +45,7 @@ import TagManagerModal from './TagManagerModal';
 import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import { transferIndexedImages } from '../services/fileTransferService';
+import { toggleRejectedCandidates, REJECTED_TAG } from '../services/candidateActions';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
@@ -1676,14 +1677,22 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   const rejectTargetIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
   const rejectTargetsAreRejected = rejectTargetIds.length > 0 && rejectTargetIds.every((id) =>
-    useImageStore.getState().annotations.get(id)?.tags.includes('rejected')
+    useImageStore.getState().annotations.get(id)?.tags.includes(REJECTED_TAG)
   );
   const handleToggleRejected = useCallback(() => {
     const ids = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
     if (ids.length === 0) return;
-    void (rejectTargetsAreRejected ? bulkRemoveTag(ids, 'rejected') : bulkAddTag(ids, 'rejected'));
+    const annotations = useImageStore.getState().annotations;
+    toggleRejectedCandidates({
+      ids,
+      isRejected: (id) => annotations.get(id)?.tags.includes(REJECTED_TAG) ?? false,
+      canUseBulkTagging,
+      onBulkTaggingBlocked: () => showProModal('bulk_tagging'),
+      addTag: bulkAddTag,
+      removeTag: bulkRemoveTag,
+    });
     hideContextMenu();
-  }, [bulkAddTag, bulkRemoveTag, contextMenu.image?.id, hideContextMenu, rejectTargetsAreRejected, selectedImages]);
+  }, [bulkAddTag, bulkRemoveTag, canUseBulkTagging, contextMenu.image?.id, hideContextMenu, selectedImages, showProModal]);
 
   const handleReparseMetadata = useCallback(async () => {
     const targetImages = getContextTargetImages();

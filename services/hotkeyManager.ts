@@ -1,12 +1,13 @@
 import hotkeys, { KeyHandler } from 'hotkeys-js';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { hotkeyConfig, HotkeyDefinition } from './hotkeyConfig';
+import { expandHotkeyBindings } from './hotkeyBindings';
 
 interface RegisteredAction {
   id: string;
   scope: string;
   activeScopes: string[];
-  numpadEquivalent: boolean;
+  definition: HotkeyDefinition;
   callback: KeyHandler;
 }
 
@@ -58,17 +59,7 @@ const bindAllActions = () => {
     const key = scopeKeymap[action.id];
     if (!key) return; // No keybinding for this action
 
-    // Handle platform differences (Ctrl/Cmd)
-    const platformKey = key.replace(/\bctrl\b/g, 'cmd');
-    const keysToRegister = key.includes('ctrl') && !key.includes('cmd') ? `${key}, ${platformKey}` : key;
-    const bindings = keysToRegister.split(',').map((binding) => binding.trim()).filter(Boolean);
-    const expandedBindings = action.numpadEquivalent
-      ? bindings.flatMap((binding) => {
-          const numpadAlias = binding.replace(/(^|\+)([0-9])$/, '$1num_$2');
-          return numpadAlias === binding ? [binding] : [binding, numpadAlias];
-        })
-      : bindings;
-    const effectiveKeys = [...new Set(expandedBindings)].join(', ');
+    const effectiveKeys = expandHotkeyBindings(key, action.definition).join(', ');
 
     const handleKey: KeyHandler = (event, handler) => {
       // If hotkeys are paused, don't execute any actions
@@ -121,7 +112,7 @@ const registerAction = (id: string, callback: KeyHandler) => {
     id,
     scope: config.scope,
     activeScopes: config.activeScopes ?? [config.scope],
-    numpadEquivalent: config.numpadEquivalent === true,
+    definition: config,
     callback,
   });
 };

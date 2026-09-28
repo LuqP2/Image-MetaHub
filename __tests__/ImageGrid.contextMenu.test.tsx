@@ -8,6 +8,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import type { ImageStack, IndexedImage } from '../types';
 
 const renameIndexedImageMock = vi.hoisted(() => vi.fn());
+const featureAccessMock = vi.hoisted(() => ({ canUseBulkTagging: true, showProModal: vi.fn() }));
 const stackedItemsMock = vi.hoisted(() => ({ value: null as (IndexedImage | ImageStack)[] | null }));
 const autoSizerResizeMock = vi.hoisted(() => ({
   callback: null as null | ((size: { height: number; width: number }) => void),
@@ -100,11 +101,11 @@ vi.mock('../hooks/useReparseMetadata', () => ({
 vi.mock('../hooks/useFeatureAccess', () => ({
   useFeatureAccess: () => ({
     canUseComparison: true,
-    showProModal: vi.fn(),
+    showProModal: featureAccessMock.showProModal,
     canUseA1111: true,
     canUseComfyUI: true,
     canUseBatchExport: true,
-    canUseBulkTagging: true,
+    canUseBulkTagging: featureAccessMock.canUseBulkTagging,
     canUseFileManagement: true,
     initialized: true,
     canUseDuringTrialOrPro: true,
@@ -237,6 +238,8 @@ const SelectionHarness = ({ images }: { images: IndexedImage[] }) => {
 
 describe('ImageGrid context menu', () => {
   beforeEach(() => {
+    featureAccessMock.canUseBulkTagging = true;
+    featureAccessMock.showProModal.mockReset();
     vi.useRealTimers();
     showContextMenuMock.mockReset();
     stackedItemsMock.value = null;
@@ -555,6 +558,24 @@ describe('ImageGrid context menu', () => {
 
     expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2', 'img-3']));
     expect(onDeleteSelected).toHaveBeenCalledTimes(1);
+  });
+
+  it('gates Reject Candidate for a Free multi-selection', () => {
+    const images = [createImage({ id: 'img-1', name: 'alpha.png' }), createImage({ id: 'img-2', name: 'beta.png' })];
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = images[0];
+    setupImageGridState(images);
+    const bulkAddTag = vi.fn();
+    const bulkRemoveTag = vi.fn();
+    useImageStore.setState({ selectedImages: new Set(images.map((image) => image.id)), bulkAddTag, bulkRemoveTag });
+    featureAccessMock.canUseBulkTagging = false;
+
+    render(<Harness images={images} />);
+    fireEvent.click(screen.getByText('Reject Candidate (2)'));
+
+    expect(featureAccessMock.showProModal).toHaveBeenCalledWith('bulk_tagging');
+    expect(bulkAddTag).not.toHaveBeenCalled();
+    expect(bulkRemoveTag).not.toHaveBeenCalled();
   });
 
   it('shows collection actions in the image context menu', () => {

@@ -20,6 +20,8 @@ import ProBadge from './ProBadge';
 import { CivitaiResourceLink } from './CivitaiResourceLink';
 import { extractResourceRefs, normalizeResourceName, type ResourceRef } from '../services/civitai/resourceExtraction';
 import hotkeyManager from '../services/hotkeyManager';
+import { resolveAnnotationShortcut } from '../services/hotkeyBindings';
+import { toggleRejectedCandidates, REJECTED_TAG } from '../services/candidateActions';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getElectronAbsoluteMediaPath, mediaSourceCache } from '../services/mediaSourceCache';
@@ -1258,6 +1260,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const mediaOverlayHideTimeoutRef = useRef<number | null>(null);
   const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
+  const globalKeymap = useSettingsStore((state) => state.keymap.global as Record<string, string> | undefined);
   const toggleFullscreenKeybinding = previewKeymap?.toggleFullscreenInViewer || 'alt+enter';
   const isWindowInteractionActive = modalInteraction.mode !== 'idle';
   const showSidebar = !isFullViewportModal && !isSidebarCollapsed && !isRapidKeyboardNavigating;
@@ -2953,6 +2956,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setImageRating(image.id, rating);
   }, [image.id, setImageRating]);
 
+  const handleToggleRejected = useCallback(() => {
+    toggleRejectedCandidates({
+      ids: [image.id],
+      isRejected: () => currentTags.includes(REJECTED_TAG),
+      canUseBulkTagging: true,
+      onBulkTaggingBlocked: () => {},
+      addTag: (_ids, tag) => addTagToImage(image.id, tag),
+      removeTag: (_ids, tag) => removeTagFromImage(image.id, tag),
+    });
+  }, [addTagToImage, currentTags, image.id, removeTagFromImage]);
+
   const exitSlideshow = useCallback(() => {
     clearSlideshowTimer();
     setIsSlideshowMode(false);
@@ -3228,6 +3242,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
         return;
       }
 
+      if (isNativeWindow && !event.repeat) {
+        const annotationShortcut = resolveAnnotationShortcut(event, globalKeymap);
+        if (annotationShortcut) {
+          event.preventDefault();
+          if (annotationShortcut.type === 'toggle-rejected') handleToggleRejected();
+          else handleSetRating(annotationShortcut.rating);
+          return;
+        }
+      }
+
       if (eventMatchesKeybinding(event, toggleFullscreenKeybinding)) {
         event.preventDefault();
         event.stopPropagation();
@@ -3308,14 +3332,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
     focusTagInput,
     handleDelete,
     handleToggleFavorite,
+    handleToggleRejected,
+    handleSetRating,
     hideContextMenu,
     exitSlideshow,
     isActive,
+    isNativeWindow,
     isFullscreen,
     isRenaming,
     isSlideshowMode,
     onClose,
     previewKeymap,
+    globalKeymap,
     scheduleKeyboardNavigation,
     toggleFullscreen,
     toggleFullscreenKeybinding,
@@ -4209,7 +4237,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <RatingStars rating={currentRating} onChange={handleSetRating} size={16} />
                 <button
                   type="button"
-                  onClick={() => void (isRejected ? removeTagFromImage(image.id, 'rejected') : addTagToImage(image.id, 'rejected'))}
+                  onClick={handleToggleRejected}
                   className={`rounded border px-2 py-1 text-xs font-medium ${isRejected ? 'border-amber-500/60 bg-amber-900/30 text-amber-200' : 'border-gray-700 text-gray-400 hover:border-amber-500/60 hover:text-amber-200'}`}
                   aria-pressed={isRejected}
                   title={isRejected ? 'Restore candidate' : 'Reject candidate without deleting the file'}

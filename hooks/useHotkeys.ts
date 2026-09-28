@@ -6,6 +6,7 @@ import { useImageSelection } from './useImageSelection';
 import { useImageLoader } from './useImageLoader';
 import { useFeatureAccess } from './useFeatureAccess';
 import { transferIndexedImages } from '../services/fileTransferService';
+import { toggleRejectedCandidates, REJECTED_TAG } from '../services/candidateActions';
 import type { Directory, ExploreDimension, ImageRating } from '../types';
 
 interface HotkeyProps {
@@ -77,7 +78,7 @@ export const useHotkeys = ({
   const { handleDeleteSelectedImages } = useImageSelection();
   const { handleSelectFolder, handleLoadFromStorage } = useImageLoader();
   const { toggleViewMode, theme, setTheme, keymap } = useSettingsStore();
-  const { canUseFileManagement, showProModal } = useFeatureAccess();
+  const { canUseFileManagement, canUseBulkTagging, showProModal } = useFeatureAccess();
 
   const focusArea = (area: 'sidebar' | 'grid' | 'preview') => {
     const selector = area === 'sidebar'
@@ -158,8 +159,14 @@ export const useHotkeys = ({
       const ids = getAnnotationTargetIds();
       if (ids.length === 0) return;
       const state = useImageStore.getState();
-      const allRejected = ids.every((id) => state.annotations.get(id)?.tags.includes('rejected'));
-      void (allRejected ? state.bulkRemoveTag(ids, 'rejected') : state.bulkAddTag(ids, 'rejected'));
+      toggleRejectedCandidates({
+        ids,
+        isRejected: (id) => state.annotations.get(id)?.tags.includes(REJECTED_TAG) ?? false,
+        canUseBulkTagging,
+        onBulkTaggingBlocked: () => showProModal('bulk_tagging'),
+        addTag: state.bulkAddTag,
+        removeTag: state.bulkRemoveTag,
+      });
     });
     hotkeyManager.registerAction('toggleQuickPreview', () => {
       if (selectedImage) {
@@ -300,6 +307,7 @@ export const useHotkeys = ({
     handleNavigatePrevious,
     handleNavigateNext,
     canUseFileManagement,
+    canUseBulkTagging,
     showProModal,
     isCommandPaletteOpen,
     isHotkeyHelpOpen,

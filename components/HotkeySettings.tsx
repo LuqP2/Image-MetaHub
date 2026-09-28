@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getDefaultKeymap, hotkeyConfig } from '../services/hotkeyConfig';
 import { Keymap } from '../types';
+import { findHotkeyConflict } from '../services/hotkeyBindings';
 
 const formatRecordedKey = (key: string): string => {
   if (key === ' ') return 'space';
@@ -50,21 +51,10 @@ export const HotkeySettings = () => {
 
       if (newKeybinding) {
         // --- Conflict Detection ---
-        let conflict: { action: string, scope: string } | null = null;
-        for (const scope in keymap) {
-          if (scope === 'version') continue;
-          const scopeActions = keymap[scope] as Record<string, string>;
-          for (const action in scopeActions) {
-            if (scopeActions[action] === newKeybinding && (scope !== recording.scope || action !== recording.action)) {
-              conflict = { action, scope };
-              break;
-            }
-          }
-          if (conflict) break;
-        }
+        const conflict = findHotkeyConflict(keymap, recording.action, newKeybinding);
 
         if (conflict) {
-            const conflictingActionName = hotkeyConfig.find(h => h.id === conflict.action)?.name || conflict.action;
+            const conflictingActionName = conflict.name;
             const recordingActionName = hotkeyConfig.find(h => h.id === recording.action)?.name || recording.action;
 
             // Find a new available hotkey
@@ -73,7 +63,14 @@ export const HotkeySettings = () => {
                 for (const mod of modifiers) {
                     if (!baseKey.includes(mod)) {
                         const newKey = `${mod}+${baseKey}`;
-                        const isTaken = Object.values(keymap).some(scope => typeof scope === 'object' && Object.values(scope).includes(newKey));
+                        const prospectiveKeymap: Keymap = {
+                          ...keymap,
+                          [recording.scope]: { ...(keymap[recording.scope] as Record<string, string>) },
+                          [conflict.scope]: { ...(keymap[conflict.scope] as Record<string, string>) },
+                        };
+                        (prospectiveKeymap[recording.scope] as Record<string, string>)[recording.action] = newKeybinding;
+                        (prospectiveKeymap[conflict.scope] as Record<string, string>)[conflict.id] = '';
+                        const isTaken = Boolean(findHotkeyConflict(prospectiveKeymap, conflict.id, newKey));
                         if (!isTaken) return newKey;
                     }
                 }
@@ -93,9 +90,9 @@ export const HotkeySettings = () => {
 
             if (confirmed) {
                 if (autoRemapKey) {
-                    updateKeybinding(conflict.scope, conflict.action, autoRemapKey); // Remap original
+                    updateKeybinding(conflict.scope, conflict.id, autoRemapKey); // Remap original
                 } else {
-                    updateKeybinding(conflict.scope, conflict.action, ''); // Unbind original
+                    updateKeybinding(conflict.scope, conflict.id, ''); // Unbind original
                 }
                 updateKeybinding(recording.scope, recording.action, newKeybinding); // Bind new
             }
