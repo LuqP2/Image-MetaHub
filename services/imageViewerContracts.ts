@@ -121,7 +121,7 @@ export type ImageViewerCommand =
   | { type: 'create-collection'; collection: Record<string, unknown> }
   | { type: 'get-tag-suggestions'; query: string }
   | { type: 'toggle-favorite'; imageId: string }
-  | { type: 'set-rating'; imageId: string; rating: ImageRating }
+  | { type: 'set-rating'; imageId: string; rating: ImageRating | null }
   | { type: 'add-tag'; imageId: string; tag: string }
   | { type: 'remove-tag'; imageId: string; tag: string }
   | { type: 'remove-auto-tag'; imageId: string; tag: string }

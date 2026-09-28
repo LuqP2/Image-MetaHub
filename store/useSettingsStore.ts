@@ -287,6 +287,7 @@ interface SettingsState {
 const isElectron = !!window.electronAPI;
 
 import { getDefaultKeymap } from '../services/hotkeyConfig';
+import { mergeKeymapWithDefaults } from '../services/hotkeyBindings';
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -518,23 +519,15 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'image-metahub-settings',
       storage: createJSONStorage(() => isElectron ? electronStorage : localStorage),
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<SettingsState>;
+        return {
+          ...currentState,
+          ...persisted,
+          keymap: mergeKeymapWithDefaults(persisted.keymap),
+        };
+      },
       onRehydrateStorage: () => (state) => {
-        if (state) {
-          const defaultKeymap = getDefaultKeymap();
-          state.keymap = {
-            ...defaultKeymap,
-            ...state.keymap,
-            global: {
-              ...(defaultKeymap.global as Record<string, string>),
-              ...((state.keymap?.global as Record<string, string> | undefined) ?? {}),
-            },
-            preview: {
-              ...(defaultKeymap.preview as Record<string, string>),
-              ...((state.keymap?.preview as Record<string, string> | undefined) ?? {}),
-            },
-          };
-        }
-
         // Migration: Fix invalid itemsPerPage values from older versions
         if (state && (typeof state.itemsPerPage !== 'number' || (state.itemsPerPage <= 0 && state.itemsPerPage !== -1) || state.itemsPerPage > 100)) {
           state.itemsPerPage = 100;
