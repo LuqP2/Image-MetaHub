@@ -1,8 +1,9 @@
 import React from 'react';
-import { Sparkles, X } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useSemanticStore } from '../store/useSemanticStore';
 import { OPEN_VISUAL_SEARCH_SETTINGS_EVENT } from './SemanticSearchBar';
+import DiscoveryBanner from './DiscoveryBanner';
 
 /**
  * One-time intro card for visual search, shown above the library grid the first
@@ -42,41 +43,15 @@ const VisualSearchOnboarding: React.FC<{ hasImages: boolean }> = ({ hasImages })
   };
 
   return (
-    <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-100">
-      <div className="flex min-w-0 items-start gap-3">
-        <Sparkles className="mt-0.5 h-5 w-5 flex-shrink-0 text-indigo-400" />
-        <div className="min-w-0">
-          <div className="font-medium text-indigo-50">Find Similar — Local Visual Search</div>
-          <div className="text-indigo-200/80">
-            Select any image to find visually related files, even without prompts or metadata.
-          </div>
-        </div>
-      </div>
-      <div className="flex flex-shrink-0 items-center gap-2">
-        <button
-          type="button"
-          onClick={setUp}
-          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-500"
-        >
-          Set up
-        </button>
-        <button
-          type="button"
-          onClick={dismiss}
-          className="rounded-lg border border-indigo-400/40 px-3 py-1.5 text-xs font-medium text-indigo-100 transition-colors hover:bg-indigo-500/20"
-        >
-          Not now
-        </button>
-        <button
-          type="button"
-          onClick={dismiss}
-          className="rounded-full p-1 text-indigo-300 transition-colors hover:bg-indigo-500/20 hover:text-white"
-          aria-label="Dismiss"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
+    <DiscoveryBanner
+      icon={Sparkles}
+      title="Find Similar — Local Visual Search"
+      description="Select any image to find visually related files, even without prompts or metadata."
+      actionLabel="Set up"
+      onAction={setUp}
+      onDismiss={dismiss}
+      dismissLabel="Dismiss Find Similar setup"
+    />
   );
 };
 

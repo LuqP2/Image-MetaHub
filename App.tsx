@@ -4201,6 +4201,9 @@ export default function App() {
                     }}
                   />
                 )}
+                {libraryView === 'library' && (
+                  <VisualSearchOnboarding hasImages={safeFilteredImages.length > 0} />
+                )}
                 {(libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                   <GridToolbar
                     selectedImages={safeSelectedImages}
@@ -4267,10 +4270,6 @@ export default function App() {
                     }
                     onOpenAnalytics={() => setIsAnalyticsOpen(true)}
                   />
-                )}
-
-                {libraryView === 'library' && (
-                  <VisualSearchOnboarding hasImages={safeFilteredImages.length > 0} />
                 )}
 
                 {libraryView === 'library' && findSimilarGridFilter && (
