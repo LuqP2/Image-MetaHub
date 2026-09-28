@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - [2026-09-28]
+
+### Added
+
+- **Expanded Theme Library**: Added ten new dark themes — Ayu, Catppuccin, GitHub, Matrix, Monokai, Oscurange, Raycast, Solarized, Temple, and Tokyo Night — with a compact theme dropdown in Appearance settings.
+- **Single-Image Auto-Tag**: Auto-Tag is now available directly from the Image Modal. Regenerate cycles through additional valid candidates, and generated tags are persisted with the image.
+- **Image Curation Shortcuts**: Rating shortcuts `1–5` are now configurable in Settings → Shortcuts, `0` clears a rating, and `X` toggles a reversible Reject Candidate tag. These actions work from the Image Modal and Grid, including multi-selection.
+
+### Improved
+
+- **Auto-Tag Quality**: Auto-Tag now works with meaningful prompt fragments instead of isolated words, preserving concepts such as multi-word subjects, environments, lighting, and composition. Weighting syntax, LoRA references, common quality boilerplate, incomplete phrases, and instruction-like fragments are filtered out before ranking.
+- **Workflow Inspector Layout**: Embedded node positions are preserved when usable. A new Organize Nodes action creates a compact preview layout, while Restore Layout returns to the original embedded positions without modifying the stored workflow.
+- **Active Filters**: Active filter chips now live exclusively in the Grid toolbar instead of being duplicated in the sidebar. The current folder scope is shown as its own chip and can be cleared independently from other filters.
+
+### Fixed
+
+- **Smart Library Cluster Persistence**: Generated clusters now restore correctly after restarting the app, including during startup metadata hydration. Cluster caches are no longer discarded by unrelated parser-version changes or image ordering differences.
+- **ComfyUI Qwen Image 2.1 Metadata**: Positive and negative prompts are now recovered from Qwen Image 2.1 workflows, including negative conditioning routed through `CFGGuider`.
+- **Detached Viewer on macOS**: Closing and reopening the detached viewer now reuses the existing viewer correctly instead of leaving it unable to reopen.
+- **Image Modal Closing**: Added explicit Back / Close controls to the in-app Image Modal while preserving `Esc` behavior.
+
 ## [0.19.3] - [09-12-2026]
 
 ### Added
