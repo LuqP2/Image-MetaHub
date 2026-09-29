@@ -3770,9 +3770,13 @@ export default function App() {
             respond({ success: true, suggestions });
             return;
           }
-          case 'toggle-favorite':
-            await state.toggleFavorite(requireImage(viewerCommand.imageId).id);
-            break;
+          case 'toggle-favorite': {
+            const imageId = requireImage(viewerCommand.imageId).id;
+            await state.toggleFavorite(imageId);
+            const isFavorite = useImageStore.getState().images.find((image) => image.id === imageId)?.isFavorite === true;
+            respond({ success: true, isFavorite });
+            return;
+          }
           case 'set-rating':
             await state.setImageRating(requireImage(viewerCommand.imageId).id, viewerCommand.rating);
             break;

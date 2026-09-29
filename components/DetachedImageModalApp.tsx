@@ -137,8 +137,10 @@ const DetachedImageModalApp: React.FC = () => {
       toggleFavorite: async (imageId: string) => {
         const result = await sendCommand({ type: 'toggle-favorite', imageId });
         if (!result.success) throw new Error(result.error || 'Favorite was not saved.');
+        const isFavorite = result.isFavorite;
+        if (typeof isFavorite !== 'boolean') return;
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
-          entry.id === imageId ? { ...entry, isFavorite: !entry.isFavorite } : entry) }));
+          entry.id === imageId ? { ...entry, isFavorite } : entry) }));
       },
       setImageRating: async (imageId: string, rating) => {
         const result = await sendCommand({ type: 'set-rating', imageId, rating });
