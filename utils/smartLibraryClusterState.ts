@@ -14,6 +14,14 @@ export interface ClusterCacheCompatibilityInput {
   sourceImageCount?: number;
 }
 
+export interface ClusterCacheSourceInput {
+  clusters: ImageCluster[];
+  sourceSignature: string;
+  sourceImageCount: number;
+  lastGenerated: number;
+  clusterCacheVersion?: number;
+}
+
 const FNV_OFFSET = 2166136261;
 const FNV_PRIME = 16777619;
 
@@ -74,6 +82,38 @@ export const buildClusterSourceSignatures = (images: IndexedImage[], processingL
 
 export const buildClusterSourceSignature = (images: IndexedImage[], processingLimit = Infinity): string =>
   buildClusterSourceSignatures(images, processingLimit).limited;
+
+// Images written after the cache was generated can be omitted to reconstruct
+// the saved source signature. If any older image changed, the signature differs
+// and the saved clusters are not restored.
+export const canRestoreClusterCacheSource = (
+  cache: ClusterCacheSourceInput,
+  images: IndexedImage[],
+  acceptedSignatures: string[],
+  processingLimit: number,
+): boolean => {
+  if (acceptedSignatures.includes(cache.sourceSignature)) {
+    return true;
+  }
+  const promptImages = getPromptImagesForClustering(images);
+  if (promptImages.length <= cache.sourceImageCount || !Number.isFinite(cache.lastGenerated) ||
+      promptImages.some((image) => !Number.isFinite(image.lastModified))) {
+    return false;
+  }
+  const originalImages = promptImages.filter((image) => image.lastModified <= cache.lastGenerated);
+  if (originalImages.length !== cache.sourceImageCount) {
+    return false;
+  }
+  const originalSignatures = buildClusterSourceSignatures(originalImages, processingLimit);
+  const matchesOriginal = cache.sourceSignature === originalSignatures.limited ||
+    cache.sourceSignature === originalSignatures.full ||
+    (cache.clusterCacheVersion == null && cache.sourceSignature === buildLegacyClusterSourceSignature(originalImages));
+  if (!matchesOriginal) {
+    return false;
+  }
+  const originalIds = new Set(originalImages.map((image) => image.id));
+  return cache.clusters.every((cluster) => cluster.imageIds.every((id) => originalIds.has(id)));
+};
 
 export const buildClusteringMetadata = (
   images: IndexedImage[],

@@ -5,6 +5,7 @@ import {
   buildClusterSourceSignature,
   buildClusterSourceSignatures,
   buildLegacyClusterSourceSignature,
+  canRestoreClusterCacheSource,
   isClusterCacheCompatible,
   limitClustersForAccess,
 } from '../utils/smartLibraryClusterState';
@@ -44,6 +45,27 @@ describe('smart library cluster state', () => {
     expect(buildClusterSourceSignature([...images, makeImage(3)])).not.toBe(baseline);
     expect(buildClusterSourceSignature([makeImage(1, 'changed'), makeImage(2)])).not.toBe(baseline);
     expect(buildClusterSourceSignature([makeImage(2), makeImage(1)])).toBe(baseline);
+  });
+
+  it('keeps saved clusters available when a new image arrives during startup', () => {
+    const original = [makeImage(1), makeImage(2), makeImage(3)];
+    const cache = {
+      clusters: [makeCluster('saved', original.map((image) => image.id))],
+      sourceSignature: buildClusterSourceSignature(original),
+      sourceImageCount: original.length,
+      lastGenerated: 3.5,
+      clusterCacheVersion: 1,
+    };
+    const withNewImage = [...original, makeImage(4)];
+
+    expect(canRestoreClusterCacheSource(cache, withNewImage, [buildClusterSourceSignature(withNewImage)], Infinity)).toBe(true);
+    expect(canRestoreClusterCacheSource(cache, original.slice(0, 2), [buildClusterSourceSignature(original.slice(0, 2))], Infinity)).toBe(false);
+    expect(canRestoreClusterCacheSource(cache, [makeImage(1), makeImage(2), makeImage(4), makeImage(5)],
+      [buildClusterSourceSignature(withNewImage)], Infinity)).toBe(false);
+    expect(canRestoreClusterCacheSource(cache, [makeImage(1, 'changed'), makeImage(2), makeImage(3), makeImage(4)],
+      [buildClusterSourceSignature(withNewImage)], Infinity)).toBe(false);
+    expect(canRestoreClusterCacheSource(cache, [...original, { ...makeImage(4), lastModified: 2 }],
+      [buildClusterSourceSignature(withNewImage)], Infinity)).toBe(false);
   });
 
   it('reproduces the order-sensitive signature stored by older cluster caches', () => {

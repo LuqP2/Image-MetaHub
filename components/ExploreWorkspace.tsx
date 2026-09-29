@@ -38,6 +38,9 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
   const clusteringMetadata = useImageStore((state) => state.clusteringMetadata);
   const isClustering = useImageStore((state) => state.isClustering);
   const clusteringProgress = useImageStore((state) => state.clusteringProgress);
+  const clusterCacheLookup = useImageStore((state) => state.clusterCacheLookup);
+  const isLoading = useImageStore((state) => state.isLoading);
+  const enrichmentProgress = useImageStore((state) => state.enrichmentProgress);
   const activeImageScope = useImageStore((state) => state.activeImageScope);
   const exploreDimension = useImageStore((state) => state.exploreDimension);
   const setExploreDimension = useImageStore((state) => state.setExploreDimension);
@@ -116,6 +119,11 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
       .filter((entry) => entry.images.length >= 3)
       .sort((a, b) => b.images.length - a.images.length);
   }, [clusteringMetadata, images, visibleClusters]);
+  const hasSavedClusters = clusterCacheLookup?.directoryPath === primaryPath &&
+    clusterCacheLookup.scanSubfolders === scanSubfolders && clusterCacheLookup.hasCache;
+  const isRestoringClusters = Boolean(hasSavedClusters && clusterEntries.length === 0 &&
+    (clusters.length === 0 || isLoading || enrichmentProgress));
+  const canGenerateClusters = hasDirectories && !isClustering && !isLoading && !enrichmentProgress && !isRestoringClusters;
 
   // --- Collections ---
   const collectionEntries = useMemo(() => {
@@ -134,7 +142,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
   }, [collections, getResolvedCollectionImages, images]);
 
   const handleGenerateClusters = () => {
-    if (!hasDirectories || isClustering) return;
+    if (!canGenerateClusters) return;
     startClustering(primaryPath, scanSubfolders, DEFAULT_SIMILARITY_THRESHOLD);
   };
 
@@ -224,7 +232,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
           <button
             type="button"
             onClick={handleGenerateClusters}
-            disabled={!hasDirectories || isClustering}
+            disabled={!canGenerateClusters}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Sparkles className="h-4 w-4" />
@@ -307,9 +315,13 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
           />
         )}
 
+        {exploreDimension === 'clusters' && isRestoringClusters && !isClustering && (
+          <ProgressBar label="Loading saved clusters…" current={0} total={0} />
+        )}
+
         {exploreDimension === 'clusters' &&
           (clusterEntries.length === 0 ? (
-            isClustering ? null : (
+            isClustering || isRestoringClusters ? null : (
             <EmptyState
               icon={Layers}
               title="No clusters yet"
@@ -318,7 +330,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                 <button
                   type="button"
                   onClick={handleGenerateClusters}
-                  disabled={!hasDirectories || isClustering}
+                  disabled={!canGenerateClusters}
                   className="inline-flex items-center gap-2 rounded-lg bg-blue-500/20 px-4 py-2 text-sm font-semibold text-blue-100 transition-colors hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Sparkles className="h-4 w-4" />
@@ -564,7 +576,7 @@ const ProgressBar: React.FC<{ label: string; current: number; total: number }> =
       <div className="h-2 w-full overflow-hidden rounded-full bg-gray-800">
         <div
           className={`h-full bg-blue-500 transition-all duration-200 ${total > 0 ? '' : 'animate-pulse'}`}
-          style={{ width: total > 0 ? `${pct}%` : '100%' }}
+          style={{ width: total > 0 ? `${pct}%` : '35%' }}
         />
       </div>
     </div>
