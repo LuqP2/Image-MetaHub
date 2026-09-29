@@ -14,6 +14,12 @@ export interface ClusterCacheCompatibilityInput {
   sourceImageCount?: number;
 }
 
+export interface ClusterCacheSourceInput {
+  clusters: ImageCluster[];
+  sourceSignature: string;
+  sourceImageCount: number;
+}
+
 const FNV_OFFSET = 2166136261;
 const FNV_PRIME = 16777619;
 
@@ -74,6 +80,25 @@ export const buildClusterSourceSignatures = (images: IndexedImage[], processingL
 
 export const buildClusterSourceSignature = (images: IndexedImage[], processingLimit = Infinity): string =>
   buildClusterSourceSignatures(images, processingLimit).limited;
+
+// An added image does not invalidate clusters already calculated for the old library.
+// Existing cluster members must still be present; the new image remains unclustered
+// until the user explicitly regenerates clusters.
+export const canRestoreClusterCacheSource = (
+  cache: ClusterCacheSourceInput,
+  images: IndexedImage[],
+  acceptedSignatures: string[],
+): boolean => {
+  if (acceptedSignatures.includes(cache.sourceSignature)) {
+    return true;
+  }
+  const promptImages = getPromptImagesForClustering(images);
+  if (promptImages.length <= cache.sourceImageCount) {
+    return false;
+  }
+  const presentIds = new Set(promptImages.map((image) => image.id));
+  return cache.clusters.every((cluster) => cluster.imageIds.every((id) => presentIds.has(id)));
+};
 
 export const buildClusteringMetadata = (
   images: IndexedImage[],

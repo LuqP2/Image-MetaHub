@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from './useFeatureAccess';
-import { loadClusterCache } from '../services/clusterCacheManager';
+import { loadClusterCache, type ClusterCacheEntry } from '../services/clusterCacheManager';
 import type { IndexedImage } from '../types';
 import {
   buildClusterSourceSignatures,
@@ -11,6 +11,7 @@ import {
   getPromptImagesForClustering,
   getClusterProcessingLimit,
   isClusterCacheCompatible,
+  canRestoreClusterCacheSource,
 } from '../utils/smartLibraryClusterState';
 
 const EMPTY_IMAGES: IndexedImage[] = [];
@@ -26,15 +27,17 @@ export function useClusterCacheRestore(): void {
   const directories = useImageStore((state) => state.directories);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const isLoading = useImageStore((state) => state.isLoading);
+  const enrichmentProgress = useImageStore((state) => state.enrichmentProgress);
   const isClustering = useImageStore((state) => state.isClustering);
   const indexingState = useImageStore((state) => state.indexingState);
   const setClusters = useImageStore((state) => state.setClusters);
   const { canUseFullClustering, initialized: isLicenseInitialized } = useFeatureAccess();
 
-  const restoredClusterCacheKeyRef = useRef<string | null>(null);
   const clusterMetadataSignatureRef = useRef<string | null>(null);
+  const [cacheProbe, setCacheProbe] = useState<{ key: string; cache: ClusterCacheEntry | null } | null>(null);
 
   const primaryPath = directories[0]?.path ?? '';
+  const directoryCacheKey = `${primaryPath}::${scanSubfolders ? 'recursive' : 'flat'}`;
   // promptImages/clusterSourceSignature only feed the cache-restore effect
   // below, which is a no-op once clusters already exist. buildClusterSourceSignature
   // hashes every prompt character-by-character, so recomputing it on every
@@ -55,95 +58,74 @@ export function useClusterCacheRestore(): void {
     [canUseFullClustering, images],
   );
 
+  // Probe the cache as soon as the directory is known, independently of image
+  // hydration. Explore can then distinguish a saved cache from an empty library.
   useEffect(() => {
-    if (
-      !primaryPath ||
-      !isLicenseInitialized ||
-      isLoading ||
-      clusters.length > 0 ||
-      isClustering ||
-      indexingState === 'indexing' ||
-      indexingState === 'paused' ||
-      promptImages.length === 0
-    ) {
+    if (!primaryPath) {
+      setCacheProbe(null);
+      useImageStore.setState({ clusterCacheLookup: null });
       return;
     }
-
-    const cacheKey = [
-      primaryPath,
-      scanSubfolders ? 'recursive' : 'flat',
-      clusterSourceSignature,
-      canUseFullClustering ? 'full' : 'limited',
-    ].join('::');
-    if (restoredClusterCacheKeyRef.current === cacheKey) {
-      return;
-    }
-
     let cancelled = false;
+    useImageStore.setState({ clusterCacheLookup: null });
+    loadClusterCache(primaryPath, scanSubfolders)
+      .then((cache) => {
+        if (cancelled) return;
+        setCacheProbe({ key: directoryCacheKey, cache });
+        useImageStore.setState({
+          clusterCacheLookup: { directoryPath: primaryPath, scanSubfolders, hasCache: Boolean(cache?.clusters?.length) },
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('Failed to check cluster cache:', error);
+        setCacheProbe({ key: directoryCacheKey, cache: null });
+        useImageStore.setState({
+          clusterCacheLookup: { directoryPath: primaryPath, scanSubfolders, hasCache: false },
+        });
+      });
+    return () => { cancelled = true; };
+  }, [directoryCacheKey, primaryPath, scanSubfolders]);
 
+  useEffect(() => {
+    const cache = cacheProbe?.key === directoryCacheKey ? cacheProbe.cache : null;
+    if (!cache?.clusters?.length || clusters.length > 0 || !isLicenseInitialized ||
+        isLoading || isClustering || indexingState === 'indexing' ||
+        indexingState === 'paused' || promptImages.length === 0) {
+      return;
+    }
+
+    const currentImages = useImageStore.getState().images;
     // A full-run cache remains a valid superset when Pro/trial access expires.
     const acceptedSignatures = canUseFullClustering
       ? [clusterSourceSignature]
       : [clusterSourceSignature, clusterSourceSignatures.full];
-    loadClusterCache(
-      primaryPath,
-      scanSubfolders,
-      acceptedSignatures,
-      () => buildLegacyClusterSourceSignature(useImageStore.getState().images),
-    )
-      .then((cache) => {
-        if (cancelled) {
-          return;
-        }
+    if (cache.clusterCacheVersion == null) {
+      acceptedSignatures.push(buildLegacyClusterSourceSignature(currentImages));
+    }
+    const isCompatible = isClusterCacheCompatible({
+      canUseFullClustering,
+      processedImageCount: cache.processedImageCount,
+      sourceImageCount: cache.sourceImageCount,
+    }) && canRestoreClusterCacheSource(cache, currentImages, acceptedSignatures);
 
-        const currentImages = useImageStore.getState().images;
-        const currentSignatures = buildClusterSourceSignatures(
-          currentImages,
-          getClusterProcessingLimit(canUseFullClustering),
-        );
-        // Image hydration can continue while the IPC read is pending. Do not
-        // restore a snapshot for a source that has changed in the meantime.
-        if (currentSignatures.limited !== clusterSourceSignature) {
-          return;
-        }
+    if (!isCompatible) {
+      // Phase B may still be enriching prompts after isLoading becomes false.
+      // Recheck when its image batches arrive, without rereading the cache.
+      if (!enrichmentProgress) {
+        useImageStore.setState({
+          clusterCacheLookup: { directoryPath: primaryPath, scanSubfolders, hasCache: false },
+        });
+      }
+      return;
+    }
 
-        restoredClusterCacheKeyRef.current = cacheKey;
-        if (
-          !cache?.clusters?.length ||
-          !isClusterCacheCompatible({
-            canUseFullClustering,
-            processedImageCount: cache.processedImageCount,
-            sourceImageCount: cache.sourceImageCount,
-          })
-        ) {
-          return;
-        }
-
-        const metadata = buildClusteringMetadata(currentImages, canUseFullClustering);
-        clusterMetadataSignatureRef.current = buildClusterStateSignature(cache.clusters, metadata);
-        setClusters(cache.clusters, metadata);
-      })
-      .catch((error) => {
-        console.warn('Failed to restore cluster cache:', error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    canUseFullClustering,
-    clusterSourceSignature,
-    clusterSourceSignatures.full,
-    clusters.length,
-    indexingState,
-    isClustering,
-    isLicenseInitialized,
-    isLoading,
-    primaryPath,
-    promptImages.length,
-    scanSubfolders,
-    setClusters,
-  ]);
+    const metadata = buildClusteringMetadata(currentImages, canUseFullClustering);
+    clusterMetadataSignatureRef.current = buildClusterStateSignature(cache.clusters, metadata);
+    setClusters(cache.clusters, metadata);
+  }, [cacheProbe, canUseFullClustering, clusterSourceSignature, clusterSourceSignatures.full,
+    clusters.length, directoryCacheKey, enrichmentProgress, indexingState, isClustering,
+    isLicenseInitialized, isLoading, primaryPath, promptImages.length, scanSubfolders, setClusters]);
 
   // Keep the access-gated metadata (locked-preview state) aligned with the current clusters.
   useEffect(() => {

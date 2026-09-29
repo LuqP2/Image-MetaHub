@@ -863,6 +863,7 @@ interface ImageState {
   progress: { current: number; total: number } | null;
   directoryProgress: Record<string, DirectoryProgressState>;
   enrichmentProgress: { processed: number; total: number } | null;
+  clusterCacheLookup: { directoryPath: string; scanSubfolders: boolean; hasCache: boolean } | null;
   indexingState: 'idle' | 'indexing' | 'paused' | 'completed';
   error: string | null;
   success: string | null;
@@ -3480,6 +3481,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         progress: null,
         directoryProgress: {},
         enrichmentProgress: null,
+        clusterCacheLookup: null,
         indexingState: 'idle',
         error: null,
         success: null,
@@ -5943,6 +5945,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             progress: { current: 0, total: 0 },
             directoryProgress: {},
             enrichmentProgress: null,
+            clusterCacheLookup: null,
             error: null,
             success: null,
             selectedImage: null,
