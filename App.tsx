@@ -8,6 +8,8 @@ import { useLicenseStore } from './store/useLicenseStore';
 import { initializeSavedPromptSynchronization } from './store/useSavedPromptStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
+import { useImageViewerFocus } from './hooks/useImageViewerFocus';
+import { viewerLibrarySelection } from './utils/viewerLibrarySelection';
 import { useClusterCacheRestore } from './hooks/useClusterCacheRestore';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useFeatureAccess } from './hooks/useFeatureAccess';
@@ -571,6 +573,10 @@ export default function App() {
   const [isSaveFilteredCollectionModalOpen, setIsSaveFilteredCollectionModalOpen] = useState(false);
   const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
   const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
+  const openImageModalsRef = useRef(openImageModals);
+  openImageModalsRef.current = openImageModals;
+  const activeImageModalIdRef = useRef(activeImageModalId);
+  activeImageModalIdRef.current = activeImageModalId;
   const comfyUIWorkspaceModalIdRef = useRef<string | null>(null);
   const [findSimilarState, setFindSimilarState] = useState<FindSimilarState | null>(null);
   const [findSimilarGridFilter, setFindSimilarGridFilter] = useState<FindSimilarGridFilterState | null>(null);
@@ -586,6 +592,7 @@ export default function App() {
   } | null>(null);
   const lastOpenedModalImageIdRef = useRef<string | null>(null);
   const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
+  const viewerDisplayedImagesRef = useRef<IndexedImage[]>([]);
   const watchedRemovalCacheDeltaQueueRef = useRef<Map<string, PendingWatchedRemovalCacheDelta>>(new Map());
   const startupHydrationPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const [isStartupHydrating, setIsStartupHydrating] = useState(true);
@@ -1840,6 +1847,24 @@ export default function App() {
     };
   }, [mainContentMarginLeft, mainContentMarginRight, sidebarResizeState, viewportWidth]);
 
+  const synchronizeViewerImage = useCallback((imageId: string) => {
+    const image = imageLookup.get(imageId) ?? useImageStore.getState().images.find((candidate) => candidate.id === imageId);
+    if (!image) return;
+    const state = useImageStore.getState();
+    if (state.selectedImage?.id !== imageId) {
+      suppressSelectedImageModalOpenRef.current = imageId;
+    }
+    const selection = viewerLibrarySelection(image, viewerDisplayedImagesRef.current);
+    if (state.selectedImage === image && state.previewImage === image
+      && state.focusedImageIndex === selection.focusedImageIndex) return;
+    useImageStore.setState(selection);
+  }, [imageLookup]);
+
+  const { requestActivation: handleActivateImageModal, observeActivation: handleObserveImageModalFocus,
+    beginOpening: beginViewerOpening, finishOpening: finishViewerOpening } = useImageViewerFocus(
+    openImageModals, activeImageModalId, setOpenImageModals, setActiveImageModalId, synchronizeViewerImage,
+  );
+
   useEffect(() => {
     if (!selectedImage) {
       lastOpenedModalImageIdRef.current = null;
@@ -1873,6 +1898,8 @@ export default function App() {
     const existingModalForSelectedImage = openImageModals.find((modal) => modal.imageId === selectedImage.id);
     const selectedModalId = existingModalForSelectedImage?.modalId ?? `image-modal-${Date.now()}-${selectedImage.id}`;
     setActiveImageModalId(selectedModalId);
+    if (existingModalForSelectedImage) handleActivateImageModal(selectedModalId);
+    else if (resolveViewerHost() === 'detached') beginViewerOpening(selectedImage.id);
 
     setOpenImageModals((current) => {
       const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
@@ -1929,7 +1956,7 @@ export default function App() {
         },
       ];
     });
-  }, [beginModalOpenFlow, clusterNavigationContext, openImageModals, resolveViewerHost, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [beginModalOpenFlow, beginViewerOpening, clusterNavigationContext, handleActivateImageModal, openImageModals, resolveViewerHost, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
 
   const filteredNavigationImageIds = useMemo(
     () => safeFilteredImages.map((image) => image.id),
@@ -2056,8 +2083,12 @@ export default function App() {
 
   useEffect(() => {
     const selectedImageId = useImageStore.getState().selectedImage?.id ?? null;
+    // Detached sessions follow explicit focus/navigation, never a z-order guess.
+    // In particular, closing one must not select a different native window.
+    if (openImageModals.some((modal) => modal.host === 'detached'
+      && (modal.modalId === activeImageModalId || activeImageModalId === null))) return;
     const nextActiveModal = [...openImageModals]
-      .filter((modal) => !modal.isMinimized)
+      .filter((modal) => !modal.isMinimized && modal.host === 'inline')
       .sort((left, right) => right.zIndex - left.zIndex)[0];
     const nextActiveModalId = nextActiveModal?.modalId ?? null;
     const currentActiveModal = activeImageModalId
@@ -2145,33 +2176,6 @@ export default function App() {
     );
   }, []);
 
-  const handleActivateImageModal = useCallback((modalId: string) => {
-    const requestedModal = openImageModals.find((modal) => modal.modalId === modalId);
-    if (requestedModal?.host === 'detached') {
-      void window.electronAPI?.imageViewerWindowAction({ sessionId: requestedModal.sessionId, action: 'restore' });
-    }
-    setOpenImageModals((current) => {
-      const targetModal = current.find((modal) => modal.modalId === modalId);
-      if (!targetModal) {
-        return current;
-      }
-
-      const nextZIndex = Math.max(...current.map((modal) => modal.zIndex)) + 1;
-      return current.map((modal) =>
-        modal.modalId === modalId
-          ? { ...modal, zIndex: nextZIndex, isMinimized: false, nativeStatus: modal.host === 'detached' ? 'open' : modal.nativeStatus }
-          : modal
-      );
-    });
-    setActiveImageModalId(modalId);
-    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
-    const targetImage = targetModal ? getImageByIdFromStore(targetModal.imageId) ?? null : null;
-    if (targetImage && useImageStore.getState().selectedImage?.id !== targetImage.id) {
-      suppressSelectedImageModalOpenRef.current = targetImage.id;
-      setSelectedImage(targetImage);
-    }
-  }, [getImageByIdFromStore, openImageModals, setSelectedImage]);
-
   const handleMinimizeImageModal = useCallback((modalId: string) => {
     setOpenImageModals((current) => {
       const target = current.find((modal) => modal.modalId === modalId);
@@ -2225,15 +2229,19 @@ export default function App() {
   }, [setSelectedImage]);
 
   const handleCloseImageModal = useCallback((modalId: string, imageId: string) => {
+    finishViewerOpening(imageId);
+    openImageModalsRef.current = openImageModalsRef.current.filter((modal) => modal.modalId !== modalId);
+    if (activeImageModalIdRef.current === modalId) activeImageModalIdRef.current = null;
     setOpenImageModals((current) => current.filter((modal) => modal.modalId !== modalId));
+    setActiveImageModalId((current) => current === modalId ? null : current);
 
     if (useImageStore.getState().selectedImage?.id === imageId) {
       setSelectedImage(null);
     }
-  }, [setSelectedImage]);
+  }, [finishViewerOpening, setSelectedImage]);
 
   const handleCloseImageModalFromFooter = useCallback((modalId: string) => {
-    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+    const targetModal = openImageModalsRef.current.find((modal) => modal.modalId === modalId);
     if (!targetModal) {
       return;
     }
@@ -2258,7 +2266,7 @@ export default function App() {
     direction: 'next' | 'previous' | 'random',
     options?: { wrap?: boolean }
   ) => {
-    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+    const targetModal = openImageModalsRef.current.find((modal) => modal.modalId === modalId);
     if (!targetModal) {
       return;
     }
@@ -2300,18 +2308,18 @@ export default function App() {
       return;
     }
 
+    openImageModalsRef.current = openImageModalsRef.current.map((modal) =>
+      modal.modalId === modalId ? { ...modal, imageId: nextImageId } : modal);
     setOpenImageModals((current) =>
       current.map((modal) =>
         modal.modalId === modalId ? { ...modal, imageId: nextImageId } : modal
       )
     );
 
-    const nextImage = getImageByIdFromStore(nextImageId);
-    if (nextImage && useImageStore.getState().selectedImage?.id !== nextImage.id) {
-      suppressSelectedImageModalOpenRef.current = nextImage.id;
-      setSelectedImage(nextImage);
-    }
-  }, [getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, resolveModalNavigationIndex, setSelectedImage]);
+    activeImageModalIdRef.current = modalId;
+    setActiveImageModalId(modalId);
+    synchronizeViewerImage(nextImageId);
+  }, [resolveModalNavigationImageIds, resolveModalNavigationIndex, synchronizeViewerImage]);
 
   const handleOpenImageModalInBackground = useCallback((
     image: IndexedImage,
@@ -2471,8 +2479,16 @@ export default function App() {
       return;
     }
 
+    const existing = openImageModals.find((modal) => modal.imageId === image.id);
+    if (existing && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      handleActivateImageModal(existing.modalId);
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.shiftKey && resolveViewerHost() === 'detached') {
+      beginViewerOpening(image.id);
+    }
     handleImageSelection(image, event);
-  }, [handleImageSelection, handleOpenImageModalInBackground]);
+  }, [beginViewerOpening, handleActivateImageModal, handleImageSelection, handleOpenImageModalInBackground, openImageModals, resolveViewerHost]);
 
   const openBatchExportModal = useCallback((request: BatchExportRequestState | null = null) => {
     const isSingleImageExportRequest = (request?.imageIds?.length ?? 0) === 1;
@@ -3291,6 +3307,7 @@ export default function App() {
   // sections are never split across pages (D8). Pagination is suspended in that mode.
   const isSectionedByEntity = isEntityGroupBy(effectiveImageGroupBy);
   const imagesForGrid = isSectionedByEntity ? displayImages : paginatedImages;
+  viewerDisplayedImagesRef.current = imagesForGrid;
 
   const clusterByImageId = useMemo(() => {
     if (effectiveImageGroupBy !== 'cluster') {
@@ -3393,6 +3410,18 @@ export default function App() {
     detachedViewerRevisionRef.current.delete(sessionId);
   }, []);
 
+  const failDetachedViewerSession = useCallback((sessionId: string) => {
+    if (!detachedViewerOpenedRef.current.has(sessionId)
+      || !openImageModalsRef.current.some((entry) => entry.sessionId === sessionId && entry.host === 'detached')) return;
+    const failedSession = openImageModalsRef.current.find((entry) => entry.sessionId === sessionId);
+    if (failedSession) finishViewerOpening(failedSession.imageId);
+    forgetDetachedViewerSession(sessionId);
+    setOpenImageModals((current) => current.map((entry) => entry.sessionId === sessionId
+      ? { ...entry, host: 'inline', nativeStatus: undefined, isMinimized: false } : entry));
+    void window.electronAPI?.imageViewerWindowAction({ sessionId, action: 'close' }).catch(() => undefined);
+    setError('Could not load the separate viewer window. Opened it inside Image MetaHub instead.');
+  }, [finishViewerOpening, forgetDetachedViewerSession, setError]);
+
   const buildDetachedViewerSnapshot = useCallback((modal: typeof openImageModalEntries[number]): ImageViewerSnapshot => {
     const revision = (detachedViewerRevisionRef.current.get(modal.sessionId) ?? 0) + 1;
     detachedViewerRevisionRef.current.set(modal.sessionId, revision);
@@ -3454,6 +3483,7 @@ export default function App() {
         const snapshot = buildDetachedViewerSnapshot(modal);
         detachedViewerOpenedRef.current.add(modal.sessionId);
         void api.imageViewerOpen({ sessionId: modal.sessionId, snapshot }).then((result) => {
+          finishViewerOpening(modal.image.id);
           if (result.success) {
             // The session can be closed while the window is still being created,
             // in which case the reconciliation pass ran too early to catch it.
@@ -3463,23 +3493,28 @@ export default function App() {
             }
             setOpenImageModals((current) => current.map((entry) =>
               entry.sessionId === modal.sessionId
-                ? { ...entry, nativeStatus: 'open', isMinimized: false }
+                ? { ...entry, nativeStatus: entry.isMinimized ? 'minimized' : 'open' }
                 : entry
             ));
+            if (activeImageModalIdRef.current === modal.modalId) {
+              const latest = openImageModalsRef.current.find((entry) => entry.sessionId === modal.sessionId);
+              if (latest) synchronizeViewerImage(latest.imageId);
+            }
             return;
           }
-          forgetDetachedViewerSession(modal.sessionId);
-          setOpenImageModals((current) => current.map((entry) =>
-            entry.sessionId === modal.sessionId
-              ? { ...entry, host: 'inline', nativeStatus: undefined, isMinimized: false }
-              : entry
-          ));
-          setError(`Could not open a separate viewer window. Opened it inside Image MetaHub instead.${result.error ? ` ${result.error}` : ''}`);
+          if (result.cancelled) return;
+          failDetachedViewerSession(modal.sessionId);
+        }).catch(() => {
+          finishViewerOpening(modal.image.id);
+          failDetachedViewerSession(modal.sessionId);
         });
         continue;
       }
 
-      void api.imageViewerUpdate({ sessionId: modal.sessionId, snapshot: buildDetachedViewerSnapshot(modal) });
+      if (modal.nativeStatus === 'pending') continue;
+      void api.imageViewerUpdate({ sessionId: modal.sessionId, snapshot: buildDetachedViewerSnapshot(modal) })
+        .then((result) => { if (!result.success) failDetachedViewerSession(modal.sessionId); })
+        .catch(() => failDetachedViewerSession(modal.sessionId));
 
       // Mirror the logical minimized state onto the OS window, so state changes that
       // do not go through the viewer itself (workspace switches, footer actions)
@@ -3502,13 +3537,13 @@ export default function App() {
       forgetDetachedViewerSession(sessionId);
       void api.imageViewerWindowAction({ sessionId, action: 'close' });
     }
-  }, [buildDetachedViewerSnapshot, forgetDetachedViewerSession, openImageModalEntries, setError]);
+  }, [buildDetachedViewerSnapshot, failDetachedViewerSession, finishViewerOpening, forgetDetachedViewerSession, openImageModalEntries, synchronizeViewerImage]);
 
   useEffect(() => {
     const api = window.electronAPI;
     if (!api?.onImageViewerEvent) return;
     return api.onImageViewerEvent((event) => {
-      const target = openImageModals.find((modal) => modal.sessionId === event.sessionId);
+      const target = openImageModalsRef.current.find((modal) => modal.sessionId === event.sessionId && modal.host === 'detached');
       if (!target) return;
       if (event.type === 'closed') {
         forgetDetachedViewerSession(event.sessionId);
@@ -3518,26 +3553,23 @@ export default function App() {
       if (event.type === 'render-process-gone') {
         forgetDetachedViewerSession(event.sessionId);
         setOpenImageModals((current) => current.filter((modal) => modal.sessionId !== event.sessionId));
+        setActiveImageModalId((current) => current === target.modalId ? null : current);
         setError('The detached image viewer stopped unexpectedly. Reopen the image to continue.');
         return;
       }
       if (event.type === 'load-failed') {
-        forgetDetachedViewerSession(event.sessionId);
-        setOpenImageModals((current) => current.map((modal) =>
-          modal.sessionId === event.sessionId
-            ? { ...modal, host: 'inline', nativeStatus: undefined, isMinimized: false }
-            : modal
-        ));
-        setError('Could not load the separate viewer window. Opened it inside Image MetaHub instead.');
+        failDetachedViewerSession(event.sessionId);
         return;
       }
       if (event.type === 'focus' || event.type === 'restore') {
-        handleActivateImageModal(target.modalId);
+        detachedViewerMinimizedRef.current.delete(event.sessionId);
+        handleObserveImageModalFocus(target.modalId);
       } else if (event.type === 'minimize') {
+        detachedViewerMinimizedRef.current.add(event.sessionId);
         handleMinimizeImageModal(target.modalId);
       }
     });
-  }, [forgetDetachedViewerSession, handleActivateImageModal, handleCloseImageModal, handleMinimizeImageModal, openImageModals, setError]);
+  }, [failDetachedViewerSession, forgetDetachedViewerSession, handleObserveImageModalFocus, handleCloseImageModal, handleMinimizeImageModal, setError]);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -3545,7 +3577,7 @@ export default function App() {
     return api.onImageViewerCommand(({ sessionId, requestId, command }) => {
       const respond = (response: { success: boolean; error?: string; [key: string]: unknown }) =>
         api.imageViewerRespond({ requestId, response });
-      const session = openImageModals.find((modal) => modal.sessionId === sessionId && modal.host === 'detached');
+      const session = openImageModalsRef.current.find((modal) => modal.sessionId === sessionId && modal.host === 'detached');
       if (!session) {
         respond({ success: false, error: 'Unknown image viewer session.' });
         return;

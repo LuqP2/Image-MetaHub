@@ -58,6 +58,7 @@ import {
 } from './electron/permanentDeletePolicy.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
 import { buildDetachedViewerLoadTarget, buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
+import { createViewerOpenCoordinator, createViewerReadiness, createViewerFocusTracker, presentViewerWindow } from './utils/viewerWindowLifecycle.mjs';
 import {
   buildEmbeddingModelDownloadUrl,
   validateEmbeddingModelId,
@@ -624,6 +625,13 @@ let stableIdentityIndexer;
 let stableIdentityFileOperationCoordinator;
 let stableIdentityUserDataService;
 const detachedImageViewerWindows = new Map();
+const coordinateViewerOpen = createViewerOpenCoordinator();
+const viewerFocusTracker = createViewerFocusTracker();
+let viewerDiagnosticSequence = 0;
+function traceViewerLifecycle(viewerWindow, stage, code) {
+  viewerWindow.__viewerDiagnosticId ??= ++viewerDiagnosticSequence;
+  console.log('[image-viewer-lifecycle]', viewerWindow.__viewerDiagnosticId, stage, code ?? '');
+}
 const detachedImageViewerSnapshots = new Map();
 const idleMacImageViewerWindows = new Set();
 const MAX_IDLE_MAC_IMAGE_VIEWERS = 1;
@@ -2569,7 +2577,13 @@ function configureDetachedViewerNavigationHandlers(viewerWindow, baseUrl) {
   });
 }
 
-async function createDetachedImageViewer(sessionId, snapshot) {
+function createDetachedImageViewer(sessionId, snapshot) {
+  viewerFocusTracker.request(sessionId);
+  return coordinateViewerOpen(sessionId, (isCancelled) => openDetachedImageViewer(sessionId, snapshot, isCancelled));
+}
+
+async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
+  if (isCancelled()) return { success: false, cancelled: true };
   if (!mainWindow || mainWindow.isDestroyed()) {
     return { success: false, error: 'Main window is not available.' };
   }
@@ -2590,14 +2604,31 @@ async function createDetachedImageViewer(sessionId, snapshot) {
       reusable.webContents.setAudioMuted(true);
       detachedImageViewerWindows.set(sessionId, reusable);
       detachedImageViewerSnapshots.set(sessionId, snapshot);
+      traceViewerLifecycle(reusable, 'reuse');
+      reusable.__viewerReadiness = createViewerReadiness({
+        onReady: () => {
+          reusable.__imageViewerRebinding = false;
+          reusable.webContents.setAudioMuted(false);
+          presentViewerWindow(reusable, { activate: viewerFocusTracker.shouldActivate(sessionId) });
+        },
+        onFailure: (result) => {
+          if (result.cancelled) return;
+          traceViewerLifecycle(reusable, 'rebind-failed');
+          reusable.__suppressImageViewerClosedEvent = true;
+          sendDetachedViewerEvent(sessionId, 'load-failed', { reason: result.error });
+          reusable.destroy();
+        },
+      });
+      reusable.__viewerReadiness.markNativeReady();
       // The renderer acknowledges the new snapshot through image-viewer-ready.
       // Keep the hidden window hidden until it has bound the new session.
       reusable.webContents.send('image-viewer-snapshot', snapshot);
-      return { success: true, reused: true };
+      return { ...await reusable.__viewerReadiness.promise, reused: true };
     }
   }
 
   const settings = await readSettings();
+  if (isCancelled()) return { success: false, cancelled: true };
   const cascadeSlot = pickDetachedViewerCascadeSlot();
   const initialState = resolveDetachedImageViewerState(settings, cascadeSlot);
   const viewerWindow = new BrowserWindow({
@@ -2622,6 +2653,7 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   viewerWindow.setMenu(null);
   viewerWindow.__imageViewerCascadeSlot = cascadeSlot;
   viewerWindow.__imageViewerSessionId = sessionId;
+  traceViewerLifecycle(viewerWindow, 'create');
   const viewerWindowId = viewerWindow.id;
   if (sessionId === PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID) {
     viewerWindow.once('show', () => {
@@ -2641,40 +2673,41 @@ async function createDetachedImageViewer(sessionId, snapshot) {
 
   detachedImageViewerWindows.set(sessionId, viewerWindow);
   detachedImageViewerSnapshots.set(sessionId, snapshot);
-  let rendererReady = false;
-  let nativeReady = false;
-  const rendererReadyTimeout = setTimeout(() => {
-    if (rendererReady || viewerWindow.isDestroyed()) return;
-    viewerWindow.__suppressImageViewerClosedEvent = true;
-    sendDetachedViewerEvent(sessionId, 'load-failed', { reason: 'Viewer renderer did not become ready.' });
-    viewerWindow.destroy();
-  }, 15000);
-  const showWhenReady = () => {
-    if (!rendererReady || !nativeReady || viewerWindow.isDestroyed()) return;
-    if (initialState.isMaximized) viewerWindow.maximize();
-    viewerWindow.show();
-  };
-  viewerWindow.once('ready-to-show', () => { nativeReady = true; showWhenReady(); });
+  viewerWindow.__viewerReadiness = createViewerReadiness({
+    onReady: () => {
+      presentViewerWindow(viewerWindow, { activate: viewerFocusTracker.shouldActivate(sessionId), maximized: initialState.isMaximized });
+    },
+    onFailure: (result) => {
+      if (result.cancelled || viewerWindow.isDestroyed()) return;
+      traceViewerLifecycle(viewerWindow, 'load-failed');
+      viewerWindow.__suppressImageViewerClosedEvent = true;
+      sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'load-failed', { reason: result.error });
+      viewerWindow.destroy();
+    },
+  });
+  viewerWindow.once('ready-to-show', () => {
+    traceViewerLifecycle(viewerWindow, 'native-ready');
+    viewerWindow.__viewerReadiness.markNativeReady();
+  });
   viewerWindow.webContents.on('did-finish-load', () => {
-    // The explicit renderer handshake remains authoritative; this only marks native loading.
+    traceViewerLifecycle(viewerWindow, 'loaded');
   });
   viewerWindow.__markImageViewerRendererReady = () => {
-    const wasReady = rendererReady;
-    rendererReady = true;
-    clearTimeout(rendererReadyTimeout);
-    if (!wasReady) showWhenReady();
+    viewerWindow.__viewerReadiness.markRendererReady();
   };
   viewerWindow.webContents.on('did-fail-load', (_event, errorCode, description, _validatedURL, isMainFrame) => {
     // Sub-frame failures and aborted loads (ERR_ABORTED, fired whenever a load is
     // superseded — e.g. a dev-server reload) must not tear the whole window down.
     if (!isMainFrame || errorCode === -3) return;
-    if (rendererReady || viewerWindow.isDestroyed()) return;
-    viewerWindow.__suppressImageViewerClosedEvent = true;
-    sendDetachedViewerEvent(sessionId, 'load-failed', { reason: description || 'Viewer failed to load.' });
-    viewerWindow.destroy();
+    if (viewerWindow.__viewerReadiness.ready || viewerWindow.isDestroyed()) return;
+    traceViewerLifecycle(viewerWindow, 'did-fail-load', errorCode);
+    viewerWindow.__viewerReadiness.fail('Viewer failed to load.');
   });
 
-  viewerWindow.on('focus', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'focus'));
+  viewerFocusTracker.trackWindow(viewerWindow, (focusedSessionId) => {
+    traceViewerLifecycle(viewerWindow, 'focus');
+    sendDetachedViewerEvent(focusedSessionId, 'focus');
+  });
   viewerWindow.on('minimize', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'minimize'));
   viewerWindow.on('restore', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'restore'));
   viewerWindow.on('maximize', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'maximize'));
@@ -2691,10 +2724,15 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     viewerWindow.__suppressImageViewerClosedEvent = true;
     const activeSessionId = viewerWindow.__imageViewerSessionId;
     idleMacImageViewerWindows.delete(viewerWindow);
-    if (activeSessionId) sendDetachedViewerEvent(activeSessionId, rendererReady ? 'render-process-gone' : 'load-failed', { reason: details?.reason || 'unknown' });
+    if (activeSessionId) sendDetachedViewerEvent(activeSessionId, viewerWindow.__viewerReadiness.ready ? 'render-process-gone' : 'load-failed', { reason: details?.reason || 'unknown' });
+    viewerWindow.__viewerReadiness.cancel();
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
   });
   viewerWindow.on('close', (event) => {
+    viewerWindow.__viewerReadiness.cancel();
+    // Closing the active viewer returns to the library, not another viewer.
+    // Otherwise the OS's automatic focus transfer looks like a user selection.
+    if (viewerWindow.isFocused() && mainWindow && !mainWindow.isDestroyed()) viewerFocusTracker.focusMain(mainWindow);
     if (process.platform !== 'darwin' || viewerWindow.__destroyImageViewer) return;
     const activeSessionId = viewerWindow.__imageViewerSessionId;
     if (!activeSessionId) return;
@@ -2719,7 +2757,7 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     sendDetachedViewerEvent(activeSessionId, 'closed');
   });
   viewerWindow.on('closed', () => {
-    clearTimeout(rendererReadyTimeout);
+    viewerWindow.__viewerReadiness.cancel();
     cancelDetachedViewerStatePersist(viewerWindowId);
     idleMacImageViewerWindows.delete(viewerWindow);
     const activeSessionId = viewerWindow.__imageViewerSessionId;
@@ -2736,12 +2774,14 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     } else {
       await viewerWindow.loadFile(viewerLoadTarget.filePath, viewerLoadTarget.options);
     }
-    return { success: true };
-  } catch (error) {
+    return await viewerWindow.__viewerReadiness.promise;
+  } catch {
+    traceViewerLifecycle(viewerWindow, 'load-rejected');
+    viewerWindow.__viewerReadiness.fail('Viewer failed to load.');
     detachedImageViewerWindows.delete(sessionId);
     detachedImageViewerSnapshots.delete(sessionId);
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
-    return { success: false, error: error?.message || 'Failed to load detached viewer.' };
+    return { success: false, error: 'Failed to load detached viewer.' };
   }
 }
 
@@ -3412,19 +3452,18 @@ function setupImageViewerHandlers() {
     return { success: true };
   });
 
-  ipcMain.handle('image-viewer-ready', (event, sessionId) => {
+  ipcMain.handle('image-viewer-ready', (event, sessionId, appliedRevision) => {
     const viewerWindow = resolveViewerSender(event, sessionId);
     if (!viewerWindow) return { success: false, error: 'Unknown image viewer.' };
     const snapshot = detachedImageViewerSnapshots.get(sessionId);
     if (!snapshot) return { success: false, error: 'Image viewer snapshot is unavailable.' };
-    viewerWindow.webContents.send('image-viewer-snapshot', snapshot);
-    viewerWindow.__markImageViewerRendererReady?.();
-    if (viewerWindow.__imageViewerRebinding) {
-      viewerWindow.__imageViewerRebinding = false;
-      viewerWindow.webContents.setAudioMuted(false);
-      viewerWindow.show();
-      viewerWindow.focus();
+    if (appliedRevision === undefined) {
+      viewerWindow.webContents.send('image-viewer-snapshot', snapshot);
+      return { success: true };
     }
+    if (appliedRevision !== snapshot.revision) return { success: true, ignored: true };
+    if (!viewerWindow.__viewerReadiness.ready) traceViewerLifecycle(viewerWindow, 'snapshot-applied');
+    viewerWindow.__markImageViewerRendererReady?.();
     return { success: true };
   });
 
@@ -3435,9 +3474,18 @@ function setupImageViewerHandlers() {
       ? detachedImageViewerWindows.get(sessionId)
       : resolveViewerSender(event, sessionId);
     if (!viewerWindow || viewerWindow.isDestroyed()) {
+      if (isMainSender(event) && (action === 'focus' || action === 'restore') && coordinateViewerOpen.isPending(sessionId)) {
+        viewerFocusTracker.request(sessionId);
+        return { success: true };
+      }
+      if (isMainSender(event) && action === 'close' && coordinateViewerOpen.cancel(sessionId)) {
+        return { success: true };
+      }
       return { success: false, error: 'Unknown image viewer.' };
     }
     if (action === 'focus' || action === 'restore') {
+      viewerFocusTracker.request(sessionId);
+      if (!viewerWindow.__viewerReadiness.ready) return { success: true };
       if (viewerWindow.isMinimized()) viewerWindow.restore();
       viewerWindow.show();
       viewerWindow.focus();
@@ -3449,7 +3497,7 @@ function setupImageViewerHandlers() {
       if (mainWindow && !mainWindow.isDestroyed()) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.show();
-        mainWindow.focus();
+        viewerFocusTracker.focusMain(mainWindow);
       }
     } else if (action === 'toggle-always-on-top') {
       const isAlwaysOnTop = !viewerWindow.isAlwaysOnTop();

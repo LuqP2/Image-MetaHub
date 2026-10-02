@@ -316,7 +316,7 @@ describe('ImageModal video playback controls', () => {
     const onNavigateRandom = vi.fn();
     useSettingsStore.getState().setVideoShuffle(true);
 
-    await renderVideoModal({ onNavigateNext: vi.fn(), onNavigatePrevious, onNavigateRandom });
+    await renderVideoModal({ currentIndex: 1, onNavigateNext: vi.fn(), onNavigatePrevious, onNavigateRandom });
 
     fireEvent.click(screen.getByRole('button', { name: 'Previous image' }));
 
