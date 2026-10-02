@@ -4,6 +4,7 @@ import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, copyTextToClipboard, showInExplorer } from '../utils/imageUtils';
 import { motion } from 'framer-motion';
+import { ChevronLeft } from 'lucide-react';
 import { AlertTriangle, ArrowLeft, Copy, Pencil, Pin, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink, Bookmark } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -3914,29 +3915,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <button
               data-no-window-drag="true"
               type="button"
+              disabled={currentIndex <= 0 || totalImages <= 1}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
                 navigateManually('previous');
               }}
-              className="absolute inset-y-0 left-0 z-20 w-16 cursor-pointer bg-gradient-to-r from-white/15 to-transparent opacity-0 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none sm:w-20 lg:w-24"
+              className="absolute inset-y-0 left-0 z-20 flex w-16 items-center justify-start pl-2 text-white transition-opacity duration-150 hover:bg-gradient-to-r hover:from-white/15 hover:to-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 disabled:cursor-default disabled:opacity-25 sm:w-20 lg:w-24"
               aria-label="Previous image"
               title="Previous image"
-            />
+            >
+              <ChevronLeft className="h-9 w-9 rounded-full border border-white/20 bg-black/50 p-1" aria-hidden="true" />
+            </button>
           )}
           {onNavigateNext && (
             <button
               data-no-window-drag="true"
               type="button"
+              disabled={currentIndex < 0 || currentIndex >= totalImages - 1 || totalImages <= 1}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
                 navigateManually('next');
               }}
-              className="absolute inset-y-0 right-0 z-20 w-16 cursor-pointer bg-gradient-to-l from-white/15 to-transparent opacity-0 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none sm:w-20 lg:w-24"
+              className="absolute inset-y-0 right-0 z-20 flex w-16 items-center justify-end pr-2 text-white transition-opacity duration-150 hover:bg-gradient-to-l hover:from-white/15 hover:to-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 disabled:cursor-default disabled:opacity-25 sm:w-20 lg:w-24"
               aria-label="Next image"
               title="Next image"
-            />
+            >
+              <ChevronRight className="h-9 w-9 rounded-full border border-white/20 bg-black/50 p-1" aria-hidden="true" />
+            </button>
           )}
 
           <div data-no-window-drag="true" className="absolute top-4 left-4 z-30 max-w-[min(80vw,520px)] rounded-lg border border-white/20 bg-black/60 px-3 py-1 text-sm font-medium text-white backdrop-blur-sm">

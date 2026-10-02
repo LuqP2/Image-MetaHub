@@ -16,7 +16,6 @@ const asIndexedImage = (image: ImageViewerSnapshot['image']): IndexedImage => im
 const DetachedImageModalApp: React.FC = () => {
   const sessionIdRef = useRef(getSessionId());
   const latestRevisionRef = useRef(-1);
-  const pendingRebindSessionRef = useRef<string | null>(null);
   const [snapshot, setSnapshot] = useState<ImageViewerSnapshot | null>(null);
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
   const theme = useSettingsStore((state) => state.theme);
@@ -88,6 +87,8 @@ const DetachedImageModalApp: React.FC = () => {
         document.querySelectorAll('audio, video').forEach((media) => {
           (media as HTMLMediaElement).pause();
         });
+        sessionIdRef.current = '';
+        latestRevisionRef.current = -1;
         setSnapshot(null);
         return;
       }
@@ -95,7 +96,6 @@ const DetachedImageModalApp: React.FC = () => {
         sessionIdRef.current = next.sessionId;
         latestRevisionRef.current = -1;
         setIsAlwaysOnTop(false);
-        pendingRebindSessionRef.current = next.sessionId;
       }
       if (next.revision <= latestRevisionRef.current) return;
       latestRevisionRef.current = next.revision;
@@ -190,9 +190,8 @@ const DetachedImageModalApp: React.FC = () => {
   }, [sendCommand]);
 
   useEffect(() => {
-    if (!snapshot || pendingRebindSessionRef.current !== snapshot.sessionId) return;
-    pendingRebindSessionRef.current = null;
-    void window.electronAPI?.imageViewerReady(snapshot.sessionId);
+    if (!snapshot) return;
+    void window.electronAPI?.imageViewerReady(snapshot.sessionId, snapshot.revision);
   }, [snapshot]);
 
   if (!snapshot) {

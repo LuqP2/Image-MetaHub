@@ -180,6 +180,30 @@ describe('ImageModal slideshow behavior', () => {
     delete window.electronAPI;
   });
 
+  it('uses navigation buttons only within the sequence boundaries', async () => {
+    const next = vi.fn();
+    const previous = vi.fn();
+    const props = { image: createImage('one'), onClose: vi.fn(), directoryPath: 'C:/synthetic',
+      isActive: true, onNavigateNext: next, onNavigatePrevious: previous };
+    const { rerender } = render(<ImageModal {...props} currentIndex={0} totalImages={2} />);
+    const previousButton = await screen.findByRole('button', { name: 'Previous image' });
+    const nextButton = screen.getByRole('button', { name: 'Next image' });
+    expect((previousButton as HTMLButtonElement).disabled).toBe(true);
+    expect((nextButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(previousButton);
+    fireEvent.click(nextButton);
+    expect(previous).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    rerender(<ImageModal {...props} currentIndex={1} totalImages={2} />);
+    expect((previousButton as HTMLButtonElement).disabled).toBe(false);
+    expect((nextButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(previousButton);
+    expect(previous).toHaveBeenCalledTimes(1);
+    rerender(<ImageModal {...props} currentIndex={0} totalImages={1} />);
+    expect((previousButton as HTMLButtonElement).disabled).toBe(true);
+    expect((nextButton as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('exits fullscreen and closes slideshow modals that were created for slideshow', async () => {
     const onClose = vi.fn();
 

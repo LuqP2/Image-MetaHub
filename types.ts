@@ -694,9 +694,9 @@ export interface ElectronAPI {
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   getFullscreenState: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   setFullscreen: (isFullscreen: boolean) => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
-  imageViewerOpen: (payload: { sessionId: string; snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot }) => Promise<{ success: boolean; existing?: boolean; error?: string }>;
+  imageViewerOpen: (payload: { sessionId: string; snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot }) => Promise<{ success: boolean; existing?: boolean; cancelled?: boolean; error?: string }>;
   imageViewerUpdate: (payload: { sessionId: string; snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot }) => Promise<{ success: boolean; ignored?: boolean; error?: string }>;
-  imageViewerReady: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
+  imageViewerReady: (sessionId: string, appliedRevision?: number) => Promise<{ success: boolean; error?: string }>;
   imageViewerWindowAction: (payload: { sessionId: string; action: 'focus' | 'restore' | 'minimize' | 'close' | 'focus-main' | 'toggle-always-on-top' }) => Promise<{ success: boolean; isAlwaysOnTop?: boolean; error?: string }>;
   imageViewerCommand: (payload: { sessionId: string; command: import('./services/imageViewerContracts').ImageViewerCommand }) => Promise<{ success: boolean; error?: string; [key: string]: unknown }>;
   imageViewerRespond: (payload: { requestId: string; response: { success: boolean; error?: string; [key: string]: unknown } }) => void;
