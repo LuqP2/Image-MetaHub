@@ -58,7 +58,7 @@ import {
 } from './electron/permanentDeletePolicy.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
 import { buildDetachedViewerLoadTarget, buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
-import { createViewerOpenCoordinator, createViewerReadiness, presentViewerWindow } from './utils/viewerWindowLifecycle.mjs';
+import { createViewerOpenCoordinator, createViewerReadiness, createViewerFocusTracker, presentViewerWindow } from './utils/viewerWindowLifecycle.mjs';
 import {
   buildEmbeddingModelDownloadUrl,
   validateEmbeddingModelId,
@@ -626,7 +626,7 @@ let stableIdentityFileOperationCoordinator;
 let stableIdentityUserDataService;
 const detachedImageViewerWindows = new Map();
 const coordinateViewerOpen = createViewerOpenCoordinator();
-let latestViewerFocusSessionId = null;
+const viewerFocusTracker = createViewerFocusTracker();
 let viewerDiagnosticSequence = 0;
 function traceViewerLifecycle(viewerWindow, stage, code) {
   viewerWindow.__viewerDiagnosticId ??= ++viewerDiagnosticSequence;
@@ -2578,7 +2578,7 @@ function configureDetachedViewerNavigationHandlers(viewerWindow, baseUrl) {
 }
 
 function createDetachedImageViewer(sessionId, snapshot) {
-  latestViewerFocusSessionId = sessionId;
+  viewerFocusTracker.request(sessionId);
   return coordinateViewerOpen(sessionId, (isCancelled) => openDetachedImageViewer(sessionId, snapshot, isCancelled));
 }
 
@@ -2609,7 +2609,7 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
         onReady: () => {
           reusable.__imageViewerRebinding = false;
           reusable.webContents.setAudioMuted(false);
-          presentViewerWindow(reusable, { activate: latestViewerFocusSessionId === sessionId });
+          presentViewerWindow(reusable, { activate: viewerFocusTracker.shouldActivate(sessionId) });
         },
         onFailure: (result) => {
           if (result.cancelled) return;
@@ -2675,7 +2675,7 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
   detachedImageViewerSnapshots.set(sessionId, snapshot);
   viewerWindow.__viewerReadiness = createViewerReadiness({
     onReady: () => {
-      presentViewerWindow(viewerWindow, { activate: latestViewerFocusSessionId === sessionId, maximized: initialState.isMaximized });
+      presentViewerWindow(viewerWindow, { activate: viewerFocusTracker.shouldActivate(sessionId), maximized: initialState.isMaximized });
     },
     onFailure: (result) => {
       if (result.cancelled || viewerWindow.isDestroyed()) return;
@@ -2704,9 +2704,9 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
     viewerWindow.__viewerReadiness.fail('Viewer failed to load.');
   });
 
-  viewerWindow.on('focus', () => {
+  viewerFocusTracker.trackWindow(viewerWindow, (focusedSessionId) => {
     traceViewerLifecycle(viewerWindow, 'focus');
-    sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'focus');
+    sendDetachedViewerEvent(focusedSessionId, 'focus');
   });
   viewerWindow.on('minimize', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'minimize'));
   viewerWindow.on('restore', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'restore'));
@@ -2732,7 +2732,7 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
     viewerWindow.__viewerReadiness.cancel();
     // Closing the active viewer returns to the library, not another viewer.
     // Otherwise the OS's automatic focus transfer looks like a user selection.
-    if (viewerWindow.isFocused() && mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
+    if (viewerWindow.isFocused() && mainWindow && !mainWindow.isDestroyed()) viewerFocusTracker.focusMain(mainWindow);
     if (process.platform !== 'darwin' || viewerWindow.__destroyImageViewer) return;
     const activeSessionId = viewerWindow.__imageViewerSessionId;
     if (!activeSessionId) return;
@@ -3475,7 +3475,7 @@ function setupImageViewerHandlers() {
       : resolveViewerSender(event, sessionId);
     if (!viewerWindow || viewerWindow.isDestroyed()) {
       if (isMainSender(event) && (action === 'focus' || action === 'restore') && coordinateViewerOpen.isPending(sessionId)) {
-        latestViewerFocusSessionId = sessionId;
+        viewerFocusTracker.request(sessionId);
         return { success: true };
       }
       if (isMainSender(event) && action === 'close' && coordinateViewerOpen.cancel(sessionId)) {
@@ -3484,7 +3484,7 @@ function setupImageViewerHandlers() {
       return { success: false, error: 'Unknown image viewer.' };
     }
     if (action === 'focus' || action === 'restore') {
-      latestViewerFocusSessionId = sessionId;
+      viewerFocusTracker.request(sessionId);
       if (!viewerWindow.__viewerReadiness.ready) return { success: true };
       if (viewerWindow.isMinimized()) viewerWindow.restore();
       viewerWindow.show();
@@ -3497,7 +3497,7 @@ function setupImageViewerHandlers() {
       if (mainWindow && !mainWindow.isDestroyed()) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.show();
-        mainWindow.focus();
+        viewerFocusTracker.focusMain(mainWindow);
       }
     } else if (action === 'toggle-always-on-top') {
       const isAlwaysOnTop = !viewerWindow.isAlwaysOnTop();

@@ -1,15 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createViewerOpenCoordinator, createViewerReadiness, presentViewerWindow } from '../utils/viewerWindowLifecycle.mjs';
+import { EventEmitter } from 'node:events';
+import { createViewerOpenCoordinator, createViewerReadiness, createViewerFocusTracker, presentViewerWindow } from '../utils/viewerWindowLifecycle.mjs';
+
+const createNativeWindow = (sessionId: string) => Object.assign(new EventEmitter(), {
+  __imageViewerSessionId: sessionId,
+  isDestroyed: () => false, show: vi.fn(), showInactive: vi.fn(), focus: vi.fn(), maximize: vi.fn(),
+});
 
 afterEach(() => vi.useRealTimers());
 
 describe('viewer native readiness', () => {
   it('shows a late previous opening without stealing focus from the latest window', async () => {
-    const window = () => ({ isDestroyed: () => false, show: vi.fn(), showInactive: vi.fn(), focus: vi.fn(), maximize: vi.fn() });
-    const aWindow = window();
-    const bWindow = window();
-    const a = createViewerReadiness({ onReady: () => presentViewerWindow(aWindow, { activate: false }), onFailure: vi.fn() });
-    const b = createViewerReadiness({ onReady: () => presentViewerWindow(bWindow, { activate: true }), onFailure: vi.fn() });
+    const focus = createViewerFocusTracker();
+    const aWindow = createNativeWindow('a');
+    const bWindow = createNativeWindow('b');
+    focus.request('a');
+    const a = createViewerReadiness({ onReady: () => presentViewerWindow(aWindow, { activate: focus.shouldActivate('a') }), onFailure: vi.fn() });
+    focus.request('b');
+    const b = createViewerReadiness({ onReady: () => presentViewerWindow(bWindow, { activate: focus.shouldActivate('b') }), onFailure: vi.fn() });
     b.markNativeReady();
     b.markRendererReady();
     a.markNativeReady();
@@ -20,6 +28,58 @@ describe('viewer native readiness', () => {
     expect(aWindow.focus).not.toHaveBeenCalled();
     expect(aWindow.show).not.toHaveBeenCalled();
     expect(aWindow.showInactive).toHaveBeenCalledTimes(1);
+  });
+
+  it('respects native focus on A while B is still loading, before forwarding the event', async () => {
+    const focus = createViewerFocusTracker();
+    const aWindow = createNativeWindow('a');
+    const bWindow = createNativeWindow('b');
+    const notified = vi.fn((sessionId: string) => {
+      expect(focus.shouldActivate(sessionId)).toBe(true);
+    });
+    focus.trackWindow(aWindow, notified);
+    focus.request('b');
+    const b = createViewerReadiness({ onReady: () => presentViewerWindow(bWindow, { activate: focus.shouldActivate('b') }), onFailure: vi.fn() });
+    b.markNativeReady();
+    aWindow.emit('focus');
+    expect(notified).toHaveBeenCalledExactlyOnceWith('a');
+    b.markRendererReady();
+    await b.promise;
+    expect(bWindow.showInactive).toHaveBeenCalledTimes(1);
+    expect(bWindow.show).not.toHaveBeenCalled();
+    expect(bWindow.focus).not.toHaveBeenCalled();
+  });
+
+  it('clears pending viewer activation when explicitly returning focus to the main window', async () => {
+    const focus = createViewerFocusTracker();
+    const bWindow = createNativeWindow('b');
+    const mainWindow = { focus: vi.fn() };
+    focus.request('b');
+    const b = createViewerReadiness({ onReady: () => presentViewerWindow(bWindow, { activate: focus.shouldActivate('b') }), onFailure: vi.fn() });
+    b.markNativeReady();
+    focus.focusMain(mainWindow);
+    expect(mainWindow.focus).toHaveBeenCalledTimes(1);
+    b.markRendererReady();
+    await b.promise;
+    expect(bWindow.showInactive).toHaveBeenCalledTimes(1);
+    expect(bWindow.focus).not.toHaveBeenCalled();
+    // A later explicit request may activate the viewer again.
+    focus.request('b');
+    expect(focus.shouldActivate('b')).toBe(true);
+  });
+
+  it('records the current session when a reused native window receives focus', () => {
+    const focus = createViewerFocusTracker();
+    const window = createNativeWindow('original');
+    const notified = vi.fn();
+    focus.trackWindow(window, notified);
+    window.__imageViewerSessionId = 'rebound';
+    focus.request('loading');
+    window.emit('focus');
+    expect(focus.shouldActivate('rebound')).toBe(true);
+    expect(focus.shouldActivate('original')).toBe(false);
+    expect(focus.shouldActivate('loading')).toBe(false);
+    expect(notified).toHaveBeenCalledExactlyOnceWith('rebound');
   });
 
   it.each(['native-first', 'renderer-first'])('requires paint and applied snapshot: %s', async (order) => {

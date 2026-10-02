@@ -1,3 +1,22 @@
+/** Opening requests and actual native focus share one current priority. */
+export function createViewerFocusTracker() {
+  let latestSessionId = null;
+  return {
+    request(sessionId) { latestSessionId = sessionId; },
+    shouldActivate(sessionId) { return latestSessionId === sessionId; },
+    focusMain(window) {
+      latestSessionId = null;
+      window.focus();
+    },
+    trackWindow(window, onFocus) {
+      window.on('focus', () => {
+        latestSessionId = window.__imageViewerSessionId;
+        onFocus(latestSessionId);
+      });
+    },
+  };
+}
+
 /** A late opening may become visible, but must not steal the latest requested focus. */
 export function presentViewerWindow(window, { activate, maximized = false }) {
   if (window.isDestroyed()) return;
