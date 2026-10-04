@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to submit (for example, v0.20.0)
+        description: Release tag to submit (for example, v0.20.1)
         required: true
         type: string
 

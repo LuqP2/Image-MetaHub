@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.1] - [2026-10-04]
+
+### Improved
+
+- **Detached Viewer Navigation**: Added visible previous and next controls to detached viewer windows. Navigation now keeps the Library's active image, card highlight, and preview sidebar synchronized with the image currently being viewed.
+- **Smart Library Cluster Restore**: Saved clusters are now detected earlier during startup, with a loading state shown while they are being restored instead of briefly presenting an empty cluster view.
+
+### Fixed
+
+- **Detached Viewer Lifecycle**: Opening another image while a detached viewer is already open or still loading is now handled reliably. Delayed viewer windows no longer steal focus, closing the active viewer returns cleanly to the Library, and the Library remains on the last image viewed.
+- **Detached Viewer Favorites**: The favorite heart now immediately reflects the actual saved favorite state instead of appearing inverted until the viewer is refreshed.
+- **Smart Library Cluster Persistence**: Saved clusters now restore correctly when new images have been added since the cache was created, while still rejecting stale clusters when previously indexed image metadata has changed. Cluster restoration also completes correctly for empty libraries and libraries without clusterable prompts.
+
 ## [0.20.0] - [2026-09-28]
 
 ### Added
