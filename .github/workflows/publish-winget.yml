@@ -1,11 +1,6 @@
 name: Publish release to WinGet
 
 on:
-  workflow_run:
-    workflows:
-      - Build and publish release (All Platforms)
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       tag:
@@ -16,16 +11,12 @@ on:
 jobs:
   submit-winget:
     name: Submit WinGet update
-    if: >-
-      github.repository == 'LuqP2/Image-MetaHub' &&
-      (github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-      startsWith(github.event.workflow_run.head_branch, 'v')))
+    if: github.repository == 'LuqP2/Image-MetaHub'
     runs-on: windows-latest
     permissions:
       contents: read
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || inputs.tag }}
+      RELEASE_TAG: ${{ inputs.tag }}
 
     steps:
       - name: Synchronize WinGet fork
