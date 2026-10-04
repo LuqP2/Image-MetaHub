@@ -60,4 +60,26 @@ such as create/reuse, loaded, native-ready, snapshot-applied, focus, and load fa
 file paths, library content, or metadata. Correlate the failed opening's stages before
 changing Electron versions or expanding the fix.
 
+## Issue #575 recovery
+
+Initial opening and macOS reuse now resend the current snapshot every 500 ms until
+the renderer acknowledges its applied revision. Duplicate delivery re-acknowledges
+only a committed snapshot; obsolete revisions never acknowledge the current image.
+All retry timers stop on completion, failure, or cancellation.
+
+If the document has loaded and the image has committed but hidden painting never
+emits `ready-to-show`, the window is presented without activation after one second.
+Its native `show` event supplies the visibility signal. Activation still follows
+the most recent explicit open/focus request, including a return to the library.
+
+A failed opening gets one fresh-renderer attempt before the inline fallback. A
+failed parked macOS renderer is discarded rather than reused on that attempt.
+Cancellation never starts another window. Persistent failures still fall back.
+
+Lifecycle stages and fixed failure reasons are also written to `process-events.log`
+with a transient numeric window ID, without session IDs or image/library data.
+The release workflow now runs the existing packaged macOS smoke before uploading
+its assets. It covers first open, three rebindings, and concurrent windows on the
+runner's native architecture; the complete manual acceptance above is still needed.
+
 No packaged macOS manual acceptance was performed from the Windows development host.

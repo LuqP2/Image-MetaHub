@@ -56,9 +56,15 @@ describe('detached renderer applied-snapshot handshake', () => {
     await act(async () => receive(null));
     await act(async () => receive(snapshot('rebound', 'b', 1)));
     expect(acknowledgments.at(-1)).toEqual({ sessionId: 'rebound', revision: 1, displayed: 'b' });
+    // Simulate an unreceived ACK: main resends the same revision. The mounted
+    // image must be acknowledged again without reapplying the snapshot.
+    const appliedCount = mocks.setState.mock.calls.length;
+    await act(async () => receive(snapshot('rebound', 'b', 1)));
+    expect(acknowledgments.at(-1)).toEqual({ sessionId: 'rebound', revision: 1, displayed: 'b' });
+    expect(mocks.setState.mock.calls.length).toBe(appliedCount);
     await act(async () => receive(snapshot('rebound', 'obsolete', 0)));
     expect(mocks.displayed).toBe('b');
-    expect(ready).toHaveBeenCalledTimes(3);
+    expect(ready).toHaveBeenCalledTimes(4);
     await act(async () => receive(null));
     await act(async () => receive(snapshot('rebound', 'c', 1)));
     expect(acknowledgments.at(-1)).toEqual({ sessionId: 'rebound', revision: 1, displayed: 'c' });

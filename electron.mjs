@@ -58,7 +58,7 @@ import {
 } from './electron/permanentDeletePolicy.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
 import { buildDetachedViewerLoadTarget, buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
-import { createViewerOpenCoordinator, createViewerReadiness, createViewerFocusTracker, presentViewerWindow } from './utils/viewerWindowLifecycle.mjs';
+import { createViewerOpenCoordinator, createViewerReadiness, createViewerFocusTracker, presentViewerWindow, openViewerWithRecovery } from './utils/viewerWindowLifecycle.mjs';
 import {
   buildEmbeddingModelDownloadUrl,
   validateEmbeddingModelId,
@@ -631,6 +631,7 @@ let viewerDiagnosticSequence = 0;
 function traceViewerLifecycle(viewerWindow, stage, code) {
   viewerWindow.__viewerDiagnosticId ??= ++viewerDiagnosticSequence;
   console.log('[image-viewer-lifecycle]', viewerWindow.__viewerDiagnosticId, stage, code ?? '');
+  logProcessEvent({ kind: 'image-viewer-lifecycle', windowId: viewerWindow.__viewerDiagnosticId, stage, ...(code !== undefined ? { code } : {}) });
 }
 const detachedImageViewerSnapshots = new Map();
 const idleMacImageViewerWindows = new Set();
@@ -2579,10 +2580,22 @@ function configureDetachedViewerNavigationHandlers(viewerWindow, baseUrl) {
 
 function createDetachedImageViewer(sessionId, snapshot) {
   viewerFocusTracker.request(sessionId);
-  return coordinateViewerOpen(sessionId, (isCancelled) => openDetachedImageViewer(sessionId, snapshot, isCancelled));
+  return coordinateViewerOpen(sessionId, async (isCancelled) => {
+    const result = await openViewerWithRecovery(
+      (allowReuse) => openDetachedImageViewer(sessionId, snapshot, isCancelled, allowReuse),
+      {
+        isCancelled,
+        onRetry: () => logProcessEvent({ kind: 'image-viewer-open-retry', attempt: 2 }),
+      },
+    );
+    // Report failure only after recovery is exhausted. Reporting it from the
+    // first window would make App switch inline while the retry is opening.
+    if (!result.success && !result.cancelled) sendDetachedViewerEvent(sessionId, 'load-failed', { reason: result.error });
+    return result;
+  });
 }
 
-async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
+async function openDetachedImageViewer(sessionId, snapshot, isCancelled, allowReuse = true) {
   if (isCancelled()) return { success: false, cancelled: true };
   if (!mainWindow || mainWindow.isDestroyed()) {
     return { success: false, error: 'Main window is not available.' };
@@ -2595,7 +2608,7 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
     return { success: true, existing: true };
   }
 
-  if (process.platform === 'darwin') {
+  if (process.platform === 'darwin' && allowReuse) {
     const reusable = Array.from(idleMacImageViewerWindows).find((window) => !window.isDestroyed());
     if (reusable) {
       idleMacImageViewerWindows.delete(reusable);
@@ -2606,6 +2619,10 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
       detachedImageViewerSnapshots.set(sessionId, snapshot);
       traceViewerLifecycle(reusable, 'reuse');
       reusable.__viewerReadiness = createViewerReadiness({
+        onRequestSnapshot: () => {
+          const current = detachedImageViewerSnapshots.get(sessionId);
+          if (current && !reusable.isDestroyed()) reusable.webContents.send('image-viewer-snapshot', current);
+        },
         onReady: () => {
           reusable.__imageViewerRebinding = false;
           reusable.webContents.setAudioMuted(false);
@@ -2613,16 +2630,15 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
         },
         onFailure: (result) => {
           if (result.cancelled) return;
-          traceViewerLifecycle(reusable, 'rebind-failed');
+          traceViewerLifecycle(reusable, 'rebind-failed', result.error);
           reusable.__suppressImageViewerClosedEvent = true;
-          sendDetachedViewerEvent(sessionId, 'load-failed', { reason: result.error });
           reusable.destroy();
         },
       });
       reusable.__viewerReadiness.markNativeReady();
       // The renderer acknowledges the new snapshot through image-viewer-ready.
       // Keep the hidden window hidden until it has bound the new session.
-      reusable.webContents.send('image-viewer-snapshot', snapshot);
+      reusable.__viewerReadiness.markDocumentLoaded();
       return { ...await reusable.__viewerReadiness.promise, reused: true };
     }
   }
@@ -2674,14 +2690,22 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
   detachedImageViewerWindows.set(sessionId, viewerWindow);
   detachedImageViewerSnapshots.set(sessionId, snapshot);
   viewerWindow.__viewerReadiness = createViewerReadiness({
+    onRequestSnapshot: () => {
+      const current = detachedImageViewerSnapshots.get(sessionId);
+      if (current && !viewerWindow.isDestroyed()) viewerWindow.webContents.send('image-viewer-snapshot', current);
+    },
+    onNeedsNativeShow: () => {
+      if (viewerWindow.isDestroyed()) return;
+      traceViewerLifecycle(viewerWindow, 'native-show-recovery');
+      viewerWindow.showInactive();
+    },
     onReady: () => {
       presentViewerWindow(viewerWindow, { activate: viewerFocusTracker.shouldActivate(sessionId), maximized: initialState.isMaximized });
     },
     onFailure: (result) => {
       if (result.cancelled || viewerWindow.isDestroyed()) return;
-      traceViewerLifecycle(viewerWindow, 'load-failed');
+      traceViewerLifecycle(viewerWindow, 'load-failed', result.error);
       viewerWindow.__suppressImageViewerClosedEvent = true;
-      sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'load-failed', { reason: result.error });
       viewerWindow.destroy();
     },
   });
@@ -2689,8 +2713,12 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
     traceViewerLifecycle(viewerWindow, 'native-ready');
     viewerWindow.__viewerReadiness.markNativeReady();
   });
+  viewerWindow.once('show', () => {
+    viewerWindow.__viewerReadiness.markNativeReady();
+  });
   viewerWindow.webContents.on('did-finish-load', () => {
     traceViewerLifecycle(viewerWindow, 'loaded');
+    viewerWindow.__viewerReadiness.markDocumentLoaded();
   });
   viewerWindow.__markImageViewerRendererReady = () => {
     viewerWindow.__viewerReadiness.markRendererReady();
@@ -2724,8 +2752,11 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
     viewerWindow.__suppressImageViewerClosedEvent = true;
     const activeSessionId = viewerWindow.__imageViewerSessionId;
     idleMacImageViewerWindows.delete(viewerWindow);
-    if (activeSessionId) sendDetachedViewerEvent(activeSessionId, viewerWindow.__viewerReadiness.ready ? 'render-process-gone' : 'load-failed', { reason: details?.reason || 'unknown' });
-    viewerWindow.__viewerReadiness.cancel();
+    if (viewerWindow.__viewerReadiness.ready) {
+      if (activeSessionId) sendDetachedViewerEvent(activeSessionId, 'render-process-gone', { reason: details?.reason || 'unknown' });
+    } else {
+      viewerWindow.__viewerReadiness.fail('Viewer renderer stopped during opening.');
+    }
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
   });
   viewerWindow.on('close', (event) => {

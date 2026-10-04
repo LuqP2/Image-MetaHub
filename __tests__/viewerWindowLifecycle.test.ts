@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { createViewerOpenCoordinator, createViewerReadiness, createViewerFocusTracker, presentViewerWindow } from '../utils/viewerWindowLifecycle.mjs';
+import { createViewerOpenCoordinator, createViewerReadiness, createViewerFocusTracker, presentViewerWindow, openViewerWithRecovery } from '../utils/viewerWindowLifecycle.mjs';
 
 const createNativeWindow = (sessionId: string) => Object.assign(new EventEmitter(), {
   __imageViewerSessionId: sessionId,
@@ -10,6 +10,92 @@ const createNativeWindow = (sessionId: string) => Object.assign(new EventEmitter
 afterEach(() => vi.useRealTimers());
 
 describe('viewer native readiness', () => {
+  it.each(['initial', 'rebound'])('recovers a missed snapshot delivery for a %s window', async (kind) => {
+    vi.useFakeTimers();
+    const shown = vi.fn();
+    let deliveries = 0;
+    const lifecycle = createViewerReadiness({
+      onReady: shown,
+      onFailure: vi.fn(),
+      onRequestSnapshot: () => {
+        deliveries += 1;
+        // The listener was unavailable for the first delivery.
+        if (deliveries === 2) lifecycle.markRendererReady();
+      },
+    });
+    if (kind === 'rebound') lifecycle.markNativeReady();
+    lifecycle.markDocumentLoaded();
+    lifecycle.markDocumentLoaded();
+    expect(shown).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(500);
+    if (kind === 'initial') lifecycle.markNativeReady();
+    expect(await lifecycle.promise).toEqual({ success: true });
+    expect(shown).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(15000);
+    expect(deliveries).toBe(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('recovers missing hidden paint only after load and applied-image acknowledgment', async () => {
+    vi.useFakeTimers();
+    const focus = createViewerFocusTracker();
+    const window = createNativeWindow('loading');
+    focus.request('loading');
+    const lifecycle = createViewerReadiness({
+      onReady: () => presentViewerWindow(window, { activate: focus.shouldActivate('loading') }),
+      onFailure: vi.fn(),
+      onNeedsNativeShow: () => { window.showInactive(); window.emit('show'); },
+    });
+    window.once('show', lifecycle.markNativeReady);
+    lifecycle.markRendererReady();
+    vi.advanceTimersByTime(1000);
+    expect(window.showInactive).not.toHaveBeenCalled();
+    lifecycle.markDocumentLoaded();
+    // The user returns to the library before the recovery presents the window.
+    focus.focusMain({ focus: vi.fn() });
+    vi.advanceTimersByTime(1000);
+    expect(await lifecycle.promise).toEqual({ success: true });
+    expect(window.focus).not.toHaveBeenCalled();
+    expect(window.show).not.toHaveBeenCalled();
+    expect(window.showInactive).toHaveBeenCalled();
+  });
+
+  it('does not show a loaded window that has not acknowledged its image', async () => {
+    vi.useFakeTimers();
+    const recover = vi.fn();
+    const lifecycle = createViewerReadiness({ onReady: vi.fn(), onFailure: vi.fn(), onNeedsNativeShow: recover });
+    lifecycle.markDocumentLoaded();
+    vi.advanceTimersByTime(15000);
+    expect(await lifecycle.promise).toMatchObject({ success: false, error: 'Viewer renderer did not acknowledge the snapshot.' });
+    expect(recover).not.toHaveBeenCalled();
+  });
+
+  it('cancels snapshot retries and native-show recovery when closed during opening', async () => {
+    vi.useFakeTimers();
+    const deliver = vi.fn();
+    const recover = vi.fn();
+    const lifecycle = createViewerReadiness({ onReady: vi.fn(), onFailure: vi.fn(), onRequestSnapshot: deliver, onNeedsNativeShow: recover });
+    lifecycle.markDocumentLoaded();
+    lifecycle.markRendererReady();
+    lifecycle.cancel();
+    vi.advanceTimersByTime(15000);
+    expect(await lifecycle.promise).toMatchObject({ cancelled: true });
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(recover).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('settles a failed resend and stops its timers', async () => {
+    vi.useFakeTimers();
+    const lifecycle = createViewerReadiness({
+      onReady: vi.fn(), onFailure: vi.fn(),
+      onRequestSnapshot: () => { throw new Error('webContents unavailable'); },
+    });
+    lifecycle.markDocumentLoaded();
+    expect(await lifecycle.promise).toMatchObject({ success: false, error: 'Viewer snapshot delivery failed.' });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('shows a late previous opening without stealing focus from the latest window', async () => {
     const focus = createViewerFocusTracker();
     const aWindow = createNativeWindow('a');
@@ -141,6 +227,35 @@ describe('viewer native readiness', () => {
 });
 
 describe('viewer opening coordinator', () => {
+  it.each(['initial load failed', 'parked renderer failed'])('retries %s once with a fresh renderer before failing', async (error) => {
+    const open = vi.fn().mockResolvedValueOnce({ success: false, error }).mockResolvedValueOnce({ success: true });
+    const retry = vi.fn();
+    expect(await openViewerWithRecovery(open, { isCancelled: () => false, onRetry: retry })).toEqual({ success: true });
+    expect(open.mock.calls).toEqual([[true], [false]]);
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends recovery after the fresh renderer also fails', async () => {
+    const open = vi.fn().mockResolvedValue({ success: false, error: 'load failed' });
+    expect(await openViewerWithRecovery(open, { isCancelled: () => false, onRetry: vi.fn() })).toMatchObject({ success: false });
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not reopen a viewer closed during the first attempt', async () => {
+    const open = vi.fn().mockResolvedValue({ success: false, cancelled: true });
+    const retry = vi.fn();
+    expect(await openViewerWithRecovery(open, { isCancelled: () => false, onRetry: retry })).toMatchObject({ cancelled: true });
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it('honors a cancellation arriving between failed opening and recovery', async () => {
+    let cancelled = false;
+    const open = vi.fn(async () => { cancelled = true; return { success: false, error: 'failed' }; });
+    expect(await openViewerWithRecovery(open, { isCancelled: () => cancelled, onRetry: vi.fn() })).toMatchObject({ cancelled: true });
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
   it('shares in-flight requests for one session while opening another independently', async () => {
     const coordinate = createViewerOpenCoordinator();
     let complete!: (value: { success: boolean }) => void;

@@ -50,12 +50,25 @@ export function createViewerOpenCoordinator() {
   return coordinate;
 }
 
+/** Recover one failed opening with a fresh renderer; never retry a cancellation. */
+export async function openViewerWithRecovery(open, { isCancelled, onRetry }) {
+  if (isCancelled()) return { success: false, cancelled: true };
+  const first = await open(true);
+  if (first.success || first.cancelled) return first;
+  if (isCancelled()) return { success: false, cancelled: true };
+  onRetry(first);
+  return open(false);
+}
+
 /** Loading is insufficient: wait for both native paint and the applied snapshot. */
-export function createViewerReadiness({ onReady, onFailure, timeoutMs = 15000 }) {
+export function createViewerReadiness({ onReady, onFailure, onRequestSnapshot, onNeedsNativeShow, timeoutMs = 15000, retryMs = 500, nativeShowDelayMs = 1000 }) {
   let nativeReady = false;
   let rendererReady = false;
+  let documentLoaded = false;
   let settled = false;
   let succeeded = false;
+  let snapshotRetry;
+  let nativeShowTimer;
   let resolve;
   const promise = new Promise((done) => { resolve = done; });
   const finish = (result) => {
@@ -63,17 +76,50 @@ export function createViewerReadiness({ onReady, onFailure, timeoutMs = 15000 })
     settled = true;
     succeeded = result.success;
     clearTimeout(timer);
+    clearInterval(snapshotRetry);
+    clearTimeout(nativeShowTimer);
     resolve(result);
     if (result.success) onReady();
     else onFailure(result);
   };
-  const timer = setTimeout(() => finish({ success: false, error: 'Viewer renderer did not become ready.' }), timeoutMs);
+  const timer = setTimeout(() => finish({ success: false, error: rendererReady
+    ? 'Viewer native window did not become ready.'
+    : 'Viewer renderer did not acknowledge the snapshot.' }), timeoutMs);
   const check = () => { if (nativeReady && rendererReady) finish({ success: true }); };
+  const requestSnapshot = () => {
+    if (settled || rendererReady || !onRequestSnapshot) return;
+    try { onRequestSnapshot(); }
+    catch { finish({ success: false, error: 'Viewer snapshot delivery failed.' }); }
+  };
+  const scheduleNativeShow = () => {
+    if (settled || nativeReady || !rendererReady || !documentLoaded || !onNeedsNativeShow || nativeShowTimer) return;
+    // The document and requested image are mounted. If hidden painting does not
+    // emit ready-to-show, actual native visibility provides the second signal.
+    nativeShowTimer = setTimeout(() => {
+      if (settled || nativeReady) return;
+      try { onNeedsNativeShow(); }
+      catch { finish({ success: false, error: 'Viewer native presentation failed.' }); }
+    }, nativeShowDelayMs);
+  };
   return {
     promise,
     get ready() { return succeeded; },
     markNativeReady() { nativeReady = true; check(); },
-    markRendererReady() { rendererReady = true; check(); },
+    markDocumentLoaded() {
+      if (settled || documentLoaded) return;
+      documentLoaded = true;
+      if (!rendererReady && onRequestSnapshot) {
+        snapshotRetry = setInterval(requestSnapshot, retryMs);
+        requestSnapshot();
+      }
+      scheduleNativeShow();
+    },
+    markRendererReady() {
+      rendererReady = true;
+      clearInterval(snapshotRetry);
+      check();
+      scheduleNativeShow();
+    },
     fail(error) { finish({ success: false, error }); },
     cancel() { finish({ success: false, cancelled: true }); },
   };
