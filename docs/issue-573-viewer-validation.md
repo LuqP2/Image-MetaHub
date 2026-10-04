@@ -83,3 +83,33 @@ its assets. It covers first open, three rebindings, and concurrent windows on th
 runner's native architecture; the complete manual acceptance above is still needed.
 
 No packaged macOS manual acceptance was performed from the Windows development host.
+
+## Automated packaged macOS results: 2026-10-04
+
+Tested code commit: `f681324627d8c29b210f58d7677df58504d1e0f4`.
+Run: https://github.com/LuqP2/Image-MetaHub/actions/runs/37227906124
+
+| Native runner | macOS | Build | Packaged smoke |
+| --- | --- | --- | --- |
+| arm64 / Apple Silicon | 15.7.9 (24G830) | Passed | Passed |
+| x64 / Intel | 15.7.9 (24G830) | Passed | Passed |
+
+Both jobs opened the initial viewer, rebound its renderer three times, opened a
+second independent viewer, and verified the idle renderer pool stayed bounded.
+Only a synthetic PNG was used on the isolated GitHub-hosted machines.
+
+The arm64 log records `loaded` and `snapshot-applied` for window 2, followed by
+`native-show-recovery` rather than `native-ready` before presentation. The new
+recovery path was therefore exercised by the actual packaged app. Intel completed
+through normal native readiness. Neither log records a fresh-renderer retry.
+
+This validates the smoke's native opening/rebinding cases. It does not establish
+the reporter's root cause or replace the complete library-to-viewer manual flow.
+
+Control comparison: the same workflow and native runner matrix also compiled tag
+`v0.20.1` at `7f7754cd21541d5a7d89951d3492668c1e3baf2c`.
+Run: https://github.com/LuqP2/Image-MetaHub/actions/runs/37228310294
+Both architectures passed there too, through normal native readiness. The
+reporter's failure was not consistently reproduced by this synthetic smoke.
+The corrected arm64 run's recovery is evidence that the recovery path works in
+the packaged macOS app, not proof of the reporter's exact failure mechanism.
