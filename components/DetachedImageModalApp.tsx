@@ -6,6 +6,7 @@ import { useImageStore } from '../store/useImageStore';
 import type { IndexedImage } from '../types';
 import type { ImageViewerCommand, ImageViewerSnapshot } from '../services/imageViewerContracts';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { resolveTheme } from '../src/theme/themeRegistry';
 import { useLicenseStore } from '../store/useLicenseStore';
 
 const getSessionId = () => new URLSearchParams(window.location.search).get('sessionId') || '';
@@ -34,16 +35,24 @@ const DetachedImageModalApp: React.FC = () => {
   } = useFeatureAccess();
 
   useEffect(() => {
+    let active = true;
     const applyTheme = (systemShouldUseDark: boolean) => {
-      const isDark = ['dark', 'dracula', 'nord', 'ocean'].includes(theme)
-        || (theme === 'system' && systemShouldUseDark);
-      document.documentElement.classList.toggle('dark', isDark);
-      document.documentElement.setAttribute('data-theme', theme === 'system' ? (systemShouldUseDark ? 'dark' : 'light') : theme);
+      const resolved = resolveTheme(theme, systemShouldUseDark);
+      document.documentElement.classList.toggle('dark', resolved.dark);
+      document.documentElement.setAttribute('data-theme', resolved.id);
     };
     const api = window.electronAPI;
     if (!api) return;
-    void api.getTheme().then(({ shouldUseDarkColors }) => applyTheme(shouldUseDarkColors));
-    return api.onThemeUpdated(({ shouldUseDarkColors }) => applyTheme(shouldUseDarkColors));
+    void api.getTheme().then(({ shouldUseDarkColors }) => {
+      if (active) applyTheme(shouldUseDarkColors);
+    });
+    const unsubscribe = api.onThemeUpdated(({ shouldUseDarkColors }) => {
+      if (active) applyTheme(shouldUseDarkColors);
+    });
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
   }, [theme]);
 
   useEffect(() => {
@@ -73,13 +82,32 @@ const DetachedImageModalApp: React.FC = () => {
     const sessionId = sessionIdRef.current;
     if (!api?.imageViewerReady || !api.onImageViewerSnapshot || !sessionId) return;
 
-    const applySnapshot = (next: ImageViewerSnapshot) => {
-      if (next.sessionId !== sessionId || next.revision <= latestRevisionRef.current) return;
+    const applySnapshot = (next: ImageViewerSnapshot | null) => {
+      if (!next) {
+        document.querySelectorAll('audio, video').forEach((media) => {
+          (media as HTMLMediaElement).pause();
+        });
+        sessionIdRef.current = '';
+        latestRevisionRef.current = -1;
+        setSnapshot(null);
+        return;
+      }
+      if (next.sessionId !== sessionIdRef.current) {
+        sessionIdRef.current = next.sessionId;
+        latestRevisionRef.current = -1;
+        setIsAlwaysOnTop(false);
+      }
+      if (next.revision <= latestRevisionRef.current) return;
       latestRevisionRef.current = next.revision;
-      const images = [next.previousImage, next.image, next.nextImage]
-        .filter((candidate): candidate is ImageViewerSnapshot['image'] => Boolean(candidate))
-        .map(asIndexedImage);
+      const previousImage = next.previousImage ? asIndexedImage(next.previousImage) : null;
       const current = asIndexedImage(next.image);
+      const nextImage = next.nextImage ? asIndexedImage(next.nextImage) : null;
+      const navigationImages = [previousImage, current, nextImage]
+        .filter((candidate): candidate is IndexedImage => Boolean(candidate));
+      const lineageImages = (next.lineage?.images || []).map(asIndexedImage);
+      const images = Array.from(
+        new Map([...navigationImages, ...lineageImages].map((candidate) => [candidate.id, candidate])).values()
+      );
       useImageStore.setState({
         images,
         filteredImages: images,
@@ -89,6 +117,8 @@ const DetachedImageModalApp: React.FC = () => {
         collections: next.collections,
         // Keeps bulk actions (apply metadata to selected) available in the viewer.
         selectedImages: new Set(next.selectedImageIds ?? []),
+        lineageResolvedByImageId: next.lineage?.resolvedByImageId ?? {},
+        lineageDerivedIdsBySourceId: next.lineage?.derivedIdsBySourceId ?? {},
         directories: [{
           id: current.directoryId || next.directoryPath,
           name: next.directoryPath.split(/[\\/]/).filter(Boolean).pop() || next.directoryPath,
@@ -105,27 +135,33 @@ const DetachedImageModalApp: React.FC = () => {
 
     useImageStore.setState({
       toggleFavorite: async (imageId: string) => {
+        const result = await sendCommand({ type: 'toggle-favorite', imageId });
+        if (!result.success) throw new Error(result.error || 'Favorite was not saved.');
+        const isFavorite = result.isFavorite;
+        if (typeof isFavorite !== 'boolean') return;
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
-          entry.id === imageId ? { ...entry, isFavorite: !entry.isFavorite } : entry) }));
-        await sendCommand({ type: 'toggle-favorite', imageId });
+          entry.id === imageId ? { ...entry, isFavorite } : entry) }));
       },
       setImageRating: async (imageId: string, rating) => {
+        const result = await sendCommand({ type: 'set-rating', imageId, rating });
+        if (!result.success) throw new Error(result.error || 'Rating was not saved.');
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
           entry.id === imageId ? { ...entry, rating } : entry) }));
-        await sendCommand({ type: 'set-rating', imageId, rating });
       },
       addTagToImage: async (imageId: string, tag: string) => {
         const normalized = tag.trim().toLowerCase();
+        const result = await sendCommand({ type: 'add-tag', imageId, tag });
+        if (!result.success) throw new Error(result.error || 'Tag was not saved.');
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
           entry.id === imageId && normalized && !entry.tags?.includes(normalized)
             ? { ...entry, tags: [...(entry.tags || []), normalized] }
             : entry) }));
-        await sendCommand({ type: 'add-tag', imageId, tag });
       },
       removeTagFromImage: async (imageId: string, tag: string) => {
+        const result = await sendCommand({ type: 'remove-tag', imageId, tag });
+        if (!result.success) throw new Error(result.error || 'Tag removal was not saved.');
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
           entry.id === imageId ? { ...entry, tags: (entry.tags || []).filter((value) => value !== tag) } : entry) }));
-        await sendCommand({ type: 'remove-tag', imageId, tag });
       },
       removeAutoTagFromImage: (imageId: string, tag: string) => {
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
@@ -153,11 +189,22 @@ const DetachedImageModalApp: React.FC = () => {
     return unsubscribe;
   }, [sendCommand]);
 
+  useEffect(() => {
+    if (!snapshot) return;
+    void window.electronAPI?.imageViewerReady(snapshot.sessionId, snapshot.revision);
+  }, [snapshot]);
+
   if (!snapshot) {
     return <div className="flex h-screen items-center justify-center bg-gray-950 text-sm text-gray-400">Opening image…</div>;
   }
 
   const image = asIndexedImage(snapshot.image);
+  const prefetchPrevious = snapshot.previousImage && snapshot.previousDirectoryPath
+    ? { image: asIndexedImage(snapshot.previousImage), directoryPath: snapshot.previousDirectoryPath }
+    : null;
+  const prefetchNext = snapshot.nextImage && snapshot.nextDirectoryPath
+    ? { image: asIndexedImage(snapshot.nextImage), directoryPath: snapshot.nextDirectoryPath }
+    : null;
   const navigate = (direction: 'next' | 'previous' | 'random', wrap = false) => {
     void sendCommand({ type: 'navigate', direction, wrap });
   };
@@ -175,11 +222,14 @@ const DetachedImageModalApp: React.FC = () => {
   return (
     <>
     <ImageModal
+      key={snapshot.sessionId}
       hostMode="native-window"
       isAlwaysOnTop={isAlwaysOnTop}
       onToggleAlwaysOnTop={() => void toggleAlwaysOnTop()}
       modalId={snapshot.sessionId}
       image={image}
+      prefetchPrevious={prefetchPrevious}
+      prefetchNext={prefetchNext}
       onClose={() => void window.electronAPI?.imageViewerWindowAction({ sessionId: snapshot.sessionId, action: 'close' })}
       onImageDeleted={(imageId) => void sendCommand({ type: 'image-deleted', imageId })}
       onImageRenamed={(oldImageId, newImageId, newRelativePath) => void sendCommand({ type: 'image-renamed', oldImageId, newImageId, newRelativePath })}
@@ -194,6 +244,7 @@ const DetachedImageModalApp: React.FC = () => {
         };
       }}
       onRequestReparse={(imageId) => sendCommand({ type: 'reparse-image', imageId })}
+      onRequestAutoTag={(imageId) => sendCommand({ type: 'auto-tag-image', imageId })}
       onRequestGenerate={(request) => sendCommand({ type: 'generate', request })}
       onRequestBatchExport={(imageId) => sendCommand({ type: 'open-batch-export', imageId })}
       onImageSaved={async (request) => {

@@ -56,12 +56,26 @@ describe('Header classic mode', () => {
   afterEach(() => cleanup());
 
   it('hides the legacy tabs by default', () => {
-    renderHeader();
+    const { container } = renderHeader();
+    expect(container.querySelector('header > div')?.className).not.toContain('container');
+    expect(container.querySelector('header > div')?.className).not.toContain('mx-auto');
     expect(screen.queryByRole('button', { name: /model view/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /smart library/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /node view/i })).toBeNull();
     // The unified Explore tab is always present.
     expect(screen.getByRole('button', { name: /explore/i })).toBeTruthy();
+  });
+
+  it('keeps Library as a text destination and opens prompts from a compact bookmark button', () => {
+    const onLibraryViewChange = vi.fn();
+    renderHeader({ onLibraryViewChange });
+
+    expect(screen.queryByRole('button', { name: /^prompts$/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Prompt Library' }));
+    expect(onLibraryViewChange).toHaveBeenCalledWith('prompts');
+
+    fireEvent.click(screen.getByRole('button', { name: /^library$/i }));
+    expect(onLibraryViewChange).toHaveBeenCalledWith('library');
   });
 
   it('shows the legacy tabs as Explore deep-links when classic mode is on', () => {

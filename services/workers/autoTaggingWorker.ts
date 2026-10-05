@@ -15,6 +15,8 @@ type WorkerMessage =
         images: TaggingImage[];
         topN?: number;
         minScore?: number;
+        targetImageId?: string;
+        excludeTags?: string[];
       };
     }
   | { type: 'cancel' };
@@ -55,7 +57,8 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       await startAutoTagging(message.payload.images, {
         topN: sanitizeTopN(message.payload.topN),
         minScore: sanitizeMinScore(message.payload.minScore),
-      });
+        excludeTags: message.payload.excludeTags,
+      }, message.payload.targetImageId);
       break;
     case 'cancel':
       isCancelled = true;
@@ -66,7 +69,8 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
 
 async function startAutoTagging(
   images: TaggingImage[],
-  options: { topN?: number; minScore?: number }
+  options: { topN?: number; minScore?: number; excludeTags?: string[] },
+  targetImageId?: string
 ): Promise<void> {
   try {
     if (!Array.isArray(images)) {
@@ -77,9 +81,17 @@ async function startAutoTagging(
       postError(`Auto-tagging payload too large: received ${images.length} images (max ${MAX_AUTO_TAG_IMAGES}).`);
       return;
     }
+    const targetImage = targetImageId === undefined
+      ? null
+      : images.find(image => image.id === targetImageId);
+    if (targetImageId !== undefined && !targetImage) {
+      postError('Image not found in the auto-tagging library.');
+      return;
+    }
 
     isCancelled = false;
-    postProgress(0, images.length, 'Building TF-IDF model...');
+    const total = targetImage ? 1 : images.length;
+    postProgress(0, total, 'Building TF-IDF model...');
 
     const tfidfModel = buildTFIDFModel(images);
     if (isCancelled) {
@@ -88,7 +100,18 @@ async function startAutoTagging(
     }
 
     const autoTags: Record<string, AutoTag[]> = {};
-    const total = images.length;
+    if (targetImage) {
+      autoTags[targetImage.id] = extractAutoTags(targetImage, tfidfModel, options);
+      if (autoTags[targetImage.id].length === 0) {
+        postError(options.excludeTags?.length
+          ? 'No other descriptive tags are available for this prompt.'
+          : 'No descriptive tags were found in this prompt.');
+        return;
+      }
+      postProgress(1, 1, 'Generating auto-tags...');
+      postComplete(autoTags, tfidfModel);
+      return;
+    }
     const progressIntervalMs = 200;
     let lastProgress = performance.now();
 

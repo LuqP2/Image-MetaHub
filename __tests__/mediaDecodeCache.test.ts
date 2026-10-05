@@ -8,6 +8,8 @@ class FakeImage {
   onload: unknown = () => {};
   onerror: unknown = () => {};
   src = '';
+  naturalWidth = 2048;
+  naturalHeight = 1024;
 
   private resolveDecode!: () => void;
   private rejectDecode!: (error: Error) => void;
@@ -77,6 +79,20 @@ describe('mediaDecodeCache', () => {
     await warming;
 
     expect(mediaDecodeCache.isWarm('a.png')).toBe(true);
+    expect(mediaDecodeCache.getNaturalSize('a.png')).toEqual({ width: 2048, height: 1024 });
+  });
+
+  it('does not expose dimensions before decode or after eviction', async () => {
+    const warming = mediaDecodeCache.warm('a.png');
+    expect(mediaDecodeCache.getNaturalSize('a.png')).toBeNull();
+    lastInstance().settle();
+    await warming;
+
+    for (const url of ['b.png', 'c.png', 'd.png', 'e.png', 'f.png']) {
+      await warmAndSettle(url);
+    }
+
+    expect(mediaDecodeCache.getNaturalSize('a.png')).toBeNull();
   });
 
   it('decodes a url once even when warmed concurrently', async () => {

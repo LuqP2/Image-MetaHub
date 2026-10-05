@@ -1,0 +1,50 @@
+{
+  "expectedPrompt": "A concrete bunker at dusk",
+  "staleWidgetPrompt": "A martini glass with ink doodles",
+  "workflow": {
+    "nodes": [
+      { "id": 61, "type": "TextGenerate", "widgets_values": ["", 512] },
+      { "id": 64, "type": "PreviewAny", "widgets_values": [] },
+      { "id": 65, "type": "ComfySwitchNode", "widgets_values": [false] },
+      { "id": 67, "type": "PrimitiveBoolean", "widgets_values": [false] },
+      { "id": 68, "type": "PrimitiveBoolean", "widgets_values": [false] },
+      { "id": 69, "type": "StringConcatenate", "widgets_values": ["", "darkbrush", ", "] },
+      { "id": 70, "type": "ComfySwitchNode", "widgets_values": [false] },
+      { "id": 71, "type": "PrimitiveStringMultiline", "widgets_values": ["A concrete bunker at dusk"] },
+      { "id": 72, "type": "KSampler", "widgets_values": [4242, "fixed", 8, 1, "euler", "simple", 1] },
+      { "id": 73, "type": "CLIPTextEncode", "widgets_values": ["A martini glass with ink doodles"] }
+    ]
+  },
+  "prompt": {
+    "61": { "class_type": "TextGenerate", "inputs": { "prompt": ["71", 0] } },
+    "64": { "class_type": "PreviewAny", "inputs": { "source": ["65", 0] } },
+    "65": {
+      "class_type": "ComfySwitchNode",
+      "inputs": { "switch": ["68", 0], "on_false": ["71", 0], "on_true": ["61", 0] }
+    },
+    "67": { "class_type": "PrimitiveBoolean", "inputs": { "value": false } },
+    "68": { "class_type": "PrimitiveBoolean", "inputs": { "value": false } },
+    "69": {
+      "class_type": "StringConcatenate",
+      "inputs": { "string_a": ["64", 0], "string_b": "darkbrush", "delimiter": ", " }
+    },
+    "70": {
+      "class_type": "ComfySwitchNode",
+      "inputs": { "switch": ["67", 0], "on_false": ["64", 0], "on_true": ["69", 0] }
+    },
+    "71": { "class_type": "PrimitiveStringMultiline", "inputs": { "value": "A concrete bunker at dusk" } },
+    "72": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 4242,
+        "steps": 8,
+        "cfg": 1,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1,
+        "positive": ["73", 0]
+      }
+    },
+    "73": { "class_type": "CLIPTextEncode", "inputs": { "text": ["70", 0] } }
+  }
+}

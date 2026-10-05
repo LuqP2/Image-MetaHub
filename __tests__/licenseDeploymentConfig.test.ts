@@ -3,8 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { prepareLicenseServerDeployment } from '../scripts/prepareLicenseServerDeployment.mjs';
+import { setupLicenseOperator } from '../scripts/setupLicenseOperator.mjs';
 import { getConfiguredSensitiveValues } from '../scripts/verifyPackagedLicensing.mjs';
 import { createEd25519TestKeys } from './licenseCryptoTestHelpers';
+import { encodeBase64Url } from '../utils/licenseCertificate.mjs';
 
 const tempDirectories: string[] = [];
 
@@ -13,11 +15,35 @@ afterEach(async () => {
 });
 
 describe('license server deployment preflight', () => {
+  it('makes migrations mandatory and rolls the Worker back when smoke fails', async () => {
+    const workflow = await fs.readFile(
+      path.resolve('.github/workflows/license-server-deploy.yml'),
+      'utf8',
+    );
+    expect(workflow).not.toContain('apply_migrations');
+    expect(workflow).not.toContain('wrangler secret bulk');
+    expect(workflow).toContain('wrangler d1 migrations apply');
+    expect(workflow).toContain('--secrets-file .production-secrets.json');
+    expect(workflow).toContain('steps.deploy.outcome == \'success\'');
+    expect(workflow).toContain('wrangler rollback --yes');
+  });
+
   it('includes the Cloudflare deployment token in packaged secret-value scans', () => {
     expect(getConfiguredSensitiveValues({
       CLOUDFLARE_API_TOKEN: 'production-cloudflare-token',
       LICENSE_SERVER_ADMIN_TOKEN: 'production-admin-token',
-    })).toEqual(['production-admin-token', 'production-cloudflare-token']);
+      STRIPE_WEBHOOK_SECRET: 'production-webhook-secret',
+      STRIPE_RESTRICTED_API_KEY: 'production-restricted-key',
+      LICENSE_DELIVERY_ENCRYPTION_KEY: 'production-encryption-key',
+      RESEND_API_KEY: 'production-resend-key',
+    })).toEqual([
+      'production-admin-token',
+      'production-webhook-secret',
+      'production-restricted-key',
+      'production-encryption-key',
+      'production-resend-key',
+      'production-cloudflare-token',
+    ]);
   });
 
   it('fails before generating deployment configuration when a placeholder remains', async () => {
@@ -33,26 +59,154 @@ describe('license server deployment preflight', () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-deploy-config-test-'));
     tempDirectories.push(directory);
     const outputPath = path.join(directory, 'wrangler.production.generated.json');
-    await prepareLicenseServerDeployment({
-      outputPath,
-      env: {
-        CLOUDFLARE_API_TOKEN: 'test-cloudflare-token',
-        CLOUDFLARE_ACCOUNT_ID: 'test-cloudflare-account',
-        LICENSE_D1_DATABASE_ID: d1DatabaseId,
-        LICENSE_SERVER_URL: 'https://licenses.example.com',
-        LICENSE_SIGNING_PUBLIC_KEY: keys.publicKey,
-        LICENSE_SIGNING_PRIVATE_KEY: keys.privateKey,
-        LICENSE_SERVER_ADMIN_TOKEN: 'a'.repeat(32),
-        EMAIL_LOOKUP_PEPPER: 'test-only-email-pepper',
-      },
-    });
+    const env = {
+      CLOUDFLARE_API_TOKEN: 'test-cloudflare-token',
+      CLOUDFLARE_ACCOUNT_ID: 'test-cloudflare-account',
+      LICENSE_D1_DATABASE_ID: d1DatabaseId,
+      LICENSE_SERVER_URL: 'https://licenses.example.com',
+      LICENSE_SIGNING_PUBLIC_KEY: keys.publicKey,
+      LICENSE_SIGNING_PRIVATE_KEY: keys.privateKey,
+      LICENSE_SERVER_ADMIN_TOKEN: 'a'.repeat(32),
+      EMAIL_LOOKUP_PEPPER: 'test-only-email-pepper',
+      STRIPE_WEBHOOK_SECRET: 'whsec_test_webhook_secret',
+      STRIPE_RESTRICTED_API_KEY: 'rk_live_restrictedkey',
+      LICENSE_DELIVERY_ENCRYPTION_KEY: encodeBase64Url(new Uint8Array(32).fill(9)),
+      RESEND_API_KEY: 're_test_resend_key',
+      STRIPE_ACCOUNT_ID: 'acct_testaccount',
+      STRIPE_SUBSCRIPTION_PRODUCT_ID: 'prod_subscription',
+      STRIPE_MONTHLY_PRICE_ID: 'price_monthly',
+      STRIPE_ANNUAL_PRICE_ID: 'price_annual',
+      STRIPE_MONTHLY_HISTORICAL_PRICE_IDS: 'price_monthlyold, price_monthlyolder',
+      STRIPE_ANNUAL_HISTORICAL_PRICE_IDS: 'price_annualold',
+      STRIPE_LIFETIME_PRICE_ID: 'price_lifetime',
+      LICENSE_EMAIL_FROM: 'Image MetaHub <licenses@example.com>',
+      LICENSE_EMAIL_REPLY_TO: 'support@example.com',
+    };
+    await prepareLicenseServerDeployment({ outputPath, env });
     const contents = await fs.readFile(outputPath, 'utf8');
     expect(contents).not.toContain('REPLACE_DURING_DEPLOYMENT');
     expect(JSON.parse(contents)).toMatchObject({
       d1_databases: [{ database_id: d1DatabaseId }],
-      vars: { LICENSE_SIGNING_PUBLIC_KEY: keys.publicKey },
+      vars: {
+        LICENSE_SIGNING_PUBLIC_KEY: keys.publicKey,
+        STRIPE_LIVEMODE: 'true',
+        STRIPE_ACCOUNT_ID: 'acct_testaccount',
+        STRIPE_SUBSCRIPTION_PRODUCT_ID: 'prod_subscription',
+        STRIPE_MONTHLY_PRICE_ID: 'price_monthly',
+        STRIPE_ANNUAL_PRICE_ID: 'price_annual',
+        STRIPE_MONTHLY_HISTORICAL_PRICE_IDS: 'price_monthlyold,price_monthlyolder',
+        STRIPE_ANNUAL_HISTORICAL_PRICE_IDS: 'price_annualold',
+        STRIPE_LIFETIME_PRICE_ID: 'price_lifetime',
+        LICENSE_EMAIL_FROM: 'Image MetaHub <licenses@example.com>',
+        LICENSE_EMAIL_REPLY_TO: 'support@example.com',
+      },
+      triggers: { crons: ['* * * * *'] },
     });
     expect(contents).not.toContain(keys.privateKey);
     expect(contents).not.toContain('test-only-email-pepper');
+    expect(contents).not.toContain('whsec_test_webhook_secret');
+    expect(contents).not.toContain('rk_live_restrictedkey');
+    expect(contents).not.toContain('re_test_resend_key');
+    await expect(prepareLicenseServerDeployment({
+      outputPath,
+      env: { ...env, STRIPE_RESTRICTED_API_KEY: 'rk_test_restrictedkey' },
+    })).rejects.toThrow('live-mode restricted Stripe API key');
+  });
+});
+
+describe('license operator setup', () => {
+  const adminToken = 'operator-token-that-is-long-enough-for-testing';
+
+  it('synchronizes GitHub before the Worker without a generated Wrangler config', async () => {
+    const events: Array<{ type: string; command?: string; args?: string[]; input?: string }> = [];
+    await setupLicenseOperator({
+      env: {},
+      existingConfig: null,
+      createAdminToken: () => adminToken,
+      persistOperatorConfig: (value: string) => events.push({ type: 'persist', input: value }),
+      runCommand: async (command: { command: string; args: string[]; input?: string }) => {
+        events.push({ type: 'command', ...command });
+      },
+      platform: 'win32',
+    });
+
+    expect(events.map((event) => event.type === 'persist'
+      ? 'persist'
+      : `${event.command} ${event.args?.slice(0, 3).join(' ')}`)).toEqual([
+      'gh auth status',
+      'npx --yes wrangler@4.28.1 whoami',
+      'persist',
+      'gh secret set LICENSE_SERVER_ADMIN_TOKEN',
+      'npx --yes wrangler@4.28.1 secret',
+    ]);
+    const githubSecret = events[3];
+    const workerSecret = events[4];
+    expect(githubSecret.input).toBe(`${adminToken}\n`);
+    expect(workerSecret.input).toBe(`${adminToken}\n`);
+    expect(githubSecret.args).toContain('license-server-production');
+    expect(workerSecret.args).toContain('--name');
+    expect(workerSecret.args).toContain('image-metahub-license-server');
+    expect(workerSecret.args).not.toContain('--config');
+  });
+
+  it('reuses the saved token so a partial synchronization can be retried safely', async () => {
+    const inputs: string[] = [];
+    let persisted = false;
+    const result = await setupLicenseOperator({
+      env: {},
+      existingConfig: {
+        IMH_LICENSE_SERVER_URL: 'https://image-metahub-license-server.image-metahub.workers.dev',
+        LICENSE_SERVER_ADMIN_TOKEN: adminToken,
+      },
+      persistOperatorConfig: () => { persisted = true; },
+      runCommand: async ({ input }: { input?: string }) => {
+        if (input) inputs.push(input);
+      },
+    });
+
+    expect(result.reusingExistingToken).toBe(true);
+    expect(persisted).toBe(false);
+    expect(inputs).toEqual([`${adminToken}\n`, `${adminToken}\n`]);
+  });
+
+  it.each([
+    ['empty', {}],
+    ['missing its token', { IMH_LICENSE_SERVER_URL: 'https://image-metahub-license-server.image-metahub.workers.dev' }],
+    ['missing its URL', { LICENSE_SERVER_ADMIN_TOKEN: adminToken }],
+  ])('rejects a saved config that is %s before generating or synchronizing a token', async (_label, existingConfig) => {
+    let generated = false;
+    let persisted = false;
+    let commandRan = false;
+
+    await expect(setupLicenseOperator({
+      env: {},
+      existingConfig,
+      createAdminToken: () => {
+        generated = true;
+        return adminToken;
+      },
+      persistOperatorConfig: () => { persisted = true; },
+      runCommand: async () => { commandRan = true; },
+    })).rejects.toThrow('Saved operator configuration is incomplete');
+
+    expect(generated).toBe(false);
+    expect(persisted).toBe(false);
+    expect(commandRan).toBe(false);
+  });
+
+  it('does not rotate the Worker when GitHub secret synchronization fails', async () => {
+    const commands: string[][] = [];
+    await expect(setupLicenseOperator({
+      env: {},
+      existingConfig: null,
+      createAdminToken: () => adminToken,
+      persistOperatorConfig: () => {},
+      runCommand: async ({ args }: { args: string[] }) => {
+        commands.push(args);
+        if (args[0] === 'secret' && args[1] === 'set') throw new Error('GitHub failed');
+      },
+    })).rejects.toThrow('GitHub failed');
+
+    expect(commands.some((args) => args.includes('put'))).toBe(false);
   });
 });

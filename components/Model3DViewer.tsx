@@ -50,6 +50,9 @@ interface RuntimeState {
   sourceUrl: string;
 }
 
+export const retainRuntimeUnlessOwned = <T,>(current: T | null, owned: T | null): T | null =>
+  current === owned ? null : current;
+
 const STORAGE_KEY = 'imh:model3d-viewer-settings:v1';
 const DEFAULTS: ViewerPreferences = {
   showGrid: true,
@@ -448,6 +451,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
 
   useEffect(() => {
     let disposed = false;
+    let ownedRuntime: RuntimeState | null = null;
     setLoading(true);
     setError(null);
 
@@ -591,6 +595,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
           resizeObserver: null as unknown as ResizeObserver,
           sourceUrl,
         };
+        ownedRuntime = runtime;
         runtimeRef.current = runtime;
         pendingRenderer = null;
         applyMaterialMode(initialPreferences.materialMode);
@@ -615,7 +620,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
 
         let snapshotTaken = false;
         const render = () => {
-          if (disposed) return;
+          if (disposed || runtimeRef.current !== runtime) return;
           runtime.controls.update();
           renderer.render(scene, runtime.activeCamera);
           if (!snapshotTaken && onSnapshotRef.current) {
@@ -640,8 +645,9 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
     void initialize();
     return () => {
       disposed = true;
-      const runtime = runtimeRef.current;
-      runtimeRef.current = null;
+      const runtime = ownedRuntime;
+      ownedRuntime = null;
+      runtimeRef.current = retainRuntimeUnlessOwned(runtimeRef.current, runtime);
       if (runtime) {
         cancelAnimationFrame(runtime.animationFrame);
         runtime.resizeObserver.disconnect();
@@ -765,18 +771,12 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
     || resolvedLineage?.sourceReference?.relativePath
     || resolvedLineage?.sourceReference?.absolutePath
     || null;
-  const controlsPosition = modalControls
-    ? 'left-20 right-20 top-14 z-30 justify-center lg:left-28 lg:right-28'
-    : 'left-2 top-2 z-30 max-w-[calc(100%-1rem)]';
   const minimumHeightClass = compact || !showControls ? 'min-h-0' : 'min-h-[180px]';
 
   return (
-    <div ref={containerRef} className={`relative h-full ${minimumHeightClass} w-full overflow-hidden bg-black ${className}`} data-no-window-drag="true">
-      <canvas ref={canvasRef} className="block h-full w-full" />
-      {loading && <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-sm text-gray-300">Loading 3D model…</div>}
-      {error && <div className="absolute inset-x-4 top-4 rounded-lg border border-red-500/40 bg-red-950/90 p-3 text-sm text-red-100">{error}</div>}
+    <div className={`flex h-full ${minimumHeightClass} w-full flex-col overflow-hidden bg-black ${className}`} data-no-window-drag="true">
       {showControls && !loading && (
-        <div className={`absolute flex flex-wrap gap-1.5 ${controlsPosition} ${compact ? 'scale-90 origin-top-left' : ''}`}>
+        <div className={`z-30 flex shrink-0 gap-1.5 border-b border-gray-800 bg-gray-950/95 px-2 py-2 ${compact ? 'overflow-x-auto' : 'flex-wrap justify-center'} ${modalControls ? 'lg:px-6' : ''}`}>
           <button type="button" className={controlButton} onClick={() => updatePreference('showGrid', !preferences.showGrid)} title="Toggle grid">
             <Grid3X3 size={14} /> Grid
           </button>
@@ -821,6 +821,10 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
           </label>
         </div>
       )}
+      <div ref={containerRef} className="relative min-h-0 flex-1 overflow-hidden bg-black">
+      <canvas ref={canvasRef} className="block h-full w-full" />
+      {loading && <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-sm text-gray-300">Loading 3D model…</div>}
+      {error && <div className="absolute inset-x-4 top-4 z-30 max-h-[calc(100%-2rem)] overflow-auto rounded-lg border border-red-500/40 bg-red-950/90 p-3 text-sm text-red-100">{error}</div>}
       {!loading && (sourceImage || sourceReferenceName) && (
         sourceImage && onOpenSourceImage ? (
           <button
@@ -846,6 +850,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
           GLB recommended. OBJ/STL can lose materials, textures, and animations; STL stores geometry only.
         </div>
       )}
+      </div>
     </div>
   );
 };

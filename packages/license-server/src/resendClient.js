@@ -1,0 +1,112 @@
+const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+
+const escapeHtml = (value) => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+const planLabels = {
+  lifetime: 'Lifetime',
+  monthly: 'Monthly',
+  annual: 'Annual',
+};
+
+const formatExpiry = (plan, expiresAt) => {
+  if (plan === 'lifetime') return 'No expiration';
+  const date = new Date(String(expiresAt || ''));
+  if (!Number.isFinite(date.getTime())) return 'Unavailable';
+  return new Intl.DateTimeFormat('en-US', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+};
+
+export class ResendDeliveryClient {
+  constructor({ apiKey, from, replyTo = null, fetchImpl = globalThis.fetch }) {
+    this.apiKey = apiKey;
+    this.from = from;
+    this.replyTo = replyTo;
+    this.fetchImpl = fetchImpl;
+  }
+
+  async sendLicense({ outboxId, email, licenseKey, plan, expiresAt }) {
+    const planLabel = planLabels[plan] || String(plan || 'Unavailable');
+    const expiryLabel = formatExpiry(plan, expiresAt);
+    const text = [
+      'Hi there!',
+      '',
+      'Thank you for your purchase and for supporting the project!',
+      '',
+      'Your license is ready to use. Just open Image MetaHub, go to Settings → License, enter the email below and the key, and the app will activate immediately.',
+      '',
+      `Plan: ${planLabel}`,
+      `Date of expiry: ${expiryLabel}`,
+      '',
+      `Email: ${email}`,
+      `License: ${licenseKey}`,
+      '',
+      'If you have a moment, I’d really appreciate it if you could fill out this short survey: https://licenses.imagemetahub.com/survey. Hearing directly from you helps me a lot in making the app better for everyone!',
+      '',
+      'If you have any issues activating the license, please let me know!',
+      '',
+      'Best regards,',
+      'Lucas',
+    ].join('\n');
+    const html = [
+      '<p>Hi there!</p>',
+      '<p>Thank you for your purchase and for supporting the project!</p>',
+      '<p>Your license is ready to use. Just open Image MetaHub, go to Settings → License, enter the email below and the key, and the app will activate immediately.</p>',
+      `<p><strong>Plan:</strong> ${escapeHtml(planLabel)}<br>`,
+      `<strong>Date of expiry:</strong> ${escapeHtml(expiryLabel)}</p>`,
+      `<p><strong>Email:</strong> ${escapeHtml(email)}<br>`,
+      `<strong>License:</strong> <code>${escapeHtml(licenseKey)}</code></p>`,
+      '<p>If you have a moment, I’d really appreciate it if you could fill out this short survey: <a href="https://licenses.imagemetahub.com/survey">https://licenses.imagemetahub.com/survey</a>. Hearing directly from you helps me a lot in making the app better for everyone!</p>',
+      '<p>If you have any issues activating the license, please let me know!</p>',
+      '<p>Best regards,<br>Lucas</p>',
+    ].join('');
+    const body = {
+      from: this.from,
+      to: [email],
+      subject: 'Your Image MetaHub license key',
+      text,
+      html,
+      ...(this.replyTo ? { reply_to: this.replyTo } : {}),
+      tags: [{ name: 'delivery_type', value: 'license' }],
+    };
+    let response;
+    try {
+      response = await this.fetchImpl.call(globalThis, RESEND_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${this.apiKey}`,
+          'content-type': 'application/json',
+          'idempotency-key': `license-delivery/${outboxId}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      return { ok: false, retryable: true, uncertain: true, code: 'resend_network_error' };
+    }
+
+    let result = null;
+    try {
+      result = await response.json();
+    } catch {
+      // Response bodies are not needed for retry classification.
+    }
+    if (response.ok && typeof result?.id === 'string') {
+      return { ok: true, messageId: result.id };
+    }
+    if (response.status === 409 && result?.name === 'concurrent_idempotent_requests') {
+      return { ok: false, retryable: true, code: 'resend_concurrent_request' };
+    }
+    if (response.status === 429 || response.status >= 500) {
+      return { ok: false, retryable: true, code: `resend_http_${response.status}` };
+    }
+    return { ok: false, retryable: false, code: `resend_http_${response.status}` };
+  }
+}

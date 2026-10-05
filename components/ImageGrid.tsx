@@ -18,7 +18,9 @@ import { Heart, Info, Copy, CheckCircle, Folder, Clipboard, Sparkles, GitCompare
   Tag,
   RefreshCw,
   Image as ImageIcon,
-  Workflow
+  Workflow,
+  Trash2,
+  Bookmark
 } from 'lucide-react';
 import { copyTextToClipboard } from '../utils/imageUtils';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
@@ -43,6 +45,7 @@ import TagManagerModal from './TagManagerModal';
 import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import { transferIndexedImages } from '../services/fileTransferService';
+import { toggleRejectedCandidates, REJECTED_TAG } from '../services/candidateActions';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
@@ -60,6 +63,7 @@ import {
 import { clearInternalImageDragData, setInternalImageDragData } from '../utils/internalImageDrag';
 import { isMacPlatform } from '../utils/platform';
 import { canNativeDragIndexedFile } from '../utils/model3DTransfer';
+import { useSavePrompt } from '../hooks/useSavePrompt';
 
 // macOS ignores Electron's startDrag() unless it is invoked synchronously from the
 // dragstart handler, so native external drag has to be kicked off differently there
@@ -536,8 +540,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           whileTap={{ scale: 0.85 }}
           className={`absolute top-2 left-2 z-20 p-1 rounded transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
             isSelected
-              ? 'bg-blue-500 text-white opacity-100'
-              : `bg-black/50 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-blue-500/80 ${isFocused ? 'opacity-100' : ''}`
+              ? 'bg-blue-500 text-gray-950 opacity-100'
+              : `bg-black/50 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-blue-500 hover:text-gray-950 ${isFocused ? 'opacity-100' : ''}`
           }`}
           title={isSelected ? 'Deselect image' : 'Select image'}
           aria-label={isSelected ? 'Deselect image' : 'Select image'}
@@ -557,7 +561,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         <motion.button
           onClick={handlePreviewClick}
           whileTap={{ scale: 0.85 }}
-          className={`absolute top-11 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white transition-opacity hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:opacity-100 opacity-0 group-hover:opacity-100 ${isFocused ? 'opacity-100' : ''}`}
+          className={`absolute top-11 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white transition-opacity hover:bg-blue-500 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:opacity-100 opacity-0 group-hover:opacity-100 ${isFocused ? 'opacity-100' : ''}`}
           title="Show details"
           aria-label="Show details"
         >
@@ -1056,6 +1060,7 @@ interface ImageGridProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   onBatchExport: () => void;
+  onDeleteSelected?: () => void | Promise<void>;
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
@@ -1087,6 +1092,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   totalPages,
   onPageChange,
   onBatchExport,
+  onDeleteSelected,
   activeCollection = null,
   isCollectionsView = false,
   onImageRenamed,
@@ -1155,6 +1161,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
   const directories = useImageStore((state) => state.directories);
+  const setSuccess = useImageStore((state) => state.setSuccess);
+  const setError = useImageStore((state) => state.setError);
+  const savePrompt = useSavePrompt();
   const filterAndSortImages = useImageStore((state) => state.filterAndSortImages);
 
   const focusedImageIndex = useImageStore((state) => state.focusedImageIndex);
@@ -1176,6 +1185,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
+  const bulkAddTag = useImageStore((state) => state.bulkAddTag);
+  const bulkRemoveTag = useImageStore((state) => state.bulkRemoveTag);
 
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
@@ -1242,6 +1253,19 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   } = useContextMenu();
 
   const submenuHorizontalClass = contextMenu.horizontalDirection === 'left' ? 'right-full' : 'left-full';
+
+  const handleSaveContextPrompt = useCallback(async () => {
+    const target = contextMenu.image;
+    if (!target) return;
+    const directoryPath = directories.find((directory) => directory.id === target.directoryId)?.path;
+    hideContextMenu();
+    try {
+      const result = await savePrompt(target, { directoryPath, readAuthoritativeShadow: true });
+      setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
+    }
+  }, [contextMenu.image, directories, hideContextMenu, savePrompt, setError, setSuccess]);
 
   const getGridScrollElement = useCallback(() => gridScrollRef.current ?? gridScopeRef.current, []);
 
@@ -1570,6 +1594,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
     return [contextMenu.image];
   }, [contextMenu.image, images, selectedImages]);
+  const deleteTargetCount = contextMenu.image && selectedImages.has(contextMenu.image.id)
+    ? selectedImages.size
+    : contextMenu.image ? 1 : 0;
 
   const handleAddToExistingCollection = useCallback(async (collection: SmartCollection) => {
     const targetImages = getContextTargetImages();
@@ -1648,6 +1675,25 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     hideContextMenu();
   }, [bulkSetImageRating, contextMenu.image?.id, hideContextMenu, selectedImages]);
 
+  const rejectTargetIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
+  const rejectTargetsAreRejected = rejectTargetIds.length > 0 && rejectTargetIds.every((id) =>
+    useImageStore.getState().annotations.get(id)?.tags.includes(REJECTED_TAG)
+  );
+  const handleToggleRejected = useCallback(() => {
+    const ids = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
+    if (ids.length === 0) return;
+    const annotations = useImageStore.getState().annotations;
+    toggleRejectedCandidates({
+      ids,
+      isRejected: (id) => annotations.get(id)?.tags.includes(REJECTED_TAG) ?? false,
+      canUseBulkTagging,
+      onBulkTaggingBlocked: () => showProModal('bulk_tagging'),
+      addTag: bulkAddTag,
+      removeTag: bulkRemoveTag,
+    });
+    hideContextMenu();
+  }, [bulkAddTag, bulkRemoveTag, canUseBulkTagging, contextMenu.image?.id, hideContextMenu, selectedImages, showProModal]);
+
   const handleReparseMetadata = useCallback(async () => {
     const targetImages = getContextTargetImages();
     if (targetImages.length === 0) {
@@ -1686,6 +1732,20 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     setRenamingImageId(image.id);
     hideContextMenu();
   }, [hideContextMenu]);
+
+  const handleDeleteFromContextMenu = useCallback(() => {
+    if (!contextMenu.image || !onDeleteSelected) {
+      hideContextMenu();
+      return;
+    }
+
+    if (!selectedImages.has(contextMenu.image.id)) {
+      useImageStore.setState({ selectedImages: new Set([contextMenu.image.id]) });
+    }
+
+    hideContextMenu();
+    void onDeleteSelected();
+  }, [contextMenu.image, hideContextMenu, onDeleteSelected, selectedImages]);
 
   const closeInlineRename = useCallback((result?: ImageRenameResult) => {
     if (result) {
@@ -2381,6 +2441,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             Copy to Clipboard
           </button>
 
+          <button
+            onClick={() => void handleSaveContextPrompt()}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Bookmark className="w-4 h-4" />
+            Save Prompt
+          </button>
+
           <div className="border-t border-gray-600 my-1"></div>
 
           <button
@@ -2503,6 +2571,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               </button>
             </div>
           </div>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          <button
+            onClick={handleToggleRejected}
+            className="w-full text-left px-4 py-2 text-sm text-amber-200 hover:bg-amber-900/20 transition-colors"
+            title={rejectTargetsAreRejected ? 'Remove the rejected tag' : 'Mark as rejected without deleting files'}
+          >
+            {rejectTargetsAreRejected ? 'Restore Candidate' : 'Reject Candidate'}{rejectTargetIds.length > 1 ? ` (${rejectTargetIds.length})` : ''}
+          </button>
 
           <div className="border-t border-gray-600 my-1"></div>
 
@@ -2782,6 +2860,19 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               </>
             );
           })()}
+
+          {onDeleteSelected && (
+            <>
+              <div className="border-t border-gray-600 my-1"></div>
+              <ContextMenuButton
+                onClick={handleDeleteFromContextMenu}
+                icon={<Trash2 className="w-4 h-4" />}
+                label={deleteTargetCount > 1
+                  ? `Delete Selected (${deleteTargetCount})`
+                  : 'Delete'}
+              />
+            </>
+          )}
         </div>,
         document.body,
       )

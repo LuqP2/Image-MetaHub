@@ -32,7 +32,7 @@ export const isTypingElement = (target: EventTarget | null | undefined): boolean
 };
 
 export const eventMatchesKeybinding = (
-  event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+  event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'> & { code?: string },
   keybinding?: string,
 ): boolean => {
   if (!keybinding) {
@@ -57,7 +57,7 @@ export const eventMatchesKeybinding = (
         event.metaKey === (modifiers.has('cmd') || modifiers.has('meta')) &&
         event.altKey === modifiers.has('alt') &&
         event.shiftKey === modifiers.has('shift') &&
-        normalizeKey(event.key) === key
+        (normalizeKey(event.key) === key || (key.startsWith('num_') && event.code === `Numpad${key.slice(4)}`))
       );
     });
 };

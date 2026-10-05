@@ -220,9 +220,9 @@ const electronAPI = {
   // --- Invokable renderer-to-main functions ---
   getTheme: () => ipcRenderer.invoke('get-theme'),
   getZoomFactor: () => ipcRenderer.invoke('get-zoom-factor'),
-  trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
+  trashFile: (filePath, userDataContext) => ipcRenderer.invoke('trash-file', filePath, userDataContext),
   confirmPermanentDelete: (args) => ipcRenderer.invoke('confirm-permanent-delete', args),
-  renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
+  renameFile: (oldPath, newPath, userDataContext) => ipcRenderer.invoke('rename-file', oldPath, newPath, userDataContext),
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),
   updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
@@ -262,8 +262,38 @@ const electronAPI = {
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
   createSubfolder: (parentPath, folderName) => ipcRenderer.invoke('create-subfolder', { parentPath, folderName }),
   listDirectoryFiles: (args) => ipcRenderer.invoke('list-directory-files', args),
+  provenanceBackfillControl: (action) => ipcRenderer.invoke('provenance-backfill-control', action),
+  onProvenanceIdentitiesAssigned: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('provenance-identities-assigned', handler);
+    return () => ipcRenderer.removeListener('provenance-identities-assigned', handler);
+  },
+  stableUserDataStatus: () => ipcRenderer.invoke('stable-user-data-status'),
+  stableUserDataSync: (args) => ipcRenderer.invoke('stable-user-data-sync', args),
+  stableUserDataMutate: (input) => ipcRenderer.invoke('stable-user-data-mutate', input),
+  stableUserDataReserveLegacyMutation: (input) => ipcRenderer.invoke('stable-user-data-reserve-legacy-mutation', input),
+  stableUserDataFinalizeLegacyMutation: (input) => ipcRenderer.invoke('stable-user-data-finalize-legacy-mutation', input),
+  stableUserDataCompleteLegacyScan: () => ipcRenderer.invoke('stable-user-data-complete-legacy-scan'),
+  stableUserDataGlobalTagMutation: (input) => ipcRenderer.invoke('stable-user-data-global-tag-mutation', input),
+  stableUserDataTagCounts: () => ipcRenderer.invoke('stable-user-data-tag-counts'),
+  onStableUserDataChanged: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('stable-user-data-changed', handler);
+    return () => ipcRenderer.removeListener('stable-user-data-changed', handler);
+  },
+  savedPromptsList: () => ipcRenderer.invoke('saved-prompts:list'),
+  savedPromptsSave: (input) => ipcRenderer.invoke('saved-prompts:save', input),
+  savedPromptsRemove: (id) => ipcRenderer.invoke('saved-prompts:remove', id),
+  savedPromptsResolveSource: (id) => ipcRenderer.invoke('saved-prompts:resolve-source', id),
+  onSavedPromptsChanged: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('saved-prompts:changed', subscription);
+    return () => ipcRenderer.removeListener('saved-prompts:changed', subscription);
+  },
   resolveMediaUrl: (filePath) => ipcRenderer.invoke('resolve-media-url', filePath),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+  hashFileSha256: (filePath, requestId) => ipcRenderer.invoke('hash-file-sha256', { filePath, requestId }),
+  cancelFileSha256: (requestId) => ipcRenderer.send('cancel-hash-file-sha256', requestId),
   readFilesBatch: (filePaths) => ipcRenderer.invoke('read-files-batch', filePaths),
   readFilesHeadBatch: (args) => ipcRenderer.invoke('read-files-head-batch', args),
   readFilesTailBatch: (args) => ipcRenderer.invoke('read-files-tail-batch', args),
@@ -271,7 +301,7 @@ const electronAPI = {
   readModel3DMetadata: (args) => ipcRenderer.invoke('read-model3d-metadata', args),
   readVideoMetadata: (args) => ipcRenderer.invoke('read-video-metadata', args),
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
-  writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
+  writeFile: (filePath, data, provenanceContext) => ipcRenderer.invoke('write-file', filePath, data, provenanceContext),
   writeModel3DExport: (args) => ipcRenderer.invoke('write-model3d-export', args),
   exportBatchToFolder: (args) => ipcRenderer.invoke('export-images-batch', args),
   exportBatchToZip: (args) => ipcRenderer.invoke('export-images-zip', args),
@@ -339,7 +369,7 @@ const electronAPI = {
   setFullscreen: (isFullscreen) => ipcRenderer.invoke('set-fullscreen', isFullscreen),
   imageViewerOpen: (payload) => ipcRenderer.invoke('image-viewer-open', payload),
   imageViewerUpdate: (payload) => ipcRenderer.invoke('image-viewer-update', payload),
-  imageViewerReady: (sessionId) => ipcRenderer.invoke('image-viewer-ready', sessionId),
+  imageViewerReady: (sessionId, appliedRevision) => ipcRenderer.invoke('image-viewer-ready', sessionId, appliedRevision),
   imageViewerWindowAction: (payload) => ipcRenderer.invoke('image-viewer-window-action', payload),
   imageViewerCommand: (payload) => ipcRenderer.invoke('image-viewer-command', payload),
   imageViewerRespond: (payload) => ipcRenderer.send('image-viewer-command-response', payload),

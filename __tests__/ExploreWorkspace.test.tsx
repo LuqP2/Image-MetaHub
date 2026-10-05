@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import ExploreWorkspace from '../components/ExploreWorkspace';
 import { useImageStore } from '../store/useImageStore';
 
@@ -75,5 +75,26 @@ describe('ExploreWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Clusters$/i }));
     expect(screen.getByText('No clusters yet')).toBeTruthy();
     expect(screen.getAllByText('Generate clusters').length).toBeGreaterThan(0);
+  });
+
+  it('shows saved-cluster loading only when the matching directory has a cache', () => {
+    useImageStore.setState({
+      directories: [{ id: 'dir-1', name: 'Library', path: 'D:/synthetic-library' } as any],
+      isLoading: true,
+      clusterCacheLookup: { directoryPath: 'D:/synthetic-library', scanSubfolders: true, hasCache: false },
+    });
+    const view = render(<ExploreWorkspace onNavigateToLibrary={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Clusters$/i }));
+    expect(screen.getByText('No clusters yet')).toBeTruthy();
+
+    act(() => {
+      useImageStore.setState({
+        clusterCacheLookup: { directoryPath: 'D:/synthetic-library', scanSubfolders: true, hasCache: true },
+      });
+    });
+    view.rerender(<ExploreWorkspace onNavigateToLibrary={() => undefined} />);
+    expect(screen.getByText('Loading saved clusters…')).toBeTruthy();
+    expect(screen.queryByText('No clusters yet')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Generate clusters' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

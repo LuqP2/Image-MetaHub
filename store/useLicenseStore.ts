@@ -64,6 +64,7 @@ interface LicenseState {
   licenseKey: string | null;
   licenseEmail: string | null;
   licensePlan: LicensePlan | null;
+  licenseExpiresAt: string | null;
   licenseMessage: string | null;
 
   /**
@@ -87,6 +88,7 @@ const clearStoredLicenseState = () => ({
   licenseKey: null,
   licenseEmail: null,
   licensePlan: null,
+  licenseExpiresAt: null,
   licenseMessage: null,
 });
 
@@ -96,6 +98,7 @@ const stateFromAuthority = (status: LicenseClientStatus) => ({
   licenseKey: null,
   licenseEmail: status.licenseEmail,
   licensePlan: status.plan,
+  licenseExpiresAt: status.expiresAt,
   licenseMessage: status.message,
 });
 
@@ -134,6 +137,7 @@ export const mergePersistedLicenseState = (
       licenseKey: currentState.licenseKey,
       licenseEmail: currentState.licenseEmail,
       licensePlan: currentState.licensePlan,
+      licenseExpiresAt: currentState.licenseExpiresAt,
       licenseMessage: currentState.licenseMessage,
     };
   }
@@ -144,6 +148,7 @@ export const mergePersistedLicenseState = (
     initialized: false,
     licenseStatus: persistedMigrationStatus,
     licensePlan: null,
+    licenseExpiresAt: null,
     licenseMessage: null,
   };
 };
@@ -164,6 +169,7 @@ export const useLicenseStore = create<LicenseState>()(
       licenseKey: null,
       licenseEmail: null,
       licensePlan: null,
+      licenseExpiresAt: null,
       licenseMessage: null,
       trialExpiredNoticeDismissed: false,
 
@@ -260,6 +266,7 @@ export const useLicenseStore = create<LicenseState>()(
               licenseKey: authorityStatus.migrationRequired ? state.licenseKey : null,
               licenseEmail: authorityStatus.licenseEmail ?? (authorityStatus.migrationRequired ? state.licenseEmail : null),
               licensePlan: null,
+              licenseExpiresAt: null,
               licenseMessage: authorityStatus.message,
             });
             if (authorityStatus.migrationRequired) return;
@@ -456,6 +463,7 @@ export const useLicenseStore = create<LicenseState>()(
           licenseKey: null,
           licenseEmail: null,
           licensePlan: null,
+          licenseExpiresAt: null,
           licenseMessage: null,
           trialExpiredNoticeDismissed: false,
         });

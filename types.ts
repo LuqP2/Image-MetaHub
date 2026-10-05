@@ -281,6 +281,26 @@ export interface IndexedImageTransferResultItem {
   lastModified?: number;
   birthtimeMs?: number;
   type?: string;
+  provenance?: {
+    enabled: boolean;
+    available?: boolean;
+    pending?: boolean;
+    error?: string;
+    operation?: {
+      operationId: string;
+      kind: IndexedImageTransferMode;
+      state: string;
+      result?: {
+        mapping?: {
+          assetId: string;
+          revisionId: string;
+          locationId: string;
+          rootId: string;
+          relativePath: string;
+        } | null;
+      } | null;
+    };
+  };
 }
 
 export interface UpdateReleaseNote {
@@ -434,7 +454,7 @@ export interface TrialActivationResult {
 }
 
 export interface ElectronAPI {
-  trashFile: (filename: string) => Promise<{
+  trashFile: (filename: string, userDataContext?: StableUserDataOperationContext) => Promise<{
     success: boolean;
     error?: string;
     permanentDeleteToken?: string;
@@ -448,7 +468,11 @@ export interface ElectronAPI {
     failedTokens: string[];
     error?: string;
   }>;
-  renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
+  renameFile: (
+    oldName: string,
+    newName: string,
+    userDataContext?: StableUserDataOperationContext,
+  ) => Promise<{ success: boolean; error?: string }>;
   setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
@@ -475,24 +499,81 @@ export interface ElectronAPI {
   openCacheLocation: () => Promise<{ success: boolean; error?: string }>;
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string; realPath?: string }[]; error?: string }>;
   createSubfolder: (parentPath: string, folderName: string) => Promise<{ success: boolean; folder?: { name: string; path: string; realPath?: string }; error?: string }>;
-  listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
+  listDirectoryFiles: (args: { dirPath: string; recursive?: boolean; provenanceRootPath?: string }) => Promise<{
     success: boolean;
     files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number; contentModifiedMs?: number }[];
     error?: string;
   }>;
+  provenanceBackfillControl: (action: 'pause' | 'resume') => Promise<{ success: boolean; enabled: boolean; paused?: boolean; error?: string }>;
+  onProvenanceIdentitiesAssigned: (callback: (payload: {
+    rootId: string;
+    rootPath: string;
+    mappings: Array<{
+      relativePath: string;
+      relativePathKey: string;
+      assetId: string;
+      revisionId: string;
+      locationId: string;
+      observationVersion?: number;
+    }>;
+  }) => void) => () => void;
+  stableUserDataStatus: () => Promise<StableUserDataStatus>;
+  stableUserDataSync: (args: { entries: StableUserDataSyncEntry[] }) => Promise<StableUserDataIpcResult<StableUserDataSyncResult[]>>;
+  stableUserDataMutate: (input: StableUserDataMutationInput) => Promise<StableUserDataIpcResult<StableUserDataRecord>>;
+  stableUserDataReserveLegacyMutation: (input: {
+    mutationId: string;
+    domain: StableUserDataDomain;
+    legacyImageId: string;
+    patch: UserDataSemanticPatch;
+  }) => Promise<StableUserDataIpcResult<{ mutationId: string; sequence: number; state: string }>>;
+  stableUserDataFinalizeLegacyMutation: (input: {
+    mutationId: string;
+    sourceVersion: number;
+    payload: Record<string, unknown> | null;
+    tombstone: boolean;
+  }) => Promise<StableUserDataIpcResult<{ mutationId: string; sequence: number; state: string; record?: StableUserDataRecord | null }>>;
+  stableUserDataCompleteLegacyScan: () => Promise<StableUserDataIpcResult<StableUserDataStatus>>;
+  stableUserDataGlobalTagMutation: (input: {
+    action: 'rename' | 'remove';
+    sourceTag: string;
+    targetTag?: string;
+    updatedAt: number;
+  }) => Promise<StableUserDataIpcResult<StableUserDataRecord[]>>;
+  stableUserDataTagCounts: () => Promise<StableUserDataIpcResult<TagInfo[]>>;
+  onStableUserDataChanged: (callback: (payload: { records: StableUserDataRecord[] }) => void) => () => void;
+  savedPromptsList: () => Promise<SavedPromptIpcResult<SavedPrompt[]>>;
+  savedPromptsSave: (input: SavePromptInput) => Promise<SavedPromptIpcResult<SavedPromptSaveResult>>;
+  savedPromptsRemove: (id: string) => Promise<SavedPromptIpcResult<{ id: string; removed: boolean }>>;
+  savedPromptsResolveSource: (id: string) => Promise<SavedPromptIpcResult<SavedPromptSourceResolution>>;
+  onSavedPromptsChanged: (callback: () => void) => () => void;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
+  hashFileSha256: (filePath: string, requestId: string) => Promise<{ success: boolean; sha256?: string; error?: string; errorType?: string; errorCode?: string }>;
+  cancelFileSha256: (requestId: string) => void;
   readFilesBatch: (args: string[] | ElectronReadFilesBatchArgs) => Promise<{ success: boolean; files?: ElectronReadFilesBatchItem[]; error?: string }>;
   readMediaMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   readModel3DMetadata: (args: { filePath: string }) => Promise<{ success: boolean; metadata?: Record<string, unknown> | null; source?: 'sidecar' | 'embedded' | 'none'; error?: string }>;
   readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
-  writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
+  writeFile: (
+    filePath: string,
+    data: any,
+    provenanceContext?: {
+      kind: 'save_as' | 'overwrite';
+      sourcePath?: string;
+      userDataContext?: StableUserDataOperationContext;
+    },
+  ) => Promise<{ success: boolean; error?: string; provenance?: { enabled: boolean; available?: boolean; pending?: boolean; error?: string } }>;
   writeModel3DExport: (args: { filePath: string; modelData: Uint8Array; sidecarData?: Uint8Array }) => Promise<{ success: boolean; error?: string }>;
   exportBatchToFolder: (args: ExportBatchRequest & { destDir: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   exportBatchToZip: (args: ExportBatchRequest & { destZipPath: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   cancelBatchExport: (args: { exportId: string }) => Promise<{ success: boolean; error?: string }>;
   transferIndexedImages: (args: {
-    files: { directoryPath: string; relativePath: string }[];
+    files: {
+      directoryPath: string;
+      relativePath: string;
+      legacyImageId?: string;
+      stableReference?: StableUserDataReference;
+    }[];
     destDir: string;
     mode: IndexedImageTransferMode;
     transferId?: string;
@@ -637,16 +718,16 @@ export interface ElectronAPI {
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   getFullscreenState: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   setFullscreen: (isFullscreen: boolean) => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
-  imageViewerOpen: (payload: { sessionId: string; snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot }) => Promise<{ success: boolean; existing?: boolean; error?: string }>;
+  imageViewerOpen: (payload: { sessionId: string; snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot }) => Promise<{ success: boolean; existing?: boolean; cancelled?: boolean; error?: string }>;
   imageViewerUpdate: (payload: { sessionId: string; snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot }) => Promise<{ success: boolean; ignored?: boolean; error?: string }>;
-  imageViewerReady: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
+  imageViewerReady: (sessionId: string, appliedRevision?: number) => Promise<{ success: boolean; error?: string }>;
   imageViewerWindowAction: (payload: { sessionId: string; action: 'focus' | 'restore' | 'minimize' | 'close' | 'focus-main' | 'toggle-always-on-top' }) => Promise<{ success: boolean; isAlwaysOnTop?: boolean; error?: string }>;
   imageViewerCommand: (payload: { sessionId: string; command: import('./services/imageViewerContracts').ImageViewerCommand }) => Promise<{ success: boolean; error?: string; [key: string]: unknown }>;
   imageViewerRespond: (payload: { requestId: string; response: { success: boolean; error?: string; [key: string]: unknown } }) => void;
   getPathForFile: (file: File) => string;
   onSettingsUpdated: (callback: () => void) => () => void;
   onLicenseStatusChanged: (callback: (status: LicenseClientStatus) => void) => () => void;
-  onImageViewerSnapshot: (callback: (snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot) => void) => () => void;
+  onImageViewerSnapshot: (callback: (snapshot: import('./services/imageViewerContracts').ImageViewerSnapshot | null) => void) => () => void;
   onImageViewerEvent: (callback: (event: { sessionId: string; type: string; reason?: string }) => void) => () => void;
   onImageViewerCommand: (callback: (payload: { sessionId: string; requestId: string; command: import('./services/imageViewerContracts').ImageViewerCommand }) => void) => () => void;
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
@@ -675,6 +756,60 @@ export interface ElectronAPI {
   onWatchedFilesRemoved: (callback: (data: WatchedFileRemovalPayload) => void) => () => void;
   onWatcherDebug: (callback: (data: { message: string }) => void) => () => void;
 }
+
+export interface SourcePathSnapshot {
+  directoryPath: string;
+  relativePath: string;
+  fileSize: number | null;
+  contentModifiedMs: number | null;
+}
+
+export type SavedPromptSource =
+  | {
+      kind: 'stable';
+      reference: {
+        assetId: string;
+        revisionId: string;
+        locationId: string;
+        rootId: string;
+      };
+      pathAtSave: SourcePathSnapshot;
+    }
+  | {
+      kind: 'path';
+      pathAtSave: SourcePathSnapshot;
+    };
+
+export interface SavedPrompt {
+  id: string;
+  createdAt: number;
+  sourceCreatedAt: number | null;
+  positivePrompt: string;
+  negativePrompt: string;
+  textBasis: 'effective' | 'original';
+  source: SavedPromptSource | null;
+}
+
+export interface SavePromptInput {
+  positivePrompt: string;
+  negativePrompt: string;
+  textBasis: 'effective' | 'original';
+  source: SavedPromptSource | null;
+  sourceCreatedAt?: number | null;
+}
+
+export interface SavedPromptSaveResult {
+  status: 'saved' | 'already-saved';
+  prompt: SavedPrompt;
+}
+
+export type SavedPromptSourceResolution =
+  | { status: 'available'; absolutePath: string; sourceChanged: boolean }
+  | { status: 'unavailable'; reason: string };
+
+export type SavedPromptIpcResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: string; errorCode?: string };
 
 declare global {
   interface Window {
@@ -718,6 +853,95 @@ export interface EditableMetadataFields {
 export interface ShadowMetadata extends EditableMetadataFields {
   imageId: string; // Key, links to IndexedImage.id
   updatedAt: number;
+  assetId?: string;
+  persistenceVersion?: number;
+}
+
+export type StableUserDataDomain = 'annotation' | 'shadow';
+
+export interface StableUserDataReference {
+  assetId: string;
+  revisionId: string;
+  locationId: string;
+}
+
+export interface StableUserDataOperationContext {
+  legacyImageId: string;
+  stableReference?: StableUserDataReference;
+  copyUserData?: boolean;
+}
+
+export interface UserDataSemanticPatch {
+  set?: Record<string, unknown>;
+  remove?: string[];
+  deleteRecord?: boolean;
+  addTags?: string[];
+  removeTags?: string[];
+  suppressTags?: string[];
+  unsuppressTags?: string[];
+  importTags?: string[];
+}
+
+export interface StableUserDataRecord {
+  assetId: string;
+  domain: StableUserDataDomain;
+  payload: Record<string, unknown> | null;
+  tombstone: boolean;
+  version: number;
+  authority: 'legacy' | 'sqlite';
+  legacySourceVersion: number;
+  migratedAt: string | null;
+  updatedAt: string;
+}
+
+export interface StableUserDataStatus {
+  initialized: boolean;
+  authority: 'legacy' | 'sqlite';
+  available: boolean;
+  migrationEnabled: boolean;
+  indexingEnabled: boolean;
+  legacyScanComplete?: boolean;
+  legacyScanCompletedAt?: string | null;
+  error?: { code?: string; message?: string } | null;
+}
+
+export interface StableUserDataIpcResult<T> {
+  success: boolean;
+  value?: T;
+  error?: string;
+  code?: string;
+  details?: { current?: StableUserDataRecord } | null;
+}
+
+export interface StableUserDataSyncEntry {
+  domain: StableUserDataDomain;
+  legacyImageId: string;
+  reference?: StableUserDataReference;
+  payload?: Record<string, unknown> | null;
+  tombstone?: boolean;
+  sourceVersion?: number;
+}
+
+export interface StableUserDataSyncResult {
+  domain: StableUserDataDomain;
+  legacyImageId: string;
+  status: 'bound' | 'pending' | 'unmapped' | 'ambiguous' | 'source_ack_required';
+  record: StableUserDataRecord | null;
+  pending?: {
+    domain: StableUserDataDomain;
+    legacyImageId: string;
+    payload: Record<string, unknown> | null;
+    tombstone: boolean;
+    sourceVersion: number;
+  } | null;
+}
+
+export interface StableUserDataMutationInput {
+  domain: StableUserDataDomain;
+  legacyImageId: string;
+  reference: StableUserDataReference;
+  expectedVersion: number;
+  patch: UserDataSemanticPatch;
 }
 
 export interface MetadataClipboardPayload {
@@ -1173,6 +1397,10 @@ export interface IndexedImage {
   enrichmentState?: 'catalog' | 'enriched';
   fileSize?: number;
   fileType?: string;
+  assetId?: string;
+  revisionId?: string;
+  provenanceLocationId?: string;
+  provenanceRootId?: string;
 
   // User Annotations (loaded from ImageAnnotations table)
   isFavorite?: boolean;          // Quick access to favorite status
@@ -1204,6 +1432,9 @@ export interface ImageAnnotations {
   rating?: ImageRating;          // Optional 1-5 user rating
   addedAt: number;               // Timestamp when first annotated
   updatedAt: number;             // Timestamp of last update
+  assetId?: string;
+  persistenceVersion?: number;
+  suppressedMetadataTags?: string[];
 }
 
 /**

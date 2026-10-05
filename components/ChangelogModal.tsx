@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, ExternalLink } from 'lucide-react';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { buildProLicenseUrl } from '../utils/creatorAttribution';
+import { ProPlanSelectorModal } from './ProPlanSelector';
 
 interface ChangelogModalProps {
   isOpen: boolean;
@@ -12,8 +12,8 @@ interface ChangelogModalProps {
 const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, currentVersion }) => {
   const [changelog, setChangelog] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [isPlanSelectorOpen, setIsPlanSelectorOpen] = useState(false);
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'about');
 
   useEffect(() => {
     if (isOpen) {
@@ -137,6 +137,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
       <div 
         className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col border border-gray-700"
@@ -167,6 +168,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
           ) : (
             <>
               {/* Message for the Dev */}
+              {currentVersion === '0.19.3' && (
               <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
                 <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
                 <div className="space-y-3 text-sm leading-relaxed">
@@ -174,7 +176,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                     Hey there, this is Lucas - the solo dev behind Image MetaHub
                   </p>
                   <p className="text-gray-300">
-                    v0.19 is a pretty big update with the main new features being local visual search (CLIP) and support to 3D assets. As usual, its a first implementation that, although functional, might still need a bit of trimming around the edges. Let me know what you think.
+                    v0.19 is a pretty big update with the main new features being local visual search (CLIP) and support to 3D assets. If you use ComfyUI, please update the MetaHub Save Node and use the 3D Save Node so Image MetaHub can keep track of the original image and related metadata. As usual, its a first implementation that, although functional, might still need a bit of trimming around the edges. Let me know what you think.
                   </p>
                   <p className="text-gray-300">
                     There's also an important change to licensing that IMH now uses a new license format; if you already own a license, a replacement license has been sent to the e-mail address used for your purchase. Your existing purchase is still valid, you'll just need to activate using the new key.{' '}
@@ -200,14 +202,13 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 
                   {/* Badges */}
                   <div className="flex gap-3 mt-6 pt-4 border-t border-blue-500/20 flex-wrap">
-                    <a
-                      href={proLicenseUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                    <button
+                      type="button"
+                      onClick={() => setIsPlanSelectorOpen(true)}
+                      className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-accent-strong text-white rounded-lg text-sm font-medium transition-colors"
                     >
                       Get Pro
-                    </a>
+                    </button>
                     <a
                       href="https://discord.gg/2MXWxjKyJ5"
                       target="_blank"
@@ -219,6 +220,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                   </div>
                 </div>
               </div>
+              )}
 
               {/* Changelog Content */}
               <div className="prose prose-invert prose-sm max-w-none">
@@ -241,13 +243,20 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-accent hover:bg-blue-700 text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="px-4 py-2 bg-accent hover:bg-accent-strong text-gray-950 hover:text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             Got it!
           </button>
         </div>
       </div>
-    </div>
+      </div>
+      <ProPlanSelectorModal
+        isOpen={isPlanSelectorOpen}
+        onClose={() => setIsPlanSelectorOpen(false)}
+        token={creatorAttributionToken}
+        ctx="about"
+      />
+    </>
   );
 };
 

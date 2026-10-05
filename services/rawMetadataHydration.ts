@@ -9,11 +9,16 @@ export const hasCompactedRuntimeMetadata = (image: IndexedImage): boolean => (
   Boolean((image.metadata as Record<string, unknown> | undefined)?._rawMetadataCompacted)
 );
 
+export interface RawMetadataHydrationOptions {
+  force?: boolean;
+}
+
 export async function hydrateImageRawMetadata(
   image: IndexedImage,
-  directoryPath?: string
+  directoryPath?: string,
+  options: RawMetadataHydrationOptions = {},
 ): Promise<IndexedImage> {
-  if (!hasCompactedRuntimeMetadata(image)) {
+  if (!options.force && !hasCompactedRuntimeMetadata(image)) {
     return image;
   }
 

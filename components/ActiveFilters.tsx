@@ -45,6 +45,8 @@ const CHIP_ANIMATION = {
 };
 
 const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
+  const selectedFolders = useImageStore((state) => state.selectedFolders);
+  const clearFolderSelection = useImageStore((state) => state.clearFolderSelection);
   const selectedModels = useImageStore((state) => state.selectedModels);
   const excludedModels = useImageStore((state) => state.excludedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
@@ -81,7 +83,7 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
   const setSelectedRatings = useImageStore((state) => state.setSelectedRatings);
   const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
 
-  const hasActiveFilters =
+  const hasClearableFilters =
     activeImageScope !== null ||
     selectedNodes.length > 0 ||
     selectedModels.length > 0 ||
@@ -105,9 +107,14 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
     selectedRatings.length > 0 ||
     (advancedFilters && Object.keys(advancedFilters).length > 0);
 
-  if (!hasActiveFilters) {
+  if (selectedFolders.size === 0 && !hasClearableFilters) {
     return null;
   }
+
+  const selectedFolderPaths = Array.from(selectedFolders);
+  const folderLabel = selectedFolderPaths.length === 1
+    ? selectedFolderPaths[0].split(/[\\/]/).filter(Boolean).pop() || selectedFolderPaths[0]
+    : String(selectedFolderPaths.length);
 
   const chipClass =
     'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium';
@@ -124,7 +131,7 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
           Active Filters
         </span>
-        {onClearAll && (
+        {onClearAll && hasClearableFilters && (
           <button
             onClick={onClearAll}
             className="text-[10px] font-medium text-blue-400 transition-colors hover:text-blue-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
@@ -135,6 +142,26 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
       </div>
       <div className="flex flex-wrap gap-2">
         <AnimatePresence mode="popLayout">
+        {selectedFolderPaths.length > 0 && (
+          <motion.div
+            key="selected-folders"
+            {...CHIP_ANIMATION}
+            title={selectedFolderPaths.join('\n')}
+            className={`${chipClass} border-gray-700/50 bg-gray-800/70 text-gray-200`}
+          >
+            <FolderOpen size={12} className="flex-shrink-0" />
+            <span className="opacity-70">{selectedFolderPaths.length === 1 ? 'Folder' : 'Folders'}</span>
+            <span className="max-w-[180px] truncate">{folderLabel}</span>
+            <button
+              onClick={clearFolderSelection}
+              aria-label="Clear folder selection"
+              title="Show all folders"
+              className="rounded p-0.5 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <X size={12} />
+            </button>
+          </motion.div>
+        )}
         {activeImageScope && (() => {
           const ScopeIcon = SCOPE_ICONS[activeImageScope.type];
           return (

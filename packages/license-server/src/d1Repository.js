@@ -1,9 +1,16 @@
+import {
+  effectiveLicenseStatus,
+  LEGACY_STATUS_PROJECTION_SQL,
+} from './licenseStatusProjection.js';
+
 const mapLicense = (row) => row && ({
   id: row.id,
   keyHash: row.key_hash,
   emailLookup: row.email_lookup,
   plan: row.plan,
-  status: row.status,
+  status: effectiveLicenseStatus(row),
+  adminStatus: row.admin_status,
+  billingState: row.billing_state ?? null,
   source: row.source,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -15,6 +22,12 @@ const mapLicense = (row) => row && ({
   stripeCheckoutSessionId: row.stripe_checkout_session_id,
   externalReference: row.external_reference,
 });
+
+const LICENSE_SELECT = `
+  SELECT licenses.*, stripe_entitlements.billing_state
+  FROM licenses
+  LEFT JOIN stripe_entitlements ON stripe_entitlements.license_id = licenses.id
+`;
 
 const mapActivation = (row) => row && ({
   id: row.id,
@@ -35,15 +48,16 @@ export class D1LicenseRepository {
   async createLicense(record) {
     await this.database.prepare(`
       INSERT INTO licenses (
-        id, key_hash, email_lookup, plan, status, source, created_at, updated_at,
+        id, key_hash, email_lookup, plan, status, admin_status, source, created_at, updated_at,
         expires_at, max_activations, stripe_customer_id, stripe_subscription_id,
         stripe_price_id, stripe_checkout_session_id, external_reference
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       record.id,
       record.keyHash,
       record.emailLookup,
       record.plan,
+      record.status,
       record.status,
       record.source,
       record.createdAt,
@@ -60,29 +74,29 @@ export class D1LicenseRepository {
   }
 
   async findLicenseById(id) {
-    return mapLicense(await this.database.prepare('SELECT * FROM licenses WHERE id = ?').bind(id).first());
+    return mapLicense(await this.database.prepare(`${LICENSE_SELECT} WHERE licenses.id = ?`).bind(id).first());
   }
 
   async findLicenseByKeyHash(keyHash) {
-    return mapLicense(await this.database.prepare('SELECT * FROM licenses WHERE key_hash = ?').bind(keyHash).first());
+    return mapLicense(await this.database.prepare(`${LICENSE_SELECT} WHERE licenses.key_hash = ?`).bind(keyHash).first());
   }
 
   async findLicenseForActivation(keyHash, emailLookupValue) {
     return mapLicense(await this.database.prepare(
-      'SELECT * FROM licenses WHERE key_hash = ? AND email_lookup = ?',
+      `${LICENSE_SELECT} WHERE licenses.key_hash = ? AND licenses.email_lookup = ?`,
     ).bind(keyHash, emailLookupValue).first());
   }
 
   async findLicenseBySourceAndEmailLookup(source, emailLookupValue) {
     return mapLicense(await this.database.prepare(
-      'SELECT * FROM licenses WHERE source = ? AND email_lookup = ?',
+      `${LICENSE_SELECT} WHERE licenses.source = ? AND licenses.email_lookup = ?`,
     ).bind(source, emailLookupValue).first());
   }
 
   async updateLicense(id, patch) {
     const columns = {
       plan: 'plan',
-      status: 'status',
+      status: 'admin_status',
       expiresAt: 'expires_at',
       maxActivations: 'max_activations',
       stripeCustomerId: 'stripe_customer_id',
@@ -95,29 +109,66 @@ export class D1LicenseRepository {
     const entries = Object.entries(patch).filter(([key]) => columns[key]);
     if (entries.length === 0) return this.findLicenseById(id);
 
-    const assignments = entries.map(([key]) => `${columns[key]} = ?`).join(', ');
-    await this.database.prepare(`UPDATE licenses SET ${assignments} WHERE id = ?`)
-      .bind(...entries.map(([, value]) => value), id)
-      .run();
+    const assignments = [];
+    const values = [];
+    for (const [key, value] of entries) {
+      if (key === 'status') {
+        assignments.push('status = ?', 'admin_status = ?');
+        values.push(value, value);
+      } else {
+        assignments.push(`${columns[key]} = ?`);
+        values.push(value);
+      }
+    }
+    const update = this.database.prepare(`UPDATE licenses SET ${assignments.join(', ')} WHERE id = ?`)
+      .bind(...values, id);
+    const syncLegacyStatus = this.database.prepare(`
+      UPDATE licenses
+      SET status = ${LEGACY_STATUS_PROJECTION_SQL},
+          legacy_status_revision = legacy_status_revision + 1
+      WHERE id = ?
+    `).bind(id);
+    const statements = [update, syncLegacyStatus];
+    if (patch.status !== undefined && patch.status !== 'active') {
+      statements.push(this.database.prepare(`
+        UPDATE license_delivery_outbox
+        SET status = 'cancelled', encrypted_payload = NULL, updated_at = ?,
+            lease_token = NULL, lease_expires_at = NULL
+        WHERE license_id = ? AND status IN ('pending', 'leased', 'suspended', 'dead_letter')
+      `).bind(patch.updatedAt, id));
+    }
+    await this.database.batch(statements);
     return this.findLicenseById(id);
   }
 
-  async activateInstallation(record, maxActivations) {
+  async activateInstallation(record, maxActivations, authorizedAt) {
     const result = await this.database.prepare(`
       INSERT INTO activations (
         id, license_id, installation_hash, created_at, last_seen_at,
         deactivated_at, app_version, platform
       )
       SELECT ?, ?, ?, ?, ?, NULL, ?, ?
-      WHERE ? IS NULL
-        OR EXISTS (
-          SELECT 1 FROM activations
-          WHERE license_id = ? AND installation_hash = ? AND deactivated_at IS NULL
+      FROM licenses current_license
+      LEFT JOIN stripe_entitlements current_entitlement
+        ON current_entitlement.license_id = current_license.id
+      WHERE current_license.id = ?
+        AND current_license.admin_status = 'active'
+        AND (current_license.expires_at IS NULL OR current_license.expires_at > ?)
+        AND (
+          current_license.source <> 'stripe'
+          OR current_entitlement.billing_state = 'active'
         )
-        OR (
-          SELECT COUNT(*) FROM activations
-          WHERE license_id = ? AND deactivated_at IS NULL
-        ) < ?
+        AND (
+          ? IS NULL
+          OR EXISTS (
+            SELECT 1 FROM activations
+            WHERE license_id = ? AND installation_hash = ? AND deactivated_at IS NULL
+          )
+          OR (
+            SELECT COUNT(*) FROM activations
+            WHERE license_id = ? AND deactivated_at IS NULL
+          ) < ?
+        )
       ON CONFLICT(license_id, installation_hash) DO UPDATE SET
         last_seen_at = excluded.last_seen_at,
         deactivated_at = NULL,
@@ -131,6 +182,8 @@ export class D1LicenseRepository {
       record.lastSeenAt,
       record.appVersion,
       record.platform,
+      record.licenseId,
+      authorizedAt,
       maxActivations,
       record.licenseId,
       record.installationHash,
@@ -152,7 +205,20 @@ export class D1LicenseRepository {
     const result = await this.database.prepare(`
       UPDATE activations SET last_seen_at = ?
       WHERE license_id = ? AND installation_hash = ? AND deactivated_at IS NULL
-    `).bind(lastSeenAt, licenseId, installationHash).run();
+        AND EXISTS (
+          SELECT 1
+          FROM licenses current_license
+          LEFT JOIN stripe_entitlements current_entitlement
+            ON current_entitlement.license_id = current_license.id
+          WHERE current_license.id = activations.license_id
+            AND current_license.admin_status = 'active'
+            AND (current_license.expires_at IS NULL OR current_license.expires_at > ?)
+            AND (
+              current_license.source <> 'stripe'
+              OR current_entitlement.billing_state = 'active'
+            )
+        )
+    `).bind(lastSeenAt, licenseId, installationHash, lastSeenAt).run();
     return Boolean(result.meta?.changes);
   }
 

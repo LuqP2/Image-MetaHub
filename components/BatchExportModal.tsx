@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, X } from 'lucide-react';
-import { getShadowMetadata } from '../services/imageAnnotationsStorage';
+import { getPersistedShadowMetadata } from '../services/userDataPersistenceAdapter';
 import { buildEffectiveMetadata } from '../utils/editableMetadata';
 import {
   type ExportFileDescriptor,
@@ -221,7 +221,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           return null;
         }
 
-        const shadowMetadata = applyShadowEdits ? await getShadowMetadata(image.id) : null;
+        const shadowMetadata = applyShadowEdits ? await getPersistedShadowMetadata(image) : null;
         const effectiveMetadata = metadataPolicy === 'metahub_standard'
           ? buildEffectiveMetadata(image.metadata?.normalizedMetadata, shadowMetadata)
           : null;
@@ -554,7 +554,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           <button
             onClick={handleExport}
             disabled={isExporting || exportCount === 0}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-accent-strong text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
           >
             <Download className="w-4 h-4" />
             {isExporting ? 'Exporting...' : 'Export'}

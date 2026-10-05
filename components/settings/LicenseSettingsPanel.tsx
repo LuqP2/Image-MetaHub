@@ -4,14 +4,15 @@ import { useLicenseStore } from '../../store/useLicenseStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { SettingsPanel } from './SettingsPanel';
 import { SettingsSectionCard } from './SettingsSectionCard';
-import { buildProLicenseUrl } from '../../utils/creatorAttribution';
+import { formatLicenseValidity, licensePlanLabel } from '../../utils/licenseDisplay';
+import { ProPlanCheckoutOptions } from '../ProPlanSelector';
 
 const licenseStatusClassName: Record<string, string> = {
   free: 'border-gray-700 bg-gray-800 text-gray-300',
-  trial: 'border-yellow-500/30 bg-yellow-500/10 text-yellow-200',
-  expired: 'border-red-500/30 bg-red-500/10 text-red-200',
-  pro: 'border-green-500/30 bg-green-500/10 text-green-200',
-  lifetime: 'border-green-500/30 bg-green-500/10 text-green-200',
+  trial: 'border-yellow-300 bg-yellow-100 text-yellow-800 dark:border-yellow-500/30 dark:bg-yellow-500/10 dark:text-yellow-200',
+  expired: 'border-red-300 bg-red-100 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200',
+  pro: 'border-green-300 bg-green-100 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-200',
+  lifetime: 'border-green-300 bg-green-100 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-200',
 };
 
 const licenseStatusLabel: Record<string, string> = {
@@ -25,11 +26,18 @@ const licenseStatusLabel: Record<string, string> = {
 export const LicenseSettingsPanel: React.FC = () => {
   const licenseStatus = useLicenseStore((state) => state.licenseStatus);
   const licenseEmail = useLicenseStore((state) => state.licenseEmail);
+  const licensePlan = useLicenseStore((state) => state.licensePlan);
+  const licenseExpiresAt = useLicenseStore((state) => state.licenseExpiresAt);
   const licenseKey = useLicenseStore((state) => state.licenseKey);
   const licenseStoreMessage = useLicenseStore((state) => state.licenseMessage);
   const activateLicense = useLicenseStore((state) => state.activateLicense);
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'settings');
+  const paidPlanLabel = licenseStatus === 'pro' || licenseStatus === 'lifetime'
+    ? licensePlanLabel(licensePlan)
+    : licenseStatusLabel[licenseStatus];
+  const validityLabel = licenseStatus === 'pro' || licenseStatus === 'lifetime'
+    ? formatLicenseValidity(licensePlan, licenseExpiresAt)
+    : null;
 
   const [licenseEmailInput, setLicenseEmailInput] = useState(licenseEmail ?? '');
   const [licenseKeyInput, setLicenseKeyInput] = useState(licenseKey ?? '');
@@ -77,9 +85,10 @@ export const LicenseSettingsPanel: React.FC = () => {
       <SettingsSectionCard title="License status">
         <div className="flex flex-wrap items-center gap-3">
           <span className={`inline-flex rounded-full border px-3 py-1 text-sm font-medium ${licenseStatusClassName[licenseStatus]}`}>
-            {licenseStatusLabel[licenseStatus]}
+            {paidPlanLabel}
           </span>
           {licenseEmail ? <span className="text-sm text-gray-400">Activated for {licenseEmail}</span> : null}
+          {validityLabel ? <span className="text-sm text-gray-400">{validityLabel}</span> : null}
         </div>
       </SettingsSectionCard>
 
@@ -127,17 +136,14 @@ export const LicenseSettingsPanel: React.FC = () => {
             <Crown size={14} />
             {isActivatingLicense ? 'Activating...' : 'Activate license'}
           </button>
-          <a
-            href={proLicenseUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-blue-300 hover:text-blue-200"
-          >
-            Get Pro license
-          </a>
           {creatorAttributionToken ? (
             <span className="text-xs text-gray-500">Creator attribution detected.</span>
           ) : null}
+        </div>
+
+        <div className="border-t border-gray-800 pt-4">
+          <p className="mb-2 text-sm font-medium text-gray-200">Purchase Pro</p>
+          <ProPlanCheckoutOptions token={creatorAttributionToken} ctx="settings" compact />
         </div>
 
         {licenseMessage ? <p className="text-sm text-gray-300">{licenseMessage}</p> : null}

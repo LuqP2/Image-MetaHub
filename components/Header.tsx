@@ -1,16 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Bug, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon, Compass, Box } from 'lucide-react';
+import { Settings, Bug, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon, Compass, Bookmark, Box } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
-import { buildProLicenseUrl } from '../utils/creatorAttribution';
+import { ProPlanSelectorModal } from './ProPlanSelector';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
 import type { ExploreDimension } from '../types';
+import { useLicenseStore } from '../store/useLicenseStore';
+import { formatLicenseValidity } from '../utils/licenseDisplay';
 
-type LibraryView = 'library' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor';
+type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor';
 
 interface HeaderProps {
     onOpenSettings: () => void;
@@ -56,7 +58,8 @@ const Header: React.FC<HeaderProps> = ({
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
   const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
-  const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'menu');
+  const licensePlan = useLicenseStore((state) => state.licensePlan);
+  const licenseExpiresAt = useLicenseStore((state) => state.licenseExpiresAt);
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
   const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
   const viewingStackPrompt = useImageStore((state) => state.viewingStackPrompt);
@@ -73,6 +76,7 @@ const Header: React.FC<HeaderProps> = ({
   );
   const [isLaunchingGenerator, setIsLaunchingGenerator] = useState(false);
   const [isComfyUIDragTarget, setIsComfyUIDragTarget] = useState(false);
+  const [isPlanSelectorOpen, setIsPlanSelectorOpen] = useState(false);
   const launchPollingDeadlineRef = useRef<number | null>(null);
   const relevantServerUrl =
     detectedGenerator.runtimeFamily === 'comfyui'
@@ -283,12 +287,6 @@ const Header: React.FC<HeaderProps> = ({
         classes: 'text-gray-300',
       };
     }
-    if (isPro) {
-      return {
-        label: 'Pro',
-        classes: 'text-gray-100',
-      };
-    }
     if (isTrialActive) {
       const daysLabel = `${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'day' : 'days'} left`;
       return {
@@ -348,18 +346,20 @@ const Header: React.FC<HeaderProps> = ({
   return (
     <>
     <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-4 py-2.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
-      <div className="container mx-auto flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          <button
-            onClick={onOpenLicense}
-            className={`app-top-pill shrink-0 text-[10px] uppercase tracking-[0.18em] ${statusConfig.classes}`}
-            title={isFree
-              ? (canStartTrial ? 'Start trial or activate license' : 'Activate license')
-              : 'Manage license and status'}
-          >
-            <Crown className="h-3 w-3" />
-            <span>{statusConfig.label}</span>
-          </button>
+          {!isPro && !isTrialActive && (
+            <button
+              onClick={onOpenLicense}
+              className={`app-top-pill shrink-0 text-[10px] uppercase tracking-[0.18em] ${statusConfig.classes}`}
+              title={isFree
+                ? (canStartTrial ? 'Start trial or activate license' : 'Activate license')
+                : formatLicenseValidity(licensePlan, licenseExpiresAt) ?? 'Manage license and status'}
+            >
+              <Crown className="h-3 w-3" />
+              <span>{statusConfig.label}</span>
+            </button>
+          )}
 
           {libraryView && onLibraryViewChange && (
             <div className="min-w-0 max-w-full overflow-x-auto scrollbar-thin">
@@ -368,8 +368,8 @@ const Header: React.FC<HeaderProps> = ({
                   const Icon = 'icon' in tab ? tab.icon : null;
                   const isComfyUITab = tab.id === 'comfyui';
                   return (
+                    <React.Fragment key={tab.id}>
                     <button
-                      key={tab.id}
                       onClick={() => handleViewTabClick(tab.id)}
                       onDragEnter={isComfyUITab ? (event) => {
                         if (hasInternalImageDragType(event.dataTransfer)) {
@@ -416,6 +416,20 @@ const Header: React.FC<HeaderProps> = ({
                       {Icon && <Icon size={14} />}
                       <span>{tab.label}</span>
                     </button>
+                    {tab.id === 'library' && (
+                      <button
+                        type="button"
+                        onClick={() => handleViewTabClick('prompts')}
+                        className={`app-top-segment px-2.5 ${
+                          libraryView === 'prompts' ? 'app-top-segment-active' : ''
+                        }`}
+                        title="Prompt Library"
+                        aria-label="Prompt Library"
+                      >
+                        <Bookmark size={14} />
+                      </button>
+                    )}
+                    </React.Fragment>
                   );
                 })}
                 {classicTabs.map((tab) => (
@@ -481,14 +495,13 @@ const Header: React.FC<HeaderProps> = ({
           </button>
 
           {!isPro && (
-            <a
-              href={proLicenseUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => setIsPlanSelectorOpen(true)}
               className="app-top-pill hidden h-9 border-amber-700/30 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 hover:border-amber-600/40 hover:bg-amber-500/15 hover:text-amber-100 lg:inline-flex"
             >
               Get Pro
-            </a>
+            </button>
           )}
 
           <div className="app-top-segmented">
@@ -519,6 +532,12 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
     </header>
+    <ProPlanSelectorModal
+      isOpen={isPlanSelectorOpen}
+      onClose={() => setIsPlanSelectorOpen(false)}
+      token={creatorAttributionToken}
+      ctx="menu"
+    />
     </>
   );
 };

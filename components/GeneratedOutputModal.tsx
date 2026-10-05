@@ -75,7 +75,7 @@ const GeneratedOutputModal: React.FC<GeneratedOutputModalProps> = ({
             {current.imageId && onOpenIndexedImage && (
               <button
                 onClick={() => onOpenIndexedImage(current.imageId!)}
-                className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-500"
+                className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950"
                 aria-label="View full metadata"
                 title="View full metadata"
               >

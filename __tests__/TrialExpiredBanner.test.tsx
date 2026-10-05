@@ -54,9 +54,12 @@ describe('TrialExpiredBanner', () => {
     const cta = screen.getByRole('link', { name: ctaName }) as HTMLAnchorElement;
     const url = new URL(cta.href);
 
+    expect(url.origin).toBe('https://buy.stripe.com');
+    expect(url.pathname).toBe('/14AfZg9a48pQa5p8lH3Ru00');
     expect(url.searchParams.get('ctx')).toBe('trial_expired');
     expect(url.searchParams.get('src')).toBe('app');
     expect(url.searchParams.get('imh_ref')).toBeNull();
+    expect(url.searchParams.get('utm_term')).toBe('lifetime');
   });
 
   it('keeps the creator attribution token on the checkout link', () => {
@@ -69,6 +72,17 @@ describe('TrialExpiredBanner', () => {
 
     expect(url.searchParams.get('ctx')).toBe('trial_expired');
     expect(url.searchParams.get('imh_ref')).toBe('imhcrt_test');
+  });
+
+  it('keeps annual and monthly direct checkout options available', () => {
+    setLicense('expired');
+    render(<TrialExpiredBanner />);
+
+    const annual = screen.getByRole('link', { name: /annual.*19\.99\/year/i }) as HTMLAnchorElement;
+    const monthly = screen.getByRole('link', { name: /monthly.*4\.99\/month/i }) as HTMLAnchorElement;
+
+    expect(new URL(annual.href).searchParams.get('utm_term')).toBe('annual');
+    expect(new URL(monthly.href).searchParams.get('utm_term')).toBe('monthly');
   });
 
   it('is dismissed in a single click and stays dismissed', () => {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageGrid from '../components/ImageGrid';
 import { useImageSelection } from '../hooks/useImageSelection';
 import { useImageStore } from '../store/useImageStore';
@@ -8,6 +8,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import type { ImageStack, IndexedImage } from '../types';
 
 const renameIndexedImageMock = vi.hoisted(() => vi.fn());
+const featureAccessMock = vi.hoisted(() => ({ canUseBulkTagging: true, showProModal: vi.fn() }));
 const stackedItemsMock = vi.hoisted(() => ({ value: null as (IndexedImage | ImageStack)[] | null }));
 const autoSizerResizeMock = vi.hoisted(() => ({
   callback: null as null | ((size: { height: number; width: number }) => void),
@@ -21,6 +22,8 @@ const contextMenuStateMock = {
   image: undefined as IndexedImage | undefined,
   directoryPath: 'D:/library',
 };
+
+afterEach(() => cleanup());
 
 vi.mock('../hooks/useContextMenu', () => ({
   useContextMenu: () => ({
@@ -98,11 +101,11 @@ vi.mock('../hooks/useReparseMetadata', () => ({
 vi.mock('../hooks/useFeatureAccess', () => ({
   useFeatureAccess: () => ({
     canUseComparison: true,
-    showProModal: vi.fn(),
+    showProModal: featureAccessMock.showProModal,
     canUseA1111: true,
     canUseComfyUI: true,
     canUseBatchExport: true,
-    canUseBulkTagging: true,
+    canUseBulkTagging: featureAccessMock.canUseBulkTagging,
     canUseFileManagement: true,
     initialized: true,
     canUseDuringTrialOrPro: true,
@@ -166,12 +169,13 @@ const createImages = (count: number): IndexedImage[] =>
     }),
   );
 
-const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisuallySimilar = false, hasRightSidebar = false }: {
+const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisuallySimilar = false, hasRightSidebar = false, onDeleteSelected }: {
   images: IndexedImage[];
   onFindSimilar?: (image: IndexedImage) => void;
   onFindVisuallySimilar?: (image: IndexedImage) => void;
   canFindVisuallySimilar?: boolean;
   hasRightSidebar?: boolean;
+  onDeleteSelected?: () => void;
 }) => {
   const selectedImages = useImageStore((state) => state.selectedImages);
 
@@ -188,6 +192,7 @@ const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisually
       onFindVisuallySimilar={onFindVisuallySimilar}
       canFindVisuallySimilar={canFindVisuallySimilar}
       hasRightSidebar={hasRightSidebar}
+      onDeleteSelected={onDeleteSelected}
     />
   );
 };
@@ -233,6 +238,8 @@ const SelectionHarness = ({ images }: { images: IndexedImage[] }) => {
 
 describe('ImageGrid context menu', () => {
   beforeEach(() => {
+    featureAccessMock.canUseBulkTagging = true;
+    featureAccessMock.showProModal.mockReset();
     vi.useRealTimers();
     showContextMenuMock.mockReset();
     stackedItemsMock.value = null;
@@ -515,6 +522,60 @@ describe('ImageGrid context menu', () => {
 
     expect(screen.getByRole('textbox', { name: /rename alpha\.png/i })).toBeTruthy();
     expect(hideContextMenuMock).toHaveBeenCalled();
+  });
+
+  it('deletes only the context image when it is outside the current selection', () => {
+    const onDeleteSelected = vi.fn();
+    const image = createImage({ id: 'img-1', name: 'alpha.png' });
+    const otherImage = createImage({ id: 'img-2', name: 'beta.png' });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+    setupImageGridState([image, otherImage]);
+    useImageStore.setState({ selectedImages: new Set(['img-2']) });
+
+    render(<Harness images={[image, otherImage]} onDeleteSelected={onDeleteSelected} />);
+
+    fireEvent.click(screen.getByText('Delete'));
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1']));
+    expect(onDeleteSelected).toHaveBeenCalledTimes(1);
+    expect(hideContextMenuMock).toHaveBeenCalled();
+  });
+
+  it('shows and deletes the full global selection when some selected images are outside the grid', () => {
+    const onDeleteSelected = vi.fn();
+    const image = createImage({ id: 'img-1', name: 'alpha.png' });
+    const otherImage = createImage({ id: 'img-2', name: 'beta.png' });
+    const hiddenImage = createImage({ id: 'img-3', name: 'hidden.png' });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+    setupImageGridState([image, otherImage, hiddenImage]);
+    useImageStore.setState({ selectedImages: new Set(['img-1', 'img-2', 'img-3']) });
+
+    render(<Harness images={[image, otherImage]} onDeleteSelected={onDeleteSelected} />);
+
+    fireEvent.click(screen.getByText('Delete Selected (3)'));
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2', 'img-3']));
+    expect(onDeleteSelected).toHaveBeenCalledTimes(1);
+  });
+
+  it('gates Reject Candidate for a Free multi-selection', () => {
+    const images = [createImage({ id: 'img-1', name: 'alpha.png' }), createImage({ id: 'img-2', name: 'beta.png' })];
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = images[0];
+    setupImageGridState(images);
+    const bulkAddTag = vi.fn();
+    const bulkRemoveTag = vi.fn();
+    useImageStore.setState({ selectedImages: new Set(images.map((image) => image.id)), bulkAddTag, bulkRemoveTag });
+    featureAccessMock.canUseBulkTagging = false;
+
+    render(<Harness images={images} />);
+    fireEvent.click(screen.getByText('Reject Candidate (2)'));
+
+    expect(featureAccessMock.showProModal).toHaveBeenCalledWith('bulk_tagging');
+    expect(bulkAddTag).not.toHaveBeenCalled();
+    expect(bulkRemoveTag).not.toHaveBeenCalled();
   });
 
   it('shows collection actions in the image context menu', () => {

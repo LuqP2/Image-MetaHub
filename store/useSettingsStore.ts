@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
+import type { ThemeId } from '../src/theme/themeRegistry';
 import {
   DEFAULT_RECENT_TAG_CHIP_LIMIT,
   DEFAULT_TAG_SUGGESTION_LIMIT,
@@ -111,9 +112,13 @@ export const sanitizeSlideshowIntervalSeconds = (value: number): number => {
 
 export type VideoRepeatMode = 'off' | 'one' | 'all';
 export type ImageViewerMode = 'detached' | 'inline';
+export type ImageViewerDefaultZoom = 'fit' | 'actual';
 
 export const sanitizeImageViewerMode = (value: unknown): ImageViewerMode =>
   value === 'inline' || value === 'detached' ? value : 'detached';
+
+export const sanitizeImageViewerDefaultZoom = (value: unknown): ImageViewerDefaultZoom =>
+  value === 'actual' ? 'actual' : 'fit';
 
 const VALID_VIDEO_REPEAT_MODES: VideoRepeatMode[] = ['off', 'one', 'all'];
 const isValidVideoRepeatMode = (value: unknown): value is VideoRepeatMode =>
@@ -146,7 +151,7 @@ interface SettingsState {
   autoUpdate: boolean;
   viewMode: 'grid' | 'list';
   groupBy: ImageGroupByMode;
-  theme: 'light' | 'dark' | 'system' | 'dracula' | 'nord' | 'ocean';
+  theme: ThemeId;
   keymap: Keymap;
   lastViewedVersion: string | null;
   indexingConcurrency: number;
@@ -196,6 +201,8 @@ interface SettingsState {
   videoShuffle: boolean;
   /** Desktop viewer host. Web builds always resolve this preference to inline. */
   imageViewerMode: ImageViewerMode;
+  /** Zoom mode applied whenever an image opens in the viewer. */
+  imageViewerDefaultZoom: ImageViewerDefaultZoom;
   creatorAttributionToken: string | null;
   creatorAttributionUpdatedAt: number | null;
 
@@ -225,7 +232,7 @@ interface SettingsState {
   toggleAutoUpdate: () => void;
   toggleViewMode: () => void;
   setGroupBy: (value: ImageGroupByMode) => void;
-  setTheme: (theme: 'light' | 'dark' | 'system' | 'dracula' | 'nord' | 'ocean') => void;
+  setTheme: (theme: ThemeId) => void;
   updateKeybinding: (scope: string, action: string, keybinding: string) => void;
   resetKeymap: () => void;
   setLastViewedVersion: (version: string) => void;
@@ -258,6 +265,7 @@ interface SettingsState {
   setVideoRepeatMode: (value: VideoRepeatMode) => void;
   setVideoShuffle: (value: boolean) => void;
   setImageViewerMode: (value: ImageViewerMode) => void;
+  setImageViewerDefaultZoom: (value: ImageViewerDefaultZoom) => void;
   setCreatorAttributionToken: (token: string | null) => void;
   setA1111Enabled: (value: boolean) => void;
   setA1111ServerUrl: (url: string) => void;
@@ -279,6 +287,7 @@ interface SettingsState {
 const isElectron = !!window.electronAPI;
 
 import { getDefaultKeymap } from '../services/hotkeyConfig';
+import { mergeKeymapWithDefaults } from '../services/hotkeyBindings';
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -324,6 +333,7 @@ export const useSettingsStore = create<SettingsState>()(
       videoRepeatMode: readLegacyVideoRepeatMode(),
       videoShuffle: false,
       imageViewerMode: 'detached',
+      imageViewerDefaultZoom: 'fit',
       creatorAttributionToken: null,
       creatorAttributionUpdatedAt: null,
 
@@ -400,6 +410,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({ videoRepeatMode: isValidVideoRepeatMode(value) ? value : 'off' }),
       setVideoShuffle: (value) => set({ videoShuffle: !!value }),
       setImageViewerMode: (value) => set({ imageViewerMode: sanitizeImageViewerMode(value) }),
+      setImageViewerDefaultZoom: (value) => set({ imageViewerDefaultZoom: sanitizeImageViewerDefaultZoom(value) }),
       setCreatorAttributionToken: (token) => {
         const normalizedToken = typeof token === 'string' ? token.trim() : '';
         set({
@@ -487,6 +498,7 @@ export const useSettingsStore = create<SettingsState>()(
         videoRepeatMode: 'off',
         videoShuffle: false,
         imageViewerMode: 'detached',
+        imageViewerDefaultZoom: 'fit',
         creatorAttributionToken: null,
         creatorAttributionUpdatedAt: null,
         a1111Enabled: true,
@@ -507,23 +519,15 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'image-metahub-settings',
       storage: createJSONStorage(() => isElectron ? electronStorage : localStorage),
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<SettingsState>;
+        return {
+          ...currentState,
+          ...persisted,
+          keymap: mergeKeymapWithDefaults(persisted.keymap),
+        };
+      },
       onRehydrateStorage: () => (state) => {
-        if (state) {
-          const defaultKeymap = getDefaultKeymap();
-          state.keymap = {
-            ...defaultKeymap,
-            ...state.keymap,
-            global: {
-              ...(defaultKeymap.global as Record<string, string>),
-              ...((state.keymap?.global as Record<string, string> | undefined) ?? {}),
-            },
-            preview: {
-              ...(defaultKeymap.preview as Record<string, string>),
-              ...((state.keymap?.preview as Record<string, string> | undefined) ?? {}),
-            },
-          };
-        }
-
         // Migration: Fix invalid itemsPerPage values from older versions
         if (state && (typeof state.itemsPerPage !== 'number' || (state.itemsPerPage <= 0 && state.itemsPerPage !== -1) || state.itemsPerPage > 100)) {
           state.itemsPerPage = 100;
@@ -607,6 +611,10 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && !isValidVideoRepeatMode(state.videoRepeatMode)) {
           state.videoRepeatMode = 'off';
+        }
+
+        if (state) {
+          state.imageViewerDefaultZoom = sanitizeImageViewerDefaultZoom(state.imageViewerDefaultZoom);
         }
 
         if (state && typeof state.videoShuffle !== 'boolean') {

@@ -14,6 +14,14 @@ export interface ClusterCacheCompatibilityInput {
   sourceImageCount?: number;
 }
 
+export interface ClusterCacheSourceInput {
+  clusters: ImageCluster[];
+  sourceSignature: string;
+  sourceImageCount: number;
+  lastGenerated: number;
+  clusterCacheVersion?: number;
+}
+
 const FNV_OFFSET = 2166136261;
 const FNV_PRIME = 16777619;
 
@@ -34,10 +42,8 @@ export const getPromptImagesForClustering = (images: IndexedImage[]): IndexedIma
 export const getClusterProcessingLimit = (canUseFullClustering: boolean): number =>
   canUseFullClustering ? Infinity : CLUSTERING_PREVIEW_LIMIT;
 
-export const buildClusterSourceSignature = (images: IndexedImage[]): string => {
-  const promptImages = getPromptImagesForClustering(images);
+const hashClusterSourceImages = (promptImages: IndexedImage[]): number => {
   let hash = updateHash(FNV_OFFSET, `${promptImages.length}`);
-
   for (const image of promptImages) {
     hash = updateHash(hash, '\u0000');
     hash = updateHash(hash, image.id);
@@ -46,8 +52,67 @@ export const buildClusterSourceSignature = (images: IndexedImage[]): string => {
     hash = updateHash(hash, '\u0001');
     hash = updateHash(hash, image.prompt?.trim() ?? '');
   }
+  return hash;
+};
 
-  return `${promptImages.length}:${toHashString(hash)}`;
+// Caches written before clusterCacheVersion was added used the incoming image order.
+export const buildLegacyClusterSourceSignature = (images: IndexedImage[]): string => {
+  const promptImages = getPromptImagesForClustering(images);
+  return `${promptImages.length}:${toHashString(hashClusterSourceImages(promptImages))}`;
+};
+
+export const buildClusterSourceSignatures = (images: IndexedImage[], processingLimit = Infinity): { full: string; limited: string } => {
+  const promptImages = getPromptImagesForClustering(images);
+  // Library hydration and sorting can return the same files in a different order.
+  let hash = hashClusterSourceImages([...promptImages].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const full = `${promptImages.length}:${toHashString(hash)}`;
+
+  // A limited clustering run only processes the first N images. Record that
+  // subset as well, so a reordered library cannot restore incomplete clusters.
+  if (promptImages.length > processingLimit) {
+    hash = updateHash(hash, '\u0002');
+    for (const id of promptImages.slice(0, processingLimit).map((image) => image.id).sort()) {
+      hash = updateHash(hash, id);
+      hash = updateHash(hash, '\u0000');
+    }
+  }
+
+  return { full, limited: `${promptImages.length}:${toHashString(hash)}` };
+};
+
+export const buildClusterSourceSignature = (images: IndexedImage[], processingLimit = Infinity): string =>
+  buildClusterSourceSignatures(images, processingLimit).limited;
+
+// Images written after the cache was generated can be omitted to reconstruct
+// the saved source signature. If any older image changed, the signature differs
+// and the saved clusters are not restored.
+export const canRestoreClusterCacheSource = (
+  cache: ClusterCacheSourceInput,
+  images: IndexedImage[],
+  acceptedSignatures: string[],
+  processingLimit: number,
+): boolean => {
+  if (acceptedSignatures.includes(cache.sourceSignature)) {
+    return true;
+  }
+  const promptImages = getPromptImagesForClustering(images);
+  if (promptImages.length <= cache.sourceImageCount || !Number.isFinite(cache.lastGenerated) ||
+      promptImages.some((image) => !Number.isFinite(image.lastModified))) {
+    return false;
+  }
+  const originalImages = promptImages.filter((image) => image.lastModified <= cache.lastGenerated);
+  if (originalImages.length !== cache.sourceImageCount) {
+    return false;
+  }
+  const originalSignatures = buildClusterSourceSignatures(originalImages, processingLimit);
+  const matchesOriginal = cache.sourceSignature === originalSignatures.limited ||
+    cache.sourceSignature === originalSignatures.full ||
+    (cache.clusterCacheVersion == null && cache.sourceSignature === buildLegacyClusterSourceSignature(originalImages));
+  if (!matchesOriginal) {
+    return false;
+  }
+  const originalIds = new Set(originalImages.map((image) => image.id));
+  return cache.clusters.every((cluster) => cluster.imageIds.every((id) => originalIds.has(id)));
 };
 
 export const buildClusteringMetadata = (

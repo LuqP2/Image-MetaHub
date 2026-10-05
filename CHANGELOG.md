@@ -5,17 +5,112 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.19.0] - Unreleased
+## [0.20.1] - [2026-10-04]
+
+### Improved
+
+- **Detached Viewer Navigation**: Added visible previous and next controls to detached viewer windows. Navigation now keeps the Library's active image, card highlight, and preview sidebar synchronized with the image currently being viewed.
+- **Smart Library Cluster Restore**: Saved clusters are now detected earlier during startup, with a loading state shown while they are being restored instead of briefly presenting an empty cluster view.
+
+### Fixed
+
+- **Detached Viewer Lifecycle**: Opening another image while a detached viewer is already open or still loading is now handled reliably. Delayed viewer windows no longer steal focus, closing the active viewer returns cleanly to the Library, and the Library remains on the last image viewed.
+- **Detached Viewer Favorites**: The favorite heart now immediately reflects the actual saved favorite state instead of appearing inverted until the viewer is refreshed.
+- **Smart Library Cluster Persistence**: Saved clusters now restore correctly when new images have been added since the cache was created, while still rejecting stale clusters when previously indexed image metadata has changed. Cluster restoration also completes correctly for empty libraries and libraries without clusterable prompts.
+
+## [0.20.0] - [2026-09-28]
+
+### Added
+
+- **Expanded Theme Library**: Added ten new dark themes — Ayu, Catppuccin, GitHub, Matrix, Monokai, Oscurange, Raycast, Solarized, Temple, and Tokyo Night — with a compact theme dropdown in Appearance settings.
+- **Single-Image Auto-Tag**: Auto-Tag is now available directly from the Image Modal. Regenerate cycles through additional valid candidates, and generated tags are persisted with the image.
+- **Image Curation Shortcuts**: Rating shortcuts `1–5` are now configurable in Settings → Shortcuts, `0` clears a rating, and `X` toggles a reversible Reject Candidate tag. These actions work from the Image Modal and Grid, including multi-selection.
+
+### Improved
+
+- **Auto-Tag Quality**: Auto-Tag now works with meaningful prompt fragments instead of isolated words, preserving concepts such as multi-word subjects, environments, lighting, and composition. Weighting syntax, LoRA references, common quality boilerplate, incomplete phrases, and instruction-like fragments are filtered out before ranking.
+- **Workflow Inspector Layout**: Embedded node positions are preserved when usable. A new Organize Nodes action creates a compact preview layout, while Restore Layout returns to the original embedded positions without modifying the stored workflow.
+- **Active Filters**: Active filter chips now live exclusively in the Grid toolbar instead of being duplicated in the sidebar. The current folder scope is shown as its own chip and can be cleared independently from other filters.
+
+### Fixed
+
+- **Smart Library Cluster Persistence**: Generated clusters now restore correctly after restarting the app, including during startup metadata hydration. Cluster caches are no longer discarded by unrelated parser-version changes or image ordering differences.
+- **ComfyUI Qwen Image 2.1 Metadata**: Positive and negative prompts are now recovered from Qwen Image 2.1 workflows, including negative conditioning routed through `CFGGuider`.
+- **Detached Viewer on macOS**: Closing and reopening the detached viewer now reuses the existing viewer correctly instead of leaving it unable to reopen.
+- **Image Modal Closing**: Added explicit Back / Close controls to the in-app Image Modal while preserving `Esc` behavior.
+
+## [0.19.3] - [09-12-2026]
+
+### Added
+
+- **Prompt Library**: Save prompts from your library into a dedicated collection, then search, sort, copy, remove, or jump back to the source image. Random lets you rediscover saved prompts with their positive and negative text and source preview.
+- **Image Provenance**: Added a read-only provenance view for inspecting available source and lineage information, with on-demand SHA-256 fingerprinting and copyable provenance summaries.
+
+### Improved
+
+- **Image Viewer Navigation**: Arrow-key navigation is more responsive, with better neighboring-image preloading and smoother browsing while moving quickly through images.
+- **Viewer Zoom**: Choose Fit or 1:1 as the default image zoom. Images configured for 1:1 open directly at their native zoom, and mouse-wheel zoom uses more consistent increments.
+- **ComfyUI Workspace Navigation**: Viewer navigation from the ComfyUI workspace follows the workspace's newest-first order independently from the main Library sort and stays current as new images arrive.
+- **Library Startup and Refreshing**: Library caches remain valid across launches when their parser version matches, while startup enrichment and background refreshes perform fewer unnecessary recomputations.
+- **Thumbnail Loading**: Failed thumbnail decodes are cached for the current file version, avoiding repeated decode attempts while browsing.
+
+### Fixed
+
+- **ComfyUI Krea2 Workflows**: Prompt, negative prompt, and LoRA extraction follows the executed Krea2 workflow route, including grounded encode nodes and switch-based workflows.
+- **Detached Viewer on macOS**: Packaged viewer windows load application paths containing spaces or Unicode characters correctly.
+- **3D Model Preview**: Switching between 3D models recreates the preview for the currently selected item.
+- **Library Cache Persistence**: Compatible parser caches are reused on subsequent launches instead of triggering a full library reindex.
+- **ComfyUI Workspace Thumbnails**: Single-clicking a thumbnail opens it in the workspace inspector, while double-clicking or pressing Enter opens the configured full viewer and keeps the workspace active.
+- **Detached Viewer Deletion**: Deleting the current image advances directly to the next available image in the same viewer window.
+- **Image Grid Deletion**: The image-grid context menu includes Delete, applying to the clicked image or the current multi-selection.
+- **Light Mode and Viewer Themes**: Text, headings, surfaces, and viewer actions maintain appropriate contrast across Light, Dark, Dracula, Nord, and Ocean themes.
+
+## [0.19.2] - [2026-08-27]
+
+### Improved
+
+- **Bundled Dependencies**: Updated bundled dependencies with the available non-breaking security fixes while keeping the current Electron version unchanged.
+- **Viewer Theme Consistency**: Improved Light Mode contrast and visual hierarchy across the Image Modal, Image Preview sidebar, main sidebar, and Support / License settings, with clearer A1111 and ComfyUI actions and theme-aware surfaces for Dark, Dracula, Nord, and Ocean.
+
+### Fixed
+
+- **ComfyUI Workspace Thumbnails**: Single-clicking a thumbnail now opens it in the workspace inspector, while double-clicking or pressing Enter opens the full image viewer according to the configured inline or detached viewer setting without returning to the Library grid.
+- **Detached Viewer Deletion**: Deleting the current image now advances to the next available image without closing, flashing, or reopening the detached viewer window.
+- **Image Grid Deletion**: Added a Delete action to the image grid context menu, applying to the clicked image or the current multi-selection.
+- **Light Mode Image Preview**: The preview title, file name, and metadata section headings now remain readable against the preview panel when using Light Mode.
+
+## [0.19.1] - [2026-08-26]
+
+### Added
+
+- **Stripe Billing for Pro Plans**: Added production billing support for Monthly, Annual, and Lifetime purchases through Stripe, with automatic license provisioning and email delivery.
+- **Subscription License Lifecycle**: Monthly and Annual licenses now follow their paid-through period automatically. Renewals extend access from paid invoices, while cancellations or payment failures do not cut off time that has already been paid for.
+- **Refund Handling**: Full refunds now automatically revoke affected Lifetime purchases or the matching paid subscription period, with safe recovery when a refund later fails or is reversed.
+
+### Improved
+
+- **Playback Controls**: Repeat modes now show their current Off, All, or 1 state directly in the player.
+- **License Delivery Reliability**: Stripe events and license emails are processed idempotently with durable retries and recovery safeguards, reducing the risk of duplicate licenses, duplicate delivery, or out-of-order billing events changing entitlement incorrectly.
+
+### Fixed
+
+- **Detached Viewer on macOS**: Separate viewer windows now load packaged file paths containing spaces or Unicode correctly.
+- **Viewer Navigation After Deletion**: Deleting the current file now advances to the next available item even if the active filter or scope changed while the viewer was open, including in detached viewer windows.
+- **3D Viewing**: Switching models no longer lets stale WebGL cleanup clear the active viewer, controls remain accessible outside the model viewport, errors stay readable, and OBJ/GLTF/FBX cards use stable placeholders instead of starting WebGL previews in the grid.
+- **Startup Library State**: The library no longer flashes a false “no images match” state while its initial data is loading.
+- **Krea2 Prompts**: MetaHub Save Node payloads containing `False` now recover the actual prompt from the embedded ComfyUI workflow.
+
+## [0.19.0] - [2026-08-20]
 
 ### Added
 
 - **Find Similar — Local Visual Search**: Added opt-in, fully local visual similarity search, including for images without generation metadata. Model download is a separate explicit action; indexing is resumable, supports optional WebGPU acceleration with WASM fallback, and covers the 2,000 newest images on Free or the full library on Pro. Experimental text-to-image queries remain separate from deterministic metadata search.
 - **3D Model Library**: Added initial support for indexing, filtering, thumbnailing, viewing, and exporting GLB, GLTF, OBJ, FBX, and STL models, with Image MetaHub sidecars for formats that cannot embed the metadata.
-- **Portable Windows Build**: Added a dedicated Portable executable that keeps settings and caches beside the app, separate from the standard Windows installation.
 - **Native Viewer Windows**: Images can now open in separate desktop windows with always-on-top, drag-and-drop, navigation, editing, metadata, and generation actions. Settings → Viewer → Behavior can restore the legacy in-app viewer.
 
 ### Improved
 
+- **Portable Windows Build**: Added a dedicated Portable executable that keeps settings and caches beside the app, separate from the standard Windows installation.
 - **License Activation**: Pro activation now uses signed IMH2 certificates verified by the desktop app, while lifetime licenses remain usable offline after activation. Historical license keys require a reissued IMH2 key.
 
 ### Fixed
@@ -1162,7 +1257,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Type-Safe Metadata Handling**: New TypeScript interfaces for Automatic1111Metadata and ComfyUIMetadata with proper type guards
 - **Dynamic Metadata Extraction**: Re-extraction of models, LoRAs, and schedulers during cache reconstruction for data consistency
 - **Backward Compatibility**: Maintained full compatibility with existing InvokeAI metadata and caching system
-- **Cross-Format Filtering**: Unified filtering system that works seamlessly with images from different generation tools
+- **Cross-Format Filtering**: Unified filtering system that works seamlessly across images from different generation tools
 - **Workflow Automation**: Improved GitHub Actions workflows with separate jobs for Windows, macOS, and Linux builds
 - **Build System Optimization**: Cleaned up duplicate workflow configurations and ensured proper artifact generation
 

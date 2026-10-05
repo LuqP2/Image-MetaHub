@@ -4,7 +4,8 @@ import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, copyTextToClipboard, showInExplorer } from '../utils/imageUtils';
 import { motion } from 'framer-motion';
-import { AlertTriangle, Copy, Pencil, Pin, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Copy, Pencil, Pin, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink, Bookmark } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -20,12 +21,14 @@ import ProBadge from './ProBadge';
 import { CivitaiResourceLink } from './CivitaiResourceLink';
 import { extractResourceRefs, normalizeResourceName, type ResourceRef } from '../services/civitai/resourceExtraction';
 import hotkeyManager from '../services/hotkeyManager';
+import { resolveAnnotationShortcut } from '../services/hotkeyBindings';
+import { toggleRejectedCandidates, REJECTED_TAG } from '../services/candidateActions';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getElectronAbsoluteMediaPath, mediaSourceCache } from '../services/mediaSourceCache';
 import { mediaDecodeCache } from '../services/mediaDecodeCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
-import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
+import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata, type RawMetadataHydrationOptions } from '../services/rawMetadataHydration';
 import {
   toImageViewerMaskFileDTO,
   type ImageViewerGenerateRequest,
@@ -48,16 +51,18 @@ import {
   renderEditedImageToPngBytes,
 } from '../services/imageEditingService';
 
-import { bulkSaveShadowMetadata } from '../services/imageAnnotationsStorage';
+import { prepareUserDataForImages, saveShadows } from '../services/userDataPersistenceAdapter';
 import { copyEditableMetadata, readEditableMetadataClipboard } from '../services/metadataClipboard';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { getAvifCarrierConflicts } from '../utils/imageMetaHubAvifExtension.mjs';
 import { buildEffectiveMetadata, getEditableMetadataFields } from '../utils/editableMetadata';
 import { eventMatchesKeybinding, isTypingElement } from '../utils/hotkeyUtils';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
+import { useIsPromptSaved, useSavePrompt } from '../hooks/useSavePrompt';
 import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorModal';
 import BatchExportModal from './BatchExportModal';
 import ImageLineageSection from './ImageLineageSection';
+import ProvenanceSection from './ProvenanceSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
 import TagInputCombobox from './TagInputCombobox';
@@ -163,15 +168,18 @@ interface ImageModalProps {
   hostMode?: 'inline' | 'native-window';
   modalId?: string;
   image: IndexedImage;
+  prefetchPrevious?: { image: IndexedImage; directoryPath: string } | null;
+  prefetchNext?: { image: IndexedImage; directoryPath: string } | null;
   onClose: () => void;
   onFindSimilar?: (image: IndexedImage) => void;
   onOpenComfyUIWorkflow?: (image: IndexedImage) => void;
   onOpenImageEditor?: (image: IndexedImage) => void;
   onImageDeleted?: (imageId: string) => void;
   onImageRenamed?: (oldImageId: string, newImageId: string, newRelativePath: string) => void;
-  onRequestDelete?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
+  onRequestDelete?: (imageId: string) => Promise<{ success: boolean; error?: string; handledNavigation?: boolean }>;
   onRequestRename?: (imageId: string, newName: string) => Promise<{ success: boolean; error?: string; newImageId?: string; newRelativePath?: string }>;
   onRequestReparse?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
+  onRequestAutoTag?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
   onRequestTagSuggestions?: (query: string) => Promise<TagInfo[]>;
   onRequestGenerate?: (request: ImageViewerGenerateRequest) => Promise<{ success: boolean; error?: string }>;
   onImageSaved?: (request: ImageViewerSaveRequest) => Promise<ImageViewerSaveResult>;
@@ -666,6 +674,12 @@ const VideoPlayer: React.FC<{
     : repeatMode === 'all'
       ? 'Repeat all'
       : 'Repeat off';
+  const repeatModeShortLabel = repeatMode === 'one' ? '1' : repeatMode === 'all' ? 'All' : 'Off';
+  const repeatModeTitle = repeatMode === 'one'
+    ? 'Repeat one: replay this file'
+    : repeatMode === 'all'
+      ? 'Repeat all: continue through the file list'
+      : 'Repeat off: stop when this file ends';
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
@@ -863,11 +877,12 @@ const VideoPlayer: React.FC<{
                 </button>
                 <button
                   onClick={cycleRepeatMode}
-                  className={`transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded ${repeatMode === 'off' ? 'text-gray-400 hover:text-white' : 'text-blue-400'}`}
-                  title={repeatModeLabel}
+                  className={`inline-flex items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded ${repeatMode === 'off' ? 'text-gray-400 hover:text-white' : 'text-blue-400'}`}
+                  title={repeatModeTitle}
                   aria-label={repeatModeLabel}
                 >
                     {repeatMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
+                    <span className="text-[10px] font-semibold">{repeatModeShortLabel}</span>
                 </button>
             </div>
         </div>
@@ -882,6 +897,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   hostMode = 'inline',
   modalId,
   image,
+  prefetchPrevious = null,
+  prefetchNext = null,
   onClose,
   onFindSimilar,
   onOpenComfyUIWorkflow,
@@ -891,6 +908,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onRequestDelete,
   onRequestRename,
   onRequestReparse,
+  onRequestAutoTag,
   onRequestTagSuggestions,
   onRequestGenerate,
   onImageSaved,
@@ -1010,6 +1028,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const slideshowIntervalSeconds = useSettingsStore((state) => state.slideshowIntervalSeconds);
   const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
   const autoPlayMedia = useSettingsStore((state) => state.autoPlayMedia);
+  const imageViewerDefaultZoom = useSettingsStore((state) => state.imageViewerDefaultZoom);
+  const setImageViewerDefaultZoom = useSettingsStore((state) => state.setImageViewerDefaultZoom);
   // A running slideshow and a repeat-all/shuffle chain both imply continuous playback, so they
   // start the media regardless of the auto-play preference.
   const shouldAutoPlayMedia = autoPlayMedia || isChainedPlayback || (isSlideshowMode && isSlideshowPlaying);
@@ -1069,7 +1089,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [enableAnimations, isMinimized, modalId, zIndex]);
 
   const [zoom, setZoom] = useState(1);
-  const [viewerZoomMode, setViewerZoomMode] = useState<ViewerZoomMode>('fit');
+  const [viewerZoomMode, setViewerZoomMode] = useState<ViewerZoomMode>(() => imageViewerDefaultZoom);
   const [windowZoomFactor, setWindowZoomFactor] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -1137,13 +1157,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const { isReparsing, reparseImages } = useReparseMetadata();
 
   const { canUseA1111, canUseComfyUI, canUseComparison, canUseBatchExport, canUseImageEditor, canUseDuringTrialOrPro, showProModal, initialized } = useFeatureAccess();
-  const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
+  const { a1111Enabled, comfyUIEnabled, singleVisibleProvider } = useGenerationProviderAvailability();
 
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
   const setImageRating = useImageStore((state) => state.setImageRating);
   const addTagToImage = useImageStore((state) => state.addTagToImage);
   const removeTagFromImage = useImageStore((state) => state.removeTagFromImage);
   const removeAutoTagFromImage = useImageStore((state) => state.removeAutoTagFromImage);
+  const startAutoTaggingForImage = useImageStore((state) => state.startAutoTaggingForImage);
+  const isAutoTagging = useImageStore((state) => state.isAutoTagging);
+  const autoTaggingImageId = useImageStore((state) => state.autoTaggingImageId);
   const availableTags = useImageStore((state) => state.availableTags);
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const recentTags = useImageStore((state) => state.recentTags);
@@ -1166,10 +1189,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const selectedNodes = useImageStore((state) => state.selectedNodes);
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
 
-  const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
+  const [requestedAutoTagImageId, setRequestedAutoTagImageId] = useState<string | null>(null);
+  const [autoTagError, setAutoTagError] = useState<{ imageId: string; message: string } | null>(null);
 
   const imageFromStore = useImageStore(
     useCallback(
@@ -1178,6 +1202,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
     )
   );
   const liveImage = imageFromStore ?? image;
+  const { metadata: shadowMetadata, isLoading: isShadowLoading, error: shadowError, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(liveImage);
+  const savePrompt = useSavePrompt();
   const thumbnail = useResolvedThumbnail(liveImage);
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
@@ -1188,12 +1214,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const showA1111Actions = !isPlayableMedia && a1111Enabled;
   const showComfyUIActions = !isPlayableMedia && comfyUIEnabled;
   const showComfyUIContext = !isVideo && !isAudio && comfyUIEnabled;
-  const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const currentTags = liveImage.tags || [];
   const currentAutoTags = liveImage.autoTags || [];
   const currentIsFavorite = liveImage.isFavorite ?? false;
   const currentRating = liveImage.rating ?? null;
+  const isRejected = currentTags.includes('rejected');
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
   const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
@@ -1235,6 +1261,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const mediaOverlayHideTimeoutRef = useRef<number | null>(null);
   const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
+  const globalKeymap = useSettingsStore((state) => state.keymap.global as Record<string, string> | undefined);
   const toggleFullscreenKeybinding = previewKeymap?.toggleFullscreenInViewer || 'alt+enter';
   const isWindowInteractionActive = modalInteraction.mode !== 'idle';
   const showSidebar = !isFullViewportModal && !isSidebarCollapsed && !isRapidKeyboardNavigating;
@@ -1274,6 +1301,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const displayedImageUrl = shouldShowEditedPreview && editedPreviewUrl
     ? editedPreviewUrl
     : (warmFullImageUrl ?? imageUrl);
+
+  useLayoutEffect(() => {
+    setDisplayedImageNaturalSize(null);
+  }, [displayedImageUrl]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1329,17 +1360,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
     cropOverlayStyle;
   const rawMetadataImage = hydratedRawMetadataImage?.id === liveImage.id ? hydratedRawMetadataImage : liveImage;
 
-  const ensureFullRawMetadata = useCallback(async (): Promise<IndexedImage> => {
-    if (hydratedRawMetadataImage?.id === liveImage.id) {
+  const ensureFullRawMetadata = useCallback(async (
+    options: RawMetadataHydrationOptions = {},
+  ): Promise<IndexedImage> => {
+    if (!options.force && hydratedRawMetadataImage?.id === liveImage.id) {
       return hydratedRawMetadataImage;
     }
-    if (!hasCompactedRuntimeMetadata(liveImage)) {
+    if (!options.force && !hasCompactedRuntimeMetadata(liveImage)) {
       return liveImage;
     }
 
     setIsHydratingRawMetadata(true);
     try {
-      const hydrated = await hydrateImageRawMetadata(liveImage, directoryPath);
+      const hydrated = await hydrateImageRawMetadata(liveImage, directoryPath, options);
       setHydratedRawMetadataImage(hydrated);
       return hydrated;
     } finally {
@@ -1375,7 +1408,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setImageEditRecipe(DEFAULT_IMAGE_EDIT_RECIPE);
     setImageEditorTab('adjust');
     setImageEditSourceDimensions(null);
-    setDisplayedImageNaturalSize(null);
     setCropImageBounds(null);
     setEditedPreviewUrl(null);
     setIsRenderingEditedPreview(false);
@@ -1807,6 +1839,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const nMeta: BaseMetadata | undefined = getUsableNormalizedMetadata(liveImage);
   const canFindSimilar = Boolean(nMeta?.prompt) && Boolean(onFindSimilar);
   const effectiveMetadata = buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal);
+  const isPromptSaved = useIsPromptSaved(effectiveMetadata?.prompt, effectiveMetadata?.negativePrompt);
 
   // The single checkpoint reference (if any) links the "Model" value.
   const checkpointRef = useMemo(
@@ -2129,13 +2162,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
     openBatchExport();
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setZoom(1);
-    setViewerZoomMode('fit');
+    setViewerZoomMode(imageViewerDefaultZoom);
     setPan({ x: 0, y: 0 });
     setSlideshowVideoDuration(null);
     revealMediaOverlay();
-  }, [image.id, revealMediaOverlay]);
+  }, [image.id, imageViewerDefaultZoom, revealMediaOverlay]);
 
   useEffect(() => {
     if (!isSlideshowMode) {
@@ -2147,13 +2180,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setPan({ x: 0, y: 0 });
   }, [image.id, isSlideshowMode]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setZoom(1);
-    setViewerZoomMode('fit');
+    setViewerZoomMode(isSlideshowMode ? 'fit' : imageViewerDefaultZoom);
     setPan({ x: 0, y: 0 });
     setIsMediaOverlayVisible(false);
     clearMediaOverlayHideTimer();
-  }, [clearMediaOverlayHideTimer, isFullscreen]);
+  }, [clearMediaOverlayHideTimer, imageViewerDefaultZoom, isFullscreen, isSlideshowMode]);
 
   useEffect(() => {
     const applyWindowZoomFactor = (nextZoomFactor: number) => {
@@ -2195,17 +2228,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    const frameId = window.requestAnimationFrame(() => {
-      setZoom(getActualSizeZoom());
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
+    setZoom(getActualSizeZoom());
   }, [getActualSizeZoom, viewerZoomMode, windowZoomFactor]);
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
 
-    const delta = e.deltaY * -0.01;
+    const deltaModeScale = e.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? 40
+      : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? Math.max(window.innerHeight, 800)
+        : 1;
+    const normalizedDeltaY = e.deltaY * deltaModeScale;
+    const delta = Math.max(-0.1, Math.min(0.1, normalizedDeltaY * -0.001));
     const newZoom = Math.min(Math.max(minViewerZoom, zoom + delta), maxViewerZoom);
 
     setViewerZoomMode('manual');
@@ -2289,9 +2324,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
     if (typeof window === 'undefined') {
       return;
     }
-    window.addEventListener('resize', updateCropImageBounds);
-    return () => window.removeEventListener('resize', updateCropImageBounds);
-  }, [updateCropImageBounds]);
+
+    const handleResize = () => {
+      updateCropImageBounds();
+      if (viewerZoomMode === 'actual') {
+        setZoom(getActualSizeZoom());
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [getActualSizeZoom, updateCropImageBounds, viewerZoomMode]);
 
   const handleCropDragStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!imageEditSourceDimensions || !normalizedImageEditRecipe.crop.rect) {
@@ -2390,6 +2433,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   const handleFitToScreen = () => {
+    setImageViewerDefaultZoom('fit');
     setViewerZoomMode('fit');
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -2397,6 +2441,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const handleActualSize = () => {
     const nextZoom = getActualSizeZoom();
+    setImageViewerDefaultZoom('actual');
     setViewerZoomMode('actual');
     setZoom(nextZoom);
     if (Math.abs(nextZoom - 1) < 0.01) {
@@ -2473,6 +2518,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const writeEditedImage = useCallback(async (
     targetPath: string,
+    mode: 'save_as' | 'overwrite',
     sourceMetadata?: BaseMetadata,
     sourceRawMetadata?: Record<string, unknown>,
   ) => {
@@ -2499,7 +2545,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
       sourceRawMetadata,
       imageEditOutputDimensions || undefined,
     );
-    const result = await window.electronAPI.writeFile(targetPath, outputBytes);
+    if (mode === 'overwrite') {
+      try {
+        await prepareUserDataForImages([liveImage]);
+      } catch (error) {
+        throw new Error(`The image was not overwritten because its local user data could not be staged safely: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    const result = await window.electronAPI.writeFile(targetPath, outputBytes, {
+      kind: mode,
+      ...(mode === 'overwrite'
+        ? { sourcePath: targetPath, userDataContext: { legacyImageId: liveImage.id } }
+        : {}),
+    });
     if (!result.success) {
       throw new Error(result.error || 'Failed to write edited image.');
     }
@@ -2538,7 +2596,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const sourceImageWithMetadata = await ensureFullRawMetadata();
       const sourceMetadata = getUsableNormalizedMetadata(sourceImageWithMetadata);
       const sourceRawMetadata = sourceImageWithMetadata.metadata as Record<string, unknown>;
-      await writeEditedImage(saveResult.path, sourceMetadata, sourceRawMetadata);
+      await writeEditedImage(saveResult.path, 'save_as', sourceMetadata, sourceRawMetadata);
 
       // A detached window only holds a three-image slice of the library, so the
       // authoritative indexing has to happen in the main renderer.
@@ -2639,7 +2697,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const sourceImageWithMetadata = await ensureFullRawMetadata();
       const sourceMetadata = getUsableNormalizedMetadata(sourceImageWithMetadata);
       const sourceRawMetadata = sourceImageWithMetadata.metadata as Record<string, unknown>;
-      await writeEditedImage(joined.path, sourceMetadata, sourceRawMetadata);
+      await writeEditedImage(joined.path, 'overwrite', sourceMetadata, sourceRawMetadata);
 
       if (onImageSaved) {
         // See Save As: the real library lives in the main renderer.
@@ -2697,9 +2755,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
     slideshowTimeoutRef.current = null;
   }, []);
 
+  const showImagePreviewWhileLoading = !isPlayableMedia && imageViewerDefaultZoom !== 'actual';
+
   useEffect(() => {
     let isMounted = true;
-    const hasPreview = Boolean(preferredThumbnailUrl);
+    const hasPreview = !isPlayableMedia && Boolean(preferredThumbnailUrl);
+    const showPreviewWhileLoading = showImagePreviewWhileLoading && hasPreview;
     const sourceLoadStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     if (warmFullImageUrl) {
@@ -2709,7 +2770,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       setIsFullImageSourceReady(true);
     } else {
       setIsFullImageSourceReady(false);
-      setImageUrl(isPlayableMedia ? null : (preferredThumbnailUrl ?? null));
+      setImageUrl(isPlayableMedia || !showPreviewWhileLoading ? null : preferredThumbnailUrl);
     }
 
     const loadImage = async () => {
@@ -2719,9 +2780,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       if (!directoryPath && window.electronAPI && !electronAbsoluteMediaPath) {
         console.error('Cannot load image: directoryPath is undefined');
-        if (isMounted && !hasPreview) {
-          setImageUrl(null);
-          alert('Failed to load image: Directory path is not available.');
+        if (isMounted) {
+          if (hasPreview) {
+            setImageUrl(preferredThumbnailUrl);
+          } else {
+            setImageUrl(null);
+            alert('Failed to load image: Directory path is not available.');
+          }
         }
         return;
       }
@@ -2748,9 +2813,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           // The warm branch above marks the source ready before this confirms it, so a failure
           // here has to take that back: otherwise export and editing stay enabled over nothing.
           setIsFullImageSourceReady(false);
-          if (!hasPreview) {
-            setImageUrl(null);
-          }
+          setImageUrl(hasPreview ? preferredThumbnailUrl : null);
         }
       } finally {
         recordPerformanceDuration('modal.full-source-load', (typeof performance !== 'undefined' ? performance.now() : Date.now()) - sourceLoadStartedAt, {
@@ -2769,7 +2832,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     // warmFullImageUrl is read from the closure on purpose. It is computed in the same render as
     // the image id change, so the run that matters already sees the right value; adding it here
     // would re-run the whole load when a later prefetch flips warmth for the image on screen.
-  }, [diagnosticsFlowId, liveImage.id, liveImage.handle, liveImage.thumbnailHandle, liveImage.name, liveImage.lastModified, directoryPath, preferredThumbnailUrl, isPlayableMedia, isVideo]);
+  }, [diagnosticsFlowId, liveImage.id, liveImage.handle, liveImage.thumbnailHandle, liveImage.name, liveImage.lastModified, directoryPath, preferredThumbnailUrl, showImagePreviewWhileLoading, isPlayableMedia, isVideo]);
 
   // Decoded bitmaps are worth tens of megabytes, so they only stay alive while a modal is open.
   useEffect(() => {
@@ -2790,34 +2853,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    const state = useImageStore.getState();
-    const navigationImages = state.clusterNavigationContext || state.filteredImages;
-    const currentNavigationIndex = navigationImages.findIndex((candidate) => candidate.id === liveImage.id);
-
-    if (currentNavigationIndex === -1) {
-      return;
-    }
-
-    // The store's list is not always the one this modal navigates: a viewer opened from Find
-    // Similar, a ComfyUI workflow or a scope walks its own id list, and currentIndex/totalImages
-    // are the props derived from it. When they disagree, the neighbours here are somebody else's
-    // images — decoding them would evict the useful entries from a five-slot cache for nothing.
-    if (navigationImages.length !== totalImages || currentNavigationIndex !== currentIndex) {
-      return;
-    }
-
-    const step = navigationDirectionRef.current === 'previous' ? -1 : 1;
-    const directoryMap = new Map(state.directories.map((dir) => [dir.id, dir.path]));
-    // Two ahead, one behind: people rarely alternate directions, so spending the budget on the way
-    // they are heading buys a much better hit rate for the same number of decoded bitmaps.
-    const neighbors = [
-      navigationImages[currentNavigationIndex + step],
-      navigationImages[currentNavigationIndex + step * 2],
-      navigationImages[currentNavigationIndex - step],
-    ].filter((candidate): candidate is IndexedImage =>
-      Boolean(candidate)
-      && !isVideoFileName(candidate.name, candidate.fileType)
-      && !isAudioFileName(candidate.name, candidate.fileType));
+    const primaryNeighbor = navigationDirectionRef.current === 'previous'
+      ? prefetchPrevious
+      : prefetchNext;
+    const secondaryNeighbor = navigationDirectionRef.current === 'previous'
+      ? prefetchNext
+      : prefetchPrevious;
+    const neighbors = [primaryNeighbor, secondaryNeighbor].filter(
+      (candidate): candidate is { image: IndexedImage; directoryPath: string } =>
+        Boolean(candidate)
+        && !isVideoFileName(candidate.image.name, candidate.image.fileType)
+        && !isAudioFileName(candidate.image.name, candidate.image.fileType)
+        && !isModel3DFileName(candidate.image.name, candidate.image.fileType)
+    );
 
     if (neighbors.length === 0) {
       return;
@@ -2847,7 +2895,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       void (async () => {
         try {
           // No prioritize here: this must not pause the grid's background thumbnail work.
-          const url = await mediaSourceCache.getOrLoad(neighbor, directoryMap.get(neighbor.directoryId || ''));
+          const url = await mediaSourceCache.getOrLoad(neighbor.image, neighbor.directoryPath);
           if (isMounted) {
             await mediaDecodeCache.warm(url);
           }
@@ -2856,7 +2904,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           // and opening it directly still reports the failure through the load effect.
         }
 
-        // One at a time, so three multi-megabyte decodes never land on the main thread together.
+        // One at a time, so multiple multi-megabyte decodes never land on the main thread together.
         if (isMounted && queueIndex < neighbors.length) {
           scheduleIdle(warmNextNeighbor);
         }
@@ -2874,7 +2922,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
         window.clearTimeout(timeoutHandle);
       }
     };
-  }, [currentIndex, isFullImageSourceReady, isPlayableMedia, isRapidKeyboardNavigating, liveImage.id, totalImages]);
+  }, [
+    directoryPath,
+    isFullImageSourceReady,
+    isPlayableMedia,
+    isRapidKeyboardNavigating,
+    liveImage.id,
+    liveImage.lastModified,
+    prefetchNext?.directoryPath,
+    prefetchNext?.image.id,
+    prefetchNext?.image.lastModified,
+    prefetchPrevious?.directoryPath,
+    prefetchPrevious?.image.id,
+    prefetchPrevious?.image.lastModified,
+  ]);
 
   useEffect(() => {
     if (!preferredThumbnailUrl || hasMarkedPreviewVisibleRef.current) {
@@ -2895,6 +2956,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
     setImageRating(image.id, rating);
   }, [image.id, setImageRating]);
+
+  const handleToggleRejected = useCallback(() => {
+    toggleRejectedCandidates({
+      ids: [image.id],
+      isRejected: () => currentTags.includes(REJECTED_TAG),
+      canUseBulkTagging: true,
+      onBulkTaggingBlocked: () => {},
+      addTag: (_ids, tag) => addTagToImage(image.id, tag),
+      removeTag: (_ids, tag) => removeTagFromImage(image.id, tag),
+    });
+  }, [addTagToImage, currentTags, image.id, removeTagFromImage]);
 
   const exitSlideshow = useCallback(() => {
     clearSlideshowTimer();
@@ -3052,7 +3124,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
         ? await onRequestDelete(imageToDelete.id)
         : await FileOperations.deleteFile(imageToDelete);
       if (result.success) {
-        if (hasMoreImages) {
+        const handledNavigation = 'handledNavigation' in result && result.handledNavigation === true;
+        if (hasMoreImages && !handledNavigation) {
           if (currentIndex < totalImages - 1) {
             onNavigateNext?.();
           } else {
@@ -3063,7 +3136,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           onImageDeleted?.(idToDelete);
         }
         
-        if (!hasMoreImages) {
+        if (!hasMoreImages && !handledNavigation) {
           onClose();
         }
       } else {
@@ -3095,24 +3168,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [isVideo, onNavigateNext, onNavigatePrevious, onNavigateRandom]);
 
   const scheduleKeyboardNavigation = useCallback((direction: 'next' | 'previous', isRepeatedKey = false) => {
+    if (!isRepeatedKey) {
+      if (keyboardNavigationFrameRef.current !== null) {
+        window.cancelAnimationFrame(keyboardNavigationFrameRef.current);
+        keyboardNavigationFrameRef.current = null;
+      }
+      pendingKeyboardNavigationRef.current = null;
+      navigateManually(direction);
+      return;
+    }
+
     pendingKeyboardNavigationRef.current = direction;
 
-    if (isRepeatedKey) {
-      if (!isRapidKeyboardNavigatingRef.current) {
-        isRapidKeyboardNavigatingRef.current = true;
-        setIsRapidKeyboardNavigating(true);
-      }
-
-      if (keyboardNavigationIdleTimeoutRef.current !== null) {
-        window.clearTimeout(keyboardNavigationIdleTimeoutRef.current);
-      }
-
-      keyboardNavigationIdleTimeoutRef.current = window.setTimeout(() => {
-        keyboardNavigationIdleTimeoutRef.current = null;
-        isRapidKeyboardNavigatingRef.current = false;
-        setIsRapidKeyboardNavigating(false);
-      }, RAPID_KEYBOARD_NAVIGATION_IDLE_MS);
+    if (!isRapidKeyboardNavigatingRef.current) {
+      isRapidKeyboardNavigatingRef.current = true;
+      setIsRapidKeyboardNavigating(true);
     }
+
+    if (keyboardNavigationIdleTimeoutRef.current !== null) {
+      window.clearTimeout(keyboardNavigationIdleTimeoutRef.current);
+    }
+
+    keyboardNavigationIdleTimeoutRef.current = window.setTimeout(() => {
+      keyboardNavigationIdleTimeoutRef.current = null;
+      isRapidKeyboardNavigatingRef.current = false;
+      setIsRapidKeyboardNavigating(false);
+    }, RAPID_KEYBOARD_NAVIGATION_IDLE_MS);
 
     if (keyboardNavigationFrameRef.current !== null) {
       return;
@@ -3160,6 +3241,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       if (isTypingContext) {
         return;
+      }
+
+      if (isNativeWindow && !event.repeat) {
+        const annotationShortcut = resolveAnnotationShortcut(event, globalKeymap);
+        if (annotationShortcut) {
+          event.preventDefault();
+          if (annotationShortcut.type === 'toggle-rejected') handleToggleRejected();
+          else handleSetRating(annotationShortcut.rating);
+          return;
+        }
       }
 
       if (eventMatchesKeybinding(event, toggleFullscreenKeybinding)) {
@@ -3242,14 +3333,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
     focusTagInput,
     handleDelete,
     handleToggleFavorite,
+    handleToggleRejected,
+    handleSetRating,
     hideContextMenu,
     exitSlideshow,
     isActive,
+    isNativeWindow,
     isFullscreen,
     isRenaming,
     isSlideshowMode,
     onClose,
     previewKeymap,
+    globalKeymap,
     scheduleKeyboardNavigation,
     toggleFullscreen,
     toggleFullscreenKeybinding,
@@ -3380,6 +3475,26 @@ const ImageModal: React.FC<ImageModalProps> = ({
     removeAutoTagFromImage(image.id, tag);
   };
 
+  const handleAutoTagImage = async () => {
+    if (!liveImage.prompt?.trim() || isAutoTagging || requestedAutoTagImageId) return;
+    const imageId = liveImage.id;
+    setRequestedAutoTagImageId(imageId);
+    setAutoTagError(null);
+    try {
+      const result = onRequestAutoTag
+        ? await onRequestAutoTag(imageId)
+        : { success: await startAutoTaggingForImage(imageId) };
+      if (!result.success) setAutoTagError({
+        imageId,
+        message: result.error || useImageStore.getState().error || 'Could not generate auto tags.',
+      });
+    } catch (error) {
+      setAutoTagError({ imageId, message: error instanceof Error ? error.message : 'Could not generate auto tags.' });
+    } finally {
+      setRequestedAutoTagImageId(null);
+    }
+  };
+
   const handleMinimizeWithAnimation = useCallback(async () => {
     if (!onMinimize || isMinimizeAnimatingRef.current) {
       return;
@@ -3424,7 +3539,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
     ? 'border-gray-800 bg-gray-950/95'
     : 'border-gray-700 bg-gray-800/95';
   const titleTextClass = isActive ? 'text-gray-100' : 'text-gray-400';
-  const titleMetaClass = isActive ? 'text-gray-500' : 'text-gray-600';
+  const titleMetaClass = isActive
+    ? 'text-gray-400 dark:text-gray-500'
+    : 'text-gray-500 dark:text-gray-600';
   const modalEntryAnimationClass = !enableAnimations || (wasMinimizedRef.current && !isMinimized)
     ? ''
     : 'animate-in fade-in zoom-in-95';
@@ -3471,6 +3588,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
             onPointerDown={isNativeWindow ? undefined : handleWindowSurfacePointerDown}
             onDoubleClick={isNativeWindow ? undefined : toggleWindowMaximize}
           >
+            {!isNativeWindow && (
+              <button
+                type="button"
+                onClick={onClose}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="shrink-0 rounded-md p-2 text-gray-300 hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                title="Exit viewer (Esc)"
+                aria-label="Exit viewer"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            )}
             <div className="min-w-0 flex-1">
               {isRenaming ? (
                 <div
@@ -3523,7 +3652,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </span>
                 {hasVerifiedTelemetry(liveImage) && (
                   <span
-                    className="shrink-0 rounded-full border border-green-500/20 bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-green-400"
+                    className="shrink-0 rounded-full border border-green-300 bg-green-100 px-1.5 py-0.5 text-[10px] font-medium leading-none text-green-700 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400"
                     title="MetaHub Save Node"
                   >
                     MetaHub Save Node
@@ -3538,7 +3667,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     Metadata conflict
                   </span>
                 )}
-                <span className="shrink-0 text-[10px] text-gray-500" title={createdAtLabel}>
+                <span className="shrink-0 text-[10px] text-gray-400 dark:text-gray-500" title={createdAtLabel}>
                   {createdAtLabel}
                 </span>
               </div>
@@ -3566,7 +3695,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 whileTap={{ scale: 0.9 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 disabled={isIndexing}
-                className="rounded-lg border border-red-500/30 bg-red-500/10 p-1.5 text-red-400 transition-colors hover:border-red-500/50 hover:bg-red-500/15 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
+                className="rounded-lg border border-red-300 bg-red-100 p-1.5 text-red-700 transition-colors hover:border-red-400 hover:bg-red-200 hover:text-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400 dark:hover:border-red-500/50 dark:hover:bg-red-500/15 dark:hover:text-red-300"
                 title={isIndexing ? 'Cannot delete during indexing' : 'Delete image'}
                 aria-label={isIndexing ? 'Cannot delete during indexing' : 'Delete image'}
               >
@@ -3748,7 +3877,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onDragStart={handleDragStart}
                   style={{
                     transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                    transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                    transition: isDragging || viewerZoomMode !== 'manual' ? 'none' : 'transform 0.1s ease-out',
+                    opacity: viewerZoomMode === 'actual' && !displayedImageNaturalSize ? 0 : 1,
                   }}
                   title={hasImageEditChanges && editedPreviewUrl ? 'Hold to compare with the original image' : undefined}
                   draggable={canDragExternally && zoom === 1}
@@ -3785,29 +3915,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <button
               data-no-window-drag="true"
               type="button"
+              disabled={currentIndex <= 0 || totalImages <= 1}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
                 navigateManually('previous');
               }}
-              className="absolute inset-y-0 left-0 z-20 w-16 cursor-pointer bg-gradient-to-r from-white/15 to-transparent opacity-0 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none sm:w-20 lg:w-24"
+              className="absolute inset-y-0 left-0 z-20 flex w-16 items-center justify-start pl-2 text-white transition-opacity duration-150 hover:bg-gradient-to-r hover:from-white/15 hover:to-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 disabled:cursor-default disabled:opacity-25 sm:w-20 lg:w-24"
               aria-label="Previous image"
               title="Previous image"
-            />
+            >
+              <ChevronLeft className="h-9 w-9 rounded-full border border-white/20 bg-black/50 p-1" aria-hidden="true" />
+            </button>
           )}
           {onNavigateNext && (
             <button
               data-no-window-drag="true"
               type="button"
+              disabled={currentIndex < 0 || currentIndex >= totalImages - 1 || totalImages <= 1}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
                 navigateManually('next');
               }}
-              className="absolute inset-y-0 right-0 z-20 w-16 cursor-pointer bg-gradient-to-l from-white/15 to-transparent opacity-0 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none sm:w-20 lg:w-24"
+              className="absolute inset-y-0 right-0 z-20 flex w-16 items-center justify-end pr-2 text-white transition-opacity duration-150 hover:bg-gradient-to-l hover:from-white/15 hover:to-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 disabled:cursor-default disabled:opacity-25 sm:w-20 lg:w-24"
               aria-label="Next image"
               title="Next image"
-            />
+            >
+              <ChevronRight className="h-9 w-9 rounded-full border border-white/20 bg-black/50 p-1" aria-hidden="true" />
+            </button>
           )}
 
           <div data-no-window-drag="true" className="absolute top-4 left-4 z-30 max-w-[min(80vw,520px)] rounded-lg border border-white/20 bg-black/60 px-3 py-1 text-sm font-medium text-white backdrop-blur-sm">
@@ -3904,8 +4040,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 >
                   <Minimize2 className="h-4 w-4" />
                 </button>
-                {!isNativeWindow && (
-                  <button
+                <button
                     onClick={onClose}
                     className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
                     aria-label="Close image"
@@ -3913,7 +4048,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   >
                     <X className="w-4 h-4" />
                   </button>
-                )}
               </div>
             ) : (
               <div className="flex flex-row items-center gap-2">
@@ -3978,6 +4112,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
+                <button
+                  onClick={onClose}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                  aria-label="Close image"
+                  title="Close (Esc)"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             )}
           </div>
@@ -3993,7 +4135,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             showSidebarOnBottom
               ? `border-t border-gray-800/80 ${isResizingSidebar ? 'transition-none' : 'transition-[height] duration-300 ease-in-out'}`
               : `h-full border-l border-transparent ${isResizingSidebar ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`
-          } relative flex flex-col`}
+          } relative flex flex-col bg-gray-900`}
           style={
             showSidebarOnBottom
               ? { height: sidebarHeight, minHeight: DETAILS_SIDEBAR_MIN_HEIGHT, maxHeight: `${DETAILS_SIDEBAR_MAX_RATIO * 100}%` }
@@ -4031,7 +4173,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     }
                     onOpenImageEditor(liveImage);
                   }}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm font-medium text-indigo-100 transition-colors hover:border-indigo-400/50 hover:bg-indigo-500/20"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 transition-colors hover:border-indigo-400 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100 dark:hover:border-indigo-400/50 dark:hover:bg-indigo-500/20"
                 >
                   <ImageIcon className="h-4 w-4" />
                   Open Image Editor
@@ -4049,7 +4191,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     }
                     setIsAdjustmentPanelOpen(true);
                   }}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-100 transition-colors hover:border-cyan-400/50 hover:bg-cyan-500/20"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-300 bg-cyan-50 px-3 py-2 text-sm font-medium text-cyan-700 transition-colors hover:border-cyan-400 hover:bg-cyan-100 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-100 dark:hover:border-cyan-400/50 dark:hover:bg-cyan-500/20"
                 >
                   <SlidersHorizontal className="h-4 w-4" />
                   Adjust Image
@@ -4100,6 +4242,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </motion.button>
                 <div className="h-5 w-px bg-gray-700/70" />
                 <RatingStars rating={currentRating} onChange={handleSetRating} size={16} />
+                <button
+                  type="button"
+                  onClick={handleToggleRejected}
+                  className={`rounded border px-2 py-1 text-xs font-medium ${isRejected ? 'border-amber-500/60 bg-amber-900/30 text-amber-200' : 'border-gray-700 text-gray-400 hover:border-amber-500/60 hover:text-amber-200'}`}
+                  aria-pressed={isRejected}
+                  title={isRejected ? 'Restore candidate' : 'Reject candidate without deleting the file'}
+                >
+                  {isRejected ? 'Rejected · Restore' : 'Reject Candidate'}
+                </button>
               </div>
 
               {/* Tags Pills */}
@@ -4163,9 +4314,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   </div>
                 )}
 
-                {currentAutoTags && currentAutoTags.length > 0 && (
-                  <div className="space-y-1">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
                     <p className="text-[10px] uppercase tracking-wider text-purple-300">Auto tags</p>
+                    <button
+                      type="button"
+                      onClick={() => void handleAutoTagImage()}
+                      disabled={!liveImage.prompt?.trim() || isAutoTagging || requestedAutoTagImageId !== null}
+                      className="text-xs text-purple-300 hover:text-purple-100 disabled:cursor-not-allowed disabled:text-gray-500"
+                      title={!liveImage.prompt?.trim()
+                        ? 'This image has no prompt to auto-tag'
+                        : currentAutoTags.length > 0
+                          ? 'Show other descriptive tags from this prompt'
+                          : 'Generate auto tags for this image only'}
+                      aria-label={currentAutoTags.length > 0 ? 'Regenerate auto tags for this image' : 'Generate auto tags for this image'}
+                    >
+                      {requestedAutoTagImageId === liveImage.id || autoTaggingImageId === liveImage.id
+                        ? 'Generating…'
+                        : currentAutoTags.length > 0 ? 'Regenerate' : 'Generate'}
+                    </button>
+                  </div>
+                  {autoTagError?.imageId === liveImage.id && <p role="alert" className="text-xs text-red-400">{autoTagError.message}</p>}
+                  {currentAutoTags.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {currentAutoTags.map(tag => (
                         <div key={`auto-${tag}`} className="inline-flex items-center bg-purple-600/20 border border-purple-500/40 rounded-full overflow-hidden">
@@ -4187,8 +4357,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -4254,6 +4424,29 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   }}
                 />
                 <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt', true)} />
+                {effectiveMetadata?.prompt && (
+                  <button
+                    type="button"
+                    disabled={isShadowLoading || Boolean(shadowError)}
+                    onClick={async () => {
+                      try {
+                        const result = await savePrompt(liveImage, {
+                          directoryPath,
+                          showOriginal,
+                          shadowMetadata,
+                          shadowReady: !isShadowLoading && !shadowError,
+                        });
+                        setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
+                      } catch (cause) {
+                        setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
+                      }
+                    }}
+                    className={`inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${isPromptSaved ? 'border-accent bg-accent text-gray-950 hover:bg-accent/90' : 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'}`}
+                    aria-pressed={isPromptSaved}
+                  >
+                    <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} /> {isPromptSaved ? 'Saved' : 'Save Prompt'}
+                  </button>
+                )}
                 <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', 'Negative Prompt', true)} />
                 
                 {/* Shadow Resources List */}
@@ -4470,12 +4663,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   )}
                 </div>
               )}
+
             </div>
           ) : (
             <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">
                 No normalized metadata available.
             </div>
           )}
+
+          <ProvenanceSection
+            image={liveImage}
+            metadata={nMeta}
+            rawMetadata={rawMetadataImage.metadata}
+            loadFullRawMetadata={ensureFullRawMetadata}
+            displayMode="details-compact"
+          />
 
           <div className="grid grid-cols-2 gap-2 pt-2">
             <motion.button
@@ -4487,7 +4689,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 }
               }}
               whileTap={{ scale: 0.97 }}
-              className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100"
             >
               {copiedPrompt ? <CheckCircle className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
               {copiedPrompt ? 'Copied!' : 'Copy Prompt'}
@@ -4502,7 +4704,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 }
               }}
               whileTap={{ scale: 0.97 }}
-              className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100"
             >
               {copiedRawMetadata ? <CheckCircle className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
               {copiedRawMetadata ? 'Copied!' : 'Copy Raw Metadata'}
@@ -4516,7 +4718,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 await showInExplorer(`${directoryPath}/${image.name}`);
               }}
               whileTap={{ scale: 0.97 }}
-              className="w-full justify-center bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-2"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100"
             >
               <Folder className="w-3.5 h-3.5" />
               Show in Folder
@@ -4534,7 +4736,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               }}
               whileTap={{ scale: 0.97 }}
               disabled={canUseComparison && comparisonCount >= 4}
-              className="w-full justify-center bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+              className="order-5 col-span-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
               title={!canUseComparison ? "Comparison (Pro Feature)" : comparisonCount >= 4 ? "Comparison queue full" : "Add to comparison"}
             >
               <GitCompare className="w-3 h-3" />
@@ -4545,7 +4747,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               onClick={() => onFindSimilar?.(image)}
               whileTap={{ scale: 0.97 }}
               disabled={!canFindSimilar}
-              className="w-full justify-center bg-teal-50 hover:bg-teal-100 dark:bg-teal-500/10 dark:hover:bg-teal-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+              className="order-4 flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
               title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
             >
               <Search className="w-3 h-3" />
@@ -4566,7 +4768,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   setIsGenerateModalOpen(true);
                 }}
                 disabled={canUseA1111 && !effectiveMetadata?.prompt}
-                className="w-full bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-blue-200 dark:border-blue-500/50 hover:border-blue-300 dark:hover:border-blue-400 text-blue-700 dark:text-blue-100 px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-500 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isGenerating && canUseA1111 ? (
                   <>
@@ -4595,7 +4797,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   copyToA1111(generationImage, effectiveMetadata);
                 }}
                 disabled={canUseA1111 && (isCopying || !effectiveMetadata?.prompt)}
-                className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isCopying && canUseA1111 ? (
                   <>
@@ -4665,10 +4867,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
           {/* ComfyUI Integration */}
           {effectiveMetadata && showComfyUIActions && (
-            <div className={`mt-3 ${showComfyUIHeading ? 'pt-3 border-t border-gray-700' : ''}`}>
-              {showComfyUIHeading && (
-                <h4 className="text-xs text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
-              )}
+            <div className="mt-3 border-t border-gray-700 pt-3">
+              <h4 className="mb-2 text-xs uppercase tracking-wider text-gray-400">ComfyUI</h4>
 
               {/* One-click ComfyUI handoff */}
               <button
@@ -4679,7 +4879,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   }
                   onOpenComfyUIWorkflow?.(generationImage);
                 }}
-                className="w-full bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-purple-200 dark:border-purple-500/50 hover:border-purple-300 dark:hover:border-purple-400 text-purple-700 dark:text-purple-100 px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 mb-2"
+                className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg border border-blue-500 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Workflow className="w-4 h-4" />
                 <span>Open Workflow in ComfyUI</span>
@@ -4696,7 +4896,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   copyToComfyUI(generationImage, effectiveMetadata);
                 }}
                 disabled={canUseComfyUI && (isCopyingComfyUI || !effectiveMetadata?.prompt)}
-                className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isCopyingComfyUI && canUseComfyUI ? (
                   <>
@@ -4934,11 +5134,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
           onSave={async (metadata) => { await saveShadowMetadata(metadata); }}
           onExportEditedCopy={openBatchExport}
           onApplyToSelected={exportSelectionIds.size > 1 ? async (metadata) => {
-            await bulkSaveShadowMetadata(Array.from(exportSelectionIds).map((imageId) => ({
+            const imagesById = new Map(allImages.map((candidate) => [candidate.id, candidate]));
+            await saveShadows(Array.from(exportSelectionIds).map((imageId) => ({
               ...metadata,
               imageId,
               updatedAt: Date.now(),
-            })));
+            })), imagesById);
           } : null}
           selectedImageCount={exportSelectionIds.size}
           onCopyEditableMetadata={(metadata) => {

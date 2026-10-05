@@ -25,7 +25,7 @@ export const createPermanentDeleteGrantStore = ({
   };
 
   return {
-    issue(webContentsId, requestedPath, targetFiles, primaryDeleted = false) {
+    issue(webContentsId, requestedPath, targetFiles, primaryDeleted = false, provenanceOperationId = null) {
       if (!Number.isInteger(webContentsId) || !Array.isArray(targetFiles) || targetFiles.length === 0) {
         throw new Error('Invalid permanent-delete grant scope');
       }
@@ -35,6 +35,7 @@ export const createPermanentDeleteGrantStore = ({
         requestedPath,
         targetFiles: targetFiles.map((target) => ({ ...target })),
         primaryDeleted,
+        provenanceOperationId,
         expiresAt: now() + ttlMs,
       });
       return token;

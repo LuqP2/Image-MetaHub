@@ -3,9 +3,9 @@
 [![Join our Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/2MXWxjKyJ5)
 [![Buy License – $39](https://img.shields.io/badge/Buy%20License-%2439-4b8bbe)](https://www.imagemetahub.com/pro?src=readme)
 
-**A local-first workspace that keeps your generated media connected to the prompts, models and workflows that created them.**
+**Local-first AI image organizer and generative media library manager for ComfyUI, Automatic1111, InvokeAI, Forge, and more.**
 
-Every image and video stays linked to how it was made — so you can find it, compare it against its siblings, and send the workflow straight back into ComfyUI. Nothing is uploaded.
+Image MetaHub indexes large folders of AI-generated media without moving or uploading your files. Search and organize generations by prompt, checkpoint, LoRA, sampler, seed, workflow metadata, tags, ratings, or visual similarity, then send compatible workflows straight back into ComfyUI.
 
 > **Join the community on [Discord](https://discord.gg/2MXWxjKyJ5)** — feature requests, bug reports, metadata parsing help, and early builds.
 
@@ -13,9 +13,21 @@ Every image and video stays linked to how it was made — so you can find it, co
 
 ## What is Image MetaHub?
 
-Image MetaHub is a desktop app for browsing large local libraries of AI outputs without uploading anything to the cloud. It scans your folders, extracts metadata from popular generators, caches results for fast reuse, and lets you filter by prompt, model, LoRA, sampler, seed, dimensions, tags, and more.
+Image MetaHub is a desktop app for organizing and browsing large local libraries of AI-generated images, video, audio, and other generative media. It is built for people who have outgrown a normal output folder or basic ComfyUI gallery and need a searchable library that still understands how each generation was made.
 
-It started as a local browser for InvokeAI outputs and has since grown into a broader metadata hub for Stable Diffusion ecosystems, ComfyUI workflows, and related tools.
+It scans your existing folders in place, extracts generation metadata from ComfyUI, Automatic1111, InvokeAI, Forge, and other tools, caches results for fast reuse, and lets you combine metadata search, filters, tags, ratings, collections, lineage, and local visual similarity search. Your files stay on your machine.
+
+## Organize ComfyUI generations at scale
+
+Image MetaHub works as a standalone ComfyUI output organizer for large generation folders. It reads embedded prompt and workflow metadata, lets you search by checkpoint, LoRA, sampler, scheduler, seed, dimensions, node types, tags, ratings, and more, and can send compatible generations back into ComfyUI as working workflows.
+
+You do not need to import your library into a proprietary cloud or reorganize your output folders first. Image MetaHub indexes the files where they already live and can keep watching those folders while ComfyUI generates new media.
+
+## Manage large AI-generation libraries
+
+Image MetaHub is more than an output gallery. It is designed for long-term retrieval and curation across large local collections, with metadata search, visual similarity, tags and ratings, stacks, collections, lineage, compare tools, deduplication helpers, and support for multiple generation ecosystems.
+
+The goal is to preserve the production history around each asset: what prompt, model, LoRAs, workflow, and source image created it, how related generations connect to each other, and how to continue working from it later.
 
 ## Highlights
 

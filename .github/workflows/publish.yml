@@ -16,9 +16,6 @@ jobs:
     env:
       IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
       IMH_LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
-    outputs:
-      release-created: true
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -91,15 +88,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish Release
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "Publishing release v$VERSION..."
-          gh release edit v$VERSION --draft=false --latest
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   build-macos:
     name: Build macOS
     runs-on: macos-latest
@@ -136,7 +124,6 @@ jobs:
           npx electron-builder --mac --publish=never
           echo "macOS build completed!"
           ls -la dist-electron/
-        continue-on-error: true
 
       - name: Upload macOS assets
         if: success()
@@ -190,7 +177,6 @@ jobs:
           npx electron-builder --linux --publish=never
           echo "Linux build completed!"
           ls -la dist-electron/
-        continue-on-error: true
 
       - name: Upload Linux assets
         if: success()
@@ -203,5 +189,24 @@ jobs:
               gh release upload v$VERSION "$file" --clobber
             fi
           done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-release:
+    name: Publish Release
+    needs:
+      - build-windows
+      - build-macos
+      - build-linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Publish completed release
+        shell: bash
+        run: |
+          echo "Publishing release ${{ github.ref_name }}..."
+          gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

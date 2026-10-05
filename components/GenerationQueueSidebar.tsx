@@ -356,7 +356,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
               disabled={isRunningWorkflow}
               title="Run current ComfyUI workflow"
               aria-label="Run current ComfyUI workflow"
-              className="flex items-center gap-1.5 rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Play className="h-3.5 w-3.5" />
               Run

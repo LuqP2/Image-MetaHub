@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph, resolvePromptFromGraph, resolveWorkflowFactsFromGraph } from '../services/parsers/comfyUIParser';
+import { resolvePromptFromGraph as resolveEnginePromptFromGraph } from '../packages/metadata-engine/src/parsers/comfyUIParser';
 import { parseImageMetadata } from '../services/parsers/metadataParserFactory';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -22,6 +23,113 @@ function loadFixture(name: string): any {
   const content = fs.readFileSync(fixturePath, 'utf-8');
   return JSON.parse(content);
 }
+
+describe('Qwen Image 2.1 metadata', () => {
+  const makePrompt = (negativePrompt: unknown = 'direct negative') => ({
+    '1': { class_type: 'UNETLoader', inputs: { unet_name: 'qwen_image_2.1.safetensors' } },
+    '2': { class_type: 'String Literal', inputs: { string: 'linked positive' } },
+    '3': { class_type: 'TextEncodeQwenImage21', inputs: {
+      prompt: ['2', 0], negative_prompt: negativePrompt,
+    } },
+    '4': { class_type: 'KSampler', inputs: {
+      model: ['1', 0], positive: ['3', 0], negative: ['3', 1],
+      seed: 42, steps: 25, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1,
+    } },
+    '5': { class_type: 'String Literal', inputs: { string: '' } },
+  });
+
+  it('keeps positive and negative outputs separate in both graph parsers', () => {
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = parse({}, makePrompt());
+      expect(result.prompt).toBe('linked positive');
+      expect(result.negativePrompt).toBe('direct negative');
+      expect(result.model).toBe('qwen_image_2.1.safetensors');
+      expect(result.seed).toBe(42);
+      expect(result.steps).toBe(25);
+      expect(result.cfg).toBe(1);
+      expect(result.sampler_name).toBe('euler');
+      expect(result.scheduler).toBe('simple');
+    }
+  });
+
+  it('keeps both Qwen prompts separate through CFGGuider and SamplerCustomAdvanced', () => {
+    const prompt = {
+      '1': { class_type: 'TextEncodeQwenImage21', inputs: {
+        prompt: 'positive text', negative_prompt: 'negative text',
+      } },
+      '2': { class_type: 'CFGGuider', inputs: {
+        positive: ['1', 0], negative: ['1', 1], cfg: 1,
+      } },
+      '3': { class_type: 'SamplerCustomAdvanced', inputs: { guider: ['2', 0] } },
+    };
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = parse({}, prompt);
+      expect(result.prompt).toBe('positive text');
+      expect(result.negativePrompt).toBe('negative text');
+    }
+
+    const basicGuiderPrompt = {
+      ...prompt,
+      '2': { class_type: 'BasicGuider', inputs: { conditioning: ['1', 0] } },
+    };
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = parse({}, basicGuiderPrompt);
+      expect(result.prompt).toBe('positive text');
+      expect(result.negativePrompt).toBeNull();
+    }
+  });
+
+  it('preserves an intentionally empty negative prompt in both parsers', () => {
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      expect(parse({}, makePrompt('')).negativePrompt).toBe('');
+      expect(parse({}, makePrompt(['5', 0])).negativePrompt).toBe('');
+    }
+  });
+
+  it('uses workflow widget text only when a linked Qwen prompt cannot be resolved', () => {
+    const workflow = { nodes: [{
+      id: 3, type: 'TextEncodeQwenImage21',
+      widgets_values: ['widget positive', 'widget negative', 1024],
+    }] };
+    const prompt: any = makePrompt();
+    prompt['3'].inputs.prompt = ['8', 0];
+    prompt['3'].inputs.negative_prompt = ['9', 0];
+    prompt['8'] = { class_type: 'UnregisteredCustomString', inputs: {} };
+    prompt['9'] = { class_type: 'UnregisteredCustomString', inputs: {} };
+
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = parse(workflow, prompt);
+      expect(result.prompt).toBe('widget positive');
+      expect(result.negativePrompt).toBe('widget negative');
+    }
+
+    prompt['3'].inputs.negative_prompt = ['5', 0];
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      expect(parse(workflow, prompt).negativePrompt).toBe('');
+    }
+  });
+
+  it('recovers prompts from ordinary ComfyUI metadata and an existing Save Node chunk', async () => {
+    const prompt = makePrompt();
+    const ordinary = await parseImageMetadata({ prompt } as any);
+    expect(ordinary?.prompt).toBe('linked positive');
+    expect(ordinary?.negativePrompt).toBe('direct negative');
+
+    const saved = await parseImageMetadata({ imagemetahub_data: {
+      generator: 'ComfyUI', prompt: '', negativePrompt: '', prompt_api: prompt,
+    } } as any);
+    expect(saved?.prompt).toBe('linked positive');
+    expect(saved?.negativePrompt).toBe('direct negative');
+
+    const manual = await parseImageMetadata({ imagemetahub_data: {
+      generator: 'ComfyUI', prompt: 'manual positive', negativePrompt: 'manual negative',
+      metadata_sources: { positive: 'manual_override', negative: 'manual_override' },
+      prompt_api: prompt,
+    } } as any);
+    expect(manual?.prompt).toBe('manual positive');
+    expect(manual?.negativePrompt).toBe('manual negative');
+  });
+});
 
 describe('ComfyUI Parser - Basic Workflows', () => {
   it('should parse basic KSampler workflow', () => {
@@ -46,6 +154,209 @@ describe('ComfyUI Parser - Prompt Sources', () => {
 
     expect(result.prompt).toBe('Visualize a long, eel-like mutant lizard with overlapping plates of translucent skin. Place it in a fossilized ocean desert where waves are frozen into glassy dunes.');
     expect(result._telemetry.unknown_nodes_count).toBe(0);
+  });
+
+  it('extracts positive and negative prompts from Krea2 Edit grounded encodes', () => {
+    const workflow = {
+      nodes: [
+        { id: 53, type: 'KSampler', widgets_values: [42, 'fixed', 10, 1, 'euler', 'simple', 1] },
+        { id: 84, type: 'Krea2EditGroundedEncode', widgets_values: ['Change her outfit to a red raincoat.', 768, ''] },
+        { id: 85, type: 'Krea2EditGroundedEncode', widgets_values: ['avoid artifacts', 768, ''] },
+      ],
+    };
+    const prompt = {
+      '53': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 42,
+          steps: 10,
+          cfg: 1,
+          sampler_name: 'euler',
+          scheduler: 'simple',
+          positive: ['84', 0],
+          negative: ['85', 0],
+        },
+      },
+      '84': {
+        class_type: 'Krea2EditGroundedEncode',
+        inputs: { prompt: 'Change her outfit to a red raincoat.', grounding_px: 768 },
+      },
+      '85': {
+        class_type: 'Krea2EditGroundedEncode',
+        inputs: { prompt: 'avoid artifacts', grounding_px: 768 },
+      },
+    };
+
+    for (const resolveGraph of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = resolveGraph(workflow, prompt);
+      expect(result.prompt).toBe('Change her outfit to a red raincoat.');
+      expect(result.negativePrompt).toBe('avoid artifacts');
+      expect(result._telemetry.unknown_nodes_count).toBe(0);
+    }
+  });
+
+  describe('Krea2 conditional prompt routing', () => {
+    const loadKreaFixture = () => loadFixture('krea2-switch-routing.json');
+
+    it('uses the executed false branch instead of a stale CLIP widget', () => {
+      const fixture = loadKreaFixture();
+      const result = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+
+      expect(result.prompt).toBe(fixture.expectedPrompt);
+      expect(result.prompt).not.toBe(fixture.staleWidgetPrompt);
+      expect(result.seed).toBe(4242);
+    });
+
+    it('passes through RBG conditioning without using its seed or target vibe', () => {
+      const fixture = loadKreaFixture();
+      fixture.workflow.nodes.push(
+        { id: 74, type: 'RBG_Smart_Seed_Variance', widgets_values: ['Balanced', 50, 999999] },
+        { id: 75, type: 'CLIPTextEncode', widgets_values: ['unrelated target vibe'] },
+      );
+      fixture.prompt['72'].inputs.positive = ['74', 0];
+      fixture.prompt['74'] = {
+        class_type: 'RBG_Smart_Seed_Variance',
+        inputs: {
+          seed: 999999,
+          conditioning: ['73', 0],
+          target_vibe: ['75', 0],
+        },
+      };
+      fixture.prompt['75'] = {
+        class_type: 'CLIPTextEncode',
+        inputs: { text: 'unrelated target vibe' },
+      };
+
+      const result = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+
+      expect(result.prompt).toBe(fixture.expectedPrompt);
+      expect(result.seed).toBe(4242);
+    });
+
+    it('supports direct boolean controls and the true LoRA concatenation branch', () => {
+      const fixture = loadKreaFixture();
+      fixture.prompt['70'].inputs.switch = true;
+
+      const result = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+
+      expect(result.prompt).toBe(`${fixture.expectedPrompt}, darkbrush`);
+    });
+
+    it('collects LoRAs only from the executed switch branch', () => {
+      const fixture = loadKreaFixture();
+      fixture.workflow.nodes.push(
+        { id: 56, type: 'UNETLoader', widgets_values: ['base.safetensors', 'default'] },
+        { id: 60, type: 'LoraLoaderModelOnly', widgets_values: ['active-a.safetensors', 0.8] },
+        { id: 62, type: 'LoraLoaderModelOnly', widgets_values: ['inactive-b.safetensors', 0.9] },
+        { id: 66, type: 'ComfySwitchNode', widgets_values: [false] },
+      );
+      fixture.prompt['56'] = {
+        class_type: 'UNETLoader',
+        inputs: { unet_name: 'base.safetensors', weight_dtype: 'default' },
+      };
+      fixture.prompt['60'] = {
+        class_type: 'LoraLoaderModelOnly',
+        inputs: { lora_name: 'active-a.safetensors', strength_model: 0.8, model: ['56', 0] },
+      };
+      fixture.prompt['62'] = {
+        class_type: 'LoraLoaderModelOnly',
+        inputs: { lora_name: 'inactive-b.safetensors', strength_model: 0.9, model: ['56', 0] },
+      };
+      fixture.prompt['66'] = {
+        class_type: 'ComfySwitchNode',
+        inputs: { switch: ['67', 0], on_false: ['60', 0], on_true: ['62', 0] },
+      };
+      fixture.prompt['72'].inputs.model = ['66', 0];
+
+      const falseBranch = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+      expect(falseBranch.lora).toContain('active-a.safetensors');
+      expect(falseBranch.lora).not.toContain('inactive-b.safetensors');
+
+      fixture.prompt['67'].inputs.value = true;
+      const trueBranch = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+      expect(trueBranch.lora).toContain('inactive-b.safetensors');
+      expect(trueBranch.lora).not.toContain('active-a.safetensors');
+    });
+
+    it('does not restore an inactive LoRA when the executed branch has none', () => {
+      const fixture = loadKreaFixture();
+      fixture.workflow.nodes.push(
+        { id: 56, type: 'UNETLoader', widgets_values: ['base.safetensors', 'default'] },
+        { id: 62, type: 'LoraLoaderModelOnly', widgets_values: ['inactive.safetensors', 0.9] },
+        { id: 66, type: 'ComfySwitchNode', widgets_values: [false] },
+      );
+      fixture.prompt['56'] = {
+        class_type: 'UNETLoader',
+        inputs: { unet_name: 'base.safetensors', weight_dtype: 'default' },
+      };
+      fixture.prompt['62'] = {
+        class_type: 'LoraLoaderModelOnly',
+        inputs: { lora_name: 'inactive.safetensors', strength_model: 0.9, model: ['56', 0] },
+      };
+      fixture.prompt['66'] = {
+        class_type: 'ComfySwitchNode',
+        inputs: { switch: ['67', 0], on_false: ['56', 0], on_true: ['62', 0] },
+      };
+      fixture.prompt['72'].inputs.model = ['66', 0];
+
+      const noLoraBranch = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+      expect(noLoraBranch.lora).not.toContain('inactive.safetensors');
+
+      fixture.prompt['67'].inputs.value = true;
+      const loraBranch = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+      expect(loraBranch.lora).toContain('inactive.safetensors');
+    });
+
+    it('uses the source prompt when the runtime-only TextGenerate branch is active', () => {
+      const fixture = loadKreaFixture();
+      fixture.prompt['68'].inputs.value = true;
+
+      const result = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+
+      expect(result.prompt).toBe(fixture.expectedPrompt);
+      expect(result.prompt).not.toBe(fixture.staleWidgetPrompt);
+    });
+
+    it('preserves an explicit manual prompt over graph recovery', async () => {
+      const fixture = loadKreaFixture();
+      const result = await parseImageMetadata({
+        imagemetahub_data: {
+          generator: 'ComfyUI',
+          prompt: 'Curated manual prompt',
+          metadata_sources: { prompt: 'manual_override' },
+          workflow: fixture.workflow,
+          prompt_api: fixture.prompt,
+        },
+      } as any);
+
+      expect(result?.prompt).toBe('Curated manual prompt');
+    });
+  });
+
+  it('preserves empty runtime prompt values over stale workflow text', () => {
+    const workflow = {
+      nodes: [
+        { id: 2, type: 'CLIPTextEncode', widgets_values: ['stale negative prompt'] },
+        { id: 3, type: 'CLIPTextEncode', widgets_values: ['stale positive prompt'] },
+      ],
+    };
+    const prompt = {
+      '1': { class_type: 'String Literal', inputs: { string: '' } },
+      '2': { class_type: 'CLIPTextEncode', inputs: { text: ['1', 0] } },
+      '3': { class_type: 'CLIPTextEncode', inputs: { text: '' } },
+      '4': {
+        class_type: 'KSampler',
+        inputs: {
+          positive: ['3', 0],
+          negative: ['2', 0],
+        },
+      },
+    };
+
+    const result = resolvePromptFromGraph(workflow, prompt);
+
+    expect(result.prompt).toBe('');
+    expect(result.negativePrompt).toBe('');
   });
 
   it('should handle ImpactWildcardProcessor populated_text links without treating them as text', () => {
@@ -699,6 +1010,89 @@ describe('ComfyUI Parser - MetaHub chunk graph recovery', () => {
     expect(result?.seed).toBe(1100100895348371);
     expect(result?.model).toBe('Z image Turbo\\z_image_turbo_bf16.safetensors');
   });
+
+  it('recovers the Krea2 prompt when the Save Node stored False', async () => {
+    const expectedPrompt = 'A studio portrait with dramatic directional lighting';
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'False',
+        model: 'krea2_turbo_bf16.safetensors',
+        generation_type: 'img2img',
+        parent_image: {
+          fileName: 'source.png',
+          relativePath: 'inputs/source.png',
+        },
+        workflow: {
+          nodes: [
+            { id: 73, type: 'CLIPTextEncode', widgets_values: [expectedPrompt] },
+          ],
+        },
+        prompt_api: {
+          '67': { class_type: 'PrimitiveBoolean', inputs: { value: false } },
+          '70': {
+            class_type: 'ComfySwitchNode',
+            inputs: { switch: ['67', 0], on_false: ['71', 0], on_true: ['69', 0] },
+          },
+          '71': { class_type: 'PrimitiveStringMultiline', inputs: { value: expectedPrompt } },
+          '72': {
+            class_type: 'KSampler',
+            inputs: {
+              seed: 123,
+              steps: 10,
+              cfg: 1,
+              sampler_name: 'euler',
+              scheduler: 'simple',
+              positive: ['73', 0],
+            },
+          },
+          '73': { class_type: 'CLIPTextEncode', inputs: { text: ['70', 0] } },
+        },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe(expectedPrompt);
+    expect(result?.generationType).toBe('img2img');
+    expect(result?.lineage?.sourceImage?.fileName).toBe('source.png');
+  });
+
+  it('preserves a legitimate prompt equal to false outside the Krea2 sentinel shape', async () => {
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'False',
+        model: 'another-model.safetensors',
+        workflow: { nodes: [{ id: 1, type: 'CLIPTextEncode', widgets_values: ['different text'] }] },
+        prompt_api: {
+          '1': { class_type: 'CLIPTextEncode', inputs: { text: 'different text' } },
+          '2': { class_type: 'KSampler', inputs: { positive: ['1', 0] } },
+        },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe('False');
+  });
+
+  it('preserves canonical metadata and lineage when an embedded workflow is malformed', async () => {
+    const result = await parseImageMetadata({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'canonical prompt',
+        negativePrompt: '',
+        model: 'krea2_turbo_bf16.safetensors',
+        generation_type: 'img2img',
+        parent_image: { fileName: 'source.png' },
+        workflow: { nodes: {} },
+      },
+    } as any);
+
+    expect(result?.prompt).toBe('canonical prompt');
+    expect(result?.negativePrompt).toBe('');
+    expect(result?.model).toBe('krea2_turbo_bf16.safetensors');
+    expect(result?.generationType).toBe('img2img');
+    expect(result?.lineage?.sourceImage?.fileName).toBe('source.png');
+  });
+
 });
 
 describe('ComfyUI Parser - Prompt-only graph payloads', () => {

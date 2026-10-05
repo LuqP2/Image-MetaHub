@@ -295,7 +295,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
             type="button"
             disabled={isSubmitting || !values.name.trim()}
             onClick={() => void handleSubmit()}
-            className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitLabel}
           </button>

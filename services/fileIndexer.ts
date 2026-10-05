@@ -5,7 +5,7 @@ import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager'
 import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, hasUsableComfyGraphMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { getFilesystemPathComparisonKey, normalizeFilesystemPath } from '../utils/filesystemPath';
 import { parse } from 'exifr';
-import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph } from './parsers/comfyUIParser';
+import { isLegacyKrea2FalsePromptPayload, isNonBlankPromptText, resolvePromptFromGraph, parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph } from './parsers/comfyUIParser';
 import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
@@ -1418,13 +1418,19 @@ export const buildNormalizedMetadataFromMetaHubChunk = async (
       let inferredGenerationType: BaseMetadata['generationType'] | undefined;
       let inferredLineage: BaseMetadata['lineage'] | undefined;
       let recoveredMetadata: Record<string, any> | undefined;
-      const hasPromptGraph = Boolean(payload.workflow || payload.prompt_api || payload.prompt);
+      const hasPromptGraph = Boolean(
+        (payload.workflow && typeof payload.workflow === 'object')
+        || (payload.prompt_api && typeof payload.prompt_api === 'object')
+        || (payload.prompt && typeof payload.prompt === 'object')
+      );
+      const hasLegacyKrea2FalsePrompt = isLegacyKrea2FalsePromptPayload(payload);
       const embeddedLorasAreValid = Array.isArray(payload.loras) && payload.loras.every((lora: unknown) =>
         typeof lora === 'string'
         || Boolean(lora && typeof lora === 'object' && typeof (lora as Record<string, unknown>).name === 'string')
       );
       const needsGraphRecovery = hasPromptGraph && (
-        !(typeof payload.prompt === 'string' && payload.prompt.trim())
+        hasLegacyKrea2FalsePrompt
+        || !isNonBlankPromptText(payload.prompt)
         || !embeddedLorasAreValid
         || !explicitGenerationType
       );
@@ -1435,11 +1441,15 @@ export const buildNormalizedMetadataFromMetaHubChunk = async (
         inferredLineage = recoveredMetadata.lineage as BaseMetadata['lineage'] | undefined;
       }
 
+      let prompt = isNonBlankPromptText(payload.prompt) ? payload.prompt : recoveredMetadata?.prompt || '';
+      if (hasLegacyKrea2FalsePrompt) {
+        const recoveredPrompt = recoveredMetadata?.prompt;
+        prompt = isNonBlankPromptText(recoveredPrompt) ? recoveredPrompt : '';
+      }
+
       return {
-        prompt: typeof payload.prompt === 'string' && payload.prompt.trim()
-          ? payload.prompt
-          : recoveredMetadata?.prompt || '',
-        negativePrompt: typeof payload.negativePrompt === 'string' && payload.negativePrompt.trim()
+        prompt,
+        negativePrompt: isNonBlankPromptText(payload.negativePrompt)
           ? payload.negativePrompt
           : recoveredMetadata?.negativePrompt || '',
         model: typeof payload.model === 'string' ? payload.model : '',
@@ -1613,12 +1623,20 @@ async function processSingleFileOptimized(
       const readModel3DMetadata = (window as any).electronAPI?.readModel3DMetadata;
       if (isElectron && absolutePath && readModel3DMetadata) {
         const result = await readModel3DMetadata({ filePath: absolutePath });
-        rawMetadata = result?.success && result.metadata ? result.metadata as ImageMetadata : null;
+        const modelMetadata = result?.success && result.metadata
+          ? result.metadata as ImageMetadata
+          : null;
+        rawMetadata = modelMetadata && (result.source === 'sidecar' || result.source === 'embedded')
+          ? { ...modelMetadata, _provenanceMetadataSource: result.source } as ImageMetadata
+          : modelMetadata;
       } else if (extension !== '.glb') {
         rawMetadata = null;
       } else {
         const file = await fileEntry.handle.getFile();
-        rawMetadata = await readGlbMetadataFromFile(file);
+        const modelMetadata = await readGlbMetadataFromFile(file);
+        rawMetadata = modelMetadata
+          ? { ...modelMetadata, _provenanceMetadataSource: 'embedded' } as ImageMetadata
+          : null;
         fileSizeValue = fileSizeValue ?? file.size;
       }
     } else if (isVideo || isAudio) {
@@ -1683,6 +1701,12 @@ async function processSingleFileOptimized(
       fileSizeValue = fileSizeValue ?? file.size;
     }
 
+    // Metadata acquired from the media carrier is embedded. Sidecar fallbacks below
+    // replace this source explicitly when the file itself has no usable metadata.
+    if (rawMetadata && !('_provenanceMetadataSource' in rawMetadata)) {
+      rawMetadata = { ...rawMetadata, _provenanceMetadataSource: 'embedded' } as ImageMetadata;
+    }
+
     // Try to read sidecar JSON for Easy Diffusion (fallback if no embedded metadata)
     let resolvedAbsolutePath = absolutePath;
     if (!resolvedAbsolutePath && isElectron && (window as any).electronAPI?.joinPaths) {
@@ -1698,7 +1722,7 @@ async function processSingleFileOptimized(
     if (!rawMetadata) {
       sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, resolvedAbsolutePath);
       if (sidecarJson) {
-        rawMetadata = sidecarJson;
+        rawMetadata = { ...sidecarJson, _provenanceMetadataSource: 'sidecar' } as ImageMetadata;
       }
     }
     if (profile) {
@@ -1916,7 +1940,7 @@ if (rawMetadata) {
       sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, absolutePath);
     }
     if (sidecarJson) {
-      rawMetadata = sidecarJson;
+      rawMetadata = { ...sidecarJson, _provenanceMetadataSource: 'sidecar' } as ImageMetadata;
       normalizedMetadata = parseEasyDiffusionJson(sidecarJson);
     }
   }
@@ -2236,6 +2260,7 @@ interface ProcessFilesOptions {
   enrichmentBatchSize?: number;
   onEnrichmentProgress?: (progress: { processed: number; total: number } | null) => void;
   hydratePreloadedImages?: boolean;
+  provenanceIdentityForPath?: (relativePath: string) => Pick<IndexedImage, 'assetId' | 'revisionId' | 'provenanceLocationId' | 'provenanceRootId'> | undefined;
 }
 
 export interface ProcessFilesResult {
@@ -2297,7 +2322,7 @@ function compactRawMetadataForRuntime(
     compactedRawMetadata.parametersPreview = rawMetadata.parameters.slice(0, RAW_METADATA_PREVIEW_BYTES);
   }
 
-  for (const key of ['_carrierFormat', '_carrierConflicts', 'imagemetahub_extension'] as const) {
+  for (const key of ['_carrierFormat', '_carrierConflicts', '_provenanceMetadataSource', 'imagemetahub_extension'] as const) {
     if (key in rawMetadata) {
       compactedRawMetadata[key] = (rawMetadata as Record<string, unknown>)[key];
     }
@@ -2307,6 +2332,10 @@ function compactRawMetadataForRuntime(
     const payload = rawMetadata.imagemetahub_data as Record<string, unknown>;
     compactedRawMetadata.imagemetahub_data = {
       generator: payload.generator,
+      source_generator: payload.source_generator,
+      edited_at: payload.edited_at,
+      exported_at: payload.exported_at,
+      edit: payload.edit,
       analytics: payload.analytics,
       _analytics: payload._analytics,
       imh_pro: payload.imh_pro,
@@ -2348,6 +2377,10 @@ function mapIndexedImageToCache(image: IndexedImage): CacheImageMetadata {
     enrichmentState: image.enrichmentState,
     fileSize: image.fileSize,
     fileType: image.fileType,
+    assetId: image.assetId,
+    revisionId: image.revisionId,
+    provenanceLocationId: image.provenanceLocationId,
+    provenanceRootId: image.provenanceRootId,
     clusterId: image.clusterId,
     clusterPosition: image.clusterPosition,
     autoTags: image.autoTags,
@@ -2682,6 +2715,7 @@ export async function processFiles(
       lastModified: sortDate,
     });
 
+    const provenanceIdentity = options.provenanceIdentityForPath?.(entry.path);
     return {
       id: `${directoryId}::${entry.path}`,
       name: entry.handle.name,
@@ -2709,6 +2743,7 @@ export async function processFiles(
       enrichmentState: needsEnrichment ? 'catalog' : 'enriched',
       fileSize,
       fileType: inferredType,
+      ...provenanceIdentity,
     };
   };
 
@@ -2716,8 +2751,14 @@ export async function processFiles(
   const preloadedImages = options.preloadedImages ?? [];
   const hydratePreloadedImages = options.hydratePreloadedImages ?? true;
   for (const image of preloadedImages) {
+    const idPrefix = `${directoryId}::`;
+    const originalRelativePath = image.id.startsWith(idPrefix)
+      ? image.id.slice(idPrefix.length)
+      : image.name;
+    const provenanceIdentity = options.provenanceIdentityForPath?.(originalRelativePath);
     const stub = {
       ...image,
+      ...provenanceIdentity,
       directoryId,
       directoryName,
       enrichmentState: image.enrichmentState ?? 'enriched',
@@ -2924,8 +2965,6 @@ export async function processFiles(
     const resultsBatch: IndexedImage[] = [];
     const touchedChunks = new Set<number>();
     const DIRTY_CHUNK_FLUSH_THRESHOLD = 12;
-    const DIRTY_FLUSH_INTERVAL_MS = 350;
-    let lastFlushTime = performance.now();
     const canWriteCache = Boolean(cacheWriter);
     const DEFER_CACHE_FLUSH_THRESHOLD = 5000;
     const deferCacheFlush = canWriteCache && totalEnrichment >= DEFER_CACHE_FLUSH_THRESHOLD;
@@ -3075,14 +3114,11 @@ export async function processFiles(
         detail: { depth: queueLength - phaseBStats.processed }
       });
 
-      const now = performance.now();
       if (
         resultsBatch.length >= enrichmentBatchSize ||
-        (canWriteCache && !deferCacheFlush && touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD) ||
-        now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS
+        (canWriteCache && !deferCacheFlush && touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD)
       ) {
         await commitBatch();
-        lastFlushTime = now;
       }
 
       return merged;

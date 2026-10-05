@@ -102,7 +102,7 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
 
   useEffect(() => {
     const node = rootRef.current;
-    if (!node || !cacheChecked || thumbnailUrl || failed) return;
+    if (!cacheSafe || !node || !cacheChecked || thumbnailUrl || failed) return;
     let cancelled = false;
     const observer = new IntersectionObserver((entries) => {
       if (!entries.some((entry) => entry.isIntersecting)) return;
@@ -123,7 +123,7 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
       releaseRef.current?.();
       releaseRef.current = null;
     };
-  }, [cacheChecked, failed, thumbnailUrl]);
+  }, [cacheChecked, cacheSafe, failed, thumbnailUrl]);
 
   useEffect(() => {
     if (!shouldRender) return;
@@ -154,7 +154,12 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
 
   return (
     <div ref={rootRef} className={`relative h-full w-full overflow-hidden bg-gray-950 ${className}`}>
-      {thumbnailUrl ? (
+      {!cacheSafe ? (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-gray-950 text-violet-300">
+          <Box className="h-7 w-7" />
+          <span className="text-[10px] font-medium">3D preview</span>
+        </div>
+      ) : thumbnailUrl ? (
         <img src={thumbnailUrl} alt={image.name} className="h-full w-full object-cover" draggable={false} />
       ) : shouldRender ? (
         <Model3DViewer

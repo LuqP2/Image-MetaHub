@@ -28,6 +28,7 @@ import {
   isSupportedMediaFileName,
 } from './utils/mediaTypes.js';
 import { normalizeBirthtimeMs, resolveFileSortDate } from './utils/fileTimestamps.js';
+import { PARSER_VERSION } from './utils/parserVersion.js';
 import { copyFilePreservingTimestamps } from './utils/fileCopy.mjs';
 import { readBasicMp4Metadata } from './utils/mp4Metadata.mjs';
 import {
@@ -41,8 +42,15 @@ import { createLicenseManager } from './electron/licenseManager.mjs';
 import { licenseClientConfig } from './electron/licenseClientConfig.generated.mjs';
 import { resolveLicenseRuntimeConfig } from './electron/licenseRuntimeConfig.mjs';
 import { resetUserDataContents } from './electron/cacheReset.mjs';
+import { ProvenanceRepositoryLifecycle } from './electron/provenanceRepository.mjs';
+import { StableIdentityIndexer } from './electron/stableIdentityIndexer.mjs';
+import { StableIdentityFileOperationCoordinator } from './electron/stableIdentityFileOperationCoordinator.mjs';
+import { StableIdentityUserDataService } from './electron/stableIdentityUserDataService.mjs';
+import { runStableIdentityFileOperationsSmoke } from './electron/stableIdentityFileOperationsSmoke.mjs';
+import { runSavedPromptPackagedSmoke } from './electron/savedPromptPackagedSmoke.mjs';
 import { openAuthorizedCacheDirectory } from './electron/cacheDirectory.mjs';
 import { appendEmbeddingSegmentAtOffset } from './electron/embeddingSegmentFile.mjs';
+import { hashFileSha256 } from './electron/fileFingerprint.mjs';
 import {
   MODEL_INSPECTOR_MIN_HEIGHT,
   MODEL_INSPECTOR_MIN_WIDTH,
@@ -56,6 +64,8 @@ import {
   requestPermanentDeleteConfirmation,
 } from './electron/permanentDeletePolicy.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
+import { buildDetachedViewerLoadTarget, buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
+import { createViewerOpenCoordinator, createViewerReadiness, createViewerFocusTracker, presentViewerWindow } from './utils/viewerWindowLifecycle.mjs';
 import {
   buildEmbeddingModelDownloadUrl,
   validateEmbeddingModelId,
@@ -85,6 +95,15 @@ const permanentDeleteGrants = createPermanentDeleteGrantStore({
 
 // Simple development check
 const isDev = !app.isPackaged;
+const PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID = 'packaged-detached-viewer-smoke';
+const packagedDetachedViewerSmokeImagePath = app.isPackaged
+  && process.env.GITHUB_ACTIONS === 'true'
+  && typeof process.env.IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE === 'string'
+  ? process.env.IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE.trim()
+  : '';
+const packagedAutoTagSmokeEnabled = app.isPackaged
+  && process.env.GITHUB_ACTIONS === 'true'
+  && process.env.IMH_PACKAGED_AUTOTAG_SMOKE === '1';
 const gpuMitigationEnabled = process.env.IMH_DISABLE_GPU === '1' || process.env.IMH_DISABLE_GPU === 'true';
 const mediaSafeModeEnabled = process.platform === 'darwin' && (process.env.IMH_MEDIA_SAFE_MODE === '1' || process.env.IMH_MEDIA_SAFE_MODE === 'true');
 const audioDiagnosticModeEnabled = process.platform === 'darwin' && (process.env.IMH_AUDIO_DIAGNOSTIC_MODE === '1' || process.env.IMH_AUDIO_DIAGNOSTIC_MODE === 'true');
@@ -93,6 +112,12 @@ const macOSAudioMitigationOptOut = process.env.IMH_DISABLE_MACOS_AUDIO_MITIGATIO
   || process.env.IMH_ENABLE_OUT_OF_PROCESS_AUDIO === '1'
   || process.env.IMH_ENABLE_OUT_OF_PROCESS_AUDIO === 'true';
 const macOSAudioMitigationEnabled = process.platform === 'darwin' && app.isPackaged && !macOSAudioMitigationOptOut;
+const provenanceIndexingEnabled = process.env.IMH_ENABLE_PROVENANCE_INDEXING === '1'
+  || process.env.IMH_ENABLE_PROVENANCE_INDEXING === 'true';
+const packagedProvenanceFileOperationsSmokeEnabled = app.isPackaged
+  && process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE === '1';
+const packagedSavedPromptSmokeEnabled = app.isPackaged
+  && process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE === '1';
 const enabledMediaCommandLineSwitches = [];
 const disabledChromiumFeatures = new Set();
 
@@ -140,10 +165,6 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 if (!gpuMitigationEnabled) {
   app.commandLine.appendSwitch('enable-unsafe-webgpu');
 }
-
-// Parser version - increment when parser logic changes
-// This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 11; // v11: Index 3D models and bounded GLB/GLTF/sidecar metadata
 
 const logMainPerf = (event, details = {}) => {
   console.log('[main:perf]', { event, ...details });
@@ -606,12 +627,44 @@ async function readMediaMetadataWithFfprobe(filePath) {
 
 let mainWindow;
 let licenseManager;
+let provenanceRepositoryLifecycle;
+let stableIdentityIndexer;
+let stableIdentityFileOperationCoordinator;
+let stableIdentityUserDataService;
 const detachedImageViewerWindows = new Map();
+const coordinateViewerOpen = createViewerOpenCoordinator();
+const viewerFocusTracker = createViewerFocusTracker();
+let viewerDiagnosticSequence = 0;
+function traceViewerLifecycle(viewerWindow, stage, code) {
+  viewerWindow.__viewerDiagnosticId ??= ++viewerDiagnosticSequence;
+  console.log('[image-viewer-lifecycle]', viewerWindow.__viewerDiagnosticId, stage, code ?? '');
+}
 const detachedImageViewerSnapshots = new Map();
+const idleMacImageViewerWindows = new Set();
+const MAX_IDLE_MAC_IMAGE_VIEWERS = 1;
 const detachedImageViewerRequestResolvers = new Map();
 let modelInspectorWindow = null;
 let modelInspectorSnapshot = null;
 let modelInspectorMainSelectedId = null;
+
+async function executeWithStableIdentity(options) {
+  if (!stableIdentityFileOperationCoordinator) {
+    return { value: await options.perform(), provenance: { enabled: false, available: false } };
+  }
+  return stableIdentityFileOperationCoordinator.executeKnownOperation(options);
+}
+
+async function continuePendingStableIdentityDelete(options) {
+  if (!stableIdentityFileOperationCoordinator || !options.operationId) {
+    return executeWithStableIdentity({
+      kind: 'delete',
+      sourcePath: options.sourcePath,
+      perform: options.perform,
+    });
+  }
+  return stableIdentityFileOperationCoordinator.continuePendingDelete(options);
+}
+let packagedDetachedViewerSmokeReadyResolver = null;
 let comfyUIView = null;
 let comfyUIViewConfiguredUrl = '';
 let comfyUIViewState = {
@@ -2534,7 +2587,13 @@ function configureDetachedViewerNavigationHandlers(viewerWindow, baseUrl) {
   });
 }
 
-async function createDetachedImageViewer(sessionId, snapshot) {
+function createDetachedImageViewer(sessionId, snapshot) {
+  viewerFocusTracker.request(sessionId);
+  return coordinateViewerOpen(sessionId, (isCancelled) => openDetachedImageViewer(sessionId, snapshot, isCancelled));
+}
+
+async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
+  if (isCancelled()) return { success: false, cancelled: true };
   if (!mainWindow || mainWindow.isDestroyed()) {
     return { success: false, error: 'Main window is not available.' };
   }
@@ -2546,7 +2605,40 @@ async function createDetachedImageViewer(sessionId, snapshot) {
     return { success: true, existing: true };
   }
 
+  if (process.platform === 'darwin') {
+    const reusable = Array.from(idleMacImageViewerWindows).find((window) => !window.isDestroyed());
+    if (reusable) {
+      idleMacImageViewerWindows.delete(reusable);
+      reusable.__imageViewerSessionId = sessionId;
+      reusable.__imageViewerRebinding = true;
+      reusable.webContents.setAudioMuted(true);
+      detachedImageViewerWindows.set(sessionId, reusable);
+      detachedImageViewerSnapshots.set(sessionId, snapshot);
+      traceViewerLifecycle(reusable, 'reuse');
+      reusable.__viewerReadiness = createViewerReadiness({
+        onReady: () => {
+          reusable.__imageViewerRebinding = false;
+          reusable.webContents.setAudioMuted(false);
+          presentViewerWindow(reusable, { activate: viewerFocusTracker.shouldActivate(sessionId) });
+        },
+        onFailure: (result) => {
+          if (result.cancelled) return;
+          traceViewerLifecycle(reusable, 'rebind-failed');
+          reusable.__suppressImageViewerClosedEvent = true;
+          sendDetachedViewerEvent(sessionId, 'load-failed', { reason: result.error });
+          reusable.destroy();
+        },
+      });
+      reusable.__viewerReadiness.markNativeReady();
+      // The renderer acknowledges the new snapshot through image-viewer-ready.
+      // Keep the hidden window hidden until it has bound the new session.
+      reusable.webContents.send('image-viewer-snapshot', snapshot);
+      return { ...await reusable.__viewerReadiness.promise, reused: true };
+    }
+  }
+
   const settings = await readSettings();
+  if (isCancelled()) return { success: false, cancelled: true };
   const cascadeSlot = pickDetachedViewerCascadeSlot();
   const initialState = resolveDetachedImageViewerState(settings, cascadeSlot);
   const viewerWindow = new BrowserWindow({
@@ -2570,54 +2662,66 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   });
   viewerWindow.setMenu(null);
   viewerWindow.__imageViewerCascadeSlot = cascadeSlot;
+  viewerWindow.__imageViewerSessionId = sessionId;
+  traceViewerLifecycle(viewerWindow, 'create');
   const viewerWindowId = viewerWindow.id;
+  if (sessionId === PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID) {
+    viewerWindow.once('show', () => {
+      packagedDetachedViewerSmokeReadyResolver?.();
+      packagedDetachedViewerSmokeReadyResolver = null;
+    });
+  }
 
-  const viewerUrl = isDev
-    ? new URL('http://localhost:5173')
-    : new URL(`file://${path.join(__dirname, 'dist', 'index.html')}`);
-  viewerUrl.searchParams.set('window', 'image-modal');
-  viewerUrl.searchParams.set('sessionId', sessionId);
+  const viewerIndexPath = path.join(__dirname, 'dist', 'index.html');
+  const viewerUrl = buildDetachedViewerUrl(
+    viewerIndexPath,
+    sessionId,
+    isDev,
+  );
+  const viewerLoadTarget = buildDetachedViewerLoadTarget(viewerIndexPath, sessionId, isDev);
   configureDetachedViewerNavigationHandlers(viewerWindow, viewerUrl);
 
   detachedImageViewerWindows.set(sessionId, viewerWindow);
   detachedImageViewerSnapshots.set(sessionId, snapshot);
-  let rendererReady = false;
-  let nativeReady = false;
-  const rendererReadyTimeout = setTimeout(() => {
-    if (rendererReady || viewerWindow.isDestroyed()) return;
-    viewerWindow.__suppressImageViewerClosedEvent = true;
-    sendDetachedViewerEvent(sessionId, 'load-failed', { reason: 'Viewer renderer did not become ready.' });
-    viewerWindow.destroy();
-  }, 15000);
-  const showWhenReady = () => {
-    if (!rendererReady || !nativeReady || viewerWindow.isDestroyed()) return;
-    if (initialState.isMaximized) viewerWindow.maximize();
-    viewerWindow.show();
-  };
-  viewerWindow.once('ready-to-show', () => { nativeReady = true; showWhenReady(); });
+  viewerWindow.__viewerReadiness = createViewerReadiness({
+    onReady: () => {
+      presentViewerWindow(viewerWindow, { activate: viewerFocusTracker.shouldActivate(sessionId), maximized: initialState.isMaximized });
+    },
+    onFailure: (result) => {
+      if (result.cancelled || viewerWindow.isDestroyed()) return;
+      traceViewerLifecycle(viewerWindow, 'load-failed');
+      viewerWindow.__suppressImageViewerClosedEvent = true;
+      sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'load-failed', { reason: result.error });
+      viewerWindow.destroy();
+    },
+  });
+  viewerWindow.once('ready-to-show', () => {
+    traceViewerLifecycle(viewerWindow, 'native-ready');
+    viewerWindow.__viewerReadiness.markNativeReady();
+  });
   viewerWindow.webContents.on('did-finish-load', () => {
-    // The explicit renderer handshake remains authoritative; this only marks native loading.
+    traceViewerLifecycle(viewerWindow, 'loaded');
   });
   viewerWindow.__markImageViewerRendererReady = () => {
-    rendererReady = true;
-    clearTimeout(rendererReadyTimeout);
-    showWhenReady();
+    viewerWindow.__viewerReadiness.markRendererReady();
   };
   viewerWindow.webContents.on('did-fail-load', (_event, errorCode, description, _validatedURL, isMainFrame) => {
     // Sub-frame failures and aborted loads (ERR_ABORTED, fired whenever a load is
     // superseded — e.g. a dev-server reload) must not tear the whole window down.
     if (!isMainFrame || errorCode === -3) return;
-    if (rendererReady || viewerWindow.isDestroyed()) return;
-    viewerWindow.__suppressImageViewerClosedEvent = true;
-    sendDetachedViewerEvent(sessionId, 'load-failed', { reason: description || 'Viewer failed to load.' });
-    viewerWindow.destroy();
+    if (viewerWindow.__viewerReadiness.ready || viewerWindow.isDestroyed()) return;
+    traceViewerLifecycle(viewerWindow, 'did-fail-load', errorCode);
+    viewerWindow.__viewerReadiness.fail('Viewer failed to load.');
   });
 
-  viewerWindow.on('focus', () => sendDetachedViewerEvent(sessionId, 'focus'));
-  viewerWindow.on('minimize', () => sendDetachedViewerEvent(sessionId, 'minimize'));
-  viewerWindow.on('restore', () => sendDetachedViewerEvent(sessionId, 'restore'));
-  viewerWindow.on('maximize', () => sendDetachedViewerEvent(sessionId, 'maximize'));
-  viewerWindow.on('unmaximize', () => sendDetachedViewerEvent(sessionId, 'unmaximize'));
+  viewerFocusTracker.trackWindow(viewerWindow, (focusedSessionId) => {
+    traceViewerLifecycle(viewerWindow, 'focus');
+    sendDetachedViewerEvent(focusedSessionId, 'focus');
+  });
+  viewerWindow.on('minimize', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'minimize'));
+  viewerWindow.on('restore', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'restore'));
+  viewerWindow.on('maximize', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'maximize'));
+  viewerWindow.on('unmaximize', () => sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'unmaximize'));
   viewerWindow.on('enter-full-screen', () => {
     if (!viewerWindow.isDestroyed()) viewerWindow.webContents.send('fullscreen-changed', { isFullscreen: true });
   });
@@ -2628,25 +2732,218 @@ async function createDetachedImageViewer(sessionId, snapshot) {
   viewerWindow.on('resize', () => queueDetachedViewerStatePersist(viewerWindow));
   viewerWindow.webContents.on('render-process-gone', (_event, details) => {
     viewerWindow.__suppressImageViewerClosedEvent = true;
-    sendDetachedViewerEvent(sessionId, rendererReady ? 'render-process-gone' : 'load-failed', { reason: details?.reason || 'unknown' });
+    const activeSessionId = viewerWindow.__imageViewerSessionId;
+    idleMacImageViewerWindows.delete(viewerWindow);
+    if (activeSessionId) sendDetachedViewerEvent(activeSessionId, viewerWindow.__viewerReadiness.ready ? 'render-process-gone' : 'load-failed', { reason: details?.reason || 'unknown' });
+    viewerWindow.__viewerReadiness.cancel();
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
   });
+  viewerWindow.on('close', (event) => {
+    viewerWindow.__viewerReadiness.cancel();
+    // Closing the active viewer returns to the library, not another viewer.
+    // Otherwise the OS's automatic focus transfer looks like a user selection.
+    if (viewerWindow.isFocused() && mainWindow && !mainWindow.isDestroyed()) viewerFocusTracker.focusMain(mainWindow);
+    if (process.platform !== 'darwin' || viewerWindow.__destroyImageViewer) return;
+    const activeSessionId = viewerWindow.__imageViewerSessionId;
+    if (!activeSessionId) return;
+    event.preventDefault();
+    // The renderer stays loaded for reuse, but its active media and slideshow
+    // must be unmounted before another session is bound to this window.
+    viewerWindow.webContents.setAudioMuted(true);
+    viewerWindow.webContents.send('image-viewer-snapshot', null);
+    if (viewerWindow.isFullScreen()) viewerWindow.setFullScreen(false);
+    if (viewerWindow.isAlwaysOnTop()) viewerWindow.setAlwaysOnTop(false);
+    viewerWindow.hide();
+    detachedImageViewerWindows.delete(activeSessionId);
+    detachedImageViewerSnapshots.delete(activeSessionId);
+    viewerWindow.__imageViewerSessionId = null;
+    idleMacImageViewerWindows.add(viewerWindow);
+    while (idleMacImageViewerWindows.size > MAX_IDLE_MAC_IMAGE_VIEWERS) {
+      const surplus = idleMacImageViewerWindows.values().next().value;
+      idleMacImageViewerWindows.delete(surplus);
+      surplus.__destroyImageViewer = true;
+      if (!surplus.isDestroyed()) surplus.destroy();
+    }
+    sendDetachedViewerEvent(activeSessionId, 'closed');
+  });
   viewerWindow.on('closed', () => {
-    clearTimeout(rendererReadyTimeout);
+    viewerWindow.__viewerReadiness.cancel();
     cancelDetachedViewerStatePersist(viewerWindowId);
-    detachedImageViewerWindows.delete(sessionId);
-    detachedImageViewerSnapshots.delete(sessionId);
-    if (!viewerWindow.__suppressImageViewerClosedEvent) sendDetachedViewerEvent(sessionId, 'closed');
+    idleMacImageViewerWindows.delete(viewerWindow);
+    const activeSessionId = viewerWindow.__imageViewerSessionId;
+    if (activeSessionId) {
+      detachedImageViewerWindows.delete(activeSessionId);
+      detachedImageViewerSnapshots.delete(activeSessionId);
+      if (!viewerWindow.__suppressImageViewerClosedEvent) sendDetachedViewerEvent(activeSessionId, 'closed');
+    }
   });
 
   try {
-    await viewerWindow.loadURL(viewerUrl.toString());
-    return { success: true };
-  } catch (error) {
+    if (viewerLoadTarget.method === 'url') {
+      await viewerWindow.loadURL(viewerLoadTarget.url);
+    } else {
+      await viewerWindow.loadFile(viewerLoadTarget.filePath, viewerLoadTarget.options);
+    }
+    return await viewerWindow.__viewerReadiness.promise;
+  } catch {
+    traceViewerLifecycle(viewerWindow, 'load-rejected');
+    viewerWindow.__viewerReadiness.fail('Viewer failed to load.');
     detachedImageViewerWindows.delete(sessionId);
     detachedImageViewerSnapshots.delete(sessionId);
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
-    return { success: false, error: error?.message || 'Failed to load detached viewer.' };
+    return { success: false, error: 'Failed to load detached viewer.' };
+  }
+}
+
+async function runPackagedDetachedViewerSmokeTest() {
+  if (!packagedDetachedViewerSmokeImagePath) return;
+
+  let timeoutId;
+  try {
+    const imagePath = path.resolve(packagedDetachedViewerSmokeImagePath);
+    const imageStats = await fs.stat(imagePath);
+    if (!imageStats.isFile()) {
+      throw new Error(`Smoke image is not a file: ${imagePath}`);
+    }
+
+    const directoryPath = path.dirname(imagePath);
+    const imageName = path.basename(imagePath);
+    const readyPromise = new Promise((resolve, reject) => {
+      packagedDetachedViewerSmokeReadyResolver = resolve;
+      timeoutId = setTimeout(() => reject(new Error('Detached viewer did not become visible after its renderer-ready handshake.')), 20000);
+    });
+    const snapshot = {
+      sessionId: PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID,
+      revision: 1,
+      image: {
+        id: imagePath,
+        name: imageName,
+        metadata: { normalizedMetadata: {} },
+        metadataString: '',
+        lastModified: imageStats.mtimeMs,
+        models: [],
+        loras: [],
+        scheduler: '',
+        directoryId: directoryPath,
+        fileSize: imageStats.size,
+        fileType: 'image/png',
+      },
+      previousImage: null,
+      nextImage: null,
+      currentIndex: 0,
+      totalImages: 1,
+      directoryPath,
+      isIndexing: false,
+      startSlideshow: false,
+      closeOnSlideshowExit: false,
+      recentTags: [],
+      comparisonCount: 0,
+      comparisonImages: [],
+      collections: [],
+      selectedImageIds: [],
+    };
+
+    const openResult = await createDetachedImageViewer(PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID, snapshot);
+    if (!openResult.success) {
+      throw new Error(openResult.error || 'Failed to open detached viewer.');
+    }
+
+    await readyPromise;
+    console.log('[packaged-detached-viewer-smoke] renderer-ready');
+    if (packagedAutoTagSmokeEnabled) {
+      const workerAsset = (await fs.readdir(path.join(__dirname, 'dist', 'assets')))
+        .find((name) => /^autoTaggingWorker-[\w-]+\.js$/.test(name));
+      if (!workerAsset) throw new Error('Packaged auto-tag worker asset was not emitted.');
+      const viewerWindow = detachedImageViewerWindows.get(PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID);
+      const workerTag = await viewerWindow.webContents.executeJavaScript(`
+        new Promise((resolve, reject) => {
+          const worker = new Worker(new URL('./assets/' + ${JSON.stringify(workerAsset)}, location.href), { type: 'module' });
+          const timer = setTimeout(() => { worker.terminate(); reject(new Error('Auto-tag worker timed out.')); }, 15000);
+          worker.onerror = (event) => { clearTimeout(timer); worker.terminate(); reject(new Error(event.message || 'Auto-tag worker failed.')); };
+          worker.onmessage = (event) => {
+            if (event.data.type === 'error') {
+              clearTimeout(timer); worker.terminate(); reject(new Error(event.data.payload.error));
+            } else if (event.data.type === 'complete') {
+              clearTimeout(timer);
+              worker.terminate();
+              resolve(event.data.payload.autoTags.synthetic?.[0]?.tag);
+            }
+          };
+          worker.postMessage({ type: 'start', payload: {
+            images: [{ id: 'synthetic', prompt: 'pine forest, golden retriever' }],
+            targetImageId: 'synthetic',
+          } });
+        })
+      `);
+      if (workerTag !== 'pine forest') throw new Error(`Packaged auto-tag worker returned ${workerTag}.`);
+      console.log('[packaged-detached-viewer-smoke] auto-tag-worker-ready');
+
+      // This smoke viewer is created directly by the main process, so App must
+      // reject its command as an unknown session. A timely response proves the
+      // detached -> main -> detached IPC path is live in the packaged renderer.
+      const commandResponse = await viewerWindow.webContents.executeJavaScript(`
+        Promise.race([
+          window.electronAPI.imageViewerCommand({
+            sessionId: ${JSON.stringify(PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID)},
+            command: { type: 'auto-tag-image', imageId: ${JSON.stringify(imagePath)} },
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Auto-tag IPC timed out.')), 15000)),
+        ])
+      `);
+      if (commandResponse?.error !== 'Unknown image viewer session.') {
+        throw new Error(`Unexpected packaged auto-tag IPC response: ${JSON.stringify(commandResponse)}`);
+      }
+      console.log('[packaged-detached-viewer-smoke] auto-tag-ipc-round-trip');
+    }
+    if (process.platform === 'darwin') {
+      let activeSessionId = PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID;
+      const stableWindow = detachedImageViewerWindows.get(activeSessionId);
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        stableWindow.close();
+        if (!idleMacImageViewerWindows.has(stableWindow)) throw new Error('Viewer did not enter the reusable idle state.');
+        activeSessionId = `${PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID}-${attempt}`;
+        const reboundSnapshot = { ...snapshot, sessionId: activeSessionId, revision: 1 };
+        const shown = new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Rebound viewer did not become visible.')), 15000);
+          stableWindow.once('show', () => { clearTimeout(timer); resolve(); });
+        });
+        const reopened = await createDetachedImageViewer(activeSessionId, reboundSnapshot);
+        if (!reopened.success || !reopened.reused || detachedImageViewerWindows.get(activeSessionId) !== stableWindow) {
+          throw new Error('Viewer reopen created a new renderer.');
+        }
+        await shown;
+      }
+      console.log('[packaged-detached-viewer-smoke] reopen x3 passed');
+      const secondSessionId = `${PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID}-concurrent`;
+      const secondResult = await createDetachedImageViewer(secondSessionId, { ...snapshot, sessionId: secondSessionId });
+      const secondWindow = detachedImageViewerWindows.get(secondSessionId);
+      if (!secondResult.success || !secondWindow || secondWindow === stableWindow) {
+        throw new Error('Concurrent viewer did not create a separate window.');
+      }
+      if (!secondWindow.isVisible()) {
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Concurrent viewer did not become visible.')), 15000);
+          secondWindow.once('show', () => { clearTimeout(timer); resolve(); });
+        });
+      }
+      stableWindow.close();
+      secondWindow.close();
+      if (idleMacImageViewerWindows.size !== 1 || !stableWindow.isDestroyed() || !idleMacImageViewerWindows.has(secondWindow)) {
+        throw new Error('Idle viewer pool retained more than one renderer.');
+      }
+      console.log('[packaged-detached-viewer-smoke] idle pool bound passed');
+    }
+    closeAllDetachedImageViewers();
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+    app.exit(0);
+  } catch (error) {
+    console.error('[packaged-detached-viewer-smoke] failed:', error);
+    closeAllDetachedImageViewers();
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+    app.exit(1);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    packagedDetachedViewerSmokeReadyResolver = null;
   }
 }
 
@@ -2826,11 +3123,13 @@ function closeModelInspector() {
 }
 
 function closeAllDetachedImageViewers() {
-  for (const viewerWindow of detachedImageViewerWindows.values()) {
+  for (const viewerWindow of new Set([...detachedImageViewerWindows.values(), ...idleMacImageViewerWindows])) {
+    viewerWindow.__destroyImageViewer = true;
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
   }
   detachedImageViewerWindows.clear();
   detachedImageViewerSnapshots.clear();
+  idleMacImageViewerWindows.clear();
 }
 
 async function persistWindowState() {
@@ -2888,7 +3187,7 @@ async function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.19.0');
+    mainWindow.setTitle('Image MetaHub v0.20.1');
   }
 
   // Load the app
@@ -3044,6 +3343,107 @@ app.whenReady().then(async () => {
   registerThumbnailProtocol();
   registerModelProtocol();
 
+  provenanceRepositoryLifecycle = new ProvenanceRepositoryLifecycle({
+    userDataPath: app.getPath('userData'),
+  });
+  provenanceRepositoryLifecycle.initialize();
+  stableIdentityUserDataService = new StableIdentityUserDataService({
+    repositoryLifecycle: provenanceRepositoryLifecycle,
+    userDataPath: app.getPath('userData'),
+    migrationEnabled: provenanceIndexingEnabled,
+    publishChanges: (payload) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+          window.webContents.send('stable-user-data-changed', payload);
+        }
+      }
+    },
+  });
+  try {
+    stableIdentityUserDataService.initialize();
+  } catch (error) {
+    console.error('Stable-identity user-data migration could not initialize; application startup will continue.', error);
+  }
+  stableIdentityIndexer = new StableIdentityIndexer({
+    repositoryLifecycle: provenanceRepositoryLifecycle,
+    enabled: provenanceIndexingEnabled && provenanceRepositoryLifecycle.getStatus().available,
+  });
+  const stableUserDataStatus = stableIdentityUserDataService.getStatus();
+  stableIdentityFileOperationCoordinator = new StableIdentityFileOperationCoordinator({
+    repositoryLifecycle: provenanceRepositoryLifecycle,
+    indexer: stableIdentityIndexer,
+    // A profile that already crossed the user-data authority boundary must keep
+    // journaling known file operations even when indexing is later disabled.
+    // The indexer stays disabled, so this does not restart scans or hashing.
+    enabled: provenanceIndexingEnabled || (
+      stableUserDataStatus.authority === 'sqlite' && stableUserDataStatus.available
+    ),
+    publishMappings: (payload) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+          window.webContents.send('provenance-identities-assigned', payload);
+        }
+      }
+    },
+  });
+  await stableIdentityFileOperationCoordinator.initializeRecovery();
+
+  if (packagedSavedPromptSmokeEnabled) {
+    const resultPath = process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE_RESULT?.trim();
+    try {
+      if (!resultPath) throw new Error('Packaged saved-prompt smoke result path is required.');
+      const result = runSavedPromptPackagedSmoke({
+        userDataPath: app.getPath('userData'),
+        repositoryLifecycle: provenanceRepositoryLifecycle,
+        indexingEnabled: provenanceIndexingEnabled,
+      });
+      await fs.mkdir(path.dirname(resultPath), { recursive: true });
+      await fs.writeFile(resultPath, JSON.stringify(result, null, 2), 'utf8');
+      console.log('[packaged-saved-prompt-smoke] success');
+      app.exit(0);
+    } catch (error) {
+      console.error('[packaged-saved-prompt-smoke] failed', error);
+      if (resultPath) {
+        try {
+          await fs.mkdir(path.dirname(resultPath), { recursive: true });
+          await fs.writeFile(resultPath, JSON.stringify({ success: false, error: error?.message || String(error) }, null, 2), 'utf8');
+        } catch { /* console output remains the fallback diagnostic */ }
+      }
+      app.exit(1);
+    }
+    return;
+  }
+
+  if (packagedProvenanceFileOperationsSmokeEnabled) {
+    const smokeRoot = process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE_ROOT?.trim();
+    const resultPath = process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE_RESULT?.trim();
+    try {
+      if (!smokeRoot || !resultPath) throw new Error('Packaged provenance smoke paths are required.');
+      const result = await runStableIdentityFileOperationsSmoke({
+        rootPath: smokeRoot,
+        userDataPath: app.getPath('userData'),
+        repositoryLifecycle: provenanceRepositoryLifecycle,
+        userDataService: stableIdentityUserDataService,
+        indexer: stableIdentityIndexer,
+        coordinator: stableIdentityFileOperationCoordinator,
+      });
+      await fs.mkdir(path.dirname(resultPath), { recursive: true });
+      await fs.writeFile(resultPath, JSON.stringify(result, null, 2), 'utf8');
+      console.log('[packaged-provenance-file-operations-smoke] success');
+      app.exit(0);
+    } catch (error) {
+      console.error('[packaged-provenance-file-operations-smoke] failed', error);
+      if (resultPath) {
+        try {
+          await fs.mkdir(path.dirname(resultPath), { recursive: true });
+          await fs.writeFile(resultPath, JSON.stringify({ success: false, error: error?.message || String(error) }, null, 2), 'utf8');
+        } catch { /* console output remains the fallback diagnostic */ }
+      }
+      app.exit(1);
+    }
+    return;
+  }
+
   const licenseRuntimeConfig = resolveLicenseRuntimeConfig({
     isPackaged: app.isPackaged,
     env: process.env,
@@ -3073,7 +3473,7 @@ app.whenReady().then(async () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('theme-updated', themePayload);
     }
-    for (const viewerWindow of detachedImageViewerWindows.values()) {
+    for (const viewerWindow of new Set([...detachedImageViewerWindows.values(), ...idleMacImageViewerWindows])) {
       if (!viewerWindow.isDestroyed()) viewerWindow.webContents.send('theme-updated', themePayload);
     }
     if (modelInspectorWindow && !modelInspectorWindow.isDestroyed()) {
@@ -3124,6 +3524,7 @@ app.whenReady().then(async () => {
   screen.on('display-metrics-changed', ensureModelInspectorOnScreen);
   
   await createWindow(startupDirectory);
+  await runPackagedDetachedViewerSmokeTest();
 });
 
 function setupLicenseHandlers() {
@@ -3244,12 +3645,17 @@ function setupImageViewerHandlers() {
     return { success: true };
   });
 
-  ipcMain.handle('image-viewer-ready', (event, sessionId) => {
+  ipcMain.handle('image-viewer-ready', (event, sessionId, appliedRevision) => {
     const viewerWindow = resolveViewerSender(event, sessionId);
     if (!viewerWindow) return { success: false, error: 'Unknown image viewer.' };
     const snapshot = detachedImageViewerSnapshots.get(sessionId);
     if (!snapshot) return { success: false, error: 'Image viewer snapshot is unavailable.' };
-    viewerWindow.webContents.send('image-viewer-snapshot', snapshot);
+    if (appliedRevision === undefined) {
+      viewerWindow.webContents.send('image-viewer-snapshot', snapshot);
+      return { success: true };
+    }
+    if (appliedRevision !== snapshot.revision) return { success: true, ignored: true };
+    if (!viewerWindow.__viewerReadiness.ready) traceViewerLifecycle(viewerWindow, 'snapshot-applied');
     viewerWindow.__markImageViewerRendererReady?.();
     return { success: true };
   });
@@ -3261,9 +3667,18 @@ function setupImageViewerHandlers() {
       ? detachedImageViewerWindows.get(sessionId)
       : resolveViewerSender(event, sessionId);
     if (!viewerWindow || viewerWindow.isDestroyed()) {
+      if (isMainSender(event) && (action === 'focus' || action === 'restore') && coordinateViewerOpen.isPending(sessionId)) {
+        viewerFocusTracker.request(sessionId);
+        return { success: true };
+      }
+      if (isMainSender(event) && action === 'close' && coordinateViewerOpen.cancel(sessionId)) {
+        return { success: true };
+      }
       return { success: false, error: 'Unknown image viewer.' };
     }
     if (action === 'focus' || action === 'restore') {
+      viewerFocusTracker.request(sessionId);
+      if (!viewerWindow.__viewerReadiness.ready) return { success: true };
       if (viewerWindow.isMinimized()) viewerWindow.restore();
       viewerWindow.show();
       viewerWindow.focus();
@@ -3275,7 +3690,7 @@ function setupImageViewerHandlers() {
       if (mainWindow && !mainWindow.isDestroyed()) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.show();
-        mainWindow.focus();
+        viewerFocusTracker.focusMain(mainWindow);
       }
     } else if (action === 'toggle-always-on-top') {
       const isAlwaysOnTop = !viewerWindow.isAlwaysOnTop();
@@ -3297,7 +3712,7 @@ function setupImageViewerHandlers() {
       const timeout = setTimeout(() => {
         detachedImageViewerRequestResolvers.delete(requestId);
         resolve({ success: false, error: 'Image viewer command timed out.' });
-      }, 15000);
+      }, payload.command.type === 'auto-tag-image' ? 120000 : 15000);
       detachedImageViewerRequestResolvers.set(requestId, (response) => {
         clearTimeout(timeout);
         resolve(response);
@@ -3596,6 +4011,28 @@ async function hashModelLibraryFile(filePath, requestId, sender) {
   if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) throw new Error('Model file changed while it was being hashed.');
   return { sha256: hash.digest('hex'), size: before.size, modifiedAt: Number.isFinite(before.mtimeMs) ? before.mtimeMs : null };
 }
+const findAllowedDirectoryRoot = (filePath) => {
+  if (!filePath) return null;
+  const normalizedFilePath = normalizeAllowedPath(filePath);
+  return Array.from(allowedDirectoryPaths)
+    .filter((allowedPath) => isSameOrChildPath(normalizedFilePath, allowedPath))
+    .sort((left, right) => right.length - left.length)[0] ?? null;
+};
+
+const stableFileUserDataContext = ({ legacyImageId, sourcePath = null, destinationPath = null, copyUserData = false } = {}) => {
+  if (typeof legacyImageId !== 'string' || !legacyImageId.trim()) return null;
+  const stableStatus = stableIdentityUserDataService?.getStatus?.();
+  return {
+    legacyImageId,
+    copyUserData,
+    ...(stableStatus?.authority === 'sqlite' && sourcePath
+      ? { sourceRootPath: findAllowedDirectoryRoot(sourcePath) }
+      : {}),
+    ...(stableStatus?.authority === 'sqlite' && destinationPath
+      ? { destinationRootPath: findAllowedDirectoryRoot(destinationPath) }
+      : {}),
+  };
+};
 
 // Symlink-aware containment check for write operations (e.g. creating a folder).
 // isPathAllowed compares textual paths, which is correct for reads but has two
@@ -3699,6 +4136,7 @@ async function getFilesRecursively(directory, baseDirectory) {
   const start = Date.now();
   let directoriesVisited = 0;
   let directoriesSkipped = 0;
+  let complete = true;
 
   while (directoriesToVisit.length > 0) {
     const currentDirectory = directoriesToVisit.pop();
@@ -3727,6 +4165,7 @@ async function getFilesRecursively(directory, baseDirectory) {
       files.push(...fileRecords);
     } catch (error) {
       // Ignore errors from directories we can't read, e.g. permissions
+      complete = false;
       console.warn(`Could not read directory ${currentDirectory}: ${error.message}`);
     }
   }
@@ -3738,11 +4177,17 @@ async function getFilesRecursively(directory, baseDirectory) {
     files: files.length,
     durationMs: elapsedMs(start),
   });
-  return files;
+  return { files, complete };
 }
 
 function setupFileOperationHandlers() {
   const approvedWriteRoots = new Set();
+  const activeFingerprintRequests = new Map();
+  const fingerprintRequestKey = (senderId, requestId) => `${senderId}:${requestId}`;
+  const cancelFingerprintRequest = (senderId, requestId) => {
+    if (typeof requestId !== 'string' || !requestId) return;
+    activeFingerprintRequests.get(fingerprintRequestKey(senderId, requestId))?.abort();
+  };
   const registerApprovedWriteRoot = (targetPath) => {
     if (!targetPath) return;
     const normalizedTarget = normalizeAllowedPath(targetPath);
@@ -6046,7 +6491,7 @@ function setupFileOperationHandlers() {
   });
 
   // Handle file deletion (move to trash)
-  ipcMain.handle('trash-file', async (event, filePath) => {
+  ipcMain.handle('trash-file', async (event, filePath, userDataContext = null) => {
     let trashAttempted = false;
     try {
       if (!isPathAllowed(filePath)) {
@@ -6055,17 +6500,27 @@ function setupFileOperationHandlers() {
       }
 
       console.log('Attempting to trash file:', filePath);
-      if (isModel3DFileName(filePath)) {
-        await trashModel3DWithSidecar(
-          fs,
-          (targetPath) => shell.trashItem(targetPath),
-          filePath,
-        );
-      } else {
-        trashAttempted = true;
-        await shell.trashItem(filePath);
-      }
-      return { success: true };
+      const coordinated = await executeWithStableIdentity({
+        kind: 'delete',
+        sourcePath: filePath,
+        userDataContext: stableFileUserDataContext({
+          legacyImageId: userDataContext?.legacyImageId,
+          sourcePath: filePath,
+        }),
+        perform: async () => {
+          if (isModel3DFileName(filePath)) {
+            await trashModel3DWithSidecar(
+              fs,
+              (targetPath) => shell.trashItem(targetPath),
+              filePath,
+            );
+          } else {
+            trashAttempted = true;
+            await shell.trashItem(filePath);
+          }
+        },
+      });
+      return { success: true, provenance: coordinated.provenance };
     } catch (error) {
       console.error('Error trashing file:', error);
       if (!trashAttempted && error?.trashAttempted !== true) {
@@ -6095,6 +6550,7 @@ function setupFileOperationHandlers() {
         filePath,
         targetFiles,
         error?.primaryDeleted === true,
+        error?.provenanceOperationId ?? null,
       );
       return {
         success: false,
@@ -6136,7 +6592,12 @@ function setupFileOperationHandlers() {
       const failedTokens = [];
       const errors = [];
       for (const grant of authorizedGrants) {
-        const result = await permanentlyDeleteGrantedFiles(fs, grant);
+        const coordinated = await continuePendingStableIdentityDelete({
+          operationId: grant.provenanceOperationId,
+          sourcePath: grant.requestedPath,
+          perform: () => permanentlyDeleteGrantedFiles(fs, grant),
+        });
+        const result = coordinated.value;
         errors.push(...result.failures.map(
           (failure) => `${path.basename(failure.path)}: ${failure.error.message}`,
         ));
@@ -6181,7 +6642,7 @@ function setupFileOperationHandlers() {
   });
 
   // Handle file renaming
-  ipcMain.handle('rename-file', async (event, oldPath, newPath) => {
+  ipcMain.handle('rename-file', async (event, oldPath, newPath, userDataContext = null) => {
     try {
       if (!isAllowedOrInternal(oldPath) || !isRenameTargetAllowed(oldPath, newPath)) {
         console.error('SECURITY VIOLATION: Attempted to rename file outside of allowed directories.');
@@ -6211,11 +6672,23 @@ function setupFileOperationHandlers() {
         }
       }
 
-      if (isModel3DFileName(oldPath)) {
-        await renameModel3DWithSidecar(fs, oldPath, newPath);
-      } else {
-        await fs.rename(oldPath, newPath);
-      }
+      const coordinated = await executeWithStableIdentity({
+        kind: 'rename',
+        sourcePath: oldPath,
+        destinationPath: newPath,
+        userDataContext: stableFileUserDataContext({
+          legacyImageId: userDataContext?.legacyImageId,
+          sourcePath: oldPath,
+          destinationPath: newPath,
+        }),
+        perform: async () => {
+          if (isModel3DFileName(oldPath)) {
+            await renameModel3DWithSidecar(fs, oldPath, newPath);
+          } else {
+            await fs.rename(oldPath, newPath);
+          }
+        },
+      });
 
       const normalizedOldAllowedPath = normalizeAllowedPath(oldPath);
       if (allowedDirectoryPaths.has(normalizedOldAllowedPath)) {
@@ -6223,7 +6696,7 @@ function setupFileOperationHandlers() {
         allowedDirectoryPaths.add(normalizeAllowedPath(newPath));
       }
 
-      return { success: true };
+      return { success: true, provenance: coordinated.provenance };
     } catch (error) {
       console.error('Error renaming file:', error);
       return { success: false, error: error.message };
@@ -6548,17 +7021,23 @@ function setupFileOperationHandlers() {
   });
 
   // Handle listing directory files
-  ipcMain.handle('list-directory-files', async (event, { dirPath, recursive = false }) => {
+  ipcMain.handle('list-directory-files', async (event, { dirPath, recursive = false, provenanceRootPath = dirPath }) => {
     const scanStart = Date.now();
     try {
       if (!dirPath) {
         return { success: false, error: 'No directory path provided' };
       }
+      const provenanceScanToken = provenanceIndexingEnabled && stableIdentityIndexer
+        ? stableIdentityIndexer.beginScan(provenanceRootPath)
+        : null;
 
       let imageFiles = [];
+      let scanComplete = true;
 
       if (recursive) {
-        imageFiles = await getFilesRecursively(dirPath, dirPath);
+        const recursiveResult = await getFilesRecursively(dirPath, dirPath);
+        imageFiles = recursiveResult.files;
+        scanComplete = recursiveResult.complete;
       } else {
         const files = await fs.readdir(dirPath, { withFileTypes: true });
         imageFiles = await statMediaEntries(dirPath, files, dirPath);
@@ -6572,6 +7051,24 @@ function setupFileOperationHandlers() {
         durationMs: elapsedMs(scanStart),
       });
 
+      if (provenanceIndexingEnabled && stableIdentityIndexer) {
+        setImmediate(() => {
+          void stableIdentityIndexer.indexScan({
+            rootPath: provenanceRootPath,
+            scanPath: dirPath,
+            files: imageFiles,
+            scanComplete,
+            recursive,
+            scanToken: provenanceScanToken,
+            onBatch: (payload) => {
+              if (!event.sender.isDestroyed()) event.sender.send('provenance-identities-assigned', payload);
+            },
+          }).catch((backfillError) => {
+            console.warn('Provenance identity backfill failed; library indexing remains available.', backfillError);
+          });
+        });
+      }
+
       return { success: true, files: imageFiles };
     } catch (error) {
       console.error('Error listing directory files:', error);
@@ -6584,6 +7081,92 @@ function setupFileOperationHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  ipcMain.handle('provenance-backfill-control', (_event, action) => {
+    if (!provenanceIndexingEnabled || !stableIdentityIndexer) return { success: false, enabled: false };
+    if (action === 'pause') return { success: true, ...stableIdentityIndexer.pause() };
+    if (action === 'resume') return { success: true, ...stableIdentityIndexer.resume() };
+    return { success: false, enabled: true, error: 'Unsupported provenance backfill action.' };
+  });
+
+  const handleStableUserDataRequest = (operation) => {
+    try {
+      if (!stableIdentityUserDataService) throw new Error('Stable user-data service is unavailable.');
+      return { success: true, value: operation(stableIdentityUserDataService) };
+    } catch (error) {
+      return {
+        success: false,
+        error: error?.message || String(error),
+        code: error?.code || 'USER_DATA_OPERATION_FAILED',
+        details: error?.details ?? null,
+      };
+    }
+  };
+
+  ipcMain.handle('stable-user-data-status', () => (
+    stableIdentityUserDataService?.getStatus?.() ?? {
+      initialized: false,
+      authority: 'legacy',
+      available: true,
+      migrationEnabled: provenanceIndexingEnabled,
+      indexingEnabled: provenanceIndexingEnabled,
+    }
+  ));
+  ipcMain.handle('stable-user-data-sync', (_event, { entries } = {}) => (
+    handleStableUserDataRequest((service) => service.syncLegacyBatch(entries))
+  ));
+  ipcMain.handle('stable-user-data-mutate', (_event, input) => (
+    handleStableUserDataRequest((service) => service.mutate(input))
+  ));
+  ipcMain.handle('stable-user-data-reserve-legacy-mutation', (_event, input) => (
+    handleStableUserDataRequest((service) => service.reserveLegacyMutation(input))
+  ));
+  ipcMain.handle('stable-user-data-finalize-legacy-mutation', (_event, input) => (
+    handleStableUserDataRequest((service) => service.finalizeLegacyMutation(input))
+  ));
+  ipcMain.handle('stable-user-data-complete-legacy-scan', () => (
+    handleStableUserDataRequest((service) => service.completeLegacyScan())
+  ));
+  ipcMain.handle('stable-user-data-global-tag-mutation', (_event, input) => (
+    handleStableUserDataRequest((service) => service.mutateAnnotationTagGlobally(input))
+  ));
+  ipcMain.handle('stable-user-data-tag-counts', () => (
+    handleStableUserDataRequest((service) => service.getTagCounts())
+  ));
+
+  const handleSavedPromptRequest = (operation) => {
+    try {
+      return { success: true, data: provenanceRepositoryLifecycle.run(operation) };
+    } catch (error) {
+      return {
+        success: false,
+        error: error?.message || String(error),
+        errorCode: error?.code || 'SAVED_PROMPT_OPERATION_FAILED',
+      };
+    }
+  };
+  const notifySavedPromptsChanged = () => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send('saved-prompts:changed');
+    }
+  };
+
+  ipcMain.handle('saved-prompts:list', () => (
+    handleSavedPromptRequest((repository) => repository.listSavedPrompts())
+  ));
+  ipcMain.handle('saved-prompts:save', (_event, input) => {
+    const result = handleSavedPromptRequest((repository) => repository.savePrompt(input));
+    if (result.success && result.data.status === 'saved') notifySavedPromptsChanged();
+    return result;
+  });
+  ipcMain.handle('saved-prompts:remove', (_event, id) => {
+    const result = handleSavedPromptRequest((repository) => repository.removeSavedPrompt(id));
+    if (result.success && result.data.removed) notifySavedPromptsChanged();
+    return result;
+  });
+  ipcMain.handle('saved-prompts:resolve-source', (_event, id) => (
+    handleSavedPromptRequest((repository) => repository.resolveSavedPromptSource(id))
+  ));
 
   // ============================================================
   // File Watching Handlers
@@ -6606,7 +7189,10 @@ function setupFileOperationHandlers() {
       return { success: false, error: 'No window available' };
     }
 
-    return fileWatcher.startWatching(directoryId, dirPath, mainWindow);
+    return fileWatcher.startWatching(directoryId, dirPath, mainWindow, {
+      onFilesObserved: (payload) => stableIdentityFileOperationCoordinator?.observeWatcherFiles(payload),
+      onPathsRemoved: (payload) => stableIdentityFileOperationCoordinator?.observeWatcherRemovals(payload),
+    });
   });
 
   ipcMain.handle('stop-watching-directory', async (event, args) => {
@@ -6730,6 +7316,56 @@ function setupFileOperationHandlers() {
         errorType: isFileNotFound ? 'FILE_NOT_FOUND' : (isPermissionError ? 'PERMISSION_ERROR' : 'UNKNOWN_ERROR'),
         errorCode: error.code
       };
+    }
+  });
+
+  // Provenance fingerprints are deliberately on-demand. The main process streams
+  // the selected file so large media files never cross into renderer memory.
+  ipcMain.on('cancel-hash-file-sha256', (event, requestId) => {
+    cancelFingerprintRequest(event.sender.id, requestId);
+  });
+
+  ipcMain.handle('hash-file-sha256', async (event, args) => {
+    const filePath = args?.filePath;
+    const requestId = args?.requestId;
+    let controller;
+    let requestKey;
+    let abortOnDestroyed;
+    try {
+      if (!filePath || typeof requestId !== 'string' || !requestId) {
+        return { success: false, error: 'Invalid fingerprint request' };
+      }
+
+      if (!isPathAllowed(filePath)) {
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
+      requestKey = fingerprintRequestKey(event.sender.id, requestId);
+      activeFingerprintRequests.get(requestKey)?.abort();
+      controller = new AbortController();
+      activeFingerprintRequests.set(requestKey, controller);
+      abortOnDestroyed = () => controller.abort();
+      event.sender.once('destroyed', abortOnDestroyed);
+
+      const sha256 = await hashFileSha256(filePath, { signal: controller.signal });
+      return { success: true, sha256 };
+    } catch (error) {
+      const errorCode = error?.code;
+      const errorType = error?.name === 'AbortError' || errorCode === 'ABORT_ERR'
+        ? 'CANCELLED'
+        : errorCode === 'ENOENT'
+        ? 'FILE_NOT_FOUND'
+        : (errorCode === 'EACCES' || errorCode === 'EPERM')
+          ? 'PERMISSION_DENIED'
+          : 'READ_ERROR';
+      return { success: false, error: error?.message || 'Failed to calculate SHA-256.', errorType, errorCode };
+    } finally {
+      if (abortOnDestroyed && !event.sender.isDestroyed()) {
+        event.sender.removeListener('destroyed', abortOnDestroyed);
+      }
+      if (requestKey && activeFingerprintRequests.get(requestKey) === controller) {
+        activeFingerprintRequests.delete(requestKey);
+      }
     }
   });
 
@@ -7244,7 +7880,7 @@ function setupFileOperationHandlers() {
   });
 
   // Handle writing file content
-  ipcMain.handle('write-file', async (event, filePath, data) => {
+  ipcMain.handle('write-file', async (event, filePath, data, provenanceContext = null) => {
     try {
       if (!filePath) {
         return { success: false, error: 'No file path provided' };
@@ -7267,6 +7903,23 @@ function setupFileOperationHandlers() {
 
       console.log('Writing file to:', normalizedFilePath, 'Size:', data.length);
 
+      if (provenanceContext?.kind === 'save_as' || provenanceContext?.kind === 'overwrite') {
+        const expectedOutputSha256 = crypto.createHash('sha256').update(Buffer.from(data)).digest('hex');
+        const coordinated = await executeWithStableIdentity({
+          kind: provenanceContext.kind,
+          sourcePath: provenanceContext.sourcePath || null,
+          destinationPath: normalizedFilePath,
+          expectedOutputSha256,
+          userDataContext: stableFileUserDataContext({
+            legacyImageId: provenanceContext.userDataContext?.legacyImageId,
+            sourcePath: provenanceContext.sourcePath || normalizedFilePath,
+            destinationPath: normalizedFilePath,
+          }),
+          perform: () => fs.writeFile(normalizedFilePath, data),
+        });
+        return { success: true, provenance: coordinated.provenance };
+      }
+
       await fs.writeFile(normalizedFilePath, data);
       return { success: true };
     } catch (error) {
@@ -7287,8 +7940,14 @@ function setupFileOperationHandlers() {
       ) {
         return { success: false, error: 'Access denied: Cannot write the 3D export outside approved directories.' };
       }
-      await writeModel3DExportDataWithSidecar(fs, normalizedFilePath, modelData, sidecarData);
-      return { success: true };
+      const expectedOutputSha256 = crypto.createHash('sha256').update(Buffer.from(modelData)).digest('hex');
+      const coordinated = await executeWithStableIdentity({
+        kind: 'save_as',
+        destinationPath: normalizedFilePath,
+        expectedOutputSha256,
+        perform: () => writeModel3DExportDataWithSidecar(fs, normalizedFilePath, modelData, sidecarData),
+      });
+      return { success: true, provenance: coordinated.provenance };
     } catch (error) {
       console.error('Error writing 3D model export:', error);
       return { success: false, error: error.message };
@@ -7387,12 +8046,21 @@ function setupFileOperationHandlers() {
           });
           const uniqueName = getUniqueName(artifact.fileName, usedNames);
           const destPath = path.resolve(destDir, uniqueName);
-          if (metadataPolicy === 'preserve' && isModel3DFileName(sourcePath)) {
-            const sidecarPath = await getModel3DSidecarPathIfPresent(fs, sourcePath);
-            await writeModel3DExportWithSidecar(fs, destPath, artifact.buffer, sidecarPath);
-          } else {
-            await fs.writeFile(destPath, artifact.buffer);
-          }
+          const expectedOutputSha256 = crypto.createHash('sha256').update(artifact.buffer).digest('hex');
+          await executeWithStableIdentity({
+            kind: 'copy',
+            sourcePath,
+            destinationPath: destPath,
+            expectedOutputSha256,
+            perform: async () => {
+              if (metadataPolicy === 'preserve' && isModel3DFileName(sourcePath)) {
+                const sidecarPath = await getModel3DSidecarPathIfPresent(fs, sourcePath);
+                await writeModel3DExportWithSidecar(fs, destPath, artifact.buffer, sidecarPath);
+              } else {
+                await fs.writeFile(destPath, artifact.buffer);
+              }
+            },
+          });
           exportedCount += 1;
         } catch (error) {
           console.warn('[Electron] Failed to export file to folder:', file?.relativePath, error);
@@ -7690,7 +8358,8 @@ function setupFileOperationHandlers() {
             destinationDirectoryPath: destDir,
             destinationRelativePath: candidate,
             destinationAbsolutePath: candidatePath,
-            fileName: candidate
+            fileName: candidate,
+            legacyImageId: typeof file.legacyImageId === 'string' ? file.legacyImageId : null,
           });
         } catch {
           failedCount += 1;
@@ -7723,16 +8392,29 @@ function setupFileOperationHandlers() {
           }
         };
 
-        if (isModel3DFileName(task.sourceAbsolutePath)) {
-          await transferModel3DWithSidecar(
-            fs,
-            task.sourceAbsolutePath,
-            task.destinationAbsolutePath,
-            mode,
-          );
-        } else {
-          await transferPath(task.sourceAbsolutePath, task.destinationAbsolutePath);
-        }
+        const coordinated = await executeWithStableIdentity({
+          kind: mode,
+          sourcePath: task.sourceAbsolutePath,
+          destinationPath: task.destinationAbsolutePath,
+          userDataContext: stableFileUserDataContext({
+            legacyImageId: task.legacyImageId,
+            sourcePath: task.sourceAbsolutePath,
+            destinationPath: task.destinationAbsolutePath,
+            copyUserData: mode === 'copy',
+          }),
+          perform: async () => {
+            if (isModel3DFileName(task.sourceAbsolutePath)) {
+              await transferModel3DWithSidecar(
+                fs,
+                task.sourceAbsolutePath,
+                task.destinationAbsolutePath,
+                mode,
+              );
+            } else {
+              await transferPath(task.sourceAbsolutePath, task.destinationAbsolutePath);
+            }
+          },
+        });
 
         const stats = await fs.stat(task.destinationAbsolutePath);
         transferred.push({
@@ -7746,6 +8428,7 @@ function setupFileOperationHandlers() {
           lastModified: stats.mtimeMs,
           birthtimeMs: normalizeBirthtimeMs(stats.birthtimeMs),
           type: getMimeTypeFromName(task.fileName),
+          provenance: coordinated.provenance,
         });
       };
 
@@ -7832,6 +8515,10 @@ app.on('before-quit', () => {
   // Stop all file watchers before quitting
   fileWatcher.stopAllWatchers();
   licenseManager?.dispose?.();
+  stableIdentityIndexer?.stop();
+  stableIdentityFileOperationCoordinator = null;
+  stableIdentityUserDataService = null;
+  provenanceRepositoryLifecycle?.close();
 });
 
 app.on('activate', () => {

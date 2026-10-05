@@ -175,7 +175,7 @@ describe('ImageModal video playback controls', () => {
     expect(container.querySelector('[data-resize-handle="true"]')).toBeNull();
     expect(screen.queryByTitle('Minimize window')).toBeNull();
     expect(screen.queryByTitle('Maximize window')).toBeNull();
-    expect(screen.queryByTitle('Close (Esc)')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Close image' })).toBeTruthy();
     const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
     expect(dialog.className).toContain('inset-0');
     expect(dialog.style.left).toBe('');
@@ -316,7 +316,7 @@ describe('ImageModal video playback controls', () => {
     const onNavigateRandom = vi.fn();
     useSettingsStore.getState().setVideoShuffle(true);
 
-    await renderVideoModal({ onNavigateNext: vi.fn(), onNavigatePrevious, onNavigateRandom });
+    await renderVideoModal({ currentIndex: 1, onNavigateNext: vi.fn(), onNavigatePrevious, onNavigateRandom });
 
     fireEvent.click(screen.getByRole('button', { name: 'Previous image' }));
 

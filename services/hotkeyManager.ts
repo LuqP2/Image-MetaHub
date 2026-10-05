@@ -1,10 +1,13 @@
 import hotkeys, { KeyHandler } from 'hotkeys-js';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { hotkeyConfig, HotkeyDefinition } from './hotkeyConfig';
+import { expandHotkeyBindings } from './hotkeyBindings';
 
 interface RegisteredAction {
   id: string;
   scope: string;
+  activeScopes: string[];
+  definition: HotkeyDefinition;
   callback: KeyHandler;
 }
 
@@ -56,11 +59,9 @@ const bindAllActions = () => {
     const key = scopeKeymap[action.id];
     if (!key) return; // No keybinding for this action
 
-    // Handle platform differences (Ctrl/Cmd)
-    const platformKey = key.replace('ctrl', 'cmd');
-    const keysToRegister = key.includes('cmd') ? key : `${key}, ${platformKey}`;
+    const effectiveKeys = expandHotkeyBindings(key, action.definition).join(', ');
 
-    hotkeys(keysToRegister, { scope: action.scope, keyup: false, keydown: true }, (event, handler) => {
+    const handleKey: KeyHandler = (event, handler) => {
       // If hotkeys are paused, don't execute any actions
       if (hotkeysPauseCount > 0) {
         return;
@@ -68,7 +69,7 @@ const bindAllActions = () => {
 
       // Don't block keys in text inputs for typing operations
       const target = event.target as HTMLElement;
-      const isTypingContext = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      const isTypingContext = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
 
       if (isTypingContext && !hotkeysAllowedInTypingContext.has(action.id)) {
         return;
@@ -87,7 +88,10 @@ const bindAllActions = () => {
       }
 
       action.callback(event, handler);
-    });
+    };
+    for (const scope of action.activeScopes) {
+      hotkeys(effectiveKeys, { scope, keyup: false, keydown: true }, handleKey);
+    }
   });
 };
 
@@ -104,7 +108,13 @@ const registerAction = (id: string, callback: KeyHandler) => {
     return;
   }
 
-  registeredActions.set(id, { id, scope: config.scope, callback });
+  registeredActions.set(id, {
+    id,
+    scope: config.scope,
+    activeScopes: config.activeScopes ?? [config.scope],
+    definition: config,
+    callback,
+  });
 };
 
 /**

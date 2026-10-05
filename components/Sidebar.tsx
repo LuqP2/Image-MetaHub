@@ -4,9 +4,9 @@ import { ChevronDown, ChevronLeft, Plus } from 'lucide-react';
 import SemanticSearchBar from './SemanticSearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
-import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
 import { createProfilerOnRender } from '../utils/performanceDiagnostics';
 
@@ -85,6 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onExcludeFolder,
   onIncludeFolder,
 }) => {
+  const { isPro, isTrialActive } = useFeatureAccess();
   const [isGenerationParametersExpanded, setIsGenerationParametersExpanded] = useState(true);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
@@ -278,8 +279,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center gap-3 px-4 py-3">
           <img src="logo1.png" alt="Image MetaHub" className="h-11 w-11 flex-shrink-0 rounded-xl object-contain" />
           <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
-            <h1 className="truncate text-lg font-semibold tracking-tight text-white">Image MetaHub</h1>
-            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.19.0</span>
+            <h1 className="truncate text-lg font-semibold tracking-tight text-gray-100">
+              {isPro ? 'Image MetaHub Pro' : isTrialActive ? 'Image MetaHub Pro Trial' : 'Image MetaHub'}
+            </h1>
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.20.1</span>
           </div>
           <button
             onClick={onToggleCollapse}
@@ -301,11 +304,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-sidebar">
-        <div className="border-b border-gray-800/80">
-          <ActiveFilters onClearAll={onClearAllFilters} />
-        </div>
-
-
         {/* Folders (Add Folder lives with the folder list) */}
         {onAddFolder && (
           <div className="px-3 pb-2">

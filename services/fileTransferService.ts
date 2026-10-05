@@ -1,5 +1,10 @@
 import { processFiles } from './fileIndexer';
 import { bulkTransferImagePersistence } from './imageAnnotationsStorage';
+import {
+  getUserDataPersistenceStatus,
+  prepareUserDataForImages,
+  registerStableUserDataImages,
+} from './userDataPersistenceAdapter';
 import { useImageStore } from '../store/useImageStore';
 import type {
   Directory,
@@ -140,9 +145,35 @@ export async function transferIndexedImages({
     })
     .filter((entry) => entry.relativePath);
 
-  const sourceFiles = sourceDescriptors.map(({ directoryPath, relativePath }) => ({
+  try {
+    await prepareUserDataForImages(sourceDescriptors.map(({ image }) => image));
+  } catch (error) {
+    const message = `Files were not transferred because their local user data could not be staged safely: ${error instanceof Error ? error.message : String(error)}`;
+    setError(message);
+    setTransferProgress(null);
+    return {
+      success: false,
+      transferredCount: 0,
+      failedCount: sourceDescriptors.length,
+      error: message,
+    };
+  }
+  const userDataStatus = await getUserDataPersistenceStatus();
+  const usesStableUserData = userDataStatus.authority === 'sqlite';
+
+  const sourceFiles = sourceDescriptors.map(({ image, directoryPath, relativePath }) => ({
     directoryPath,
     relativePath,
+    legacyImageId: image.id,
+    ...(image.assetId && image.revisionId && image.provenanceLocationId
+      ? {
+          stableReference: {
+            assetId: image.assetId,
+            revisionId: image.revisionId,
+            locationId: image.provenanceLocationId,
+          },
+        }
+      : {}),
   }));
 
   if (!sourceFiles.length) {
@@ -188,6 +219,7 @@ export async function transferIndexedImages({
   const annotationsMap = new Map(useImageStore.getState().annotations);
 
   const persistenceTransfers: Array<{ sourceImageId: string; targetImageId: string }> = [];
+  const uiTransfers: Array<{ sourceImageId: string; targetImageId: string }> = [];
 
   onStatus?.('Preserving tags and metadata...');
   for (const item of transferredItems) {
@@ -197,14 +229,24 @@ export async function transferIndexedImages({
     }
 
     const targetImageId = `${destinationDirectory.id}::${item.destinationRelativePath}`;
-    persistenceTransfers.push({ sourceImageId: sourceImage.id, targetImageId });
+    uiTransfers.push({ sourceImageId: sourceImage.id, targetImageId });
+    if (!usesStableUserData) {
+      persistenceTransfers.push({ sourceImageId: sourceImage.id, targetImageId });
+    }
 
     const sourceAnnotation = annotationsMap.get(sourceImage.id);
     if (sourceAnnotation) {
+      const mapping = item.provenance?.operation?.result?.mapping;
       annotationsMap.set(targetImageId, {
         ...sourceAnnotation,
         imageId: targetImageId,
-        updatedAt: Date.now(),
+        ...(mode === 'copy'
+          ? {
+              assetId: mapping?.assetId,
+              persistenceVersion: mapping ? 1 : undefined,
+              updatedAt: Date.now(),
+            }
+          : {}),
       });
     }
   }
@@ -231,7 +273,7 @@ export async function transferIndexedImages({
   const refreshAvailableTags = useImageStore.getState().refreshAvailableTags;
 
   if (mode === 'move') {
-    for (const transfer of persistenceTransfers) {
+    for (const transfer of uiTransfers) {
       annotationsMap.delete(transfer.sourceImageId);
     }
   }
@@ -296,7 +338,22 @@ export async function transferIndexedImages({
     {
       fileStats: fileStatsMap,
       onEnrichmentBatch: (batch) => {
-        addImages(batch);
+        const mappingByRelativePath = new Map(transferredItems.flatMap((item) => {
+          const mapping = item.provenance?.operation?.result?.mapping;
+          return mapping ? [[item.destinationRelativePath, mapping] as const] : [];
+        }));
+        const mappedBatch = batch.map((image) => {
+          const mapping = mappingByRelativePath.get(getRelativeImagePath(image));
+          return mapping ? {
+            ...image,
+            assetId: mapping.assetId,
+            revisionId: mapping.revisionId,
+            provenanceLocationId: mapping.locationId,
+            provenanceRootId: mapping.rootId,
+          } : image;
+        });
+        registerStableUserDataImages(mappedBatch);
+        addImages(mappedBatch);
       },
     },
   );

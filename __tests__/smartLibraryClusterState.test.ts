@@ -3,6 +3,9 @@ import type { ImageCluster, IndexedImage } from '../types';
 import {
   buildClusteringMetadata,
   buildClusterSourceSignature,
+  buildClusterSourceSignatures,
+  buildLegacyClusterSourceSignature,
+  canRestoreClusterCacheSource,
   isClusterCacheCompatible,
   limitClustersForAccess,
 } from '../utils/smartLibraryClusterState';
@@ -41,7 +44,46 @@ describe('smart library cluster state', () => {
 
     expect(buildClusterSourceSignature([...images, makeImage(3)])).not.toBe(baseline);
     expect(buildClusterSourceSignature([makeImage(1, 'changed'), makeImage(2)])).not.toBe(baseline);
-    expect(buildClusterSourceSignature([makeImage(2), makeImage(1)])).not.toBe(baseline);
+    expect(buildClusterSourceSignature([makeImage(2), makeImage(1)])).toBe(baseline);
+  });
+
+  it('keeps saved clusters available when a new image arrives during startup', () => {
+    const original = [makeImage(1), makeImage(2), makeImage(3)];
+    const cache = {
+      clusters: [makeCluster('saved', original.map((image) => image.id))],
+      sourceSignature: buildClusterSourceSignature(original),
+      sourceImageCount: original.length,
+      lastGenerated: 3.5,
+      clusterCacheVersion: 1,
+    };
+    const withNewImage = [...original, makeImage(4)];
+
+    expect(canRestoreClusterCacheSource(cache, withNewImage, [buildClusterSourceSignature(withNewImage)], Infinity)).toBe(true);
+    expect(canRestoreClusterCacheSource(cache, original.slice(0, 2), [buildClusterSourceSignature(original.slice(0, 2))], Infinity)).toBe(false);
+    expect(canRestoreClusterCacheSource(cache, [makeImage(1), makeImage(2), makeImage(4), makeImage(5)],
+      [buildClusterSourceSignature(withNewImage)], Infinity)).toBe(false);
+    expect(canRestoreClusterCacheSource(cache, [makeImage(1, 'changed'), makeImage(2), makeImage(3), makeImage(4)],
+      [buildClusterSourceSignature(withNewImage)], Infinity)).toBe(false);
+    expect(canRestoreClusterCacheSource(cache, [...original, { ...makeImage(4), lastModified: 2 }],
+      [buildClusterSourceSignature(withNewImage)], Infinity)).toBe(false);
+  });
+
+  it('reproduces the order-sensitive signature stored by older cluster caches', () => {
+    const images = [makeImage(2), makeImage(1)];
+
+    expect(buildLegacyClusterSourceSignature(images)).not.toBe(buildLegacyClusterSourceSignature([...images].reverse()));
+    expect(buildClusterSourceSignature(images)).toBe(buildClusterSourceSignature([...images].reverse()));
+    expect(buildLegacyClusterSourceSignature(images)).not.toBe(buildClusterSourceSignature(images));
+  });
+
+  it('tracks which images entered a limited clustering run', () => {
+    const images = Array.from({ length: 501 }, (_, index) => makeImage(index));
+    const reordered = [images[500], ...images.slice(1, 500), images[0]];
+
+    expect(buildClusterSourceSignature(reordered)).toBe(buildClusterSourceSignature(images));
+    expect(buildClusterSourceSignature(reordered, 500)).not.toBe(buildClusterSourceSignature(images, 500));
+    expect(buildClusterSourceSignatures(images, 500).full).toBe(buildClusterSourceSignature(images));
+    expect(buildClusterSourceSignatures(images, 500).limited).toBe(buildClusterSourceSignature(images, 500));
   });
 
   it('trims restored clusters to the free preview range', () => {

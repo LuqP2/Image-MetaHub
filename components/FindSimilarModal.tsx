@@ -206,7 +206,10 @@ export default function FindSimilarModal({
     <div className={overlayClassName} role="dialog" aria-modal="true" aria-label="Find similar images">
       <div className={panelClassName}>
         <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-800 px-5 py-4">
-          <div className="text-lg font-semibold text-gray-100">Find similar...</div>
+          <div>
+            <div className="text-lg font-semibold text-gray-100">Find similar...</div>
+            <div className="mt-1 text-xs text-gray-400">Match rules use prompts and generation metadata. Local Visual Search compares appearance instead.</div>
+          </div>
           <button
             type="button"
             onClick={onClose}

@@ -113,13 +113,13 @@ export const sanitizeEditableMetadataFields = (
 
   const prompt = typeof fields.prompt === 'string' ? fields.prompt : undefined;
   const negativePrompt = typeof fields.negativePrompt === 'string' ? fields.negativePrompt : undefined;
-  const model = typeof fields.model === 'string' && fields.model.trim() ? fields.model.trim() : undefined;
-  const sampler = typeof fields.sampler === 'string' && fields.sampler.trim() ? fields.sampler.trim() : undefined;
-  const scheduler = typeof fields.scheduler === 'string' && fields.scheduler.trim() ? fields.scheduler.trim() : undefined;
+  const model = typeof fields.model === 'string' ? fields.model.trim() : undefined;
+  const sampler = typeof fields.sampler === 'string' ? fields.sampler.trim() : undefined;
+  const scheduler = typeof fields.scheduler === 'string' ? fields.scheduler.trim() : undefined;
   const notes = typeof fields.notes === 'string' ? fields.notes : undefined;
-  const generator = typeof fields.generator === 'string' && fields.generator.trim() ? fields.generator.trim() : undefined;
-  const version = typeof fields.version === 'string' && fields.version.trim() ? fields.version.trim() : undefined;
-  const module = typeof fields.module === 'string' && fields.module.trim() ? fields.module.trim() : undefined;
+  const generator = typeof fields.generator === 'string' ? fields.generator.trim() : undefined;
+  const version = typeof fields.version === 'string' ? fields.version.trim() : undefined;
+  const module = typeof fields.module === 'string' ? fields.module.trim() : undefined;
   const tags = Array.isArray(fields.tags)
     ? fields.tags.map((tag) => String(tag).trim()).filter(Boolean)
     : undefined;
@@ -140,8 +140,8 @@ export const sanitizeEditableMetadataFields = (
     ...(coerceFiniteNumber(fields.width) !== undefined ? { width: coerceFiniteNumber(fields.width) } : {}),
     ...(coerceFiniteNumber(fields.height) !== undefined ? { height: coerceFiniteNumber(fields.height) } : {}),
     ...(coerceFiniteNumber(fields.duration) !== undefined ? { duration: coerceFiniteNumber(fields.duration) } : {}),
-    ...(resources && resources.length > 0 ? { resources } : {}),
-    ...(tags && tags.length > 0 ? { tags } : {}),
+    ...(resources !== undefined ? { resources } : {}),
+    ...(tags !== undefined ? { tags } : {}),
     ...(notes !== undefined ? { notes } : {}),
   };
 };
@@ -216,7 +216,7 @@ export const getEditableMetadataFields = (
     width: shadowMetadata?.width ?? metadata?.width,
     height: shadowMetadata?.height ?? metadata?.height,
     duration: shadowMetadata?.duration,
-    resources: shadowResources && shadowResources.length > 0 ? shadowResources : baseResources,
+    resources: shadowResources !== undefined ? shadowResources : baseResources,
     tags: shadowMetadata?.tags ?? (metadata as BaseMetadataWithNotes | undefined)?.tags,
     notes: shadowMetadata?.notes ?? getMetadataNotes(metadata),
   });
@@ -276,7 +276,9 @@ export const buildEffectiveMetadata = (
     notes: editable.notes ?? getMetadataNotes(base),
   };
 
-  if (nextMetadata.model) {
+  if (Object.prototype.hasOwnProperty.call(shadowMetadata ?? {}, 'model') && shadowMetadata?.model === '') {
+    nextMetadata.models = [];
+  } else if (nextMetadata.model) {
     nextMetadata.models = [nextMetadata.model];
   }
 

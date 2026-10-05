@@ -193,7 +193,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
             <button
               type="button"
               onClick={() => setIsCreateModalOpen(true)}
-              className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500"
+              className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950"
             >
               <Plus className="h-4 w-4" />
               New

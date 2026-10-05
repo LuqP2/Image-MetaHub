@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { sanitizeImageViewerMode, useSettingsStore } from '../store/useSettingsStore';
+import {
+  sanitizeImageViewerDefaultZoom,
+  sanitizeImageViewerMode,
+  useSettingsStore,
+} from '../store/useSettingsStore';
 
 describe('image viewer preference', () => {
   beforeEach(() => useSettingsStore.getState().resetState());
@@ -17,5 +21,14 @@ describe('image viewer preference', () => {
     expect(useSettingsStore.getState().imageViewerMode).toBe('detached');
     useSettingsStore.getState().setImageViewerMode('invalid' as never);
     expect(useSettingsStore.getState().imageViewerMode).toBe('detached');
+  });
+
+  it('defaults image zoom to fit and stores 1:1 as the alternative', () => {
+    expect(sanitizeImageViewerDefaultZoom(undefined)).toBe('fit');
+    expect(useSettingsStore.getState().imageViewerDefaultZoom).toBe('fit');
+    useSettingsStore.getState().setImageViewerDefaultZoom('actual');
+    expect(useSettingsStore.getState().imageViewerDefaultZoom).toBe('actual');
+    useSettingsStore.getState().setImageViewerDefaultZoom('invalid' as never);
+    expect(useSettingsStore.getState().imageViewerDefaultZoom).toBe('fit');
   });
 });

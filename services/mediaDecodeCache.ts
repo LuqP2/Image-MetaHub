@@ -3,6 +3,7 @@ import { recordPerformanceCounter } from '../utils/performanceDiagnostics';
 type DecodeEntry = {
   element: HTMLImageElement;
   decoded: boolean;
+  naturalSize?: { width: number; height: number };
   lastAccess: number;
   loading?: Promise<void>;
 };
@@ -92,6 +93,9 @@ class MediaDecodeCache {
         }
 
         entry.decoded = true;
+        if (element.naturalWidth > 0 && element.naturalHeight > 0) {
+          entry.naturalSize = { width: element.naturalWidth, height: element.naturalHeight };
+        }
         entry.loading = undefined;
         entry.lastAccess = Date.now();
         this.prune();
@@ -118,6 +122,16 @@ class MediaDecodeCache {
    */
   isWarm(url: string): boolean {
     return this.entries.get(url)?.decoded === true;
+  }
+
+  /** Read decoded dimensions during render without changing LRU state. */
+  getNaturalSize(url: string): { width: number; height: number } | null {
+    const entry = this.entries.get(url);
+    if (!entry?.decoded || !entry.naturalSize) {
+      return null;
+    }
+
+    return entry.naturalSize;
   }
 
   clear(): void {

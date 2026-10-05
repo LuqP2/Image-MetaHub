@@ -189,7 +189,7 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
               <button
                 type="button"
                 onClick={onInstallNow}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 hover:text-gray-950"
               >
                 <RotateCcw size={16} />
                 Restart and Install
@@ -216,7 +216,7 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
               <button
                 type="button"
                 onClick={onDownload}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={status === 'downloading'}
               >
                 <Download size={16} />

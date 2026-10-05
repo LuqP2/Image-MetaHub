@@ -13,18 +13,22 @@ export interface TaggingImage {
 export interface AutoTaggingOptions {
   topN?: number;
   minScore?: number;
+  excludeTags?: string[];
 }
 
 const DEFAULT_TOP_N = 6;
 const DEFAULT_MIN_SCORE = 0.03;
-const MODEL_WEIGHT = 1.8;
-const LORA_WEIGHT = 2.0;
-const PROMPT_WEIGHT = 1.0;
+const MAX_FRAGMENT_WORDS = 8;
 
-const LORA_TAG_REGEX = /<lora:([^:>]+)(?::[^>]+)?>/gi;
-const WEIGHT_SYNTAX_REGEX = /[([]\s*([^)\]]+?)\s*:\s*[\d.]+\s*[)\]]/g;
+const LORA_TAG_REGEX = /<lora:[^>]*>/gi;
+const WEIGHT_BEFORE_CLOSING_REGEX = /:\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?=\s*[)\]}])/g;
+const TRAILING_WEIGHT_REGEX = /:\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\s*$/;
 
-const STOP_PHRASES = [
+const BOILERPLATE_FRAGMENTS = new Set([
+  'masterpiece',
+  'quality',
+  'best',
+  'detailed',
   'best quality',
   'high quality',
   'ultra detailed',
@@ -35,182 +39,77 @@ const STOP_PHRASES = [
   'raw photo',
   'raw photograph',
   'high resolution',
-];
-
-const STOP_WORDS = new Set([
-  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-  'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been',
-  'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-  'should', 'could', 'may', 'might', 'must', 'can',
-  'masterpiece', 'best', 'quality', 'high', 'highly', 'detailed', 'detail',
-  'ultra', 'photorealistic', 'realistic', 'professional', 'art', 'artwork',
-  'digital', 'illustration', 'render', 'photo', 'photograph', 'photography',
-  'cinematic', 'sharp', 'sharpness', 'hdr', 'uhd', '4k', '8k', '16k',
-  'highres', 'lowres', 'absurdres',
+  'highres',
+  'lowres',
+  'absurdres',
+  'hdr',
+  'uhd',
+  '4k',
+  '8k',
+  '16k',
 ]);
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+// Comma-delimited prompts can also contain unfinished prose. Keep a fragment
+// only when it can stand on its own as a descriptive tag.
+// An imperative cut by an internal comma is prose, not a standalone fragment.
+const CLAUSE_START = /^(?:and|or|but|while|which|that|who|whose|where|when|with|without|his|her|their|its|featuring|showing|depicting|including|visualize|imagine|create|generate|describe|depict|draw|render)\b/u;
+const LIST_CLAUSE_START = /^(?:featuring|showing|depicting|including)\s+(.+)$/u;
+const PRONOUN_ONLY = /^(?:i|you|he|she|it|we|they|this|that|these|those)$/u;
+const SUBJECT_PRONOUN_START = /^(?:i|you|he|she|it|we|they)\s+/u;
+const INCOMPLETE_END = /\b(?:a|an|the|and|or|but|of|in|on|at|to|for|from|with|without|against|between|beneath|under|over|through|as|very|single|oversized|harsh)$/u;
+const SENTENCE_VERB = /\b(?:is|are|was|were|has|have|had)\b|\b(?:casts|shows|depicts|features|contrasts|fills|illuminates|surrounds)\s+(?:a|an|the|this|that|his|her|their|its)\b/u;
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-function normalizeTag(value: string): string {
-  if (!value) return '';
-  let normalized = value.trim().toLowerCase();
-  normalized = normalized.split(/[\\/]/).pop() ?? normalized;
-  normalized = normalized.replace(/\.(safetensors|ckpt|pt)$/i, '');
-  normalized = normalized.replace(/:[\d.]+$/g, '');
-  normalized = normalized.replace(/_/g, ' ');
-  normalized = normalized.replace(/^[^a-z0-9-]+|[^a-z0-9-]+$/g, '');
-  normalized = normalizeWhitespace(normalized);
-  return normalized;
-}
-
-function isValidTag(value: string): boolean {
-  if (!value) return false;
-  if (value.length < 2) return false;
-  if (/^\d+$/.test(value)) return false;
-  if (STOP_WORDS.has(value)) return false;
-  return true;
-}
-
-function removeStopPhrases(text: string): string {
-  let cleaned = text;
-  for (const phrase of STOP_PHRASES) {
-    const regex = new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'gi');
-    cleaned = cleaned.replace(regex, ' ');
-  }
-  return cleaned;
-}
-
-function extractLorasFromPrompt(prompt: string): string[] {
-  if (!prompt) return [];
-  const results: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = LORA_TAG_REGEX.exec(prompt)) !== null) {
-    const name = normalizeTag(match[1] || '');
-    if (isValidTag(name)) {
-      results.push(name);
-    }
-  }
-  return results;
-}
-
-function tokenizePrompt(prompt: string): string[] {
+function extractPromptFragments(prompt: string): string[] {
   if (!prompt) return [];
 
-  let cleaned = prompt.toLowerCase();
+  let cleaned = prompt;
   cleaned = cleaned.replace(LORA_TAG_REGEX, ' ');
-  cleaned = cleaned.replace(WEIGHT_SYNTAX_REGEX, '$1');
-  cleaned = cleaned.replace(/_/g, ' ');
-  cleaned = removeStopPhrases(cleaned);
+  cleaned = cleaned.replace(WEIGHT_BEFORE_CLOSING_REGEX, '');
+  const fragments: string[] = [];
 
-  const rawTokens = cleaned.split(/[\s,]+/);
-  const tokens: string[] = [];
-
-  for (const raw of rawTokens) {
-    const normalized = normalizeTag(raw);
-    if (!isValidTag(normalized)) {
-      continue;
+  // A comma fragment may cross a sentence boundary. Split there too, while
+  // leaving decimal points in weights, lens values and similar terms intact.
+  for (const raw of cleaned.split(/,|[.!?]+(?=\s|$)/u)) {
+    const normalized = normalizeWhitespace(raw
+      .replace(TRAILING_WEIGHT_REGEX, '')
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''));
+    const listClause = normalized.match(LIST_CLAUSE_START);
+    const sentenceVerb = normalized.match(SENTENCE_VERB);
+    let candidates = [normalized];
+    if (listClause) {
+      const listed = listClause[1];
+      const parts = listed.split(/\s+and\s+/u);
+      candidates = parts.length === 2 && parts.every(part => part.split(' ').length >= 2)
+        ? parts
+        : [listed];
+    } else if (sentenceVerb && sentenceVerb.index > 0) {
+      candidates = [normalized.slice(0, sentenceVerb.index).trim()];
     }
-    tokens.push(normalized);
-  }
 
-  return tokens;
-}
-
-function normalizeModelTerm(term: string): string | null {
-  const normalized = normalizeTag(term);
-  if (!isValidTag(normalized)) {
-    return null;
-  }
-  return normalized;
-}
-
-function normalizeLoraTerm(term: string): string | null {
-  const normalized = normalizeTag(term);
-  if (!isValidTag(normalized)) {
-    return null;
-  }
-  return normalized;
-}
-
-function extractModelTerms(image: TaggingImage, facts?: WorkflowFacts | null): string[] {
-  const candidates = new Set<string>();
-  if (facts?.model?.base) {
-    candidates.add(facts.model.base);
-  }
-  image.models?.forEach(model => candidates.add(model));
-  const normalizedModel = image.metadata?.normalizedMetadata?.model;
-  if (normalizedModel) {
-    candidates.add(normalizedModel);
-  }
-  image.metadata?.normalizedMetadata?.models?.forEach(model => candidates.add(model));
-
-  const normalized: string[] = [];
-  for (const candidate of candidates) {
-    const term = normalizeModelTerm(candidate);
-    if (term) {
-      normalized.push(term);
+    for (const candidate of candidates) {
+      const concept = normalizeWhitespace(candidate.replace(/^(?:a|an|the)\s+/u, ''));
+      if (concept.length < 2 || /^\d+$/.test(concept)) continue;
+      if (PRONOUN_ONLY.test(concept)) continue;
+      if (SUBJECT_PRONOUN_START.test(concept)) continue;
+      if (concept.split(' ').length > MAX_FRAGMENT_WORDS) continue;
+      if (BOILERPLATE_FRAGMENTS.has(concept)) continue;
+      if (/^score(?:\s*\d+)?(?:\s*up)?$/.test(concept)) continue;
+      if (CLAUSE_START.test(concept) || INCOMPLETE_END.test(concept) || SENTENCE_VERB.test(concept)) continue;
+      fragments.push(concept);
     }
   }
-  return Array.from(new Set(normalized));
-}
 
-function extractLoraTerms(image: TaggingImage, facts?: WorkflowFacts | null): string[] {
-  const candidates = new Set<string>();
-  if (facts?.loras?.length) {
-    facts.loras.forEach(lora => {
-      if (lora?.name) {
-        candidates.add(lora.name);
-      }
-    });
-  }
-  image.loras?.forEach(lora => {
-    if (typeof lora === 'string') {
-      candidates.add(lora);
-    } else if (lora?.name) {
-      candidates.add(lora.name);
-    } else if (lora?.model_name) {
-      candidates.add(lora.model_name);
-    }
-  });
-
-  const normalizedMetaLoras = image.metadata?.normalizedMetadata?.loras;
-  if (Array.isArray(normalizedMetaLoras)) {
-    normalizedMetaLoras.forEach(lora => {
-      if (typeof lora === 'string') {
-        candidates.add(lora);
-      } else if (lora?.name) {
-        candidates.add(lora.name);
-      } else if (lora?.model_name) {
-        candidates.add(lora.model_name);
-      }
-    });
-  }
-
-  const promptLoras = extractLorasFromPrompt(image.prompt ?? '');
-  promptLoras.forEach(lora => candidates.add(lora));
-
-  const normalized: string[] = [];
-  for (const candidate of candidates) {
-    const term = normalizeLoraTerm(candidate);
-    if (term) {
-      normalized.push(term);
-    }
-  }
-  return Array.from(new Set(normalized));
+  return fragments;
 }
 
 function collectDocumentTerms(image: TaggingImage): Set<string> {
-  const terms = new Set<string>();
-  tokenizePrompt(image.prompt ?? '').forEach(token => terms.add(token));
-  extractModelTerms(image).forEach(term => terms.add(term));
-  extractLoraTerms(image).forEach(term => terms.add(term));
-  return terms;
+  return new Set(extractPromptFragments(image.prompt ?? ''));
 }
 
 function countTokens(tokens: string[]): Map<string, number> {
@@ -248,16 +147,6 @@ function addTagScore(
   tagScores.set(tag, { score, frequency, sourceType });
 }
 
-function collectMetadataTermsWithWeights(
-  image: TaggingImage,
-  facts?: WorkflowFacts | null
-): Array<{ term: string; weight: number }> {
-  const weighted: Array<{ term: string; weight: number }> = [];
-  extractModelTerms(image, facts).forEach(term => weighted.push({ term, weight: MODEL_WEIGHT }));
-  extractLoraTerms(image, facts).forEach(term => weighted.push({ term, weight: LORA_WEIGHT }));
-  return weighted;
-}
-
 export function buildTFIDFModel(images: TaggingImage[]): TFIDFModel {
   const documentFrequency = new Map<string, number>();
   let documentCount = 0;
@@ -290,34 +179,27 @@ function extractAutoTagsInternal(
   image: TaggingImage,
   model: TFIDFModel,
   options?: AutoTaggingOptions,
-  facts?: WorkflowFacts | null
+  _facts?: WorkflowFacts | null
 ): AutoTag[] {
   const topN = options?.topN ?? DEFAULT_TOP_N;
   const minScore = options?.minScore ?? DEFAULT_MIN_SCORE;
+  const excludedTags = new Set(options?.excludeTags ?? []);
 
-  const promptTokens = tokenizePrompt(image.prompt ?? '');
-  const tokenCounts = countTokens(promptTokens);
-  const totalTokens = promptTokens.length || 1;
+  const promptFragments = extractPromptFragments(image.prompt ?? '');
+  const fragmentCounts = countTokens(promptFragments);
+  const totalFragments = promptFragments.length || 1;
 
   const tagScores = new Map<string, { score: number; frequency: number; sourceType: AutoTag['sourceType'] }>();
 
-  for (const [term, count] of tokenCounts.entries()) {
+  for (const [term, count] of fragmentCounts.entries()) {
     const idf = getIdfScore(term, model);
-    const tf = count / totalTokens;
-    const score = tf * idf * PROMPT_WEIGHT;
+    const tf = count / totalFragments;
+    const score = tf * idf;
     addTagScore(tagScores, term, score, count, 'prompt');
   }
 
-  const metadataTerms = collectMetadataTermsWithWeights(image, facts);
-  const metadataTf = 1 / totalTokens;
-  for (const { term, weight } of metadataTerms) {
-    const idf = getIdfScore(term, model);
-    const score = metadataTf * idf * weight;
-    addTagScore(tagScores, term, score, 1, 'metadata');
-  }
-
   const tags = Array.from(tagScores.entries())
-    .filter(([, value]) => value.score >= minScore)
+    .filter(([tag, value]) => value.score >= minScore && !excludedTags.has(tag))
     .sort((a, b) => b[1].score - a[1].score)
     .slice(0, topN)
     .map(([tag, value]) => ({

@@ -561,6 +561,71 @@ describe('useImageStore tri-state filters', () => {
     expect(storedTarget?.rating).toBe(4);
   });
 
+  it('defers enrichment merges until startup directory refresh finishes', () => {
+    const catalogImage = createImage({
+      id: 'dir-1::refreshing.png',
+      name: 'refreshing.png',
+      prompt: 'catalog metadata',
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [],
+      filteredImages: [],
+      sortOrder: 'asc',
+    });
+
+    useImageStore.getState().setDirectoryRefreshing(directory.id, true);
+    useImageStore.getState().addImages([catalogImage]);
+    useImageStore.getState().mergeImages([{ ...catalogImage, prompt: 'enriched metadata' }]);
+
+    expect(useImageStore.getState().images).toEqual([]);
+
+    useImageStore.getState().setDirectoryRefreshing(directory.id, false);
+
+    expect(useImageStore.getState().images).toHaveLength(1);
+    expect(useImageStore.getState().images[0].prompt).toBe('enriched metadata');
+  });
+
+  it('only defers merge updates that belong to the refreshing directory', () => {
+    const refreshingImage = createImage({
+      id: 'dir-1::refreshing.png',
+      name: 'refreshing.png',
+      prompt: 'old refreshing metadata',
+    });
+    const editedImage = createImage({
+      id: 'dir-2::edited.png',
+      name: 'edited.png',
+      directoryId: 'dir-2',
+      prompt: 'old edited metadata',
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory, secondDirectory],
+      images: [refreshingImage, editedImage],
+      filteredImages: [refreshingImage, editedImage],
+      sortOrder: 'asc',
+    });
+
+    useImageStore.getState().setDirectoryRefreshing(directory.id, true);
+    useImageStore.getState().mergeImages([
+      { ...refreshingImage, prompt: 'new refreshing metadata' },
+      { ...editedImage, prompt: 'new edited metadata' },
+    ]);
+
+    expect(useImageStore.getState().images.find((image) => image.id === refreshingImage.id)?.prompt)
+      .toBe('old refreshing metadata');
+    expect(useImageStore.getState().images.find((image) => image.id === editedImage.id)?.prompt)
+      .toBe('new edited metadata');
+
+    useImageStore.getState().setDirectoryRefreshing(directory.id, false);
+
+    expect(useImageStore.getState().images.find((image) => image.id === refreshingImage.id)?.prompt)
+      .toBe('new refreshing metadata');
+  });
+
   it('ignores queued images and merges from removed directories', () => {
     useImageStore.getState().resetState();
     useImageStore.setState({

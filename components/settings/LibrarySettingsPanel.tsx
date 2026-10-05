@@ -162,6 +162,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         '',
         'Your image files will not be deleted.',
         'Your license and trial state will be kept.',
+        'Saved prompts will be kept.',
         'The app will reload after the reset.',
         '',
         'This action cannot be undone.',
@@ -249,7 +250,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
             <button
               type="button"
               onClick={handleSelectCacheDirectory}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 hover:text-gray-950"
             >
               Change location
             </button>

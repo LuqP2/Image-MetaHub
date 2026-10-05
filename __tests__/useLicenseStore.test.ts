@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { applyLicenseAuthorityStatus, mergePersistedLicenseState, TRIAL_DURATION_DAYS, useLicenseStore } from '../store/useLicenseStore';
+import { formatLicenseValidity, licensePlanLabel } from '../utils/licenseDisplay';
 
 const resetLicenseState = () => {
   localStorage.clear();
@@ -16,6 +17,7 @@ const resetLicenseState = () => {
     licenseKey: null,
     licenseEmail: null,
     licensePlan: null,
+    licenseExpiresAt: null,
     licenseMessage: null,
     trialExpiredNoticeDismissed: false,
   });
@@ -252,13 +254,29 @@ describe('useLicenseStore trial policy', () => {
 
 });
 
+describe('license billing display', () => {
+  it('shows the three paid plans and their validity', () => {
+    expect(licensePlanLabel('monthly')).toBe('Monthly');
+    expect(licensePlanLabel('annual')).toBe('Annual');
+    expect(licensePlanLabel('lifetime')).toBe('Lifetime');
+    expect(formatLicenseValidity('monthly', '2026-09-23T00:00:00.000Z', 'en-US')).toMatch(/^Valid through /);
+    expect(formatLicenseValidity('annual', '2027-08-23T00:00:00.000Z', 'en-US')).toMatch(/^Valid through /);
+    expect(formatLicenseValidity('lifetime', null, 'en-US')).toBe('No expiration');
+  });
+});
+
 describe('post-trial notice dismissal', () => {
   beforeEach(() => {
     resetLicenseState();
   });
 
   it('applies an authoritative runtime expiry update from Electron main', () => {
-    useLicenseStore.setState({ initialized: true, licenseStatus: 'pro', licensePlan: 'monthly' });
+    useLicenseStore.setState({
+      initialized: true,
+      licenseStatus: 'pro',
+      licensePlan: 'monthly',
+      licenseExpiresAt: '2026-09-23T00:00:00.000Z',
+    });
     applyLicenseAuthorityStatus({
       authorized: false,
       licenseStatus: 'free',
@@ -273,7 +291,26 @@ describe('post-trial notice dismissal', () => {
       initialized: true,
       licenseStatus: 'free',
       licensePlan: null,
+      licenseExpiresAt: null,
       licenseMessage: 'License has expired.',
+    });
+  });
+
+  it('propagates the paid period from Electron authority into renderer state', () => {
+    applyLicenseAuthorityStatus({
+      authorized: true,
+      licenseStatus: 'pro',
+      plan: 'annual',
+      licenseEmail: 'buyer@example.com',
+      expiresAt: '2027-08-23T00:00:00.000Z',
+      refreshAfter: '2026-08-24T00:00:00.000Z',
+      migrationRequired: false,
+      message: null,
+    });
+    expect(useLicenseStore.getState()).toMatchObject({
+      licenseStatus: 'pro',
+      licensePlan: 'annual',
+      licenseExpiresAt: '2027-08-23T00:00:00.000Z',
     });
   });
 

@@ -4,6 +4,8 @@ export interface HotkeyDefinition {
   id: string;
   name: string;
   scope: 'global' | 'preview';
+  activeScopes?: ('global' | 'preview')[];
+  numpadEquivalent?: boolean;
   defaultKey: string;
 }
 
@@ -22,6 +24,13 @@ export const hotkeyConfig: HotkeyDefinition[] = [
   { id: 'rescanFolders', name: 'Rescan Folders', scope: 'global', defaultKey: 'ctrl+shift+r, cmd+shift+r' },
   { id: 'selectAll', name: 'Select All', scope: 'global', defaultKey: 'ctrl+a, cmd+a' },
   { id: 'deleteSelected', name: 'Delete Selected', scope: 'global', defaultKey: 'delete' },
+  { id: 'rateImage1', name: 'Rate 1', scope: 'global', activeScopes: ['global', 'preview'], numpadEquivalent: true, defaultKey: '1' },
+  { id: 'rateImage2', name: 'Rate 2', scope: 'global', activeScopes: ['global', 'preview'], numpadEquivalent: true, defaultKey: '2' },
+  { id: 'rateImage3', name: 'Rate 3', scope: 'global', activeScopes: ['global', 'preview'], numpadEquivalent: true, defaultKey: '3' },
+  { id: 'rateImage4', name: 'Rate 4', scope: 'global', activeScopes: ['global', 'preview'], numpadEquivalent: true, defaultKey: '4' },
+  { id: 'rateImage5', name: 'Rate 5', scope: 'global', activeScopes: ['global', 'preview'], numpadEquivalent: true, defaultKey: '5' },
+  { id: 'clearRating', name: 'Clear Rating', scope: 'global', activeScopes: ['global', 'preview'], numpadEquivalent: true, defaultKey: '0' },
+  { id: 'toggleRejected', name: 'Reject / Restore Candidate', scope: 'global', activeScopes: ['global', 'preview'], defaultKey: 'x' },
   { id: 'toggleQuickPreview', name: 'Toggle Quick Preview', scope: 'global', defaultKey: 'space' },
   { id: 'openFullscreen', name: 'Open Fullscreen', scope: 'global', defaultKey: 'enter' },
   { id: 'toggleListGridView', name: 'Toggle List/Grid View', scope: 'global', defaultKey: 'ctrl+l, cmd+l' },
