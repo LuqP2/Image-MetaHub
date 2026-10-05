@@ -54,6 +54,27 @@ before treating the macOS report as resolved.
 
 ## Failure diagnostics
 
+### Reporter test on 2026-10-05 (issue #575)
+
+The reporter tried the test artifacts from run `37367526897` and confirmed that
+the inline fallback persisted. The attached process log identifies macOS arm64
+and four opening attempts: all eight fresh windows (including each recovery
+retry) reached `create` then `load-rejected`, with no `loaded` stage. The latest
+attempt rejected each load approximately 36–38 ms after window creation. This
+is a load-stage failure, before snapshot acknowledgement or native presentation;
+the original exception was not retained, so the cause is still unknown.
+
+The next diagnostic build preserves Electron's structured error code/number and
+standard error type, records provisional-load failures (including aborts), and
+checks whether the packaged index exists. It deliberately omits raw exception
+messages and URLs, which can contain a private library path in the session ID.
+
+The packaged smoke now also opens through the main renderer's preload/IPC entry
+point, using a path-bearing synthetic session ID. The artifact workflow runs the
+app from a copied `Image MetaHub 2.app` bundle and uses a synthetic file name with
+spaces, Unicode and `#`. These checks do not substitute for acceptance on the
+reporter's machine. No fix is confirmed by the negative reporter result.
+
 `[image-viewer-lifecycle]` records a transient numeric window identifier and stages
 such as create/reuse, loaded, native-ready, snapshot-applied, focus, and load failure.
 `did-fail-load` includes its numeric error code. It does not log image identifiers,

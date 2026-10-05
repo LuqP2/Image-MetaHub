@@ -58,6 +58,7 @@ import {
 } from './electron/permanentDeletePolicy.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
 import { buildDetachedViewerLoadTarget, buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
+import { getViewerLoadErrorDetails } from './utils/viewerLoadDiagnostics.mjs';
 import { createViewerOpenCoordinator, createViewerReadiness, createViewerFocusTracker, presentViewerWindow, openViewerWithRecovery } from './utils/viewerWindowLifecycle.mjs';
 import {
   buildEmbeddingModelDownloadUrl,
@@ -628,10 +629,10 @@ const detachedImageViewerWindows = new Map();
 const coordinateViewerOpen = createViewerOpenCoordinator();
 const viewerFocusTracker = createViewerFocusTracker();
 let viewerDiagnosticSequence = 0;
-function traceViewerLifecycle(viewerWindow, stage, code) {
+function traceViewerLifecycle(viewerWindow, stage, code, details = {}) {
   viewerWindow.__viewerDiagnosticId ??= ++viewerDiagnosticSequence;
-  console.log('[image-viewer-lifecycle]', viewerWindow.__viewerDiagnosticId, stage, code ?? '');
-  logProcessEvent({ kind: 'image-viewer-lifecycle', windowId: viewerWindow.__viewerDiagnosticId, stage, ...(code !== undefined ? { code } : {}) });
+  console.log('[image-viewer-lifecycle]', viewerWindow.__viewerDiagnosticId, stage, code ?? '', details);
+  logProcessEvent({ kind: 'image-viewer-lifecycle', windowId: viewerWindow.__viewerDiagnosticId, stage, ...(code !== undefined ? { code } : {}), ...details });
 }
 const detachedImageViewerSnapshots = new Map();
 const idleMacImageViewerWindows = new Set();
@@ -2723,6 +2724,12 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled, allowRe
   viewerWindow.__markImageViewerRendererReady = () => {
     viewerWindow.__viewerReadiness.markRendererReady();
   };
+  viewerWindow.webContents.on('did-fail-provisional-load', (_event, errorCode, _description, _validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    // Include aborted provisional loads in diagnostics without changing their
+    // lifecycle handling. Their URL may contain a private path in sessionId.
+    traceViewerLifecycle(viewerWindow, 'provisional-load-failed', errorCode);
+  });
   viewerWindow.webContents.on('did-fail-load', (_event, errorCode, description, _validatedURL, isMainFrame) => {
     // Sub-frame failures and aborted loads (ERR_ABORTED, fired whenever a load is
     // superseded — e.g. a dev-server reload) must not tear the whole window down.
@@ -2800,14 +2807,18 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled, allowRe
   });
 
   try {
+    traceViewerLifecycle(viewerWindow, 'load-start', undefined, {
+      loadMethod: viewerLoadTarget.method,
+      indexFileExists: isDev ? null : await fs.stat(viewerIndexPath).then((stat) => stat.isFile(), () => false),
+    });
     if (viewerLoadTarget.method === 'url') {
       await viewerWindow.loadURL(viewerLoadTarget.url);
     } else {
       await viewerWindow.loadFile(viewerLoadTarget.filePath, viewerLoadTarget.options);
     }
     return await viewerWindow.__viewerReadiness.promise;
-  } catch {
-    traceViewerLifecycle(viewerWindow, 'load-rejected');
+  } catch (error) {
+    traceViewerLifecycle(viewerWindow, 'load-rejected', undefined, getViewerLoadErrorDetails(error));
     viewerWindow.__viewerReadiness.fail('Viewer failed to load.');
     detachedImageViewerWindows.delete(sessionId);
     detachedImageViewerSnapshots.delete(sessionId);
@@ -2954,6 +2965,19 @@ async function runPackagedDetachedViewerSmokeTest() {
       }
       console.log('[packaged-detached-viewer-smoke] idle pool bound passed');
     }
+    closeAllDetachedImageViewers();
+    // Exercise the renderer -> preload -> main entry point as an ordinary card
+    // does. The older smoke used only a short session ID and a direct main call.
+    const ipcSessionId = `image-modal-${Date.now()}-${imagePath}`;
+    const ipcSnapshot = { ...snapshot, sessionId: ipcSessionId, revision: 1 };
+    const ipcResult = await mainWindow.webContents.executeJavaScript(
+      `window.electronAPI.imageViewerOpen(${JSON.stringify({ sessionId: ipcSessionId, snapshot: ipcSnapshot })})`,
+    );
+    const ipcWindow = detachedImageViewerWindows.get(ipcSessionId);
+    if (!ipcResult?.success || !ipcWindow || !ipcWindow.isVisible()) {
+      throw new Error('Renderer IPC opening did not produce a visible detached viewer.');
+    }
+    console.log('[packaged-detached-viewer-smoke] renderer-ipc-open passed');
     closeAllDetachedImageViewers();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     app.exit(0);

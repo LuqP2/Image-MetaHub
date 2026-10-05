@@ -145,6 +145,7 @@ jobs:
           cat "$SMOKE_LOG"
           grep -F "[packaged-detached-viewer-smoke] renderer-ready" "$SMOKE_LOG"
           grep -F "[packaged-detached-viewer-smoke] reopen x3 passed" "$SMOKE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] renderer-ipc-open passed" "$SMOKE_LOG"
 
       - name: Upload macOS assets
         if: success()

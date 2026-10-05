@@ -157,7 +157,7 @@ jobs:
         run: |
           sw_vers
           uname -m
-          SMOKE_IMAGE="$RUNNER_TEMP/imh-detached-viewer-smoke.png"
+          SMOKE_IMAGE="$RUNNER_TEMP/imh viewer smoke á #1.png"
           SMOKE_LOG="$RUNNER_TEMP/imh-detached-viewer-smoke.log"
           node -e "require('fs').writeFileSync(process.argv[1], Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'))" "$SMOKE_IMAGE"
 
@@ -166,6 +166,11 @@ jobs:
           else
             APP_PATH="dist-electron/mac/Image MetaHub.app"
           fi
+
+          INSTALLED_APP="$RUNNER_TEMP/imh-installed-viewer/Image MetaHub 2.app"
+          mkdir -p "$(dirname "$INSTALLED_APP")"
+          ditto "$APP_PATH" "$INSTALLED_APP"
+          APP_PATH="$INSTALLED_APP"
 
           if ! GITHUB_ACTIONS=true IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE="$SMOKE_IMAGE" "$APP_PATH/Contents/MacOS/Image MetaHub" > "$SMOKE_LOG" 2>&1; then
             cat "$SMOKE_LOG"
@@ -176,6 +181,7 @@ jobs:
           grep -F "[packaged-detached-viewer-smoke] renderer-ready" "$SMOKE_LOG"
           grep -F "[packaged-detached-viewer-smoke] reopen x3 passed" "$SMOKE_LOG"
           grep -F "[packaged-detached-viewer-smoke] idle pool bound passed" "$SMOKE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] renderer-ipc-open passed" "$SMOKE_LOG"
 
       - name: Upload detached viewer smoke log
         if: always()
