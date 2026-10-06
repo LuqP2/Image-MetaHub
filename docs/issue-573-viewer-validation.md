@@ -117,7 +117,39 @@ reopen, concurrent-window and renderer-IPC success. Run `37395786077` recorded
 61 descriptors before the old watcher and 10,177 after releasing 64 watches;
 the viewer opened in that state. The comparison now releases the last allocated
 watches and records either viewer outcome, without blocking the corrected test
-when the baseline can still open. The reporter's exact crash is not yet reproduced.
+when the baseline can still open.
+
+### Native large-library comparison results
+
+Tested code: `4d1ecead91b4a0f386b99f846309e8abad23cb14`.
+Run: https://github.com/LuqP2/Image-MetaHub/actions/runs/37396268078
+
+| Native runner (macOS 15.7.9) | Initial descriptors | Chokidar 5 baseline | Production FSEvents backend | Corrected packaged smoke |
+| --- | --- | --- | --- | --- |
+| arm64 | 61 | 10,177; watcher reached EMFILE; viewer opened after freeing 64 watches | 71 | Passed |
+| x64 | 61 | 12,004; both viewer attempts failed to initialize sandbox with ERR_FAILED (-2) | 71 | Passed |
+
+The baseline releases 64 watches before measurement to leave room for settings
+reads and the renderer launch. On Intel, the document load failure reproduces the
+reporter's error code and two-window failure sequence. On arm64, descriptor
+exhaustion is reproduced but the viewer still opens with that headroom; the exact
+crash on the affected Apple Silicon Mac remains unconfirmed.
+
+The corrected packaged app monitors the same 12,000-file tree with only ten
+additional descriptors on both architectures. Add/change/unlink and sidecar
+addition/removal events passed through production batching. First open, three
+close/reopen cycles, concurrent viewers, the bounded idle pool and opening via
+the main renderer/preload/IPC path passed. The sandbox remains enabled.
+
+The code CI passed 200 test files, 1,271 tests (one skipped), lint with no errors,
+and the production build in run `37396272113`.
+
+Non-release builds: [Apple Silicon artifact](https://github.com/LuqP2/Image-MetaHub/actions/runs/37396268078/artifacts/11383024702)
+and [Intel artifact](https://github.com/LuqP2/Image-MetaHub/actions/runs/37396268078/artifacts/11384020432).
+Both jobs built and uploaded successfully. Keep this PR draft and #575 open until
+first-open and reopen are accepted on the affected Mac; these results establish
+a real watcher resource correction and native renderer regression coverage, not
+reporter acceptance.
 
 Initial opening and macOS reuse now resend the current snapshot every 500 ms until
 the renderer acknowledges its applied revision. Duplicate delivery re-acknowledges
