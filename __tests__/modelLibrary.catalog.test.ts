@@ -7,6 +7,22 @@ const source: ModelSource = {
 };
 
 describe('model library catalog', () => {
+  it('classifies a mixed ComfyUI root per directory without treating filenames as types', () => {
+    const mixed: ModelSource = { ...source, path: 'Z:\\synthetic\\ComfyUI\\Models', kind: 'auto' };
+    const paths = ['LoRAs\\style\\a.safetensors', 'checkpoints/b.safetensors', 'unet/c.safetensors', 'diffusion_models/d.safetensors', 'vae/e.safetensors', 'text_encoders/f.safetensors', 'clip/g.safetensors', 'clip_vision/h.safetensors', 'controlnet/i.safetensors', 'upscale_models/j.safetensors', 'embeddings/k.safetensors', 'misc/lora-name.safetensors'];
+    const scan = [{ sourceId: mixed.id, locations: paths.map((relativePath) => ({ sourceId: mixed.id, relativePath, absolutePath: `${mixed.path}/${relativePath}`, fileName: relativePath.split(/[\\/]/).pop()!, size: 10, createdAt: null, modifiedAt: null })) }];
+    const catalog = reconcileModelCatalog({ version: 1, locations: [], updatedAt: 0 }, [mixed], scan);
+    expect(Object.fromEntries(catalog.locations.map((location) => [location.relativePath, location.sourceKind]))).toEqual(Object.fromEntries(paths.map((path, index) => [path, ['lora', 'checkpoint', 'diffusion', 'diffusion', 'vae', 'textEncoder', 'textEncoder', 'clipVision', 'controlnet', 'upscaler', 'embedding', 'other'][index]])));
+    const overridden = reconcileModelCatalog(catalog, [{ ...mixed, kind: 'checkpoint' }], scan);
+    expect(overridden.locations.every((location) => location.sourceKind === 'checkpoint')).toBe(true);
+  });
+
+  it('recognizes an automatically classified dedicated folder, including nested files', () => {
+    const dedicated: ModelSource = { ...source, kind: 'auto' };
+    const scan = [{ sourceId: source.id, locations: [{ sourceId: source.id, relativePath: 'artist/model.safetensors', absolutePath: `${source.path}/artist/model.safetensors`, fileName: 'model.safetensors', size: 10, createdAt: null, modifiedAt: null }] }];
+    expect(reconcileModelCatalog({ version: 1, locations: [], updatedAt: 0 }, [dedicated], scan).locations[0].sourceKind).toBe('lora');
+  });
+
   it('keeps discovery time while reconciling a successfully scanned source', () => {
     const scan = [{ sourceId: source.id, locations: [{ sourceId: source.id, relativePath: 'folder/model.safetensors', absolutePath: 'D:/models/loras/folder/model.safetensors', fileName: 'model.safetensors', size: 10, createdAt: 2, modifiedAt: 3 }] }];
     const first = reconcileModelCatalog({ version: 1, locations: [], updatedAt: 0 }, [source], scan, 100);

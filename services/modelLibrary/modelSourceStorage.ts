@@ -2,13 +2,15 @@
 
 import { openPreferencesDatabase, PREFERENCES_STORE_NAMES } from '../preferencesDb';
 import type { ModelSource, ModelSourceKind } from './types';
+import { MODEL_KIND_LABELS } from './modelKinds';
 
 const STORE_NAME = PREFERENCES_STORE_NAMES.modelSources;
 const memory = new Map<string, ModelSource>();
 let persistenceDisabled = false;
 
 function normalizeKind(value: unknown): ModelSourceKind {
-  return value === 'checkpoint' ? 'checkpoint' : 'lora';
+  return value === 'auto' || (typeof value === 'string' && Object.prototype.hasOwnProperty.call(MODEL_KIND_LABELS, value))
+    ? value as ModelSourceKind : 'lora';
 }
 
 export function normalizeModelSource(source: Partial<ModelSource> & Pick<ModelSource, 'id' | 'path'>): ModelSource {
@@ -20,6 +22,8 @@ export function normalizeModelSource(source: Partial<ModelSource> & Pick<ModelSo
     name: source.name?.trim() || path.split(/[\\/]/).filter(Boolean).pop() || 'Model source',
     kind: normalizeKind(source.kind),
     recursive: source.recursive !== false,
+    identifyOnScan: source.identifyOnScan === true,
+    watchUpdates: source.watchUpdates === true,
     createdAt: Number.isFinite(source.createdAt) ? Number(source.createdAt) : now,
     updatedAt: Number.isFinite(source.updatedAt) ? Number(source.updatedAt) : now,
   };

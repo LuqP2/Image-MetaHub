@@ -230,7 +230,9 @@ describe('smart collection storage', () => {
 
     const disablePersistence = vi.fn();
     const db = await openPreferencesDatabase({ context: 'draft upgrade test', disablePersistence });
-    expect(db?.version).toBe(11);
+    expect(db?.version).toBe(12);
+    expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.modelWatches)).toBe(true);
+    expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.modelManagerSettings)).toBe(true);
     expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.userDataMigrationOutbox)).toBe(true);
     expect(db?.transaction(PREFERENCES_STORE_NAMES.userDataMigrationOutbox).objectStore(PREFERENCES_STORE_NAMES.userDataMigrationOutbox).keyPath).toBe('key');
     await expect(completeRequest(db!.transaction(PREFERENCES_STORE_NAMES.modelSources).objectStore(PREFERENCES_STORE_NAMES.modelSources).get(source.id))).resolves.toEqual(source);
@@ -247,7 +249,7 @@ describe('smart collection storage', () => {
     } = await import('../services/automationRulesStorage');
     const { PREFERENCES_DB_VERSION, PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
 
-    expect(PREFERENCES_DB_VERSION).toBe(11);
+    expect(PREFERENCES_DB_VERSION).toBe(12);
     expect(PREFERENCES_STORE_NAMES.automationRules).toBe('automationRules');
 
     await saveAutomationRule({

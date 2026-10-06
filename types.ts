@@ -477,6 +477,16 @@ export interface ElectronAPI {
   updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
   modelLibrarySetRoots: (roots: string[]) => Promise<{ success: boolean; error?: string }>;
+  modelManagerPublish: (state: import('./services/modelLibrary/types').ModelManagerSnapshot) => Promise<{ success: boolean; error?: string }>;
+  modelManagerLoadPreferences: () => Promise<(Pick<import('./services/modelLibrary/types').ModelManagerSnapshot, 'sources' | 'localMetadata' | 'watches' | 'intervalHours'> & { identities?: import('./services/modelLibrary/types').ModelCatalog }) | null>;
+  modelManagerGetState: () => Promise<import('./services/modelLibrary/types').ModelManagerSnapshot | null>;
+  modelManagerCommand: (command: import('./services/modelLibrary/types').ModelManagerCommand) => Promise<{ success: boolean; error?: string }>;
+  modelManagerCommandResult: (requestId: string, result: { success: boolean; error?: string }) => Promise<void>;
+  onModelManagerState: (callback: (state: import('./services/modelLibrary/types').ModelManagerSnapshot) => void) => () => void;
+  onModelManagerCommand: (callback: (payload: { requestId: string; command: import('./services/modelLibrary/types').ModelManagerCommand }) => void) => () => void;
+  modelManagerRemote: (args: { kind: 'model' | 'version' | 'examples' | 'hash' | 'cover'; id: number | string; requestId: string }) => Promise<{ success: boolean; error?: string; cancelled?: boolean; notFound?: boolean; retryAfterMs?: number; modelName?: string; versions?: import('./services/modelLibrary/types').RemoteModelVersion[]; metadata?: import('./services/modelLibrary/types').CivitaiModelMetadata; examples?: import('./services/modelLibrary/types').ModelExample[] }>;
+  modelManagerCancelRemote: (requestId: string) => Promise<void>;
+  modelManagerImportMedia: () => Promise<{ success: boolean; cancelled?: boolean; error?: string; preview?: string; name?: string }>;
   modelLibraryScan: (sources: Array<{ id: string; path: string; recursive?: boolean }>) => Promise<{ success: boolean; results?: Array<{ sourceId: string; locations: Array<{ sourceId: string; relativePath: string; absolutePath: string; fileName: string; size: number; createdAt: number | null; modifiedAt: number | null }>; error?: string }>; error?: string }>;
   modelLibraryReadMetadata: (filePath: string) => Promise<{ success: boolean; metadata?: import('./services/modelLibrary/types').ModelFileMetadata; error?: string }>;
   modelLibraryHash: (args: { filePath: string; requestId: string }) => Promise<{ success: boolean; sha256?: string; size?: number; modifiedAt?: number | null; cancelled?: boolean; error?: string }>;

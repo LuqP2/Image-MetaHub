@@ -1,4 +1,5 @@
 import type { ManagedModel, ModelCatalog, ModelLocation, ModelSource, ModelSourceScanResult } from './types';
+import { classifyModelKind } from './modelKinds';
 
 export const EMPTY_MODEL_CATALOG: ModelCatalog = { version: 1, locations: [], updatedAt: 0 };
 export const MODEL_CATALOG_CACHE_ID = 'model-library-catalog-v1';
@@ -71,13 +72,15 @@ export function reconcileModelCatalog(
         ...scanned,
         id,
         sourceId: source.id,
-        sourceKind: source.kind,
+        sourceKind: classifyModelKind(source, scanned.relativePath),
         sourceName: source.name,
         discoveredAt: previous?.discoveredAt ?? now,
         lastSeenAt: now,
         ...(previous?.size === scanned.size && previous?.modifiedAt === scanned.modifiedAt
           ? {
               fileMetadata: previous.fileMetadata,
+              metadataError: previous.metadataError,
+              identificationAttemptAt: previous.identificationAttemptAt,
               sha256: previous.sha256,
               hashFingerprint: previous.hashFingerprint,
               civitai: previous.civitai,

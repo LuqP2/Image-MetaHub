@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { modelKindLabel } from '../services/modelLibrary/modelKinds';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -12,18 +13,8 @@ import {
   Search,
   Tag,
 } from 'lucide-react';
-import {
-  MODEL_CATALOG_CACHE_ID,
-  replaceCatalogLocation,
-  validModelCatalog,
-} from '../services/modelLibrary/catalog';
-import { fetchCivitaiInfoWithIdentity } from '../services/modelLibrary/civitaiEnrichment';
-import {
-  createModelLocalMetadata,
-  deleteModelLocalMetadata,
-  promoteModelLocalMetadata,
-  saveModelLocalMetadata,
-} from '../services/modelLibrary/localMetadataStorage';
+import { mirrorModelManager, useModelManager } from '../services/modelLibrary/manager';
+import { executeModelCommand, ModelActionsPanel, ModelLocalEditor, ModelMediaPanel } from './ModelManagerPanels';
 import {
   getDefaultLoraSyntax,
   getEffectiveModelPresentation,
@@ -32,8 +23,6 @@ import {
 import type {
   ModelInspectorItem,
   ModelInspectorSnapshot,
-  ModelLocalMetadata,
-  ModelLocation,
 } from '../services/modelLibrary/types';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -52,12 +41,13 @@ const ModelInspectorApp: React.FC = () => {
   const [snapshot, setSnapshot] = useState<ModelInspectorSnapshot | null>(null);
   const [selectorQuery, setSelectorQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [isReadingMetadata, setIsReadingMetadata] = useState(false);
   const [isFetchingCivitai, setIsFetchingCivitai] = useState(false);
   const [hashProgress, setHashProgress] = useState<{ requestId: string; bytesProcessed: number; totalBytes: number } | null>(null);
-  const metadataRequests = useRef(new Set<string>());
   const latestRevision = useRef(-1);
   const theme = useSettingsStore((state) => state.theme);
+  const manager = useModelManager();
+  useEffect(mirrorModelManager, []);
+  useEffect(() => { if (!manager.progress) setHashProgress(null); }, [manager.progress]);
 
   useEffect(() => {
     const applyTheme = (systemShouldUseDark: boolean) => {
@@ -100,99 +90,18 @@ const ModelInspectorApp: React.FC = () => {
       : snapshot.items;
   }, [selectorQuery, snapshot]);
 
-  const updateItem = useCallback(async (item: ModelInspectorItem) => {
-    setSnapshot((current) => current ? {
-      ...current,
-      items: current.items.map((entry) => entry.location.id === item.location.id ? item : entry),
-    } : current);
-    const cache = await window.electronAPI?.getJsonCacheData(MODEL_CATALOG_CACHE_ID);
-    if (cache?.success) {
-      const catalog = validModelCatalog(cache.data);
-      const nextCatalog = replaceCatalogLocation(catalog, item.location);
-      if (nextCatalog !== catalog) {
-        await window.electronAPI?.writeJsonCacheData({ cacheId: MODEL_CATALOG_CACHE_ID, data: nextCatalog });
-      }
-    }
-    await window.electronAPI?.modelInspectorUpdateItem({ locationId: item.location.id, item });
-  }, []);
-
-  useEffect(() => {
-    if (!currentItem || currentItem.location.fileMetadata || metadataRequests.current.has(currentItem.location.id)) return;
-    const api = window.electronAPI;
-    if (!api) return;
-    metadataRequests.current.add(currentItem.location.id);
-    setIsReadingMetadata(true);
-    setError(null);
-    void api.modelLibraryReadMetadata(currentItem.location.absolutePath).then(async (result) => {
-      if (!result.success || !result.metadata) throw new Error(result.error || 'Unable to read embedded metadata.');
-      await updateItem({ ...currentItem, location: { ...currentItem.location, fileMetadata: result.metadata } });
-    }).catch((readError) => {
-      setError(readError instanceof Error ? readError.message : 'Unable to read embedded metadata.');
-    }).finally(() => setIsReadingMetadata(false));
-  }, [currentItem, updateItem]);
-
-  const saveLocal = async (value: Omit<ModelLocalMetadata, 'id' | 'sha256' | 'locationId' | 'updatedAt'>) => {
+  const hashCurrent = async () => {
     if (!currentItem) return;
-    const fallbackId = currentItem.localMetadata?.id;
-    const saved = await saveModelLocalMetadata(createModelLocalMetadata(currentItem.location, value));
-    if (fallbackId && fallbackId !== saved.id) await deleteModelLocalMetadata(fallbackId);
-    await updateItem({ ...currentItem, localMetadata: saved });
-  };
-
-  const hashCurrent = async (): Promise<ModelInspectorItem | null> => {
-    if (!currentItem || !window.electronAPI) return null;
-    if (currentItem.location.sha256) return currentItem;
-    const requestId = `model-inspector-hash-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setHashProgress({ requestId, bytesProcessed: 0, totalBytes: currentItem.location.size });
     setError(null);
-    try {
-      const result = await window.electronAPI.modelLibraryHash({ filePath: currentItem.location.absolutePath, requestId });
-      if (!result.success) throw new Error(result.error || 'Unable to identify this model.');
-      if (result.cancelled || !result.sha256) return null;
-      let localMetadata = currentItem.localMetadata;
-      if (localMetadata) {
-        const previousId = localMetadata.id;
-        localMetadata = await saveModelLocalMetadata(promoteModelLocalMetadata(localMetadata, result.sha256));
-        if (previousId !== localMetadata.id) await deleteModelLocalMetadata(previousId);
-      }
-      const item = {
-        ...currentItem,
-        localMetadata,
-        location: {
-          ...currentItem.location,
-          sha256: result.sha256,
-          hashFingerprint: {
-            size: result.size ?? currentItem.location.size,
-            modifiedAt: result.modifiedAt ?? currentItem.location.modifiedAt,
-          },
-        },
-      };
-      await updateItem(item);
-      return item;
-    } catch (hashError) {
-      setError(hashError instanceof Error ? hashError.message : 'Unable to identify this model.');
-      return null;
-    } finally {
-      setHashProgress(null);
-    }
+    try { await executeModelCommand({ type: 'hash', locationId: currentItem.location.id }); }
+    catch (error) { setError((error as Error).message); }
   };
-
   const fetchCivitai = async () => {
-    if (!currentItem || !window.electronAPI) return;
-    setIsFetchingCivitai(true);
-    setError(null);
-    try {
-      const enrichedItem = await fetchCivitaiInfoWithIdentity({
-        item: currentItem,
-        ensureSha256: hashCurrent,
-        fetchByHash: (sha256) => window.electronAPI!.modelLibraryFetchCivitai(sha256),
-      });
-      if (enrichedItem) await updateItem(enrichedItem);
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : 'Civitai is unavailable. Try again later.');
-    } finally {
-      setIsFetchingCivitai(false);
-    }
+    if (!currentItem) return;
+    setIsFetchingCivitai(true); setError(null);
+    try { await executeModelCommand({ type: 'identify', locationId: currentItem.location.id }); }
+    catch (error) { setError((error as Error).message); }
+    finally { setIsFetchingCivitai(false); }
   };
 
   const copyText = async (value: string, failureMessage: string) => {
@@ -220,7 +129,7 @@ const ModelInspectorApp: React.FC = () => {
         <div className="min-w-0 flex-1">
           <div className="text-xs font-medium uppercase tracking-wider text-cyan-300">Model Inspector</div>
           <h1 className="mt-0.5 truncate text-lg font-semibold" title={presentation.name}>{presentation.name}</h1>
-          <div className="mt-1 text-xs text-gray-400">{currentIndex + 1} of {snapshot.items.length} · {location.sourceKind === 'lora' ? 'LoRA' : 'Checkpoint'}</div>
+          <div className="mt-1 text-xs text-gray-400">{currentIndex + 1} of {snapshot.items.length} · {modelKindLabel(location.sourceKind)}</div>
         </div>
         <button type="button" onClick={() => void window.electronAPI?.modelInspectorWindowAction('toggle-always-on-top')} className={`inline-flex rounded-md border p-2 ${snapshot.isAlwaysOnTop ? 'border-cyan-400/60 bg-cyan-500/15 text-cyan-100' : 'border-gray-700 text-gray-300 hover:border-cyan-500/40 hover:bg-gray-800'}`} title="Always on Top" aria-label="Always on Top" aria-pressed={snapshot.isAlwaysOnTop}><Pin className={`h-4 w-4 ${snapshot.isAlwaysOnTop ? 'fill-current' : ''}`} /></button>
       </div>
@@ -252,7 +161,7 @@ const ModelInspectorApp: React.FC = () => {
             {presentation.preview ? <img src={presentation.preview} alt={`${presentation.name} preview`} className="max-h-[62vh] w-full object-contain" /> : <div className="px-8 text-center text-sm text-gray-500">No preview available.<br />Embedded or fetched cover art will appear here.</div>}
           </div>
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-400">
-            <span className="rounded-full bg-gray-800 px-2 py-1">{location.sourceKind === 'lora' ? 'LoRA' : 'Checkpoint'}</span>
+            <span className="rounded-full bg-gray-800 px-2 py-1">{modelKindLabel(location.sourceKind)}</span>
             {presentation.baseModel && <span className="rounded-full bg-violet-500/15 px-2 py-1 text-violet-200">{presentation.baseModel}</span>}
             {presentation.previewSource && <span className="rounded-full bg-gray-800 px-2 py-1">Preview: {presentation.previewSource}</span>}
           </div>
@@ -267,8 +176,8 @@ const ModelInspectorApp: React.FC = () => {
           </div>
 
           <div className="rounded-xl border border-gray-800 bg-gray-900/70 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-medium">Civitai</h2><p className="mt-1 text-xs text-gray-500">Network access happens only when you click fetch.</p></div><button type="button" onClick={() => void fetchCivitai()} disabled={isFetchingCivitai || Boolean(hashProgress)} className="inline-flex items-center gap-2 rounded-md border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100 hover:bg-cyan-500/15 disabled:text-gray-500"><RefreshCw className={`h-4 w-4 ${isFetchingCivitai || hashProgress ? 'animate-spin' : ''}`} />{isFetchingCivitai || hashProgress ? 'Fetching Info…' : civitai ? 'Refresh Info from Civitai' : 'Fetch Info from Civitai'}</button></div>
-            {hashProgress && <div className="mt-3"><div className="flex justify-between text-xs text-gray-400"><span>Identifying model locally (SHA256)</span><span>{hashPercent}%</span></div><div className="mt-1 h-1.5 overflow-hidden rounded bg-gray-800"><div className="h-full bg-cyan-400" style={{ width: `${hashPercent}%` }} /></div><button type="button" onClick={() => void window.electronAPI?.modelLibraryCancelHash(hashProgress.requestId)} className="mt-2 text-xs text-amber-200">Cancel</button></div>}
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-medium">Civitai</h2><p className="mt-1 text-xs text-gray-500">Civitai is queried by explicit actions or enabled monitoring.</p></div><button type="button" onClick={() => void fetchCivitai()} disabled={isFetchingCivitai || Boolean(hashProgress)} className="inline-flex items-center gap-2 rounded-md border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100 hover:bg-cyan-500/15 disabled:text-gray-500"><RefreshCw className={`h-4 w-4 ${isFetchingCivitai || hashProgress ? 'animate-spin' : ''}`} />{isFetchingCivitai || hashProgress ? 'Fetching Info…' : civitai ? 'Refresh Info from Civitai' : 'Fetch Info from Civitai'}</button></div>
+            {hashProgress && <div className="mt-3"><div className="flex justify-between text-xs text-gray-400"><span>Identifying model locally (SHA256)</span><span>{hashPercent}%</span></div><div className="mt-1 h-1.5 overflow-hidden rounded bg-gray-800"><div className="h-full bg-cyan-400" style={{ width: `${hashPercent}%` }} /></div><button type="button" onClick={() => void executeModelCommand({ type: 'cancel' })} className="mt-2 text-xs text-amber-200">Cancel</button></div>}
             {civitai && <div className="mt-3 space-y-2 text-sm"><Info label="Model / version" value={`${civitai.modelName} · ${civitai.versionName}`} /><Info label="Base model" value={civitai.baseModel || 'Unavailable'} /><Info label="Last fetched" value={formatDate(civitai.fetchedAt)} /><button type="button" onClick={() => void window.electronAPI?.openExternalUrl(civitai.url)} className="inline-flex items-center gap-1.5 text-cyan-200 hover:text-cyan-100"><ExternalLink className="h-3.5 w-3.5" />Open on Civitai</button></div>}
             {civitaiNotFound && <p className="mt-3 text-sm text-gray-400">No matching Civitai version was found for this file. Last checked {formatDate(civitaiNotFound.fetchedAt)}.</p>}
           </div>
@@ -277,11 +186,11 @@ const ModelInspectorApp: React.FC = () => {
 
       {presentation.description && <section className="mt-5 rounded-xl border border-gray-800 bg-gray-900/70 p-4"><h2 className="font-medium">Description</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-300">{presentation.description}</p></section>}
 
-      <LocalMetadataSection location={location} value={currentItem.localMetadata} onSave={saveLocal} />
+      <div className="mt-5 space-y-4"><ModelActionsPanel item={currentItem} /><ModelMediaPanel item={currentItem} /><ModelLocalEditor item={currentItem} /></div>
 
       <details className="mt-5 rounded-xl border border-gray-800 bg-gray-900/70 p-4">
         <summary className="cursor-pointer font-medium">Technical details</summary>
-        <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><Info label="File location" value={location.absolutePath} /><Info label="Relative path" value={location.relativePath} /><Info label="Created" value={formatDate(location.createdAt)} /><Info label="Modified" value={formatDate(location.modifiedAt)} /><Info label="SHA256" value={location.sha256 || 'Not computed'} /><Info label="Embedded metadata" value={isReadingMetadata ? 'Reading local header…' : location.fileMetadata ? 'Available' : 'Unavailable'} /></div>
+        <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><Info label="File location" value={location.absolutePath} /><Info label="Relative path" value={location.relativePath} /><Info label="Created" value={formatDate(location.createdAt)} /><Info label="Modified" value={formatDate(location.modifiedAt)} /><Info label="SHA256" value={location.sha256 || 'Not computed'} /><Info label="Embedded metadata" value={location.fileMetadata ? 'Available' : location.metadataError || 'Unavailable'} /></div>
         <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => void window.electronAPI?.modelLibraryRevealLocation(location.absolutePath)} className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800"><FolderOpen className="h-4 w-4" />Open location</button>{location.sha256 ? <button type="button" onClick={() => void copyText(location.sha256 || '', 'Unable to copy SHA256.')} className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800"><Hash className="h-4 w-4" />Copy SHA256</button> : <button type="button" onClick={() => void hashCurrent()} disabled={Boolean(hashProgress)} className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm hover:bg-gray-800 disabled:text-gray-600"><Hash className="h-4 w-4" />Compute SHA256</button>}</div>
         {location.fileMetadata?.raw && <details className="mt-4 rounded-md border border-gray-800 bg-gray-950 p-3"><summary className="cursor-pointer text-sm text-gray-300">Raw safetensors metadata</summary><pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs text-gray-400">{JSON.stringify(location.fileMetadata.raw, null, 2)}</pre></details>}
       </details>
@@ -290,26 +199,5 @@ const ModelInspectorApp: React.FC = () => {
 };
 
 const Info: React.FC<{ label: string; value: string }> = ({ label, value }) => <div className="min-w-0"><div className="text-xs uppercase tracking-wide text-gray-500">{label}</div><div className="mt-1 break-words text-gray-200">{value}</div></div>;
-
-const LocalMetadataSection: React.FC<{
-  location: ModelLocation;
-  value?: ModelLocalMetadata;
-  onSave: (value: Omit<ModelLocalMetadata, 'id' | 'sha256' | 'locationId' | 'updatedAt'>) => Promise<void>;
-}> = ({ location, value, onSave }) => {
-  const [displayName, setDisplayName] = useState(value?.displayName ?? '');
-  const [notes, setNotes] = useState(value?.notes ?? '');
-  const [tags, setTags] = useState(value?.tags.join(', ') ?? '');
-  const [triggerWords, setTriggerWords] = useState(value?.triggerWords?.join(', ') ?? '');
-  const [defaultStrength, setDefaultStrength] = useState(value?.defaultStrength ?? 1);
-  const [isSaving, setIsSaving] = useState(false);
-  useEffect(() => {
-    setDisplayName(value?.displayName ?? '');
-    setNotes(value?.notes ?? '');
-    setTags(value?.tags.join(', ') ?? '');
-    setTriggerWords(value?.triggerWords?.join(', ') ?? '');
-    setDefaultStrength(value?.defaultStrength ?? 1);
-  }, [location.id, value]);
-  return <section className="mt-5 rounded-xl border border-gray-800 bg-gray-900/70 p-4"><h2 className="font-medium">Your metadata</h2><p className="mt-1 text-xs text-gray-500">Local-only notes and overrides. Saving does not hash the model file.</p><form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); setIsSaving(true); void onSave({ displayName, notes, tags: tags.split(','), triggerWords: triggerWords.split(','), defaultStrength }).finally(() => setIsSaving(false)); }}><label className="text-xs text-gray-400">Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} className="mt-1 w-full rounded-md border border-gray-700 bg-gray-950 px-2.5 py-2 text-sm text-gray-100" /></label><label className="text-xs text-gray-400">Tags<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="style, portrait" className="mt-1 w-full rounded-md border border-gray-700 bg-gray-950 px-2.5 py-2 text-sm text-gray-100" /></label>{location.sourceKind === 'lora' && <><label className="text-xs text-gray-400">Trigger words override<input value={triggerWords} onChange={(event) => setTriggerWords(event.target.value)} placeholder="word, phrase" className="mt-1 w-full rounded-md border border-gray-700 bg-gray-950 px-2.5 py-2 text-sm text-gray-100" /></label><label className="text-xs text-gray-400">Default LoRA strength<input type="number" min="-10" max="10" step="0.05" value={defaultStrength} onChange={(event) => setDefaultStrength(Number(event.target.value))} className="mt-1 w-full rounded-md border border-gray-700 bg-gray-950 px-2.5 py-2 text-sm text-gray-100" /></label></>}<label className="text-xs text-gray-400 sm:col-span-2">Notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} className="mt-1 w-full rounded-md border border-gray-700 bg-gray-950 px-2.5 py-2 text-sm text-gray-100" /></label><div className="sm:col-span-2"><button type="submit" disabled={isSaving} className="rounded-md bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:bg-gray-700">{isSaving ? 'Saving…' : 'Save local metadata'}</button></div></form></section>;
-};
 
 export default ModelInspectorApp;

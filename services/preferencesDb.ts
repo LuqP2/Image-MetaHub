@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 export const PREFERENCES_DB_NAME = 'image-metahub-preferences';
-export const PREFERENCES_DB_VERSION = 11;
+export const PREFERENCES_DB_VERSION = 12;
 
 export const PREFERENCES_STORE_NAMES = {
   folderSelection: 'folderSelection',
@@ -15,6 +15,8 @@ export const PREFERENCES_STORE_NAMES = {
   modelSources: 'modelSources',
   modelLocalMetadataLegacy: 'modelLocalMetadata',
   modelLocalMetadata: 'modelLocalMetadataV2',
+  modelWatches: 'modelWatches',
+  modelManagerSettings: 'modelManagerSettings',
 } as const;
 
 type DisablePersistenceFn = (error?: unknown) => void;
@@ -182,6 +184,8 @@ function upgradePreferencesDatabase(request: IDBOpenDBRequest, oldVersion: numbe
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.userDataMigrationOutbox, { keyPath: 'key' });
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.automationRules, { keyPath: 'id' });
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.modelSources, { keyPath: 'id' });
+  ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.modelWatches, { keyPath: 'id' });
+  ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.modelManagerSettings, { keyPath: 'id' });
   const legacyModelLocalMetadataStore = ensureObjectStore(
     db,
     transaction,

@@ -227,6 +227,24 @@ const electronAPI = {
   updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
   modelLibrarySetRoots: (roots) => ipcRenderer.invoke('model-library-set-roots', roots),
+  modelManagerPublish: (state) => ipcRenderer.invoke('model-manager-publish', state),
+  modelManagerGetState: () => ipcRenderer.invoke('model-manager-state'),
+  modelManagerLoadPreferences: () => ipcRenderer.invoke('model-manager-load-preferences'),
+  modelManagerCommand: (command) => ipcRenderer.invoke('model-manager-command', command),
+  modelManagerCommandResult: (requestId, result) => ipcRenderer.invoke('model-manager-command-result', requestId, result),
+  modelManagerRemote: (args) => ipcRenderer.invoke('model-manager-remote', args),
+  modelManagerCancelRemote: (requestId) => ipcRenderer.invoke('model-manager-cancel-remote', requestId),
+  modelManagerImportMedia: () => ipcRenderer.invoke('model-manager-import-media'),
+  onModelManagerState: (callback) => {
+    const handler = (_event, state) => callback(state);
+    ipcRenderer.on('model-manager-state', handler);
+    return () => ipcRenderer.removeListener('model-manager-state', handler);
+  },
+  onModelManagerCommand: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('model-manager-command', handler);
+    return () => ipcRenderer.removeListener('model-manager-command', handler);
+  },
   modelLibraryScan: (sources) => ipcRenderer.invoke('model-library-scan', sources),
   modelLibraryReadMetadata: (filePath) => ipcRenderer.invoke('model-library-read-metadata', filePath),
   modelLibraryHash: (args) => ipcRenderer.invoke('model-library-hash', args),

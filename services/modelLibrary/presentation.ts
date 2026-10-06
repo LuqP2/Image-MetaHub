@@ -2,7 +2,7 @@ import type {
   ModelInspectorItem,
   ModelLocalMetadata,
   ModelLocation,
-  ModelSourceKind,
+  ModelKind,
 } from './types';
 
 export type ModelMetadataSource = 'local' | 'civitai' | 'safetensors' | 'file';
@@ -18,7 +18,7 @@ export interface EffectiveModelPresentation {
   previewSource?: Exclude<ModelMetadataSource, 'file'>;
   description?: string;
   descriptionSource?: Exclude<ModelMetadataSource, 'file'>;
-  kind: ModelSourceKind;
+  kind: ModelKind;
 }
 
 const withoutSafetensorsExtension = (fileName: string): string =>
@@ -98,14 +98,14 @@ export function getEffectiveModelPresentation(
   const localPreview = (local as ModelLocalMetadata & { previewImage?: string } | undefined)?.previewImage;
   const preview = isSafeStoredPreview(localPreview)
     ? localPreview
-    : isSafeStoredPreview(file?.embeddedPreview)
-      ? file.embeddedPreview
-      : isSafeStoredPreview(civitai?.coverImage) ? civitai.coverImage : undefined;
+    : isSafeStoredPreview(civitai?.coverImage)
+      ? civitai.coverImage
+      : isSafeStoredPreview(file?.embeddedPreview) ? file.embeddedPreview : undefined;
   const previewSource = isSafeStoredPreview(localPreview)
     ? 'local' as const
-    : isSafeStoredPreview(file?.embeddedPreview)
-      ? 'safetensors' as const
-      : isSafeStoredPreview(civitai?.coverImage) ? 'civitai' as const : undefined;
+    : isSafeStoredPreview(civitai?.coverImage)
+      ? 'civitai' as const
+      : isSafeStoredPreview(file?.embeddedPreview) ? 'safetensors' as const : undefined;
 
   const description = toPlainText(civitai?.description) || toPlainText(file?.description);
   const descriptionSource = civitai?.description?.trim()
@@ -138,6 +138,7 @@ export function modelInspectorSearchText(item: ModelInspectorItem): string {
   return [
     presentation.name,
     item.location.fileName,
+    item.location.civitai && 'versionName' in item.location.civitai ? item.location.civitai.versionName : undefined,
     item.location.relativePath,
     item.location.sourceName,
     presentation.baseModel,

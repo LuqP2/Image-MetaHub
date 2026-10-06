@@ -58,6 +58,7 @@ import {
   toggleModelInspectorAlwaysOnTop,
 } from './electron/modelInspectorWindowState.mjs';
 import { isModelLibraryPathWithinRoots } from './electron/modelLibrarySecurity.mjs';
+import { fetchCivitaiJson, fetchCivitaiImage, normalizeRemoteVersion } from './electron/modelManagerRemote.mjs';
 import {
   createPermanentDeleteGrantStore,
   permanentlyDeleteGrantedFiles,
@@ -3880,6 +3881,11 @@ function setupModelInspectorHandlers() {
 const allowedDirectoryPaths = new Set();
 const modelLibraryRootPaths = new Set();
 const modelLibraryHashTasks = new Map();
+let modelManagerState = null;
+let modelManagerVaultWrites = Promise.resolve();
+let modelManagerDurableJson = '';
+const modelManagerCommands = new Map();
+const modelRemoteTasks = new Map();
 const isPrimaryWindowSender = (event) => Boolean(mainWindow && event?.sender === mainWindow.webContents);
 const isModelInspectorSender = (event) => Boolean(
   modelInspectorWindow && !modelInspectorWindow.isDestroyed() && event?.sender === modelInspectorWindow.webContents
@@ -4001,7 +4007,9 @@ async function hashModelLibraryFile(filePath, requestId, sender) {
       if (!bytesRead) throw new Error('Model file changed while it was being hashed.');
       hash.update(buffer.subarray(0, bytesRead));
       position += bytesRead;
-      sender.send('model-library-hash-progress', { requestId, bytesProcessed: position, totalBytes: before.size });
+      const hashProgress = { requestId, bytesProcessed: position, totalBytes: before.size };
+      sender.send('model-library-hash-progress', hashProgress);
+      if (modelInspectorWindow && !modelInspectorWindow.isDestroyed() && modelInspectorWindow.webContents !== sender) modelInspectorWindow.webContents.send('model-library-hash-progress', hashProgress);
     }
   } finally {
     modelLibraryHashTasks.delete(requestId);
@@ -4936,6 +4944,9 @@ function setupFileOperationHandlers() {
           url: `https://civitai.com/models/${data.modelId}?modelVersionId=${data.id}`,
           coverImage,
           fetchedAt: Date.now(),
+          publishedAt: typeof data.publishedAt === 'string' ? data.publishedAt : undefined,
+          createdAt: typeof data.createdAt === 'string' ? data.createdAt : undefined,
+          binding: 'hash',
         },
       };
     } catch {
@@ -6427,6 +6438,119 @@ function setupFileOperationHandlers() {
       console.error('Error showing directory dialog:', error);
       return { success: false, error: error.message };
     }
+  });
+
+  ipcMain.handle('model-manager-load-preferences', async (event) => {
+    if (!isPrimaryWindowSender(event)) return null;
+    try { return JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'model-manager-user-data', 'preferences.json'), 'utf8')); }
+    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  });
+  ipcMain.handle('model-manager-publish', async (event, state) => {
+    if (!isPrimaryWindowSender(event)) return { success: false };
+    modelManagerState = state;
+    if (modelInspectorWindow && !modelInspectorWindow.isDestroyed()) {
+      modelInspectorWindow.webContents.send('model-manager-state', state);
+      if (modelInspectorSnapshot) updateModelInspectorSnapshot((current) => ({ ...current, items: current.items.flatMap((item) => {
+        const location = state.catalog.locations.find((location) => location.id === item.location.id);
+        if (!location) return [];
+        const localMetadata = state.localMetadata[location.sha256 ? `sha256:${location.sha256}` : `location:${location.id}`] ?? state.localMetadata[`location:${location.id}`];
+        return [{ location, localMetadata }];
+      }) }));
+    }
+    if (state.loading) return { success: true };
+    // Keep version bindings/identity even when reconstructible caches are cleared.
+    const identities = { version: 1, updatedAt: 0, locations: state.catalog.locations.map(({ fileMetadata, metadataError, ...location }) => location) };
+    const durable = { sources: state.sources, localMetadata: state.localMetadata, watches: state.watches, intervalHours: state.intervalHours, identities };
+    const directory = path.join(app.getPath('userData'), 'model-manager-user-data');
+    const serialized = JSON.stringify(durable);
+    if (serialized === modelManagerDurableJson) {
+      try { await modelManagerVaultWrites; return { success: true }; }
+      catch (error) { return { success: false, error: error.message }; }
+    }
+    modelManagerDurableJson = serialized;
+    const write = modelManagerVaultWrites.catch(() => {}).then(async () => {
+      await fs.mkdir(directory, { recursive: true });
+      const temporary = path.join(directory, 'preferences.tmp');
+      await fs.writeFile(temporary, serialized, 'utf8');
+      await fs.rename(temporary, path.join(directory, 'preferences.json'));
+    });
+    modelManagerVaultWrites = write;
+    try { await write; return { success: true }; } catch (error) { modelManagerDurableJson = ''; return { success: false, error: error.message }; }
+  });
+  ipcMain.handle('model-manager-state', (event) => isModelLibraryRendererSender(event) ? modelManagerState : null);
+  ipcMain.handle('model-manager-command', (event, command) => {
+    if (!isModelInspectorSender(event) || !mainWindow || mainWindow.isDestroyed()) return { success: false, error: 'Models workspace is unavailable.' };
+    if (command?.locationId && !modelInspectorSnapshot?.items.some((item) => item.location.id === command.locationId)) return { success: false, error: 'Unknown model.' };
+    if (!['identify', 'hash', 'check', 'unbind', 'bind', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'examples', 'example', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { modelManagerCommands.delete(requestId); resolve({ success: false, error: 'Model action timed out.' }); }, 15 * 60 * 1000);
+      modelManagerCommands.set(requestId, { resolve, timer });
+      mainWindow.webContents.send('model-manager-command', { requestId, command });
+    });
+  });
+  ipcMain.handle('model-manager-command-result', (event, requestId, result) => {
+    if (!isPrimaryWindowSender(event)) return;
+    const pending = modelManagerCommands.get(requestId);
+    if (pending) { clearTimeout(pending.timer); modelManagerCommands.delete(requestId); pending.resolve(result); }
+  });
+  ipcMain.handle('model-manager-cancel-remote', (event, requestId) => {
+    if (isPrimaryWindowSender(event)) modelRemoteTasks.get(requestId)?.abort();
+  });
+  ipcMain.handle('model-manager-remote', async (event, { kind, id, requestId } = {}) => {
+    const validId = kind === 'hash' ? typeof id === 'string' && /^[0-9a-f]{64}$/i.test(id) : Number.isSafeInteger(id) && id > 0;
+    if (!isPrimaryWindowSender(event) || !['model', 'version', 'examples', 'hash', 'cover'].includes(kind) || !validId || typeof requestId !== 'string') return { success: false, error: 'Invalid Civitai request.' };
+    const controller = new AbortController();
+    modelRemoteTasks.set(requestId, controller);
+    const timer = setTimeout(() => controller.abort(), kind === 'examples' ? 120000 : 20000);
+    try {
+      const data = await fetchCivitaiJson(kind === 'model' ? `models/${id}` : kind === 'hash' ? `model-versions/by-hash/${id}` : `model-versions/${id}`, controller.signal);
+      if (kind === 'model') {
+        if (data.id !== id || !Array.isArray(data.modelVersions)) throw new Error('Invalid Civitai model response.');
+        return { success: true, modelName: typeof data.name === 'string' ? data.name : String(id), versions: data.modelVersions.filter((version) => !version.status || version.status === 'Published').map((version) => normalizeRemoteVersion(version, id)) };
+      }
+      if ((kind !== 'hash' && data.id !== id) || !Number.isSafeInteger(data.id) || !Number.isSafeInteger(data.modelId) || data.modelId <= 0) throw new Error('Invalid Civitai version response.');
+      if (kind === 'examples') {
+        const examples = [];
+        for (const [index, image] of (Array.isArray(data.images) ? data.images.slice(0, 60) : []).entries()) {
+          if (controller.signal.aborted) throw new Error('Cancelled.');
+          try {
+            const bytes = await fetchCivitaiImage(image.url, controller.signal);
+            const decoded = nativeImage.createFromBuffer(bytes);
+            if (decoded.isEmpty()) continue;
+            const preview = decoded.resize({ width: 768 }).toJPEG(85).toString('base64');
+            examples.push({ id: `civitai:${id}:${image.id ?? index}`, origin: 'civitai', preview: `data:image/jpeg;base64,${preview}`, caption: '', versionId: id });
+          } catch (error) { if (controller.signal.aborted) throw error; }
+        }
+        return { success: true, examples };
+      }
+      const version = normalizeRemoteVersion(data, data.modelId);
+      let coverImage;
+      if (kind === 'cover') {
+        const candidate = (Array.isArray(data.images) ? data.images : []).find((image) => image.url && (!image.type || image.type === 'image'));
+        if (!candidate) throw new Error('This Civitai version has no available cover image.');
+        const image = nativeImage.createFromBuffer(await fetchCivitaiImage(candidate.url, controller.signal));
+        if (image.isEmpty()) throw new Error('Unable to decode the Civitai cover image.');
+        coverImage = `data:image/jpeg;base64,${image.resize({ width: 768 }).toJPEG(85).toString('base64')}`;
+      }
+      return { success: true, metadata: { modelId: data.modelId, versionId: data.id, modelName: typeof data.model?.name === 'string' ? data.model.name : '', versionName: version.name, baseModel: version.baseModel, description: version.description, publishedAt: version.publishedAt, createdAt: version.createdAt, trainedWords: Array.isArray(data.trainedWords) ? data.trainedWords.filter((word) => typeof word === 'string') : [], url: version.url, fetchedAt: Date.now(), coverImage, binding: kind === 'hash' ? 'hash' : 'manual' } };
+    } catch (error) { return { success: false, error: error.message, retryAfterMs: error.retryAfterMs, notFound: error.status === 404, cancelled: controller.signal.aborted }; }
+    finally { clearTimeout(timer); modelRemoteTasks.delete(requestId); }
+  });
+  ipcMain.handle('model-manager-import-media', async (event) => {
+    if (!isPrimaryWindowSender(event)) return { success: false, error: 'Unauthorized media import.' };
+    const result = await dialog.showOpenDialog(mainWindow, { title: 'Import model cover or example', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
+    if (result.canceled || !result.filePaths[0]) return { success: false, cancelled: true };
+    try {
+      const filePath = result.filePaths[0];
+      if (!/\.(png|jpe?g|webp)$/i.test(filePath)) throw new Error('Choose a PNG, JPEG or WebP image.');
+      if ((await fs.stat(filePath)).size > 32 * 1024 * 1024) throw new Error('Image exceeds the 32 MB import limit.');
+      const image = nativeImage.createFromBuffer(await fs.readFile(filePath));
+      if (image.isEmpty()) throw new Error('Unable to decode this image.');
+      const size = image.getSize();
+      const reduced = Math.max(size.width, size.height) > 768 ? image.resize(size.width >= size.height ? { width: 768 } : { height: 768 }) : image;
+      return { success: true, preview: `data:image/jpeg;base64,${reduced.toJPEG(85).toString('base64')}`, name: path.basename(filePath) };
+    } catch (error) { return { success: false, error: error.message }; }
   });
 
   ipcMain.handle('model-library-set-roots', async (event, roots) => {

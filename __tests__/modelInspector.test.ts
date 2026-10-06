@@ -103,9 +103,13 @@ describe('Model Inspector metadata behavior', () => {
       baseModelSource: 'civitai',
       triggerWords: ['my trigger'],
       triggerWordsSource: 'local',
-      previewSource: 'safetensors',
+      preview: 'data:image/png;base64,Y2l2aXRhaQ==',
+      previewSource: 'civitai',
     });
     expect(getDefaultLoraSyntax(model, local)).toBe('<lora:file-name:0.75>');
+    const custom = { ...local, previewImage: 'data:image/png;base64,Y3VzdG9t' };
+    expect(getEffectiveModelPresentation(model, custom)).toMatchObject({ preview: custom.previewImage, previewSource: 'local' });
+    expect(getEffectiveModelPresentation({ ...model, civitai: undefined }, local).previewSource).toBe('safetensors');
   });
 
   it('saves local metadata against location identity without hashing, then promotes it to SHA256', () => {

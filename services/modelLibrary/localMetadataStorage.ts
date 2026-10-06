@@ -26,6 +26,10 @@ export function normalizeModelLocalMetadata(
     tags: Array.from(new Set((value.tags ?? []).map((tag) => tag.trim().toLowerCase()).filter(Boolean))),
     triggerWords: Array.from(new Set((value.triggerWords ?? []).map((word) => word.trim()).filter(Boolean))),
     defaultStrength,
+    favorite: value.favorite === true,
+    watchUpdates: typeof value.watchUpdates === 'boolean' ? value.watchUpdates : undefined,
+    previewImage: typeof value.previewImage === 'string' && /^data:image\/(png|jpe?g|webp);base64,/i.test(value.previewImage) ? value.previewImage : undefined,
+    examples: Array.isArray(value.examples) ? value.examples.filter((entry) => typeof entry?.id === 'string' && typeof entry.preview === 'string') : [],
     updatedAt: Number.isFinite(value.updatedAt) ? Number(value.updatedAt) : Date.now(),
   };
 }
