@@ -1,11 +1,12 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageGrid from '../components/ImageGrid';
 import { useImageSelection } from '../hooks/useImageSelection';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { ImageStack, IndexedImage } from '../types';
+import { groupImages } from '../utils/imageGrouping';
 
 const renameIndexedImageMock = vi.hoisted(() => vi.fn());
 const featureAccessMock = vi.hoisted(() => ({ canUseBulkTagging: true, showProModal: vi.fn() }));
@@ -169,19 +170,25 @@ const createImages = (count: number): IndexedImage[] =>
     }),
   );
 
-const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisuallySimilar = false, hasRightSidebar = false, onDeleteSelected }: {
+const Harness = ({ images, onFindSimilar, onFindVisuallySimilar, canFindVisuallySimilar = false, hasRightSidebar = false, onDeleteSelected, layout, initialScrollTop, onScrollPositionChange }: {
   images: IndexedImage[];
   onFindSimilar?: (image: IndexedImage) => void;
   onFindVisuallySimilar?: (image: IndexedImage) => void;
   canFindVisuallySimilar?: boolean;
   hasRightSidebar?: boolean;
   onDeleteSelected?: () => void;
+  layout?: 'uniform' | 'masonry';
+  initialScrollTop?: number;
+  onScrollPositionChange?: (top: number) => void;
 }) => {
   const selectedImages = useImageStore((state) => state.selectedImages);
 
   return (
     <ImageGrid
       images={images}
+      layout={layout}
+      initialScrollTop={initialScrollTop}
+      onScrollPositionChange={onScrollPositionChange}
       onImageClick={vi.fn()}
       selectedImages={selectedImages}
       currentPage={1}
@@ -269,6 +276,135 @@ describe('ImageGrid context menu', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('virtualizes masonry and navigates using positions rather than regular rows', async () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(408);
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300);
+    const images = createImages(300).map(image => ({ ...image, dimensions: '120x120' }));
+    setupImageGridState(images, 0);
+    useSettingsStore.setState({ itemsPerPage: -1 });
+    try {
+      const { container } = render(<Harness images={images} layout="masonry" />);
+      const grid = container.querySelector<HTMLElement>('[data-masonry-scroll]')!;
+      expect(grid).toBeTruthy();
+      expect(container.querySelectorAll('img').length).toBeLessThan(30);
+      expect(screen.queryByAltText('image-299.png')).toBeNull();
+      fireEvent.focus(container.querySelector('[data-area="grid"]')!);
+      fireEvent.keyDown(document, { key: 'ArrowDown' });
+      expect(useImageStore.getState().focusedImageIndex).toBe(3);
+      fireEvent.keyDown(document, { key: 'End' });
+      expect(useImageStore.getState().focusedImageIndex).toBe(299);
+      expect(grid.scrollTop).toBeGreaterThan(1000);
+      fireEvent.scroll(grid);
+      expect(screen.getByAltText('image-299.png')).toBeTruthy();
+      fireEvent.keyDown(document, { key: 'Home' });
+      expect(useImageStore.getState().focusedImageIndex).toBe(0);
+      expect(grid.scrollTop).toBe(4);
+    } finally { width.mockRestore(); height.mockRestore(); }
+  });
+
+  it('uses thumbnail proportions in masonry and keeps the regular card height after switching back', () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(408);
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300);
+    const images = [createImage({ id: 'portrait', dimensions: '60x120' })];
+    setupImageGridState(images);
+    try {
+      const { container, rerender } = render(<Harness images={images} layout="masonry" />);
+      const img = screen.getByAltText('image.png');
+      expect((img.parentElement as HTMLElement).style.height).toBe('240px');
+      Object.defineProperty(img, 'naturalWidth', { value: 240 });
+      Object.defineProperty(img, 'naturalHeight', { value: 120 });
+      fireEvent.load(img);
+      expect((img.parentElement as HTMLElement).style.height).toBe('60px');
+      rerender(<Harness images={images} />);
+      expect(container.querySelector('[data-masonry-scroll]')).toBeNull();
+      expect((screen.getByAltText('image.png').parentElement as HTMLElement).style.height).toBe('144px');
+    } finally { width.mockRestore(); height.mockRestore(); }
+  });
+
+  it('selects masonry cards by their calculated rectangles, including offscreen cards', async () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(408);
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300);
+    const images = createImages(100).map(image => ({ ...image, dimensions: '120x120' }));
+    setupImageGridState(images);
+    useSettingsStore.setState({ itemsPerPage: -1 });
+    try {
+      const { container } = render(<Harness images={images} layout="masonry" />);
+      const background = container.querySelector('[data-grid-background]')!;
+      fireEvent.mouseDown(background, { button: 0, clientX: 0, clientY: 0 });
+      fireEvent.mouseMove(background, { clientX: 124, clientY: 1000 });
+      await waitFor(() => expect(useImageStore.getState().selectedImages.has('img-21')).toBe(true));
+      expect(useImageStore.getState().selectedImages.has('img-1')).toBe(false);
+      fireEvent.mouseUp(background);
+    } finally { width.mockRestore(); height.mockRestore(); }
+  });
+
+  it('restores independent offsets when switching layouts, including a zero offset', async () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(408);
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300);
+    const images = createImages(100).map(image => ({ ...image, dimensions: '120x120' }));
+    setupImageGridState(images);
+    useSettingsStore.setState({ itemsPerPage: -1 });
+    const onScroll = vi.fn();
+    try {
+      const { container, rerender } = render(<Harness images={images} layout="masonry" initialScrollTop={1000} onScrollPositionChange={onScroll} />);
+      expect(container.querySelector<HTMLElement>('[data-masonry-scroll]')!.scrollTop).toBe(1000);
+      rerender(<Harness images={images} layout="uniform" initialScrollTop={300} onScrollPositionChange={onScroll} />);
+      await waitFor(() => expect(container.querySelector<HTMLElement>('.no-scrollbar-if-needed')!.scrollTop).toBe(300));
+      rerender(<Harness images={images} layout="masonry" initialScrollTop={1000} onScrollPositionChange={onScroll} />);
+      await waitFor(() => expect(container.querySelector<HTMLElement>('[data-masonry-scroll]')!.scrollTop).toBe(1000));
+      rerender(<Harness images={images} layout="uniform" initialScrollTop={0} onScrollPositionChange={onScroll} />);
+      await waitFor(() => expect(container.querySelector<HTMLElement>('.no-scrollbar-if-needed')!.scrollTop).toBe(0));
+    } finally { width.mockRestore(); height.mockRestore(); }
+  });
+
+  it('uses a stack cover ratio and keeps its action and grouping precedence', () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(408);
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300);
+    const images = createImages(2);
+    images[0] = { ...images[0], dimensions: '60x120', metadata: { normalizedMetadata: { prompt: 'stack prompt' } } as any };
+    setupImageGridState(images);
+    stackedItemsMock.value = [{ id: 'stack', coverImage: images[0], images, count: 2 }];
+    const originalSearch = useImageStore.getState().setSearchQuery;
+    const setSearchQuery = vi.fn();
+    useImageStore.setState({ isStackingEnabled: true, setSearchQuery });
+    try {
+      const { container } = render(<ImageGrid layout="masonry" images={images} selectedImages={new Set()}
+        onImageClick={vi.fn()} currentPage={1} totalPages={1} onPageChange={vi.fn()} onBatchExport={vi.fn()} groupBy="date" />);
+      expect(container.querySelector('[data-group-id]')).toBeNull();
+      const img = screen.getByAltText('image-0.png');
+      expect((img.parentElement as HTMLElement).style.height).toBe('240px');
+      expect(screen.getByText('+2')).toBeTruthy();
+      fireEvent.click(img);
+      expect(setSearchQuery).toHaveBeenCalledWith('stack prompt');
+      expect(useImageStore.getState().isStackingEnabled).toBe(false);
+    } finally {
+      act(() => useImageStore.setState({ setSearchQuery: originalSearch }));
+      width.mockRestore(); height.mockRestore();
+    }
+  });
+
+  it('renders full-width group headers and jumps to a group outside the mounted window', async () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(408);
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300);
+    const images = createImages(100).map((image, i) => ({ ...image, dimensions: '120x120', lastModified: i < 50 ? 1700000000000 : 1600000000000 }));
+    setupImageGridState(images);
+    useSettingsStore.setState({ itemsPerPage: -1 });
+    const groups = groupImages(images, 'date', { sortOrder: 'date-desc' }).groups;
+    const props = { images, selectedImages: new Set<string>(), onImageClick: vi.fn(), currentPage: 1, totalPages: 1, onPageChange: vi.fn(), onBatchExport: vi.fn() };
+    try {
+      const { container, rerender } = render(<ImageGrid {...props} layout="masonry" groupBy="date" />);
+      const header = container.querySelector<HTMLElement>('[data-group-id]')!;
+      expect(header.parentElement!.style.width).toBe('100%');
+      expect(container.querySelector(`[data-group-id="${groups[1].id}"]`)).toBeNull();
+      rerender(<ImageGrid {...props} layout="masonry" groupBy="date" jumpToGroupRequest={{ groupId: groups[1].id, requestId: 1 }} />);
+      const scroll = container.querySelector<HTMLElement>('[data-masonry-scroll]')!;
+      await waitFor(() => expect(scroll.scrollTop).toBeGreaterThan(1000));
+      fireEvent.scroll(scroll);
+      expect(container.querySelector(`[data-group-id="${groups[1].id}"]`)).toBeTruthy();
+      expect(useImageStore.getState().previewImage?.id).toBe(groups[1].startImageId);
+    } finally { width.mockRestore(); height.mockRestore(); }
   });
 
   it('does not mount 3D thumbnail renderers when thumbnails are disabled', () => {

@@ -154,3 +154,35 @@ describe('useSettingsStore persistence helpers', () => {
     }
   });
 });
+
+
+describe('Library grid layout persistence', () => {
+  it('defaults to uniform and does not change filenames or layout when switching grid/list', () => {
+    useSettingsStore.getState().resetState();
+    expect(useSettingsStore.getState().libraryGridLayout).toBe('uniform');
+    useSettingsStore.getState().setShowFilenames(true);
+    useSettingsStore.getState().setShowFullFilePath(true);
+    useSettingsStore.getState().setLibraryGridLayout('masonry');
+    useSettingsStore.getState().toggleViewMode();
+    useSettingsStore.getState().toggleViewMode();
+    expect(useSettingsStore.getState()).toMatchObject({ libraryGridLayout: 'masonry', viewMode: 'grid', showFilenames: true, showFullFilePath: true });
+    useSettingsStore.getState().resetState();
+    expect(useSettingsStore.getState().libraryGridLayout).toBe('uniform');
+  });
+
+  it.each([undefined, 'unknown', 'uniform', 'masonry'])('hydrates layout %s without changing existing preferences', async (layout) => {
+    const storage = useSettingsStore.persist.getOptions().storage;
+    useSettingsStore.persist.setOptions({ storage: {
+      getItem: async () => ({ state: { libraryGridLayout: layout, showFilenames: true } as ReturnType<typeof useSettingsStore.getState>, version: 0 }),
+      setItem: async () => {}, removeItem: async () => {},
+    } });
+    try {
+      await useSettingsStore.persist.rehydrate();
+      expect(useSettingsStore.getState().libraryGridLayout).toBe(layout === 'masonry' ? 'masonry' : 'uniform');
+      expect(useSettingsStore.getState().showFilenames).toBe(true);
+    } finally {
+      useSettingsStore.persist.setOptions({ storage });
+      useSettingsStore.getState().resetState();
+    }
+  });
+});

@@ -150,6 +150,7 @@ interface SettingsState {
   cachePath: string | null;
   autoUpdate: boolean;
   viewMode: 'grid' | 'list';
+  libraryGridLayout: 'uniform' | 'masonry';
   groupBy: ImageGroupByMode;
   theme: ThemeId;
   keymap: Keymap;
@@ -232,6 +233,7 @@ interface SettingsState {
   setCachePath: (path: string) => void;
   toggleAutoUpdate: () => void;
   toggleViewMode: () => void;
+  setLibraryGridLayout: (layout: 'uniform' | 'masonry') => void;
   setGroupBy: (value: ImageGroupByMode) => void;
   setTheme: (theme: ThemeId) => void;
   updateKeybinding: (scope: string, action: string, keybinding: string) => void;
@@ -302,6 +304,7 @@ export const useSettingsStore = create<SettingsState>()(
       cachePath: null, // Default cache path, null means use app data dir
       autoUpdate: true, // Check for updates by default
       viewMode: 'grid',
+      libraryGridLayout: 'uniform',
       groupBy: 'none',
       theme: 'system', // Default to system theme
       keymap: getDefaultKeymap(),
@@ -369,6 +372,7 @@ export const useSettingsStore = create<SettingsState>()(
       setCachePath: (path) => set({ cachePath: path }),
       toggleAutoUpdate: () => set((state) => ({ autoUpdate: !state.autoUpdate })),
       toggleViewMode: () => set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
+      setLibraryGridLayout: (layout) => set({ libraryGridLayout: layout }),
       setGroupBy: (value) => set({ groupBy: value }),
       setTheme: (theme) => set({ theme }),
       setLastViewedVersion: (version) => set({ lastViewedVersion: version }),
@@ -469,6 +473,7 @@ export const useSettingsStore = create<SettingsState>()(
         cachePath: null,
         autoUpdate: true,
         viewMode: 'grid',
+        libraryGridLayout: 'uniform',
         groupBy: 'none',
         theme: 'system',
         keymap: getDefaultKeymap(),
@@ -530,6 +535,7 @@ export const useSettingsStore = create<SettingsState>()(
           ...currentState,
           ...persisted,
           keymap: mergeKeymapWithDefaults(persisted.keymap),
+          libraryGridLayout: persisted.libraryGridLayout === 'masonry' ? 'masonry' : 'uniform',
         };
       },
       onRehydrateStorage: () => (state) => {

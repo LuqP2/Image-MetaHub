@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
 import Tooltip from './Tooltip';
-import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks, X, RefreshCw } from 'lucide-react';
+import { Columns3, Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks, X, RefreshCw } from 'lucide-react';
 import { A1111ProgressState } from '../hooks/useA1111Progress';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSemanticStore } from '../store/useSemanticStore';
@@ -17,6 +17,8 @@ interface FooterProps {
   itemsPerPage: number;
   onItemsPerPageChange: (items: number) => void;
   viewMode: 'grid' | 'list';
+  libraryGridLayout?: 'uniform' | 'masonry';
+  onLibraryGridLayoutChange?: (layout: 'uniform' | 'masonry') => void;
   onViewModeChange: (mode: 'grid' | 'list') => void;
   customText?: string;
   filteredCount?: number;
@@ -66,6 +68,8 @@ const Footer: React.FC<FooterProps> = ({
   onItemsPerPageChange,
   viewMode,
   onViewModeChange,
+  libraryGridLayout = 'uniform',
+  onLibraryGridLayoutChange,
   customText,
   filteredCount,
   totalCount,
@@ -486,6 +490,16 @@ const Footer: React.FC<FooterProps> = ({
       </nav>
       <div className="flex items-center gap-3 border-l border-gray-700/50 pl-3">
         <ImageSizeSlider />
+        {viewMode === 'grid' && onLibraryGridLayoutChange && (
+          <Tooltip label="Masonry layout">
+            <button type="button" aria-label="Masonry layout" title="Masonry layout"
+              aria-pressed={libraryGridLayout === 'masonry'}
+              onClick={() => onLibraryGridLayoutChange(libraryGridLayout === 'masonry' ? 'uniform' : 'masonry')}
+              className={`p-2 rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${libraryGridLayout === 'masonry' ? 'bg-blue-500/20 text-blue-300' : 'hover:bg-gray-800 text-gray-400 hover:text-white'}`}>
+              <Columns3 className="h-4 w-4" />
+            </button>
+          </Tooltip>
+        )}
         <Tooltip label={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
           <button onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')} className="p-2 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`} aria-label={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
             {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}

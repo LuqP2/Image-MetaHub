@@ -78,3 +78,25 @@ describe('Footer sort/group controls', () => {
     expect(screen.queryByLabelText('Show:')).toBeNull();
   });
 });
+
+
+describe('Footer masonry control', () => {
+  it('is opt-in for the Library footer and hidden in list view', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<Footer {...baseProps} />);
+    expect(screen.queryByRole('button', { name: 'Masonry layout' })).toBeNull();
+    rerender(<Footer {...baseProps} libraryGridLayout="uniform" onLibraryGridLayoutChange={onChange} />);
+    const button = screen.getByRole('button', { name: 'Masonry layout' });
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(button);
+    expect(onChange).toHaveBeenCalledWith('masonry');
+    rerender(<Footer {...baseProps} libraryGridLayout="masonry" onLibraryGridLayoutChange={onChange} />);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button);
+    expect(onChange).toHaveBeenLastCalledWith('uniform');
+    rerender(<Footer {...baseProps} viewMode="list" libraryGridLayout="masonry" onLibraryGridLayoutChange={onChange} />);
+    expect(screen.queryByRole('button', { name: 'Masonry layout' })).toBeNull();
+    rerender(<Footer {...baseProps} libraryGridLayout="masonry" onLibraryGridLayoutChange={onChange} />);
+    expect(screen.getByRole('button', { name: 'Masonry layout' }).getAttribute('aria-pressed')).toBe('true');
+  });
+});
