@@ -100,7 +100,7 @@ export function installedVersions(modelId: number) {
 export function unreadModelCount() {
   return Object.values(state.watches).reduce((count, watch) => {
     const installed = installedVersions(watch.modelId);
-    return count + (installed.length ? unreadVersions(watch, installed.map((item) => item.versionId)).length : 0);
+    return count + (installed.length && unreadVersions(watch, installed.map((item) => item.versionId)).length ? 1 : 0);
   }, 0);
 }
 function storeWatch(id: string, update: (current: ModelWatchRecord | undefined) => ModelWatchRecord) {
@@ -125,6 +125,14 @@ export async function markModelVersion(modelId: number, versionId: number, actio
     seenVersionIds: action === 'seen' ? Array.from(new Set([...watch!.seenVersionIds, versionId])) : watch!.seenVersionIds,
     ignoredVersionIds: action === 'ignore' ? Array.from(new Set([...watch!.ignoredVersionIds, versionId])) : action === 'restore' ? watch!.ignoredVersionIds.filter((id) => id !== versionId) : watch!.ignoredVersionIds,
   }));
+}
+export async function markModelVersionsSeen(modelId: number, versionIds: number[]) {
+  const watch = state.watches[String(modelId)];
+  if (!watch || !installedVersions(modelId).length) return;
+  const valid = new Set(watch.versions.map((version) => version.id));
+  const ids = versionIds.filter((id) => valid.has(id) && !watch.seenVersionIds.includes(id));
+  if (!ids.length) return;
+  await storeWatch(String(modelId), (latest) => ({ ...latest!, seenVersionIds: [...new Set([...latest!.seenVersionIds, ...ids])] }));
 }
 export async function stopWatchingModel(modelId: number) {
   for (const location of state.catalog.locations) if (location.civitai && 'modelId' in location.civitai && location.civitai.modelId === modelId) await saveModelPatch(location.id, { watchUpdates: false });
@@ -207,23 +215,26 @@ export async function identifyModels(locationIds: string[]) {
       try { await identify(id); } catch { failures++; }
     }
   } finally { publish({ progress: null, message: `${cancelled ? 'Stopped. ' : ''}Identification finished: ${failures} failed.` }); }
+  return !cancelled;
 }
 
-export async function checkModelUpdates(locationIds: string[], automatic = false) {
+export async function checkModelUpdates(locationIds: string[], automatic = false, identifyMissing = true) {
   if (automatic && state.progress) return;
   startJob('updates', locationIds.length);
   const checked = new Set<number>(); let failures = 0; let updates = 0; let unchanged = 0; let notificationCount = 0;
+  const failedLocationIds: string[] = [];
   try {
     for (const [index, id] of locationIds.entries()) {
       if (cancelled) break;
       const initial = modelItem(id); progress(index + 1, initial.location.fileName);
       if (!initial.location.civitai || !('modelId' in initial.location.civitai)) {
-        try { await identify(id); } catch { failures++; continue; }
+        if (!identifyMissing) { failures++; failedLocationIds.push(id); continue; }
+        try { await identify(id); } catch { failures++; failedLocationIds.push(id); continue; }
       }
       if (cancelled) break;
       const item = modelItem(id);
       const link = item.location.civitai && 'modelId' in item.location.civitai ? item.location.civitai : undefined;
-      if (!link) { failures++; continue; }
+      if (!link) { failures++; failedLocationIds.push(id); continue; }
       if (checked.has(link.modelId)) continue;
       checked.add(link.modelId);
       const previous = state.watches[String(link.modelId)];
@@ -247,6 +258,7 @@ export async function checkModelUpdates(locationIds: string[], automatic = false
       } catch (error) {
         if (cancelled) break;
         failures++;
+        failedLocationIds.push(id);
         const failure = error as Error & { retryAt?: number };
         await storeWatch(String(link.modelId), (latest) => {
           const preserved = latest ?? reconcileWatch(undefined, link.modelId, link.modelName, [], installedVersions(link.modelId), Date.now());
@@ -255,7 +267,8 @@ export async function checkModelUpdates(locationIds: string[], automatic = false
       }
     }
   } finally {
-    publish({ progress: null, showUpdates: !automatic && locationIds.length > 1 && updates > 0 ? true : state.showUpdates, message: automatic ? state.message : locationIds.length === 1 ? `${modelItem(locationIds[0]).location.fileName}: ${cancelled ? 'check stopped' : failures ? 'check failed' : updates ? 'new versions available — see the Civitai links on this model' : 'no unread new versions'}.` : `${cancelled ? 'Stopped. Completed results: ' : ''}${updates} model${updates === 1 ? '' : 's'} with new versions · ${unchanged} without unread new versions · ${failures} failed. Open each version on Civitai below.`, notification: notificationCount ? `${notificationCount} new model version${notificationCount === 1 ? '' : 's'} available.` : state.notification });
+    const message = locationIds.length === 1 ? `${modelItem(locationIds[0]).location.fileName}: ${cancelled ? 'check stopped' : failures ? 'check failed' : updates ? 'new versions available — see the Civitai links on this model' : 'no unread new versions'}.` : `${cancelled ? 'Stopped. ' : ''}${updates} model${updates === 1 ? '' : 's'} with unread releases · ${unchanged} caught up${failures ? ` · ${failures} could not be checked` : ''}.`;
+    publish({ progress: null, showUpdates: !automatic && locationIds.length > 1 && updates > 0 ? true : state.showUpdates, message: automatic ? state.message : message, checkResult: automatic ? state.checkResult : { locationIds, failedLocationIds, message }, notification: notificationCount ? `${notificationCount} new model version${notificationCount === 1 ? '' : 's'} available.` : state.notification });
   }
 }
 
@@ -346,6 +359,8 @@ async function libraryPreview(imageId: string): Promise<{ preview: string; name:
 }
 export async function runModelCommand(command: ModelManagerCommand) {
   switch (command.type) {
+    case 'seen': await markModelVersionsSeen(command.modelId, command.versionIds); return;
+    case 'versionAction': await markModelVersion(command.modelId, command.versionId, command.action); return;
     case 'cover': {
       const link = modelItem(command.locationId).location.civitai;
       if (!link || !('versionId' in link)) throw new Error('Identify or link this model on Civitai first.');

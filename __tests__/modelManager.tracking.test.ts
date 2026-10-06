@@ -82,6 +82,16 @@ describe('local model preferences and examples', () => {
 });
 
 describe('Civitai adapter', () => {
+  it('follows image redirects within Civitai and rejects redirects to other hosts', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: 'https://image.civitai.com/final.jpg' } }))
+      .mockResolvedValueOnce(new Response('synthetic', { headers: { 'content-type': 'image/jpeg' } }));
+    expect((await fetchCivitaiImage('https://image.civitai.com/example', new AbortController().signal, fetcher)).toString()).toBe('synthetic');
+    expect(fetcher).toHaveBeenLastCalledWith('https://image.civitai.com/final.jpg', expect.objectContaining({ redirect: 'manual' }));
+    fetcher.mockReset().mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: 'https://untrusted.test/image.jpg' } }));
+    await expect(fetchCivitaiImage('https://image.civitai.com/example', new AbortController().signal, fetcher)).rejects.toThrow('Untrusted Civitai image redirect');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it('normalizes optional version fields without trusting remote URLs', () => {
     expect(normalizeRemoteVersion({ id: 2, name: 'Version', description: '<p>Changes</p>', downloadUrl: 'https://untrusted.test' }, 1)).toMatchObject({ id: 2, description: 'Changes', url: 'https://civitai.com/models/1?modelVersionId=2' });
     expect(() => normalizeRemoteVersion({ id: '2' }, 1)).toThrow();

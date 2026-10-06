@@ -6492,7 +6492,8 @@ function setupFileOperationHandlers() {
   ipcMain.handle('model-manager-command', (event, command) => {
     if (!isModelInspectorSender(event) || !mainWindow || mainWindow.isDestroyed()) return { success: false, error: 'Models workspace is unavailable.' };
     if (command?.locationId && !modelInspectorSnapshot?.items.some((item) => item.location.id === command.locationId)) return { success: false, error: 'Unknown model.' };
-    if (!['identify', 'hash', 'check', 'unbind', 'bind', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'examples', 'example', 'cover', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
+    if (!['identify', 'hash', 'check', 'unbind', 'bind', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'examples', 'example', 'cover', 'seen', 'versionAction', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
+    if (['seen', 'versionAction'].includes(command?.type) && !modelInspectorSnapshot?.items.some((item) => item.location.civitai?.modelId === command.modelId)) return { success: false, error: 'Unknown remote model.' };
     const requestId = crypto.randomUUID();
     return new Promise((resolve) => {
       const timer = setTimeout(() => { modelManagerCommands.delete(requestId); resolve({ success: false, error: 'Model action timed out.' }); }, 15 * 60 * 1000);

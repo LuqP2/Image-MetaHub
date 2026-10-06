@@ -43,6 +43,31 @@ async function initialize() {
 }
 
 describe('single-owner model service', () => {
+  it('reports unlinked items without hashing again when identification was already offered', async () => {
+    catalog.locations = [{ ...location('one'), civitai: undefined }];
+    const manager = await initialize();
+    await manager.checkModelUpdates([location('one').id], false, false);
+    expect(api.modelLibraryHash).not.toHaveBeenCalled();
+    expect(api.modelManagerRemote).not.toHaveBeenCalled();
+    expect(manager.getModelManagerState().checkResult?.failedLocationIds).toEqual([location('one').id]);
+  });
+  it('marks only presented releases as viewed, counts models and leaves ignored releases ignored', async () => {
+    const manager = await initialize();
+    api.modelManagerRemote.mockResolvedValue({ success: true, modelName: 'Test', versions: [
+      { id: 2, name: 'Installed', publishedAt: '2025-01-01', description: '', url: '' },
+      { id: 3, name: 'New A', publishedAt: '2025-02-01', description: '', url: '' },
+      { id: 4, name: 'New B', publishedAt: '2025-03-01', description: '', url: '' },
+    ] });
+    await manager.checkModelUpdates([location('one').id]);
+    expect(manager.unreadModelCount()).toBe(1); // Models, not the two publications.
+    await manager.runModelCommand({ type: 'seen', modelId: 1, versionIds: [3, 999] });
+    expect(manager.getModelManagerState().watches['1'].seenVersionIds).toEqual([3]);
+    expect(manager.unreadModelCount()).toBe(1);
+    await manager.runModelCommand({ type: 'versionAction', modelId: 1, versionId: 4, action: 'ignore' });
+    expect(manager.unreadModelCount()).toBe(0);
+    expect(manager.getModelManagerState().watches['1'].ignoredVersionIds).toEqual([4]);
+    expect(manager.getModelManagerState().watches['1'].versions).toHaveLength(3);
+  });
   it('reports folder inheritance independently of the effective per-model override', async () => {
     fakes.sources = [{ ...source, watchUpdates: true }];
     const manager = await initialize();

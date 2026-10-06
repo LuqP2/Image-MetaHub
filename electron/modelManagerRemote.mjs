@@ -19,7 +19,9 @@ export function retryAfterMs(value, now = Date.now()) {
 }
 
 export async function fetchCivitaiJson(endpoint, signal, fetcher = fetch) {
-  const response = await fetcher(`https://civitai.com/api/v1/${endpoint}`, { signal, headers: { Accept: 'application/json' } });
+  let response;
+  try { response = await fetcher(`https://civitai.com/api/v1/${endpoint}`, { signal, headers: { Accept: 'application/json' } }); }
+  catch (error) { throw new Error(`Unable to query Civitai: ${error.cause?.code || error.message}`); }
   if (!response.ok) {
     const error = new Error(response.status === 404 ? 'Model or version is no longer available.' : response.status === 401 || response.status === 403 ? 'Civitai access is restricted.' : `Civitai request failed (${response.status}).`);
     error.status = response.status;
@@ -38,7 +40,19 @@ export function allowedCivitaiImage(input) {
 
 export async function fetchCivitaiImage(input, signal, fetcher = fetch) {
   if (!allowedCivitaiImage(input)) throw new Error('Untrusted Civitai image URL.');
-  const response = await fetcher(input, { signal, redirect: 'error' });
+  let current = input;
+  let response;
+  for (let redirects = 0; ; redirects++) {
+    try { response = await fetcher(current, { signal, redirect: 'manual' }); }
+    catch (error) { throw new Error(`Unable to fetch Civitai image: ${error.cause?.code || error.message}`); }
+    if (![301, 302, 303, 307, 308].includes(response.status)) break;
+    const location = response.headers.get('location');
+    await response.body?.cancel();
+    if (redirects >= 3 || !location) throw new Error('Invalid Civitai image redirect.');
+    const next = new URL(location, current).href;
+    if (!allowedCivitaiImage(next)) throw new Error('Untrusted Civitai image redirect.');
+    current = next;
+  }
   const mime = (response.headers.get('content-type') || '').split(';')[0];
   if (!response.ok || !/^image\/(png|jpeg|webp)$/.test(mime)) throw new Error('Unsupported example image.');
   const limit = 8 * 1024 * 1024;

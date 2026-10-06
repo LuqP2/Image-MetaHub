@@ -129,9 +129,12 @@ export interface ModelManagerSnapshot {
   picker?: { locationId: string; cover: boolean } | null;
   libraryIds?: string[];
   showUpdates?: boolean;
+  checkResult?: { locationIds: string[]; failedLocationIds: string[]; message: string };
 }
 
 export type ModelManagerCommand =
+  | { type: 'seen'; modelId: number; versionIds: number[] }
+  | { type: 'versionAction'; modelId: number; versionId: number; action: 'ignore' | 'restore' }
   | { type: 'identify' | 'hash' | 'check' | 'unbind' | 'cover'; locationId: string }
   | { type: 'bind'; locationId: string; url: string }
   | { type: 'saveLocal'; locationId: string; patch: Partial<ModelLocalMetadata> }

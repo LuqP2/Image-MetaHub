@@ -13,6 +13,8 @@ Manual acceptance only. Do not run against personal libraries without explicit s
 7. Check the light theme and a narrow window manually. Both side panels should be collapsible. Check empty results, unavailable examples and header errors without blocking catalog navigation.
 8. Covers and examples should resolve through `imh-model-media://` references backed by files under `model-manager-user-data/media`. The preferences JSON and Inspector snapshots must contain references, not inline image blobs. An older profile with inline images is migrated at startup before the first loaded snapshot. This step requires an explicitly selected test profile; do not inspect personal preferences automatically.
 9. With a synthetic large catalog, confirm header progress remains responsive and cancel preserves completed headers. Change an individual monitoring override and confirm the Folder default label still reports the folder preference.
+10. The catalog toolbar should offer **All**, **With updates**, **Favorites**, expandable **Filters**, and **Check for updates · N models**. Folder/category/search/tag/base filters determine N. For unlinked files, choose **Identify and check** or **Check identified only**; cancelling identification must not start a check afterward. Maintenance actions are in the overflow menu; the automatic interval is in monitoring settings.
+11. Cards show the cover, identity, favorite and compact new-release indicator. Clicking the indicator opens **What's new** in the detail. Only presented release titles become viewed; offscreen releases remain unread. Links remain available after viewing, including when the selected model leaves **With updates**. The **What's new** navigation count denotes models, while the page also reports unread releases. **Ignore this release** and **Restore release** live in each release's overflow menu; history is available in both detail and the consolidated page. **Mark all as viewed** clears the currently scoped backlog.
 
 ## Public Civitai flow
 
@@ -24,6 +26,6 @@ Manual acceptance only. Do not run against personal libraries without explicit s
 
 ## Automated checks
 
-`node node_modules/vitest/vitest.mjs run __tests__/modelManager.tracking.test.ts __tests__/modelManager.service.test.ts __tests__/modelManager.media.test.ts __tests__/modelManager.cacheReset.test.ts __tests__/modelInspector.test.ts __tests__/modelLibrary.catalog.test.ts __tests__/smartCollections.storage.test.ts`
+`node node_modules/vitest/vitest.mjs run __tests__/modelManager.tracking.test.ts __tests__/modelManager.service.test.ts __tests__/modelManager.media.test.ts __tests__/modelManager.releaseViews.test.tsx __tests__/modelManager.cacheReset.test.ts __tests__/modelInspector.test.ts __tests__/modelLibrary.catalog.test.ts __tests__/smartCollections.storage.test.ts`
 
 The tests use synthetic records and mocked network responses. They do not prove packaged cover loading and persistence, visual layout, or real Civitai availability.
