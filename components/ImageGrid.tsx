@@ -635,7 +635,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
             }}
             src={resolvedThumbnailUrl}
             alt={image.name}
-            className={`max-w-full max-h-full object-contain transition-all duration-200 ${
+            className={`max-w-full max-h-full object-contain transition-all duration-200 ${frameHeight === undefined ? '' : 'w-full h-full'} ${
               isBlurred ? 'filter blur-xl scale-110 opacity-80' : ''
             } image-alpha-grid`}
             loading="lazy"

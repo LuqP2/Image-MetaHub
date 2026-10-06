@@ -313,6 +313,9 @@ describe('ImageGrid context menu', () => {
       const { container, rerender } = render(<Harness images={images} layout="masonry" />);
       const img = screen.getByAltText('image.png');
       expect((img.parentElement as HTMLElement).style.height).toBe('240px');
+      expect(img.classList.contains('w-full')).toBe(true);
+      expect(img.classList.contains('h-full')).toBe(true);
+      expect(img.classList.contains('object-contain')).toBe(true);
       Object.defineProperty(img, 'naturalWidth', { value: 240 });
       Object.defineProperty(img, 'naturalHeight', { value: 120 });
       fireEvent.load(img);
@@ -320,6 +323,8 @@ describe('ImageGrid context menu', () => {
       rerender(<Harness images={images} />);
       expect(container.querySelector('[data-masonry-scroll]')).toBeNull();
       expect((screen.getByAltText('image.png').parentElement as HTMLElement).style.height).toBe('144px');
+      expect(screen.getByAltText('image.png').classList.contains('w-full')).toBe(false);
+      expect(screen.getByAltText('image.png').classList.contains('h-full')).toBe(false);
     } finally { width.mockRestore(); height.mockRestore(); }
   });
 
