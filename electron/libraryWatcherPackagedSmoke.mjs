@@ -27,7 +27,7 @@ export async function prepareLargeLibraryWatcherSmoke(directoryPath, baseline = 
         watcher.once('ready', () => {
           // Leave headroom for reading the settings and measuring descriptors,
           // while retaining the large per-file watch set that breaks spawn.
-          watcher.unwatch(Array.from(watcher._closers.keys()).slice(0, 64));
+          watcher.unwatch(Array.from(watcher._closers.keys()).slice(-64));
           ready({ useFsEvents: false });
         });
         watcher.on('error', error => {

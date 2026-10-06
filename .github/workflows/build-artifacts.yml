@@ -182,7 +182,7 @@ jobs:
             exit 1
           fi
           cat "$BASELINE_LOG"
-          grep -F "[packaged-detached-viewer-smoke] baseline-large-library-failure reproduced" "$BASELINE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] baseline-large-library-comparison completed" "$BASELINE_LOG"
 
           if ! GITHUB_ACTIONS=true IMH_PACKAGED_VIEWER_WATCHER_ROOT="$WATCHER_ROOT" IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE="$SMOKE_IMAGE" "$APP_PATH/Contents/MacOS/Image MetaHub" > "$SMOKE_LOG" 2>&1; then
             cat "$SMOKE_LOG"

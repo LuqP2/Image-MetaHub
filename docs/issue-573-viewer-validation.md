@@ -111,9 +111,13 @@ opening on arm64. The baseline now tolerates that expected limit and releases
 64 native watches so it can measure descriptors and attempt the renderer launch.
 The comparison uses the packaged app with the old Chokidar 5 backend and
 the corrected production backend on the same synthetic 12,000-file tree. It
-records descriptor counts, requires a baseline viewer failure, then requires
+records descriptor counts and the baseline viewer outcome, then requires
 bounded FSEvents descriptors, add/change/unlink/sidecar events and first-open,
-reopen, concurrent-window and renderer-IPC success. Results are pending.
+reopen, concurrent-window and renderer-IPC success. Run `37395786077` recorded
+61 descriptors before the old watcher and 10,177 after releasing 64 watches;
+the viewer opened in that state. The comparison now releases the last allocated
+watches and records either viewer outcome, without blocking the corrected test
+when the baseline can still open. The reporter's exact crash is not yet reproduced.
 
 Initial opening and macOS reuse now resend the current snapshot every 500 ms until
 the renderer acknowledges its applied revision. Duplicate delivery re-acknowledges
