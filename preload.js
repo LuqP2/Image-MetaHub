@@ -228,6 +228,7 @@ const electronAPI = {
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
   modelLibrarySetRoots: (roots) => ipcRenderer.invoke('model-library-set-roots', roots),
   modelManagerPublish: (state) => ipcRenderer.invoke('model-manager-publish', state),
+  modelManagerSetEnabled: (enabled) => ipcRenderer.invoke('model-manager-set-enabled', enabled),
   modelManagerGetState: () => ipcRenderer.invoke('model-manager-state'),
   modelManagerLoadPreferences: () => ipcRenderer.invoke('model-manager-load-preferences'),
   modelManagerCommand: (command) => ipcRenderer.invoke('model-manager-command', command),

@@ -14,6 +14,7 @@ import type { ModelInspectorItem, ModelLocalMetadata, ModelManagerCommand, Model
 let state: ModelManagerSnapshot = { revision: 0, sources: [], catalog: EMPTY_MODEL_CATALOG, localMetadata: {}, watches: {}, intervalHours: 24, loading: true, progress: null, message: null, notification: null };
 const listeners = new Set<() => void>();
 let initialization: Promise<void> | undefined;
+let managerRunning = false;
 let writes = Promise.resolve();
 let localWrites = Promise.resolve();
 let watchWrites = Promise.resolve();
@@ -330,7 +331,7 @@ export async function removeModelSource(id: string) {
   await persistCatalog();
 }
 async function scheduledCheck() {
-  if (state.loading || state.progress) return;
+  if (!managerRunning || state.loading || state.progress) return;
   const ids = state.catalog.locations.filter((location) => {
     const item = modelItem(location.id);
     if (!isModelWatched(item)) return false;
@@ -358,6 +359,7 @@ async function libraryPreview(imageId: string): Promise<{ preview: string; name:
   return { preview: await externalizeModelMedia(preview), name: image.name };
 }
 export async function runModelCommand(command: ModelManagerCommand) {
+  if (!managerRunning) throw new Error('Model Manager requires Pro or an active trial.');
   switch (command.type) {
     case 'seen': await markModelVersionsSeen(command.modelId, command.versionIds); return;
     case 'versionAction': await markModelVersion(command.modelId, command.versionId, command.action); return;
@@ -438,6 +440,7 @@ export async function runModelCommand(command: ModelManagerCommand) {
 }
 
 export function startModelManager() {
+  managerRunning = true;
   if (!window.electronAPI) return () => {};
   const unsubscribe = window.electronAPI.onModelManagerCommand(({ requestId, command }) => {
     void runModelCommand(command).then(() => window.electronAPI!.modelManagerCommandResult(requestId, { success: true })).catch((error) => window.electronAPI!.modelManagerCommandResult(requestId, { success: false, error: error.message }));
@@ -460,7 +463,7 @@ export function startModelManager() {
       publish({ sources: durable?.sources ?? sources, catalog: migratedCatalog, localMetadata: migratedLocal, watches: durable?.watches ?? Object.fromEntries(preferences.watches.map((watch) => [watch.id, watch])), intervalHours: [6, 24, 168].includes(durable?.intervalHours) ? durable!.intervalHours : preferences.intervalHours, libraryIds: useImageStore.getState().images.map((image) => image.id), loading: false });
       if (migratedCatalog !== restored) await persistCatalog();
       await flushModelState();
-      if (state.sources.length) await scanModelSources();
+      if (managerRunning && state.sources.length) await scanModelSources();
     } catch (error) { publish({ loading: false, message: (error as Error).message }); }
   })();
   const check = () => { void scheduledCheck().catch((error) => managerMessage(error.message)); };
@@ -469,5 +472,5 @@ export function startModelManager() {
     if (next.images !== previous.images) publish({ libraryIds: next.images.map((image) => image.id) });
   });
   window.addEventListener('focus', check);
-  return () => { unsubscribe(); unsubscribeImages(); clearInterval(timer); if (publishTimer) { clearTimeout(publishTimer); publishTimer = undefined; } window.removeEventListener('focus', check); };
+  return () => { managerRunning = false; cancelModelJob(); unsubscribe(); unsubscribeImages(); clearInterval(timer); if (publishTimer) { clearTimeout(publishTimer); publishTimer = undefined; } window.removeEventListener('focus', check); };
 }

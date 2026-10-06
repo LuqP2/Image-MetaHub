@@ -555,7 +555,6 @@ export default function App() {
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [libraryView, setLibraryView] = useState<'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor'>('library');
   const modelManager = useModelManager();
-  useEffect(startModelManager, []);
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -808,10 +807,21 @@ export default function App() {
     canUseAnalytics,
     canUseBatchExport,
     canUseImageEditor,
+    canUseModelManager,
     canUseFullClustering,
     showProModal,
     startTrial,
   } = useFeatureAccess();
+
+  useEffect(() => {
+    void window.electronAPI?.modelManagerSetEnabled(canUseModelManager);
+    if (!canUseModelManager) return;
+    return startModelManager();
+  }, [canUseModelManager]);
+
+  useEffect(() => {
+    if (!canUseModelManager && libraryView === 'models') setLibraryView('library');
+  }, [canUseModelManager, libraryView]);
 
   const handleOpenSettings = (tab: SettingsTabInput = 'library', section: SettingsFocusSection = null) => {
     setSettingsTab(resolveSettingsTab(tab));
@@ -3991,8 +4001,8 @@ export default function App() {
     <React.Profiler id="App" onRender={appProfilerOnRender}>
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
       <BrowserCompatibilityWarning />
-      <ModelLibraryPicker />
-      {modelManager.notification && <div role="status" className="fixed bottom-5 right-5 z-[80] flex max-w-sm items-center gap-3 rounded-lg border border-cyan-500/40 bg-gray-900 p-4 text-sm text-gray-100 shadow-xl"><button className="text-left" onClick={() => { setLibraryView('models'); showModelUpdates(true); dismissModelNotification(); }}>{modelManager.notification} <span className="text-cyan-300">View updates</span></button><button aria-label="Dismiss model notification" onClick={dismissModelNotification}>×</button></div>}
+      {canUseModelManager && <ModelLibraryPicker />}
+      {canUseModelManager && modelManager.notification && <div role="status" className="fixed bottom-5 right-5 z-[80] flex max-w-sm items-center gap-3 rounded-lg border border-cyan-500/40 bg-gray-900 p-4 text-sm text-gray-100 shadow-xl"><button className="text-left" onClick={() => { setLibraryView('models'); showModelUpdates(true); dismissModelNotification(); }}>{modelManager.notification} <span className="text-cyan-300">View updates</span></button><button aria-label="Dismiss model notification" onClick={dismissModelNotification}>×</button></div>}
 
       <CommandPalette
         isOpen={isCommandPaletteOpen}
@@ -4150,7 +4160,7 @@ export default function App() {
           onOpenLicense={handleOpenLicenseSettings}
           onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
           libraryView={libraryView}
-          onLibraryViewChange={setLibraryView}
+          onLibraryViewChange={(view) => { if (view === 'models' && !canUseModelManager) { showProModal('model_manager'); return; } setLibraryView(view); }}
           onNavigateExplore={(dimension) => {
             setExploreDimension(dimension);
             setLibraryView('explore');
@@ -4394,7 +4404,7 @@ export default function App() {
 
               <div className={`flex-1 min-h-0 transition-[filter,opacity] duration-150 ease-out ${libraryContentFocusClass}`}>
                 {libraryView === 'models' ? (
-                  <ModelsWorkspace />
+                  canUseModelManager && <ModelsWorkspace />
                 ) : libraryView === 'library' ? (
                   shouldShowLibraryPlaceholder ? (
                     <div className="flex h-full items-center justify-center text-sm text-gray-500">

@@ -21,12 +21,15 @@ vi.mock('../services/a1111ApiClient', () => ({
   },
 }));
 
+const modelAccess = vi.hoisted(() => ({ allowed: true, showProModal: vi.fn() }));
+
 vi.mock('../hooks/useFeatureAccess', () => ({
   useFeatureAccess: () => ({
     canUseAnalytics: true,
     canUseComfyUI: true,
     canUseImageEditor: true,
-    showProModal: vi.fn(),
+    canUseModelManager: modelAccess.allowed,
+    showProModal: modelAccess.showProModal,
     isTrialActive: false,
     trialDaysRemaining: 0,
     isPro: true,
@@ -50,10 +53,29 @@ const renderHeader = (overrides: Partial<React.ComponentProps<typeof Header>> = 
 
 describe('Header classic mode', () => {
   beforeEach(() => {
+    modelAccess.allowed = true;
+    modelAccess.showProModal.mockClear();
     useSettingsStore.getState().resetState();
     useImageStore.getState().resetState();
   });
   afterEach(() => cleanup());
+
+  it('opens the Model Manager paywall without navigating on Free', () => {
+    modelAccess.allowed = false;
+    const onLibraryViewChange = vi.fn();
+    renderHeader({ onLibraryViewChange });
+    fireEvent.click(screen.getByRole('button', { name: /^models/i }));
+    expect(modelAccess.showProModal).toHaveBeenCalledWith('model_manager');
+    expect(onLibraryViewChange).not.toHaveBeenCalled();
+  });
+
+  it('opens Model Manager with an eligible entitlement', () => {
+    const onLibraryViewChange = vi.fn();
+    renderHeader({ onLibraryViewChange });
+    fireEvent.click(screen.getByRole('button', { name: /^models/i }));
+    expect(onLibraryViewChange).toHaveBeenCalledWith('models');
+    expect(modelAccess.showProModal).not.toHaveBeenCalled();
+  });
 
   it('hides the legacy tabs by default', () => {
     const { container } = renderHeader();

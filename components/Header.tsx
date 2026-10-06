@@ -36,6 +36,7 @@ const Header: React.FC<HeaderProps> = ({
   const {
     canUseComfyUI,
     canUseImageEditor,
+    canUseModelManager,
     showProModal,
     isTrialActive,
     trialDaysRemaining,
@@ -331,6 +332,10 @@ const Header: React.FC<HeaderProps> = ({
   );
   const utilityButtonClassName = 'app-top-icon-button';
   const handleViewTabClick = useCallback((view: LibraryView) => {
+    if (view === 'models' && !canUseModelManager) {
+      showProModal('model_manager');
+      return;
+    }
     if (view === 'comfyui' && !canUseComfyUI) {
       showProModal('comfyui');
       return;
@@ -341,7 +346,7 @@ const Header: React.FC<HeaderProps> = ({
     }
 
     onLibraryViewChange?.(view);
-  }, [canUseComfyUI, canUseImageEditor, onLibraryViewChange, showProModal]);
+  }, [canUseComfyUI, canUseImageEditor, canUseModelManager, onLibraryViewChange, showProModal]);
 
   return (
     <>
@@ -415,6 +420,7 @@ const Header: React.FC<HeaderProps> = ({
                     >
                       {Icon && <Icon size={14} />}
                       <span>{tab.label}</span>
+                      {tab.id === 'models' && !canUseModelManager && <Crown size={11} className="text-amber-400" aria-label="Pro feature" />}
                     </button>
                     {tab.id === 'library' && (
                       <button

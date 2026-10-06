@@ -3750,7 +3750,7 @@ function setupModelInspectorHandlers() {
   );
 
   ipcMain.handle('model-inspector-open', async (event, payload) => {
-    if (!isMainSender(event)) return { success: false, error: 'Unauthorized Model Inspector request.' };
+    if (!isMainSender(event) || !modelManagerEnabled) return { success: false, error: 'Model Manager requires Pro or an active trial.' };
     return createModelInspectorWindow(payload?.items, payload?.selectedId);
   });
 
@@ -3888,6 +3888,7 @@ const allowedDirectoryPaths = new Set();
 const modelLibraryRootPaths = new Set();
 const modelLibraryHashTasks = new Map();
 let modelManagerState = null;
+let modelManagerEnabled = false;
 let modelManagerVaultWrites = Promise.resolve();
 let modelManagerDurableJson = '';
 const modelManagerCommands = new Map();
@@ -6446,6 +6447,15 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('model-manager-set-enabled', (event, enabled) => {
+    if (!isPrimaryWindowSender(event) || typeof enabled !== 'boolean') return { success: false };
+    modelManagerEnabled = enabled;
+    if (!enabled) {
+      for (const controller of modelRemoteTasks.values()) controller.abort();
+      if (modelInspectorWindow && !modelInspectorWindow.isDestroyed()) modelInspectorWindow.close();
+    }
+    return { success: true };
+  });
   ipcMain.handle('model-manager-store-media', async (event, value) => {
     if (!isPrimaryWindowSender(event)) return { success: false, error: 'Unauthorized model image storage.' };
     try { return { success: true, reference: await storeModelMedia(path.join(app.getPath('userData'), 'model-manager-user-data', 'media'), value) }; }
@@ -6490,7 +6500,7 @@ function setupFileOperationHandlers() {
   });
   ipcMain.handle('model-manager-state', (event) => isModelLibraryRendererSender(event) ? modelManagerState : null);
   ipcMain.handle('model-manager-command', (event, command) => {
-    if (!isModelInspectorSender(event) || !mainWindow || mainWindow.isDestroyed()) return { success: false, error: 'Models workspace is unavailable.' };
+    if (!modelManagerEnabled || !isModelInspectorSender(event) || !mainWindow || mainWindow.isDestroyed()) return { success: false, error: 'Models workspace is unavailable.' };
     if (command?.locationId && !modelInspectorSnapshot?.items.some((item) => item.location.id === command.locationId)) return { success: false, error: 'Unknown model.' };
     if (!['identify', 'hash', 'check', 'unbind', 'bind', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'examples', 'example', 'cover', 'seen', 'versionAction', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
     if (['seen', 'versionAction'].includes(command?.type) && !modelInspectorSnapshot?.items.some((item) => item.location.civitai?.modelId === command.modelId)) return { success: false, error: 'Unknown remote model.' };
@@ -6510,6 +6520,7 @@ function setupFileOperationHandlers() {
     if (isPrimaryWindowSender(event)) modelRemoteTasks.get(requestId)?.abort();
   });
   ipcMain.handle('model-manager-remote', async (event, { kind, id, requestId } = {}) => {
+    if (!modelManagerEnabled) return { success: false, error: 'Model Manager requires Pro or an active trial.' };
     const validId = kind === 'hash' ? typeof id === 'string' && /^[0-9a-f]{64}$/i.test(id) : Number.isSafeInteger(id) && id > 0;
     if (!isPrimaryWindowSender(event) || !['model', 'version', 'examples', 'hash', 'cover'].includes(kind) || !validId || typeof requestId !== 'string') return { success: false, error: 'Invalid Civitai request.' };
     const controller = new AbortController();

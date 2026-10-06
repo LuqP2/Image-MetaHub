@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download, Tag, Image as ImageIcon, LucideIcon } from 'lucide-react';
+import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download, Tag, Box, Image as ImageIcon, LucideIcon } from 'lucide-react';
 import { ProFeature, CLUSTERING_FREE_TIER_LIMIT, SEMANTIC_FREE_TIER_LIMIT, useProModalStore } from '../hooks/useFeatureAccess';
 import { TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -29,6 +29,18 @@ type FeatureCopy = {
 };
 
 const featureInfo: Record<ProFeature, FeatureCopy> = {
+  model_manager: {
+    contextLine: 'Keeping track of your checkpoints and LoRAs?',
+    headline: 'Know what you have and what came out next',
+    featureName: 'Model Manager',
+    icon: Box,
+    bullets: [
+      'Browse your local models with covers, favorites, tags and notes',
+      'Track new Civitai releases and compare their base models before choosing a version',
+      'Keep examples and a floating Inspector beside your generation app',
+    ],
+    alsoUnlocks: 'Pro also unlocks Compare View, the image editor, and ComfyUI integration.',
+  },
   comparison: {
     contextLine: "Looks like you're comparing generations.",
     headline: 'Compare 2–4 images, pixel and parameter',
@@ -164,6 +176,7 @@ const featureInfo: Record<ProFeature, FeatureCopy> = {
 };
 
 const blockedAttemptsCopy: Record<ProFeature, (count: number) => string> = {
+  model_manager: (n) => `You've tried to open Model Manager ${n} times.`,
   comparison: (n) => `You've tried to compare images ${n} times.`,
   image_editor: (n) => `You've tried to edit an image ${n} times.`,
   file_management: (n) => `You've tried to move or copy files ${n} times.`,

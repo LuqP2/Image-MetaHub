@@ -43,6 +43,20 @@ async function initialize() {
 }
 
 describe('single-owner model service', () => {
+  it('stops automatic checks and rejects Inspector actions after access is revoked', async () => {
+    const manager = await initialize();
+    await manager.updateModelSource({ ...source, watchUpdates: true });
+    await vi.waitFor(() => expect(manager.getModelManagerState().progress).toBeNull());
+    cleanup?.();
+    cleanup = undefined;
+    api.modelManagerRemote.mockClear();
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + 25 * 3600000);
+    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(api.modelManagerRemote).not.toHaveBeenCalled();
+    await expect(manager.runModelCommand({ type: 'check', locationId: location('one').id })).rejects.toThrow('requires Pro');
+  });
   it('reports unlinked items without hashing again when identification was already offered', async () => {
     catalog.locations = [{ ...location('one'), civitai: undefined }];
     const manager = await initialize();
