@@ -83,6 +83,38 @@ changing Electron versions or expanding the fix.
 
 ## Issue #575 recovery
 
+### Large-library renderer launch failure
+
+The reporter's diagnostic build (`977d8f2`, run `37387978314`) still failed.
+The new log records an existing packaged index, `ERR_FAILED (-2)` on both fresh
+window attempts, and two renderer crashes with exit code 6. Neither window loaded
+its document. The expanded single-image smoke passed on both architectures, so
+it did not reproduce the affected environment.
+
+Upstream Chokidar reports describe a macOS regression after removing FSEvents:
+individual native watches retain a descriptor for every file, preventing child
+process launches in large trees. See [Chokidar #1452](https://github.com/paulmillr/chokidar/issues/1452)
+and [Chokidar #1385](https://github.com/paulmillr/chokidar/issues/1385). A
+[Cursor report](https://forum.cursor.com/t/macos-new-window-renderer-crashes-with-code-6-when-cursor-reaches-10-000-open-file-descriptors/170190)
+connects the same descriptor pressure to renderer exit code 6 while existing
+windows remain usable. This is a concrete hypothesis for #575, not proof of the
+descriptor count on the reporter's Mac.
+
+The macOS library watcher now uses an isolated Chokidar 3.6 alias with native
+FSEvents, rather than a per-file native watcher. Other platforms keep Chokidar 5.
+If FSEvents cannot load, the macOS path uses polling instead of returning to the
+descriptor-heavy backend. Existing batching, write-stability, sidecar and
+provenance handling remain in `fileWatcher.mjs`.
+
+The first comparison (`37395295551`) reached `EMFILE` in Chokidar 5 before viewer
+opening on arm64. The baseline now tolerates that expected limit and releases
+64 native watches so it can measure descriptors and attempt the renderer launch.
+The comparison uses the packaged app with the old Chokidar 5 backend and
+the corrected production backend on the same synthetic 12,000-file tree. It
+records descriptor counts, requires a baseline viewer failure, then requires
+bounded FSEvents descriptors, add/change/unlink/sidecar events and first-open,
+reopen, concurrent-window and renderer-IPC success. Results are pending.
+
 Initial opening and macOS reuse now resend the current snapshot every 500 ms until
 the renderer acknowledges its applied revision. Duplicate delivery re-acknowledges
 only a committed snapshot; obsolete revisions never acknowledge the current image.

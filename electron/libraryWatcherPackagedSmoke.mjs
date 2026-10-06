@@ -23,8 +23,22 @@ export async function prepareLargeLibraryWatcherSmoke(directoryPath, baseline = 
       const ready = (details) => { clearTimeout(timer); resolve(details); };
       if (baseline) {
         watcher = chokidar.watch(directoryPath, { ignoreInitial: true, depth: 99 });
-        watcher.once('ready', () => ready({ useFsEvents: false }));
-        watcher.once('error', error => { clearTimeout(timer); reject(error); });
+        let reportedLimit = false;
+        watcher.once('ready', () => {
+          // Leave headroom for reading the settings and measuring descriptors,
+          // while retaining the large per-file watch set that breaks spawn.
+          watcher.unwatch(Array.from(watcher._closers.keys()).slice(0, 64));
+          ready({ useFsEvents: false });
+        });
+        watcher.on('error', error => {
+          if (error.code === 'EMFILE') {
+            if (!reportedLimit) console.log('[packaged-detached-viewer-smoke] baseline-watcher-limit EMFILE');
+            reportedLimit = true;
+            return;
+          }
+          clearTimeout(timer);
+          reject(error);
+        });
       } else {
         const result = startWatching(directoryId, directoryPath, receiver, { onReady: ready });
         if (!result.success) { clearTimeout(timer); reject(new Error(result.error)); }
