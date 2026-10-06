@@ -8,9 +8,10 @@ const require = createRequire(import.meta.url);
 // The macOS-only alias retains Chokidar 3's tree-wide native FSEvents backend.
 export function createLibraryWatcher(directoryPath, options) {
   if (process.platform === 'darwin' && !options.usePolling) {
+    let watcher;
     try {
       const macChokidar = require('chokidar-macos');
-      const watcher = new macChokidar.FSWatcher({
+      watcher = new macChokidar.FSWatcher({
         ...options,
         disableGlobbing: true,
         useFsEvents: true,
@@ -21,6 +22,7 @@ export function createLibraryWatcher(directoryPath, options) {
       }
       void watcher.close();
     } catch (error) {
+      void watcher?.close();
       console.warn('[FileWatcher] Native macOS backend unavailable; using polling:', error?.code || error?.name);
     }
     // Never silently return to per-file native watches if the optional native

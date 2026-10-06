@@ -1,4 +1,3 @@
-import { FSWatcher } from 'chokidar';
 import { createLibraryWatcher } from './libraryWatcherBackend.mjs';
 import path from 'path';
 import { BrowserWindow } from 'electron';
@@ -7,7 +6,7 @@ import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 import { normalizeBirthtimeMs, resolveFileSortDate } from '../utils/fileTimestamps.js';
 
 // Active watchers: directoryId -> watcher instance
-const activeWatchers = new Map<string, FSWatcher>();
+const activeWatchers = new Map<string, ReturnType<typeof createLibraryWatcher>>();
 
 // Pending files for batching
 const pendingFiles = new Map<string, Set<string>>();
