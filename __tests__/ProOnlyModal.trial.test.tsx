@@ -16,6 +16,12 @@ const baseProps = {
 };
 
 describe('ProOnlyModal trial availability', () => {
+  it('explains Model Manager using the shared locked-feature modal', () => {
+    render(<ProOnlyModal {...baseProps} feature="model_manager" canStartTrial={false} />);
+    expect(screen.getByText('Know what you have and what came out next')).toBeTruthy();
+    expect(screen.getByText(/Track new Civitai releases/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: /get lifetime license/i })).toBeTruthy();
+  });
   it('offers only license activation when the runtime has no trial', () => {
     render(<ProOnlyModal
       {...baseProps}

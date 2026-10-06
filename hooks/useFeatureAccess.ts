@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { useLicenseStore, TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
-export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging' | 'file_management' | 'image_editor' | 'semantic_search';
+export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging' | 'file_management' | 'image_editor' | 'semantic_search' | 'model_manager';
 
 
 export const CLUSTERING_FREE_TIER_LIMIT = 300;
@@ -41,6 +41,7 @@ const EMPTY_BLOCKED_ATTEMPTS: ProModalBlockedAttempts = {
   file_management: 0,
   image_editor: 0,
   semantic_search: 0,
+  model_manager: 0,
 };
 
 // --- Electron IPC-based storage for the Pro modal's blocked-attempt counters ---
@@ -160,6 +161,8 @@ export const useFeatureAccess = () => {
   // Keep the development shortcut working, but do not open paid features before license state loads.
   const allowDuringInit = devOverride;
   const canUseDuringTrialOrPro = isPro || isTrialActive;
+  // Background scanning and remote checks wait for a confirmed entitlement.
+  const canUseModelManager = canUseDuringTrialOrPro;
 
   // Feature flags (all Pro features have same access requirements)
   const canUseA1111 = allowDuringInit || canUseDuringTrialOrPro;
@@ -213,6 +216,7 @@ export const useFeatureAccess = () => {
     canUseBatchExport,
     canUseFileManagement,
     canUseImageEditor,
+    canUseModelManager,
 
     canUseBulkTagging: canUseDuringTrialOrPro,
 

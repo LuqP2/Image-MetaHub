@@ -1,0 +1,180 @@
+export type ModelKind = 'lora' | 'checkpoint' | 'diffusion' | 'vae' | 'textEncoder' | 'clipVision' | 'controlnet' | 'upscaler' | 'embedding' | 'other';
+export type ModelSourceKind = 'auto' | ModelKind;
+
+export interface ModelSource {
+  id: string;
+  name: string;
+  path: string;
+  kind: ModelSourceKind;
+  recursive: boolean;
+  identifyOnScan?: boolean;
+  watchUpdates?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ModelLocation {
+  id: string;
+  sourceId: string;
+  sourceKind: ModelKind;
+  sourceName: string;
+  relativePath: string;
+  absolutePath: string;
+  fileName: string;
+  size: number;
+  createdAt: number | null;
+  modifiedAt: number | null;
+  discoveredAt: number;
+  lastSeenAt: number;
+  fileMetadata?: ModelFileMetadata;
+  metadataError?: string;
+  identificationAttemptAt?: number;
+  sha256?: string;
+  hashFingerprint?: { size: number; modifiedAt: number | null };
+  civitai?: CivitaiModelMetadata | { status: 'notFound'; fetchedAt: number; url: string };
+}
+
+export interface ModelFileMetadata {
+  modelName?: string;
+  modelType?: string;
+  baseModel?: string;
+  architecture?: string;
+  description?: string;
+  triggerWords?: string[];
+  raw: Record<string, string>;
+  embeddedPreview?: string;
+}
+
+export interface CivitaiModelMetadata {
+  modelId: number;
+  versionId: number;
+  modelName: string;
+  versionName: string;
+  modelType?: string;
+  baseModel?: string;
+  description?: string;
+  trainedWords: string[];
+  url: string;
+  coverImage?: string;
+  fetchedAt: number;
+  publishedAt?: string;
+  createdAt?: string;
+  binding?: 'hash' | 'manual';
+}
+
+export interface ModelLocalMetadata {
+  /** Stable local identity. Uses sha256:<hash> when known, otherwise location:<catalog id>. */
+  id: string;
+  sha256?: string;
+  locationId?: string;
+  displayName?: string;
+  notes?: string;
+  tags: string[];
+  triggerWords?: string[];
+  defaultStrength?: number;
+  favorite?: boolean;
+  watchUpdates?: boolean;
+  previewImage?: string;
+  examples?: ModelExample[];
+  updatedAt: number;
+}
+
+export interface ModelExample {
+  id: string;
+  origin: 'library' | 'imported' | 'civitai';
+  imageId?: string;
+  preview: string;
+  caption: string;
+  versionId?: number;
+}
+
+export interface RemoteModelVersion {
+  id: number;
+  name: string;
+  baseModel?: string;
+  publishedAt?: string;
+  createdAt?: string;
+  description: string;
+  url: string;
+}
+
+export interface ModelWatchRecord {
+  id: string;
+  modelId: number;
+  modelName: string;
+  versions: RemoteModelVersion[];
+  knownVersionIds: number[];
+  novelVersionIds: number[];
+  seenVersionIds: number[];
+  ignoredVersionIds: number[];
+  notifiedVersionIds: number[];
+  lastSuccessAt?: number;
+  lastAttemptAt?: number;
+  retryAt?: number;
+  chronologyUnknown?: boolean;
+  error?: string;
+}
+
+export interface ModelManagerSnapshot {
+  revision: number;
+  sources: ModelSource[];
+  catalog: ModelCatalog;
+  localMetadata: Record<string, ModelLocalMetadata>;
+  watches: Record<string, ModelWatchRecord>;
+  intervalHours: number;
+  loading: boolean;
+  progress: { kind: 'scan' | 'headers' | 'identify' | 'updates'; current: number; total: number; name: string } | null;
+  message: string | null;
+  notification: string | null;
+  picker?: { locationId: string; cover: boolean } | null;
+  libraryIds?: string[];
+  showUpdates?: boolean;
+  checkResult?: { locationIds: string[]; failedLocationIds: string[]; message: string };
+}
+
+export type ModelManagerCommand =
+  | { type: 'seen'; modelId: number; versionIds: number[] }
+  | { type: 'versionAction'; modelId: number; versionId: number; action: 'ignore' | 'restore' }
+  | { type: 'identify' | 'hash' | 'check' | 'unbind' | 'cover'; locationId: string }
+  | { type: 'bind'; locationId: string; url: string }
+  | { type: 'saveLocal'; locationId: string; patch: Partial<ModelLocalMetadata> }
+  | { type: 'importMedia'; locationId: string; cover: boolean }
+  | { type: 'libraryMedia'; locationId: string; imageId: string; cover: boolean }
+  | { type: 'chooseLibrary'; locationId: string; cover: boolean }
+  | { type: 'openImage'; imageId: string }
+  | { type: 'examples'; locationId: string }
+  | { type: 'example'; locationId: string; exampleId: string; caption?: string; remove?: boolean }
+  | { type: 'cancel' };
+
+export interface ManagedModel {
+  id: string;
+  sha256?: string;
+  primaryLocationId: string;
+  locationIds: string[];
+}
+
+export interface ModelCatalog {
+  version: 1;
+  locations: ModelLocation[];
+  managedModels?: ManagedModel[];
+  updatedAt: number;
+}
+
+export interface ModelSourceScanResult {
+  sourceId: string;
+  locations: Omit<ModelLocation, 'id' | 'sourceKind' | 'sourceName' | 'discoveredAt' | 'lastSeenAt'>[];
+  error?: string;
+}
+
+export interface ModelInspectorItem {
+  location: ModelLocation;
+  localMetadata?: ModelLocalMetadata;
+}
+
+export interface ModelInspectorSnapshot {
+  revision: number;
+  items: ModelInspectorItem[];
+  selectedId: string | null;
+  followSelection: boolean;
+  isAlwaysOnTop: boolean;
+}

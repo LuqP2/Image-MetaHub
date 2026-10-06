@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 export const PREFERENCES_DB_NAME = 'image-metahub-preferences';
-export const PREFERENCES_DB_VERSION = 8;
+export const PREFERENCES_DB_VERSION = 12;
 
 export const PREFERENCES_STORE_NAMES = {
   folderSelection: 'folderSelection',
@@ -12,6 +12,11 @@ export const PREFERENCES_STORE_NAMES = {
   shadowMetadata: 'shadowMetadata',
   userDataMigrationOutbox: 'userDataMigrationOutbox',
   automationRules: 'automationRules',
+  modelSources: 'modelSources',
+  modelLocalMetadataLegacy: 'modelLocalMetadata',
+  modelLocalMetadata: 'modelLocalMetadataV2',
+  modelWatches: 'modelWatches',
+  modelManagerSettings: 'modelManagerSettings',
 } as const;
 
 type DisablePersistenceFn = (error?: unknown) => void;
@@ -178,6 +183,31 @@ function upgradePreferencesDatabase(request: IDBOpenDBRequest, oldVersion: numbe
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.shadowMetadata, { keyPath: 'imageId' });
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.userDataMigrationOutbox, { keyPath: 'key' });
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.automationRules, { keyPath: 'id' });
+  ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.modelSources, { keyPath: 'id' });
+  ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.modelWatches, { keyPath: 'id' });
+  ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.modelManagerSettings, { keyPath: 'id' });
+  const legacyModelLocalMetadataStore = ensureObjectStore(
+    db,
+    transaction,
+    PREFERENCES_STORE_NAMES.modelLocalMetadataLegacy,
+    { keyPath: 'sha256' },
+  );
+  const modelLocalMetadataStore = ensureObjectStore(
+    db,
+    transaction,
+    PREFERENCES_STORE_NAMES.modelLocalMetadata,
+    { keyPath: 'id' },
+  );
+  if (oldVersion > 0 && oldVersion < 10) {
+    const request = legacyModelLocalMetadataStore.getAll();
+    request.onsuccess = () => {
+      for (const entry of request.result as Array<Record<string, unknown>>) {
+        const sha256 = typeof entry.sha256 === 'string' ? entry.sha256.toLowerCase() : '';
+        if (!/^[0-9a-f]{64}$/.test(sha256)) continue;
+        modelLocalMetadataStore.put({ ...entry, id: `sha256:${sha256}`, sha256 });
+      }
+    };
+  }
 
   const manualTagsStore = ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.manualTags, { keyPath: 'name' });
   if (oldVersion < 5) {
@@ -186,6 +216,15 @@ function upgradePreferencesDatabase(request: IDBOpenDBRequest, oldVersion: numbe
 
   if (oldVersion < 8) {
     console.log('Shared preferences database upgraded to v8.');
+  }
+  if (oldVersion < 9) {
+    console.log('Shared preferences database upgraded to v9.');
+  }
+  if (oldVersion < 10) {
+    console.log('Shared preferences database upgraded to v10.');
+  }
+  if (oldVersion < 11) {
+    console.log('Shared preferences database upgraded to v11.');
   }
 }
 

@@ -245,6 +245,17 @@ class ThumbnailManager {
     };
   }
 
+  async loadIndexedThumbnail(image: IndexedImage): Promise<void> {
+    if (this.hasReadyThumbnail(image)) return;
+    if (typeof window !== 'undefined' && window.electronAPI?.resolveThumbnailCacheBatch) {
+      await this.resolveCachedThumbnailBatch([image], { priority: 'single' });
+      return;
+    }
+    const blob = await cacheManager.getCachedThumbnail(getVersionedThumbnailId(image))
+      || await cacheManager.getCachedThumbnail(getLegacyThumbnailId(image));
+    if (blob) this.setRuntimeState(image, { thumbnailUrl: this.updateObjectUrl(image.id, blob), thumbnailStatus: 'ready', thumbnailError: null });
+  }
+
   getResolvedState(
     image: IndexedImage | null
   ): {

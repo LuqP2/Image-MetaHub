@@ -210,6 +210,37 @@ describe('smart collection storage', () => {
     installFakeIndexedDb();
   });
 
+  it('upgrades the draft model database without losing models when adding the main migration outbox', async () => {
+    const { openPreferencesDatabase, PREFERENCES_DB_NAME, PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
+    const completeRequest = <T,>(request: IDBRequest<T>) => new Promise<T>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const request = indexedDB.open(PREFERENCES_DB_NAME, 10);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(PREFERENCES_STORE_NAMES.modelSources, { keyPath: 'id' });
+      request.result.createObjectStore(PREFERENCES_STORE_NAMES.modelLocalMetadata, { keyPath: 'id' });
+    };
+    const draftDb = await completeRequest(request);
+    const source = { id: 'draft-source', path: 'D:/models/loras' };
+    const metadata = { id: 'location:draft-model', notes: 'Keep my local notes' };
+    await completeRequest(draftDb.transaction(PREFERENCES_STORE_NAMES.modelSources, 'readwrite').objectStore(PREFERENCES_STORE_NAMES.modelSources).put(source));
+    await completeRequest(draftDb.transaction(PREFERENCES_STORE_NAMES.modelLocalMetadata, 'readwrite').objectStore(PREFERENCES_STORE_NAMES.modelLocalMetadata).put(metadata));
+    draftDb.close();
+
+    const disablePersistence = vi.fn();
+    const db = await openPreferencesDatabase({ context: 'draft upgrade test', disablePersistence });
+    expect(db?.version).toBe(12);
+    expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.modelWatches)).toBe(true);
+    expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.modelManagerSettings)).toBe(true);
+    expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.userDataMigrationOutbox)).toBe(true);
+    expect(db?.transaction(PREFERENCES_STORE_NAMES.userDataMigrationOutbox).objectStore(PREFERENCES_STORE_NAMES.userDataMigrationOutbox).keyPath).toBe('key');
+    await expect(completeRequest(db!.transaction(PREFERENCES_STORE_NAMES.modelSources).objectStore(PREFERENCES_STORE_NAMES.modelSources).get(source.id))).resolves.toEqual(source);
+    await expect(completeRequest(db!.transaction(PREFERENCES_STORE_NAMES.modelLocalMetadata).objectStore(PREFERENCES_STORE_NAMES.modelLocalMetadata).get(metadata.id))).resolves.toEqual(metadata);
+    expect(disablePersistence).not.toHaveBeenCalled();
+    db?.close();
+  });
+
   it('round-trips automation rules through IndexedDB', async () => {
     const {
       deleteAutomationRule,
@@ -218,7 +249,7 @@ describe('smart collection storage', () => {
     } = await import('../services/automationRulesStorage');
     const { PREFERENCES_DB_VERSION, PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
 
-    expect(PREFERENCES_DB_VERSION).toBe(8);
+    expect(PREFERENCES_DB_VERSION).toBe(12);
     expect(PREFERENCES_STORE_NAMES.automationRules).toBe('automationRules');
 
     await saveAutomationRule({

@@ -48,6 +48,9 @@ import ModelPromptPickerModal from './components/ModelPromptPickerModal';
 import CollectionsWorkspace from './components/CollectionsWorkspace';
 import ComfyUIWorkspace from './components/ComfyUIWorkspace';
 import ImageEditorWorkspace from './components/ImageEditorWorkspace';
+import ModelsWorkspace from './components/ModelsWorkspace';
+import { ModelLibraryPicker } from './components/ModelManagerPanels';
+import { startModelManager, setModelImageOpener, useModelManager, dismissModelNotification, showModelUpdates } from './services/modelLibrary/manager';
 import PromptLibrary from './components/PromptLibrary';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
@@ -550,7 +553,8 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'prompts' | 'explore' | 'collections' | 'comfyui' | 'editor'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor'>('library');
+  const modelManager = useModelManager();
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -719,8 +723,8 @@ export default function App() {
     }
   }, [activeImageScope, clusters, collections, safeImages, validateActiveImageScope]);
 
-  const hasLeftSidebar = hasDirectories && !['prompts', 'comfyui', 'editor'].includes(libraryView);
-  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && !['prompts', 'comfyui', 'editor'].includes(libraryView)));
+  const hasLeftSidebar = hasDirectories && !['prompts', 'models', 'comfyui', 'editor'].includes(libraryView);
+  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && !['prompts', 'models', 'comfyui', 'editor'].includes(libraryView)));
   const previousHasRightSidebarRef = useRef(hasRightSidebar);
   const rightSidebarVisibilityChanged = previousHasRightSidebarRef.current !== hasRightSidebar;
   useLayoutEffect(() => {
@@ -803,10 +807,21 @@ export default function App() {
     canUseAnalytics,
     canUseBatchExport,
     canUseImageEditor,
+    canUseModelManager,
     canUseFullClustering,
     showProModal,
     startTrial,
   } = useFeatureAccess();
+
+  useEffect(() => {
+    void window.electronAPI?.modelManagerSetEnabled(canUseModelManager);
+    if (!canUseModelManager) return;
+    return startModelManager();
+  }, [canUseModelManager]);
+
+  useEffect(() => {
+    if (!canUseModelManager && libraryView === 'models') setLibraryView('library');
+  }, [canUseModelManager, libraryView]);
 
   const handleOpenSettings = (tab: SettingsTabInput = 'library', section: SettingsFocusSection = null) => {
     setSettingsTab(resolveSettingsTab(tab));
@@ -2490,6 +2505,29 @@ export default function App() {
     handleImageSelection(image, event);
   }, [beginViewerOpening, handleActivateImageModal, handleImageSelection, handleOpenImageModalInBackground, openImageModals, resolveViewerHost]);
 
+  useEffect(() => {
+    setModelImageOpener((imageId) => {
+      const image = useImageStore.getState().images.find((entry) => entry.id === imageId);
+      if (!image) return;
+      const existing = openImageModals.find((modal) => modal.imageId === imageId);
+      if (existing) handleActivateImageModal(existing.modalId);
+      else {
+        const modalId = `model-example-${Date.now()}-${imageId}`;
+        const host = resolveViewerHost();
+        if (host === 'detached') beginViewerOpening(imageId);
+        setOpenImageModals((current) => [...current, {
+          sessionId: modalId, modalId, imageId, navigationImageIds: [imageId], navigationSource: 'filtered',
+          host, nativeStatus: host === 'detached' ? 'pending' : undefined,
+          zIndex: Math.max(59, ...current.map((modal) => modal.zIndex)) + 1,
+          initialWindowOffset: current.length * 28, isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(imageId, 'model-example'),
+        }]);
+        setActiveImageModalId(modalId);
+        setSelectedImage(image);
+      }
+    });
+  }, [openImageModals, handleActivateImageModal, resolveViewerHost, beginViewerOpening, beginModalOpenFlow, setSelectedImage]);
+
   const openBatchExportModal = useCallback((request: BatchExportRequestState | null = null) => {
     const isSingleImageExportRequest = (request?.imageIds?.length ?? 0) === 1;
 
@@ -3963,6 +4001,8 @@ export default function App() {
     <React.Profiler id="App" onRender={appProfilerOnRender}>
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
       <BrowserCompatibilityWarning />
+      {canUseModelManager && <ModelLibraryPicker />}
+      {canUseModelManager && modelManager.notification && <div role="status" className="fixed bottom-5 right-5 z-[80] flex max-w-sm items-center gap-3 rounded-lg border border-cyan-500/40 bg-gray-900 p-4 text-sm text-gray-100 shadow-xl"><button className="text-left" onClick={() => { setLibraryView('models'); showModelUpdates(true); dismissModelNotification(); }}>{modelManager.notification} <span className="text-cyan-300">View updates</span></button><button aria-label="Dismiss model notification" onClick={dismissModelNotification}>×</button></div>}
 
       <CommandPalette
         isOpen={isCommandPaletteOpen}
@@ -4120,7 +4160,7 @@ export default function App() {
           onOpenLicense={handleOpenLicenseSettings}
           onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
           libraryView={libraryView}
-          onLibraryViewChange={setLibraryView}
+          onLibraryViewChange={(view) => { if (view === 'models' && !canUseModelManager) { showProModal('model_manager'); return; } setLibraryView(view); }}
           onNavigateExplore={(dimension) => {
             setExploreDimension(dimension);
             setLibraryView('explore');
@@ -4220,9 +4260,9 @@ export default function App() {
             </div>
           )}
 
-          {!isStartupHydrating && !isLoading && !hasDirectories && libraryView !== 'prompts' && <FolderSelector onSelectFolder={handleSelectFolder} />}
+          {!isStartupHydrating && !isLoading && !hasDirectories && !['prompts', 'models'].includes(libraryView) && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
-          {(hasDirectories || libraryView === 'prompts') && (
+          {(hasDirectories || ['prompts', 'models'].includes(libraryView)) && (
             <>
                 {libraryView === 'library' && (
                   <AnalyticsSummaryStrip
@@ -4363,7 +4403,9 @@ export default function App() {
                 )}
 
               <div className={`flex-1 min-h-0 transition-[filter,opacity] duration-150 ease-out ${libraryContentFocusClass}`}>
-                {libraryView === 'library' ? (
+                {libraryView === 'models' ? (
+                  canUseModelManager && <ModelsWorkspace />
+                ) : libraryView === 'library' ? (
                   shouldShowLibraryPlaceholder ? (
                     <div className="flex h-full items-center justify-center text-sm text-gray-500">
                       Loading folder...

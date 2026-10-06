@@ -12,6 +12,7 @@ import { useSettingsStore } from './store/useSettingsStore';
 import { initializePerformanceDiagnostics } from './utils/performanceDiagnostics';
 import DetachedImageModalApp from './components/DetachedImageModalApp';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
+import ModelInspectorApp from './components/ModelInspectorApp';
 
 // Expose stores globally for debugging
 if (process.env.NODE_ENV === 'development') {
@@ -31,13 +32,15 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
-const isDetachedImageViewer = new URLSearchParams(window.location.search).get('window') === 'image-modal';
+const windowKind = new URLSearchParams(window.location.search).get('window');
+const isDetachedImageViewer = windowKind === 'image-modal';
+const isModelInspector = windowKind === 'model-inspector';
 root.render(
   <React.StrictMode>
     <AppErrorBoundary variant={isDetachedImageViewer ? 'detached-viewer' : 'app'}>
       <A1111ProgressProvider>
         <ComfyUIProgressProvider>
-          {isDetachedImageViewer ? <DetachedImageModalApp /> : <App />}
+          {isDetachedImageViewer ? <DetachedImageModalApp /> : isModelInspector ? <ModelInspectorApp /> : <App />}
         </ComfyUIProgressProvider>
       </A1111ProgressProvider>
     </AppErrorBoundary>
