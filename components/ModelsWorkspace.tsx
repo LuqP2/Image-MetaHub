@@ -7,6 +7,7 @@ import { getModelManagerState, addModelSource, cancelModelJob, checkModelUpdates
 import { unreadVersions } from '../services/modelLibrary/updateTracking';
 import { executeModelCommand, ModelActionsPanel, ModelLocalEditor, ModelMediaPanel, ModelUpdatesPanel, modelButton, modelInput } from './ModelManagerPanels';
 import type { ModelInspectorItem, ModelSource } from '../services/modelLibrary/types';
+import { areFilesystemPathsEqual } from '../utils/filesystemPath';
 
 const formatBytes = (size: number) => size >= 1024 ** 3 ? `${(size / 1024 ** 3).toFixed(1)} GB` : `${(size / 1024 ** 2).toFixed(1)} MB`;
 const hasLink = (item: ModelInspectorItem) => Boolean(item.location.civitai && 'modelId' in item.location.civitai);
@@ -47,7 +48,7 @@ export default function ModelsWorkspace() {
   const addFolder = async () => {
     const folder = await window.electronAPI?.showDirectoryDialog();
     if (!folder?.success || !folder.path) return;
-    if (manager.sources.some((source) => source.path.toLowerCase() === folder.path!.toLowerCase())) { managerMessage('This folder is already a model source.'); return; }
+    if (manager.sources.some((source) => areFilesystemPathsEqual(source.path, folder.path!))) { managerMessage('This folder is already a model source.'); return; }
     const now = Date.now(); setEditingSource(false);
     setPendingSource({ id: crypto.randomUUID(), path: folder.path, name: folder.name || 'Models', kind: 'auto', recursive: true, identifyOnScan: false, watchUpdates: false, createdAt: now, updatedAt: now });
   };

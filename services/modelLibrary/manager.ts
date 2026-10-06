@@ -81,7 +81,6 @@ export function saveModelPatch(locationId: string, patch: Partial<ModelLocalMeta
     const values = await externalizeModelMedia(typeof patch === 'function' ? patch(item.localMetadata) : patch);
     const saved = await saveModelLocalMetadata(createModelLocalMetadata(item.location, { tags: [], ...item.localMetadata, ...values }));
     publish({ localMetadata: { ...state.localMetadata, [saved.id]: saved } });
-    await flushModelState();
     if (values.watchUpdates === true && !state.progress) void scheduledCheck().catch((error) => managerMessage(error.message));
   });
   localWrites = save;

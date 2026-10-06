@@ -43,6 +43,23 @@ async function initialize() {
 }
 
 describe('single-owner model service', () => {
+  it('saves local edits immediately but coalesces their full snapshot publication', async () => {
+    vi.useFakeTimers();
+    const manager = await initialize();
+    await vi.advanceTimersByTimeAsync(100);
+    api.modelManagerPublish.mockClear();
+    fakes.saveLocal.mockClear();
+    await manager.saveModelPatch(location('one').id, { notes: 'Keep this version' });
+    await manager.saveModelPatch(location('one').id, { favorite: true });
+    expect(fakes.saveLocal).toHaveBeenCalledTimes(2);
+    expect(manager.modelItem(location('one').id).localMetadata).toMatchObject({ notes: 'Keep this version', favorite: true });
+    expect(api.modelManagerPublish).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(99);
+    expect(api.modelManagerPublish).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(api.modelManagerPublish).toHaveBeenCalledTimes(1);
+    expect(api.modelManagerPublish.mock.calls[0][0].localMetadata[`location:${location('one').id}`]).toMatchObject({ notes: 'Keep this version', favorite: true });
+  });
   it('stops automatic checks and rejects Inspector actions after access is revoked', async () => {
     const manager = await initialize();
     await manager.updateModelSource({ ...source, watchUpdates: true });
@@ -227,6 +244,7 @@ describe('single-owner model service', () => {
     const manager = await initialize();
     await manager.runModelCommand({ type: 'importMedia', locationId: location('one').id, cover: true });
     expect(manager.modelItem(location('one').id).localMetadata?.previewImage).toBe('data:image/jpeg;base64,c3ludGhldGlj');
+    await vi.waitFor(() => expect(api.modelManagerPublish).toHaveBeenCalledWith(expect.objectContaining({ localMetadata: expect.objectContaining({ [`location:${location('one').id}`]: expect.objectContaining({ previewImage: 'data:image/jpeg;base64,c3ludGhldGlj' }) }) })));
     const last = api.modelManagerPublish.mock.calls.at(-1)![0];
     expect(last.localMetadata[`location:${location('one').id}`].previewImage).toBe('data:image/jpeg;base64,c3ludGhldGlj');
     expect(api.writeJsonCacheData.mock.calls.every(([args]) => !JSON.stringify(args.data).includes('c3ludGhldGlj'))).toBe(true);

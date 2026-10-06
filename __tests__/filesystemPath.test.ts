@@ -14,8 +14,9 @@ describe('areFilesystemPathsEqual', () => {
     expect(areFilesystemPathsEqual('\\\\Server\\Share\\Output', '//server/share/output', 'Win32')).toBe(true);
   });
 
-  it('preserves case sensitivity for POSIX paths', () => {
-    expect(areFilesystemPathsEqual('/data/Out', '/data/out', 'Linux x86_64')).toBe(false);
+  it.each(['Linux x86_64', 'MacIntel'])('preserves case-distinct source folders on %s', (platform) => {
+    expect(areFilesystemPathsEqual('/data/Foo', '/data/foo', platform)).toBe(false);
+    expect(areFilesystemPathsEqual('/data/Foo', '/data/Foo/', platform)).toBe(true);
   });
 
   it('matches files beneath loaded directories using platform path semantics', () => {
