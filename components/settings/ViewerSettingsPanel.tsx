@@ -36,6 +36,8 @@ export const ViewerSettingsPanel: React.FC = () => {
   const setSlideshowShowFilename = useSettingsStore((state) => state.setSlideshowShowFilename);
   const imageViewerMode = useSettingsStore((state) => state.imageViewerMode);
   const setImageViewerMode = useSettingsStore((state) => state.setImageViewerMode);
+  const reuseImageViewerWindow = useSettingsStore((state) => state.reuseImageViewerWindow);
+  const setReuseImageViewerWindow = useSettingsStore((state) => state.setReuseImageViewerWindow);
   const imageViewerDefaultZoom = useSettingsStore((state) => state.imageViewerDefaultZoom);
   const setImageViewerDefaultZoom = useSettingsStore((state) => state.setImageViewerDefaultZoom);
   const isDesktop = typeof window !== 'undefined' && Boolean(window.electronAPI);
@@ -44,13 +46,26 @@ export const ViewerSettingsPanel: React.FC = () => {
     <SettingsPanel title="Viewer">
       <SettingsSectionCard title="Behavior">
         <SettingRow
-          label="Open images in separate windows"
+          label="Open images in desktop windows"
           className={!isDesktop ? 'opacity-50' : ''}
           control={
             <SettingSwitch
               checked={isDesktop && imageViewerMode === 'detached'}
               onChange={(checked) => setImageViewerMode(checked ? 'detached' : 'inline')}
               disabled={!isDesktop}
+            />
+          }
+        />
+        <SettingRow
+          label="Reuse a single viewer window"
+          description="Opening another image switches the existing viewer to that image. Turn off to open images in multiple windows."
+          className={!isDesktop || imageViewerMode !== 'detached' ? 'opacity-50' : ''}
+          control={
+            <SettingSwitch
+              checked={reuseImageViewerWindow}
+              onChange={setReuseImageViewerWindow}
+              disabled={!isDesktop || imageViewerMode !== 'detached'}
+              ariaLabel="Reuse a single viewer window"
             />
           }
         />

@@ -111,9 +111,17 @@ jobs:
           retention-days: 30
 
   build-macos:
-    name: Build macOS App
-    runs-on: macos-latest
+    name: Build macOS App (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     if: ${{ github.event.inputs.platform == 'macos' || github.event.inputs.platform == 'all' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
     env:
       IMH_LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
       IMH_LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_SERVER_PUBLIC_KEY }}
@@ -141,14 +149,21 @@ jobs:
         run: |
           echo "Building macOS app..."
           npm run build
-          npx electron-builder --mac --publish=never
+          npx electron-builder --mac --${{ matrix.arch }} --publish=never
           echo "macOS build completed!"
           ls -la dist-electron/
 
       - name: Smoke test packaged detached viewer
+        timeout-minutes: 10
         run: |
-          SMOKE_IMAGE="$RUNNER_TEMP/imh-detached-viewer-smoke.png"
+          sw_vers
+          uname -m
+          SMOKE_IMAGE="$RUNNER_TEMP/imh viewer smoke á #1.png"
           SMOKE_LOG="$RUNNER_TEMP/imh-detached-viewer-smoke.log"
+          BASELINE_LOG="$RUNNER_TEMP/imh-detached-viewer-baseline.log"
+          WATCHER_ROOT="$RUNNER_TEMP/imh-large-library-smoke"
+          mkdir -p "$WATCHER_ROOT"
+          node --input-type=module -e "import fs from 'node:fs/promises'; import path from 'node:path'; for (let batch = 0; batch < 120; batch++) await Promise.all(Array.from({length: 100}, (_, n) => fs.writeFile(path.join(process.argv[1], 'synthetic-' + (batch * 100 + n) + '.png'), 'synthetic')));" "$WATCHER_ROOT"
           node -e "require('fs').writeFileSync(process.argv[1], Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'))" "$SMOKE_IMAGE"
 
           if [[ "$(uname -m)" == "arm64" ]]; then
@@ -157,18 +172,46 @@ jobs:
             APP_PATH="dist-electron/mac/Image MetaHub.app"
           fi
 
-          if ! GITHUB_ACTIONS=true IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE="$SMOKE_IMAGE" "$APP_PATH/Contents/MacOS/Image MetaHub" > "$SMOKE_LOG" 2>&1; then
+          INSTALLED_APP="$RUNNER_TEMP/imh-installed-viewer/Image MetaHub 2.app"
+          mkdir -p "$(dirname "$INSTALLED_APP")"
+          ditto "$APP_PATH" "$INSTALLED_APP"
+          APP_PATH="$INSTALLED_APP"
+
+          if ! GITHUB_ACTIONS=true IMH_PACKAGED_VIEWER_WATCHER_BASELINE=true IMH_PACKAGED_VIEWER_WATCHER_ROOT="$WATCHER_ROOT" IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE="$SMOKE_IMAGE" "$APP_PATH/Contents/MacOS/Image MetaHub" > "$BASELINE_LOG" 2>&1; then
+            cat "$BASELINE_LOG"
+            exit 1
+          fi
+          cat "$BASELINE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] baseline-large-library-comparison completed" "$BASELINE_LOG"
+
+          if ! GITHUB_ACTIONS=true IMH_PACKAGED_VIEWER_WATCHER_ROOT="$WATCHER_ROOT" IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE="$SMOKE_IMAGE" "$APP_PATH/Contents/MacOS/Image MetaHub" > "$SMOKE_LOG" 2>&1; then
             cat "$SMOKE_LOG"
             exit 1
           fi
 
           cat "$SMOKE_LOG"
           grep -F "[packaged-detached-viewer-smoke] renderer-ready" "$SMOKE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] reopen x3 passed" "$SMOKE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] idle pool bound passed" "$SMOKE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] renderer-ipc-open passed" "$SMOKE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] large-library-watcher-ready" "$SMOKE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] large-library-events passed" "$SMOKE_LOG"
+
+      - name: Upload detached viewer smoke log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-viewer-smoke-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/imh-detached-viewer-smoke.log
+            ${{ runner.temp }}/imh-detached-viewer-baseline.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload macOS app as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-app
+          name: macos-app-${{ matrix.arch }}
           path: |
             dist-electron/*.dmg
             dist-electron/*.dmg.blockmap

@@ -16,6 +16,7 @@ const asIndexedImage = (image: ImageViewerSnapshot['image']): IndexedImage => im
 const DetachedImageModalApp: React.FC = () => {
   const sessionIdRef = useRef(getSessionId());
   const latestRevisionRef = useRef(-1);
+  const appliedSnapshotRef = useRef<{ sessionId: string; revision: number } | null>(null);
   const [snapshot, setSnapshot] = useState<ImageViewerSnapshot | null>(null);
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
   const theme = useSettingsStore((state) => state.theme);
@@ -89,15 +90,25 @@ const DetachedImageModalApp: React.FC = () => {
         });
         sessionIdRef.current = '';
         latestRevisionRef.current = -1;
+        appliedSnapshotRef.current = null;
         setSnapshot(null);
         return;
       }
       if (next.sessionId !== sessionIdRef.current) {
         sessionIdRef.current = next.sessionId;
         latestRevisionRef.current = -1;
+        appliedSnapshotRef.current = null;
         setIsAlwaysOnTop(false);
       }
-      if (next.revision <= latestRevisionRef.current) return;
+      if (next.revision <= latestRevisionRef.current) {
+        // A delivery or acknowledgment can be lost during startup/rebinding.
+        // Re-acknowledge only a snapshot that has actually committed to React.
+        const applied = appliedSnapshotRef.current;
+        if (applied?.sessionId === next.sessionId && applied.revision === next.revision) {
+          void api.imageViewerReady(next.sessionId, next.revision);
+        }
+        return;
+      }
       latestRevisionRef.current = next.revision;
       const previousImage = next.previousImage ? asIndexedImage(next.previousImage) : null;
       const current = asIndexedImage(next.image);
@@ -191,6 +202,7 @@ const DetachedImageModalApp: React.FC = () => {
 
   useEffect(() => {
     if (!snapshot) return;
+    appliedSnapshotRef.current = { sessionId: snapshot.sessionId, revision: snapshot.revision };
     void window.electronAPI?.imageViewerReady(snapshot.sessionId, snapshot.revision);
   }, [snapshot]);
 

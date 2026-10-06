@@ -4,13 +4,15 @@ interface SettingSwitchProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
+  ariaLabel?: string;
 }
 
-export const SettingSwitch: React.FC<SettingSwitchProps> = ({ checked, onChange, disabled = false }) => {
+export const SettingSwitch: React.FC<SettingSwitchProps> = ({ checked, onChange, disabled = false, ariaLabel }) => {
   return (
     <button
       type="button"
       role="switch"
+      aria-label={ariaLabel}
       aria-checked={checked}
       disabled={disabled}
       onClick={() => {

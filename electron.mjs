@@ -14,6 +14,7 @@ import crypto from 'crypto';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
+import { prepareLargeLibraryWatcherSmoke } from './electron/libraryWatcherPackagedSmoke.mjs';
 import archiver from 'archiver';
 import {
   buildLauncherScriptContent,
@@ -67,7 +68,8 @@ import {
 } from './electron/permanentDeletePolicy.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
 import { buildDetachedViewerLoadTarget, buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
-import { createViewerOpenCoordinator, createViewerReadiness, createViewerFocusTracker, presentViewerWindow } from './utils/viewerWindowLifecycle.mjs';
+import { getViewerLoadErrorDetails } from './utils/viewerLoadDiagnostics.mjs';
+import { createViewerOpenCoordinator, createViewerReadiness, createViewerFocusTracker, presentViewerWindow, openViewerWithRecovery } from './utils/viewerWindowLifecycle.mjs';
 import {
   buildEmbeddingModelDownloadUrl,
   validateEmbeddingModelId,
@@ -638,9 +640,10 @@ const detachedImageViewerWindows = new Map();
 const coordinateViewerOpen = createViewerOpenCoordinator();
 const viewerFocusTracker = createViewerFocusTracker();
 let viewerDiagnosticSequence = 0;
-function traceViewerLifecycle(viewerWindow, stage, code) {
+function traceViewerLifecycle(viewerWindow, stage, code, details = {}) {
   viewerWindow.__viewerDiagnosticId ??= ++viewerDiagnosticSequence;
-  console.log('[image-viewer-lifecycle]', viewerWindow.__viewerDiagnosticId, stage, code ?? '');
+  console.log('[image-viewer-lifecycle]', viewerWindow.__viewerDiagnosticId, stage, code ?? '', details);
+  logProcessEvent({ kind: 'image-viewer-lifecycle', windowId: viewerWindow.__viewerDiagnosticId, stage, ...(code !== undefined ? { code } : {}), ...details });
 }
 const detachedImageViewerSnapshots = new Map();
 const idleMacImageViewerWindows = new Set();
@@ -2592,10 +2595,22 @@ function configureDetachedViewerNavigationHandlers(viewerWindow, baseUrl) {
 
 function createDetachedImageViewer(sessionId, snapshot) {
   viewerFocusTracker.request(sessionId);
-  return coordinateViewerOpen(sessionId, (isCancelled) => openDetachedImageViewer(sessionId, snapshot, isCancelled));
+  return coordinateViewerOpen(sessionId, async (isCancelled) => {
+    const result = await openViewerWithRecovery(
+      (allowReuse) => openDetachedImageViewer(sessionId, snapshot, isCancelled, allowReuse),
+      {
+        isCancelled,
+        onRetry: () => logProcessEvent({ kind: 'image-viewer-open-retry', attempt: 2 }),
+      },
+    );
+    // Report failure only after recovery is exhausted. Reporting it from the
+    // first window would make App switch inline while the retry is opening.
+    if (!result.success && !result.cancelled) sendDetachedViewerEvent(sessionId, 'load-failed', { reason: result.error });
+    return result;
+  });
 }
 
-async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
+async function openDetachedImageViewer(sessionId, snapshot, isCancelled, allowReuse = true) {
   if (isCancelled()) return { success: false, cancelled: true };
   if (!mainWindow || mainWindow.isDestroyed()) {
     return { success: false, error: 'Main window is not available.' };
@@ -2608,7 +2623,7 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
     return { success: true, existing: true };
   }
 
-  if (process.platform === 'darwin') {
+  if (process.platform === 'darwin' && allowReuse) {
     const reusable = Array.from(idleMacImageViewerWindows).find((window) => !window.isDestroyed());
     if (reusable) {
       idleMacImageViewerWindows.delete(reusable);
@@ -2619,6 +2634,10 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
       detachedImageViewerSnapshots.set(sessionId, snapshot);
       traceViewerLifecycle(reusable, 'reuse');
       reusable.__viewerReadiness = createViewerReadiness({
+        onRequestSnapshot: () => {
+          const current = detachedImageViewerSnapshots.get(sessionId);
+          if (current && !reusable.isDestroyed()) reusable.webContents.send('image-viewer-snapshot', current);
+        },
         onReady: () => {
           reusable.__imageViewerRebinding = false;
           reusable.webContents.setAudioMuted(false);
@@ -2626,16 +2645,15 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
         },
         onFailure: (result) => {
           if (result.cancelled) return;
-          traceViewerLifecycle(reusable, 'rebind-failed');
+          traceViewerLifecycle(reusable, 'rebind-failed', result.error);
           reusable.__suppressImageViewerClosedEvent = true;
-          sendDetachedViewerEvent(sessionId, 'load-failed', { reason: result.error });
           reusable.destroy();
         },
       });
       reusable.__viewerReadiness.markNativeReady();
       // The renderer acknowledges the new snapshot through image-viewer-ready.
       // Keep the hidden window hidden until it has bound the new session.
-      reusable.webContents.send('image-viewer-snapshot', snapshot);
+      reusable.__viewerReadiness.markDocumentLoaded();
       return { ...await reusable.__viewerReadiness.promise, reused: true };
     }
   }
@@ -2687,14 +2705,22 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
   detachedImageViewerWindows.set(sessionId, viewerWindow);
   detachedImageViewerSnapshots.set(sessionId, snapshot);
   viewerWindow.__viewerReadiness = createViewerReadiness({
+    onRequestSnapshot: () => {
+      const current = detachedImageViewerSnapshots.get(sessionId);
+      if (current && !viewerWindow.isDestroyed()) viewerWindow.webContents.send('image-viewer-snapshot', current);
+    },
+    onNeedsNativeShow: () => {
+      if (viewerWindow.isDestroyed()) return;
+      traceViewerLifecycle(viewerWindow, 'native-show-recovery');
+      viewerWindow.showInactive();
+    },
     onReady: () => {
       presentViewerWindow(viewerWindow, { activate: viewerFocusTracker.shouldActivate(sessionId), maximized: initialState.isMaximized });
     },
     onFailure: (result) => {
       if (result.cancelled || viewerWindow.isDestroyed()) return;
-      traceViewerLifecycle(viewerWindow, 'load-failed');
+      traceViewerLifecycle(viewerWindow, 'load-failed', result.error);
       viewerWindow.__suppressImageViewerClosedEvent = true;
-      sendDetachedViewerEvent(viewerWindow.__imageViewerSessionId, 'load-failed', { reason: result.error });
       viewerWindow.destroy();
     },
   });
@@ -2702,12 +2728,22 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
     traceViewerLifecycle(viewerWindow, 'native-ready');
     viewerWindow.__viewerReadiness.markNativeReady();
   });
+  viewerWindow.once('show', () => {
+    viewerWindow.__viewerReadiness.markNativeReady();
+  });
   viewerWindow.webContents.on('did-finish-load', () => {
     traceViewerLifecycle(viewerWindow, 'loaded');
+    viewerWindow.__viewerReadiness.markDocumentLoaded();
   });
   viewerWindow.__markImageViewerRendererReady = () => {
     viewerWindow.__viewerReadiness.markRendererReady();
   };
+  viewerWindow.webContents.on('did-fail-provisional-load', (_event, errorCode, _description, _validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    // Include aborted provisional loads in diagnostics without changing their
+    // lifecycle handling. Their URL may contain a private path in sessionId.
+    traceViewerLifecycle(viewerWindow, 'provisional-load-failed', errorCode);
+  });
   viewerWindow.webContents.on('did-fail-load', (_event, errorCode, description, _validatedURL, isMainFrame) => {
     // Sub-frame failures and aborted loads (ERR_ABORTED, fired whenever a load is
     // superseded — e.g. a dev-server reload) must not tear the whole window down.
@@ -2737,11 +2773,15 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
     viewerWindow.__suppressImageViewerClosedEvent = true;
     const activeSessionId = viewerWindow.__imageViewerSessionId;
     idleMacImageViewerWindows.delete(viewerWindow);
-    if (activeSessionId) sendDetachedViewerEvent(activeSessionId, viewerWindow.__viewerReadiness.ready ? 'render-process-gone' : 'load-failed', { reason: details?.reason || 'unknown' });
-    viewerWindow.__viewerReadiness.cancel();
+    if (viewerWindow.__viewerReadiness.ready) {
+      if (activeSessionId) sendDetachedViewerEvent(activeSessionId, 'render-process-gone', { reason: details?.reason || 'unknown' });
+    } else {
+      viewerWindow.__viewerReadiness.fail('Viewer renderer stopped during opening.');
+    }
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
   });
   viewerWindow.on('close', (event) => {
+    coordinateViewerOpen.cancel(viewerWindow.__imageViewerSessionId);
     viewerWindow.__viewerReadiness.cancel();
     // Closing the active viewer returns to the library, not another viewer.
     // Otherwise the OS's automatic focus transfer looks like a user selection.
@@ -2782,19 +2822,25 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled) {
   });
 
   try {
+    traceViewerLifecycle(viewerWindow, 'load-start', undefined, {
+      loadMethod: viewerLoadTarget.method,
+      indexFileExists: isDev ? null : await fs.stat(viewerIndexPath).then((stat) => stat.isFile(), () => false),
+    });
     if (viewerLoadTarget.method === 'url') {
       await viewerWindow.loadURL(viewerLoadTarget.url);
     } else {
       await viewerWindow.loadFile(viewerLoadTarget.filePath, viewerLoadTarget.options);
     }
     return await viewerWindow.__viewerReadiness.promise;
-  } catch {
-    traceViewerLifecycle(viewerWindow, 'load-rejected');
+  } catch (error) {
+    traceViewerLifecycle(viewerWindow, 'load-rejected', undefined, getViewerLoadErrorDetails(error));
     viewerWindow.__viewerReadiness.fail('Viewer failed to load.');
     detachedImageViewerWindows.delete(sessionId);
     detachedImageViewerSnapshots.delete(sessionId);
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
-    return { success: false, error: 'Failed to load detached viewer.' };
+    // Closing a registered window can reject its still-pending load. Preserve
+    // the cancellation already settled by close instead of retrying that load.
+    return await viewerWindow.__viewerReadiness.promise;
   }
 }
 
@@ -2802,6 +2848,8 @@ async function runPackagedDetachedViewerSmokeTest() {
   if (!packagedDetachedViewerSmokeImagePath) return;
 
   let timeoutId;
+  let stopSmokeWatcher;
+  const watcherBaseline = process.env.IMH_PACKAGED_VIEWER_WATCHER_BASELINE === 'true';
   try {
     const imagePath = path.resolve(packagedDetachedViewerSmokeImagePath);
     const imageStats = await fs.stat(imagePath);
@@ -2811,6 +2859,9 @@ async function runPackagedDetachedViewerSmokeTest() {
 
     const directoryPath = path.dirname(imagePath);
     const imageName = path.basename(imagePath);
+    if (process.platform === 'darwin' && process.env.IMH_PACKAGED_VIEWER_WATCHER_ROOT) {
+      stopSmokeWatcher = await prepareLargeLibraryWatcherSmoke(process.env.IMH_PACKAGED_VIEWER_WATCHER_ROOT, watcherBaseline);
+    }
     const readyPromise = new Promise((resolve, reject) => {
       packagedDetachedViewerSmokeReadyResolver = resolve;
       timeoutId = setTimeout(() => reject(new Error('Detached viewer did not become visible after its renderer-ready handshake.')), 20000);
@@ -2847,6 +2898,20 @@ async function runPackagedDetachedViewerSmokeTest() {
     };
 
     const openResult = await createDetachedImageViewer(PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID, snapshot);
+    if (watcherBaseline) {
+      if (openResult.success) await readyPromise;
+      clearTimeout(timeoutId);
+      console.log(openResult.success
+        ? '[packaged-detached-viewer-smoke] baseline-viewer-open passed'
+        : '[packaged-detached-viewer-smoke] baseline-large-library-failure reproduced');
+      console.log('[packaged-detached-viewer-smoke] baseline-large-library-comparison completed');
+      await stopSmokeWatcher?.();
+      stopSmokeWatcher = null;
+      closeAllDetachedImageViewers();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+      app.exit(0);
+      return;
+    }
     if (!openResult.success) {
       throw new Error(openResult.error || 'Failed to open detached viewer.');
     }
@@ -2937,10 +3002,26 @@ async function runPackagedDetachedViewerSmokeTest() {
       console.log('[packaged-detached-viewer-smoke] idle pool bound passed');
     }
     closeAllDetachedImageViewers();
+    // Exercise the renderer -> preload -> main entry point as an ordinary card
+    // does. The older smoke used only a short session ID and a direct main call.
+    const ipcSessionId = `image-modal-${Date.now()}-${imagePath}`;
+    const ipcSnapshot = { ...snapshot, sessionId: ipcSessionId, revision: 1 };
+    const ipcResult = await mainWindow.webContents.executeJavaScript(
+      `window.electronAPI.imageViewerOpen(${JSON.stringify({ sessionId: ipcSessionId, snapshot: ipcSnapshot })})`,
+    );
+    const ipcWindow = detachedImageViewerWindows.get(ipcSessionId);
+    if (!ipcResult?.success || !ipcWindow || !ipcWindow.isVisible()) {
+      throw new Error('Renderer IPC opening did not produce a visible detached viewer.');
+    }
+    console.log('[packaged-detached-viewer-smoke] renderer-ipc-open passed');
+    await stopSmokeWatcher?.();
+    stopSmokeWatcher = null;
+    closeAllDetachedImageViewers();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     app.exit(0);
   } catch (error) {
     console.error('[packaged-detached-viewer-smoke] failed:', error);
+    await stopSmokeWatcher?.();
     closeAllDetachedImageViewers();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     app.exit(1);
