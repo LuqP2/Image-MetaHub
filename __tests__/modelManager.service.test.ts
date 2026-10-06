@@ -43,6 +43,41 @@ async function initialize() {
 }
 
 describe('single-owner model service', () => {
+  it('preserves a saved cover when refreshing the same Civitai version', async () => {
+    const coverImage = `imh-model-media://media/${'c'.repeat(64)}.jpg`;
+    catalog.locations[0].civitai = { ...location('one').civitai, coverImage };
+    const manager = await initialize();
+    api.modelManagerRemote.mockResolvedValue({ success: true, metadata: { ...location('one').civitai, versionName: 'Refreshed', coverImage: undefined } });
+    await manager.runModelCommand({ type: 'identify', locationId: location('one').id });
+    expect(manager.modelItem(location('one').id).location.civitai).toMatchObject({ versionName: 'Refreshed', coverImage });
+    expect(api.modelManagerRemote.mock.calls.map(([args]) => args.kind)).toEqual(['hash']);
+  });
+  it('does not carry the old cover into a different Civitai version', async () => {
+    catalog.locations[0].civitai = { ...location('one').civitai, coverImage: `imh-model-media://media/${'c'.repeat(64)}.jpg` };
+    const manager = await initialize();
+    api.modelManagerRemote.mockResolvedValue({ success: true, metadata: { ...location('one').civitai, versionId: 3 } });
+    await manager.runModelCommand({ type: 'identify', locationId: location('one').id });
+    const link = manager.modelItem(location('one').id).location.civitai;
+    expect(link).toMatchObject({ versionId: 3 });
+    expect(link && 'modelId' in link ? link.coverImage : undefined).toBeUndefined();
+  });
+  it('discards an identification response arriving after the user removes its link', async () => {
+    const manager = await initialize();
+    let complete!: (value: unknown) => void;
+    api.modelManagerRemote.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    const pending = manager.runModelCommand({ type: 'identify', locationId: location('one').id });
+    await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
+    await manager.runModelCommand({ type: 'unbind', locationId: location('one').id });
+    complete({ success: true, metadata: location('one').civitai });
+    await pending;
+    expect(manager.modelItem(location('one').id).location.civitai).toBeUndefined();
+    expect(manager.modelItem(location('one').id).localMetadata?.watchUpdates).toBe(false);
+    expect(manager.getModelManagerState().progress).toBeNull();
+    // Removing a link must not prevent a later explicit identification.
+    api.modelManagerRemote.mockResolvedValue({ success: true, metadata: location('one').civitai });
+    await manager.runModelCommand({ type: 'identify', locationId: location('one').id });
+    expect(manager.modelItem(location('one').id).location.civitai).toMatchObject({ modelId: 1, versionId: 2 });
+  });
   it('saves local edits immediately but coalesces their full snapshot publication', async () => {
     vi.useFakeTimers();
     const manager = await initialize();

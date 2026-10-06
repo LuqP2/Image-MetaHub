@@ -21,6 +21,7 @@ let watchWrites = Promise.resolve();
 let cancelled = false;
 let activeHash: string | undefined;
 let activeRemote: string | undefined;
+const bindingRevisions = new Map<string, number>();
 let rateLimitedUntil = 0;
 let releaseWait: (() => void) | undefined;
 let openImage: ((id: string) => void) | undefined;
@@ -69,8 +70,9 @@ export function modelItem(locationId: string): ModelInspectorItem {
   if (!location) throw new Error('This model is no longer in the catalog.');
   return { location, localMetadata: getModelLocalMetadata(state.localMetadata, location) };
 }
-async function patchLocation(locationId: string, patch: Partial<ModelInspectorItem['location']>) {
+async function patchLocation(locationId: string, patch: Partial<ModelInspectorItem['location']>, bindingRevision?: number) {
   patch = await externalizeModelMedia(patch);
+  if (bindingRevision !== undefined && bindingRevision !== (bindingRevisions.get(locationId) ?? 0)) return;
   const locations = state.catalog.locations.map((location) => location.id === locationId ? { ...location, ...patch } : location);
   publish({ catalog: { ...state.catalog, locations, managedModels: buildManagedModels(locations), updatedAt: Date.now() } });
   return persistCatalog();
@@ -194,16 +196,22 @@ async function hash(locationId: string) {
   } finally { activeHash = undefined; }
 }
 async function identify(locationId: string) {
+  const bindingRevision = bindingRevisions.get(locationId) ?? 0;
   await patchLocation(locationId, { identificationAttemptAt: Date.now() });
   await hash(locationId);
-  if (cancelled) return;
+  if (cancelled || bindingRevision !== (bindingRevisions.get(locationId) ?? 0)) return;
   const item = modelItem(locationId);
   if (!item.location.sha256) return;
   const matching = state.catalog.locations.find((location) => location.id !== locationId && location.sha256 === item.location.sha256 && location.civitai && 'binding' in location.civitai && location.civitai.binding === 'hash');
-  if (matching?.civitai) { await patchLocation(locationId, { civitai: matching.civitai }); return; }
-  const result = await remote('hash', item.location.sha256);
+  const metadata = matching?.civitai ?? (await remote('hash', item.location.sha256)).metadata;
   if (cancelled) return;
-  await patchLocation(locationId, { civitai: result.metadata ?? { status: 'notFound', fetchedAt: Date.now(), url: '' } });
+  const current = modelItem(locationId).location.civitai;
+  // Metadata refreshes do not fetch covers. Reuse the saved cover only for the same version.
+  const civitai = metadata && 'modelId' in metadata && current && 'modelId' in current
+    && metadata.modelId === current.modelId && metadata.versionId === current.versionId
+    ? { ...metadata, coverImage: metadata.coverImage ?? current.coverImage }
+    : metadata ?? { status: 'notFound' as const, fetchedAt: Date.now(), url: '' };
+  await patchLocation(locationId, { civitai }, bindingRevision);
 }
 export async function identifyModels(locationIds: string[]) {
   startJob('identify', locationIds.length);
@@ -381,7 +389,11 @@ export async function runModelCommand(command: ModelManagerCommand) {
       return;
     }
     case 'example': await saveModelPatch(command.locationId, (current) => ({ examples: (current?.examples ?? []).flatMap((example) => example.id !== command.exampleId ? [example] : command.remove ? [] : [{ ...example, caption: command.caption ?? example.caption }]) })); return;
-    case 'unbind': await saveModelPatch(command.locationId, { watchUpdates: false }); await patchLocation(command.locationId, { civitai: undefined }); return;
+    case 'unbind':
+      // Invalidate pending identification before waiting for local preference writes.
+      bindingRevisions.set(command.locationId, (bindingRevisions.get(command.locationId) ?? 0) + 1);
+      await saveModelPatch(command.locationId, { watchUpdates: false });
+      await patchLocation(command.locationId, { civitai: undefined }); return;
     case 'chooseLibrary': publish({ picker: { locationId: command.locationId, cover: command.cover } }); return;
     case 'cancel': cancelModelJob(); return;
     case 'saveLocal': await saveModelPatch(command.locationId, command.patch); return;
