@@ -154,11 +154,16 @@ jobs:
           ls -la dist-electron/
 
       - name: Smoke test packaged detached viewer
+        timeout-minutes: 10
         run: |
           sw_vers
           uname -m
           SMOKE_IMAGE="$RUNNER_TEMP/imh viewer smoke á #1.png"
           SMOKE_LOG="$RUNNER_TEMP/imh-detached-viewer-smoke.log"
+          BASELINE_LOG="$RUNNER_TEMP/imh-detached-viewer-baseline.log"
+          WATCHER_ROOT="$RUNNER_TEMP/imh-large-library-smoke"
+          mkdir -p "$WATCHER_ROOT"
+          node --input-type=module -e "import fs from 'node:fs/promises'; import path from 'node:path'; for (let batch = 0; batch < 120; batch++) await Promise.all(Array.from({length: 100}, (_, n) => fs.writeFile(path.join(process.argv[1], 'synthetic-' + (batch * 100 + n) + '.png'), 'synthetic')));" "$WATCHER_ROOT"
           node -e "require('fs').writeFileSync(process.argv[1], Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'))" "$SMOKE_IMAGE"
 
           if [[ "$(uname -m)" == "arm64" ]]; then
@@ -172,7 +177,14 @@ jobs:
           ditto "$APP_PATH" "$INSTALLED_APP"
           APP_PATH="$INSTALLED_APP"
 
-          if ! GITHUB_ACTIONS=true IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE="$SMOKE_IMAGE" "$APP_PATH/Contents/MacOS/Image MetaHub" > "$SMOKE_LOG" 2>&1; then
+          if ! GITHUB_ACTIONS=true IMH_PACKAGED_VIEWER_WATCHER_BASELINE=true IMH_PACKAGED_VIEWER_WATCHER_ROOT="$WATCHER_ROOT" IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE="$SMOKE_IMAGE" "$APP_PATH/Contents/MacOS/Image MetaHub" > "$BASELINE_LOG" 2>&1; then
+            cat "$BASELINE_LOG"
+            exit 1
+          fi
+          cat "$BASELINE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] baseline-large-library-failure reproduced" "$BASELINE_LOG"
+
+          if ! GITHUB_ACTIONS=true IMH_PACKAGED_VIEWER_WATCHER_ROOT="$WATCHER_ROOT" IMH_PACKAGED_DETACHED_VIEWER_SMOKE_IMAGE="$SMOKE_IMAGE" "$APP_PATH/Contents/MacOS/Image MetaHub" > "$SMOKE_LOG" 2>&1; then
             cat "$SMOKE_LOG"
             exit 1
           fi
@@ -182,13 +194,17 @@ jobs:
           grep -F "[packaged-detached-viewer-smoke] reopen x3 passed" "$SMOKE_LOG"
           grep -F "[packaged-detached-viewer-smoke] idle pool bound passed" "$SMOKE_LOG"
           grep -F "[packaged-detached-viewer-smoke] renderer-ipc-open passed" "$SMOKE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] large-library-watcher-ready" "$SMOKE_LOG"
+          grep -F "[packaged-detached-viewer-smoke] large-library-events passed" "$SMOKE_LOG"
 
       - name: Upload detached viewer smoke log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: macos-viewer-smoke-${{ matrix.arch }}
-          path: ${{ runner.temp }}/imh-detached-viewer-smoke.log
+          path: |
+            ${{ runner.temp }}/imh-detached-viewer-smoke.log
+            ${{ runner.temp }}/imh-detached-viewer-baseline.log
           if-no-files-found: ignore
           retention-days: 14
 

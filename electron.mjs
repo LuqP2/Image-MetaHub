@@ -14,6 +14,7 @@ import crypto from 'crypto';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
+import { prepareLargeLibraryWatcherSmoke } from './electron/libraryWatcherPackagedSmoke.mjs';
 import archiver from 'archiver';
 import {
   buildLauncherScriptContent,
@@ -2831,6 +2832,8 @@ async function runPackagedDetachedViewerSmokeTest() {
   if (!packagedDetachedViewerSmokeImagePath) return;
 
   let timeoutId;
+  let stopSmokeWatcher;
+  const watcherBaseline = process.env.IMH_PACKAGED_VIEWER_WATCHER_BASELINE === 'true';
   try {
     const imagePath = path.resolve(packagedDetachedViewerSmokeImagePath);
     const imageStats = await fs.stat(imagePath);
@@ -2840,6 +2843,9 @@ async function runPackagedDetachedViewerSmokeTest() {
 
     const directoryPath = path.dirname(imagePath);
     const imageName = path.basename(imagePath);
+    if (process.platform === 'darwin' && process.env.IMH_PACKAGED_VIEWER_WATCHER_ROOT) {
+      stopSmokeWatcher = await prepareLargeLibraryWatcherSmoke(process.env.IMH_PACKAGED_VIEWER_WATCHER_ROOT, watcherBaseline);
+    }
     const readyPromise = new Promise((resolve, reject) => {
       packagedDetachedViewerSmokeReadyResolver = resolve;
       timeoutId = setTimeout(() => reject(new Error('Detached viewer did not become visible after its renderer-ready handshake.')), 20000);
@@ -2876,6 +2882,17 @@ async function runPackagedDetachedViewerSmokeTest() {
     };
 
     const openResult = await createDetachedImageViewer(PACKAGED_DETACHED_VIEWER_SMOKE_SESSION_ID, snapshot);
+    if (watcherBaseline) {
+      if (openResult.success) throw new Error('Viewer unexpectedly opened under baseline descriptor pressure.');
+      clearTimeout(timeoutId);
+      console.log('[packaged-detached-viewer-smoke] baseline-large-library-failure reproduced');
+      await stopSmokeWatcher?.();
+      stopSmokeWatcher = null;
+      closeAllDetachedImageViewers();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+      app.exit(0);
+      return;
+    }
     if (!openResult.success) {
       throw new Error(openResult.error || 'Failed to open detached viewer.');
     }
@@ -2978,11 +2995,14 @@ async function runPackagedDetachedViewerSmokeTest() {
       throw new Error('Renderer IPC opening did not produce a visible detached viewer.');
     }
     console.log('[packaged-detached-viewer-smoke] renderer-ipc-open passed');
+    await stopSmokeWatcher?.();
+    stopSmokeWatcher = null;
     closeAllDetachedImageViewers();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     app.exit(0);
   } catch (error) {
     console.error('[packaged-detached-viewer-smoke] failed:', error);
+    await stopSmokeWatcher?.();
     closeAllDetachedImageViewers();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     app.exit(1);

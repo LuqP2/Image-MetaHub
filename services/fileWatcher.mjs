@@ -1,4 +1,4 @@
-import chokidar from 'chokidar';
+import { createLibraryWatcher } from './libraryWatcherBackend.mjs';
 import path from 'path';
 import fs from 'fs';
 import { SUPPORTED_MEDIA_EXTENSIONS, inferMimeTypeFromName } from '../utils/mediaTypes.js';
@@ -140,7 +140,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
       sendWatcherDebug(mainWindow, `[FileWatcher] Using polling for ${directoryId} (${driveLabel})`);
     }
 
-    const watcher = chokidar.watch(dirPath, {
+    const watcher = createLibraryWatcher(dirPath, {
       ignored: [
         '**/.thumbnails/**',
         '**/thumbnails/**',
@@ -168,6 +168,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
     watcher.on('ready', () => {
       clearTimeout(readyTimeout);
       sendWatcherDebug(mainWindow, `[FileWatcher] Watcher ready for ${directoryId} - monitoring: ${dirPath}`);
+      observers.onReady?.({ useFsEvents: watcher.options.useFsEvents === true, usePolling: watcher.options.usePolling === true });
     });
 
     const enqueueMedia = (mediaPath, forceReindex = false, provenanceBytesChanged = true) => {

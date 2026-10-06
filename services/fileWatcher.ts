@@ -1,4 +1,5 @@
-import chokidar, { FSWatcher } from 'chokidar';
+import { FSWatcher } from 'chokidar';
+import { createLibraryWatcher } from './libraryWatcherBackend.mjs';
 import path from 'path';
 import { BrowserWindow } from 'electron';
 import fs from 'fs';
@@ -56,7 +57,7 @@ export function startWatching(
       sendWatcherDebug(mainWindow, `[FileWatcher] Using polling for ${directoryId} (${driveLabel})`);
     }
 
-    const watcher = chokidar.watch(dirPath, {
+    const watcher = createLibraryWatcher(dirPath, {
       ignored: [
         '**/.thumbnails/**',
         '**/thumbnails/**',
