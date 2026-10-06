@@ -54,6 +54,7 @@ export function reconcileModelCatalog(
   sources: ModelSource[],
   scanResults: ModelSourceScanResult[],
   now = Date.now(),
+  platform = typeof navigator !== 'undefined' ? navigator.platform : '',
 ): ModelCatalog {
   const sourceById = new Map(sources.map((source) => [source.id, source]));
   const priorById = new Map(current.locations.map((location) => [location.id, location]));
@@ -66,7 +67,10 @@ export function reconcileModelCatalog(
     const source = sourceById.get(result.sourceId);
     if (!source || result.error) continue;
     for (const scanned of result.locations) {
-      const id = `${source.id}:${scanned.relativePath.toLocaleLowerCase()}`;
+      // Only Windows folds path case; Linux and case-sensitive macOS volumes
+      // can contain distinct files whose names differ only in case.
+      const relativePathKey = /^win/i.test(platform) ? scanned.relativePath.toLowerCase() : scanned.relativePath;
+      const id = `${source.id}:${relativePathKey}`;
       const previous = priorById.get(id);
       next.push({
         ...scanned,

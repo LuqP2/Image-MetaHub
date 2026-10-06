@@ -7,6 +7,32 @@ const source: ModelSource = {
 };
 
 describe('model library catalog', () => {
+  it.each(['Linux x86_64', 'MacIntel'])('keeps case-distinct files independent on %s', (platform) => {
+    const paths = ['Foo.safetensors', 'foo.safetensors'];
+    const scan = [{ sourceId: source.id, locations: paths.map((relativePath) => ({
+      sourceId: source.id, relativePath, absolutePath: `/synthetic/models/${relativePath}`,
+      fileName: relativePath, size: 10, createdAt: 2, modifiedAt: 3,
+    })) }];
+    const first = reconcileModelCatalog({ version: 1, locations: [], updatedAt: 0 }, [source], scan, 100, platform);
+    expect(new Set(first.locations.map((location) => location.id)).size).toBe(2);
+    first.locations.find((location) => location.fileName === 'Foo.safetensors')!.sha256 = 'a'.repeat(64);
+    first.locations.find((location) => location.fileName === 'foo.safetensors')!.sha256 = 'b'.repeat(64);
+    first.locations.find((location) => location.fileName === 'Foo.safetensors')!.civitai = { status: 'notFound', fetchedAt: 101, url: '' };
+    const second = reconcileModelCatalog(first, [source], scan, 200, platform);
+    expect(second.locations.find((location) => location.fileName === 'Foo.safetensors')).toMatchObject({ sha256: 'a'.repeat(64), civitai: { fetchedAt: 101 } });
+    expect(second.locations.find((location) => location.fileName === 'foo.safetensors')).toMatchObject({ sha256: 'b'.repeat(64) });
+    expect(second.locations.find((location) => location.fileName === 'foo.safetensors')!.civitai).toBeUndefined();
+    expect(second.managedModels).toHaveLength(2);
+  });
+
+  it('retains Windows IDs and enrichment when only path casing changes', () => {
+    const scanned = { sourceId: source.id, relativePath: 'Folder\\Foo.safetensors', absolutePath: 'D:/synthetic/Folder/Foo.safetensors', fileName: 'Foo.safetensors', size: 10, createdAt: 2, modifiedAt: 3 };
+    const first = reconcileModelCatalog({ version: 1, locations: [], updatedAt: 0 }, [source], [{ sourceId: source.id, locations: [scanned] }], 100, 'Win32');
+    first.locations[0].sha256 = 'a'.repeat(64);
+    const second = reconcileModelCatalog(first, [source], [{ sourceId: source.id, locations: [{ ...scanned, relativePath: 'folder\\foo.safetensors' }] }], 200, 'Win32');
+    expect(second.locations[0]).toMatchObject({ id: 'source-1:folder\\foo.safetensors', sha256: 'a'.repeat(64), discoveredAt: 100 });
+  });
+
   it('classifies a mixed ComfyUI root per directory without treating filenames as types', () => {
     const mixed: ModelSource = { ...source, path: 'Z:\\synthetic\\ComfyUI\\Models', kind: 'auto' };
     const paths = ['LoRAs\\style\\a.safetensors', 'checkpoints/b.safetensors', 'unet/c.safetensors', 'diffusion_models/d.safetensors', 'vae/e.safetensors', 'text_encoders/f.safetensors', 'clip/g.safetensors', 'clip_vision/h.safetensors', 'controlnet/i.safetensors', 'upscale_models/j.safetensors', 'embeddings/k.safetensors', 'misc/lora-name.safetensors'];
