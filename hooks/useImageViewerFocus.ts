@@ -27,6 +27,19 @@ export function useImageViewerFocus<T extends FocusableViewerSession>(
     if (openingImageId.current === imageId) openingImageId.current = null;
   }, []);
 
+  const finishSessionOpening = useCallback((modalId: string) => {
+    const state = current.current;
+    const target = state.sessions.find((entry) => entry.modalId === modalId);
+    if (!target) return;
+    finishOpening(target.imageId);
+    // A pending session may have been replaced by an opening in the background.
+    // Its completion must respect the latest visibility and image, not the click
+    // that originally created the native window.
+    if (state.activeId === modalId && !target.isMinimized) {
+      state.synchronizeImage(target.imageId);
+    }
+  }, [finishOpening]);
+
   const activate = useCallback((modalId: string, requestNativeFocus: boolean) => {
     const state = current.current;
     const target = state.sessions.find((entry) => entry.modalId === modalId);
@@ -56,5 +69,5 @@ export function useImageViewerFocus<T extends FocusableViewerSession>(
 
   const requestActivation = useCallback((modalId: string) => activate(modalId, true), [activate]);
   const observeActivation = useCallback((modalId: string) => activate(modalId, false), [activate]);
-  return { requestActivation, observeActivation, beginOpening, finishOpening };
+  return { requestActivation, observeActivation, beginOpening, finishOpening, finishSessionOpening };
 }

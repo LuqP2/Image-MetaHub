@@ -1863,7 +1863,8 @@ export default function App() {
   }, [imageLookup]);
 
   const { requestActivation: handleActivateImageModal, observeActivation: handleObserveImageModalFocus,
-    beginOpening: beginViewerOpening, finishOpening: finishViewerOpening } = useImageViewerFocus(
+    beginOpening: beginViewerOpening, finishOpening: finishViewerOpening,
+    finishSessionOpening: finishViewerSessionOpening } = useImageViewerFocus(
     openImageModals, activeImageModalId, setOpenImageModals, setActiveImageModalId, synchronizeViewerImage,
   );
 
@@ -3518,13 +3519,7 @@ export default function App() {
                 ? { ...entry, nativeStatus: entry.isMinimized ? 'minimized' : 'open' }
                 : entry
             ));
-            if (activeImageModalIdRef.current === modal.modalId) {
-              const latest = openImageModalsRef.current.find((entry) => entry.sessionId === modal.sessionId);
-              if (latest) {
-                finishViewerOpening(latest.imageId);
-                synchronizeViewerImage(latest.imageId);
-              }
-            }
+            finishViewerSessionOpening(modal.modalId);
             return;
           }
           if (result.cancelled) return;
@@ -3562,7 +3557,7 @@ export default function App() {
       forgetDetachedViewerSession(sessionId);
       void api.imageViewerWindowAction({ sessionId, action: 'close' });
     }
-  }, [buildDetachedViewerSnapshot, failDetachedViewerSession, finishViewerOpening, forgetDetachedViewerSession, openImageModalEntries, synchronizeViewerImage]);
+  }, [buildDetachedViewerSnapshot, failDetachedViewerSession, finishViewerOpening, finishViewerSessionOpening, forgetDetachedViewerSession, openImageModalEntries]);
 
   useEffect(() => {
     const api = window.electronAPI;

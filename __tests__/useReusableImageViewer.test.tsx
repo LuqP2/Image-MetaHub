@@ -80,6 +80,34 @@ describe('reuse a detached image viewer', () => {
     expect(nativeAction).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps library selection when a pending viewer is replaced in the background and then completes', () => {
+    const { result } = renderHook(() => useHarness(true, [{ ...session('a'), nativeStatus: 'pending' }]));
+    act(() => result.current.beginOpening('a'));
+    act(() => result.current.reuse({ ...request('b'), isMinimized: true }));
+    expect(result.current.sessions[0]).toMatchObject({ imageId: 'b', nativeStatus: 'pending', isMinimized: true });
+    act(() => {
+      result.current.finishOpening('a');
+      result.current.finishSessionOpening('a');
+    });
+    expect(result.current.selected).toBe('a');
+    expect(nativeAction).not.toHaveBeenCalled();
+  });
+
+  it('synchronizes the latest foreground replacement when its pending session completes', () => {
+    const { result } = renderHook(() => useHarness(true, [{ ...session('a'), nativeStatus: 'pending' }]));
+    act(() => result.current.beginOpening('a'));
+    act(() => result.current.reuse(request('b')));
+    act(() => {
+      result.current.finishOpening('a');
+      result.current.finishSessionOpening('a');
+    });
+    expect(result.current.selected).toBe('b');
+    // Completion also releases the pending-image guard for later native focus.
+    act(() => result.current.observeActivation('a'));
+    expect(result.current.selected).toBe('b');
+    expect(nativeAction).toHaveBeenCalledTimes(1);
+  });
+
   it('restores a minimized viewer, and keeps background openings minimized without stealing focus', () => {
     const { result } = renderHook(() => useHarness(true, [{ ...session('a'), isMinimized: true, nativeStatus: 'minimized' }]));
     act(() => result.current.reuse(request('b')));

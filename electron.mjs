@@ -2768,6 +2768,7 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled, allowRe
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
   });
   viewerWindow.on('close', (event) => {
+    coordinateViewerOpen.cancel(viewerWindow.__imageViewerSessionId);
     viewerWindow.__viewerReadiness.cancel();
     // Closing the active viewer returns to the library, not another viewer.
     // Otherwise the OS's automatic focus transfer looks like a user selection.
@@ -2824,7 +2825,9 @@ async function openDetachedImageViewer(sessionId, snapshot, isCancelled, allowRe
     detachedImageViewerWindows.delete(sessionId);
     detachedImageViewerSnapshots.delete(sessionId);
     if (!viewerWindow.isDestroyed()) viewerWindow.destroy();
-    return { success: false, error: 'Failed to load detached viewer.' };
+    // Closing a registered window can reject its still-pending load. Preserve
+    // the cancellation already settled by close instead of retrying that load.
+    return await viewerWindow.__viewerReadiness.promise;
   }
 }
 
