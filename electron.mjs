@@ -58,6 +58,7 @@ import {
   toggleModelInspectorAlwaysOnTop,
 } from './electron/modelInspectorWindowState.mjs';
 import { isModelLibraryPathWithinRoots } from './electron/modelLibrarySecurity.mjs';
+import { MODEL_MEDIA_SCHEME, resolveModelMediaPath, storeModelMedia } from './electron/modelMediaStore.mjs';
 import { fetchCivitaiJson, fetchCivitaiImage, normalizeRemoteVersion } from './electron/modelManagerRemote.mjs';
 import {
   createPermanentDeleteGrantStore,
@@ -210,6 +211,7 @@ const trimJsonChunkPadding = (value) => {
 };
 
 protocol.registerSchemesAsPrivileged([
+  { scheme: MODEL_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
   {
     scheme: MEDIA_PROTOCOL_SCHEME,
     privileges: {
@@ -3343,6 +3345,10 @@ app.whenReady().then(async () => {
   registerMediaProtocol();
   registerThumbnailProtocol();
   registerModelProtocol();
+  protocol.registerFileProtocol(MODEL_MEDIA_SCHEME, (request, callback) => {
+    try { callback({ path: resolveModelMediaPath(path.join(app.getPath('userData'), 'model-manager-user-data', 'media'), request.url) }); }
+    catch { callback({ error: -10 }); }
+  });
 
   provenanceRepositoryLifecycle = new ProvenanceRepositoryLifecycle({
     userDataPath: app.getPath('userData'),
@@ -6440,6 +6446,11 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('model-manager-store-media', async (event, value) => {
+    if (!isPrimaryWindowSender(event)) return { success: false, error: 'Unauthorized model image storage.' };
+    try { return { success: true, reference: await storeModelMedia(path.join(app.getPath('userData'), 'model-manager-user-data', 'media'), value) }; }
+    catch (error) { return { success: false, error: error.message }; }
+  });
   ipcMain.handle('model-manager-load-preferences', async (event) => {
     if (!isPrimaryWindowSender(event)) return null;
     try { return JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'model-manager-user-data', 'preferences.json'), 'utf8')); }
@@ -6481,7 +6492,7 @@ function setupFileOperationHandlers() {
   ipcMain.handle('model-manager-command', (event, command) => {
     if (!isModelInspectorSender(event) || !mainWindow || mainWindow.isDestroyed()) return { success: false, error: 'Models workspace is unavailable.' };
     if (command?.locationId && !modelInspectorSnapshot?.items.some((item) => item.location.id === command.locationId)) return { success: false, error: 'Unknown model.' };
-    if (!['identify', 'hash', 'check', 'unbind', 'bind', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'examples', 'example', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
+    if (!['identify', 'hash', 'check', 'unbind', 'bind', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'examples', 'example', 'cover', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
     const requestId = crypto.randomUUID();
     return new Promise((resolve) => {
       const timer = setTimeout(() => { modelManagerCommands.delete(requestId); resolve({ success: false, error: 'Model action timed out.' }); }, 15 * 60 * 1000);
@@ -6519,7 +6530,7 @@ function setupFileOperationHandlers() {
             const decoded = nativeImage.createFromBuffer(bytes);
             if (decoded.isEmpty()) continue;
             const preview = decoded.resize({ width: 768 }).toJPEG(85).toString('base64');
-            examples.push({ id: `civitai:${id}:${image.id ?? index}`, origin: 'civitai', preview: `data:image/jpeg;base64,${preview}`, caption: '', versionId: id });
+            examples.push({ id: `civitai:${id}:${image.id ?? index}`, origin: 'civitai', preview: await storeModelMedia(path.join(app.getPath('userData'), 'model-manager-user-data', 'media'), `data:image/jpeg;base64,${preview}`), caption: '', versionId: id });
           } catch (error) { if (controller.signal.aborted) throw error; }
         }
         return { success: true, examples };
@@ -6531,7 +6542,7 @@ function setupFileOperationHandlers() {
         if (!candidate) throw new Error('This Civitai version has no available cover image.');
         const image = nativeImage.createFromBuffer(await fetchCivitaiImage(candidate.url, controller.signal));
         if (image.isEmpty()) throw new Error('Unable to decode the Civitai cover image.');
-        coverImage = `data:image/jpeg;base64,${image.resize({ width: 768 }).toJPEG(85).toString('base64')}`;
+        coverImage = await storeModelMedia(path.join(app.getPath('userData'), 'model-manager-user-data', 'media'), `data:image/jpeg;base64,${image.resize({ width: 768 }).toJPEG(85).toString('base64')}`);
       }
       return { success: true, metadata: { modelId: data.modelId, versionId: data.id, modelName: typeof data.model?.name === 'string' ? data.model.name : '', versionName: version.name, baseModel: version.baseModel, description: version.description, publishedAt: version.publishedAt, createdAt: version.createdAt, trainedWords: Array.isArray(data.trainedWords) ? data.trainedWords.filter((word) => typeof word === 'string') : [], url: version.url, fetchedAt: Date.now(), coverImage, binding: kind === 'hash' ? 'hash' : 'manual' } };
     } catch (error) { return { success: false, error: error.message, retryAfterMs: error.retryAfterMs, notFound: error.status === 404, cancelled: controller.signal.aborted }; }
@@ -6549,7 +6560,7 @@ function setupFileOperationHandlers() {
       if (image.isEmpty()) throw new Error('Unable to decode this image.');
       const size = image.getSize();
       const reduced = Math.max(size.width, size.height) > 768 ? image.resize(size.width >= size.height ? { width: 768 } : { height: 768 }) : image;
-      return { success: true, preview: `data:image/jpeg;base64,${reduced.toJPEG(85).toString('base64')}`, name: path.basename(filePath) };
+      return { success: true, preview: await storeModelMedia(path.join(app.getPath('userData'), 'model-manager-user-data', 'media'), `data:image/jpeg;base64,${reduced.toJPEG(85).toString('base64')}`), name: path.basename(filePath) };
     } catch (error) { return { success: false, error: error.message }; }
   });
 

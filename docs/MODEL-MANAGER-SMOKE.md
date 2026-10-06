@@ -11,6 +11,8 @@ Manual acceptance only. Do not run against personal libraries without explicit s
 5. Compute SHA-256 in Inspector. The identical model files should collapse to one item exposing two locations. Notes, chosen cover and examples must survive promotion to hash identity.
 6. Restart the packaged app and confirm saved preferences. In a disposable test profile only, clear the app caches and restart. The source, version bindings, notes, cover, linked examples and monitoring preferences should be restored from `model-manager-user-data/preferences.json`. Indexed-library links may show unavailable until the image library is loaded again.
 7. Check the light theme and a narrow window manually. Both side panels should be collapsible. Check empty results, unavailable examples and header errors without blocking catalog navigation.
+8. Covers and examples should resolve through `imh-model-media://` references backed by files under `model-manager-user-data/media`. The preferences JSON and Inspector snapshots must contain references, not inline image blobs. An older profile with inline images is migrated at startup before the first loaded snapshot. This step requires an explicitly selected test profile; do not inspect personal preferences automatically.
+9. With a synthetic large catalog, confirm header progress remains responsive and cancel preserves completed headers. Change an individual monitoring override and confirm the Folder default label still reports the folder preference.
 
 ## Public Civitai flow
 
@@ -22,6 +24,6 @@ Manual acceptance only. Do not run against personal libraries without explicit s
 
 ## Automated checks
 
-`node node_modules/vitest/vitest.mjs run __tests__/modelManager.tracking.test.ts __tests__/modelManager.service.test.ts __tests__/modelManager.cacheReset.test.ts __tests__/modelInspector.test.ts __tests__/modelLibrary.catalog.test.ts __tests__/smartCollections.storage.test.ts`
+`node node_modules/vitest/vitest.mjs run __tests__/modelManager.tracking.test.ts __tests__/modelManager.service.test.ts __tests__/modelManager.media.test.ts __tests__/modelManager.cacheReset.test.ts __tests__/modelInspector.test.ts __tests__/modelLibrary.catalog.test.ts __tests__/smartCollections.storage.test.ts`
 
 The tests use synthetic records and mocked network responses. They do not prove packaged cover loading and persistence, visual layout, or real Civitai availability.

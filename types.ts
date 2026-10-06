@@ -486,6 +486,7 @@ export interface ElectronAPI {
   onModelManagerCommand: (callback: (payload: { requestId: string; command: import('./services/modelLibrary/types').ModelManagerCommand }) => void) => () => void;
   modelManagerRemote: (args: { kind: 'model' | 'version' | 'examples' | 'hash' | 'cover'; id: number | string; requestId: string }) => Promise<{ success: boolean; error?: string; cancelled?: boolean; notFound?: boolean; retryAfterMs?: number; modelName?: string; versions?: import('./services/modelLibrary/types').RemoteModelVersion[]; metadata?: import('./services/modelLibrary/types').CivitaiModelMetadata; examples?: import('./services/modelLibrary/types').ModelExample[] }>;
   modelManagerCancelRemote: (requestId: string) => Promise<void>;
+  modelManagerStoreMedia: (value: string) => Promise<{ success: boolean; reference?: string; error?: string }>;
   modelManagerImportMedia: () => Promise<{ success: boolean; cancelled?: boolean; error?: string; preview?: string; name?: string }>;
   modelLibraryScan: (sources: Array<{ id: string; path: string; recursive?: boolean }>) => Promise<{ success: boolean; results?: Array<{ sourceId: string; locations: Array<{ sourceId: string; relativePath: string; absolutePath: string; fileName: string; size: number; createdAt: number | null; modifiedAt: number | null }>; error?: string }>; error?: string }>;
   modelLibraryReadMetadata: (filePath: string) => Promise<{ success: boolean; metadata?: import('./services/modelLibrary/types').ModelFileMetadata; error?: string }>;

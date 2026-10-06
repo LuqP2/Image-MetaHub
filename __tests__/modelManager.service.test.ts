@@ -22,6 +22,7 @@ beforeEach(() => {
   fakes.saveLocal.mockReset().mockImplementation(async (value) => value);
   catalog = { version: 1, locations: [location('one')], updatedAt: 1 };
   api = {
+    modelManagerStoreMedia: vi.fn(async (reference) => ({ success: true, reference })),
     onModelManagerCommand: vi.fn(() => () => {}), modelManagerPublish: vi.fn(async () => ({ success: true })), modelManagerLoadPreferences: vi.fn(async () => null),
     modelManagerCommandResult: vi.fn(async () => {}),
     getJsonCacheData: vi.fn(async () => ({ success: true, data: catalog })), writeJsonCacheData: vi.fn(async () => ({ success: true })),
@@ -42,6 +43,31 @@ async function initialize() {
 }
 
 describe('single-owner model service', () => {
+  it('reports folder inheritance independently of the effective per-model override', async () => {
+    fakes.sources = [{ ...source, watchUpdates: true }];
+    const manager = await initialize();
+    await manager.saveModelPatch(location('one').id, { watchUpdates: false });
+    expect(manager.isModelWatched(manager.modelItem(location('one').id))).toBe(false);
+    expect(manager.modelFolderWatchDefault(manager.modelItem(location('one').id))).toBe(true);
+  });
+  it('batches header writes instead of persisting the full catalog for every file', async () => {
+    catalog.locations = Array.from({ length: 125 }, (_, index) => ({ ...location(String(index)), fileMetadata: undefined }));
+    const manager = await initialize();
+    expect(api.modelLibraryReadMetadata).toHaveBeenCalledTimes(125);
+    expect(api.writeJsonCacheData).toHaveBeenCalledTimes(4); // Discovery + 50/50/25 completed headers.
+    expect(manager.getModelManagerState().catalog.locations.every((item) => item.fileMetadata)).toBe(true);
+  });
+  it('flushes completed headers when their queue is cancelled', async () => {
+    catalog.locations = Array.from({ length: 10 }, (_, index) => ({ ...location(String(index)), fileMetadata: undefined }));
+    const manager = await import('../services/modelLibrary/manager');
+    let reads = 0;
+    api.modelLibraryReadMetadata.mockImplementation(async () => { if (++reads === 3) manager.cancelModelJob(); return { success: true, metadata: { raw: {} } }; });
+    cleanup = manager.startModelManager();
+    await vi.waitFor(() => expect(manager.getModelManagerState().progress).toBeNull());
+    await vi.waitFor(() => expect(reads).toBe(3));
+    expect(manager.getModelManagerState().catalog.locations.filter((item) => item.fileMetadata)).toHaveLength(3);
+    expect(api.writeJsonCacheData).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ locations: manager.getModelManagerState().catalog.locations }) }));
+  });
   it('loads a Civitai cover on demand once, shares it across copies and preserves a custom cover', async () => {
     catalog.locations.push(location('two'));
     const manager = await initialize();

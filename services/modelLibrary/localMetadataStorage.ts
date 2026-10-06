@@ -28,7 +28,7 @@ export function normalizeModelLocalMetadata(
     defaultStrength,
     favorite: value.favorite === true,
     watchUpdates: typeof value.watchUpdates === 'boolean' ? value.watchUpdates : undefined,
-    previewImage: typeof value.previewImage === 'string' && /^data:image\/(png|jpe?g|webp);base64,/i.test(value.previewImage) ? value.previewImage : undefined,
+    previewImage: typeof value.previewImage === 'string' && /^imh-model-media:\/\/media\/[a-f0-9]{64}\.(?:jpg|png|webp)$|^data:image\/(png|jpe?g|webp);base64,/i.test(value.previewImage) ? value.previewImage : undefined,
     examples: Array.isArray(value.examples) ? value.examples.filter((entry) => typeof entry?.id === 'string' && typeof entry.preview === 'string') : [],
     updatedAt: Number.isFinite(value.updatedAt) ? Number(value.updatedAt) : Date.now(),
   };

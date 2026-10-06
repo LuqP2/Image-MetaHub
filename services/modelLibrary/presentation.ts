@@ -28,7 +28,7 @@ const cleanWords = (values: string[] | undefined): string[] =>
   Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
 
 const isSafeStoredPreview = (value: string | undefined): value is string =>
-  Boolean(value && /^data:image\/(png|jpe?g|webp);base64,/i.test(value));
+  Boolean(value && /^imh-model-media:\/\/media\/[a-f0-9]{64}\.(?:jpg|png|webp)$|^data:image\/(png|jpe?g|webp);base64,/i.test(value));
 
 const toPlainText = (value: string | undefined): string | undefined => {
   const text = value

@@ -1,3 +1,5 @@
+import { externalizeModelMedia } from './mediaStorage';
+import { mergeModelMetadata } from './mergeMetadata';
 import { thumbnailManager } from '../thumbnailManager';
 import { useSyncExternalStore } from 'react';
 import { useImageStore } from '../../store/useImageStore';
@@ -66,7 +68,8 @@ export function modelItem(locationId: string): ModelInspectorItem {
   if (!location) throw new Error('This model is no longer in the catalog.');
   return { location, localMetadata: getModelLocalMetadata(state.localMetadata, location) };
 }
-function patchLocation(locationId: string, patch: Partial<ModelInspectorItem['location']>) {
+async function patchLocation(locationId: string, patch: Partial<ModelInspectorItem['location']>) {
+  patch = await externalizeModelMedia(patch);
   const locations = state.catalog.locations.map((location) => location.id === locationId ? { ...location, ...patch } : location);
   publish({ catalog: { ...state.catalog, locations, managedModels: buildManagedModels(locations), updatedAt: Date.now() } });
   return persistCatalog();
@@ -74,7 +77,7 @@ function patchLocation(locationId: string, patch: Partial<ModelInspectorItem['lo
 export function saveModelPatch(locationId: string, patch: Partial<ModelLocalMetadata> | ((current: ModelLocalMetadata | undefined) => Partial<ModelLocalMetadata>)) {
   const save = localWrites.catch(() => {}).then(async () => {
     const item = modelItem(locationId);
-    const values = typeof patch === 'function' ? patch(item.localMetadata) : patch;
+    const values = await externalizeModelMedia(typeof patch === 'function' ? patch(item.localMetadata) : patch);
     const saved = await saveModelLocalMetadata(createModelLocalMetadata(item.location, { tags: [], ...item.localMetadata, ...values }));
     publish({ localMetadata: { ...state.localMetadata, [saved.id]: saved } });
     await flushModelState();
@@ -85,6 +88,9 @@ export function saveModelPatch(locationId: string, patch: Partial<ModelLocalMeta
 }
 export function isModelWatched(item: ModelInspectorItem): boolean {
   if (typeof item.localMetadata?.watchUpdates === 'boolean') return item.localMetadata.watchUpdates;
+  return modelFolderWatchDefault(item);
+}
+export function modelFolderWatchDefault(item: ModelInspectorItem): boolean {
   const locations = item.location.sha256 ? state.catalog.locations.filter((location) => location.sha256 === item.location.sha256) : [item.location];
   return locations.some((location) => state.sources.find((source) => source.id === location.sourceId)?.watchUpdates);
 }
@@ -162,17 +168,14 @@ async function hash(locationId: string) {
     const promote = localWrites.catch(() => {}).then(async () => {
     const oldId = getModelLocalMetadataId(modelItem(locationId).location);
     const newId = `sha256:${result.sha256}`;
-    // Merge latest local edits, not the snapshot from before the hash operation.
+    // Read current records after hashing; merge policy uses updatedAt and preserves divergent notes.
     const local = state.localMetadata[oldId];
     const existing = state.localMetadata[newId];
     if (local) {
-      const merged = { ...local, ...existing, id: newId, sha256: result.sha256, locationId: undefined,
-        tags: Array.from(new Set([...(local.tags ?? []), ...(existing?.tags ?? [])])),
-        examples: Array.from(new Map([...(local.examples ?? []), ...(existing?.examples ?? [])].map((example) => [example.id, example])).values()),
-      };
+      const merged = mergeModelMetadata(local, existing, result.sha256);
       const saved = await saveModelLocalMetadata(merged);
       if (oldId !== newId) await deleteModelLocalMetadata(oldId);
-      const entries = { ...state.localMetadata, [newId]: saved }; delete entries[oldId];
+      const entries = { ...state.localMetadata, [newId]: saved }; if (oldId !== newId) delete entries[oldId];
       publish({ localMetadata: entries });
     }
     await patchLocation(locationId, { sha256: result.sha256, hashFingerprint: { size: result.size ?? item.location.size, modifiedAt: result.modifiedAt ?? item.location.modifiedAt } });
@@ -258,6 +261,17 @@ export async function checkModelUpdates(locationIds: string[], automatic = false
 
 export async function scanModelSources() {
   startJob('scan', state.sources.length);
+  const pendingHeaders = new Map<string, Partial<ModelInspectorItem['location']>>();
+  let lastHeaderFlush = Date.now();
+  const flushHeaders = async () => {
+    if (!pendingHeaders.size) return;
+    const locations = state.catalog.locations.map((location) => pendingHeaders.has(location.id) ? { ...location, ...pendingHeaders.get(location.id) } : location);
+    publish({ catalog: { ...state.catalog, locations, updatedAt: Date.now() } });
+    pendingHeaders.clear();
+    lastHeaderFlush = Date.now();
+    // Header changes cannot affect identity: preserve the already-built groups.
+    await persistCatalog();
+  };
   try {
     const sources = [...state.sources];
     await window.electronAPI!.modelLibrarySetRoots(sources.map((source) => source.path));
@@ -272,10 +286,11 @@ export async function scanModelSources() {
       if (cancelled) break;
       progress(index + 1, location.fileName);
       const metadata = await window.electronAPI!.modelLibraryReadMetadata(location.absolutePath);
-      await patchLocation(location.id, metadata.success && metadata.metadata ? { fileMetadata: metadata.metadata, metadataError: undefined } : { metadataError: metadata.error || 'Header unavailable' });
+      pendingHeaders.set(location.id, await externalizeModelMedia(metadata.success && metadata.metadata ? { fileMetadata: metadata.metadata, metadataError: undefined } : { metadataError: metadata.error || 'Header unavailable' }));
+      if (pendingHeaders.size >= 50 || Date.now() - lastHeaderFlush >= 1000) await flushHeaders();
     }
   } catch (error) { managerMessage((error as Error).message); }
-  finally { publish({ progress: null }); }
+  finally { try { await flushHeaders(); } finally { publish({ progress: null }); } }
   if (cancelled) return;
   const toIdentify = state.catalog.locations.filter((location) => !location.civitai && (isModelWatched(modelItem(location.id)) || state.sources.find((source) => source.id === location.sourceId)?.identifyOnScan)).map((location) => location.id);
   if (toIdentify.length) await identifyModels(toIdentify);
@@ -327,7 +342,7 @@ async function libraryPreview(imageId: string): Promise<{ preview: string; name:
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     preview = canvas.toDataURL('image/jpeg', 0.85);
   } finally { bitmap.close(); }
-  return { preview, name: image.name };
+  return { preview: await externalizeModelMedia(preview), name: image.name };
 }
 export async function runModelCommand(command: ModelManagerCommand) {
   switch (command.type) {
@@ -340,6 +355,7 @@ export async function runModelCommand(command: ModelManagerCommand) {
         const result = await remote('cover', link.versionId);
         if (cancelled) return;
         if (!result.metadata?.coverImage) throw new Error('This Civitai version has no available cover.');
+        result.metadata = await externalizeModelMedia(result.metadata);
         const locations = state.catalog.locations.map((location) => location.civitai && 'versionId' in location.civitai && location.civitai.versionId === link.versionId
           ? { ...location, civitai: { ...location.civitai, coverImage: result.metadata!.coverImage } } : location);
         publish({ catalog: { ...state.catalog, locations, updatedAt: Date.now() } });
@@ -422,7 +438,13 @@ export function startModelManager() {
         const cachedLocation = cachedById.get(location.id);
         return cachedLocation?.size === location.size && cachedLocation?.modifiedAt === location.modifiedAt ? { ...location, fileMetadata: cachedLocation.fileMetadata } : location;
       });
-      publish({ sources: durable?.sources ?? sources, catalog: restored, localMetadata: durable?.localMetadata ?? Object.fromEntries(metadata.map((item) => [item.id, item])), watches: durable?.watches ?? Object.fromEntries(preferences.watches.map((watch) => [watch.id, watch])), intervalHours: [6, 24, 168].includes(durable?.intervalHours) ? durable!.intervalHours : preferences.intervalHours, libraryIds: useImageStore.getState().images.map((image) => image.id), loading: false });
+      const migratedCatalog = await externalizeModelMedia(restored);
+      const priorLocal = durable?.localMetadata ?? Object.fromEntries(metadata.map((item) => [item.id, item]));
+      const migratedLocal = await externalizeModelMedia(priorLocal);
+      for (const entry of Object.values(migratedLocal)) if (entry !== priorLocal[entry.id]) await saveModelLocalMetadata(entry);
+      publish({ sources: durable?.sources ?? sources, catalog: migratedCatalog, localMetadata: migratedLocal, watches: durable?.watches ?? Object.fromEntries(preferences.watches.map((watch) => [watch.id, watch])), intervalHours: [6, 24, 168].includes(durable?.intervalHours) ? durable!.intervalHours : preferences.intervalHours, libraryIds: useImageStore.getState().images.map((image) => image.id), loading: false });
+      if (migratedCatalog !== restored) await persistCatalog();
+      await flushModelState();
       if (state.sources.length) await scanModelSources();
     } catch (error) { publish({ loading: false, message: (error as Error).message }); }
   })();
