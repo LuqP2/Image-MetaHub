@@ -1,5 +1,7 @@
 import { VariableSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
+import MasonryGridLayout from './MasonryGridLayout';
+import { buildMasonryLayout, masonrySelection, masonryKeyboardTarget, type MasonryRect } from '../utils/masonryLayout';
 
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -95,6 +97,7 @@ interface ImageCardProps {
   onRenameComplete?: (result?: ImageRenameResult) => void;
   isRenaming?: boolean;
   baseWidth: number;
+  frameHeight?: number;
   isComparisonFirst?: boolean;
   cardRef?: (el: HTMLDivElement | null) => void;
   isBlurred?: boolean;
@@ -185,7 +188,7 @@ const getWarmupWindowImageKey = (images: IndexedImage[]): string =>
 
 const visibleGridThumbnailFlows = new Map<string, string>();
 
-const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, onRenameComplete, isRenaming = false, baseWidth, isComparisonFirst, cardRef, isBlurred }) => {
+const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, onRenameComplete, isRenaming = false, baseWidth, frameHeight, isComparisonFirst, cardRef, isBlurred }) => {
   const [renameValue, setRenameValue] = useState('');
   const [isSubmittingRename, setIsSubmittingRename] = useState(false);
   const thumbnail = useResolvedThumbnail(image);
@@ -484,7 +487,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         } ${
           isFocused ? 'outline outline-2 outline-dashed outline-blue-400 outline-offset-2 z-10' : ''
         }`}
-        style={{ width: '100%', height: `${baseWidth * 1.2}px`, flexShrink: 0 }}
+        style={{ width: '100%', height: `${frameHeight ?? baseWidth * 1.2}px`, flexShrink: 0 }}
         onMouseDown={(e) => {
           handlePointerLikeDown(e.clientX, e.clientY, e.button);
           if (enableAuxClickOpen && e.button === 1) {
@@ -626,9 +629,13 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           </div>
         ) : resolvedThumbnailUrl ? (
           <img
+            onLoad={frameHeight === undefined ? undefined : event => {
+              const img = event.currentTarget;
+              if (img.naturalWidth > 0 && img.naturalHeight > 0) onImageLoad(image.id, img.naturalWidth / img.naturalHeight);
+            }}
             src={resolvedThumbnailUrl}
             alt={image.name}
-            className={`max-w-full max-h-full object-contain transition-all duration-200 ${
+            className={`max-w-full max-h-full object-contain transition-all duration-200 ${frameHeight === undefined ? '' : 'w-full h-full'} ${
               isBlurred ? 'filter blur-xl scale-110 opacity-80' : ''
             } image-alpha-grid`}
             loading="lazy"
@@ -753,6 +760,7 @@ function isImageStack(item: IndexedImage | ImageStack): item is ImageStack {
 }
 
 const GAP_SIZE = 16;
+const MASONRY_GAP_SIZE = 4;
 const GROUP_HEADER_TOP_GAP = 14;
 const GROUP_HEADER_BAR_HEIGHT = 52;
 const GROUP_HEADER_HEIGHT = GROUP_HEADER_TOP_GAP + GROUP_HEADER_BAR_HEIGHT;
@@ -769,6 +777,7 @@ const clampIndex = (index: number, itemCount: number): number =>
 const KEYBOARD_NAVIGATION_KEYS = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'];
 
 interface CellData {
+  cardHeight?: number;
   items: GridRenderItem[];
   columnCount: number;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -998,6 +1007,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               onRenameComplete={handleRenameComplete}
               isRenaming={renamingImageId === item.coverImage.id}
               baseWidth={imageSize}
+              frameHeight={data.cardHeight}
               isComparisonFirst={false}
               cardRef={createCardRef(item.coverImage.id)}
               isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
@@ -1043,6 +1053,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
         onRenameComplete={handleRenameComplete}
         isRenaming={renamingImageId === image.id}
         baseWidth={imageSize}
+              frameHeight={data.cardHeight}
         isComparisonFirst={comparisonFirstImageId === image.id}
         cardRef={createCardRef(image.id)}
         isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
@@ -1053,6 +1064,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
 
 // --- ImageGrid Component ---
 interface ImageGridProps {
+  layout?: 'uniform' | 'masonry';
   images: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   selectedImages: Set<string>;
@@ -1080,11 +1092,14 @@ interface ImageGridProps {
   hasRightSidebar?: boolean;
 }
 
+const ignoreMasonryScroll = (_top: number) => undefined;
+
 const InnerGridElement = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
   <div ref={ref} {...props} data-grid-background="true" />
 ));
 
 const ImageGrid: React.FC<ImageGridProps> = ({
+  layout = 'uniform',
   images,
   onImageClick,
   selectedImages,
@@ -1222,6 +1237,25 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     );
   }, [sensitiveTags]);
   const showFilenameArea = showFilenames || renamingImageId !== null;
+  const isMasonry = layout === 'masonry';
+  const [masonryWidth, setMasonryWidth] = useState(0);
+  const [masonryRatios, setMasonryRatios] = useState<Map<string, number>>(() => new Map());
+  const handleMasonryResize = useCallback((width: number) => setMasonryWidth(width), []);
+  const masonryGeometry = useMemo(() => isMasonry ? buildMasonryLayout(
+    itemsToRender.map(item => {
+      if (!isImageRenderItem(item)) return { key: item.type === 'group-header' ? item.group.id : `${item.groupId}-${item.index}`, header: true };
+      const image = getWarmupImage(item);
+      const fixed = isAudioFileName(image.name, image.fileType) || isModel3DFileName(image.name, image.fileType);
+      const match = image.dimensions?.match(/^(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)$/i);
+      const dimensionsRatio = match && Number(match[2]) > 0 ? Number(match[1]) / Number(match[2]) : undefined;
+      return { key: item.id, aspectRatio: fixed ? undefined : masonryRatios.get(image.id) ?? dimensionsRatio };
+    }), masonryWidth, imageSize, MASONRY_GAP_SIZE, showFilenameArea ? FILENAME_HEIGHT : 0, GROUP_HEADER_HEIGHT,
+  ) : null, [isMasonry, itemsToRender, masonryWidth, imageSize, showFilenameArea, masonryRatios]);
+  const masonryGeometryRef = useRef(masonryGeometry);
+  masonryGeometryRef.current = masonryGeometry;
+  const isMasonryRef = useRef(isMasonry);
+  isMasonryRef.current = isMasonry;
+
 
 
 
@@ -1302,8 +1336,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   }, [getGridScrollElement]);
 
   const getScrollRestoreKey = useCallback((scrollTop: number) => (
-    `${scrollResetKey ?? 'grid'}:${isInfinite ? 'virtual' : 'static'}:${Math.round(Math.max(0, scrollTop))}`
-  ), [isInfinite, scrollResetKey]);
+    `${scrollResetKey ?? 'grid'}:${layout}:${isInfinite ? 'virtual' : 'static'}:${Math.round(Math.max(0, scrollTop))}`
+  ), [isInfinite, scrollResetKey, layout]);
 
   useEffect(() => {
     if (lastScrollResetKeyRef.current === scrollResetKey) {
@@ -1320,14 +1354,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     onScrollPositionChange?.(0);
   }, [getScrollRestoreKey, initialScrollTop, onScrollPositionChange, restoreGridScrollPosition, scrollResetKey]);
 
+  const previousLayoutRef = useRef(layout);
   useEffect(() => {
+    const layoutChanged = previousLayoutRef.current !== layout;
+    previousLayoutRef.current = layout;
     const restoreKey = getScrollRestoreKey(initialScrollTop);
     if (lastRestoredScrollKeyRef.current === restoreKey) {
       return;
     }
 
     lastRestoredScrollKeyRef.current = restoreKey;
-    if (initialScrollTop <= 0) {
+    if (initialScrollTop <= 0 && !layoutChanged) {
       return;
     }
 
@@ -1343,7 +1380,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       window.cancelAnimationFrame(firstFrame);
       window.cancelAnimationFrame(secondFrame);
     };
-  }, [getScrollRestoreKey, initialScrollTop, restoreGridScrollPosition]);
+  }, [getScrollRestoreKey, initialScrollTop, restoreGridScrollPosition, layout]);
 
   const getActiveColumnCount = useCallback(() => {
     if (isInfinite) {
@@ -1871,7 +1908,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       const preserveExistingSelection = e.ctrlKey || e.metaKey || e.shiftKey;
       const newSelection = new Set(preserveExistingSelection ? initialSelectedImages : []);
 
-      if (isInfinite) {
+      if (isMasonryRef.current && masonryGeometryRef.current) {
+        for (const rect of masonrySelection(masonryGeometryRef.current, box)) {
+          const item = itemsToRender[rect.index];
+          if (item && isImageRenderItem(item)) newSelection.add(getWarmupImage(item).id);
+        }
+      } else if (isInfinite) {
         const columnCount = columnCountRef.current;
         const virtualItems = expandGroupedItemsForColumns(itemsToRender, columnCount);
         const colWidth = imageSize + GAP_SIZE;
@@ -2003,6 +2045,42 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           }
           return;
         }
+      }
+
+      if (isMasonryRef.current && (KEYBOARD_NAVIGATION_KEYS.includes(e.key) || e.key === 'PageUp' || e.key === 'PageDown')) {
+        e.preventDefault();
+        const geometry = masonryGeometryRef.current;
+        if (!geometry) return;
+        const current = getRenderedIndexInItems(focusedImageIndexRef.current, itemsToRender);
+        const first = geometry.rects.find(rect => !rect.header)?.index;
+        const last = [...geometry.rects].reverse().find(rect => !rect.header)?.index;
+        if (!isInfinite && ((e.key === 'ArrowRight' && current === last) || (e.key === 'ArrowLeft' && current === first))) {
+          const direction = e.key === 'ArrowRight' ? 1 : -1;
+          if (currentPage + direction >= 1 && currentPage + direction <= totalPages) {
+            pendingKeyboardPreviewRef.current = null;
+            pendingPageBoundaryFocusRef.current = direction > 0 ? 'first' : 'last';
+            onPageChange(currentPage + direction);
+          }
+          return;
+        }
+        const target = masonryKeyboardTarget(geometry, current, e.key, getGridScrollElement()?.clientHeight ?? 600);
+        if (!isInfinite && target === current && (e.key === 'PageUp' || e.key === 'PageDown')) {
+          const direction = e.key === 'PageDown' ? 1 : -1;
+          if (currentPage + direction >= 1 && currentPage + direction <= totalPages) {
+            pendingPageBoundaryFocusRef.current = direction > 0 ? 'first' : 'last';
+            onPageChange(currentPage + direction);
+          }
+          return;
+        }
+        const item = itemsToRender[target];
+        if (item && isImageRenderItem(item)) {
+          const imageIndex = getImageIndexForRenderedItem(item);
+          focusedImageIndexRef.current = imageIndex;
+          setFocusedImageIndex(imageIndex);
+          if (e.repeat) pendingKeyboardPreviewRef.current = getWarmupImage(item);
+          else { pendingKeyboardPreviewRef.current = null; setPreviewImage(getWarmupImage(item)); }
+        }
+        return;
       }
 
       if (KEYBOARD_NAVIGATION_KEYS.includes(e.key)) {
@@ -2175,6 +2253,18 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     }
     lastFocusedRevealImageIdRef.current = focusedImageId;
 
+    if (isMasonryRef.current && masonryGeometryRef.current) {
+      const index = getRenderedIndexInItems(focusedImageIndex, itemsToRender);
+      const rect = masonryGeometryRef.current.rects[index];
+      const element = getGridScrollElement();
+      if (rect && element) {
+        if (rect.top < element.scrollTop) element.scrollTop = rect.top;
+        else if (rect.top + rect.height > element.scrollTop + element.clientHeight)
+          element.scrollTop = Math.max(rect.top, rect.top + rect.height - element.clientHeight);
+      }
+      return;
+    }
+
     const columnCount = Math.max(1, columnCountRef.current);
     const activeItems = isInfinite
       ? expandGroupedItemsForColumns(itemsToRender, columnCount)
@@ -2221,7 +2311,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
     const latest = previewAnchorDataRef.current;
     const columnCount = Math.max(1, columnCountRef.current);
-    const activeItems = latest.isInfinite
+    const activeItems = latest.isInfinite && !isMasonryRef.current
       ? expandGroupedItemsForColumns(latest.itemsToRender, columnCount)
       : latest.itemsToRender;
     const renderedIndex = activeItems.findIndex((item) =>
@@ -2243,6 +2333,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     const anchoredElement = imageCardsRef.current.get(getWarmupImage(anchoredItem).id);
     const scrollElement = getGridScrollElement();
     if (!anchoredElement || !scrollElement) {
+      if (isMasonryRef.current && scrollElement) {
+        const rect = masonryGeometryRef.current?.rects[renderedIndex];
+        if (rect) scrollElement.scrollTop = Math.max(0, rect.top - anchor.viewportOffsetY);
+        return;
+      }
       if (latest.isInfinite) {
         virtualGridRef.current?.scrollToItem({
           rowIndex: Math.floor(renderedIndex / columnCount),
@@ -2258,7 +2353,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
     const currentOffsetY = anchoredElement.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top;
     const nextScrollTop = Math.max(0, scrollElement.scrollTop + currentOffsetY - anchor.viewportOffsetY);
-    if (latest.isInfinite) {
+    if (latest.isInfinite && !isMasonryRef.current) {
       virtualGridRef.current?.scrollTo({ scrollTop: nextScrollTop, scrollLeft: scrollElement.scrollLeft });
     } else {
       scrollElement.scrollTop = nextScrollTop;
@@ -2351,6 +2446,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     let firstFrame = 0;
     let secondFrame = 0;
     const performScroll = () => {
+      if (isMasonryRef.current) {
+        const rect = masonryGeometryRef.current?.headers.find(item => item.key === jumpToGroupRequest.groupId);
+        const element = getGridScrollElement();
+        if (rect && element) element.scrollTop = rect.top;
+        return;
+      }
       const columnCount = Math.max(1, columnCountRef.current);
       const virtualItems = expandGroupedItemsForColumns(itemsToRender, columnCount);
       const renderedIndex = virtualItems.findIndex((item) => !isImageRenderItem(item) && item.type === 'group-header' && item.group.id === jumpToGroupRequest.groupId);
@@ -3014,7 +3115,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isInfinite) {
+    if (isInfinite || isMasonry) {
       if (releasePaginatedBackgroundPauseRef.current) {
         releasePaginatedBackgroundPauseRef.current();
         releasePaginatedBackgroundPauseRef.current = null;
@@ -3046,12 +3147,29 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         releasePaginatedBackgroundPauseRef.current = null;
       }
     };
-  }, [isInfinite, itemsToRender, currentPage]);
+  }, [isInfinite, isMasonry, itemsToRender, currentPage]);
 
   const isEmpty = itemsToRender.length === 0;
 
   const handleImageLoad = useCallback((id: string, aspectRatio: number) => {
+    if (!isMasonryRef.current || !Number.isFinite(aspectRatio) || aspectRatio <= 0) return;
+    setMasonryRatios(previous => {
+      if (previous.get(id) === aspectRatio) return previous;
+      const next = new Map(previous);
+      next.set(id, aspectRatio);
+      return next;
+    });
   }, []);
+
+  const handleMasonryViewport = useCallback((visible: MasonryRect[], ahead: MasonryRect[]) => {
+    const resolve = (rects: MasonryRect[]) => rects.flatMap(rect => {
+      const item = itemsToRender[rect.index];
+      return item && isImageRenderItem(item) ? [getWarmupImage(item)] : [];
+    });
+    thumbnailManager.scheduleViewport({ visibleImages: resolve(visible), aheadImages: resolve(ahead) });
+    schedulePendingPreviewAnchor();
+  }, [itemsToRender, schedulePendingPreviewAnchor]);
+
 
   const focusedImageId = focusedImageIndex != null && focusedImageIndex >= 0
     ? images[focusedImageIndex]?.id ?? null
@@ -3068,6 +3186,49 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         </div>
         </React.Profiler>
      );
+  }
+
+  if (isMasonry && masonryGeometry) {
+    const cellData: CellData = {
+      items: itemsToRender, columnCount: 1, onImageClick,
+      onStackClick: handleStackClick, selectedImages, focusedImageId,
+      imageSize: masonryGeometry.cardWidth, handleImageLoad, handleContextMenu,
+      handleRenameRequest: openInlineRename, handleRenameComplete: closeInlineRename,
+      renamingImageId, comparisonFirstImageId: queuedComparisonFirstImageId,
+      createCardRef, enableSafeMode, sensitiveTagSet, blurSensitiveImages, toggleImageSelection,
+    };
+    return <React.Profiler id="ImageGrid" onRender={imageGridProfilerOnRender}>
+      <div className="flex flex-col h-full w-full">
+        <div ref={gridScopeRef} className="flex-1 min-h-0 outline-none relative" data-area="grid" tabIndex={0}
+          onFocus={() => { gridKeyboardActiveRef.current = true; }}
+          onMouseDownCapture={event => {
+            if (!isTypingTarget(event.target)) {
+              gridKeyboardActiveRef.current = true;
+              capturePreviewAnchorCandidate(event);
+            }
+          }}
+          onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
+          <MasonryGridLayout key={scrollResetKey} layout={masonryGeometry} scrollRef={gridScrollRef}
+            initialScrollTop={initialScrollTop} onResize={handleMasonryResize}
+            onScroll={onScrollPositionChange ?? ignoreMasonryScroll} onViewport={handleMasonryViewport}
+            renderItem={rect => rect.header
+              ? <div style={{ position: 'absolute', left: 0, top: rect.top, width: '100%', height: rect.height }}>
+                  <GroupHeader group={(itemsToRender[rect.index] as { type: 'group-header'; group: ImageGroup }).group} />
+                </div>
+              : <Cell rowIndex={rect.index} columnIndex={0}
+              data={{ ...cellData, cardHeight: rect.imageHeight }}
+              style={{ position: 'absolute', left: rect.left - GAP_SIZE, top: rect.top - GAP_SIZE,
+                width: rect.width + GAP_SIZE, height: rect.height + GAP_SIZE }} />} />
+          {isSelecting && selectionStart && selectionEnd && <div className="absolute pointer-events-none z-30"
+            style={{ left: Math.min(selectionStart.x, selectionEnd.x),
+              top: Math.min(selectionStart.y, selectionEnd.y) - (getGridScrollElement()?.scrollTop ?? 0),
+              width: Math.abs(selectionEnd.x - selectionStart.x), height: Math.abs(selectionEnd.y - selectionStart.y),
+              border: '2px solid rgba(59,130,246,0.8)', backgroundColor: 'rgba(59,130,246,0.1)' }} />}
+          {contextMenuContent}
+          {modalsContent}
+        </div>
+      </div>
+    </React.Profiler>;
   }
 
   if (isInfinite) {

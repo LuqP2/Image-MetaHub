@@ -460,6 +460,8 @@ export default function App() {
     setItemsPerPage,
     viewMode,
     toggleViewMode,
+    libraryGridLayout,
+    setLibraryGridLayout,
     groupBy,
     setGroupBy,
     theme,
@@ -489,6 +491,7 @@ export default function App() {
   const previousLibraryGridSignatureRef = useRef<string | null>(null);
   const previousCollectionsGridSignatureRef = useRef<string | null>(null);
   const libraryGridScrollTopRef = useRef(0);
+  const libraryMasonryScrollTopRef = useRef(0);
   const collectionsGridScrollTopRef = useRef(0);
   const pendingSearchFlowIdRef = useRef<string | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -629,6 +632,7 @@ export default function App() {
 
   const resetLibraryGridScrollPosition = useCallback(() => {
     libraryGridScrollTopRef.current = 0;
+    libraryMasonryScrollTopRef.current = 0;
   }, []);
 
   const resetCollectionsGridScrollPosition = useCallback(() => {
@@ -636,8 +640,9 @@ export default function App() {
   }, []);
 
   const handleLibraryGridScrollPositionChange = useCallback((scrollTop: number) => {
-    libraryGridScrollTopRef.current = scrollTop;
-  }, []);
+    if (libraryGridLayout === 'masonry') libraryMasonryScrollTopRef.current = scrollTop;
+    else libraryGridScrollTopRef.current = scrollTop;
+  }, [libraryGridLayout]);
 
   const handleCollectionsGridScrollPositionChange = useCallback((scrollTop: number) => {
     collectionsGridScrollTopRef.current = scrollTop;
@@ -4466,7 +4471,8 @@ export default function App() {
                           groupSortOrder={imageGroupingSortOrder}
                           clusterByImageId={clusterByImageId}
                           jumpToGroupRequest={pendingJumpGroupRequest}
-                          initialScrollTop={libraryGridScrollTopRef.current}
+                          layout={libraryGridLayout}
+                          initialScrollTop={libraryGridLayout === 'masonry' ? libraryMasonryScrollTopRef.current : libraryGridScrollTopRef.current}
                           onScrollPositionChange={handleLibraryGridScrollPositionChange}
                           scrollResetKey={libraryGridSignature}
                           hasRightSidebar={hasRightSidebar}
@@ -4632,6 +4638,8 @@ export default function App() {
                   onItemsPerPageChange={setItemsPerPage}
                   viewMode={viewMode}
                   onViewModeChange={toggleViewMode}
+                  libraryGridLayout={libraryGridLayout}
+                  onLibraryGridLayoutChange={libraryView === 'library' ? setLibraryGridLayout : undefined}
                   filteredCount={displayImages.length}
                   totalCount={libraryView === 'collections' ? collectionTotalImages.length : selectionTotalImages}
                   directoryCount={
