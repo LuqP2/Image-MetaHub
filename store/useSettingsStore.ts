@@ -201,6 +201,7 @@ interface SettingsState {
   videoShuffle: boolean;
   /** Desktop viewer host. Web builds always resolve this preference to inline. */
   imageViewerMode: ImageViewerMode;
+  reuseImageViewerWindow: boolean;
   /** Zoom mode applied whenever an image opens in the viewer. */
   imageViewerDefaultZoom: ImageViewerDefaultZoom;
   creatorAttributionToken: string | null;
@@ -265,6 +266,7 @@ interface SettingsState {
   setVideoRepeatMode: (value: VideoRepeatMode) => void;
   setVideoShuffle: (value: boolean) => void;
   setImageViewerMode: (value: ImageViewerMode) => void;
+  setReuseImageViewerWindow: (value: boolean) => void;
   setImageViewerDefaultZoom: (value: ImageViewerDefaultZoom) => void;
   setCreatorAttributionToken: (token: string | null) => void;
   setA1111Enabled: (value: boolean) => void;
@@ -333,6 +335,7 @@ export const useSettingsStore = create<SettingsState>()(
       videoRepeatMode: readLegacyVideoRepeatMode(),
       videoShuffle: false,
       imageViewerMode: 'detached',
+      reuseImageViewerWindow: false,
       imageViewerDefaultZoom: 'fit',
       creatorAttributionToken: null,
       creatorAttributionUpdatedAt: null,
@@ -410,6 +413,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({ videoRepeatMode: isValidVideoRepeatMode(value) ? value : 'off' }),
       setVideoShuffle: (value) => set({ videoShuffle: !!value }),
       setImageViewerMode: (value) => set({ imageViewerMode: sanitizeImageViewerMode(value) }),
+      setReuseImageViewerWindow: (value) => set({ reuseImageViewerWindow: value === true }),
       setImageViewerDefaultZoom: (value) => set({ imageViewerDefaultZoom: sanitizeImageViewerDefaultZoom(value) }),
       setCreatorAttributionToken: (token) => {
         const normalizedToken = typeof token === 'string' ? token.trim() : '';
@@ -498,6 +502,7 @@ export const useSettingsStore = create<SettingsState>()(
         videoRepeatMode: 'off',
         videoShuffle: false,
         imageViewerMode: 'detached',
+        reuseImageViewerWindow: false,
         imageViewerDefaultZoom: 'fit',
         creatorAttributionToken: null,
         creatorAttributionUpdatedAt: null,
@@ -623,6 +628,7 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state) {
           state.imageViewerMode = sanitizeImageViewerMode(state.imageViewerMode);
+          state.reuseImageViewerWindow = state.reuseImageViewerWindow === true;
         }
 
         if (state && typeof state.creatorAttributionToken !== 'string') {

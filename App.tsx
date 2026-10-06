@@ -9,6 +9,7 @@ import { initializeSavedPromptSynchronization } from './store/useSavedPromptStor
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
 import { useImageViewerFocus } from './hooks/useImageViewerFocus';
+import { useReusableImageViewer } from './hooks/useReusableImageViewer';
 import { viewerLibrarySelection } from './utils/viewerLibrarySelection';
 import { useClusterCacheRestore } from './hooks/useClusterCacheRestore';
 import { useHotkeys } from './hooks/useHotkeys';
@@ -467,6 +468,7 @@ export default function App() {
     creatorAttributionToken,
     setCreatorAttributionToken,
     imageViewerMode,
+    reuseImageViewerWindow,
   } = useSettingsStore();
 
   useEffect(() => {
@@ -1865,6 +1867,12 @@ export default function App() {
     openImageModals, activeImageModalId, setOpenImageModals, setActiveImageModalId, synchronizeViewerImage,
   );
 
+  const reuseImageViewer = useReusableImageViewer(
+    reuseImageViewerWindow && resolveViewerHost() === 'detached',
+    openImageModals, activeImageModalId, setOpenImageModals, setActiveImageModalId,
+    synchronizeViewerImage, handleActivateImageModal,
+  );
+
   useEffect(() => {
     if (!selectedImage) {
       lastOpenedModalImageIdRef.current = null;
@@ -1894,6 +1902,8 @@ export default function App() {
         : safeActiveImageScope
           ? 'scope'
           : 'filtered';
+
+    if (reuseImageViewer({ imageId: selectedImage.id, navigationImageIds, navigationSource: navigationSourceType })) return;
 
     const existingModalForSelectedImage = openImageModals.find((modal) => modal.imageId === selectedImage.id);
     const selectedModalId = existingModalForSelectedImage?.modalId ?? `image-modal-${Date.now()}-${selectedImage.id}`;
@@ -1956,7 +1966,7 @@ export default function App() {
         },
       ];
     });
-  }, [beginModalOpenFlow, beginViewerOpening, clusterNavigationContext, handleActivateImageModal, openImageModals, resolveViewerHost, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [beginModalOpenFlow, beginViewerOpening, clusterNavigationContext, handleActivateImageModal, openImageModals, resolveViewerHost, reuseImageViewer, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
 
   const filteredNavigationImageIds = useMemo(
     () => safeFilteredImages.map((image) => image.id),
@@ -2342,6 +2352,8 @@ export default function App() {
             : 'filtered'
       );
 
+    if (reuseImageViewer({ imageId: image.id, navigationImageIds, navigationSource: navigationSourceType, isMinimized: true })) return;
+
     setOpenImageModals((current) => {
       const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
       const nextZIndex = highestZIndex + 1;
@@ -2382,7 +2394,7 @@ export default function App() {
         },
       ];
     });
-  }, [beginModalOpenFlow, resolveViewerHost, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
+  }, [beginModalOpenFlow, resolveViewerHost, reuseImageViewer, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
 
   const handleOpenImageModalFromGeneratedOutput = useCallback((imageId: string) => {
     const image = getImageByIdFromStore(imageId);
@@ -2392,6 +2404,10 @@ export default function App() {
 
     const navigationSource = safeActiveImageScope ?? safeFilteredImages;
     const navigationImageIds = navigationSource.map((entry) => entry.id);
+    if (reuseImageViewer({ imageId: image.id, navigationImageIds, navigationSource: safeActiveImageScope ? 'scope' : 'filtered' })) {
+      setGeneratedOutputPreview(null);
+      return;
+    }
     const modalId = `image-modal-${Date.now()}-${image.id}`;
     const existingModalForImage = openImageModals.find((modal) => modal.imageId === image.id);
     const activeModalId = existingModalForImage?.modalId ?? modalId;
@@ -2440,7 +2456,7 @@ export default function App() {
       setLibraryView('library');
     }
     setGeneratedOutputPreview(null);
-  }, [beginModalOpenFlow, getImageByIdFromStore, libraryView, openImageModals, resolveViewerHost, safeActiveImageScope, safeFilteredImages, setSelectedImage]);
+  }, [beginModalOpenFlow, getImageByIdFromStore, libraryView, openImageModals, resolveViewerHost, reuseImageViewer, safeActiveImageScope, safeFilteredImages, setSelectedImage]);
 
   const resolveGeneratedOutputImageId = useCallback((output: GeneratedQueueOutput): string | undefined => {
     if (output.imageId && getImageByIdFromStore(output.imageId)) {
@@ -2986,6 +3002,7 @@ export default function App() {
     const navigationImageIds = navigationImages.length > 0
       ? navigationImages.map((entry) => entry.id)
       : [image.id];
+    if (reuseImageViewer({ imageId: image.id, navigationImageIds, navigationSource: 'find-similar' })) return;
     const existingModalForImage = openImageModals.find((modal) => modal.imageId === image.id);
     const modalId = existingModalForImage?.modalId ?? `image-modal-${Date.now()}-${image.id}`;
 
@@ -3029,7 +3046,7 @@ export default function App() {
     setActiveImageModalId(modalId);
     suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
-  }, [beginModalOpenFlow, openImageModals, resolveViewerHost, setSelectedImage]);
+  }, [beginModalOpenFlow, openImageModals, resolveViewerHost, reuseImageViewer, setSelectedImage]);
 
   const openModelPromptPicker = useCallback((modelName: string) => {
     setModelPromptPickerState({
@@ -3130,6 +3147,11 @@ export default function App() {
     const navigationImageIds = comfyUIWorkspaceNavigationImages.length > 0
       ? comfyUIWorkspaceNavigationImages.map((candidate) => candidate.id)
       : [image.id];
+    const reusedModalId = reuseImageViewer({ imageId: image.id, navigationImageIds, navigationSource: 'comfyui' });
+    if (reusedModalId) {
+      comfyUIWorkspaceModalIdRef.current = reusedModalId;
+      return;
+    }
     const existing = openImageModals.find((modal) => modal.imageId === image.id);
     if (existing) {
       comfyUIWorkspaceModalIdRef.current = existing.modalId;
@@ -3170,7 +3192,7 @@ export default function App() {
     setActiveImageModalId(modalId);
     suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
-  }, [beginModalOpenFlow, comfyUIWorkspaceNavigationImages, handleActivateImageModal, openImageModals, resolveViewerHost, setSelectedImage]);
+  }, [beginModalOpenFlow, comfyUIWorkspaceNavigationImages, handleActivateImageModal, openImageModals, resolveViewerHost, reuseImageViewer, setSelectedImage]);
   const handleComfyUIWorkspaceNavigate = useCallback((direction: 'next' | 'previous') => {
     if (comfyUIWorkspaceCurrentIndex === -1) {
       return;
@@ -3498,7 +3520,10 @@ export default function App() {
             ));
             if (activeImageModalIdRef.current === modal.modalId) {
               const latest = openImageModalsRef.current.find((entry) => entry.sessionId === modal.sessionId);
-              if (latest) synchronizeViewerImage(latest.imageId);
+              if (latest) {
+                finishViewerOpening(latest.imageId);
+                synchronizeViewerImage(latest.imageId);
+              }
             }
             return;
           }

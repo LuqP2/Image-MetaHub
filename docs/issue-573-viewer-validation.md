@@ -202,3 +202,23 @@ Both architectures passed there too, through normal native readiness. The
 reporter's failure was not consistently reproduced by this synthetic smoke.
 The corrected arm64 run's recovery is evidence that the recovery path works in
 the packaged macOS app, not proof of the reporter's exact failure mechanism.
+
+## Reporter feedback and optional window reuse: 2026-10-06
+
+Peter reports that external viewer windows now open as expected with the watcher
+correction RC. He suggested choosing whether another image opens in a new window
+or replaces the image in an existing viewer.
+
+Settings → Viewer now includes **Reuse a single viewer window**, off by default.
+It is available with desktop windows enabled. Foreground image openings reuse
+the active detached viewer, or the most recently raised one when the library has
+focus. An existing window showing the requested image takes precedence. Reuse
+retains the native session and geometry, replaces the navigation context, restores
+minimized windows and synchronizes the library selection. Background openings
+remain minimized without requesting focus. Inline fallbacks and slideshows stay
+independent; enabling reuse does not close already open windows.
+
+Local validation: 21 focused tests passed for reuse, focus/selection, Settings UI
+behavior, persistence and migration. Lint has no errors. Manual acceptance of the
+new preference in a packaged app remains pending; the earlier RC artifacts do not
+contain this option. Keep the PR draft while that addition is verified.

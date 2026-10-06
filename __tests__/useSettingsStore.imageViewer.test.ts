@@ -31,4 +31,22 @@ describe('image viewer preference', () => {
     useSettingsStore.getState().setImageViewerDefaultZoom('invalid' as never);
     expect(useSettingsStore.getState().imageViewerDefaultZoom).toBe('fit');
   });
+
+  it('persists single-window opt-in and resets to multiple windows', async () => {
+    expect(useSettingsStore.getState().reuseImageViewerWindow).toBe(false);
+    useSettingsStore.getState().setReuseImageViewerWindow(true);
+    await useSettingsStore.persist.rehydrate();
+    expect(useSettingsStore.getState().reuseImageViewerWindow).toBe(true);
+    useSettingsStore.getState().resetState();
+    expect(useSettingsStore.getState().reuseImageViewerWindow).toBe(false);
+  });
+
+  it('migrates older settings and invalid saved values to multiple windows', async () => {
+    for (const state of [{}, { reuseImageViewerWindow: 'true' }]) {
+      useSettingsStore.getState().resetState();
+      localStorage.setItem('image-metahub-settings', JSON.stringify({ state, version: 0 }));
+      await useSettingsStore.persist.rehydrate();
+      expect(useSettingsStore.getState().reuseImageViewerWindow).toBe(false);
+    }
+  });
 });
