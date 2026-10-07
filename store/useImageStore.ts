@@ -4460,7 +4460,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (current === scope) {
                 return state;
             }
-            if (current && scope && current.type === scope.type && current.id === scope.id && current.label === scope.label) {
+            if (current && scope && current.type === scope.type && current.id === scope.id && current.label === scope.label && current.managedModel === scope.managedModel) {
                 return state;
             }
             return { activeImageScope: scope };

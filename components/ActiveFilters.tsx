@@ -7,12 +7,14 @@ import { RatingValueIcons } from './RatingStars';
 
 const SCOPE_ICONS: Record<ImageScope['type'], LucideIcon> = {
   model: Box,
+  managedModel: Box,
   cluster: Layers,
   collection: FolderOpen,
 };
 
 const SCOPE_LABELS: Record<ImageScope['type'], string> = {
   model: 'Model',
+  managedModel: 'Managed model',
   cluster: 'Cluster',
   collection: 'Collection',
 };

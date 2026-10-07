@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModelCatalog, ModelLocalMetadata, ModelSource } from '../services/modelLibrary/types';
+import type { ImageScope, IndexedImage } from '../types';
 
-const fakes = vi.hoisted(() => ({ sources: [] as ModelSource[], locals: [] as ModelLocalMetadata[], saveLocal: vi.fn(), images: [] as unknown[] }));
-vi.mock('../store/useImageStore', () => ({ useImageStore: { getState: () => ({ images: fakes.images }), subscribe: () => () => {} } }));
+const fakes = vi.hoisted(() => ({ sources: [] as ModelSource[], locals: [] as ModelLocalMetadata[], saveLocal: vi.fn(), images: [] as unknown[], scope: null as ImageScope | null, loading: false, enriching: false, notify: undefined as (() => void) | undefined }));
+vi.mock('../store/useImageStore', () => {
+  const getState = () => ({ images: fakes.images, activeImageScope: fakes.scope, isLoading: fakes.loading, enrichmentProgress: fakes.enriching ? { processed: 0, total: 1 } : null, setActiveImageScope: (scope: ImageScope) => { fakes.scope = scope; } });
+  return { useImageStore: { getState, subscribe: (callback: (next: ReturnType<typeof getState>, previous: ReturnType<typeof getState>) => void) => { fakes.notify = () => callback(getState(), { ...getState(), images: [] }); return () => { fakes.notify = undefined; }; } } };
+});
 vi.mock('../services/thumbnailManager', () => ({ thumbnailManager: { getResolvedState: (image: { thumbnailUrl?: string }) => ({ thumbnailUrl: image.thumbnailUrl }) } }));
 vi.mock('../services/modelLibrary/modelSourceStorage', () => ({ getAllModelSources: async () => fakes.sources, saveModelSource: async (value: ModelSource) => value, deleteModelSource: async () => {} }));
 vi.mock('../services/modelLibrary/localMetadataStorage', async (original) => {
@@ -19,6 +23,7 @@ let api: Record<string, ReturnType<typeof vi.fn>>;
 
 beforeEach(() => {
   vi.resetModules(); fakes.sources = [{ ...source }]; fakes.locals = []; fakes.images = [];
+  fakes.scope = null; fakes.loading = false; fakes.enriching = false; fakes.notify = undefined;
   fakes.saveLocal.mockReset().mockImplementation(async (value) => value);
   catalog = { version: 1, locations: [location('one')], updatedAt: 1 };
   api = {
@@ -43,6 +48,30 @@ async function initialize() {
 }
 
 describe('single-owner model service', () => {
+  it('shares usage with the Inspector and promotes an active Library descriptor after hashing', async () => {
+    fakes.images = [{ id: 'synthetic-image', models: [], loras: ['one'], lastModified: 100, metadata: {} } as IndexedImage];
+    const manager = await initialize();
+    await vi.waitFor(() => expect(manager.modelItem(location('one').id).usage).toMatchObject({ totalCount: 1, nameMatchedCount: 1, status: 'ready' }));
+    manager.setModelLibraryOpener((scope) => { fakes.scope = scope; });
+    await manager.runModelCommand({ type: 'viewLibrary', locationId: location('one').id, mode: 'total' });
+    expect(fakes.scope).toMatchObject({ type: 'managedModel', id: `location:${location('one').id}`, managedModel: { mode: 'total' } });
+    await manager.runModelCommand({ type: 'hash', locationId: location('one').id });
+    expect(fakes.scope).toMatchObject({ id: `sha256:${'a'.repeat(64)}`, managedModel: { locationIds: [location('one').id], mode: 'total' } });
+    await vi.waitFor(() => expect(manager.getModelManagerState().usage?.[`sha256:${'a'.repeat(64)}`]).toMatchObject({ totalCount: 1, status: 'ready' }));
+    await vi.waitFor(() => expect(api.modelManagerPublish.mock.calls.at(-1)?.[0].usage?.[`sha256:${'a'.repeat(64)}`]).toEqual(manager.modelItem(location('one').id).usage));
+  });
+  it('rebuilds partial image data and retains zero navigation after the last match disappears', async () => {
+    const manager = await initialize();
+    fakes.loading = true; fakes.enriching = true;
+    fakes.images = [{ id: 'synthetic-image', models: [], loras: ['one'], lastModified: 100, metadata: {} } as IndexedImage]; fakes.notify?.();
+    await vi.waitFor(() => expect(manager.modelItem(location('one').id).usage).toMatchObject({ status: 'partial', totalCount: 1 }));
+    fakes.loading = false; fakes.enriching = false; fakes.images = []; fakes.notify?.();
+    await vi.waitFor(() => expect(manager.modelItem(location('one').id).usage).toMatchObject({ status: 'ready', totalCount: 0, lastUsedAt: null }));
+    const navigate = vi.fn(); manager.setModelLibraryOpener(navigate);
+    await manager.runModelCommand({ type: 'viewLibrary', locationId: location('one').id, mode: 'confirmed' });
+    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ type: 'managedModel', managedModel: expect.objectContaining({ mode: 'confirmed' }) }));
+    expect(api.modelLibraryHash).not.toHaveBeenCalled(); expect(api.modelManagerRemote).not.toHaveBeenCalled();
+  });
   it('preserves a saved cover when refreshing the same Civitai version', async () => {
     const coverImage = `imh-model-media://media/${'c'.repeat(64)}.jpg`;
     catalog.locations[0].civitai = { ...location('one').civitai, coverImage };
@@ -81,7 +110,8 @@ describe('single-owner model service', () => {
   it('saves local edits immediately but coalesces their full snapshot publication', async () => {
     vi.useFakeTimers();
     const manager = await initialize();
-    await vi.advanceTimersByTimeAsync(100);
+    // Drain the asynchronous initial usage publication before isolating local edits.
+    await vi.advanceTimersByTimeAsync(300);
     api.modelManagerPublish.mockClear();
     fakes.saveLocal.mockClear();
     await manager.saveModelPatch(location('one').id, { notes: 'Keep this version' });

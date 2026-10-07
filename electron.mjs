@@ -6556,7 +6556,8 @@ function setupFileOperationHandlers() {
         const location = state.catalog.locations.find((location) => location.id === item.location.id);
         if (!location) return [];
         const localMetadata = state.localMetadata[location.sha256 ? `sha256:${location.sha256}` : `location:${location.id}`] ?? state.localMetadata[`location:${location.id}`];
-        return [{ location, localMetadata }];
+        const usage = state.usage?.[location.sha256 ? `sha256:${location.sha256.toLowerCase()}` : `location:${location.id}`];
+        return [{ location, localMetadata, usage }];
       }) }));
     }
     if (state.loading) return { success: true };
@@ -6583,19 +6584,25 @@ function setupFileOperationHandlers() {
   ipcMain.handle('model-manager-command', (event, command) => {
     if (!modelManagerEnabled || !isModelInspectorSender(event) || !mainWindow || mainWindow.isDestroyed()) return { success: false, error: 'Models workspace is unavailable.' };
     if (command?.locationId && !modelInspectorSnapshot?.items.some((item) => item.location.id === command.locationId)) return { success: false, error: 'Unknown model.' };
-    if (!['identify', 'hash', 'check', 'unbind', 'bind', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'examples', 'example', 'cover', 'seen', 'versionAction', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
+    if (!['identify', 'hash', 'check', 'unbind', 'bind', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'viewLibrary', 'examples', 'example', 'cover', 'seen', 'versionAction', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
     if (['seen', 'versionAction'].includes(command?.type) && !modelInspectorSnapshot?.items.some((item) => item.location.civitai?.modelId === command.modelId)) return { success: false, error: 'Unknown remote model.' };
     const requestId = crypto.randomUUID();
     return new Promise((resolve) => {
       const timer = setTimeout(() => { modelManagerCommands.delete(requestId); resolve({ success: false, error: 'Model action timed out.' }); }, 15 * 60 * 1000);
-      modelManagerCommands.set(requestId, { resolve, timer });
+      modelManagerCommands.set(requestId, { resolve, timer, focusLibrary: command.type === 'viewLibrary' });
       mainWindow.webContents.send('model-manager-command', { requestId, command });
     });
   });
   ipcMain.handle('model-manager-command-result', (event, requestId, result) => {
     if (!isPrimaryWindowSender(event)) return;
     const pending = modelManagerCommands.get(requestId);
-    if (pending) { clearTimeout(pending.timer); modelManagerCommands.delete(requestId); pending.resolve(result); }
+    if (pending) {
+      clearTimeout(pending.timer); modelManagerCommands.delete(requestId); pending.resolve(result);
+      if (pending.focusLibrary && result?.success && mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show(); mainWindow.focus();
+      }
+    }
   });
   ipcMain.handle('model-manager-cancel-remote', (event, requestId) => {
     if (isPrimaryWindowSender(event)) modelRemoteTasks.get(requestId)?.abort();

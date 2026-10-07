@@ -116,6 +116,7 @@ export interface ModelWatchRecord {
 }
 
 export interface ModelManagerSnapshot {
+  usage?: Record<string, ModelUsageSummary>;
   revision: number;
   sources: ModelSource[];
   catalog: ModelCatalog;
@@ -133,6 +134,7 @@ export interface ModelManagerSnapshot {
 }
 
 export type ModelManagerCommand =
+  | { type: 'viewLibrary'; locationId: string; mode: ModelUsageMode }
   | { type: 'seen'; modelId: number; versionIds: number[] }
   | { type: 'versionAction'; modelId: number; versionId: number; action: 'ignore' | 'restore' }
   | { type: 'identify' | 'hash' | 'check' | 'unbind' | 'cover'; locationId: string }
@@ -167,6 +169,7 @@ export interface ModelSourceScanResult {
 }
 
 export interface ModelInspectorItem {
+  usage?: ModelUsageSummary;
   location: ModelLocation;
   localMetadata?: ModelLocalMetadata;
 }
@@ -177,4 +180,23 @@ export interface ModelInspectorSnapshot {
   selectedId: string | null;
   followSelection: boolean;
   isAlwaysOnTop: boolean;
+}
+
+export type ModelUsageMode = 'total' | 'confirmed' | 'ambiguous';
+export interface ModelUsageSummary {
+  status: 'loading' | 'partial' | 'ready' | 'unsupported';
+  confirmedCount: number;
+  nameMatchedCount: number;
+  ambiguousCount: number;
+  totalCount: number;
+  lastUsedAt: number | null;
+  dateBasis: 'libraryFileDate';
+}
+export interface ManagedModelDescriptor {
+  identity: string;
+  locationIds: string[];
+  sha256?: string;
+  names: { key: string; ambiguous: boolean; knownHashes: string[] }[];
+  supported: boolean;
+  mode: ModelUsageMode;
 }

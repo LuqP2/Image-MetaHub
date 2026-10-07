@@ -1,5 +1,6 @@
 import type { IndexedImage, ImageCluster, SmartCollection, ImageScope } from '../types';
 import { resolveSmartCollectionImageIds } from '../services/imageAnnotationsStorage';
+import { resolveManagedModelImages } from '../services/modelLibrary/imageAssociations';
 
 export interface ImageScopeSources {
   images: IndexedImage[];
@@ -25,6 +26,10 @@ export const resolveScopeImageIds = (
 ): ResolvedImageScope | null => {
   if (!scope) {
     return null;
+  }
+
+  if (scope.type === 'managedModel') {
+    return { ids: scope.managedModel ? resolveManagedModelImages(sources.images, scope.managedModel) : new Set(), valid: true };
   }
 
   if (scope.type === 'model') {
