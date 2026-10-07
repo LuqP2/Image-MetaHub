@@ -1,6 +1,7 @@
 import { externalizeModelMedia } from './mediaStorage';
 import { buildModelDescriptors } from './imageAssociations';
 import { deriveModelUsage, emptyModelUsage } from './usage';
+import { duplicateCandidates } from './storage';
 import type { ImageScope } from '../../types';
 import { mergeModelMetadata } from './mergeMetadata';
 import { thumbnailManager } from '../thumbnailManager';
@@ -77,6 +78,66 @@ export function managerMessage(message: string | null) { publish({ message }); }
 export function dismissModelNotification() { publish({ notification: null }); }
 export function showModelUpdates(showUpdates: boolean) { publish({ showUpdates }); }
 export function closeModelPicker() { publish({ picker: null }); }
+export function closeModelRemoval() { publish({ removal: null }); }
+export function requestModelRemoval(locationIds: string[], selected = false) {
+  if (state.progress || state.loading) throw new Error('Wait for the current model job to finish.');
+  if (!locationIds.length || locationIds.some((id) => !state.catalog.locations.some((location) => location.id === id))) throw new Error('Choose files from the current model catalog.');
+  publish({ removal: { locationIds, selected } });
+}
+export async function refreshModelStorage() {
+  const catalog = state.catalog;
+  await flushModelState();
+  const result = await window.electronAPI!.modelStorageOverview();
+  if (!result.success || !result.data) throw new Error(result.error || 'Unable to check model storage.');
+  if (catalog !== state.catalog) return;
+  publish({ storage: result.data });
+}
+export async function verifyModelDuplicates() {
+  await refreshModelStorage();
+  const candidates = duplicateCandidates(state.storage!.files);
+  const equivalentIds = new Map<string, string[]>();
+  for (const file of state.storage!.files) {
+    const key = file.physicalId ?? file.key;
+    const ids = equivalentIds.get(key) ?? [];
+    ids.push(...file.locationIds); equivalentIds.set(key, ids);
+  }
+  startJob('duplicates', candidates.length);
+  let failures = 0;
+  try {
+    for (const [index, file] of candidates.entries()) {
+      if (cancelled) break;
+      progress(index + 1, modelItem(file.locationIds[0]).location.fileName);
+      try {
+        await hash(file.locationIds[0]);
+        if (cancelled) break;
+        const primary = modelItem(file.locationIds[0]).location;
+        // Overlapping sources describe the same path; never hash it twice.
+        const equivalent = equivalentIds.get(file.physicalId ?? file.key)!;
+        if (primary.sha256) for (const id of equivalent.filter((id) => id !== primary.id)) await promoteModelHash(id, { sha256: primary.sha256, size: primary.size, modifiedAt: primary.modifiedAt });
+      } catch { failures++; }
+    }
+  } finally { publish({ progress: null, message: `${cancelled ? 'Stopped. ' : ''}Duplicate verification finished: ${failures} failed.` }); }
+  await refreshModelStorage();
+}
+export async function removeModelFiles(locationIds: string[]) {
+  startJob('removal', locationIds.length);
+  try {
+    await Promise.all([localWrites, writes, watchWrites]);
+    await flushModelState();
+    const prepared = await window.electronAPI!.prepareModelRemoval({ locationIds });
+    if (!prepared.success || !prepared.plan) throw new Error(prepared.error || 'Unable to prepare file removal.');
+    const executed = await window.electronAPI!.executeModelRemoval({ planId: prepared.plan.planId });
+    if (!executed.success || !executed.result) throw new Error(executed.error || 'Unable to remove model files.');
+    const { removedLocationIds, failures, cancelled: declined } = executed.result;
+    const removed = new Set(removedLocationIds);
+    const locations = state.catalog.locations.filter((location) => !removed.has(location.id));
+    publish({ catalog: { ...state.catalog, locations, managedModels: buildManagedModels(locations), updatedAt: Date.now() }, removal: null,
+      message: declined ? 'Removal cancelled.' : `${prepared.plan.files.filter((file) => file.locationIds.some((id) => removed.has(id))).length} files moved to Trash${failures.length ? ` · ${failures.length} failed: ${failures.map((failure) => `${failure.path}: ${failure.error}`).join(' · ')}` : '.'}` });
+    await persistCatalog();
+    await flushModelState();
+  } finally { publish({ progress: null }); }
+  await refreshModelStorage();
+}
 export function mirrorModelManager() {
   const apply = (next: ModelManagerSnapshot | null) => { if (next && next.revision >= state.revision) { state = next; listeners.forEach((listener) => listener()); } };
   const unsubscribe = window.electronAPI?.onModelManagerState(apply);
@@ -195,15 +256,9 @@ async function remote(kind: 'model' | 'version' | 'examples' | 'hash' | 'cover',
   } finally { activeRemote = undefined; }
 }
 
-async function hash(locationId: string) {
-  const item = modelItem(locationId);
-  if (item.location.sha256) return;
-  const requestId = crypto.randomUUID(); activeHash = requestId;
-  try {
-    const result = await window.electronAPI!.modelLibraryHash({ filePath: item.location.absolutePath, requestId });
-    if (result.cancelled || cancelled) return;
-    if (!result.success || !result.sha256) throw new Error(result.error || 'Unable to identify this model.');
-    const promote = localWrites.catch(() => {}).then(async () => {
+async function promoteModelHash(locationId: string, result: { sha256: string; size?: number; modifiedAt?: number | null }) {
+  const promote = localWrites.catch(() => {}).then(async () => {
+    const item = modelItem(locationId);
     const oldId = getModelLocalMetadataId(modelItem(locationId).location);
     const newId = `sha256:${result.sha256}`;
     // Read current records after hashing; merge policy uses updatedAt and preserves divergent notes.
@@ -218,9 +273,19 @@ async function hash(locationId: string) {
     }
     await patchLocation(locationId, { sha256: result.sha256, hashFingerprint: { size: result.size ?? item.location.size, modifiedAt: result.modifiedAt ?? item.location.modifiedAt } });
     await flushModelState();
-    });
-    localWrites = promote;
-    await promote;
+  });
+  localWrites = promote;
+  await promote;
+}
+async function hash(locationId: string) {
+  const item = modelItem(locationId);
+  if (item.location.sha256) return;
+  const requestId = crypto.randomUUID(); activeHash = requestId;
+  try {
+    const result = await window.electronAPI!.modelLibraryHash({ filePath: item.location.absolutePath, requestId });
+    if (result.cancelled || cancelled) return;
+    if (!result.success || !result.sha256) throw new Error(result.error || 'Unable to identify this model.');
+    await promoteModelHash(locationId, { sha256: result.sha256, size: result.size, modifiedAt: result.modifiedAt });
   } finally { activeHash = undefined; }
 }
 async function identify(locationId: string) {
@@ -327,7 +392,7 @@ export async function scanModelSources() {
     const result = await window.electronAPI!.modelLibraryScan(sources.map(({ id, path, recursive }) => ({ id, path, recursive })));
     if (!result.success || !result.results) throw new Error(result.error || 'Unable to scan models.');
     if (cancelled) return;
-    publish({ catalog: reconcileModelCatalog(state.catalog, sources, result.results), message: result.results.filter((source) => source.error).map((source) => source.error).join(' · ') || null });
+    publish({ catalog: reconcileModelCatalog(state.catalog, sources, result.results), sourceStatus: Object.fromEntries(result.results.map((source) => [source.sourceId, { checkedAt: Date.now(), error: source.error }])), message: result.results.filter((source) => source.error).map((source) => source.error).join(' · ') || null });
     await persistCatalog();
     const headers = state.catalog.locations.filter((location) => !location.fileMetadata);
     publish({ progress: { kind: 'headers', current: 0, total: headers.length, name: '' } });
@@ -396,6 +461,12 @@ async function libraryPreview(imageId: string): Promise<{ preview: string; name:
 export async function runModelCommand(command: ModelManagerCommand) {
   if (!managerRunning) throw new Error('Model Manager requires Pro or an active trial.');
   switch (command.type) {
+    case 'remove': {
+      const item = modelItem(command.locationId);
+      const descriptor = buildModelDescriptors(state.catalog).find((model) => model.locationIds.includes(item.location.id));
+      requestModelRemoval(descriptor?.locationIds ?? [item.location.id]);
+      return;
+    }
     case 'seen': await markModelVersionsSeen(command.modelId, command.versionIds); return;
     case 'versionAction': await markModelVersion(command.modelId, command.versionId, command.action); return;
     case 'cover': {

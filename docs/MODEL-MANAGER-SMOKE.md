@@ -32,6 +32,23 @@ Use a disposable test profile and only the explicitly selected synthetic directo
 
 No usage summaries are persisted. No new hashing or remote request starts merely from opening usage or navigating. This PR adds no Storage, removal action, Hugging Face integration, application version bump, or parser version change.
 
+## Storage and file removal (PR 2)
+
+Use only a disposable test profile and the generated `.tmp/model-manager-smoke/models` files. These checks require a packaged app and manual acceptance; automated tests never call the system Trash.
+
+1. Open **Models → Storage**. Both synthetic model paths appear, largest first, with no selection. Confirm that opening the panel does not start hashing or contact Civitai. Check folder/category totals, logical models, physical files, Library usage, latest matching file dates and filesystem capacity. Missing capacity must remain explicitly unavailable.
+2. Switch to Catalog, change its search/folder/filter and select a model. Return to Storage and back: Catalog filters and selection must survive. Storage filters/selection must also survive view switching. Manually check narrow layouts, light theme and scrolling with a large synthetic catalog; the table renders a bounded set of rows.
+3. Add the same generated parent folder as a second recursive source. Each physical path must still appear and count once in Storage. If a disposable hardlink fixture is explicitly created, both paths should appear but count once in physical storage. Folder/category subtotals may overlap and must not be summed as independent capacity.
+4. Click **Verify duplicates**. Equal-size candidates are hashed with progress and Stop; known hashes are reused. Identical files become confirmed duplicates. Same-size files with different contents must not. Stop midway and verify completed results survive; opening Storage again must not resume hashing implicitly.
+5. **No Library matches** includes only supported categories whose usage is ready and zero. Partial/loading usage and unsupported VAE/etc. must not enter this filter. A failed source scan keeps prior records with a warning and its last scan date. Externally changed/missing files must show stale/unavailable state and require refresh.
+6. Select one synthetic path in Storage and click **Remove selected…**. Inspect the path list. Continue to the native main-window confirmation, which shows exact paths, sizes, remaining copies and the Library/Trash explanation. Cancel: no file or catalog location changes.
+7. Confirm one-copy removal. Only that path goes to Trash; overlapping-source records for it disappear. The remaining copy becomes the primary location. Notes, cover, examples, watched release history, Inspector selection and Library scope must survive while a copy remains.
+8. From detail, card context menu or detached Inspector, use **Remove files…**. For multiple copies, none is chosen automatically; choose paths explicitly or deliberately choose **Remove all copies**. Inspector forwards the choice to the main window and focuses it. The native dialog remains the final confirmation.
+9. In a disposable fixture, change a selected file after preparation, replace its parent with a junction/symlink, or make Trash unavailable. Removal must fail for that file without permanent deletion. Successful files in a partially failed batch leave the catalog; failed files remain and their paths/errors appear. Scan/hash/update jobs cannot run during confirmed removal.
+10. Remove the last synthetic copy and restart. Catalog, Storage and Inspector must agree; the vanished managed-model Library scope clears. Authored notes/covers/examples/history remain durable, and monitoring has no remaining installed location to check. Restore only disposable files from Trash when testing recovery.
+
+Focused PR 2 checks: `node node_modules/vitest/vitest.mjs run __tests__/modelStorage.removal.test.ts __tests__/modelLibrary.storage.test.ts __tests__/ModelStoragePanel.test.tsx __tests__/modelInspectorCatalog.test.ts __tests__/modelManager.service.test.ts --maxWorkers=2`. Filesystem tests create and inspect only their own temporary synthetic files. Packaged system-dialog/Trash behavior and visual acceptance remain manual.
+
 ## Public Civitai flow
 
 1. Without downloading a model, manually link a synthetic file to `https://civitai.com/models/1102?modelVersionId=1087`. This is a deliberately manual test association, not hash verification. A model-only link and a link whose version belongs to another model must be rejected.
