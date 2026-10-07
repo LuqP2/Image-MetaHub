@@ -39,6 +39,11 @@ export function imageModelReferences(image: IndexedImage): { key: string; hash?:
   // A1111 keeps hashes in its already-loaded parameters rather than the normalized
   // record. Read only the sampling line, so text in a prompt is not identity evidence.
   const raw = image.metadata as unknown as Record<string, unknown>;
+  // Indexed MetaHub Save payloads retain the hash even when normalization omits it.
+  const metaHubData = raw?.imagemetahub_data;
+  const metaHubModelHash = metaHubData && typeof metaHubData === 'object' && !Array.isArray(metaHubData)
+    ? fullHash((metaHubData as Record<string, unknown>).model_hash)
+    : undefined;
   const parameters = typeof raw?.parameters === 'string' ? raw.parameters : '';
   const sampling = parameters.split(/\r?\n/).reverse().find((line: string) => /^Steps:\s*\d/.test(line)) ?? '';
   const rawModelHash = fullHash(sampling.match(/(?:^|,)\s*Model hash:\s*([a-f\d]+)(?=\s*(?:,|$))/i)?.[1]);
@@ -50,7 +55,7 @@ export function imageModelReferences(image: IndexedImage): { key: string; hash?:
   let hashFields: Record<string, unknown> = {};
   try { hashFields = JSON.parse(sampling.match(/(?:^|,)\s*Hashes:\s*(\{[^}]*\})/i)?.[1] ?? '{}'); } catch { /* Incomplete exports have no usable hash evidence. */ }
   for (const [name, value] of Object.entries(hashFields)) if (name.startsWith('lora:') && fullHash(value)) loraHashes.set(normalizeModelName(name.slice(5)), fullHash(value)!);
-  const modelHash = fullHash(metadata?.model_hash ?? metadata?.modelHash) ?? rawModelHash ?? fullHash(hashFields.model);
+  const modelHash = fullHash(metadata?.model_hash ?? metadata?.modelHash) ?? metaHubModelHash ?? rawModelHash ?? fullHash(hashFields.model);
   const refs = (image.models ?? []).map((name) => ({ key: key('model', name), hash: modelHash }));
   if (modelHash && !refs.length) refs.push({ key: 'model:', hash: modelHash });
   for (const lora of image.loras ?? []) {

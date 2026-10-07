@@ -57,6 +57,37 @@ describe('derived model Library usage', () => {
     expect(usage?.[`sha256:${a}`]).toMatchObject({ status: 'partial', totalCount: 1 });
     expect(usage?.[`sha256:${b}`]).toMatchObject({ status: 'unsupported', totalCount: 0 });
   });
+  it.each(['checkpoint', 'diffusion'] as const)('associates renamed %s files using the full hash retained in the MetaHub payload', async (kind) => {
+    const models = catalog(location('one', 'installed-name.safetensors', a, kind));
+    const file = image('metahub-renamed', ['old-name']);
+    file.metadata = { imagemetahub_data: { model: 'old-name', model_hash: a.toUpperCase() }, normalizedMetadata: { model: 'old-name' } } as IndexedImage['metadata'];
+    const files = [file];
+    const usage = (await deriveModelUsage(files, models, false))![`sha256:${a}`];
+    expect(usage).toMatchObject({ totalCount: 1, confirmedCount: 1, nameMatchedCount: 0, ambiguousCount: 0 });
+    expect(resolveManagedModelImages(files, buildModelDescriptors(models)[0])).toEqual(new Set([file.id]));
+  });
+  it('resolves same-name versions using the MetaHub hash and excludes a conflicting full hash', async () => {
+    const models = catalog(location('one', 'style.safetensors', a), location('two', 'style.safetensors', b));
+    const matching = image('metahub-matching', ['style']);
+    matching.metadata = { imagemetahub_data: { model: 'style', model_hash: a } };
+    const conflicting = image('metahub-conflicting', ['style']);
+    conflicting.metadata = { imagemetahub_data: { model: 'style', model_hash: 'c'.repeat(64) } };
+    const files = [matching, conflicting];
+    const usage = (await deriveModelUsage(files, models, false))!;
+    expect(usage[`sha256:${a}`]).toMatchObject({ totalCount: 1, confirmedCount: 1, ambiguousCount: 0 });
+    expect(usage[`sha256:${b}`]).toMatchObject({ totalCount: 0, confirmedCount: 0, ambiguousCount: 0 });
+    const descriptors = buildModelDescriptors(models);
+    expect(resolveManagedModelImages(files, descriptors[0])).toEqual(new Set([matching.id]));
+    expect(resolveManagedModelImages(files, descriptors[1])).toEqual(new Set());
+  });
+  it.each([null, [], 'invalid payload', { model_hash: a.slice(0, 10) }, { model_hash: 'z'.repeat(64) }])('does not confirm incomplete or malformed MetaHub hash evidence: %j', async (payload) => {
+    const models = catalog(location('one', 'style.safetensors', a), location('two', 'style.safetensors', b));
+    const file = image('metahub-incomplete', ['style']);
+    file.metadata = { imagemetahub_data: payload };
+    const usage = (await deriveModelUsage([file], models, false))!;
+    expect(usage[`sha256:${a}`]).toMatchObject({ totalCount: 0, confirmedCount: 0, ambiguousCount: 1 });
+    expect(usage[`sha256:${b}`]).toMatchObject({ totalCount: 0, confirmedCount: 0, ambiguousCount: 1 });
+  });
   it('shares the principal, confirmed and ambiguous sets with navigation and retains empty scopes', async () => {
     const models = catalog(location('one', 'style.safetensors', a), location('two', 'style.safetensors', b));
     const files = [image('one', ['style'], a), image('two', ['style']), image('three', ['renamed'], a)];
