@@ -9,13 +9,12 @@ import ModelUsagePanel from '../components/ModelUsagePanel';
 const item = { location: { id: 'synthetic' }, usage: { ...emptyModelUsage('ready'), confirmedCount: 3, nameMatchedCount: 4, totalCount: 7, ambiguousCount: 2, lastUsedAt: 100 } } as ModelInspectorItem;
 afterEach(() => { cleanup(); command.mockClear(); });
 describe('model usage presentation and commands', () => {
-  it('shows the selected summary and sends explicit principal, confirmed and ambiguous navigation modes', () => {
+  it('shows only the Library count and opens the principal matching set', () => {
     render(<ModelUsagePanel item={item} />);
     expect(screen.getByText('7 files in Library')).toBeTruthy();
-    expect(screen.getByText('3 confirmed by hash · 4 matched by name')).toBeTruthy();
-    expect(screen.getByText('2 additional ambiguous matches')).toBeTruthy();
-    for (const label of ['View in Library', 'Confirmed only', 'Ambiguous matches']) fireEvent.click(screen.getByText(label));
-    expect(command.mock.calls.map(([value]) => value)).toEqual(['total', 'confirmed', 'ambiguous'].map((mode) => ({ type: 'viewLibrary', locationId: 'synthetic', mode })));
+    expect(screen.queryByText(/confirmed by hash|matched by name|additional ambiguous matches/)).toBeNull();
+    fireEvent.click(screen.getByText('View in Library'));
+    expect(command).toHaveBeenCalledWith({ type: 'viewLibrary', locationId: 'synthetic', mode: 'total' });
   });
   it('distinguishes pending data from a definitive zero', () => {
     const view = render(<ModelUsagePanel item={{ ...item, usage: undefined }} />);
