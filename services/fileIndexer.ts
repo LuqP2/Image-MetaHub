@@ -4,6 +4,7 @@ import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager'
 
 import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, hasUsableComfyGraphMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { getFilesystemPathComparisonKey, normalizeFilesystemPath } from '../utils/filesystemPath';
+import { readModelHashEvidence } from '../utils/modelHashEvidence';
 import { parse } from 'exifr';
 import { isLegacyKrea2FalsePromptPayload, isNonBlankPromptText, resolvePromptFromGraph, parseComfyUIMetadataEnhanced, resolveModel3DLineageFromGraph } from './parsers/comfyUIParser';
 import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
@@ -2291,7 +2292,7 @@ function buildUncompactedRawMetadataForRuntime(
   };
 }
 
-function compactRawMetadataForRuntime(
+export function compactRawMetadataForRuntime(
   rawMetadata: ImageMetadata | null,
   normalizedMetadata?: BaseMetadata
 ): { metadata: IndexedImage['metadata']; metadataString: string } {
@@ -2316,6 +2317,7 @@ function compactRawMetadataForRuntime(
     _rawMetadataCompacted: true,
     _rawMetadataSizeBytes: rawMetadataString.length,
     _rawMetadataKeys: Object.keys(rawMetadata),
+    _modelHashEvidence: readModelHashEvidence(rawMetadata),
   };
 
   if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string') {

@@ -7,6 +7,7 @@ import {
 } from '../types';
 import { isUsableTimestamp } from '../utils/fileTimestamps.js';
 import { PARSER_VERSION } from '../utils/parserVersion.js';
+import { readModelHashEvidence } from '../utils/modelHashEvidence';
 
 export { PARSER_VERSION };
 
@@ -174,7 +175,7 @@ export function healCachedSortDate(entry: CacheImageMetadata): CacheImageMetadat
   return { ...entry, lastModified: entry.contentModifiedMs as number };
 }
 
-function compactCacheMetadataEntry(rawEntry: CacheImageMetadata): CacheImageMetadata {
+export function compactCacheMetadataEntry(rawEntry: CacheImageMetadata): CacheImageMetadata {
   const entry = healCachedSortDate(rawEntry);
   const metadataString = typeof entry.metadataString === 'string' ? entry.metadataString : '';
   if (metadataString.length <= MAX_INLINE_RAW_METADATA_BYTES) {
@@ -189,6 +190,7 @@ function compactCacheMetadataEntry(rawEntry: CacheImageMetadata): CacheImageMeta
     _rawMetadataCompacted: true,
     _rawMetadataSizeBytes: metadataString.length,
     _rawMetadataKeys: Object.keys(metadata).filter(key => key !== 'normalizedMetadata'),
+    _modelHashEvidence: readModelHashEvidence(metadata),
   };
 
   if (metadata._provenanceMetadataSource === 'sidecar' || metadata._provenanceMetadataSource === 'embedded') {

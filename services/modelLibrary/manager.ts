@@ -43,6 +43,7 @@ function scheduleUsage() {
   if (scope?.type === 'managedModel' && scope.managedModel) {
     const current = descriptors.find((model) => model.identity === scope.managedModel!.identity || model.locationIds.some((id) => scope.managedModel!.locationIds.includes(id)));
     if (current) useImageStore.getState().setActiveImageScope({ ...scope, id: current.identity, managedModel: { ...current, mode: scope.managedModel.mode } });
+    else if (!state.loading) useImageStore.getState().setActiveImageScope(null);
   }
   publish({ usage: Object.fromEntries(descriptors.map((model) => [model.identity, model.supported ? { ...(state.usage?.[model.identity] ?? emptyModelUsage('loading')), status: state.usage?.[model.identity] ? 'partial' : 'loading' } : emptyModelUsage('unsupported')])) });
   usageTimer = setTimeout(() => {

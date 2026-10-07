@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModelCatalog, ModelLocalMetadata, ModelSource } from '../services/modelLibrary/types';
 import type { ImageScope, IndexedImage } from '../types';
+import { buildModelDescriptors } from '../services/modelLibrary/imageAssociations';
 
 const fakes = vi.hoisted(() => ({ sources: [] as ModelSource[], locals: [] as ModelLocalMetadata[], saveLocal: vi.fn(), images: [] as unknown[], scope: null as ImageScope | null, loading: false, enriching: false, notify: undefined as (() => void) | undefined }));
 vi.mock('../store/useImageStore', () => {
-  const getState = () => ({ images: fakes.images, activeImageScope: fakes.scope, isLoading: fakes.loading, enrichmentProgress: fakes.enriching ? { processed: 0, total: 1 } : null, setActiveImageScope: (scope: ImageScope) => { fakes.scope = scope; } });
+  const getState = () => ({ images: fakes.images, activeImageScope: fakes.scope, isLoading: fakes.loading, enrichmentProgress: fakes.enriching ? { processed: 0, total: 1 } : null, setActiveImageScope: (scope: ImageScope | null) => { fakes.scope = scope; } });
   return { useImageStore: { getState, subscribe: (callback: (next: ReturnType<typeof getState>, previous: ReturnType<typeof getState>) => void) => { fakes.notify = () => callback(getState(), { ...getState(), images: [] }); return () => { fakes.notify = undefined; }; } } };
 });
 vi.mock('../services/thumbnailManager', () => ({ thumbnailManager: { getResolvedState: (image: { thumbnailUrl?: string }) => ({ thumbnailUrl: image.thumbnailUrl }) } }));
@@ -48,6 +49,43 @@ async function initialize() {
 }
 
 describe('single-owner model service', () => {
+  it('clears the active managed model scope when its source is removed', async () => {
+    const manager = await initialize();
+    manager.setModelLibraryOpener((scope) => { fakes.scope = scope; });
+    await manager.runModelCommand({ type: 'viewLibrary', locationId: location('one').id, mode: 'total' });
+    await manager.removeModelSource('s');
+    expect(fakes.scope).toBeNull();
+  });
+  it('retains a hashed scope while a copy exists and clears it after the last location disappears', async () => {
+    catalog.locations = [location('one'), location('copy')].map((entry) => ({ ...entry, sha256: 'a'.repeat(64) }));
+    const manager = await initialize();
+    manager.setModelLibraryOpener((scope) => { fakes.scope = scope; });
+    await manager.runModelCommand({ type: 'viewLibrary', locationId: location('one').id, mode: 'confirmed' });
+    catalog.locations = [catalog.locations[1]];
+    await manager.scanModelSources();
+    expect(fakes.scope).toMatchObject({ managedModel: { identity: `sha256:${'a'.repeat(64)}`, locationIds: [location('copy').id], mode: 'confirmed' } });
+    catalog.locations = [];
+    await manager.scanModelSources();
+    expect(fakes.scope).toBeNull();
+  });
+  it('waits for catalog initialization before invalidating a managed model scope', async () => {
+    fakes.scope = { type: 'managedModel', id: `location:${location('one').id}`, label: 'one', managedModel: buildModelDescriptors(catalog)[0] };
+    let restore!: (value: null) => void;
+    api.modelManagerLoadPreferences.mockImplementation(() => new Promise((resolve) => { restore = resolve; }));
+    const manager = await import('../services/modelLibrary/manager');
+    cleanup = manager.startModelManager();
+    expect(manager.getModelManagerState().loading).toBe(true);
+    expect(fakes.scope).not.toBeNull();
+    restore(null);
+    await vi.waitFor(() => expect(manager.getModelManagerState().loading).toBe(false));
+    expect(fakes.scope).toMatchObject({ managedModel: { locationIds: [location('one').id] } });
+  });
+  it('leaves other Library scope types intact when a model source is removed', async () => {
+    const manager = await initialize();
+    fakes.scope = { type: 'model', id: 'synthetic', label: 'synthetic' };
+    await manager.removeModelSource('s');
+    expect(fakes.scope).toEqual({ type: 'model', id: 'synthetic', label: 'synthetic' });
+  });
   it('shares usage with the Inspector and promotes an active Library descriptor after hashing', async () => {
     fakes.images = [{ id: 'synthetic-image', models: [], loras: ['one'], lastModified: 100, metadata: {} } as IndexedImage];
     const manager = await initialize();
@@ -65,8 +103,11 @@ describe('single-owner model service', () => {
     fakes.loading = true; fakes.enriching = true;
     fakes.images = [{ id: 'synthetic-image', models: [], loras: ['one'], lastModified: 100, metadata: {} } as IndexedImage]; fakes.notify?.();
     await vi.waitFor(() => expect(manager.modelItem(location('one').id).usage).toMatchObject({ status: 'partial', totalCount: 1 }));
+    manager.setModelLibraryOpener((scope) => { fakes.scope = scope; });
+    await manager.runModelCommand({ type: 'viewLibrary', locationId: location('one').id, mode: 'total' });
     fakes.loading = false; fakes.enriching = false; fakes.images = []; fakes.notify?.();
     await vi.waitFor(() => expect(manager.modelItem(location('one').id).usage).toMatchObject({ status: 'ready', totalCount: 0, lastUsedAt: null }));
+    expect(fakes.scope).toMatchObject({ managedModel: { locationIds: [location('one').id], mode: 'total' } });
     const navigate = vi.fn(); manager.setModelLibraryOpener(navigate);
     await manager.runModelCommand({ type: 'viewLibrary', locationId: location('one').id, mode: 'confirmed' });
     expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ type: 'managedModel', managedModel: expect.objectContaining({ mode: 'confirmed' }) }));
