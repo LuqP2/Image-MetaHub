@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
-import { useLicenseStore, TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
+import { useLicenseStore, TRIAL_DURATION_DAYS, getTrialPeriod } from '../store/useLicenseStore';
 
 export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging' | 'file_management' | 'image_editor' | 'semantic_search' | 'model_manager';
 
@@ -110,22 +110,22 @@ export const useProModalStore = create<ProModalState>()(
 );
 
 // Helper: Check if trial has expired
-const isTrialExpired = (trialStartDate: number | null): boolean => {
+const isTrialExpired = (trialStartDate: number | null, durationDays = TRIAL_DURATION_DAYS): boolean => {
   if (!trialStartDate) return false;
 
   const now = Date.now();
-  const trialEnd = trialStartDate + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000;
+  const trialEnd = trialStartDate + durationDays * 24 * 60 * 60 * 1000;
 
   // Clock rollback or expired
   return now < trialStartDate || now > trialEnd;
 };
 
 // Helper: Calculate days remaining in trial
-const calculateDaysRemaining = (trialStartDate: number | null): number => {
+const calculateDaysRemaining = (trialStartDate: number | null, durationDays = TRIAL_DURATION_DAYS): number => {
   if (!trialStartDate) return 0;
 
   const now = Date.now();
-  const trialEnd = trialStartDate + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000;
+  const trialEnd = trialStartDate + durationDays * 24 * 60 * 60 * 1000;
   const msRemaining = trialEnd - now;
 
   return Math.max(0, Math.ceil(msRemaining / (24 * 60 * 60 * 1000)));
@@ -146,10 +146,11 @@ export const useFeatureAccess = () => {
 
   // Compute status (CENTRALIZED LOGIC HERE!)
   const isPro = devOverride || hasProLicense;
+  const trialPeriod = getTrialPeriod(licenseStore);
 
   const isTrialActive = isInitialized &&
                         licenseStore.licenseStatus === 'trial' &&
-                        !isTrialExpired(licenseStore.trialStartDate);
+                        !!trialPeriod.startDate && !isTrialExpired(trialPeriod.startDate, trialPeriod.durationDays);
 
   const isExpired = isInitialized && licenseStore.licenseStatus === 'expired';
   // Post-trial recovery surface: shown once per trial, until the user dismisses it.
@@ -157,6 +158,9 @@ export const useFeatureAccess = () => {
   const isFree = isInitialized && licenseStore.licenseStatus === 'free';
   const trialUsed = isInitialized && licenseStore.trialActivated;
   const canStartTrial = isInitialized && licenseStore.trialAvailable && !hasProLicense && !isTrialActive && !trialUsed;
+  const canExtendTrial = isExpired && licenseStore.trialAvailable && !isPro && trialUsed
+    && !!licenseStore.trialStartDate && !licenseStore.trialExtensionStartDate
+    && Date.now() > licenseStore.trialStartDate + TRIAL_DURATION_DAYS * 86400000;
 
   // Keep the development shortcut working, but do not open paid features before license state loads.
   const allowDuringInit = devOverride;
@@ -178,7 +182,7 @@ export const useFeatureAccess = () => {
 
   // Trial countdown
   const trialDaysRemaining = isInitialized
-    ? calculateDaysRemaining(licenseStore.trialStartDate)
+    ? calculateDaysRemaining(trialPeriod.startDate, trialPeriod.durationDays)
     : 0;
 
   // Modal control
@@ -237,6 +241,7 @@ export const useFeatureAccess = () => {
     isFree,
     isPro,
     canStartTrial,
+    canExtendTrial,
     trialUsed,
     licenseStatus: licenseStore.licenseStatus,
     initialized: licenseStore.initialized,

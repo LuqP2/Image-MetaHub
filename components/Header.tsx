@@ -9,7 +9,7 @@ import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch
 import { ProPlanSelectorModal } from './ProPlanSelector';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
 import type { ExploreDimension } from '../types';
-import { useLicenseStore } from '../store/useLicenseStore';
+import { TRIAL_EXTENSION_DAYS, useLicenseStore } from '../store/useLicenseStore';
 import { formatLicenseValidity } from '../utils/licenseDisplay';
 
 type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor';
@@ -17,6 +17,7 @@ type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collections' 
 interface HeaderProps {
     onOpenSettings: () => void;
     onOpenLicense: () => void;
+    onOpenTrialExtension?: () => void;
     onGeneratorSetupNeeded?: () => void;
     libraryView?: LibraryView;
     onLibraryViewChange?: (view: LibraryView) => void;
@@ -27,6 +28,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({
     onOpenSettings,
     onOpenLicense,
+    onOpenTrialExtension,
     onGeneratorSetupNeeded,
     libraryView,
     onLibraryViewChange,
@@ -45,6 +47,7 @@ const Header: React.FC<HeaderProps> = ({
     isExpired,
     isFree,
     canStartTrial,
+    canExtendTrial,
   } = useFeatureAccess();
 
   // Store hooks for View Controls
@@ -500,13 +503,20 @@ const Header: React.FC<HeaderProps> = ({
           </button>
 
           {!isPro && (
-            <button
-              type="button"
-              onClick={() => setIsPlanSelectorOpen(true)}
-              className="app-top-pill hidden h-9 border-amber-700/30 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 hover:border-amber-600/40 hover:bg-amber-500/15 hover:text-amber-100 lg:inline-flex"
-            >
-              Get Pro
-            </button>
+            <div className={`${canExtendTrial ? 'flex' : 'hidden lg:flex'} flex-col items-center gap-0.5`}>
+              <button
+                type="button"
+                onClick={() => setIsPlanSelectorOpen(true)}
+                className="app-top-pill h-9 border-amber-700/30 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 hover:border-amber-600/40 hover:bg-amber-500/15 hover:text-amber-100"
+              >
+                Get Pro
+              </button>
+              {canExtendTrial && onOpenTrialExtension && (
+                <button type="button" onClick={onOpenTrialExtension} className="text-[11px] leading-tight text-accent hover:underline">
+                  Activate {TRIAL_EXTENSION_DAYS} extra trial days
+                </button>
+              )}
+            </div>
           )}
 
           <div className="app-top-segmented">

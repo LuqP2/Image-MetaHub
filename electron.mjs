@@ -988,6 +988,15 @@ function mergeSettingsUpdate(currentSettings, newSettings) {
     ...newSettings,
   };
 
+  // Only trial:extend may grant this period. Whole-settings writes from stale
+  // renderers must neither erase an already-used offer nor move its start date.
+  if (newSettings?.license && typeof newSettings.license === 'object') {
+    nextSettings.license = {
+      ...newSettings.license,
+      trialExtensionStartDate: currentSettings?.license?.trialExtensionStartDate ?? null,
+    };
+  }
+
   if (
     currentSettings?.lastViewedVersion === currentAppVersion &&
     newSettings?.lastViewedVersion !== currentAppVersion
@@ -3621,6 +3630,44 @@ app.whenReady().then(async () => {
 });
 
 function setupLicenseHandlers() {
+  ipcMain.handle('trial:extend', async (event) => {
+    try {
+      if (desktopRuntime.isPortable) {
+        return { success: false, trialExtensionStartDate: null, error: 'The free trial is not available in the Portable edition.' };
+      }
+      if ((await licenseManager.getStatus()).authorized) {
+        return { success: false, trialExtensionStartDate: null, error: 'A paid license is already active.' };
+      }
+      let trialExtensionStartDate = null;
+      await queueSettingsUpdate((currentSettings) => {
+        const license = currentSettings?.license ?? {};
+        const startDate = Number(license.trialStartDate);
+        const now = Date.now();
+        if (license.trialExtensionStartDate || license.trialActivated !== true
+          || !Number.isFinite(startDate) || startDate <= 0 || now <= startDate + 7 * 86400000) {
+          throw new Error('The extra trial is only available once, after your original trial ends.');
+        }
+        trialExtensionStartDate = now;
+        return {
+          ...currentSettings,
+          license: {
+            ...license,
+            trialExtensionStartDate,
+            licenseStatus: 'trial',
+            trialExpiredNoticeDismissed: false,
+            migrationResetApplied: true,
+            expiredTrialResetApplied: true,
+            nextReleaseTrialResetApplied: true,
+            trialDurationV2ResetApplied: true,
+          },
+        };
+      });
+      broadcastSettingsUpdated(event.sender);
+      return { success: true, trialExtensionStartDate };
+    } catch (error) {
+      return { success: false, trialExtensionStartDate: null, error: error?.message || 'The extra trial could not be saved.' };
+    }
+  });
   ipcMain.handle('trial:activate', async (event) => {
     try {
       if (desktopRuntime.isPortable) {

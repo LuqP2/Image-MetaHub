@@ -42,6 +42,13 @@ const isElectron = !!window.electronAPI;
 
 // Trial duration (shared across UI)
 export const TRIAL_DURATION_DAYS = 7;
+export const TRIAL_EXTENSION_DAYS = 3;
+
+// Preserve the original trial date; the extra period starts only on explicit opt-in.
+export const getTrialPeriod = (state: { trialStartDate: number | null; trialExtensionStartDate?: number | null }) => ({
+  startDate: state.trialExtensionStartDate ?? state.trialStartDate,
+  durationDays: state.trialExtensionStartDate ? TRIAL_EXTENSION_DAYS : TRIAL_DURATION_DAYS,
+});
 
 // Type definitions
 type LicenseStatus = 'free' | 'trial' | 'expired' | 'pro' | 'lifetime';
@@ -58,6 +65,7 @@ interface LicenseState {
   // Trial tracking
   trialStartDate: number | null;
   trialActivated: boolean;
+  trialExtensionStartDate: number | null;
 
   // License info
   licenseStatus: LicenseStatus;
@@ -75,6 +83,7 @@ interface LicenseState {
 
   // Actions
   activateTrial: () => Promise<boolean>;
+  activateTrialExtension: () => Promise<boolean>;
   checkLicenseStatus: () => Promise<void>;
   activateLicense: (key: string, email: string) => Promise<boolean>;
   refreshLicense: () => Promise<boolean>;
@@ -103,11 +112,11 @@ const stateFromAuthority = (status: LicenseClientStatus) => ({
 });
 
 // Helper: Check if trial has expired
-const checkIfTrialExpired = (trialStartDate: number | null): boolean => {
+const checkIfTrialExpired = (trialStartDate: number | null, durationDays = TRIAL_DURATION_DAYS): boolean => {
   if (!trialStartDate) return false;
 
   const now = Date.now();
-  const trialEnd = trialStartDate + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000;
+  const trialEnd = trialStartDate + durationDays * 24 * 60 * 60 * 1000;
 
   // Detect clock rollback
   if (now < trialStartDate) {
@@ -165,6 +174,7 @@ export const useLicenseStore = create<LicenseState>()(
       trialAvailable: true,
       trialStartDate: null,
       trialActivated: false,
+      trialExtensionStartDate: null,
       licenseStatus: 'free',
       licenseKey: null,
       licenseEmail: null,
@@ -188,7 +198,8 @@ export const useLicenseStore = create<LicenseState>()(
         // Only activate once
         if (state.trialActivated) {
           console.log('[IMH] Trial already activated');
-          const trialExpired = checkIfTrialExpired(state.trialStartDate) || !state.trialStartDate;
+          const period = getTrialPeriod(state);
+          const trialExpired = checkIfTrialExpired(period.startDate, period.durationDays) || !period.startDate;
           set({ initialized: true, licenseStatus: trialExpired ? 'expired' : 'trial' });
           return !trialExpired;
         }
@@ -231,6 +242,39 @@ export const useLicenseStore = create<LicenseState>()(
 
         console.log(`[IMH] Trial activated! ${TRIAL_DURATION_DAYS} days of Pro features unlocked.`);
         return !checkIfTrialExpired(trialStartDate);
+      },
+
+      activateTrialExtension: async () => {
+        const state = get();
+        if (!state.initialized || !state.trialAvailable || state.licenseStatus !== 'expired'
+          || !state.trialActivated || !state.trialStartDate || state.trialExtensionStartDate
+          || !checkIfTrialExpired(state.trialStartDate) || Date.now() < state.trialStartDate) return false;
+
+        let trialExtensionStartDate = Date.now();
+        if (isElectron) {
+          try {
+            const result = await window.electronAPI.activateTrialExtension();
+            if (!result.success || !result.trialExtensionStartDate) {
+              set({ licenseMessage: result.error || 'The extra trial could not be started.' });
+              return false;
+            }
+            trialExtensionStartDate = result.trialExtensionStartDate;
+          } catch {
+            set({ licenseMessage: 'The extra trial could not be started.' });
+            return false;
+          }
+        }
+        set({
+          trialExtensionStartDate,
+          licenseStatus: 'trial',
+          licenseMessage: null,
+          trialExpiredNoticeDismissed: false,
+          migrationResetApplied: true,
+          expiredTrialResetApplied: true,
+          nextReleaseTrialResetApplied: true,
+          trialDurationV2ResetApplied: true,
+        });
+        return true;
       },
 
       // Check license status (called on app start and periodically)
@@ -378,7 +422,8 @@ export const useLicenseStore = create<LicenseState>()(
         }
 
         // Derive trial status from stored dates
-        const trialExpired = checkIfTrialExpired(currentState.trialStartDate) || !currentState.trialStartDate;
+        const period = getTrialPeriod(currentState);
+        const trialExpired = checkIfTrialExpired(period.startDate, period.durationDays) || !period.startDate;
         const nextStatus: LicenseStatus = trialExpired ? 'expired' : 'trial';
 
         set({
@@ -459,6 +504,7 @@ export const useLicenseStore = create<LicenseState>()(
           trialAvailable: true,
           trialStartDate: null,
           trialActivated: false,
+          trialExtensionStartDate: null,
           licenseStatus: 'free',
           licenseKey: null,
           licenseEmail: null,
@@ -481,6 +527,7 @@ export const useLicenseStore = create<LicenseState>()(
         trialDurationV2ResetApplied: state.trialDurationV2ResetApplied,
         trialStartDate: state.trialStartDate,
         trialActivated: state.trialActivated,
+        trialExtensionStartDate: state.trialExtensionStartDate,
         trialExpiredNoticeDismissed: state.trialExpiredNoticeDismissed,
       }),
       merge: mergePersistedLicenseState,

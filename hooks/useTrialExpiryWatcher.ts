@@ -1,7 +1,5 @@
 import { useEffect } from 'react';
-import { TRIAL_DURATION_DAYS, useLicenseStore } from '../store/useLicenseStore';
-
-const TRIAL_DURATION_MS = TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000;
+import { getTrialPeriod, useLicenseStore } from '../store/useLicenseStore';
 /** Small cushion so the refresh lands past the deadline, not exactly on it. */
 const EXPIRY_CHECK_BUFFER_MS = 1000;
 
@@ -18,6 +16,7 @@ const EXPIRY_CHECK_BUFFER_MS = 1000;
 export const useTrialExpiryWatcher = (): void => {
   const licenseStatus = useLicenseStore((state) => state.licenseStatus);
   const trialStartDate = useLicenseStore((state) => state.trialStartDate);
+  const trialExtensionStartDate = useLicenseStore((state) => state.trialExtensionStartDate);
 
   useEffect(() => {
     if (licenseStatus !== 'trial' || !trialStartDate) {
@@ -26,11 +25,12 @@ export const useTrialExpiryWatcher = (): void => {
 
     // `checkIfTrialExpired` compares with a strict `now > trialEnd`, so firing exactly on the
     // deadline would re-derive 'trial' and do nothing. Land just past it.
-    const msUntilExpiry = trialStartDate + TRIAL_DURATION_MS + EXPIRY_CHECK_BUFFER_MS - Date.now();
+    const period = getTrialPeriod({ trialStartDate, trialExtensionStartDate });
+    const msUntilExpiry = period.startDate! + period.durationDays * 24 * 60 * 60 * 1000 + EXPIRY_CHECK_BUFFER_MS - Date.now();
     const timer = setTimeout(() => {
       void useLicenseStore.getState().checkLicenseStatus();
     }, Math.max(0, msUntilExpiry));
 
     return () => clearTimeout(timer);
-  }, [licenseStatus, trialStartDate]);
+  }, [licenseStatus, trialStartDate, trialExtensionStartDate]);
 };
