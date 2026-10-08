@@ -291,6 +291,18 @@ async function bindHF(locationId: string, binding: HuggingFaceBinding, revision:
   await flushModelState();
 }
 
+async function withdrawRemoteHFVerification(locationId: string, original: HuggingFaceBinding, revision: number) {
+  if (!currentHFOperation(locationId, revision)) return;
+  const locations = state.catalog.locations.map((location) => {
+    const binding = location.huggingFace;
+    if (binding?.verification !== 'sha256' || !sameHF(binding, original) || binding.linkedRemoteFingerprint !== original.linkedRemoteFingerprint) return location;
+    return { ...location, huggingFace: { ...binding, verification: 'manual' as const, verifiedLocalSha256: undefined } };
+  });
+  publish({ catalog: { ...state.catalog, locations, updatedAt: Date.now() } });
+  await persistCatalog();
+  await flushModelState();
+}
+
 async function runHFCommand(command: Extract<ModelManagerCommand, { type: 'lookupHF' | 'bindHF' | 'verifyHF' }>): Promise<HuggingFaceLookup | undefined> {
   const original = modelItem(command.locationId).location.huggingFace;
   if (command.type === 'verifyHF' && !original) throw new Error('Link a public Hugging Face file first.');
@@ -303,6 +315,10 @@ async function runHFCommand(command: Extract<ModelManagerCommand, { type: 'looku
     if (!currentHFOperation(command.locationId, revision)) return;
     if (command.type === 'lookupHF') return lookup;
     const file = lookup.files.find((entry) => entry.path === target.filePath);
+    // Only a successful lookup can invalidate remote evidence; offline errors preserve it.
+    if (command.type === 'verifyHF' && original!.verification === 'sha256' && (!file || file.fingerprint !== original!.linkedRemoteFingerprint)) {
+      await withdrawRemoteHFVerification(command.locationId, original!, revision);
+    }
     if (!file) throw new Error('Public .safetensors file unavailable at this revision.');
     if (command.type === 'bindHF' && file.fingerprint !== command.fingerprint) throw new Error('The remote file changed. Look it up again before confirming.');
     const binding: HuggingFaceBinding = { repoId: lookup.repoId, filePath: file.path, linkedRevision: lookup.revision, linkedRemoteFingerprint: file.fingerprint, verification: 'manual', resolvedCommit: lookup.resolvedCommit, size: file.size, fetchedAt: lookup.fetchedAt };

@@ -132,6 +132,37 @@ describe('single-owner model service', () => {
     await manager.runModelCommand({ type: 'hash', locationId: location('copy').id });
     expect(manager.getModelManagerState().catalog.locations.find((entry) => entry.id === location('copy').id)!.huggingFace?.verification).toBe('sha256');
   });
+  it.each(['changed', 'missing'] as const)('withdraws shared verification after a successful lookup proves the remote file %s', async (change) => {
+    const verified: HuggingFaceBinding = { ...hfBinding, verification: 'sha256', verifiedLocalSha256: hfSha };
+    const different = { ...verified, repoId: 'other/repo' };
+    catalog.locations = [
+      { ...location('one'), sha256: hfSha, huggingFace: verified },
+      { ...location('copy'), sha256: hfSha, huggingFace: { ...verified, fetchedAt: 2 } },
+      { ...location('other'), sha256: hfSha, huggingFace: different },
+      { ...location('unlinked'), sha256: 'f'.repeat(64) },
+    ];
+    const manager = await initialize();
+    const before = new Map(manager.getModelManagerState().catalog.locations.map((entry) => [entry.id, entry.huggingFace]));
+    api.modelManagerHuggingFace.mockResolvedValue({ success: true, lookup: { ...hfLookup, files: change === 'missing' ? [] : [{ ...hfFile, fingerprint: `lfs:sha256:${'f'.repeat(64)}` }] } });
+    await expect(manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id })).rejects.toThrow(change === 'missing' ? 'unavailable' : 'changed');
+    const locations = manager.getModelManagerState().catalog.locations;
+    for (const name of ['one', 'copy']) {
+      const id = location(name).id;
+      expect(locations.find((entry) => entry.id === id)?.huggingFace).toEqual({ ...before.get(id), verification: 'manual', verifiedLocalSha256: undefined });
+    }
+    expect(locations.find((entry) => entry.id === location('other').id)?.huggingFace).toEqual(different);
+    expect(locations.find((entry) => entry.id === location('unlinked').id)?.huggingFace).toBeUndefined();
+    expect(api.modelLibraryHash).not.toHaveBeenCalled();
+    expect(api.modelManagerPublish.mock.calls.at(-1)?.[0].catalog.locations[0].huggingFace.verification).toBe('manual');
+  });
+  it('preserves verified evidence when the remote lookup fails', async () => {
+    const verified: HuggingFaceBinding = { ...hfBinding, verification: 'sha256', verifiedLocalSha256: hfSha };
+    catalog.locations = [{ ...location('one'), sha256: hfSha, huggingFace: verified }];
+    const manager = await initialize();
+    api.modelManagerHuggingFace.mockResolvedValue({ success: false, error: 'Offline' });
+    await expect(manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id })).rejects.toThrow('Offline');
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(verified);
+  });
   it('does not inherit a verified link when that copy was explicitly unlinked during hashing', async () => {
     catalog.locations = [{ ...location('one'), sha256: hfSha, huggingFace: { ...hfBinding, verification: 'sha256', verifiedLocalSha256: hfSha } }, location('copy')];
     const manager = await initialize();
