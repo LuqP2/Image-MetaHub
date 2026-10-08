@@ -16,7 +16,7 @@ vi.mock('../services/modelLibrary/localMetadataStorage', async (original) => {
   return { ...actual, getAllModelLocalMetadata: async () => fakes.locals, saveModelLocalMetadata: (value: ModelLocalMetadata) => fakes.saveLocal(value), deleteModelLocalMetadata: async () => {} };
 });
 vi.mock('../services/modelLibrary/watchStorage', () => ({ loadWatchPreferences: async () => ({ watches: [], intervalHours: 24 }), saveWatchPreference: async () => {} }));
-vi.mock('../services/modelLibrary/huggingFaceWatchStorage', () => ({ loadHuggingFaceWatches: async () => [], saveHuggingFaceWatch: (watch: unknown) => fakes.hfSave(watch) }));
+vi.mock('../services/modelLibrary/huggingFaceWatchStorage', () => ({ loadHuggingFaceWatches: async () => [], saveHuggingFaceWatches: (watches: unknown) => fakes.hfSave(watches) }));
 
 const source: ModelSource = { id: 's', path: '/synthetic/models', name: 'Models', kind: 'lora', recursive: true, createdAt: 1, updatedAt: 1 };
 const hfSha = 'a'.repeat(64);
@@ -70,7 +70,7 @@ describe('single-owner model service', () => {
     expect(api.modelManagerRemote).not.toHaveBeenCalled(); expect(api.modelLibraryHash).not.toHaveBeenCalled();
     const watch = manager.getModelManagerState().hfWatches![huggingFaceWatchId(hfBinding)];
     expect(watch.events).toEqual([]); expect(watch.snapshot?.resolvedCommit).toBe('b'.repeat(40));
-    expect(fakes.hfSave).toHaveBeenCalledWith(watch);
+    expect(fakes.hfSave).toHaveBeenCalledWith({ [watch.id]: watch });
     expect(manager.unreadModelCount()).toBe(0);
   });
   it('groups equivalent HF scopes and stores snapshots/events together for each linked file', async () => {
@@ -81,13 +81,61 @@ describe('single-owner model service', () => {
     expect(api.modelManagerHuggingFaceWatch).toHaveBeenCalledOnce();
     expect(new Set(api.modelManagerHuggingFaceWatch.mock.calls[0][0].linkedPaths)).toEqual(new Set([hfFile.path, other.filePath]));
     expect(Object.keys(manager.getModelManagerState().hfWatches!)).toHaveLength(2);
-    expect(fakes.hfSave).toHaveBeenCalledTimes(2);
+    expect(fakes.hfSave).toHaveBeenCalledOnce();
   });
   it('checks a binding on a secondary byte-identical copy without identifying the primary copy', async () => {
     catalog.locations = [{ ...location('one'), sha256: hfSha, civitai: undefined }, { ...location('copy'), sha256: hfSha, civitai: undefined, huggingFace: hfBinding }];
     const manager = await initialize(); await manager.checkModelUpdates([location('one').id]);
     expect(api.modelManagerHuggingFaceWatch).toHaveBeenCalledOnce();
     expect(api.modelManagerRemote).not.toHaveBeenCalled(); expect(api.modelLibraryHash).not.toHaveBeenCalled();
+  });
+  it.each(['success', 'failure'] as const)('persists a grouped check once for 100 linked files on %s', async (outcome) => {
+    const files = Array.from({ length: 100 }, (_, index) => ({ ...hfFile, path: `folder/${index}.safetensors` }));
+    catalog.locations = files.map((file, index) => ({ ...location(String(index)), civitai: undefined, huggingFace: { ...hfBinding, filePath: file.path } }));
+    const snapshot = { ...hfSnapshot(files), linkedFiles: Object.fromEntries(files.map((file) => [file.path, file])) };
+    api.modelManagerHuggingFaceWatch.mockResolvedValue(outcome === 'success' ? { success: true, snapshot } : { success: false, error: 'Offline' });
+    const manager = await initialize();
+    fakes.hfSave.mockClear(); api.modelManagerPublish.mockClear();
+    await manager.checkModelUpdates(catalog.locations.map((entry) => entry.id));
+    expect(api.modelManagerHuggingFaceWatch).toHaveBeenCalledOnce();
+    expect(fakes.hfSave).toHaveBeenCalledOnce();
+    expect(Object.keys(fakes.hfSave.mock.calls[0][0])).toHaveLength(100);
+    expect(api.modelManagerPublish).toHaveBeenCalledOnce();
+    const published = api.modelManagerPublish.mock.calls[0][0];
+    expect(published.hfWatches).toBeUndefined();
+    expect(Object.keys(published.hfWatchState.snapshots)).toHaveLength(outcome === 'success' ? 1 : 0);
+    if (outcome === 'success') expect(JSON.stringify(published.hfWatchState).match(/"files":/g)).toHaveLength(1);
+  });
+  it('reuses the existing baseline and decisions after leaving and returning to a watch scope', async () => {
+    makeHFOnly(); const manager = await initialize();
+    await manager.checkModelUpdates([location('one').id]);
+    const added = { ...hfFile, path: 'folder/new.safetensors' };
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: true, snapshot: hfSnapshot([hfFile, added]) });
+    await manager.checkModelUpdates([location('one').id]);
+    const id = huggingFaceWatchId(hfBinding), eventId = manager.getModelManagerState().hfWatches![id].events[0].id;
+    await manager.runModelCommand({ type: 'hfEventAction', watchId: id, eventIds: [eventId], action: 'ignore' });
+    const before = manager.getModelManagerState().hfWatches![id];
+    await manager.runModelCommand({ type: 'configureHF', locationId: location('one').id, config: { trackedRevision: 'other', watchedDirectory: '', recursive: true, monitoringEnabled: false } });
+    await manager.runModelCommand({ type: 'configureHF', locationId: location('one').id, config: { trackedRevision: 'main', watchedDirectory: 'folder', recursive: false, monitoringEnabled: false } });
+    expect(manager.getModelManagerState().hfWatches![id]).toBe(before);
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: true, snapshot: hfSnapshot([hfFile, added, { ...hfFile, path: 'folder/later.safetensors' }]) });
+    await manager.checkModelUpdates([location('one').id]);
+    const after = manager.getModelManagerState().hfWatches![id];
+    expect(after.events).toHaveLength(2);
+    expect(after.ignoredEventIds).toEqual([eventId]);
+    expect(manager.unreadModelCount()).toBe(1);
+  });
+  it('preserves an active watch when another location joins its existing scope', async () => {
+    makeHFOnly();
+    catalog.locations.push({ ...location('two'), civitai: undefined, huggingFace: { ...hfBinding, watchedDirectory: '', recursive: true } });
+    const manager = await initialize();
+    await manager.checkModelUpdates([location('one').id]);
+    const before = manager.getModelManagerState().hfWatches![huggingFaceWatchId(hfBinding)];
+    await manager.runModelCommand({ type: 'configureHF', locationId: location('two').id, config: { trackedRevision: 'main', watchedDirectory: 'folder', recursive: false, monitoringEnabled: false } });
+    expect(manager.getModelManagerState().hfWatches![before.id]).toBe(before);
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: true, snapshot: hfSnapshot([hfFile, { ...hfFile, path: 'folder/new.safetensors' }]) });
+    await manager.checkModelUpdates([location('two').id]);
+    expect(manager.getModelManagerState().hfWatches![before.id].events).toHaveLength(1);
   });
   it('discards the old scope response when monitoring configuration changes during a check', async () => {
     makeHFOnly(); const manager = await initialize(); await manager.checkModelUpdates([location('one').id]);

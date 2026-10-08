@@ -195,6 +195,7 @@ export interface ModelWatchRecord {
 }
 
 export interface ModelManagerSnapshot {
+  hfWatchState?: import('./huggingFaceWatchState.mjs').PackedHuggingFaceWatches;
   hfWatches?: Record<string, HuggingFaceWatchRecord>;
   storage?: ModelStorageOverview;
   sourceStatus?: Record<string, { checkedAt: number; error?: string }>;

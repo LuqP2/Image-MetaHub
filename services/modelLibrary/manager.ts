@@ -4,7 +4,8 @@ import { deriveModelUsage, emptyModelUsage } from './usage';
 import { duplicateCandidates } from './storage';
 import { validateHuggingFaceScope, validateHuggingFaceTarget } from './huggingFaceLink.mjs';
 import { huggingFaceConfig, huggingFaceQueryKey, huggingFaceWatchId, emptyHuggingFaceWatch, reconcileHuggingFaceWatch, unreadHuggingFaceEvents, modelUpdateCounts, isHuggingFaceWatchActive, linkedModelLocationIds } from './huggingFaceTracking';
-import { loadHuggingFaceWatches, saveHuggingFaceWatch } from './huggingFaceWatchStorage';
+import { loadHuggingFaceWatches, saveHuggingFaceWatches } from './huggingFaceWatchStorage';
+import { packHuggingFaceWatches } from './huggingFaceWatchState.mjs';
 import type { ImageScope } from '../../types';
 import { mergeModelMetadata } from './mergeMetadata';
 import { thumbnailManager } from '../thumbnailManager';
@@ -72,7 +73,7 @@ function publish(patch: Partial<ModelManagerSnapshot>) {
 async function flushModelState() {
   if (publishTimer) clearTimeout(publishTimer);
   publishTimer = undefined;
-  const result = await window.electronAPI?.modelManagerPublish(state);
+  const result = await window.electronAPI?.modelManagerPublish({ ...state, hfWatches: undefined, hfWatchState: packHuggingFaceWatches(state.hfWatches ?? {}) });
   if (result && !result.success) throw new Error(result.error || 'Unable to save model preferences.');
 }
 export function useModelManager() {
@@ -194,32 +195,34 @@ export function installedVersions(modelId: number) {
   return state.catalog.locations.flatMap((location) => location.civitai && 'modelId' in location.civitai && location.civitai.modelId === modelId ? [location.civitai] : []);
 }
 export function unreadModelCount() { return Object.values(modelUpdateCounts(state.catalog, state.watches, state.hfWatches)).filter((count) => count > 0).length; }
-function storeHFWatch(id: string, update: (current: HuggingFaceWatchRecord | undefined) => HuggingFaceWatchRecord | undefined) {
+type HFWatchUpdate = { id: string; update: (current: HuggingFaceWatchRecord | undefined) => HuggingFaceWatchRecord | undefined };
+function storeHFWatches(updates: HFWatchUpdate[]) {
   const save = watchWrites.catch(() => {}).then(async () => {
-    const watch = update(state.hfWatches?.[id]);
-    if (!watch) return;
-    await saveHuggingFaceWatch(watch);
-    publish({ hfWatches: { ...state.hfWatches, [watch.id]: watch } });
+    const watches = { ...state.hfWatches };
+    let changed = false;
+    for (const { id, update } of updates) {
+      const watch = update(watches[id]);
+      if (watch) { watches[watch.id] = watch; changed = true; }
+    }
+    if (!changed) return;
+    await saveHuggingFaceWatches(watches);
+    publish({ hfWatches: watches });
     await flushModelState();
-    return watch;
   });
   watchWrites = save.then(() => {}); return save;
 }
+function storeHFWatch(id: string, update: HFWatchUpdate['update']) { return storeHFWatches([{ id, update }]); }
 async function configureHF(locationId: string, config: HuggingFaceWatchConfig) {
   const location = modelItem(locationId).location;
   if (!location.huggingFace) throw new Error('Link a Hugging Face file first.');
   validateHuggingFaceScope(location.huggingFace.repoId, config.trackedRevision, config.watchedDirectory, config.recursive);
   if (typeof config.monitoringEnabled !== 'boolean') throw new Error('Choose whether to enable Hugging Face monitoring.');
-  const oldId = huggingFaceWatchId(location.huggingFace);
-  const binding = { ...location.huggingFace, ...config };
   const locations = state.catalog.locations.map((copy) => {
     if (copy.id !== locationId && !(location.sha256 && copy.sha256?.toLowerCase() === location.sha256.toLowerCase() && sameHF(copy.huggingFace, location.huggingFace!))) return copy;
     hfBindingRevisions.set(copy.id, (hfBindingRevisions.get(copy.id) ?? 0) + 1);
     return { ...copy, huggingFace: { ...copy.huggingFace!, ...config } };
   });
   publish({ catalog: { ...state.catalog, locations, updatedAt: Date.now() } });
-  const id = huggingFaceWatchId(binding);
-  if (id !== oldId && state.hfWatches?.[id]) await storeHFWatch(id, (current) => current ? { ...current, snapshot: undefined, lastSuccessAt: undefined, lastAttemptAt: undefined, retryAt: undefined, error: undefined } : undefined);
   await persistCatalog(); await flushModelState();
 }
 async function markHFEvents(watchId: string, eventIds: string[], action: 'seen' | 'ignore' | 'restore') {
@@ -553,9 +556,9 @@ export async function checkModelUpdates(locationIds: string[], automatic = false
         const snapshot = await remoteHFWatch(binding, [...new Set(valid.map((target) => target.binding.filePath))]);
         if (cancelled) break;
         const watchIds = new Set(valid.filter(active).map((target) => huggingFaceWatchId(target.binding)));
-        for (const watchId of watchIds) {
+        await storeHFWatches([...watchIds].map((watchId) => {
           const target = valid.find((target) => huggingFaceWatchId(target.binding) === watchId)!;
-          await storeHFWatch(watchId, (latest) => {
+          return { id: watchId, update: (latest) => {
             const current = valid.filter((target) => active(target) && huggingFaceWatchId(target.binding) === watchId);
             if (!current.length) return;
             const next = reconcileHuggingFaceWatch(latest, target.binding, snapshot);
@@ -563,16 +566,16 @@ export async function checkModelUpdates(locationIds: string[], automatic = false
             if (automatic && current.some((target) => huggingFaceConfig(modelItem(target.id).location.huggingFace!).monitoringEnabled)) hfNotices.set(watchId, fresh.length);
             next.notifiedEventIds = [...new Set([...next.notifiedEventIds, ...fresh.map((event) => event.id)])];
             return next;
-          });
-        }
+          } };
+        }));
       } catch (error) {
         if (cancelled) break;
         const failure = error as Error & { retryAt?: number };
         const current = valid.filter(active); fail(current.map((target) => target.id));
-        for (const watchId of new Set(current.map((target) => huggingFaceWatchId(target.binding)))) {
+        await storeHFWatches([...new Set(current.map((target) => huggingFaceWatchId(target.binding)))].map((watchId) => {
           const target = current.find((target) => huggingFaceWatchId(target.binding) === watchId)!;
-          await storeHFWatch(watchId, (latest) => current.some((entry) => active(entry) && huggingFaceWatchId(entry.binding) === watchId) ? { ...(latest ?? emptyHuggingFaceWatch(target.binding)), lastAttemptAt: Date.now(), error: failure.message, retryAt: failure.retryAt } : undefined);
-        }
+          return { id: watchId, update: (latest) => current.some((entry) => active(entry) && huggingFaceWatchId(entry.binding) === watchId) ? { ...(latest ?? emptyHuggingFaceWatch(target.binding)), lastAttemptAt: Date.now(), error: failure.message, retryAt: failure.retryAt } : undefined };
+        }));
       }
     }
   } finally {

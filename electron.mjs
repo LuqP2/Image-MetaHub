@@ -12,6 +12,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import { lookupHuggingFaceModel, snapshotHuggingFaceModels } from './electron/huggingFaceModels.mjs';
 import { huggingFaceWatchId } from './services/modelLibrary/huggingFaceWatchIdentity.mjs';
+import { packHuggingFaceWatches, unpackHuggingFaceWatches } from './services/modelLibrary/huggingFaceWatchState.mjs';
 import crypto from 'crypto';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
@@ -6569,11 +6570,16 @@ function setupFileOperationHandlers() {
   });
   ipcMain.handle('model-manager-load-preferences', async (event) => {
     if (!isPrimaryWindowSender(event)) return null;
-    try { return JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'model-manager-user-data', 'preferences.json'), 'utf8')); }
+    try {
+      const { hfWatchState, ...preferences } = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'model-manager-user-data', 'preferences.json'), 'utf8'));
+      return hfWatchState ? { ...preferences, hfWatches: unpackHuggingFaceWatches(hfWatchState) } : preferences;
+    }
     catch (error) { if (error.code === 'ENOENT') return null; throw error; }
   });
   ipcMain.handle('model-manager-publish', async (event, state) => {
     if (!isPrimaryWindowSender(event)) return { success: false };
+    const { hfWatchState, ...received } = state;
+    state = { ...received, hfWatches: hfWatchState ? unpackHuggingFaceWatches(hfWatchState) : received.hfWatches };
     state = { ...state, catalog: { ...state.catalog, locations: state.catalog.locations.filter((location) => !removedModelLocationIds.has(location.id)), managedModels: undefined } };
     modelManagerState = state;
     if (modelInspectorWindow && !modelInspectorWindow.isDestroyed()) {
@@ -6583,7 +6589,7 @@ function setupFileOperationHandlers() {
     if (state.loading) return { success: true };
     // Keep version bindings/identity even when reconstructible caches are cleared.
     const identities = { version: 1, updatedAt: 0, locations: state.catalog.locations.map(({ fileMetadata, metadataError, ...location }) => location) };
-    const durable = { sources: state.sources, localMetadata: state.localMetadata, watches: state.watches, hfWatches: state.hfWatches ?? {}, intervalHours: state.intervalHours, identities };
+    const durable = { sources: state.sources, localMetadata: state.localMetadata, watches: state.watches, hfWatchState: hfWatchState ?? packHuggingFaceWatches(state.hfWatches ?? {}), intervalHours: state.intervalHours, identities };
     const directory = path.join(app.getPath('userData'), 'model-manager-user-data');
     const serialized = JSON.stringify(durable);
     if (serialized === modelManagerDurableJson) {
