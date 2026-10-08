@@ -16,7 +16,8 @@ export async function executeModelCommand(command: ModelManagerCommand) {
   if (new URLSearchParams(window.location.search).get('window') === 'model-inspector') {
     const result = await window.electronAPI!.modelManagerCommand(command);
     if (!result.success) throw new Error(result.error || 'Model action failed.');
-  } else await runModelCommand(command);
+    return result.lookup;
+  } else return runModelCommand(command);
 }
 
 export function ModelLocalEditor({ item }: { item: ModelInspectorItem }) {

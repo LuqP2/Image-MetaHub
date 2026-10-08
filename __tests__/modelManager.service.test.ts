@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ModelCatalog, ModelLocalMetadata, ModelSource } from '../services/modelLibrary/types';
+import type { HuggingFaceBinding, ModelCatalog, ModelLocalMetadata, ModelSource } from '../services/modelLibrary/types';
 import type { ImageScope, IndexedImage } from '../types';
 import { buildModelDescriptors } from '../services/modelLibrary/imageAssociations';
 
@@ -17,6 +17,10 @@ vi.mock('../services/modelLibrary/localMetadataStorage', async (original) => {
 vi.mock('../services/modelLibrary/watchStorage', () => ({ loadWatchPreferences: async () => ({ watches: [], intervalHours: 24 }), saveWatchPreference: async () => {} }));
 
 const source: ModelSource = { id: 's', path: '/synthetic/models', name: 'Models', kind: 'lora', recursive: true, createdAt: 1, updatedAt: 1 };
+const hfSha = 'a'.repeat(64);
+const hfFile = { path: 'folder/model.safetensors', size: 100, lfsSha256: hfSha, fingerprint: `lfs:sha256:${hfSha}` };
+const hfLookup = { repoId: 'owner/repo', revision: 'main', resolvedCommit: 'b'.repeat(40), files: [hfFile], fetchedAt: 1 };
+const hfBinding: HuggingFaceBinding = { repoId: hfLookup.repoId, filePath: hfFile.path, linkedRevision: hfLookup.revision, linkedRemoteFingerprint: hfFile.fingerprint, verification: 'manual', resolvedCommit: hfLookup.resolvedCommit, size: 100, fetchedAt: 1 };
 const location = (name: string) => ({ id: `s:${name}.safetensors`, sourceId: 's', sourceKind: 'lora' as const, sourceName: 'Models', fileName: `${name}.safetensors`, relativePath: `${name}.safetensors`, absolutePath: `/synthetic/models/${name}.safetensors`, size: 100, modifiedAt: 1, createdAt: 1, discoveredAt: 1, lastSeenAt: 1, fileMetadata: { raw: {} }, civitai: { modelId: 1, versionId: 2, modelName: 'Test', versionName: 'Installed', trainedWords: [], fetchedAt: 1, url: '', publishedAt: '2025-01-01' } });
 let catalog: ModelCatalog;
 let cleanup: (() => void) | undefined;
@@ -28,6 +32,7 @@ beforeEach(() => {
   fakes.saveLocal.mockReset().mockImplementation(async (value) => value);
   catalog = { version: 1, locations: [location('one')], updatedAt: 1 };
   api = {
+    modelManagerHuggingFace: vi.fn(async () => ({ success: true, lookup: hfLookup })),
     modelStorageOverview: vi.fn(async () => ({ success: true, data: { files: [], sources: [], checkedAt: 1 } })),
     prepareModelRemoval: vi.fn(async () => ({ success: true, plan: { planId: 'synthetic-plan', expiresAt: Date.now() + 300_000, files: catalog.locations.map((location) => ({ path: location.absolutePath, locationIds: [location.id], size: location.size })), totalBytes: 100, remainingCopies: [] } })),
     executeModelRemoval: vi.fn(async () => ({ success: true, result: { removedLocationIds: [], failures: [], cancelled: true } })),
@@ -52,6 +57,169 @@ async function initialize() {
 }
 
 describe('single-owner model service', () => {
+  const linkHF = (manager: Awaited<ReturnType<typeof initialize>>, locationId = location('one').id) => manager.runModelCommand({ type: 'bindHF', locationId, repoId: 'owner/repo', revision: 'main', filePath: hfFile.path, fingerprint: hfFile.fingerprint });
+  it('links HF without hashing or changing Civitai, authored metadata, covers or monitoring', async () => {
+    fakes.locals = [{ id: `location:${location('one').id}`, tags: ['keep'], triggerWords: ['trigger'], notes: 'notes', previewImage: 'imh-model-media://synthetic', favorite: true, watchUpdates: true, updatedAt: 1 }];
+    const manager = await initialize();
+    const before = manager.getModelManagerState();
+    const civitaiRequests = api.modelManagerRemote.mock.calls.length;
+    await linkHF(manager);
+    const after = manager.getModelManagerState();
+    expect(after.catalog.locations[0].huggingFace).toEqual(hfBinding);
+    expect(after.catalog.locations[0].civitai).toEqual(before.catalog.locations[0].civitai);
+    expect(after.localMetadata).toEqual(before.localMetadata);
+    expect(after.watches).toEqual(before.watches);
+    expect(api.modelLibraryHash).not.toHaveBeenCalled();
+    expect(api.modelManagerRemote).toHaveBeenCalledTimes(civitaiRequests);
+    expect(api.modelManagerPublish.mock.calls.at(-1)?.[0].catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('keeps each provider independent when either link is removed', async () => {
+    const manager = await initialize();
+    await linkHF(manager);
+    await manager.runModelCommand({ type: 'unbind', locationId: location('one').id });
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('one').id });
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toBeUndefined();
+    const second = manager.getModelManagerState().catalog.locations[0];
+    second.civitai = location('one').civitai;
+    await linkHF(manager);
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('one').id });
+    expect(manager.getModelManagerState().catalog.locations[0].civitai).toEqual(location('one').civitai);
+  });
+  it('verifies against LFS SHA-256 and shares only with unbound or matching copies', async () => {
+    const conflict = { ...hfBinding, repoId: 'other/repo' };
+    catalog.locations = [location('one'), location('copy'), { ...location('different-link'), huggingFace: conflict }].map((entry) => ({ ...entry, sha256: hfSha }));
+    const manager = await initialize();
+    await linkHF(manager);
+    expect(manager.getModelManagerState().catalog.locations.find((entry) => entry.id === location('copy').id)!.huggingFace).toBeUndefined();
+    await manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id });
+    const locations = manager.getModelManagerState().catalog.locations;
+    expect(locations.find((entry) => entry.id === location('one').id)!.huggingFace).toMatchObject({ verification: 'sha256', verifiedLocalSha256: hfSha });
+    expect(locations.find((entry) => entry.id === location('copy').id)!.huggingFace?.verification).toBe('sha256');
+    expect(locations.find((entry) => entry.id === location('different-link').id)!.huggingFace).toEqual(conflict);
+    expect(manager.getModelManagerState().message).toContain('preserved');
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('copy').id });
+    expect(manager.getModelManagerState().catalog.locations.filter((entry) => entry.id !== location('different-link').id).every((entry) => !entry.huggingFace)).toBe(true);
+    expect(manager.getModelManagerState().catalog.locations.find((entry) => entry.id === location('different-link').id)!.huggingFace).toEqual(conflict);
+  });
+  it('retains the verified binding when its primary physical copy is removed', async () => {
+    catalog.locations = [location('one'), location('copy')].map((entry) => ({ ...entry, sha256: hfSha }));
+    const manager = await initialize();
+    await linkHF(manager); await manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id });
+    api.executeModelRemoval.mockResolvedValue({ success: true, result: { removedLocationIds: [location('one').id], failures: [] } });
+    await manager.removeModelFiles([location('one').id]);
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toMatchObject({ verification: 'sha256', repoId: 'owner/repo' });
+  });
+  it('keeps the manual link on a SHA-256 mismatch without a verified badge', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    api.modelLibraryHash.mockResolvedValue({ success: true, sha256: 'e'.repeat(64) });
+    await expect(manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id })).rejects.toThrow('does not match');
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('rereads bytes on explicit verification and withdraws a cached badge when the file changed', async () => {
+    catalog.locations = [{ ...location('one'), sha256: hfSha, huggingFace: { ...hfBinding, verification: 'sha256', verifiedLocalSha256: hfSha } }];
+    const manager = await initialize();
+    api.modelLibraryHash.mockResolvedValue({ success: true, sha256: 'f'.repeat(64), size: 100 });
+    await expect(manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id })).rejects.toThrow('Refresh');
+    expect(api.modelLibraryHash).toHaveBeenCalledOnce();
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('inherits a verified binding when a new copy is hashed later', async () => {
+    catalog.locations = [{ ...location('one'), sha256: hfSha }, location('copy')];
+    const manager = await initialize(); await linkHF(manager);
+    await manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id });
+    expect(manager.getModelManagerState().catalog.locations.find((entry) => entry.id === location('copy').id)!.huggingFace).toBeUndefined();
+    await manager.runModelCommand({ type: 'hash', locationId: location('copy').id });
+    expect(manager.getModelManagerState().catalog.locations.find((entry) => entry.id === location('copy').id)!.huggingFace?.verification).toBe('sha256');
+  });
+  it('does not inherit a verified link when that copy was explicitly unlinked during hashing', async () => {
+    catalog.locations = [{ ...location('one'), sha256: hfSha, huggingFace: { ...hfBinding, verification: 'sha256', verifiedLocalSha256: hfSha } }, location('copy')];
+    const manager = await initialize();
+    let finish!: (value: unknown) => void;
+    api.modelLibraryHash.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = manager.runModelCommand({ type: 'hash', locationId: location('copy').id });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('copy').id });
+    finish({ success: true, sha256: hfSha }); await pending;
+    expect(manager.getModelManagerState().catalog.locations.find((entry) => entry.id === location('copy').id)!.huggingFace).toBeUndefined();
+  });
+  it('cancels an HF lookup without applying a late successful response', async () => {
+    const manager = await initialize();
+    let finish!: (value: unknown) => void;
+    api.modelManagerHuggingFace.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = linkHF(manager);
+    await vi.waitFor(() => expect(finish).toBeDefined()); manager.cancelModelJob();
+    finish({ success: true, lookup: hfLookup }); await pending;
+    expect(api.modelManagerCancelRemote).toHaveBeenCalledOnce();
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toBeUndefined();
+    expect(manager.getModelManagerState().progress).toBeNull();
+  });
+  it('rejects Git/Xet verification without hashing the local file', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    api.modelManagerHuggingFace.mockResolvedValue({ success: true, lookup: { ...hfLookup, files: [{ ...hfFile, lfsSha256: undefined, fingerprint: `xet:${hfSha}` }] } });
+    await expect(manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id })).rejects.toThrow('no LFS SHA-256');
+    expect(api.modelLibraryHash).not.toHaveBeenCalled();
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('requires a fresh confirmation when the previewed remote file changes', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    api.modelManagerHuggingFace.mockResolvedValue({ success: true, lookup: { ...hfLookup, files: [{ ...hfFile, fingerprint: `lfs:sha256:${'f'.repeat(64)}` }] } });
+    await expect(linkHF(manager)).rejects.toThrow('changed');
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('keeps previous bindings on public lookup failure and maintains independent provider backoff', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    api.modelManagerHuggingFace.mockResolvedValue({ success: false, error: 'Public repository unavailable', retryAfterMs: 60_000 });
+    await expect(linkHF(manager)).rejects.toThrow('unavailable');
+    api.modelManagerHuggingFace.mockClear();
+    await expect(linkHF(manager)).rejects.toThrow('rate limit');
+    expect(api.modelManagerHuggingFace).not.toHaveBeenCalled();
+    await manager.checkModelUpdates([location('one').id]);
+    expect(api.modelManagerRemote).toHaveBeenCalled();
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('does not restore an unlinked binding from a late validation response', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    let finish!: (value: unknown) => void;
+    api.modelManagerHuggingFace.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = linkHF(manager);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('one').id });
+    finish({ success: true, lookup: hfLookup }); await pending;
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toBeUndefined();
+  });
+  it('does not restore an unlinked binding when hashing finishes later', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    let finish!: (value: unknown) => void;
+    api.modelLibraryHash.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('one').id });
+    finish({ success: true, sha256: hfSha }); await pending;
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toBeUndefined();
+  });
+  it('cancels HF verification without promoting an interrupted hash', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    let finish!: (value: unknown) => void;
+    api.modelLibraryHash.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id });
+    await vi.waitFor(() => expect(finish).toBeDefined()); manager.cancelModelJob();
+    finish({ success: true, sha256: hfSha }); await pending;
+    expect(api.modelLibraryCancelHash).toHaveBeenCalledOnce();
+    expect(manager.getModelManagerState().catalog.locations[0]).toMatchObject({ huggingFace: hfBinding });
+    expect(manager.getModelManagerState().catalog.locations[0].sha256).toBeUndefined();
+  });
+  it('restores HF from durable identities after restarting with empty derived caches', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    const saved = manager.getModelManagerState();
+    cleanup?.(); cleanup = undefined; vi.resetModules();
+    api.getJsonCacheData.mockResolvedValue({ success: true, data: null });
+    api.modelManagerLoadPreferences.mockResolvedValue({ sources: saved.sources, identities: saved.catalog, localMetadata: saved.localMetadata, watches: saved.watches, intervalHours: saved.intervalHours });
+    const restarted = await initialize();
+    expect(restarted.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+    expect(api.modelLibraryHash).not.toHaveBeenCalled();
+    expect(api.modelManagerHuggingFace).toHaveBeenCalledOnce();
+  });
   it('cancels duplicate verification without promoting an interrupted hash or starting another file', async () => {
     catalog.locations = [location('one'), location('two')];
     const manager = await initialize();

@@ -80,6 +80,9 @@ export function reconcileModelCatalog(
         sourceName: source.name,
         discoveredAt: previous?.discoveredAt ?? now,
         lastSeenAt: now,
+        // Keep the authored link when bytes change, but withdraw its byte verification.
+        huggingFace: previous?.huggingFace ? previous.size === scanned.size && previous.modifiedAt === scanned.modifiedAt
+          ? previous.huggingFace : { ...previous.huggingFace, verification: 'manual', verifiedLocalSha256: undefined } : undefined,
         ...(previous?.size === scanned.size && previous?.modifiedAt === scanned.modifiedAt
           ? {
               fileMetadata: previous.fileMetadata,

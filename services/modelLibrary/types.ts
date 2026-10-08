@@ -32,6 +32,39 @@ export interface ModelLocation {
   sha256?: string;
   hashFingerprint?: { size: number; modifiedAt: number | null };
   civitai?: CivitaiModelMetadata | { status: 'notFound'; fetchedAt: number; url: string };
+  huggingFace?: HuggingFaceBinding;
+}
+
+export interface HuggingFaceBinding {
+  repoId: string;
+  filePath: string;
+  linkedRevision: string;
+  verification: 'manual' | 'sha256';
+  verifiedLocalSha256?: string;
+  linkedRemoteFingerprint: string;
+  resolvedCommit: string;
+  size: number;
+  fetchedAt: number;
+}
+export interface HuggingFaceFile {
+  path: string;
+  size: number;
+  fingerprint: string;
+  lfsSha256?: string;
+  gitOid?: string;
+  xetHash?: string;
+}
+export interface HuggingFaceLookup {
+  repoId: string;
+  revision: string;
+  resolvedCommit: string;
+  files: HuggingFaceFile[];
+  fetchedAt: number;
+}
+export interface ModelCommandResult {
+  success: boolean;
+  error?: string;
+  lookup?: HuggingFaceLookup;
 }
 
 export interface ModelFileMetadata {
@@ -127,7 +160,7 @@ export interface ModelManagerSnapshot {
   watches: Record<string, ModelWatchRecord>;
   intervalHours: number;
   loading: boolean;
-  progress: { kind: 'scan' | 'headers' | 'identify' | 'updates' | 'duplicates' | 'removal'; current: number; total: number; name: string } | null;
+  progress: { kind: 'scan' | 'headers' | 'identify' | 'updates' | 'duplicates' | 'removal' | 'huggingFace'; current: number; total: number; name: string } | null;
   message: string | null;
   notification: string | null;
   picker?: { locationId: string; cover: boolean } | null;
@@ -137,6 +170,10 @@ export interface ModelManagerSnapshot {
 }
 
 export type ModelManagerCommand =
+  | { type: 'lookupHF'; locationId: string; repoId: string; revision: string; filePath?: string }
+  | { type: 'bindHF'; locationId: string; repoId: string; revision: string; filePath: string; fingerprint: string }
+  | { type: 'unbindHF'; locationId: string }
+  | { type: 'verifyHF'; locationId: string }
   | { type: 'remove'; locationId: string }
   | { type: 'viewLibrary'; locationId: string; mode: ModelUsageMode }
   | { type: 'seen'; modelId: number; versionIds: number[] }

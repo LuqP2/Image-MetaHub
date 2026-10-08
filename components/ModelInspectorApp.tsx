@@ -16,6 +16,7 @@ import {
 import { mirrorModelManager, useModelManager } from '../services/modelLibrary/manager';
 import ModelUsagePanel from './ModelUsagePanel';
 import { executeModelCommand, ModelActionsPanel, ModelLocalEditor, ModelMediaPanel } from './ModelManagerPanels';
+import { HuggingFaceModelPanel } from './HuggingFaceModelPanel';
 import {
   getDefaultLoraSyntax,
   getEffectiveModelPresentation,
@@ -187,7 +188,7 @@ const ModelInspectorApp: React.FC = () => {
 
       {presentation.description && <section className="mt-5 rounded-xl border border-gray-800 bg-gray-900/70 p-4"><h2 className="font-medium">Description</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-300">{presentation.description}</p></section>}
 
-      <div className="mt-5 space-y-4"><ModelUsagePanel item={currentItem} /><ModelActionsPanel item={currentItem} /><ModelMediaPanel item={currentItem} /><ModelLocalEditor item={currentItem} /></div>
+      <div className="mt-5 space-y-4"><ModelUsagePanel item={currentItem} /><ModelActionsPanel item={currentItem} /><HuggingFaceModelPanel item={currentItem} /><ModelMediaPanel item={currentItem} /><ModelLocalEditor item={currentItem} /></div>
 
       <details className="mt-5 rounded-xl border border-gray-800 bg-gray-900/70 p-4">
         <summary className="cursor-pointer font-medium">Technical details</summary>

@@ -2,6 +2,7 @@ import { externalizeModelMedia } from './mediaStorage';
 import { buildModelDescriptors } from './imageAssociations';
 import { deriveModelUsage, emptyModelUsage } from './usage';
 import { duplicateCandidates } from './storage';
+import { validateHuggingFaceTarget } from './huggingFaceLink.mjs';
 import type { ImageScope } from '../../types';
 import { mergeModelMetadata } from './mergeMetadata';
 import { thumbnailManager } from '../thumbnailManager';
@@ -13,7 +14,7 @@ import { getAllModelSources, saveModelSource, deleteModelSource } from './modelS
 import { getAllModelLocalMetadata, createModelLocalMetadata, saveModelLocalMetadata, deleteModelLocalMetadata } from './localMetadataStorage';
 import { loadWatchPreferences, saveWatchPreference } from './watchStorage';
 import { isWatchDue, parseCivitaiVersionLink, reconcileWatch, unreadVersions } from './updateTracking';
-import type { ModelInspectorItem, ModelLocalMetadata, ModelManagerCommand, ModelManagerSnapshot, ModelSource, ModelWatchRecord } from './types';
+import type { HuggingFaceBinding, HuggingFaceLookup, ModelInspectorItem, ModelLocalMetadata, ModelManagerCommand, ModelManagerSnapshot, ModelSource, ModelWatchRecord } from './types';
 
 let state: ModelManagerSnapshot = { revision: 0, sources: [], catalog: EMPTY_MODEL_CATALOG, localMetadata: {}, watches: {}, intervalHours: 24, loading: true, progress: null, message: null, notification: null };
 const listeners = new Set<() => void>();
@@ -26,6 +27,8 @@ let cancelled = false;
 let activeHash: string | undefined;
 let activeRemote: string | undefined;
 const bindingRevisions = new Map<string, number>();
+const hfBindingRevisions = new Map<string, number>();
+let hfRateLimitedUntil = 0;
 let rateLimitedUntil = 0;
 let releaseWait: (() => void) | undefined;
 let openImage: ((id: string) => void) | undefined;
@@ -256,7 +259,89 @@ async function remote(kind: 'model' | 'version' | 'examples' | 'hash' | 'cover',
   } finally { activeRemote = undefined; }
 }
 
-async function promoteModelHash(locationId: string, result: { sha256: string; size?: number; modifiedAt?: number | null }) {
+async function remoteHF(target: { repoId: string; revision: string; filePath?: string }): Promise<HuggingFaceLookup> {
+  validateHuggingFaceTarget(target.repoId, target.revision, target.filePath);
+  if (hfRateLimitedUntil > Date.now()) throw new Error('Hugging Face rate limit. Try again later.');
+  const requestId = crypto.randomUUID(); activeRemote = requestId;
+  try {
+    const result = await window.electronAPI!.modelManagerHuggingFace({ ...target, requestId });
+    if (result.retryAfterMs) hfRateLimitedUntil = Date.now() + result.retryAfterMs;
+    if (!result.success || !result.lookup) throw new Error(result.error || 'Hugging Face is unavailable.');
+    return result.lookup;
+  } finally { activeRemote = undefined; }
+}
+function sameHF(a: HuggingFaceBinding | undefined, b: HuggingFaceBinding) {
+  return a?.repoId === b.repoId && a.filePath === b.filePath && a.linkedRevision === b.linkedRevision;
+}
+function currentHFOperation(locationId: string, revision: number) {
+  return !cancelled && managerRunning && revision === (hfBindingRevisions.get(locationId) ?? 0) && state.catalog.locations.some((location) => location.id === locationId);
+}
+async function bindHF(locationId: string, binding: HuggingFaceBinding, revision: number) {
+  // No await between the generation check and catalog mutation: unlink always wins over late I/O.
+  if (!currentHFOperation(locationId, revision)) return;
+  let conflicts = 0;
+  const locations = state.catalog.locations.map((location) => {
+    if (location.id === locationId) return { ...location, huggingFace: binding };
+    if (binding.verification !== 'sha256' || location.sha256?.toLowerCase() !== binding.verifiedLocalSha256) return location;
+    if (location.huggingFace && !sameHF(location.huggingFace, binding)) { conflicts++; return location; }
+    return { ...location, huggingFace: binding };
+  });
+  publish({ catalog: { ...state.catalog, locations, updatedAt: Date.now() }, message: conflicts ? `File match verified. ${conflicts} different copy link${conflicts === 1 ? ' was' : 's were'} preserved; choose its file location to review it.` : binding.verification === 'sha256' ? 'Hugging Face file match verified by SHA-256.' : 'Hugging Face manual link saved.' });
+  await persistCatalog();
+  await flushModelState();
+}
+
+async function runHFCommand(command: Extract<ModelManagerCommand, { type: 'lookupHF' | 'bindHF' | 'verifyHF' }>): Promise<HuggingFaceLookup | undefined> {
+  const original = modelItem(command.locationId).location.huggingFace;
+  if (command.type === 'verifyHF' && !original) throw new Error('Link a public Hugging Face file first.');
+  startJob('huggingFace', 1);
+  const revision = (hfBindingRevisions.get(command.locationId) ?? 0) + 1;
+  hfBindingRevisions.set(command.locationId, revision);
+  try {
+    const target = command.type === 'verifyHF' ? { repoId: original!.repoId, revision: original!.linkedRevision, filePath: original!.filePath } : command;
+    const lookup = await remoteHF(target);
+    if (!currentHFOperation(command.locationId, revision)) return;
+    if (command.type === 'lookupHF') return lookup;
+    const file = lookup.files.find((entry) => entry.path === target.filePath);
+    if (!file) throw new Error('Public .safetensors file unavailable at this revision.');
+    if (command.type === 'bindHF' && file.fingerprint !== command.fingerprint) throw new Error('The remote file changed. Look it up again before confirming.');
+    const binding: HuggingFaceBinding = { repoId: lookup.repoId, filePath: file.path, linkedRevision: lookup.revision, linkedRemoteFingerprint: file.fingerprint, verification: 'manual', resolvedCommit: lookup.resolvedCommit, size: file.size, fetchedAt: lookup.fetchedAt };
+    if (command.type === 'verifyHF') {
+      if (!file.lfsSha256) throw new Error('This file has no LFS SHA-256. Its Git or Xet identity cannot verify your local file.');
+      if (file.fingerprint !== original!.linkedRemoteFingerprint) throw new Error('The linked remote file changed. Look it up and confirm the new link before verifying.');
+      // An explicit verification reads the file even when an earlier Civitai/duplicate hash is cached.
+      await hash(command.locationId, true);
+      if (!currentHFOperation(command.locationId, revision)) return;
+      const location = modelItem(command.locationId).location;
+      if (location.sha256?.toLowerCase() !== file.lfsSha256 || location.size !== file.size) {
+        // A failed recheck must withdraw a prior verification without discarding the manual link.
+        if (original!.verification === 'sha256') await bindHF(command.locationId, { ...original!, verification: 'manual', verifiedLocalSha256: undefined }, revision);
+        throw new Error('The local file does not match the Hugging Face LFS SHA-256 and size. The link remains manual.');
+      }
+      binding.verification = 'sha256'; binding.verifiedLocalSha256 = file.lfsSha256;
+    }
+    await bindHF(command.locationId, binding, revision);
+  } catch (error) {
+    if ((error as { localFileChanged?: boolean }).localFileChanged && original?.verification === 'sha256') await bindHF(command.locationId, { ...original, verification: 'manual', verifiedLocalSha256: undefined }, revision);
+    if (!cancelled) throw error;
+  }
+  finally { publish({ progress: null }); }
+}
+
+async function unbindHF(locationId: string) {
+  const binding = modelItem(locationId).location.huggingFace;
+  const locations = state.catalog.locations.map((location) => {
+    const shared = binding?.verification === 'sha256' && location.huggingFace?.verification === 'sha256' && sameHF(location.huggingFace, binding) && location.huggingFace.verifiedLocalSha256 === binding.verifiedLocalSha256;
+    if (location.id !== locationId && !shared) return location;
+    hfBindingRevisions.set(location.id, (hfBindingRevisions.get(location.id) ?? 0) + 1);
+    return { ...location, huggingFace: undefined };
+  });
+  publish({ catalog: { ...state.catalog, locations, updatedAt: Date.now() } });
+  await persistCatalog();
+  await flushModelState();
+}
+
+async function promoteModelHash(locationId: string, result: { sha256: string; size?: number; modifiedAt?: number | null }, hfRevision = hfBindingRevisions.get(locationId) ?? 0) {
   const promote = localWrites.catch(() => {}).then(async () => {
     const item = modelItem(locationId);
     const oldId = getModelLocalMetadataId(modelItem(locationId).location);
@@ -272,20 +357,31 @@ async function promoteModelHash(locationId: string, result: { sha256: string; si
       publish({ localMetadata: entries });
     }
     await patchLocation(locationId, { sha256: result.sha256, hashFingerprint: { size: result.size ?? item.location.size, modifiedAt: result.modifiedAt ?? item.location.modifiedAt } });
+    // Only verified byte identity permits inheriting a binding from another copy.
+    const current = modelItem(locationId).location;
+    const candidates = state.catalog.locations.filter((location) => location.id !== locationId && location.sha256?.toLowerCase() === result.sha256.toLowerCase() && location.huggingFace?.verification === 'sha256' && location.huggingFace.verifiedLocalSha256 === result.sha256.toLowerCase()).map((location) => location.huggingFace!);
+    if (!current.huggingFace && hfRevision === (hfBindingRevisions.get(locationId) ?? 0) && candidates.length && candidates.every((binding) => sameHF(binding, candidates[0]))) {
+      const locations = state.catalog.locations.map((location) => location.id === locationId ? { ...location, huggingFace: candidates[0] } : location);
+      publish({ catalog: { ...state.catalog, locations, updatedAt: Date.now() } });
+      await persistCatalog();
+    }
     await flushModelState();
   });
   localWrites = promote;
   await promote;
 }
-async function hash(locationId: string) {
+async function hash(locationId: string, verifyCurrentBytes = false) {
   const item = modelItem(locationId);
-  if (item.location.sha256) return;
+  const hfRevision = hfBindingRevisions.get(locationId) ?? 0;
+  if (item.location.sha256 && !verifyCurrentBytes) return;
   const requestId = crypto.randomUUID(); activeHash = requestId;
   try {
     const result = await window.electronAPI!.modelLibraryHash({ filePath: item.location.absolutePath, requestId });
     if (result.cancelled || cancelled) return;
     if (!result.success || !result.sha256) throw new Error(result.error || 'Unable to identify this model.');
-    await promoteModelHash(locationId, { sha256: result.sha256, size: result.size, modifiedAt: result.modifiedAt });
+    if (verifyCurrentBytes && ((item.location.sha256 && item.location.sha256.toLowerCase() !== result.sha256.toLowerCase()) || (result.size !== undefined && result.size !== item.location.size))) throw Object.assign(new Error('The local file changed since it was cataloged. Refresh the model folders before verifying again.'), { localFileChanged: true });
+    if (item.location.sha256) return;
+    await promoteModelHash(locationId, { sha256: result.sha256, size: result.size, modifiedAt: result.modifiedAt }, hfRevision);
   } finally { activeHash = undefined; }
 }
 async function identify(locationId: string) {
@@ -461,6 +557,8 @@ async function libraryPreview(imageId: string): Promise<{ preview: string; name:
 export async function runModelCommand(command: ModelManagerCommand) {
   if (!managerRunning) throw new Error('Model Manager requires Pro or an active trial.');
   switch (command.type) {
+    case 'lookupHF': case 'bindHF': case 'verifyHF': return runHFCommand(command);
+    case 'unbindHF': await unbindHF(command.locationId); return;
     case 'remove': {
       const item = modelItem(command.locationId);
       const descriptor = buildModelDescriptors(state.catalog).find((model) => model.locationIds.includes(item.location.id));
@@ -561,7 +659,7 @@ export function startModelManager() {
   managerRunning = true;
   if (!window.electronAPI) return () => {};
   const unsubscribe = window.electronAPI.onModelManagerCommand(({ requestId, command }) => {
-    void runModelCommand(command).then(() => window.electronAPI!.modelManagerCommandResult(requestId, { success: true })).catch((error) => window.electronAPI!.modelManagerCommandResult(requestId, { success: false, error: error.message }));
+    void runModelCommand(command).then((lookup) => window.electronAPI!.modelManagerCommandResult(requestId, { success: true, ...(lookup ? { lookup } : {}) })).catch((error) => window.electronAPI!.modelManagerCommandResult(requestId, { success: false, error: error.message }));
   });
   if (!initialization) initialization = (async () => {
     try {

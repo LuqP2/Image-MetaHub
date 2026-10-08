@@ -483,8 +483,9 @@ export interface ElectronAPI {
   modelManagerPublish: (state: import('./services/modelLibrary/types').ModelManagerSnapshot) => Promise<{ success: boolean; error?: string }>;
   modelManagerLoadPreferences: () => Promise<(Pick<import('./services/modelLibrary/types').ModelManagerSnapshot, 'sources' | 'localMetadata' | 'watches' | 'intervalHours'> & { identities?: import('./services/modelLibrary/types').ModelCatalog }) | null>;
   modelManagerGetState: () => Promise<import('./services/modelLibrary/types').ModelManagerSnapshot | null>;
-  modelManagerCommand: (command: import('./services/modelLibrary/types').ModelManagerCommand) => Promise<{ success: boolean; error?: string }>;
-  modelManagerCommandResult: (requestId: string, result: { success: boolean; error?: string }) => Promise<void>;
+  modelManagerCommand: (command: import('./services/modelLibrary/types').ModelManagerCommand) => Promise<import('./services/modelLibrary/types').ModelCommandResult>;
+  modelManagerCommandResult: (requestId: string, result: import('./services/modelLibrary/types').ModelCommandResult) => Promise<void>;
+  modelManagerHuggingFace: (args: { repoId: string; revision: string; filePath?: string; requestId: string }) => Promise<import('./services/modelLibrary/types').ModelCommandResult & { cancelled?: boolean; retryAfterMs?: number }>;
   onModelManagerState: (callback: (state: import('./services/modelLibrary/types').ModelManagerSnapshot) => void) => () => void;
   onModelManagerCommand: (callback: (payload: { requestId: string; command: import('./services/modelLibrary/types').ModelManagerCommand }) => void) => () => void;
   modelManagerRemote: (args: { kind: 'model' | 'version' | 'examples' | 'hash' | 'cover'; id: number | string; requestId: string }) => Promise<{ success: boolean; error?: string; cancelled?: boolean; notFound?: boolean; retryAfterMs?: number; modelName?: string; versions?: import('./services/modelLibrary/types').RemoteModelVersion[]; metadata?: import('./services/modelLibrary/types').CivitaiModelMetadata; examples?: import('./services/modelLibrary/types').ModelExample[] }>;
