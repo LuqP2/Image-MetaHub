@@ -41,7 +41,8 @@ function scheduleUsage() {
   const descriptors = buildModelDescriptors(state.catalog);
   const scope = useImageStore.getState().activeImageScope;
   if (scope?.type === 'managedModel' && scope.managedModel) {
-    const current = descriptors.find((model) => model.identity === scope.managedModel!.identity || model.locationIds.some((id) => scope.managedModel!.locationIds.includes(id)));
+    const current = descriptors.find((model) => model.identity === scope.managedModel!.identity)
+      ?? descriptors.find((model) => model.locationIds.some((id) => scope.managedModel!.locationIds.includes(id)));
     if (current) useImageStore.getState().setActiveImageScope({ ...scope, id: current.identity, managedModel: { ...current, mode: scope.managedModel.mode } });
     else if (!state.loading) useImageStore.getState().setActiveImageScope(null);
   }

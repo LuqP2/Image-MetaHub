@@ -68,6 +68,26 @@ describe('single-owner model service', () => {
     await manager.scanModelSources();
     expect(fakes.scope).toBeNull();
   });
+  it.each([
+    { name: 'unhashed replacement', sha256: undefined },
+    { name: 'replacement with a different hash', sha256: 'b'.repeat(64) },
+  ])('retains the original hashed Library scope when a copy becomes a $name', async ({ sha256 }) => {
+    const originalHash = 'a'.repeat(64);
+    catalog.locations = [location('copy'), location('one')].map((entry) => ({ ...entry, sha256: originalHash }));
+    const manager = await initialize();
+    manager.setModelLibraryOpener((scope) => { fakes.scope = scope; });
+    await manager.runModelCommand({ type: 'viewLibrary', locationId: location('copy').id, mode: 'confirmed' });
+    expect(fakes.scope?.managedModel?.locationIds).toEqual([location('copy').id, location('one').id]);
+
+    catalog.locations = catalog.locations.map((entry) => entry.id === location('copy').id ? { ...entry, modifiedAt: 2, sha256 } : entry);
+    await manager.scanModelSources();
+
+    expect(manager.getModelManagerState().catalog.locations[0]).toMatchObject({ id: location('copy').id, sha256 });
+    expect(fakes.scope).toMatchObject({
+      id: `sha256:${originalHash}`,
+      managedModel: { identity: `sha256:${originalHash}`, sha256: originalHash, locationIds: [location('one').id], mode: 'confirmed' },
+    });
+  });
   it('waits for catalog initialization before invalidating a managed model scope', async () => {
     fakes.scope = { type: 'managedModel', id: `location:${location('one').id}`, label: 'one', managedModel: buildModelDescriptors(catalog)[0] };
     let restore!: (value: null) => void;
