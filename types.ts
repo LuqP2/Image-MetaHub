@@ -477,6 +477,9 @@ export interface ElectronAPI {
   updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
   modelLibrarySetRoots: (roots: string[]) => Promise<{ success: boolean; error?: string }>;
+  modelStorageOverview: () => Promise<{ success: boolean; data?: import('./services/modelLibrary/types').ModelStorageOverview; error?: string }>;
+  prepareModelRemoval: (args: { locationIds: string[] }) => Promise<{ success: boolean; plan?: import('./services/modelLibrary/types').ModelRemovalPlan; error?: string }>;
+  executeModelRemoval: (args: { planId: string }) => Promise<{ success: boolean; result?: import('./services/modelLibrary/types').ModelRemovalResult; error?: string }>;
   modelManagerPublish: (state: import('./services/modelLibrary/types').ModelManagerSnapshot) => Promise<{ success: boolean; error?: string }>;
   modelManagerLoadPreferences: () => Promise<(Pick<import('./services/modelLibrary/types').ModelManagerSnapshot, 'sources' | 'localMetadata' | 'watches' | 'intervalHours'> & { identities?: import('./services/modelLibrary/types').ModelCatalog }) | null>;
   modelManagerGetState: () => Promise<import('./services/modelLibrary/types').ModelManagerSnapshot | null>;

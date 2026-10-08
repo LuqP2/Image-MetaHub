@@ -50,6 +50,7 @@ import CollectionsWorkspace from './components/CollectionsWorkspace';
 import ComfyUIWorkspace from './components/ComfyUIWorkspace';
 import ImageEditorWorkspace from './components/ImageEditorWorkspace';
 import ModelsWorkspace from './components/ModelsWorkspace';
+import { ModelRemovalDialog } from './components/ModelStoragePanel';
 import { ModelLibraryPicker } from './components/ModelManagerPanels';
 import { startModelManager, setModelLibraryOpener, setModelImageOpener, useModelManager, dismissModelNotification, showModelUpdates } from './services/modelLibrary/manager';
 import PromptLibrary from './components/PromptLibrary';
@@ -4046,6 +4047,7 @@ export default function App() {
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
       <BrowserCompatibilityWarning />
       {canUseModelManager && <ModelLibraryPicker />}
+      {canUseModelManager && <ModelRemovalDialog />}
       {canUseModelManager && modelManager.notification && <div role="status" className="fixed bottom-5 right-5 z-[80] flex max-w-sm items-center gap-3 rounded-lg border border-cyan-500/40 bg-gray-900 p-4 text-sm text-gray-100 shadow-xl"><button className="text-left" onClick={() => { setLibraryView('models'); showModelUpdates(true); dismissModelNotification(); }}>{modelManager.notification} <span className="text-cyan-300">View updates</span></button><button aria-label="Dismiss model notification" onClick={dismissModelNotification}>×</button></div>}
 
       <CommandPalette

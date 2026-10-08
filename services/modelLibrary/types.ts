@@ -116,6 +116,9 @@ export interface ModelWatchRecord {
 }
 
 export interface ModelManagerSnapshot {
+  storage?: ModelStorageOverview;
+  sourceStatus?: Record<string, { checkedAt: number; error?: string }>;
+  removal?: { locationIds: string[]; selected: boolean } | null;
   usage?: Record<string, ModelUsageSummary>;
   revision: number;
   sources: ModelSource[];
@@ -124,7 +127,7 @@ export interface ModelManagerSnapshot {
   watches: Record<string, ModelWatchRecord>;
   intervalHours: number;
   loading: boolean;
-  progress: { kind: 'scan' | 'headers' | 'identify' | 'updates'; current: number; total: number; name: string } | null;
+  progress: { kind: 'scan' | 'headers' | 'identify' | 'updates' | 'duplicates' | 'removal'; current: number; total: number; name: string } | null;
   message: string | null;
   notification: string | null;
   picker?: { locationId: string; cover: boolean } | null;
@@ -134,6 +137,7 @@ export interface ModelManagerSnapshot {
 }
 
 export type ModelManagerCommand =
+  | { type: 'remove'; locationId: string }
   | { type: 'viewLibrary'; locationId: string; mode: ModelUsageMode }
   | { type: 'seen'; modelId: number; versionIds: number[] }
   | { type: 'versionAction'; modelId: number; versionId: number; action: 'ignore' | 'restore' }
@@ -199,4 +203,34 @@ export interface ManagedModelDescriptor {
   names: { key: string; ambiguous: boolean; knownHashes: string[] }[];
   supported: boolean;
   mode: ModelUsageMode;
+}
+
+export interface ModelStorageFile {
+  key: string;
+  path: string;
+  locationIds: string[];
+  size: number;
+  modifiedAt: number | null;
+  sha256?: string;
+  physicalId?: string;
+  linkCount?: number;
+  stale: boolean;
+  error?: string;
+}
+export interface ModelStorageOverview {
+  files: ModelStorageFile[];
+  sources: { sourceId: string; totalBytes?: number; availableBytes?: number; error?: string }[];
+  checkedAt: number;
+}
+export interface ModelRemovalPlan {
+  planId: string;
+  expiresAt: number;
+  files: { path: string; locationIds: string[]; size: number }[];
+  totalBytes: number;
+  remainingCopies: { path: string; count: number }[];
+}
+export interface ModelRemovalResult {
+  removedLocationIds: string[];
+  failures: { path: string; locationIds: string[]; error: string }[];
+  cancelled?: boolean;
 }

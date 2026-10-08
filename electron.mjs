@@ -59,6 +59,8 @@ import {
   toggleModelInspectorAlwaysOnTop,
 } from './electron/modelInspectorWindowState.mjs';
 import { isModelLibraryPathWithinRoots } from './electron/modelLibrarySecurity.mjs';
+import { createModelStorageController } from './electron/modelStorage.mjs';
+import { reconcileModelInspectorCatalog } from './electron/modelInspectorCatalog.mjs';
 import { MODEL_MEDIA_SCHEME, resolveModelMediaPath, storeModelMedia } from './electron/modelMediaStore.mjs';
 import { fetchCivitaiJson, fetchCivitaiImage, normalizeRemoteVersion } from './electron/modelManagerRemote.mjs';
 import {
@@ -3974,6 +3976,27 @@ let modelManagerVaultWrites = Promise.resolve();
 let modelManagerDurableJson = '';
 const modelManagerCommands = new Map();
 const modelRemoteTasks = new Map();
+const removedModelLocationIds = new Set();
+const modelStorage = createModelStorageController({
+  getState: () => modelManagerState,
+  getRoots: () => modelLibraryRootPaths,
+  isBusy: () => modelRemoteTasks.size > 0,
+  trashItem: (filePath) => shell.trashItem(filePath),
+  confirm: async (plan) => {
+    if (!modelManagerEnabled || !mainWindow || mainWindow.isDestroyed()) throw new Error('Models workspace is unavailable.');
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'warning', title: 'Move model files to Trash?',
+      message: `Move ${plan.files.length} selected model file(s) to Trash?`,
+      detail: `${plan.files.map((file) => `${file.path}\n${file.fingerprint.size.toLocaleString()} bytes · ${plan.remainingCopies.find((copy) => copy.path === file.path)?.count ?? 0} other copies remaining`).join('\n\n')}\n\nSelected file size: ${plan.totalBytes.toLocaleString()} bytes.\nImages in your Library will not be removed. Your notes, covers and examples will be kept. Free space may depend on emptying the Trash and filesystem compression or hardlinks.`,
+      buttons: ['Cancel', 'Move to Trash'], defaultId: 0, cancelId: 0, noLink: true,
+    });
+    return result.response === 1 && modelManagerEnabled;
+  },
+  onRemoved: (ids) => {
+    ids.forEach((id) => removedModelLocationIds.add(id));
+    if (modelManagerState) modelManagerState = { ...modelManagerState, catalog: { ...modelManagerState.catalog, locations: modelManagerState.catalog.locations.filter((location) => !removedModelLocationIds.has(location.id)), managedModels: undefined } };
+  },
+});
 const isPrimaryWindowSender = (event) => Boolean(mainWindow && event?.sender === mainWindow.webContents);
 const isModelInspectorSender = (event) => Boolean(
   modelInspectorWindow && !modelInspectorWindow.isDestroyed() && event?.sender === modelInspectorWindow.webContents
@@ -6549,16 +6572,11 @@ function setupFileOperationHandlers() {
   });
   ipcMain.handle('model-manager-publish', async (event, state) => {
     if (!isPrimaryWindowSender(event)) return { success: false };
+    state = { ...state, catalog: { ...state.catalog, locations: state.catalog.locations.filter((location) => !removedModelLocationIds.has(location.id)), managedModels: undefined } };
     modelManagerState = state;
     if (modelInspectorWindow && !modelInspectorWindow.isDestroyed()) {
       modelInspectorWindow.webContents.send('model-manager-state', state);
-      if (modelInspectorSnapshot) updateModelInspectorSnapshot((current) => ({ ...current, items: current.items.flatMap((item) => {
-        const location = state.catalog.locations.find((location) => location.id === item.location.id);
-        if (!location) return [];
-        const localMetadata = state.localMetadata[location.sha256 ? `sha256:${location.sha256}` : `location:${location.id}`] ?? state.localMetadata[`location:${location.id}`];
-        const usage = state.usage?.[location.sha256 ? `sha256:${location.sha256.toLowerCase()}` : `location:${location.id}`];
-        return [{ location, localMetadata, usage }];
-      }) }));
+      if (modelInspectorSnapshot) updateModelInspectorSnapshot((current) => reconcileModelInspectorCatalog(current, state));
     }
     if (state.loading) return { success: true };
     // Keep version bindings/identity even when reconstructible caches are cleared.
@@ -6584,12 +6602,12 @@ function setupFileOperationHandlers() {
   ipcMain.handle('model-manager-command', (event, command) => {
     if (!modelManagerEnabled || !isModelInspectorSender(event) || !mainWindow || mainWindow.isDestroyed()) return { success: false, error: 'Models workspace is unavailable.' };
     if (command?.locationId && !modelInspectorSnapshot?.items.some((item) => item.location.id === command.locationId)) return { success: false, error: 'Unknown model.' };
-    if (!['identify', 'hash', 'check', 'unbind', 'bind', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'viewLibrary', 'examples', 'example', 'cover', 'seen', 'versionAction', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
+    if (!['identify', 'hash', 'check', 'unbind', 'bind', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'viewLibrary', 'remove', 'examples', 'example', 'cover', 'seen', 'versionAction', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
     if (['seen', 'versionAction'].includes(command?.type) && !modelInspectorSnapshot?.items.some((item) => item.location.civitai?.modelId === command.modelId)) return { success: false, error: 'Unknown remote model.' };
     const requestId = crypto.randomUUID();
     return new Promise((resolve) => {
       const timer = setTimeout(() => { modelManagerCommands.delete(requestId); resolve({ success: false, error: 'Model action timed out.' }); }, 15 * 60 * 1000);
-      modelManagerCommands.set(requestId, { resolve, timer, focusLibrary: command.type === 'viewLibrary' });
+      modelManagerCommands.set(requestId, { resolve, timer, focusLibrary: ['viewLibrary', 'remove'].includes(command.type) });
       mainWindow.webContents.send('model-manager-command', { requestId, command });
     });
   });
@@ -6608,6 +6626,7 @@ function setupFileOperationHandlers() {
     if (isPrimaryWindowSender(event)) modelRemoteTasks.get(requestId)?.abort();
   });
   ipcMain.handle('model-manager-remote', async (event, { kind, id, requestId } = {}) => {
+    if (modelStorage.isRemoving()) return { success: false, error: 'Model file removal is in progress.' };
     if (!modelManagerEnabled) return { success: false, error: 'Model Manager requires Pro or an active trial.' };
     const validId = kind === 'hash' ? typeof id === 'string' && /^[0-9a-f]{64}$/i.test(id) : Number.isSafeInteger(id) && id > 0;
     if (!isPrimaryWindowSender(event) || !['model', 'version', 'examples', 'hash', 'cover'].includes(kind) || !validId || typeof requestId !== 'string') return { success: false, error: 'Invalid Civitai request.' };
@@ -6666,6 +6685,8 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('model-library-set-roots', async (event, roots) => {
     if (!isPrimaryWindowSender(event)) return { success: false, error: 'Unauthorized sender.' };
+    if (modelStorage.isRemoving() || modelManagerState?.progress?.kind === 'removal') return { success: false, error: 'File removal is in progress.' };
+    modelStorage.invalidate();
     modelLibraryRootPaths.clear();
     for (const rootPath of Array.isArray(roots) ? roots : []) {
       if (typeof rootPath === 'string' && rootPath.trim()) modelLibraryRootPaths.add(normalizeAllowedPath(rootPath));
@@ -6675,21 +6696,28 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('model-library-scan', async (event, sources) => {
     if (!isPrimaryWindowSender(event)) return { success: false, error: 'Unauthorized sender.' };
-    const requestedSources = Array.isArray(sources) ? sources.slice(0, 128) : [];
-    const results = [];
-    for (const source of requestedSources) results.push(await scanModelLibrarySource(source));
-    return { success: true, results };
+    try { return await modelStorage.runJob(async () => {
+      modelStorage.invalidate();
+      const requestedSources = Array.isArray(sources) ? sources.slice(0, 128) : [];
+      const results = [];
+      for (const source of requestedSources) results.push(await scanModelLibrarySource(source));
+      for (const result of results) if (!result.error) for (const location of result.locations) {
+        const relative = process.platform === 'win32' ? location.relativePath.toLowerCase() : location.relativePath;
+        removedModelLocationIds.delete(`${result.sourceId}:${relative}`);
+      }
+      return { success: true, results };
+    }); } catch (error) { return { success: false, error: error.message }; }
   });
 
   ipcMain.handle('model-library-read-metadata', async (event, filePath) => {
     if (!isModelLibraryRendererSender(event)) return { success: false, error: 'Unauthorized sender.' };
-    try { return { success: true, metadata: await readModelLibrarySafetensorsMetadata(filePath) }; }
+    try { return await modelStorage.runJob(async () => ({ success: true, metadata: await readModelLibrarySafetensorsMetadata(filePath) })); }
     catch (error) { return { success: false, error: error?.message || 'Unable to read safetensors metadata.' }; }
   });
 
   ipcMain.handle('model-library-hash', async (event, { filePath, requestId } = {}) => {
     if (!isModelLibraryRendererSender(event) || typeof requestId !== 'string' || !requestId) return { success: false, error: 'Invalid hash request.' };
-    try { return { success: true, ...(await hashModelLibraryFile(filePath, requestId, event.sender)) }; }
+    try { return await modelStorage.runJob(async () => ({ success: true, ...(await hashModelLibraryFile(filePath, requestId, event.sender)) })); }
     catch (error) { return { success: false, error: error?.message || 'Unable to hash model file.' }; }
   });
 
@@ -6704,6 +6732,16 @@ function setupFileOperationHandlers() {
     if (!isModelLibraryRendererSender(event) || !isModelLibraryPathAllowed(filePath)) return { success: false, error: 'This file is not in an approved model source.' };
     try { shell.showItemInFolder(path.resolve(filePath)); return { success: true }; }
     catch (error) { return { success: false, error: error?.message || 'Unable to reveal this file.' }; }
+  });
+
+  for (const [channel, operation, field] of [
+    ['model-storage-overview', () => modelStorage.overview(), 'data'],
+    ['prepare-model-removal', (args) => modelStorage.prepare(args), 'plan'],
+    ['execute-model-removal', (args) => modelStorage.execute(args), 'result'],
+  ]) ipcMain.handle(channel, async (event, args) => {
+    if (!isPrimaryWindowSender(event) || !modelManagerEnabled) return { success: false, error: 'Model Manager requires Pro or an active trial in the main window.' };
+    try { return { success: true, [field]: await operation(args) }; }
+    catch (error) { return { success: false, error: error.message }; }
   });
 
   ipcMain.handle('show-save-dialog', async (event, options = {}) => {

@@ -62,6 +62,7 @@ export function ModelActionsPanel({ item, revealUpdates = 0 }: { item: ModelInsp
     {watch && <><p className="text-xs text-gray-400">Last successful check: {watch.lastSuccessAt ? new Date(watch.lastSuccessAt).toLocaleString() : 'Never'}</p>{watch.error && <p className="text-xs text-amber-400">Could not check this model: {watch.error}</p>}{watch.chronologyUnknown && <p className="text-xs text-amber-400">Some version dates are unavailable; chronology is indeterminate.</p>}</>}
     {item.location.metadataError && <p className="text-xs text-amber-400">Embedded metadata: {item.location.metadataError}</p>}
     <details><summary className="cursor-pointer text-xs text-gray-400">{locations.length} file location{locations.length === 1 ? '' : 's'}</summary>{locations.map((location) => <button className="mt-2 block break-all text-left text-xs text-gray-300" key={location.id} onClick={() => void window.electronAPI?.modelLibraryRevealLocation(location.absolutePath)}>{location.absolutePath}</button>)}</details>
+    <button className={`${modelButton} border-red-900 text-red-300`} disabled={busy || Boolean(manager.progress)} onClick={() => void execute({ type: 'remove', locationId: item.location.id })}>Remove files…</button>
     {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
   </section>;
 }

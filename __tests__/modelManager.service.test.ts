@@ -28,6 +28,9 @@ beforeEach(() => {
   fakes.saveLocal.mockReset().mockImplementation(async (value) => value);
   catalog = { version: 1, locations: [location('one')], updatedAt: 1 };
   api = {
+    modelStorageOverview: vi.fn(async () => ({ success: true, data: { files: [], sources: [], checkedAt: 1 } })),
+    prepareModelRemoval: vi.fn(async () => ({ success: true, plan: { planId: 'synthetic-plan', expiresAt: Date.now() + 300_000, files: catalog.locations.map((location) => ({ path: location.absolutePath, locationIds: [location.id], size: location.size })), totalBytes: 100, remainingCopies: [] } })),
+    executeModelRemoval: vi.fn(async () => ({ success: true, result: { removedLocationIds: [], failures: [], cancelled: true } })),
     modelManagerStoreMedia: vi.fn(async (reference) => ({ success: true, reference })),
     onModelManagerCommand: vi.fn(() => () => {}), modelManagerPublish: vi.fn(async () => ({ success: true })), modelManagerLoadPreferences: vi.fn(async () => null),
     modelManagerCommandResult: vi.fn(async () => {}),
@@ -49,6 +52,89 @@ async function initialize() {
 }
 
 describe('single-owner model service', () => {
+  it('cancels duplicate verification without promoting an interrupted hash or starting another file', async () => {
+    catalog.locations = [location('one'), location('two')];
+    const manager = await initialize();
+    api.modelStorageOverview.mockResolvedValue({ success: true, data: { files: catalog.locations.map((entry) => ({ key: entry.id, path: entry.absolutePath, locationIds: [entry.id], size: 100, stale: false })), sources: [], checkedAt: 1 } });
+    let complete!: (value: unknown) => void;
+    api.modelLibraryHash.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    const verifying = manager.verifyModelDuplicates();
+    await vi.waitFor(() => expect(api.modelLibraryHash).toHaveBeenCalledTimes(1));
+    manager.cancelModelJob();
+    complete({ success: true, sha256: 'a'.repeat(64) });
+    await verifying;
+    expect(api.modelLibraryHash).toHaveBeenCalledTimes(1);
+    expect(api.modelLibraryCancelHash).toHaveBeenCalledOnce();
+    expect(manager.getModelManagerState().catalog.locations.every((entry) => !entry.sha256)).toBe(true);
+    expect(manager.getModelManagerState().message).toContain('Stopped.');
+    expect(manager.getModelManagerState().progress).toBeNull();
+  });
+  it('verifies equal-size candidates once per physical file, reuses hashes and merges alias notes', async () => {
+    const first = location('one'), alias = { ...location('one'), id: 'overlap:one.safetensors', sourceId: 'overlap' }, copy = location('two');
+    fakes.sources.push({ ...source, id: 'overlap' });
+    catalog.locations = [first, alias, copy];
+    api.modelLibraryScan.mockResolvedValue({ success: true, results: [{ sourceId: 's', locations: [first, copy] }, { sourceId: 'overlap', locations: [alias] }] });
+    fakes.locals = [first, alias].map((entry, index) => ({ id: `location:${entry.id}`, locationId: entry.id, tags: [], notes: `Synthetic note ${index}`, updatedAt: index + 1 }));
+    const manager = await initialize();
+    api.modelStorageOverview.mockResolvedValue({ success: true, data: { files: [
+      { key: 'one', path: first.absolutePath, locationIds: [first.id, alias.id], size: 100, physicalId: 'disk:1', stale: false },
+      { key: 'two', path: copy.absolutePath, locationIds: [copy.id], size: 100, physicalId: 'disk:2', stale: false },
+    ], sources: [], checkedAt: 1 } });
+    await manager.verifyModelDuplicates();
+    expect(api.modelLibraryHash).toHaveBeenCalledTimes(2);
+    expect(manager.getModelManagerState().localMetadata[`sha256:${'a'.repeat(64)}`].notes).toContain('Synthetic note 0');
+    expect(manager.getModelManagerState().localMetadata[`sha256:${'a'.repeat(64)}`].notes).toContain('Synthetic note 1');
+    expect(manager.getModelManagerState().progress).toBeNull();
+    api.modelLibraryHash.mockClear();
+    await manager.verifyModelDuplicates();
+    expect(api.modelLibraryHash).not.toHaveBeenCalled();
+    expect(api.modelManagerRemote).not.toHaveBeenCalled();
+  });
+  it('removes successful file records, rebuilds groups and preserves authored metadata', async () => {
+    catalog.locations = [location('one'), location('copy')].map((entry) => ({ ...entry, sha256: 'a'.repeat(64) }));
+    fakes.locals = [{ id: `sha256:${'a'.repeat(64)}`, sha256: 'a'.repeat(64), tags: ['synthetic'], notes: 'Keep these notes', previewImage: 'imh-model-media://synthetic', watchUpdates: true, examples: [{ id: 'saved', origin: 'imported', preview: 'imh-model-media://example', caption: 'Keep this example' }], updatedAt: 1 }];
+    const manager = await initialize();
+    const authored = manager.getModelManagerState().localMetadata;
+    api.executeModelRemoval.mockResolvedValue({ success: true, result: { removedLocationIds: [location('one').id], failures: [] } });
+    await manager.removeModelFiles([location('one').id]);
+    expect(manager.getModelManagerState().catalog.managedModels?.[0]).toMatchObject({ primaryLocationId: location('copy').id, locationIds: [location('copy').id] });
+    expect(manager.getModelManagerState().localMetadata).toEqual(authored);
+    api.executeModelRemoval.mockResolvedValue({ success: true, result: { removedLocationIds: [location('copy').id], failures: [] } });
+    await manager.removeModelFiles([location('copy').id]);
+    expect(manager.getModelManagerState().catalog.locations).toEqual([]);
+    expect(manager.getModelManagerState().localMetadata).toEqual(authored);
+    expect(manager.installedVersions(1)).toEqual([]);
+    expect(manager.getModelManagerState().progress).toBeNull();
+  });
+  it('reports partial removal and keeps failed catalog locations', async () => {
+    catalog.locations = [location('one'), location('two')];
+    const manager = await initialize();
+    api.executeModelRemoval.mockResolvedValue({ success: true, result: { removedLocationIds: [location('one').id], failures: [{ locationIds: [location('two').id], path: location('two').absolutePath, error: 'Trash unavailable' }] } });
+    await manager.removeModelFiles(catalog.locations.map((entry) => entry.id));
+    expect(manager.getModelManagerState().catalog.locations.map((entry) => entry.id)).toEqual([location('two').id]);
+    expect(manager.getModelManagerState().message).toContain('1 files moved to Trash · 1 failed');
+    expect(api.writeJsonCacheData.mock.calls.at(-1)?.[0].data.locations).toHaveLength(1);
+  });
+  it('keeps catalog files on cancellation or failed preparation', async () => {
+    const manager = await initialize();
+    await manager.removeModelFiles([location('one').id]);
+    expect(manager.getModelManagerState().message).toBe('Removal cancelled.');
+    expect(manager.getModelManagerState().catalog.locations).toHaveLength(1);
+    api.prepareModelRemoval.mockResolvedValue({ success: false, error: 'File changed' });
+    api.executeModelRemoval.mockClear();
+    await expect(manager.removeModelFiles([location('one').id])).rejects.toThrow('File changed');
+    expect(api.executeModelRemoval).not.toHaveBeenCalled();
+    expect(manager.getModelManagerState().progress).toBeNull();
+    expect(manager.getModelManagerState().catalog.locations).toHaveLength(1);
+  });
+  it('opens removal choice from Inspector commands and waits for explicit copy selection', async () => {
+    catalog.locations = [location('one'), location('copy')].map((entry) => ({ ...entry, sha256: 'a'.repeat(64) }));
+    const manager = await initialize();
+    await manager.runModelCommand({ type: 'remove', locationId: location('one').id });
+    expect(manager.getModelManagerState().removal).toEqual({ locationIds: [location('copy').id, location('one').id], selected: false });
+    expect(api.prepareModelRemoval).not.toHaveBeenCalled();
+    expect(api.executeModelRemoval).not.toHaveBeenCalled();
+  });
   it('clears the active managed model scope when its source is removed', async () => {
     const manager = await initialize();
     manager.setModelLibraryOpener((scope) => { fakes.scope = scope; });
