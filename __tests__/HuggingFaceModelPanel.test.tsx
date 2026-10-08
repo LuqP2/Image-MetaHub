@@ -37,18 +37,35 @@ describe('Hugging Face binding interactions', () => {
     fireEvent.change(screen.getByLabelText('Revision'), { target: { value: 'main' } });
     expect(screen.queryByText('Confirm manual link')).toBeNull();
   });
-  it('routes verification and unlink to the selected copy without exposing HF monitoring', async () => {
+  it('routes verification and unlink to the selected copy and leaves monitoring off by default', async () => {
     const first = makeItem('one', 'a'.repeat(64)), second = makeItem('two', 'a'.repeat(64));
     second.location.huggingFace = { repoId: 'other/repo', filePath: 'model.safetensors', linkedRevision: 'main', resolvedCommit: 'b'.repeat(40), linkedRemoteFingerprint: 'git:oid:' + 'c'.repeat(40), size: 100, verification: 'manual', fetchedAt: 1 };
     fakes.manager.catalog.locations = [first.location, second.location];
     render(<HuggingFaceModelPanel item={first} />);
     fireEvent.change(screen.getByLabelText('File location'), { target: { value: 'two' } });
     expect(screen.getByText('other/repo')).toBeTruthy();
-    expect(screen.queryByText(/monitoring/i)).toBeNull();
+    expect(screen.getByText('Hugging Face monitoring (off)')).toBeTruthy();
+    expect((screen.getByLabelText('Enable automatic Hugging Face checks') as HTMLInputElement).checked).toBe(false);
     fireEvent.click(screen.getByText('Verify file match'));
     await waitFor(() => expect(fakes.command).toHaveBeenLastCalledWith({ type: 'verifyHF', locationId: 'two' }));
     fireEvent.click(screen.getByText('Remove Hugging Face link'));
     await waitFor(() => expect(fakes.command).toHaveBeenLastCalledWith({ type: 'unbindHF', locationId: 'two' }));
+  });
+  it('saves monitoring only after explicit confirmation and preserves the original link revision', async () => {
+    const item = makeItem();
+    item.location.huggingFace = { repoId: 'owner/repo', filePath: 'folder/one.safetensors', linkedRevision: 'release/v1', resolvedCommit: 'b'.repeat(40), linkedRemoteFingerprint: lookup.files[0].fingerprint, verification: 'manual', size: 100, fetchedAt: 1 };
+    render(<HuggingFaceModelPanel item={item} />);
+    expect((screen.getByLabelText('Tracked revision') as HTMLInputElement).value).toBe('main');
+    expect((screen.getByLabelText('Watched folder (empty for root)') as HTMLInputElement).value).toBe('folder');
+    expect(fakes.command).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByLabelText('Enable automatic Hugging Face checks'));
+    fireEvent.change(screen.getByLabelText('Tracked revision'), { target: { value: 'release/v2' } });
+    fireEvent.change(screen.getByLabelText('Watched folder (empty for root)'), { target: { value: '' } });
+    fireEvent.click(screen.getByLabelText('Include subfolders'));
+    expect(fakes.command).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Save HF monitoring'));
+    await waitFor(() => expect(fakes.command).toHaveBeenLastCalledWith({ type: 'configureHF', locationId: 'synthetic', config: { trackedRevision: 'release/v2', watchedDirectory: '', recursive: true, monitoringEnabled: true } }));
+    expect(item.location.huggingFace.linkedRevision).toBe('release/v1');
   });
   it('discards a lookup response after switching to another copy', async () => {
     const first = makeItem('one', 'a'.repeat(64)), second = makeItem('two', 'a'.repeat(64));

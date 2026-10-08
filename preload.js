@@ -238,6 +238,7 @@ const electronAPI = {
   modelManagerCommandResult: (requestId, result) => ipcRenderer.invoke('model-manager-command-result', requestId, result),
   modelManagerRemote: (args) => ipcRenderer.invoke('model-manager-remote', args),
   modelManagerHuggingFace: (args) => ipcRenderer.invoke('model-manager-hugging-face', args),
+  modelManagerHuggingFaceWatch: (args) => ipcRenderer.invoke('model-manager-hugging-face-watch', args),
   modelManagerCancelRemote: (requestId) => ipcRenderer.invoke('model-manager-cancel-remote', requestId),
   modelManagerStoreMedia: (value) => ipcRenderer.invoke('model-manager-store-media', value),
   modelManagerImportMedia: () => ipcRenderer.invoke('model-manager-import-media'),

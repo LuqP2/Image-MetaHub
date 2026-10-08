@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
-import { lookupHuggingFaceModel } from '../electron/huggingFaceModels.mjs';
+import { lookupHuggingFaceModel, snapshotHuggingFaceModels } from '../electron/huggingFaceModels.mjs';
 import { huggingFaceFileUrl, parseHuggingFaceLink } from '../services/modelLibrary/huggingFaceLink.mjs';
 import { isInspectorHuggingFaceLocation } from '../electron/modelInspectorCatalog.mjs';
 
@@ -25,6 +25,59 @@ describe('Hugging Face public link parsing', () => {
 });
 
 describe('Hugging Face metadata adapter', () => {
+  const watched = { repoId: 'owner/repo', revision: 'release/v1', watchedDirectory: 'folder', recursive: false, linkedPaths: ['folder/model.safetensors'] };
+  it('uses one resolved commit for paths and all folder pages, excluding README changes', async () => {
+    const tree = `https://huggingface.co/api/models/owner/repo/tree/${commit}/folder?recursive=false&expand=false`;
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response(info)).mockResolvedValueOnce(response([{ type: 'directory', path: 'folder' }, file()])).mockResolvedValueOnce(response([{ type: 'file', path: 'folder/README.md' }, file()], { link: `<${tree}&cursor=next>; rel="next"` })).mockResolvedValueOnce(response([file('folder/new.safetensors')]));
+    const result = await snapshotHuggingFaceModels(watched, { fetchImpl });
+    expect(fetchImpl.mock.calls[1][0]).toContain(`/paths-info/${commit}`);
+    expect(fetchImpl.mock.calls[2][0]).toBe(tree);
+    expect(fetchImpl.mock.calls[3][0]).toBe(`${tree}&cursor=next`);
+    expect(result.linkedFiles[watched.linkedPaths[0]]).toMatchObject({ fingerprint: `lfs:sha256:${sha}` });
+    expect(result.files.map((entry) => entry.path)).toEqual(['folder/model.safetensors', 'folder/new.safetensors']);
+  });
+  it('returns complete unavailability when a linked file and its watched folder were deleted', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response(info)).mockResolvedValueOnce(response([]));
+    const result = await snapshotHuggingFaceModels(watched, { fetchImpl });
+    expect(result.files).toEqual([]); expect(result.linkedFiles[watched.linkedPaths[0]]).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+  it('keeps a missing linked file distinct from a repository failure', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response(info)).mockResolvedValueOnce(response([{ type: 'directory', path: 'folder' }])).mockResolvedValueOnce(response([file('folder/other.safetensors')]));
+    const result = await snapshotHuggingFaceModels(watched, { fetchImpl });
+    expect(result.linkedFiles[watched.linkedPaths[0]]).toBeNull(); expect(result.files).toHaveLength(1);
+  });
+  it('rejects partial pagination and out-of-scope model files for monitoring', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response(info)).mockResolvedValueOnce(response([{ type: 'directory', path: 'folder' }, file()])).mockResolvedValueOnce(response([file(), file('unrelated/model.safetensors')]));
+    await expect(snapshotHuggingFaceModels(watched, { fetchImpl })).rejects.toThrow('outside');
+  });
+  it('does not mistake an omitted linked-file tree entry for a complete snapshot', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response(info)).mockResolvedValueOnce(response([{ type: 'directory', path: 'folder' }, file()])).mockResolvedValueOnce(response([]));
+    await expect(snapshotHuggingFaceModels(watched, { fetchImpl })).rejects.toThrow('omitted');
+  });
+  it.each(['failure', 'cycle', 'malformed', 'rateLimit', 'cancel'])('never returns a partial monitored snapshot on %s', async (kind) => {
+    const controller = new AbortController();
+    const tree = `https://huggingface.co/api/models/owner/repo/tree/${commit}/folder?recursive=false&expand=false`;
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response(info)).mockResolvedValueOnce(response([{ type: 'directory', path: 'folder' }, file()]));
+    if (kind === 'malformed') fetchImpl.mockResolvedValueOnce(response([file(), { path: 'folder/new.safetensors' }]));
+    else {
+      fetchImpl.mockResolvedValueOnce(response([file()], { link: `<${kind === 'cycle' ? tree : `${tree}&cursor=next`}>; rel="next"` }));
+      fetchImpl.mockImplementationOnce(async () => {
+        if (kind === 'cancel') { controller.abort(); controller.signal.throwIfAborted(); }
+        return new Response('', { status: kind === 'rateLimit' ? 429 : 503, headers: { 'retry-after': '120' } });
+      });
+    }
+    const request = snapshotHuggingFaceModels(watched, { fetchImpl, signal: controller.signal });
+    if (kind === 'rateLimit') await expect(request).rejects.toMatchObject({ retryAfterMs: 120_000 });
+    else await expect(request).rejects.toThrow();
+    expect(fetchImpl).toHaveBeenCalledTimes(kind === 'cycle' || kind === 'malformed' ? 3 : 4);
+  });
+  it('encodes nested watched folders and slash revisions without expanding recursion', async () => {
+    const nested = { ...watched, watchedDirectory: 'folder/sub', linkedPaths: ['folder/sub/model.safetensors'] };
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response(info)).mockResolvedValueOnce(response([{ type: 'directory', path: 'folder/sub' }, file(nested.linkedPaths[0])])).mockResolvedValueOnce(response([file(nested.linkedPaths[0])]));
+    await snapshotHuggingFaceModels(nested, { fetchImpl });
+    expect(fetchImpl.mock.calls[0][0]).toContain('release%2Fv1'); expect(fetchImpl.mock.calls[2][0]).toContain('/folder%2Fsub?recursive=false');
+  });
   it('pins paths-info to the resolved commit and encodes slash revisions and paths without downloading', async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(response(info)).mockResolvedValueOnce(response([file()]));
     const result = await lookupHuggingFaceModel({ ...target, revision: 'release/v1' }, { fetchImpl });

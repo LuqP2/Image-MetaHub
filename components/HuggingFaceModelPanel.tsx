@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useModelManager } from '../services/modelLibrary/manager';
 import { huggingFaceFileUrl, parseHuggingFaceLink } from '../services/modelLibrary/huggingFaceLink.mjs';
+import { huggingFaceConfig, huggingFaceWatchId } from '../services/modelLibrary/huggingFaceTracking';
+import { HuggingFaceReleaseGroup } from './UnifiedModelUpdatesPanel';
 import type { HuggingFaceLookup, ModelInspectorItem, ModelManagerCommand } from '../services/modelLibrary/types';
 import { executeModelCommand, modelButton, modelInput } from './ModelManagerPanels';
 
-export function HuggingFaceModelPanel({ item }: { item: ModelInspectorItem }) {
+export function HuggingFaceModelPanel({ item, revealUpdates = 0 }: { item: ModelInspectorItem; revealUpdates?: number }) {
   const manager = useModelManager();
   const copies = item.location.sha256 ? manager.catalog.locations.filter((location) => location.sha256?.toLowerCase() === item.location.sha256?.toLowerCase()) : [item.location];
   const [copyId, setCopyId] = useState(item.location.id);
@@ -16,6 +18,9 @@ export function HuggingFaceModelPanel({ item }: { item: ModelInspectorItem }) {
   const [lookup, setLookup] = useState<HuggingFaceLookup>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [monitoring, setMonitoring] = useState(huggingFaceConfig(binding ?? { filePath: '' }));
+  const watch = binding ? manager.hfWatches?.[huggingFaceWatchId(binding)] : undefined;
+  useEffect(() => { setMonitoring(huggingFaceConfig(binding ?? { filePath: '' })); }, [location.id, binding?.repoId, binding?.filePath, binding?.linkedRevision, binding?.trackedRevision, binding?.watchedDirectory, binding?.recursive, binding?.monitoringEnabled]);
   const selectedId = useRef(location.id); selectedId.current = location.id;
   useEffect(() => { setCopyId(item.location.id); }, [item.location.id]);
   useEffect(() => {
@@ -52,6 +57,17 @@ export function HuggingFaceModelPanel({ item }: { item: ModelInspectorItem }) {
       </div>
       {binding.verification === 'sha256' && copies.length > 1 && <p className="text-xs text-gray-500">Verified links are shared with identical copies. Removing this link also unlinks copies sharing this verified link. Different copy links are preserved.</p>}
       {differentCopyLinks && <p className="text-xs text-amber-400">Other copies have different Hugging Face links. Choose a file location to review its link.</p>}
+      <details><summary className="cursor-pointer text-xs text-gray-400">Hugging Face monitoring {huggingFaceConfig(binding).monitoringEnabled ? '(on)' : '(off)'}</summary><form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void execute({ type: 'configureHF', locationId: location.id, config: monitoring }); }}>
+        <label className="block text-xs text-gray-400"><input type="checkbox" checked={monitoring.monitoringEnabled} onChange={(event) => setMonitoring({ ...monitoring, monitoringEnabled: event.target.checked })} /> Enable automatic Hugging Face checks</label>
+        <label className="block text-xs text-gray-400">Tracked revision<input className={modelInput} value={monitoring.trackedRevision} onChange={(event) => setMonitoring({ ...monitoring, trackedRevision: event.target.value })} /></label>
+        <label className="block text-xs text-gray-400">Watched folder (empty for root)<input className={modelInput} value={monitoring.watchedDirectory} onChange={(event) => setMonitoring({ ...monitoring, watchedDirectory: event.target.value })} /></label>
+        <label className="block text-xs text-gray-400"><input type="checkbox" checked={monitoring.recursive} onChange={(event) => setMonitoring({ ...monitoring, recursive: event.target.checked })} /> Include subfolders</label>
+        <p className="text-xs text-gray-500">The original link stays at {binding.linkedRevision}. Checks watch {monitoring.trackedRevision || '(choose a revision)'} while the app is open, every {manager.intervalHours === 168 ? '7 days' : `${manager.intervalHours ?? 24} hours`}. A new scope starts with a quiet baseline.</p>
+        <button className={modelButton} disabled={blocked}>Save HF monitoring</button>
+      </form></details>
+      <p className="text-xs text-gray-500">Last successful update check: {watch?.lastSuccessAt ? new Date(watch.lastSuccessAt).toLocaleString() : 'Never'}</p>
+      {watch?.error && <p className="text-xs text-amber-400">Hugging Face check failed: {watch.error}</p>}
+      {watch && <HuggingFaceReleaseGroup key={watch.id} watch={watch} reveal={revealUpdates} />}
     </> : <p className="text-xs text-gray-400">Link a public repository file to this model.</p>}
     <details key={location.id} open={!binding || undefined}>
       <summary className="cursor-pointer text-xs text-gray-400">{binding ? 'Change Hugging Face link' : 'Link a public Hugging Face file'}</summary>

@@ -24,3 +24,9 @@ export function huggingFaceFileUrl({ repoId, linkedRevision, filePath }) {
   validateHuggingFaceTarget(repoId, linkedRevision, filePath);
   return `https://huggingface.co/${repoId}/blob/${encodeURIComponent(linkedRevision)}/${filePath.split('/').map(encodeURIComponent).join('/')}`;
 }
+
+export function validateHuggingFaceScope(repoId, revision, directory, recursive) {
+  validateHuggingFaceTarget(repoId, revision, '');
+  if (typeof directory !== 'string' || typeof recursive !== 'boolean') throw new Error('Choose a valid Hugging Face folder and recursion setting.');
+  validateHuggingFaceTarget(repoId, revision, directory ? `${directory}/validation.safetensors` : 'validation.safetensors');
+}

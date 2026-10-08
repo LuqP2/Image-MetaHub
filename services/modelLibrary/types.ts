@@ -36,6 +36,10 @@ export interface ModelLocation {
 }
 
 export interface HuggingFaceBinding {
+  trackedRevision?: string;
+  watchedDirectory?: string;
+  recursive?: boolean;
+  monitoringEnabled?: boolean;
   repoId: string;
   filePath: string;
   linkedRevision: string;
@@ -60,6 +64,48 @@ export interface HuggingFaceLookup {
   resolvedCommit: string;
   files: HuggingFaceFile[];
   fetchedAt: number;
+}
+export interface HuggingFaceWatchConfig {
+  trackedRevision: string;
+  watchedDirectory: string;
+  recursive: boolean;
+  monitoringEnabled: boolean;
+}
+export interface HuggingFaceRemoteSnapshot {
+  repoId: string;
+  revision: string;
+  watchedDirectory: string;
+  recursive: boolean;
+  resolvedCommit: string;
+  files: HuggingFaceFile[];
+  linkedFiles: Record<string, HuggingFaceFile | null>;
+  fetchedAt: number;
+}
+export interface HuggingFaceEvent {
+  id: string;
+  source: 'huggingFace';
+  kind: 'fileChanged' | 'newModelFile' | 'fileUnavailable';
+  path: string;
+  fingerprint: string;
+  commit: string;
+  detectedAt: number;
+}
+export interface HuggingFaceWatchRecord {
+  id: string;
+  repoId: string;
+  filePath: string;
+  trackedRevision: string;
+  watchedDirectory: string;
+  recursive: boolean;
+  snapshot?: HuggingFaceRemoteSnapshot;
+  events: HuggingFaceEvent[];
+  seenEventIds: string[];
+  ignoredEventIds: string[];
+  notifiedEventIds: string[];
+  lastSuccessAt?: number;
+  lastAttemptAt?: number;
+  retryAt?: number;
+  error?: string;
 }
 export interface ModelCommandResult {
   success: boolean;
@@ -149,6 +195,7 @@ export interface ModelWatchRecord {
 }
 
 export interface ModelManagerSnapshot {
+  hfWatches?: Record<string, HuggingFaceWatchRecord>;
   storage?: ModelStorageOverview;
   sourceStatus?: Record<string, { checkedAt: number; error?: string }>;
   removal?: { locationIds: string[]; selected: boolean } | null;
@@ -170,6 +217,8 @@ export interface ModelManagerSnapshot {
 }
 
 export type ModelManagerCommand =
+  | { type: 'configureHF'; locationId: string; config: HuggingFaceWatchConfig }
+  | { type: 'hfEventAction'; watchId: string; eventIds: string[]; action: 'seen' | 'ignore' | 'restore' }
   | { type: 'lookupHF'; locationId: string; repoId: string; revision: string; filePath?: string }
   | { type: 'bindHF'; locationId: string; repoId: string; revision: string; filePath: string; fingerprint: string }
   | { type: 'unbindHF'; locationId: string }
