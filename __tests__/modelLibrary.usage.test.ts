@@ -36,6 +36,32 @@ describe('derived model Library usage', () => {
     const files = [image('one', [], undefined, 100, ['style', { name: 'style', sha256: a }, { name: 'style', sha256: a }] as IndexedImage['loras'])];
     expect((await deriveModelUsage(files, models, false))?.[`sha256:${a}`]).toMatchObject({ totalCount: 1, confirmedCount: 1, ambiguousCount: 0 });
   });
+  it.each([false, true])('uses LoRA model_hash for renamed files and same-name versions with compacted metadata=%s', async (compacted) => {
+    const models = catalog(location('one', 'style.safetensors', a, 'lora'), location('two', 'style.safetensors', b, 'lora'));
+    const files = [
+      { id: 'renamed', name: 'old-name', model_hash: a.toUpperCase() },
+      { id: 'matching', name: 'style', model_hash: a },
+      { id: 'conflicting', name: 'style', model_hash: 'c'.repeat(64) },
+    ].map(({ id, ...lora }) => {
+      const file = image(id, [], undefined, 100, [lora] as IndexedImage['loras']);
+      file.metadata = compacted ? { _rawMetadataCompacted: true } : { imagemetahub_data: { loras: [lora] } };
+      return file;
+    });
+    const usage = (await deriveModelUsage(files, models, false))!;
+    expect(usage[`sha256:${a}`]).toMatchObject({ totalCount: 2, confirmedCount: 2, nameMatchedCount: 0, ambiguousCount: 0 });
+    expect(usage[`sha256:${b}`]).toMatchObject({ totalCount: 0, confirmedCount: 0, ambiguousCount: 0 });
+    const descriptors = buildModelDescriptors(models);
+    for (const mode of ['total', 'confirmed'] as const) {
+      expect(resolveManagedModelImages(files, { ...descriptors[0], mode })).toEqual(new Set(['renamed', 'matching']));
+      expect(resolveManagedModelImages(files, { ...descriptors[1], mode })).toEqual(new Set());
+    }
+  });
+  it.each([undefined, null, 123, a.slice(0, 10), 'z'.repeat(64)])('does not confirm malformed or incomplete LoRA model_hash: %j', async (model_hash) => {
+    const models = catalog(location('one', 'style.safetensors', a, 'lora'), location('two', 'style.safetensors', b, 'lora'));
+    const file = image('incomplete', [], undefined, 100, [{ name: 'style', model_hash }] as IndexedImage['loras']);
+    const usage = (await deriveModelUsage([file], models, false))!;
+    for (const hash of [a, b]) expect(usage[`sha256:${hash}`]).toMatchObject({ totalCount: 0, confirmedCount: 0, ambiguousCount: 1 });
+  });
   it('resolves hashes before attributing ambiguity to an unhashed competitor', async () => {
     const models = catalog(location('one', 'style.safetensors', a), location('two', 'style.safetensors'));
     const usage = await deriveModelUsage([image('one', ['style'], a)], models, false);

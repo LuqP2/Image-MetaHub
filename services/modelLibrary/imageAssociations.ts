@@ -41,9 +41,9 @@ export function imageModelReferences(image: IndexedImage): { key: string; hash?:
   const refs = (image.models ?? []).map((name) => ({ key: key('model', name), hash: modelHash }));
   if (modelHash && !refs.length) refs.push({ key: 'model:', hash: modelHash });
   for (const lora of image.loras ?? []) {
-    const record = typeof lora === 'string' ? undefined : lora as typeof lora & { hash?: string; sha256?: string };
+    const record = typeof lora === 'string' ? undefined : lora as typeof lora & { hash?: string; sha256?: string; model_hash?: string };
     const name = typeof lora === 'string' ? lora : lora.name || lora.model_name || '';
-    refs.push({ key: key('lora', name), hash: fullHash(record?.sha256 ?? record?.hash) ?? evidence.loraHashes[normalizeModelName(name)] });
+    refs.push({ key: key('lora', name), hash: fullHash(record?.sha256 ?? record?.hash ?? record?.model_hash) ?? evidence.loraHashes[normalizeModelName(name)] });
   }
   return refs;
 }
