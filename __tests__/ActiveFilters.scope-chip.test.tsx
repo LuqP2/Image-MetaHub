@@ -74,4 +74,13 @@ describe('ActiveFilters scope chip', () => {
     const { container } = render(<ActiveFilters />);
     expect(container.firstChild).toBeNull();
   });
+  it('renders and removes a managed-model chip while retaining other filters', () => {
+    resetFilters();
+    useImageStore.setState({ selectedModels: ['other-filter'], activeImageScope: { type: 'managedModel', id: 'location:synthetic', label: 'Synthetic model', managedModel: { identity: 'location:synthetic', locationIds: ['synthetic'], names: [], supported: true, mode: 'total' } } });
+    render(<ActiveFilters />);
+    expect(screen.getByText('Managed model')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Clear scope'));
+    expect(useImageStore.getState().activeImageScope).toBeNull();
+    expect(useImageStore.getState().selectedModels).toEqual(['other-filter']);
+  });
 });

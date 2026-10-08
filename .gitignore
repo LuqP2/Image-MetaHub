@@ -1,4 +1,5 @@
 # Development test files
+.tmp/model-manager-usage/
 test-*.js
 test-*.cjs
 test-*.mjs

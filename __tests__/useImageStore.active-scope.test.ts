@@ -25,6 +25,16 @@ const createImage = (name: string, models: string[] = []): IndexedImage => ({
 });
 
 describe('useImageStore active image scope', () => {
+  it('updates a managed-model mode with the same identity and preserves an empty scope', () => {
+    const descriptor = { identity: 'location:synthetic', locationIds: ['synthetic'], names: [{ key: 'model:scoped', ambiguous: false, knownHashes: [] }], supported: true, mode: 'total' as const };
+    const scope = { type: 'managedModel' as const, id: descriptor.identity, label: 'Synthetic', managedModel: descriptor };
+    useImageStore.getState().setActiveImageScope(scope);
+    expect(useImageStore.getState().getScopedFilteredImages().map((image) => image.id)).toEqual([second.id, third.id]);
+    useImageStore.getState().setActiveImageScope({ ...scope, managedModel: { ...descriptor, mode: 'confirmed' } });
+    expect(useImageStore.getState().getScopedFilteredImages()).toEqual([]);
+    useImageStore.getState().validateActiveImageScope();
+    expect(useImageStore.getState().activeImageScope?.type).toBe('managedModel');
+  });
   // The scope is a descriptor ({ type, id, label }) that resolves to the set of images it
   // targets and is intersected with filteredImages. Here a model scope targets second + third.
   const first = createImage('first.png', ['base']);

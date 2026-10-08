@@ -1,4 +1,7 @@
 import { externalizeModelMedia } from './mediaStorage';
+import { buildModelDescriptors } from './imageAssociations';
+import { deriveModelUsage, emptyModelUsage } from './usage';
+import type { ImageScope } from '../../types';
 import { mergeModelMetadata } from './mergeMetadata';
 import { thumbnailManager } from '../thumbnailManager';
 import { useSyncExternalStore } from 'react';
@@ -26,10 +29,35 @@ let rateLimitedUntil = 0;
 let releaseWait: (() => void) | undefined;
 let openImage: ((id: string) => void) | undefined;
 let publishTimer: ReturnType<typeof setTimeout> | undefined;
+let usageTimer: ReturnType<typeof setTimeout> | undefined;
+let usageRevision = 0;
+let openLibrary: ((scope: ImageScope) => void) | undefined;
+
+export function setModelLibraryOpener(callback: (scope: ImageScope) => void) { openLibrary = callback; }
+function scheduleUsage() {
+  if (!managerRunning) return;
+  const revision = ++usageRevision;
+  if (usageTimer) clearTimeout(usageTimer);
+  const descriptors = buildModelDescriptors(state.catalog);
+  const scope = useImageStore.getState().activeImageScope;
+  if (scope?.type === 'managedModel' && scope.managedModel) {
+    const current = descriptors.find((model) => model.identity === scope.managedModel!.identity)
+      ?? descriptors.find((model) => model.locationIds.some((id) => scope.managedModel!.locationIds.includes(id)));
+    if (current) useImageStore.getState().setActiveImageScope({ ...scope, id: current.identity, managedModel: { ...current, mode: scope.managedModel.mode } });
+    else if (!state.loading) useImageStore.getState().setActiveImageScope(null);
+  }
+  publish({ usage: Object.fromEntries(descriptors.map((model) => [model.identity, model.supported ? { ...(state.usage?.[model.identity] ?? emptyModelUsage('loading')), status: state.usage?.[model.identity] ? 'partial' : 'loading' } : emptyModelUsage('unsupported')])) });
+  usageTimer = setTimeout(() => {
+    usageTimer = undefined;
+    const library = useImageStore.getState();
+    void deriveModelUsage(library.images, state.catalog, Boolean(state.loading || library.isLoading || library.enrichmentProgress), () => revision !== usageRevision || !managerRunning).then((usage) => { if (usage) publish({ usage }); });
+  }, 100);
+}
 
 export const getModelManagerState = () => state;
 function publish(patch: Partial<ModelManagerSnapshot>) {
   state = { ...state, ...patch, revision: state.revision + 1 };
+  if (patch.catalog || patch.loading !== undefined) scheduleUsage();
   listeners.forEach((listener) => listener());
   if (!publishTimer) publishTimer = setTimeout(() => { void flushModelState().catch((error) => {
     state = { ...state, message: error.message }; listeners.forEach((listener) => listener());
@@ -68,7 +96,7 @@ function persistCatalog() {
 export function modelItem(locationId: string): ModelInspectorItem {
   const location = state.catalog.locations.find((item) => item.id === locationId);
   if (!location) throw new Error('This model is no longer in the catalog.');
-  return { location, localMetadata: getModelLocalMetadata(state.localMetadata, location) };
+  return { location, localMetadata: getModelLocalMetadata(state.localMetadata, location), usage: state.usage?.[location.sha256 ? `sha256:${location.sha256.toLowerCase()}` : `location:${location.id}`] };
 }
 async function patchLocation(locationId: string, patch: Partial<ModelInspectorItem['location']>, bindingRevision?: number) {
   patch = await externalizeModelMedia(patch);
@@ -395,6 +423,14 @@ export async function runModelCommand(command: ModelManagerCommand) {
       await saveModelPatch(command.locationId, { watchUpdates: false });
       await patchLocation(command.locationId, { civitai: undefined }); return;
     case 'chooseLibrary': publish({ picker: { locationId: command.locationId, cover: command.cover } }); return;
+    case 'viewLibrary': {
+      if (!['total', 'confirmed', 'ambiguous'].includes(command.mode)) throw new Error('Unknown Library usage mode.');
+      const item = modelItem(command.locationId);
+      const descriptor = buildModelDescriptors(state.catalog).find((model) => model.locationIds.includes(command.locationId));
+      if (!descriptor?.supported) throw new Error('Library usage is unavailable for this category.');
+      openLibrary?.({ type: 'managedModel', id: descriptor.identity, label: item.location.fileName, managedModel: { ...descriptor, mode: command.mode } });
+      return;
+    }
     case 'cancel': cancelModelJob(); return;
     case 'saveLocal': await saveModelPatch(command.locationId, command.patch); return;
     case 'openImage': {
@@ -481,7 +517,9 @@ export function startModelManager() {
   const timer = setInterval(check, 60000);
   const unsubscribeImages = useImageStore.subscribe((next, previous) => {
     if (next.images !== previous.images) publish({ libraryIds: next.images.map((image) => image.id) });
+    if (next.images !== previous.images || next.isLoading !== previous.isLoading || next.enrichmentProgress !== previous.enrichmentProgress) scheduleUsage();
   });
   window.addEventListener('focus', check);
-  return () => { managerRunning = false; cancelModelJob(); unsubscribe(); unsubscribeImages(); clearInterval(timer); if (publishTimer) { clearTimeout(publishTimer); publishTimer = undefined; } window.removeEventListener('focus', check); };
+  scheduleUsage();
+  return () => { managerRunning = false; usageRevision++; if (usageTimer) clearTimeout(usageTimer); cancelModelJob(); unsubscribe(); unsubscribeImages(); clearInterval(timer); if (publishTimer) { clearTimeout(publishTimer); publishTimer = undefined; } window.removeEventListener('focus', check); };
 }

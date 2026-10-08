@@ -51,7 +51,7 @@ import ComfyUIWorkspace from './components/ComfyUIWorkspace';
 import ImageEditorWorkspace from './components/ImageEditorWorkspace';
 import ModelsWorkspace from './components/ModelsWorkspace';
 import { ModelLibraryPicker } from './components/ModelManagerPanels';
-import { startModelManager, setModelImageOpener, useModelManager, dismissModelNotification, showModelUpdates } from './services/modelLibrary/manager';
+import { startModelManager, setModelLibraryOpener, setModelImageOpener, useModelManager, dismissModelNotification, showModelUpdates } from './services/modelLibrary/manager';
 import PromptLibrary from './components/PromptLibrary';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
@@ -690,6 +690,25 @@ export default function App() {
     setSelectedNodes,
     setActiveImageScope,
   ]);
+
+  const handleClearOtherModelFilters = useCallback(() => {
+    const scope = useImageStore.getState().activeImageScope;
+    handleClearAllFilters();
+    useImageStore.getState().clearFolderSelection();
+    useSemanticStore.getState().clearQuery();
+    setActiveImageScope(scope);
+  }, [handleClearAllFilters, setActiveImageScope]);
+
+  useEffect(() => {
+    setModelLibraryOpener((scope) => {
+      setActiveImageScope(scope);
+      useImageStore.getState().clearImageSelection();
+      useImageStore.getState().setPreviewImage(null);
+      setLibraryView('library');
+      setCurrentPage(1);
+      resetLibraryGridScrollPosition();
+    });
+  }, [setActiveImageScope, resetLibraryGridScrollPosition]);
 
   const handleSearchChange = useCallback((query: string) => {
     if (pendingSearchFlowIdRef.current) {
@@ -4350,13 +4369,13 @@ export default function App() {
                             const dimension: ExploreDimension =
                               activeImageScope.type === 'cluster'
                                 ? 'clusters'
-                                : activeImageScope.type === 'model'
+                                : activeImageScope.type === 'model' || activeImageScope.type === 'managedModel'
                                 ? 'models'
                                 : 'collections';
                             setActiveImageScope(null);
                             setExploreDimension(dimension);
                             resetLibraryGridScrollPosition();
-                            setLibraryView('explore');
+                            setLibraryView(activeImageScope.type === 'managedModel' ? 'models' : 'explore');
                           }
                         : undefined
                     }
@@ -4364,7 +4383,7 @@ export default function App() {
                       activeImageScope
                         ? activeImageScope.type === 'cluster'
                           ? 'Clusters'
-                          : activeImageScope.type === 'model'
+                          : activeImageScope.type === 'model' || activeImageScope.type === 'managedModel'
                           ? 'Models'
                           : 'Collections'
                         : undefined
@@ -4373,6 +4392,12 @@ export default function App() {
                   />
                 )}
 
+                {libraryView === 'library' && activeImageScope?.type === 'managedModel' && (
+                  <div className="mx-5 mb-2 flex items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
+                    <span>{displayImages.length} of {scopedImageIds?.size ?? 0} matching files{activeImageScope.managedModel?.mode !== 'total' ? ` · ${activeImageScope.managedModel?.mode}` : ''}</span>
+                    <button className="rounded border border-cyan-500/30 px-3 py-1 text-xs" onClick={handleClearOtherModelFilters}>Clear other filters</button>
+                  </div>
+                )}
                 {libraryView === 'library' && findSimilarGridFilter && (
                   <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
                     <div className="min-w-0">
