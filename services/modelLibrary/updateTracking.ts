@@ -47,7 +47,7 @@ export function unreadVersions(watch: ModelWatchRecord | undefined, installedIds
   return watch.versions.filter((version) => watch.novelVersionIds.includes(version.id) && !excluded.has(version.id));
 }
 
-export function isWatchDue(watch: ModelWatchRecord | undefined, hours: number, now: number): boolean {
+export function isWatchDue(watch: Pick<ModelWatchRecord, 'retryAt' | 'lastAttemptAt'> | undefined, hours: number, now: number): boolean {
   if (watch?.retryAt && watch.retryAt > now) return false;
   return !watch?.lastAttemptAt || now - watch.lastAttemptAt >= hours * 3600000;
 }

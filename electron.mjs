@@ -10,6 +10,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
+import { lookupHuggingFaceModel, snapshotHuggingFaceModels } from './electron/huggingFaceModels.mjs';
+import { huggingFaceWatchId } from './services/modelLibrary/huggingFaceWatchIdentity.mjs';
+import { packHuggingFaceWatches, unpackHuggingFaceWatches } from './services/modelLibrary/huggingFaceWatchState.mjs';
 import crypto from 'crypto';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
@@ -60,7 +63,7 @@ import {
 } from './electron/modelInspectorWindowState.mjs';
 import { isModelLibraryPathWithinRoots } from './electron/modelLibrarySecurity.mjs';
 import { createModelStorageController } from './electron/modelStorage.mjs';
-import { reconcileModelInspectorCatalog } from './electron/modelInspectorCatalog.mjs';
+import { isInspectorHuggingFaceLocation, reconcileModelInspectorCatalog } from './electron/modelInspectorCatalog.mjs';
 import { MODEL_MEDIA_SCHEME, resolveModelMediaPath, storeModelMedia } from './electron/modelMediaStore.mjs';
 import { fetchCivitaiJson, fetchCivitaiImage, normalizeRemoteVersion } from './electron/modelManagerRemote.mjs';
 import {
@@ -6567,11 +6570,16 @@ function setupFileOperationHandlers() {
   });
   ipcMain.handle('model-manager-load-preferences', async (event) => {
     if (!isPrimaryWindowSender(event)) return null;
-    try { return JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'model-manager-user-data', 'preferences.json'), 'utf8')); }
+    try {
+      const { hfWatchState, ...preferences } = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'model-manager-user-data', 'preferences.json'), 'utf8'));
+      return hfWatchState ? { ...preferences, hfWatches: unpackHuggingFaceWatches(hfWatchState) } : preferences;
+    }
     catch (error) { if (error.code === 'ENOENT') return null; throw error; }
   });
   ipcMain.handle('model-manager-publish', async (event, state) => {
     if (!isPrimaryWindowSender(event)) return { success: false };
+    const { hfWatchState, ...received } = state;
+    state = { ...received, hfWatches: hfWatchState ? unpackHuggingFaceWatches(hfWatchState) : received.hfWatches };
     state = { ...state, catalog: { ...state.catalog, locations: state.catalog.locations.filter((location) => !removedModelLocationIds.has(location.id)), managedModels: undefined } };
     modelManagerState = state;
     if (modelInspectorWindow && !modelInspectorWindow.isDestroyed()) {
@@ -6581,7 +6589,7 @@ function setupFileOperationHandlers() {
     if (state.loading) return { success: true };
     // Keep version bindings/identity even when reconstructible caches are cleared.
     const identities = { version: 1, updatedAt: 0, locations: state.catalog.locations.map(({ fileMetadata, metadataError, ...location }) => location) };
-    const durable = { sources: state.sources, localMetadata: state.localMetadata, watches: state.watches, intervalHours: state.intervalHours, identities };
+    const durable = { sources: state.sources, localMetadata: state.localMetadata, watches: state.watches, hfWatchState: hfWatchState ?? packHuggingFaceWatches(state.hfWatches ?? {}), intervalHours: state.intervalHours, identities };
     const directory = path.join(app.getPath('userData'), 'model-manager-user-data');
     const serialized = JSON.stringify(durable);
     if (serialized === modelManagerDurableJson) {
@@ -6601,8 +6609,11 @@ function setupFileOperationHandlers() {
   ipcMain.handle('model-manager-state', (event) => isModelLibraryRendererSender(event) ? modelManagerState : null);
   ipcMain.handle('model-manager-command', (event, command) => {
     if (!modelManagerEnabled || !isModelInspectorSender(event) || !mainWindow || mainWindow.isDestroyed()) return { success: false, error: 'Models workspace is unavailable.' };
-    if (command?.locationId && !modelInspectorSnapshot?.items.some((item) => item.location.id === command.locationId)) return { success: false, error: 'Unknown model.' };
-    if (!['identify', 'hash', 'check', 'unbind', 'bind', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'viewLibrary', 'remove', 'examples', 'example', 'cover', 'seen', 'versionAction', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
+    const hfCommand = ['lookupHF', 'bindHF', 'unbindHF', 'verifyHF', 'configureHF'].includes(command?.type);
+    if (hfCommand && !isInspectorHuggingFaceLocation(modelInspectorSnapshot, modelManagerState?.catalog, command.locationId)) return { success: false, error: 'Unknown model.' };
+    if (!hfCommand && command?.locationId && !modelInspectorSnapshot?.items.some((item) => item.location.id === command.locationId)) return { success: false, error: 'Unknown model.' };
+    if (!['identify', 'hash', 'check', 'unbind', 'bind', 'lookupHF', 'bindHF', 'unbindHF', 'verifyHF', 'configureHF', 'hfEventAction', 'saveLocal', 'importMedia', 'libraryMedia', 'chooseLibrary', 'openImage', 'viewLibrary', 'remove', 'examples', 'example', 'cover', 'seen', 'versionAction', 'cancel'].includes(command?.type)) return { success: false, error: 'Unknown action.' };
+    if (command?.type === 'hfEventAction' && !modelManagerState?.catalog.locations.some((location) => location.huggingFace && huggingFaceWatchId(location.huggingFace) === command.watchId && isInspectorHuggingFaceLocation(modelInspectorSnapshot, modelManagerState.catalog, location.id))) return { success: false, error: 'Unknown Hugging Face watch.' };
     if (['seen', 'versionAction'].includes(command?.type) && !modelInspectorSnapshot?.items.some((item) => item.location.civitai?.modelId === command.modelId)) return { success: false, error: 'Unknown remote model.' };
     const requestId = crypto.randomUUID();
     return new Promise((resolve) => {
@@ -6624,6 +6635,25 @@ function setupFileOperationHandlers() {
   });
   ipcMain.handle('model-manager-cancel-remote', (event, requestId) => {
     if (isPrimaryWindowSender(event)) modelRemoteTasks.get(requestId)?.abort();
+  });
+  ipcMain.handle('model-manager-hugging-face', async (event, args = {}) => {
+    if (!isPrimaryWindowSender(event) || !modelManagerEnabled) return { success: false, error: 'Model Manager requires Pro or an active trial.' };
+    if (modelStorage.isRemoving()) return { success: false, error: 'Model file removal is in progress.' };
+    if (typeof args.requestId !== 'string' || !args.requestId || args.requestId.length > 128 || modelRemoteTasks.has(args.requestId)) return { success: false, error: 'Invalid Hugging Face request.' };
+    const controller = new AbortController();
+    modelRemoteTasks.set(args.requestId, controller);
+    try { return { success: true, lookup: await lookupHuggingFaceModel(args, { signal: controller.signal }) }; }
+    catch (error) { return { success: false, error: error.name === 'TimeoutError' ? 'Hugging Face request timed out.' : error.message, cancelled: controller.signal.aborted, retryAfterMs: error.retryAfterMs }; }
+    finally { modelRemoteTasks.delete(args.requestId); }
+  });
+  ipcMain.handle('model-manager-hugging-face-watch', async (event, args = {}) => {
+    if (!isPrimaryWindowSender(event) || !modelManagerEnabled) return { success: false, error: 'Model Manager requires Pro or an active trial.' };
+    if (modelStorage.isRemoving()) return { success: false, error: 'Model file removal is in progress.' };
+    if (typeof args.requestId !== 'string' || !args.requestId || args.requestId.length > 128 || modelRemoteTasks.has(args.requestId)) return { success: false, error: 'Invalid Hugging Face request.' };
+    const controller = new AbortController(); modelRemoteTasks.set(args.requestId, controller);
+    try { return { success: true, snapshot: await snapshotHuggingFaceModels(args, { signal: controller.signal }) }; }
+    catch (error) { return { success: false, error: error.name === 'TimeoutError' ? 'Hugging Face request timed out.' : error.message, cancelled: controller.signal.aborted, retryAfterMs: error.retryAfterMs }; }
+    finally { modelRemoteTasks.delete(args.requestId); }
   });
   ipcMain.handle('model-manager-remote', async (event, { kind, id, requestId } = {}) => {
     if (modelStorage.isRemoving()) return { success: false, error: 'Model file removal is in progress.' };

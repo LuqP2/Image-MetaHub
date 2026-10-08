@@ -32,6 +32,85 @@ export interface ModelLocation {
   sha256?: string;
   hashFingerprint?: { size: number; modifiedAt: number | null };
   civitai?: CivitaiModelMetadata | { status: 'notFound'; fetchedAt: number; url: string };
+  huggingFace?: HuggingFaceBinding;
+}
+
+export interface HuggingFaceBinding {
+  trackedRevision?: string;
+  watchedDirectory?: string;
+  recursive?: boolean;
+  monitoringEnabled?: boolean;
+  repoId: string;
+  filePath: string;
+  linkedRevision: string;
+  verification: 'manual' | 'sha256';
+  verifiedLocalSha256?: string;
+  linkedRemoteFingerprint: string;
+  resolvedCommit: string;
+  size: number;
+  fetchedAt: number;
+}
+export interface HuggingFaceFile {
+  path: string;
+  size: number;
+  fingerprint: string;
+  lfsSha256?: string;
+  gitOid?: string;
+  xetHash?: string;
+}
+export interface HuggingFaceLookup {
+  repoId: string;
+  revision: string;
+  resolvedCommit: string;
+  files: HuggingFaceFile[];
+  fetchedAt: number;
+}
+export interface HuggingFaceWatchConfig {
+  trackedRevision: string;
+  watchedDirectory: string;
+  recursive: boolean;
+  monitoringEnabled: boolean;
+}
+export interface HuggingFaceRemoteSnapshot {
+  repoId: string;
+  revision: string;
+  watchedDirectory: string;
+  recursive: boolean;
+  resolvedCommit: string;
+  files: HuggingFaceFile[];
+  linkedFiles: Record<string, HuggingFaceFile | null>;
+  fetchedAt: number;
+}
+export interface HuggingFaceEvent {
+  id: string;
+  source: 'huggingFace';
+  kind: 'fileChanged' | 'newModelFile' | 'fileUnavailable';
+  path: string;
+  fingerprint: string;
+  commit: string;
+  detectedAt: number;
+}
+export interface HuggingFaceWatchRecord {
+  id: string;
+  repoId: string;
+  filePath: string;
+  trackedRevision: string;
+  watchedDirectory: string;
+  recursive: boolean;
+  snapshot?: HuggingFaceRemoteSnapshot;
+  events: HuggingFaceEvent[];
+  seenEventIds: string[];
+  ignoredEventIds: string[];
+  notifiedEventIds: string[];
+  lastSuccessAt?: number;
+  lastAttemptAt?: number;
+  retryAt?: number;
+  error?: string;
+}
+export interface ModelCommandResult {
+  success: boolean;
+  error?: string;
+  lookup?: HuggingFaceLookup;
 }
 
 export interface ModelFileMetadata {
@@ -116,6 +195,8 @@ export interface ModelWatchRecord {
 }
 
 export interface ModelManagerSnapshot {
+  hfWatchState?: import('./huggingFaceWatchState.mjs').PackedHuggingFaceWatches;
+  hfWatches?: Record<string, HuggingFaceWatchRecord>;
   storage?: ModelStorageOverview;
   sourceStatus?: Record<string, { checkedAt: number; error?: string }>;
   removal?: { locationIds: string[]; selected: boolean } | null;
@@ -127,7 +208,7 @@ export interface ModelManagerSnapshot {
   watches: Record<string, ModelWatchRecord>;
   intervalHours: number;
   loading: boolean;
-  progress: { kind: 'scan' | 'headers' | 'identify' | 'updates' | 'duplicates' | 'removal'; current: number; total: number; name: string } | null;
+  progress: { kind: 'scan' | 'headers' | 'identify' | 'updates' | 'duplicates' | 'removal' | 'huggingFace'; current: number; total: number; name: string } | null;
   message: string | null;
   notification: string | null;
   picker?: { locationId: string; cover: boolean } | null;
@@ -137,6 +218,12 @@ export interface ModelManagerSnapshot {
 }
 
 export type ModelManagerCommand =
+  | { type: 'configureHF'; locationId: string; config: HuggingFaceWatchConfig }
+  | { type: 'hfEventAction'; watchId: string; eventIds: string[]; action: 'seen' | 'ignore' | 'restore' }
+  | { type: 'lookupHF'; locationId: string; repoId: string; revision: string; filePath?: string }
+  | { type: 'bindHF'; locationId: string; repoId: string; revision: string; filePath: string; fingerprint: string }
+  | { type: 'unbindHF'; locationId: string }
+  | { type: 'verifyHF'; locationId: string }
   | { type: 'remove'; locationId: string }
   | { type: 'viewLibrary'; locationId: string; mode: ModelUsageMode }
   | { type: 'seen'; modelId: number; versionIds: number[] }

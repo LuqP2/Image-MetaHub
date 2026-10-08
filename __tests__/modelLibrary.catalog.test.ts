@@ -7,6 +7,17 @@ const source: ModelSource = {
 };
 
 describe('model library catalog', () => {
+  it('preserves HF bindings across scans and downgrades only byte verification when the file changes', () => {
+    const scanned = { sourceId: source.id, relativePath: 'model.safetensors', absolutePath: '/synthetic/model.safetensors', fileName: 'model.safetensors', size: 100, createdAt: 1, modifiedAt: 2 };
+    const first = reconcileModelCatalog({ version: 1, locations: [], updatedAt: 0 }, [source], [{ sourceId: source.id, locations: [scanned] }]);
+    const binding = { repoId: 'owner/repo', filePath: 'model.safetensors', linkedRevision: 'release/v1', linkedRemoteFingerprint: `lfs:sha256:${'a'.repeat(64)}`, resolvedCommit: 'b'.repeat(40), size: 100, verification: 'sha256' as const, verifiedLocalSha256: 'a'.repeat(64), fetchedAt: 1 };
+    first.locations[0].huggingFace = binding; first.locations[0].sha256 = 'a'.repeat(64);
+    const unchanged = reconcileModelCatalog(first, [source], [{ sourceId: source.id, locations: [scanned] }]);
+    expect(unchanged.locations[0].huggingFace).toEqual(binding);
+    const changed = reconcileModelCatalog(unchanged, [source], [{ sourceId: source.id, locations: [{ ...scanned, modifiedAt: 3 }] }]);
+    expect(changed.locations[0].huggingFace).toEqual({ ...binding, verification: 'manual', verifiedLocalSha256: undefined });
+    expect(changed.locations[0].sha256).toBeUndefined();
+  });
   it.each(['Linux x86_64', 'MacIntel'])('keeps case-distinct files independent on %s', (platform) => {
     const paths = ['Foo.safetensors', 'foo.safetensors'];
     const scan = [{ sourceId: source.id, locations: paths.map((relativePath) => ({

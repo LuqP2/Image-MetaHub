@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 export const PREFERENCES_DB_NAME = 'image-metahub-preferences';
-export const PREFERENCES_DB_VERSION = 12;
+export const PREFERENCES_DB_VERSION = 13;
 
 export const PREFERENCES_STORE_NAMES = {
   folderSelection: 'folderSelection',
@@ -16,6 +16,7 @@ export const PREFERENCES_STORE_NAMES = {
   modelLocalMetadataLegacy: 'modelLocalMetadata',
   modelLocalMetadata: 'modelLocalMetadataV2',
   modelWatches: 'modelWatches',
+  huggingFaceWatches: 'huggingFaceWatches',
   modelManagerSettings: 'modelManagerSettings',
 } as const;
 
@@ -185,6 +186,7 @@ function upgradePreferencesDatabase(request: IDBOpenDBRequest, oldVersion: numbe
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.automationRules, { keyPath: 'id' });
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.modelSources, { keyPath: 'id' });
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.modelWatches, { keyPath: 'id' });
+  ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.huggingFaceWatches, { keyPath: 'id' });
   ensureObjectStore(db, transaction, PREFERENCES_STORE_NAMES.modelManagerSettings, { keyPath: 'id' });
   const legacyModelLocalMetadataStore = ensureObjectStore(
     db,

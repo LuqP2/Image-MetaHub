@@ -1,3 +1,9 @@
+// Inspector can edit a copy only when its byte identity belongs to a displayed model.
+export function isInspectorHuggingFaceLocation(snapshot, catalog, locationId) {
+  const location = catalog?.locations.find((entry) => entry.id === locationId);
+  return Boolean(location && snapshot?.items.some((item) => item.location.id === locationId || (location.sha256 && item.location.sha256?.toLowerCase() === location.sha256.toLowerCase())));
+}
+
 // Preserve the selected logical model when its primary physical copy is removed.
 export function reconcileModelInspectorCatalog(snapshot, state) {
   const locations = new Map(state.catalog.locations.map((location) => [location.id, location]));

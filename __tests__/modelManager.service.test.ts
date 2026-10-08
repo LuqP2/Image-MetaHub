@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ModelCatalog, ModelLocalMetadata, ModelSource } from '../services/modelLibrary/types';
+import type { HuggingFaceBinding, ModelCatalog, ModelLocalMetadata, ModelSource } from '../services/modelLibrary/types';
 import type { ImageScope, IndexedImage } from '../types';
 import { buildModelDescriptors } from '../services/modelLibrary/imageAssociations';
+import { huggingFaceWatchId } from '../services/modelLibrary/huggingFaceTracking';
 
-const fakes = vi.hoisted(() => ({ sources: [] as ModelSource[], locals: [] as ModelLocalMetadata[], saveLocal: vi.fn(), images: [] as unknown[], scope: null as ImageScope | null, loading: false, enriching: false, notify: undefined as (() => void) | undefined }));
+const fakes = vi.hoisted(() => ({ sources: [] as ModelSource[], locals: [] as ModelLocalMetadata[], saveLocal: vi.fn(), hfSave: vi.fn(), images: [] as unknown[], scope: null as ImageScope | null, loading: false, enriching: false, notify: undefined as (() => void) | undefined }));
 vi.mock('../store/useImageStore', () => {
   const getState = () => ({ images: fakes.images, activeImageScope: fakes.scope, isLoading: fakes.loading, enrichmentProgress: fakes.enriching ? { processed: 0, total: 1 } : null, setActiveImageScope: (scope: ImageScope | null) => { fakes.scope = scope; } });
   return { useImageStore: { getState, subscribe: (callback: (next: ReturnType<typeof getState>, previous: ReturnType<typeof getState>) => void) => { fakes.notify = () => callback(getState(), { ...getState(), images: [] }); return () => { fakes.notify = undefined; }; } } };
@@ -15,8 +16,14 @@ vi.mock('../services/modelLibrary/localMetadataStorage', async (original) => {
   return { ...actual, getAllModelLocalMetadata: async () => fakes.locals, saveModelLocalMetadata: (value: ModelLocalMetadata) => fakes.saveLocal(value), deleteModelLocalMetadata: async () => {} };
 });
 vi.mock('../services/modelLibrary/watchStorage', () => ({ loadWatchPreferences: async () => ({ watches: [], intervalHours: 24 }), saveWatchPreference: async () => {} }));
+vi.mock('../services/modelLibrary/huggingFaceWatchStorage', () => ({ loadHuggingFaceWatches: async () => [], saveHuggingFaceWatches: (watches: unknown) => fakes.hfSave(watches) }));
 
 const source: ModelSource = { id: 's', path: '/synthetic/models', name: 'Models', kind: 'lora', recursive: true, createdAt: 1, updatedAt: 1 };
+const hfSha = 'a'.repeat(64);
+const hfFile = { path: 'folder/model.safetensors', size: 100, lfsSha256: hfSha, fingerprint: `lfs:sha256:${hfSha}` };
+const hfLookup = { repoId: 'owner/repo', revision: 'main', resolvedCommit: 'b'.repeat(40), files: [hfFile], fetchedAt: 1 };
+const hfBinding: HuggingFaceBinding = { repoId: hfLookup.repoId, filePath: hfFile.path, linkedRevision: hfLookup.revision, linkedRemoteFingerprint: hfFile.fingerprint, verification: 'manual', resolvedCommit: hfLookup.resolvedCommit, size: 100, fetchedAt: 1, trackedRevision: 'main', watchedDirectory: 'folder', recursive: false, monitoringEnabled: false };
+const hfSnapshot = (files = [hfFile]) => ({ repoId: 'owner/repo', revision: 'main', watchedDirectory: 'folder', recursive: false, resolvedCommit: 'b'.repeat(40), files, linkedFiles: { [hfFile.path]: files.find((file) => file.path === hfFile.path) ?? null }, fetchedAt: Date.now() });
 const location = (name: string) => ({ id: `s:${name}.safetensors`, sourceId: 's', sourceKind: 'lora' as const, sourceName: 'Models', fileName: `${name}.safetensors`, relativePath: `${name}.safetensors`, absolutePath: `/synthetic/models/${name}.safetensors`, size: 100, modifiedAt: 1, createdAt: 1, discoveredAt: 1, lastSeenAt: 1, fileMetadata: { raw: {} }, civitai: { modelId: 1, versionId: 2, modelName: 'Test', versionName: 'Installed', trainedWords: [], fetchedAt: 1, url: '', publishedAt: '2025-01-01' } });
 let catalog: ModelCatalog;
 let cleanup: (() => void) | undefined;
@@ -26,8 +33,11 @@ beforeEach(() => {
   vi.resetModules(); fakes.sources = [{ ...source }]; fakes.locals = []; fakes.images = [];
   fakes.scope = null; fakes.loading = false; fakes.enriching = false; fakes.notify = undefined;
   fakes.saveLocal.mockReset().mockImplementation(async (value) => value);
+  fakes.hfSave.mockReset().mockResolvedValue(undefined);
   catalog = { version: 1, locations: [location('one')], updatedAt: 1 };
   api = {
+    modelManagerHuggingFaceWatch: vi.fn(async () => ({ success: true, snapshot: hfSnapshot() })),
+    modelManagerHuggingFace: vi.fn(async () => ({ success: true, lookup: hfLookup })),
     modelStorageOverview: vi.fn(async () => ({ success: true, data: { files: [], sources: [], checkedAt: 1 } })),
     prepareModelRemoval: vi.fn(async () => ({ success: true, plan: { planId: 'synthetic-plan', expiresAt: Date.now() + 300_000, files: catalog.locations.map((location) => ({ path: location.absolutePath, locationIds: [location.id], size: location.size })), totalBytes: 100, remainingCopies: [] } })),
     executeModelRemoval: vi.fn(async () => ({ success: true, result: { removedLocationIds: [], failures: [], cancelled: true } })),
@@ -52,6 +62,393 @@ async function initialize() {
 }
 
 describe('single-owner model service', () => {
+  const makeHFOnly = () => { catalog.locations = [{ ...location('one'), civitai: undefined, huggingFace: { ...hfBinding } }]; };
+  it('checks HF-only models without Civitai identification or hashing and establishes a quiet baseline', async () => {
+    makeHFOnly(); const manager = await initialize();
+    await manager.checkModelUpdates([location('one').id]);
+    expect(api.modelManagerHuggingFaceWatch).toHaveBeenCalledOnce();
+    expect(api.modelManagerRemote).not.toHaveBeenCalled(); expect(api.modelLibraryHash).not.toHaveBeenCalled();
+    const watch = manager.getModelManagerState().hfWatches![huggingFaceWatchId(hfBinding)];
+    expect(watch.events).toEqual([]); expect(watch.snapshot?.resolvedCommit).toBe('b'.repeat(40));
+    expect(fakes.hfSave).toHaveBeenCalledWith({ [watch.id]: watch });
+    expect(manager.unreadModelCount()).toBe(0);
+  });
+  it('groups equivalent HF scopes and stores snapshots/events together for each linked file', async () => {
+    makeHFOnly(); const other = { ...hfBinding, filePath: 'folder/two.safetensors' };
+    catalog.locations.push({ ...location('two'), civitai: undefined, huggingFace: other });
+    api.modelManagerHuggingFaceWatch.mockImplementation(async () => ({ success: true, snapshot: { ...hfSnapshot(), files: [hfFile, { ...hfFile, path: other.filePath }], linkedFiles: { [hfFile.path]: hfFile, [other.filePath]: { ...hfFile, path: other.filePath } } } }));
+    const manager = await initialize(); await manager.checkModelUpdates(catalog.locations.map((entry) => entry.id));
+    expect(api.modelManagerHuggingFaceWatch).toHaveBeenCalledOnce();
+    expect(new Set(api.modelManagerHuggingFaceWatch.mock.calls[0][0].linkedPaths)).toEqual(new Set([hfFile.path, other.filePath]));
+    expect(Object.keys(manager.getModelManagerState().hfWatches!)).toHaveLength(2);
+    expect(fakes.hfSave).toHaveBeenCalledOnce();
+  });
+  it('checks a binding on a secondary byte-identical copy without identifying the primary copy', async () => {
+    catalog.locations = [{ ...location('one'), sha256: hfSha, civitai: undefined }, { ...location('copy'), sha256: hfSha, civitai: undefined, huggingFace: hfBinding }];
+    const manager = await initialize(); await manager.checkModelUpdates([location('one').id]);
+    expect(api.modelManagerHuggingFaceWatch).toHaveBeenCalledOnce();
+    expect(api.modelManagerRemote).not.toHaveBeenCalled(); expect(api.modelLibraryHash).not.toHaveBeenCalled();
+  });
+  it.each(['success', 'failure'] as const)('persists a grouped check once for 100 linked files on %s', async (outcome) => {
+    const files = Array.from({ length: 100 }, (_, index) => ({ ...hfFile, path: `folder/${index}.safetensors` }));
+    catalog.locations = files.map((file, index) => ({ ...location(String(index)), civitai: undefined, huggingFace: { ...hfBinding, filePath: file.path } }));
+    const snapshot = { ...hfSnapshot(files), linkedFiles: Object.fromEntries(files.map((file) => [file.path, file])) };
+    api.modelManagerHuggingFaceWatch.mockResolvedValue(outcome === 'success' ? { success: true, snapshot } : { success: false, error: 'Offline' });
+    const manager = await initialize();
+    fakes.hfSave.mockClear(); api.modelManagerPublish.mockClear();
+    await manager.checkModelUpdates(catalog.locations.map((entry) => entry.id));
+    expect(api.modelManagerHuggingFaceWatch).toHaveBeenCalledOnce();
+    expect(fakes.hfSave).toHaveBeenCalledOnce();
+    expect(Object.keys(fakes.hfSave.mock.calls[0][0])).toHaveLength(100);
+    expect(api.modelManagerPublish).toHaveBeenCalledOnce();
+    const published = api.modelManagerPublish.mock.calls[0][0];
+    expect(published.hfWatches).toBeUndefined();
+    expect(Object.keys(published.hfWatchState.snapshots)).toHaveLength(outcome === 'success' ? 1 : 0);
+    if (outcome === 'success') expect(JSON.stringify(published.hfWatchState).match(/"files":/g)).toHaveLength(1);
+  });
+  it('reuses the existing baseline and decisions after leaving and returning to a watch scope', async () => {
+    makeHFOnly(); const manager = await initialize();
+    await manager.checkModelUpdates([location('one').id]);
+    const added = { ...hfFile, path: 'folder/new.safetensors' };
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: true, snapshot: hfSnapshot([hfFile, added]) });
+    await manager.checkModelUpdates([location('one').id]);
+    const id = huggingFaceWatchId(hfBinding), eventId = manager.getModelManagerState().hfWatches![id].events[0].id;
+    await manager.runModelCommand({ type: 'hfEventAction', watchId: id, eventIds: [eventId], action: 'ignore' });
+    const before = manager.getModelManagerState().hfWatches![id];
+    await manager.runModelCommand({ type: 'configureHF', locationId: location('one').id, config: { trackedRevision: 'other', watchedDirectory: '', recursive: true, monitoringEnabled: false } });
+    await manager.runModelCommand({ type: 'configureHF', locationId: location('one').id, config: { trackedRevision: 'main', watchedDirectory: 'folder', recursive: false, monitoringEnabled: false } });
+    expect(manager.getModelManagerState().hfWatches![id]).toBe(before);
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: true, snapshot: hfSnapshot([hfFile, added, { ...hfFile, path: 'folder/later.safetensors' }]) });
+    await manager.checkModelUpdates([location('one').id]);
+    const after = manager.getModelManagerState().hfWatches![id];
+    expect(after.events).toHaveLength(2);
+    expect(after.ignoredEventIds).toEqual([eventId]);
+    expect(manager.unreadModelCount()).toBe(1);
+  });
+  it('preserves an active watch when another location joins its existing scope', async () => {
+    makeHFOnly();
+    catalog.locations.push({ ...location('two'), civitai: undefined, huggingFace: { ...hfBinding, watchedDirectory: '', recursive: true } });
+    const manager = await initialize();
+    await manager.checkModelUpdates([location('one').id]);
+    const before = manager.getModelManagerState().hfWatches![huggingFaceWatchId(hfBinding)];
+    await manager.runModelCommand({ type: 'configureHF', locationId: location('two').id, config: { trackedRevision: 'main', watchedDirectory: 'folder', recursive: false, monitoringEnabled: false } });
+    expect(manager.getModelManagerState().hfWatches![before.id]).toBe(before);
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: true, snapshot: hfSnapshot([hfFile, { ...hfFile, path: 'folder/new.safetensors' }]) });
+    await manager.checkModelUpdates([location('two').id]);
+    expect(manager.getModelManagerState().hfWatches![before.id].events).toHaveLength(1);
+  });
+  it('discards the old scope response when monitoring configuration changes during a check', async () => {
+    makeHFOnly(); const manager = await initialize(); await manager.checkModelUpdates([location('one').id]);
+    const before = manager.getModelManagerState().hfWatches![huggingFaceWatchId(hfBinding)];
+    let finish!: (value: unknown) => void;
+    api.modelManagerHuggingFaceWatch.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = manager.checkModelUpdates([location('one').id]); await vi.waitFor(() => expect(finish).toBeDefined());
+    await manager.runModelCommand({ type: 'configureHF', locationId: location('one').id, config: { trackedRevision: 'main', watchedDirectory: '', recursive: true, monitoringEnabled: true } });
+    finish({ success: true, snapshot: hfSnapshot([hfFile, { ...hfFile, path: 'folder/new.safetensors' }]) }); await pending;
+    expect(manager.getModelManagerState().hfWatches![before.id]).toEqual(before);
+    expect(manager.getModelManagerState().hfWatches![huggingFaceWatchId(manager.getModelManagerState().catalog.locations[0].huggingFace!)]).toBeUndefined();
+  });
+  it('retains monitoring configuration after verification and restores its baseline/history from durable preferences', async () => {
+    makeHFOnly(); const manager = await initialize();
+    await manager.runModelCommand({ type: 'configureHF', locationId: location('one').id, config: { trackedRevision: 'main', watchedDirectory: 'folder', recursive: false, monitoringEnabled: true } });
+    await manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id });
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toMatchObject({ monitoringEnabled: true, verification: 'sha256' });
+    await manager.checkModelUpdates([location('one').id]);
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: true, snapshot: hfSnapshot([hfFile, { ...hfFile, path: 'folder/new.safetensors' }]) });
+    await manager.checkModelUpdates([location('one').id]);
+    const id = huggingFaceWatchId(hfBinding), eventId = manager.getModelManagerState().hfWatches![id].events[0].id;
+    await manager.runModelCommand({ type: 'hfEventAction', watchId: id, eventIds: [eventId], action: 'ignore' });
+    const saved = manager.getModelManagerState(); cleanup?.(); cleanup = undefined; vi.resetModules();
+    api.getJsonCacheData.mockResolvedValue({ success: true, data: null });
+    api.modelManagerLoadPreferences.mockResolvedValue({ sources: saved.sources, identities: saved.catalog, localMetadata: saved.localMetadata, watches: saved.watches, hfWatches: saved.hfWatches, intervalHours: saved.intervalHours });
+    api.modelManagerHuggingFaceWatch.mockClear();
+    const restored = await initialize();
+    expect(restored.getModelManagerState().hfWatches).toEqual(saved.hfWatches);
+    expect(restored.getModelManagerState().catalog.locations[0].huggingFace).toEqual(saved.catalog.locations[0].huggingFace);
+    expect(api.modelManagerHuggingFaceWatch).not.toHaveBeenCalled();
+    expect(restored.unreadModelCount()).toBe(0);
+  });
+  it('keeps HF opt-in independent of Civitai monitoring, and changing the scope establishes a fresh baseline', async () => {
+    makeHFOnly(); fakes.sources = [{ ...source, watchUpdates: true }];
+    const manager = await initialize();
+    expect(api.modelManagerHuggingFaceWatch).not.toHaveBeenCalled(); expect(api.modelManagerRemote).not.toHaveBeenCalled();
+    await manager.checkModelUpdates([location('one').id]);
+    const civitaiBefore = manager.getModelManagerState().watches;
+    await manager.runModelCommand({ type: 'configureHF', locationId: location('one').id, config: { trackedRevision: 'release/v2', watchedDirectory: '', recursive: true, monitoringEnabled: true } });
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: true, snapshot: { ...hfSnapshot([hfFile, { ...hfFile, path: 'old.safetensors' }]), revision: 'release/v2', watchedDirectory: '', recursive: true } });
+    await manager.checkModelUpdates([location('one').id]);
+    const state = manager.getModelManagerState(), binding = state.catalog.locations[0].huggingFace!;
+    expect(binding).toMatchObject({ linkedRevision: 'main', trackedRevision: 'release/v2', monitoringEnabled: true });
+    expect(state.hfWatches![huggingFaceWatchId(binding)].events).toEqual([]);
+    expect(state.watches).toEqual(civitaiBefore);
+  });
+  it('updates both providers independently and counts their shared logical model only once', async () => {
+    catalog.locations[0].huggingFace = hfBinding;
+    const manager = await initialize(); await manager.checkModelUpdates([location('one').id]);
+    api.modelManagerRemote.mockResolvedValue({ success: false, error: 'Civitai offline' });
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: true, snapshot: hfSnapshot([hfFile, { ...hfFile, path: 'folder/new.safetensors' }]) });
+    await manager.checkModelUpdates([location('one').id]);
+    expect(manager.getModelManagerState().watches['1'].error).toBe('Civitai offline');
+    expect(manager.getModelManagerState().hfWatches![huggingFaceWatchId(hfBinding)].events).toHaveLength(1);
+    expect(manager.unreadModelCount()).toBe(1);
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: false, error: 'HF offline' });
+    api.modelManagerRemote.mockResolvedValue({ success: true, modelName: 'Model', versions: [{ id: 4, name: 'Another release', description: '', url: '', publishedAt: '2025-03-01' }] });
+    await manager.checkModelUpdates([location('one').id]);
+    expect(manager.getModelManagerState().watches['1'].error).toBeUndefined();
+    expect(manager.getModelManagerState().hfWatches![huggingFaceWatchId(hfBinding)].error).toBe('HF offline');
+    expect(manager.unreadModelCount()).toBe(1);
+  });
+  it('preserves HF baseline/events/decisions on 429, offline or incomplete requests without blocking Civitai', async () => {
+    makeHFOnly(); const manager = await initialize(); await manager.checkModelUpdates([location('one').id]);
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: true, snapshot: hfSnapshot([hfFile, { ...hfFile, path: 'folder/new.safetensors' }]) });
+    await manager.checkModelUpdates([location('one').id]);
+    const id = huggingFaceWatchId(hfBinding), before = manager.getModelManagerState().hfWatches![id];
+    await manager.runModelCommand({ type: 'hfEventAction', watchId: id, eventIds: [before.events[0].id], action: 'ignore' });
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: false, error: 'Incomplete pagination', retryAfterMs: 120_000 });
+    await manager.checkModelUpdates([location('one').id]);
+    const failed = manager.getModelManagerState().hfWatches![id];
+    expect(failed.snapshot).toEqual(before.snapshot); expect(failed.events).toEqual(before.events); expect(failed.ignoredEventIds).toEqual([before.events[0].id]);
+    expect(failed.retryAt).toBeGreaterThan(Date.now());
+    api.modelManagerHuggingFaceWatch.mockClear(); await manager.checkModelUpdates([location('one').id]);
+    expect(api.modelManagerHuggingFaceWatch).not.toHaveBeenCalled();
+  });
+  it('merges event decisions made while the next HF snapshot is pending', async () => {
+    makeHFOnly(); const manager = await initialize(); await manager.checkModelUpdates([location('one').id]);
+    const next = hfSnapshot([hfFile, { ...hfFile, path: 'folder/new.safetensors' }]);
+    api.modelManagerHuggingFaceWatch.mockResolvedValue({ success: true, snapshot: next }); await manager.checkModelUpdates([location('one').id]);
+    const id = huggingFaceWatchId(hfBinding), eventId = manager.getModelManagerState().hfWatches![id].events[0].id;
+    let finish!: (value: unknown) => void; api.modelManagerHuggingFaceWatch.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = manager.checkModelUpdates([location('one').id]); await vi.waitFor(() => expect(finish).toBeDefined());
+    await manager.runModelCommand({ type: 'hfEventAction', watchId: id, eventIds: [eventId, 'unknown'], action: 'seen' });
+    await manager.runModelCommand({ type: 'hfEventAction', watchId: id, eventIds: [eventId], action: 'ignore' });
+    finish({ success: true, snapshot: next }); await pending;
+    expect(manager.getModelManagerState().hfWatches![id]).toMatchObject({ seenEventIds: [eventId], ignoredEventIds: [eventId] });
+    expect(manager.unreadModelCount()).toBe(0);
+    await manager.runModelCommand({ type: 'hfEventAction', watchId: id, eventIds: [eventId], action: 'restore' });
+    expect(manager.getModelManagerState().hfWatches![id].seenEventIds).toEqual([eventId]);
+  });
+  it.each(['cancel', 'unlink', 'remove'])('preserves the previous baseline when %s occurs during an HF request', async (action) => {
+    makeHFOnly(); const manager = await initialize(); await manager.checkModelUpdates([location('one').id]);
+    const before = manager.getModelManagerState().hfWatches![huggingFaceWatchId(hfBinding)];
+    let finish!: (value: unknown) => void; api.modelManagerHuggingFaceWatch.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = manager.checkModelUpdates([location('one').id]); await vi.waitFor(() => expect(finish).toBeDefined());
+    if (action === 'cancel') manager.cancelModelJob();
+    else if (action === 'unlink') await manager.runModelCommand({ type: 'unbindHF', locationId: location('one').id });
+    else manager.getModelManagerState().catalog.locations = []; // Synthetic external disappearance.
+    finish({ success: true, snapshot: hfSnapshot([hfFile, { ...hfFile, path: 'folder/new.safetensors' }]) }); await pending;
+    expect(manager.getModelManagerState().hfWatches![before.id]).toEqual(before);
+    expect(manager.getModelManagerState().progress).toBeNull();
+  });
+  it('notifies only new HF events after opt-in and suspends polling after the last local copy is removed', async () => {
+    vi.useFakeTimers(); makeHFOnly(); const manager = await initialize();
+    await manager.runModelCommand({ type: 'configureHF', locationId: location('one').id, config: { trackedRevision: 'main', watchedDirectory: 'folder', recursive: false, monitoringEnabled: true } });
+    await vi.advanceTimersByTimeAsync(60_000); expect(manager.getModelManagerState().notification).toBeNull();
+    api.modelManagerHuggingFaceWatch.mockImplementation(async () => ({ success: true, snapshot: hfSnapshot([hfFile, { ...hfFile, path: 'folder/new.safetensors' }]) }));
+    vi.setSystemTime(Date.now() + 24 * 3600_000); await vi.advanceTimersByTimeAsync(60_000);
+    expect(manager.getModelManagerState().notification).toContain('Hugging Face'); manager.dismissModelNotification();
+    vi.setSystemTime(Date.now() + 24 * 3600_000); await vi.advanceTimersByTimeAsync(60_000); expect(manager.getModelManagerState().notification).toBeNull();
+    api.modelManagerHuggingFaceWatch.mockImplementation(async () => ({ success: true, snapshot: hfSnapshot([hfFile, { ...hfFile, path: 'folder/new.safetensors' }, { ...hfFile, path: 'folder/manual.safetensors' }]) }));
+    await manager.checkModelUpdates([location('one').id]);
+    vi.setSystemTime(Date.now() + 24 * 3600_000); await vi.advanceTimersByTimeAsync(60_000);
+    expect(manager.getModelManagerState().notification).toBeNull(); // Manual results were already surfaced.
+    api.executeModelRemoval.mockResolvedValue({ success: true, result: { removedLocationIds: [location('one').id], failures: [] } });
+    await manager.removeModelFiles([location('one').id]); api.modelManagerHuggingFaceWatch.mockClear();
+    vi.setSystemTime(Date.now() + 24 * 3600_000); await vi.advanceTimersByTimeAsync(60_000); expect(api.modelManagerHuggingFaceWatch).not.toHaveBeenCalled();
+  });
+  const linkHF = (manager: Awaited<ReturnType<typeof initialize>>, locationId = location('one').id) => manager.runModelCommand({ type: 'bindHF', locationId, repoId: 'owner/repo', revision: 'main', filePath: hfFile.path, fingerprint: hfFile.fingerprint });
+  it('links HF without hashing or changing Civitai, authored metadata, covers or monitoring', async () => {
+    fakes.locals = [{ id: `location:${location('one').id}`, tags: ['keep'], triggerWords: ['trigger'], notes: 'notes', previewImage: 'imh-model-media://synthetic', favorite: true, watchUpdates: true, updatedAt: 1 }];
+    const manager = await initialize();
+    const before = manager.getModelManagerState();
+    const civitaiRequests = api.modelManagerRemote.mock.calls.length;
+    await linkHF(manager);
+    const after = manager.getModelManagerState();
+    expect(after.catalog.locations[0].huggingFace).toEqual(hfBinding);
+    expect(after.catalog.locations[0].civitai).toEqual(before.catalog.locations[0].civitai);
+    expect(after.localMetadata).toEqual(before.localMetadata);
+    expect(after.watches).toEqual(before.watches);
+    expect(api.modelLibraryHash).not.toHaveBeenCalled();
+    expect(api.modelManagerRemote).toHaveBeenCalledTimes(civitaiRequests);
+    expect(api.modelManagerPublish.mock.calls.at(-1)?.[0].catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('keeps each provider independent when either link is removed', async () => {
+    const manager = await initialize();
+    await linkHF(manager);
+    await manager.runModelCommand({ type: 'unbind', locationId: location('one').id });
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('one').id });
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toBeUndefined();
+    const second = manager.getModelManagerState().catalog.locations[0];
+    second.civitai = location('one').civitai;
+    await linkHF(manager);
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('one').id });
+    expect(manager.getModelManagerState().catalog.locations[0].civitai).toEqual(location('one').civitai);
+  });
+  it('verifies against LFS SHA-256 and shares only with unbound or matching copies', async () => {
+    const conflict = { ...hfBinding, repoId: 'other/repo' };
+    catalog.locations = [location('one'), location('copy'), { ...location('different-link'), huggingFace: conflict }].map((entry) => ({ ...entry, sha256: hfSha }));
+    const manager = await initialize();
+    await linkHF(manager);
+    expect(manager.getModelManagerState().catalog.locations.find((entry) => entry.id === location('copy').id)!.huggingFace).toBeUndefined();
+    await manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id });
+    const locations = manager.getModelManagerState().catalog.locations;
+    expect(locations.find((entry) => entry.id === location('one').id)!.huggingFace).toMatchObject({ verification: 'sha256', verifiedLocalSha256: hfSha });
+    expect(locations.find((entry) => entry.id === location('copy').id)!.huggingFace?.verification).toBe('sha256');
+    expect(locations.find((entry) => entry.id === location('different-link').id)!.huggingFace).toEqual(conflict);
+    expect(manager.getModelManagerState().message).toContain('preserved');
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('copy').id });
+    expect(manager.getModelManagerState().catalog.locations.filter((entry) => entry.id !== location('different-link').id).every((entry) => !entry.huggingFace)).toBe(true);
+    expect(manager.getModelManagerState().catalog.locations.find((entry) => entry.id === location('different-link').id)!.huggingFace).toEqual(conflict);
+  });
+  it('retains the verified binding when its primary physical copy is removed', async () => {
+    catalog.locations = [location('one'), location('copy')].map((entry) => ({ ...entry, sha256: hfSha }));
+    const manager = await initialize();
+    await linkHF(manager); await manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id });
+    api.executeModelRemoval.mockResolvedValue({ success: true, result: { removedLocationIds: [location('one').id], failures: [] } });
+    await manager.removeModelFiles([location('one').id]);
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toMatchObject({ verification: 'sha256', repoId: 'owner/repo' });
+  });
+  it('keeps the manual link on a SHA-256 mismatch without a verified badge', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    api.modelLibraryHash.mockResolvedValue({ success: true, sha256: 'e'.repeat(64) });
+    await expect(manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id })).rejects.toThrow('does not match');
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('rereads bytes on explicit verification and withdraws a cached badge when the file changed', async () => {
+    catalog.locations = [{ ...location('one'), sha256: hfSha, huggingFace: { ...hfBinding, verification: 'sha256', verifiedLocalSha256: hfSha } }];
+    const manager = await initialize();
+    api.modelLibraryHash.mockResolvedValue({ success: true, sha256: 'f'.repeat(64), size: 100 });
+    await expect(manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id })).rejects.toThrow('Refresh');
+    expect(api.modelLibraryHash).toHaveBeenCalledOnce();
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('inherits a verified binding when a new copy is hashed later', async () => {
+    catalog.locations = [{ ...location('one'), sha256: hfSha }, location('copy')];
+    const manager = await initialize(); await linkHF(manager);
+    await manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id });
+    expect(manager.getModelManagerState().catalog.locations.find((entry) => entry.id === location('copy').id)!.huggingFace).toBeUndefined();
+    await manager.runModelCommand({ type: 'hash', locationId: location('copy').id });
+    expect(manager.getModelManagerState().catalog.locations.find((entry) => entry.id === location('copy').id)!.huggingFace?.verification).toBe('sha256');
+  });
+  it.each(['changed', 'missing'] as const)('withdraws shared verification after a successful lookup proves the remote file %s', async (change) => {
+    const verified: HuggingFaceBinding = { ...hfBinding, verification: 'sha256', verifiedLocalSha256: hfSha };
+    const different = { ...verified, repoId: 'other/repo' };
+    catalog.locations = [
+      { ...location('one'), sha256: hfSha, huggingFace: verified },
+      { ...location('copy'), sha256: hfSha, huggingFace: { ...verified, fetchedAt: 2 } },
+      { ...location('other'), sha256: hfSha, huggingFace: different },
+      { ...location('unlinked'), sha256: 'f'.repeat(64) },
+    ];
+    const manager = await initialize();
+    const before = new Map(manager.getModelManagerState().catalog.locations.map((entry) => [entry.id, entry.huggingFace]));
+    api.modelManagerHuggingFace.mockResolvedValue({ success: true, lookup: { ...hfLookup, files: change === 'missing' ? [] : [{ ...hfFile, fingerprint: `lfs:sha256:${'f'.repeat(64)}` }] } });
+    await expect(manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id })).rejects.toThrow(change === 'missing' ? 'unavailable' : 'changed');
+    const locations = manager.getModelManagerState().catalog.locations;
+    for (const name of ['one', 'copy']) {
+      const id = location(name).id;
+      expect(locations.find((entry) => entry.id === id)?.huggingFace).toEqual({ ...before.get(id), verification: 'manual', verifiedLocalSha256: undefined });
+    }
+    expect(locations.find((entry) => entry.id === location('other').id)?.huggingFace).toEqual(different);
+    expect(locations.find((entry) => entry.id === location('unlinked').id)?.huggingFace).toBeUndefined();
+    expect(api.modelLibraryHash).not.toHaveBeenCalled();
+    expect(api.modelManagerPublish.mock.calls.at(-1)?.[0].catalog.locations[0].huggingFace.verification).toBe('manual');
+  });
+  it('preserves verified evidence when the remote lookup fails', async () => {
+    const verified: HuggingFaceBinding = { ...hfBinding, verification: 'sha256', verifiedLocalSha256: hfSha };
+    catalog.locations = [{ ...location('one'), sha256: hfSha, huggingFace: verified }];
+    const manager = await initialize();
+    api.modelManagerHuggingFace.mockResolvedValue({ success: false, error: 'Offline' });
+    await expect(manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id })).rejects.toThrow('Offline');
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(verified);
+  });
+  it('does not inherit a verified link when that copy was explicitly unlinked during hashing', async () => {
+    catalog.locations = [{ ...location('one'), sha256: hfSha, huggingFace: { ...hfBinding, verification: 'sha256', verifiedLocalSha256: hfSha } }, location('copy')];
+    const manager = await initialize();
+    let finish!: (value: unknown) => void;
+    api.modelLibraryHash.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = manager.runModelCommand({ type: 'hash', locationId: location('copy').id });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('copy').id });
+    finish({ success: true, sha256: hfSha }); await pending;
+    expect(manager.getModelManagerState().catalog.locations.find((entry) => entry.id === location('copy').id)!.huggingFace).toBeUndefined();
+  });
+  it('cancels an HF lookup without applying a late successful response', async () => {
+    const manager = await initialize();
+    let finish!: (value: unknown) => void;
+    api.modelManagerHuggingFace.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = linkHF(manager);
+    await vi.waitFor(() => expect(finish).toBeDefined()); manager.cancelModelJob();
+    finish({ success: true, lookup: hfLookup }); await pending;
+    expect(api.modelManagerCancelRemote).toHaveBeenCalledOnce();
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toBeUndefined();
+    expect(manager.getModelManagerState().progress).toBeNull();
+  });
+  it('rejects Git/Xet verification without hashing the local file', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    api.modelManagerHuggingFace.mockResolvedValue({ success: true, lookup: { ...hfLookup, files: [{ ...hfFile, lfsSha256: undefined, fingerprint: `xet:${hfSha}` }] } });
+    await expect(manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id })).rejects.toThrow('no LFS SHA-256');
+    expect(api.modelLibraryHash).not.toHaveBeenCalled();
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('requires a fresh confirmation when the previewed remote file changes', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    api.modelManagerHuggingFace.mockResolvedValue({ success: true, lookup: { ...hfLookup, files: [{ ...hfFile, fingerprint: `lfs:sha256:${'f'.repeat(64)}` }] } });
+    await expect(linkHF(manager)).rejects.toThrow('changed');
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('keeps previous bindings on public lookup failure and maintains independent provider backoff', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    api.modelManagerHuggingFace.mockResolvedValue({ success: false, error: 'Public repository unavailable', retryAfterMs: 60_000 });
+    await expect(linkHF(manager)).rejects.toThrow('unavailable');
+    api.modelManagerHuggingFace.mockClear();
+    await expect(linkHF(manager)).rejects.toThrow('rate limit');
+    expect(api.modelManagerHuggingFace).not.toHaveBeenCalled();
+    await manager.checkModelUpdates([location('one').id]);
+    expect(api.modelManagerRemote).toHaveBeenCalled();
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+  });
+  it('does not restore an unlinked binding from a late validation response', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    let finish!: (value: unknown) => void;
+    api.modelManagerHuggingFace.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = linkHF(manager);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('one').id });
+    finish({ success: true, lookup: hfLookup }); await pending;
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toBeUndefined();
+  });
+  it('does not restore an unlinked binding when hashing finishes later', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    let finish!: (value: unknown) => void;
+    api.modelLibraryHash.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await manager.runModelCommand({ type: 'unbindHF', locationId: location('one').id });
+    finish({ success: true, sha256: hfSha }); await pending;
+    expect(manager.getModelManagerState().catalog.locations[0].huggingFace).toBeUndefined();
+  });
+  it('cancels HF verification without promoting an interrupted hash', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    let finish!: (value: unknown) => void;
+    api.modelLibraryHash.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = manager.runModelCommand({ type: 'verifyHF', locationId: location('one').id });
+    await vi.waitFor(() => expect(finish).toBeDefined()); manager.cancelModelJob();
+    finish({ success: true, sha256: hfSha }); await pending;
+    expect(api.modelLibraryCancelHash).toHaveBeenCalledOnce();
+    expect(manager.getModelManagerState().catalog.locations[0]).toMatchObject({ huggingFace: hfBinding });
+    expect(manager.getModelManagerState().catalog.locations[0].sha256).toBeUndefined();
+  });
+  it('restores HF from durable identities after restarting with empty derived caches', async () => {
+    const manager = await initialize(); await linkHF(manager);
+    const saved = manager.getModelManagerState();
+    cleanup?.(); cleanup = undefined; vi.resetModules();
+    api.getJsonCacheData.mockResolvedValue({ success: true, data: null });
+    api.modelManagerLoadPreferences.mockResolvedValue({ sources: saved.sources, identities: saved.catalog, localMetadata: saved.localMetadata, watches: saved.watches, intervalHours: saved.intervalHours });
+    const restarted = await initialize();
+    expect(restarted.getModelManagerState().catalog.locations[0].huggingFace).toEqual(hfBinding);
+    expect(api.modelLibraryHash).not.toHaveBeenCalled();
+    expect(api.modelManagerHuggingFace).toHaveBeenCalledOnce();
+  });
   it('cancels duplicate verification without promoting an interrupted hash or starting another file', async () => {
     catalog.locations = [location('one'), location('two')];
     const manager = await initialize();
@@ -382,7 +779,7 @@ describe('single-owner model service', () => {
     const manager = await initialize();
     await manager.checkModelUpdates(catalog.locations.map((item) => item.id));
     expect(api.modelManagerRemote).toHaveBeenCalledTimes(1);
-    expect(manager.unreadModelCount()).toBe(1);
+    expect(manager.unreadModelCount()).toBe(2); // Distinct local identities, queried once at the provider.
     expect(manager.getModelManagerState().showUpdates).toBe(true);
   });
   it('names the checked model in an individual result instead of showing an anonymous batch summary', async () => {

@@ -279,6 +279,59 @@ describe('shared preferences IndexedDB', () => {
     vi.resetModules();
     installFakeIndexedDb();
   });
+  it('upgrades v12 to v13 preserving Civitai state and atomically persists the HF baseline and decisions', async () => {
+    const oldWatch = { id: '1', modelId: 1, modelName: 'Synthetic', versions: [], knownVersionIds: [2], novelVersionIds: [], seenVersionIds: [2], ignoredVersionIds: [], notifiedVersionIds: [] };
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('image-metahub-preferences', 12);
+      request.onupgradeneeded = () => { request.result.createObjectStore('modelWatches', { keyPath: 'id' }).put(oldWatch); };
+      request.onsuccess = () => { request.result.close(); resolve(); };
+      request.onerror = () => reject(request.error);
+    });
+    const { openPreferencesDatabase, PREFERENCES_DB_VERSION, PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
+    const db = await openPreferencesDatabase({ context: 'synthetic migration', disablePersistence: () => {}, allowReset: false });
+    expect(PREFERENCES_DB_VERSION).toBe(13); expect(db?.version).toBe(13);
+    expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.huggingFaceWatches)).toBe(true); db?.close();
+    const { loadWatchPreferences } = await import('../services/modelLibrary/watchStorage');
+    expect((await loadWatchPreferences()).watches).toEqual([oldWatch]);
+    const { emptyHuggingFaceWatch } = await import('../services/modelLibrary/huggingFaceTracking');
+    const { saveHuggingFaceWatches, loadHuggingFaceWatches } = await import('../services/modelLibrary/huggingFaceWatchStorage');
+    const watch = emptyHuggingFaceWatch({ repoId: 'synthetic/repo', filePath: 'model.safetensors', linkedRevision: 'main', linkedRemoteFingerprint: 'git:oid:' + 'a'.repeat(40), verification: 'manual', resolvedCommit: 'b'.repeat(40), size: 100, fetchedAt: 1 });
+    watch.snapshot = { repoId: watch.repoId, revision: 'main', watchedDirectory: '', recursive: false, resolvedCommit: 'b'.repeat(40), files: [], linkedFiles: { 'model.safetensors': null }, fetchedAt: 2 };
+    watch.events = [{ id: 'event', source: 'huggingFace', path: watch.filePath, fingerprint: 'missing', kind: 'fileUnavailable', commit: 'b'.repeat(40), detectedAt: 2 }];
+    watch.seenEventIds = ['event']; watch.ignoredEventIds = ['event']; watch.notifiedEventIds = ['event'];
+    await saveHuggingFaceWatches({ [watch.id]: watch });
+    expect(await loadHuggingFaceWatches()).toEqual([watch]);
+    expect((await loadWatchPreferences()).watches).toEqual([oldWatch]);
+  });
+
+  it('reads legacy HF records and replaces them with a shared baseline without changing the DB version', async () => {
+    const { openPreferencesDatabase, PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
+    const { emptyHuggingFaceWatch } = await import('../services/modelLibrary/huggingFaceTracking');
+    const { saveHuggingFaceWatches, loadHuggingFaceWatches } = await import('../services/modelLibrary/huggingFaceWatchStorage');
+    const binding = { repoId: 'synthetic/repo', filePath: 'one.safetensors', linkedRevision: 'main', linkedRemoteFingerprint: 'git:oid:a', verification: 'manual' as const, resolvedCommit: 'b'.repeat(40), size: 100, fetchedAt: 1 };
+    const first = { ...emptyHuggingFaceWatch(binding), ignoredEventIds: ['keep'] };
+    const second = emptyHuggingFaceWatch({ ...binding, filePath: 'two.safetensors' });
+    const db = (await openPreferencesDatabase({ context: 'synthetic legacy HF', disablePersistence: () => {}, allowReset: false }))!;
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(PREFERENCES_STORE_NAMES.huggingFaceWatches, 'readwrite');
+      const store = tx.objectStore(PREFERENCES_STORE_NAMES.huggingFaceWatches);
+      store.put(first); store.put(second);
+      tx.oncomplete = () => resolve(); tx.onabort = tx.onerror = () => reject(tx.error);
+    });
+    expect(await loadHuggingFaceWatches()).toEqual([first, second]);
+    const snapshot = { repoId: binding.repoId, revision: 'main', watchedDirectory: '', recursive: false, resolvedCommit: binding.resolvedCommit, files: [], linkedFiles: { [first.filePath]: null, [second.filePath]: null }, fetchedAt: 2 };
+    const watches = { [first.id]: { ...first, snapshot }, [second.id]: { ...second, snapshot } };
+    await saveHuggingFaceWatches(watches);
+    const restored = await loadHuggingFaceWatches();
+    expect(restored).toEqual(Object.values(watches));
+    expect(restored[0].snapshot).toBe(restored[1].snapshot);
+    const records = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+      const tx = db.transaction(PREFERENCES_STORE_NAMES.huggingFaceWatches, 'readonly');
+      const read = tx.objectStore(PREFERENCES_STORE_NAMES.huggingFaceWatches).getAll();
+      tx.oncomplete = () => resolve(read.result); tx.onabort = tx.onerror = () => reject(tx.error);
+    });
+    expect(records).toHaveLength(1); expect(db.version).toBe(13); db.close();
+  });
 
   it('allows annotations and folder selection to share the same database version', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
