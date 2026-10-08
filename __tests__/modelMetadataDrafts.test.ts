@@ -82,11 +82,49 @@ describe('metadata drafts within one renderer session', () => {
     expect(store.get(joined).values.tags).toBe('external');
     await store.save(joined, execute); expect(execute).toHaveBeenCalledExactlyOnceWith({ displayName: 'Authored name', notes: 'File draft' });
   });
-  it('does not create identity alias cycles if a refresh invalidates a formerly known hash', () => {
+  it('retains the original draft when an invalidated hash is identified again without creating alias cycles', () => {
     const store = new ModelMetadataDraftStore(); const a = store.ensure(item('a'));
     store.change(a, 'notes', 'Pending');
     store.ensure(item('a', {}, 'e'.repeat(64)));
     const unhashed = store.ensure(item('a'));
-    expect(store.get(unhashed).values.notes).toBe('Pending');
+    expect(store.get(unhashed).values.notes).toBe('Saved');
+    const identified = store.ensure(item('a', {}, 'e'.repeat(64)));
+    expect(store.get(identified).values.notes).toBe('Pending');
+  });
+  it.each([true, false])('separates replaced files from unchanged copies (refresh invalidation: %s)', async (invalidate) => {
+    const store = new ModelMetadataDraftStore(), originalHash = 'a'.repeat(64), replacementHash = 'b'.repeat(64);
+    const original = store.ensure(item('a', {}, originalHash));
+    store.ensure(item('b', {}, originalHash));
+    store.edit(original); store.change(original, 'notes', 'Original model draft');
+    if (invalidate) store.ensure(item('a'));
+    const replacement = store.ensure(item('a', {}, replacementHash));
+    expect(store.get(replacement).values.notes).toBe('Saved');
+    store.edit(replacement); store.change(replacement, 'notes', 'Replacement model draft');
+    const unchanged = store.ensure(item('b', {}, originalHash));
+    expect(store.get(unchanged).values.notes).toBe('Original model draft');
+    const saveOriginal = vi.fn().mockResolvedValue(undefined), saveReplacement = vi.fn().mockResolvedValue(undefined);
+    await store.save(unchanged, saveOriginal);
+    expect(saveOriginal).toHaveBeenCalledExactlyOnceWith({ notes: 'Original model draft' });
+    expect(store.get(replacement).values.notes).toBe('Replacement model draft');
+    await store.save(replacement, saveReplacement);
+    expect(saveReplacement).toHaveBeenCalledExactlyOnceWith({ notes: 'Replacement model draft' });
+  });
+  it.each(['success', 'failure'] as const)('keeps a pending save on its promoted model after its location is reused (%s)', async (outcome) => {
+    const store = new ModelMetadataDraftStore(), hash = 'c'.repeat(64);
+    const initial = store.ensure(item('a')); store.edit(initial); store.change(initial, 'notes', 'Original model draft');
+    let resolve!: () => void, reject!: (error: Error) => void;
+    const pending = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+    const save = store.save(initial, () => pending);
+    const promoted = store.ensure(item('a', {}, hash)); store.ensure(item('b', {}, hash));
+    const replacement = store.ensure(item('a'));
+    store.edit(replacement); store.change(replacement, 'notes', 'Replacement model draft');
+    if (outcome === 'success') resolve(); else reject(new Error('Original save failed'));
+    await save;
+    expect(store.get(replacement).values.notes).toBe('Replacement model draft');
+    expect(store.get(replacement).saving).toBe(false); expect(store.get(replacement).error).toBe('');
+    expect(changedDraftFields(store.get(replacement))).toEqual(['notes']);
+    expect(store.get(promoted).saving).toBe(false);
+    expect(store.get(promoted).error).toBe(outcome === 'failure' ? 'Original save failed' : '');
+    expect(changedDraftFields(store.get(promoted))).toEqual(outcome === 'failure' ? ['notes'] : []);
   });
 });

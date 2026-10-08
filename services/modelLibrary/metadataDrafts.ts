@@ -27,6 +27,7 @@ export class ModelMetadataDraftStore {
   private entries = new Map<string, MetadataDraft>();
   private locationKeys = new Map<string, string>();
   private aliases = new Map<string, string>();
+  private activeSaves = new Set<{ key: string }>();
   private listeners = new Set<() => void>();
   private revision = 0;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -41,7 +42,10 @@ export class ModelMetadataDraftStore {
     const key = getModelLocalMetadataId(item.location);
     this.aliases.delete(key);
     const previousKey = this.locationKeys.get(item.location.id);
-    const previous = previousKey ? this.entries.get(previousKey) : undefined;
+    // Only initial identification promotes a draft. A changed or withdrawn hash
+    // separates this file from its former model, whose other copies keep their draft.
+    const promote = Boolean(previousKey?.startsWith('location:') && key.startsWith('sha256:'));
+    const previous = promote && previousKey ? this.entries.get(previousKey) : undefined;
     if (!this.entries.has(key)) {
       const values = metadataDraftValues(item.localMetadata);
       this.entries.set(key, previous ?? { values, base: values, latest: values, editing: false, saving: false, error: '' });
@@ -57,9 +61,10 @@ export class ModelMetadataDraftStore {
       this.entries.set(key, { ...target, values, base, editing: target.editing || previous.editing, saving: target.saving || previous.saving,
         identityConflict: collisions.length ? { fields: collisions, alternative } : target.identityConflict });
     }
-    if (previousKey && previousKey !== key) {
+    if (promote && previousKey && previousKey !== key) {
       // Preserve aliases for every physical copy and any in-flight save.
       for (const [locationId, identity] of this.locationKeys) if (identity === previousKey) this.locationKeys.set(locationId, key);
+      for (const save of this.activeSaves) if (save.key === previousKey) save.key = key;
       this.entries.delete(previousKey);
       this.aliases.set(previousKey, key);
     }
@@ -110,20 +115,26 @@ export class ModelMetadataDraftStore {
       }
     }
     this.entries.set(this.resolveKey(key), { ...draft, saving: true, error: '' }); this.publish();
+    // Keep the save bound to its promoted identity even if this location key is
+    // subsequently reused for a replacement file while the command is pending.
+    const saveIdentity = { key: this.resolveKey(key) };
+    this.activeSaves.add(saveIdentity);
     try {
       await execute(patch);
-      const current = this.get(key);
+      const current = this.get(saveIdentity.key);
       const latest = { ...current.latest }, values = { ...current.values }, base = { ...current.base };
-      const normalized = metadataDraftValues(normalizeModelLocalMetadata({ id: this.resolveKey(key), ...patch }));
+      const normalized = metadataDraftValues(normalizeModelLocalMetadata({ id: saveIdentity.key, ...patch }));
       for (const field of changes) {
         latest[field] = normalized[field]; base[field] = normalized[field];
         if (current.values[field] === draft.values[field]) values[field] = normalized[field];
       }
       const saved = { ...current, values, base, latest, saving: false, error: '' };
-      this.entries.set(this.resolveKey(key), { ...saved, editing: changedDraftFields(saved).length > 0 || Boolean(saved.identityConflict) });
+      this.entries.set(saveIdentity.key, { ...saved, editing: changedDraftFields(saved).length > 0 || Boolean(saved.identityConflict) });
     } catch (error) {
-      const current = this.get(key);
-      this.entries.set(this.resolveKey(key), { ...current, saving: false, error: (error as Error).message });
+      const current = this.get(saveIdentity.key);
+      this.entries.set(saveIdentity.key, { ...current, saving: false, error: (error as Error).message });
+    } finally {
+      this.activeSaves.delete(saveIdentity);
     }
     this.publish();
   }
