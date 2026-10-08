@@ -13,6 +13,7 @@ const resetLicenseState = () => {
     trialAvailable: true,
     trialStartDate: null,
     trialActivated: false,
+    trialExtensionStartDate: null,
     licenseStatus: 'free',
     licenseKey: null,
     licenseEmail: null,
@@ -30,6 +31,30 @@ describe('useLicenseStore trial policy', () => {
 
   it('uses a 7-day trial duration', () => {
     expect(TRIAL_DURATION_DAYS).toBe(7);
+  });
+
+  it('grants one opt-in extension, preserves the original date and expires after 72 hours', async () => {
+    const originalStart = Date.now() - 20 * 86400000;
+    useLicenseStore.setState({ initialized: true, licenseStatus: 'expired', trialActivated: true, trialStartDate: originalStart });
+    await expect(useLicenseStore.getState().activateTrialExtension()).resolves.toBe(true);
+    const extensionStart = useLicenseStore.getState().trialExtensionStartDate!;
+    expect(useLicenseStore.getState().trialStartDate).toBe(originalStart);
+    await useLicenseStore.getState().checkLicenseStatus();
+    expect(useLicenseStore.getState().licenseStatus).toBe('trial');
+    await expect(useLicenseStore.getState().activateTrialExtension()).resolves.toBe(false);
+    useLicenseStore.setState({ trialExtensionStartDate: extensionStart - 3 * 86400000 - 1000 });
+    await useLicenseStore.getState().checkLicenseStatus();
+    expect(useLicenseStore.getState().licenseStatus).toBe('expired');
+    await expect(useLicenseStore.getState().activateTrialExtension()).resolves.toBe(false);
+  });
+
+  it('does not extend active trials, paid licenses, Free or Portable', async () => {
+    for (const licenseStatus of ['trial', 'pro', 'lifetime', 'free'] as const) {
+      useLicenseStore.setState({ initialized: true, licenseStatus, trialActivated: true, trialStartDate: Date.now() - 20 * 86400000 });
+      await expect(useLicenseStore.getState().activateTrialExtension()).resolves.toBe(false);
+    }
+    useLicenseStore.setState({ licenseStatus: 'expired', trialAvailable: false });
+    await expect(useLicenseStore.getState().activateTrialExtension()).resolves.toBe(false);
   });
 
   it('does not reset a newly activated trial as legacy state after restart', async () => {

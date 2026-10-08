@@ -29,6 +29,7 @@ import SettingsModal from './components/SettingsModal';
 import { OPEN_VISUAL_SEARCH_SETTINGS_EVENT } from './components/SemanticSearchBar';
 import VisualSearchOnboarding from './components/VisualSearchOnboarding';
 import ChangelogModal from './components/ChangelogModal';
+import TrialExtensionModal from './components/TrialExtensionModal';
 import UpdateNotificationModal, { type UpdateNotificationStatus } from './components/UpdateNotificationModal';
 import ComparisonModal from './components/ComparisonModal';
 import Footer from './components/Footer';
@@ -543,6 +544,9 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
+  const [isTrialExtensionModalOpen, setIsTrialExtensionModalOpen] = useState(false);
+  const [offerTrialAfterChangelog, setOfferTrialAfterChangelog] = useState(false);
+  const [pendingTrialExtensionOffer, setPendingTrialExtensionOffer] = useState(false);
   const [updateModalState, setUpdateModalState] = useState<{
     isOpen: boolean;
     status: UpdateNotificationStatus;
@@ -838,7 +842,25 @@ export default function App() {
     canUseFullClustering,
     showProModal,
     startTrial,
+    canExtendTrial,
+    initialized: licenseInitialized,
   } = useFeatureAccess();
+
+  // Closing the update changelog may precede license hydration. Wait for it before
+  // consuming the offer, and never trigger it when reopening changelog from Help.
+  useEffect(() => {
+    if (!pendingTrialExtensionOffer || !licenseInitialized || isChangelogModalOpen) return;
+    setPendingTrialExtensionOffer(false);
+    if (canExtendTrial) setIsTrialExtensionModalOpen(true);
+  }, [pendingTrialExtensionOffer, licenseInitialized, isChangelogModalOpen, canExtendTrial]);
+
+  const handleCloseChangelog = () => {
+    setIsChangelogModalOpen(false);
+    if (offerTrialAfterChangelog) {
+      setOfferTrialAfterChangelog(false);
+      setPendingTrialExtensionOffer(true);
+    }
+  };
 
   useEffect(() => {
     void window.electronAPI?.modelManagerSetEnabled(canUseModelManager);
@@ -1597,6 +1619,7 @@ export default function App() {
 
       // Check if this is a new version since last view (or first run)
       if (currentLastViewed !== version) {
+        setOfferTrialAfterChangelog(!!currentLastViewed);
         setIsChangelogModalOpen(true);
         setLastViewedVersion(version);
 
@@ -3956,6 +3979,7 @@ export default function App() {
     !isHotkeyHelpOpen &&
     !isCommandPaletteOpen &&
     !isChangelogModalOpen &&
+    !isTrialExtensionModalOpen &&
     !updateModalState.isOpen &&
     !isAnalyticsOpen &&
     !isComparisonModalOpen &&
@@ -4204,6 +4228,7 @@ export default function App() {
         <Header
           onOpenSettings={() => handleOpenSettings()}
           onOpenLicense={handleOpenLicenseSettings}
+          onOpenTrialExtension={() => setIsTrialExtensionModalOpen(true)}
           onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
           libraryView={libraryView}
           onLibraryViewChange={(view) => { if (view === 'models' && !canUseModelManager) { showProModal('model_manager'); return; } setLibraryView(view); }}
@@ -4749,8 +4774,13 @@ export default function App() {
 
         <ChangelogModal
           isOpen={isChangelogModalOpen}
-          onClose={() => setIsChangelogModalOpen(false)}
+          onClose={handleCloseChangelog}
           currentVersion={currentVersion}
+        />
+
+        <TrialExtensionModal
+          isOpen={isTrialExtensionModalOpen}
+          onClose={() => setIsTrialExtensionModalOpen(false)}
         />
 
         <UpdateNotificationModal

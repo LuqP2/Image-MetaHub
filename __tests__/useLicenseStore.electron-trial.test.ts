@@ -14,6 +14,27 @@ afterEach(() => {
 });
 
 describe('Electron trial activation', () => {
+  it('only unlocks the extra trial after Electron commits it and keeps failures expired', async () => {
+    const activation = createDeferred<{ success: boolean; trialExtensionStartDate: number | null; error?: string }>();
+    const activateTrialExtension = vi.fn(() => activation.promise);
+    (window as typeof window & { electronAPI: Record<string, unknown> }).electronAPI = {
+      activateTrialExtension,
+      getSettings: vi.fn(async () => ({})),
+      saveSettings: vi.fn(async () => ({ success: true })),
+    };
+    const { useLicenseStore } = await import('../store/useLicenseStore');
+    useLicenseStore.setState({ initialized: true, trialAvailable: true, licenseStatus: 'expired', trialActivated: true, trialStartDate: Date.now() - 20 * 86400000, trialExtensionStartDate: null });
+    const pending = useLicenseStore.getState().activateTrialExtension();
+    expect(useLicenseStore.getState().licenseStatus).toBe('expired');
+    activation.resolve({ success: false, trialExtensionStartDate: null, error: 'Could not save.' });
+    await expect(pending).resolves.toBe(false);
+    expect(useLicenseStore.getState().licenseStatus).toBe('expired');
+    activateTrialExtension.mockResolvedValue({ success: true, trialExtensionStartDate: Date.now() });
+    await expect(useLicenseStore.getState().activateTrialExtension()).resolves.toBe(true);
+    expect(useLicenseStore.getState().licenseStatus).toBe('trial');
+    await expect(useLicenseStore.getState().activateTrialExtension()).resolves.toBe(false);
+    expect(activateTrialExtension).toHaveBeenCalledTimes(2);
+  });
   it('does not unlock Pro until the main process commits the trial state', async () => {
     const activation = createDeferred<{
       success: boolean;

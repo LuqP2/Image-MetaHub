@@ -453,6 +453,12 @@ export interface TrialActivationResult {
   error?: string;
 }
 
+export interface TrialExtensionActivationResult {
+  success: boolean;
+  trialExtensionStartDate: number | null;
+  error?: string;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string, userDataContext?: StableUserDataOperationContext) => Promise<{
     success: boolean;
@@ -607,6 +613,7 @@ export interface ElectronAPI {
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   activateTrial: () => Promise<TrialActivationResult>;
+  activateTrialExtension: () => Promise<TrialExtensionActivationResult>;
   getLicenseStatus: () => Promise<LicenseClientStatus>;
   activateLicense: (key: string, email: string) => Promise<LicenseActivationResult>;
   refreshLicense: () => Promise<LicenseClientStatus>;

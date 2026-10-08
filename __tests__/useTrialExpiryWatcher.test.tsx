@@ -14,6 +14,7 @@ const setLicense = (overrides: Partial<ReturnType<typeof useLicenseStore.getStat
     trialDurationV2ResetApplied: true,
     trialStartDate: null,
     trialActivated: false,
+    trialExtensionStartDate: null,
     licenseStatus: 'free',
     licenseKey: null,
     licenseEmail: null,
@@ -31,6 +32,20 @@ describe('useTrialExpiryWatcher', () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+  });
+
+  it('keeps the extension active until its own 72-hour deadline', async () => {
+    setLicense({
+      licenseStatus: 'trial',
+      trialActivated: true,
+      trialStartDate: Date.now() - 20 * 86400000,
+      trialExtensionStartDate: Date.now() - 3 * 86400000 + 60_000,
+    });
+    renderHook(() => useTrialExpiryWatcher());
+    await act(async () => { await vi.advanceTimersByTimeAsync(59_000); });
+    expect(useLicenseStore.getState().licenseStatus).toBe('trial');
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(useLicenseStore.getState().licenseStatus).toBe('expired');
   });
 
   it('flips an active trial to expired at the deadline while the app stays open', async () => {
