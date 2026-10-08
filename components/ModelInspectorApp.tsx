@@ -14,9 +14,8 @@ import {
   Tag,
 } from 'lucide-react';
 import { mirrorModelManager, useModelManager } from '../services/modelLibrary/manager';
-import ModelUsagePanel from './ModelUsagePanel';
-import { executeModelCommand, ModelActionsPanel, ModelLocalEditor, ModelMediaPanel } from './ModelManagerPanels';
-import { HuggingFaceModelPanel } from './HuggingFaceModelPanel';
+import { executeModelCommand } from './ModelManagerPanels';
+import ModelDetailsPanels from './ModelDetailsPanels';
 import {
   getDefaultLoraSyntax,
   getEffectiveModelPresentation,
@@ -151,6 +150,7 @@ const ModelInspectorApp: React.FC = () => {
 
     <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-5">
       {error && <div className="mb-4 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div>}
+      {hashProgress && <div className="mt-3"><div className="flex justify-between text-xs text-gray-400"><span>Identifying model locally (SHA256)</span><span>{hashPercent}%</span></div><div className="mt-1 h-1.5 overflow-hidden rounded bg-gray-800"><div className="h-full bg-cyan-400" style={{ width: `${hashPercent}%` }} /></div><button type="button" onClick={() => void executeModelCommand({ type: 'cancel' })} className="mt-2 text-xs text-amber-200">Cancel</button></div>}
       <section className="mb-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
         <div className="flex items-center justify-between gap-3"><h2 className="inline-flex items-center gap-2 font-medium text-cyan-100"><Tag className="h-4 w-4" />Trigger words</h2>{presentation.triggerWords.length > 0 && <button type="button" onClick={() => void copyText(presentation.triggerWords.join(', '), 'Unable to copy trigger words.')} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-500/40 px-2.5 py-1.5 text-xs text-cyan-100 hover:bg-cyan-500/10"><Clipboard className="h-3.5 w-3.5" />Copy trigger words</button>}</div>
         {presentation.triggerWords.length ? <div className="mt-3 flex flex-wrap gap-2">{presentation.triggerWords.map((word) => <button type="button" key={word} onClick={() => void copyText(word, 'Unable to copy trigger word.')} className="rounded-full border border-cyan-500/25 bg-gray-950 px-2.5 py-1 text-xs text-cyan-100 hover:border-cyan-400/60" title="Copy this trigger word">{word}</button>)}</div> : <p className="mt-2 text-sm text-gray-500">No trigger words are available yet.</p>}
@@ -177,18 +177,17 @@ const ModelInspectorApp: React.FC = () => {
             <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2"><Info label="Filename" value={location.fileName} /><Info label="Base model / architecture" value={presentation.baseModel || 'Unavailable'} /><Info label="Source" value={location.sourceName} /><Info label="File size" value={formatBytes(location.size)} /></div>
           </div>
 
-          <div className="rounded-xl border border-gray-800 bg-gray-900/70 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-medium">Civitai</h2><p className="mt-1 text-xs text-gray-500">Civitai is queried by explicit actions or enabled monitoring.</p></div><button type="button" onClick={() => void fetchCivitai()} disabled={isFetchingCivitai || Boolean(hashProgress)} className="inline-flex items-center gap-2 rounded-md border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100 hover:bg-cyan-500/15 disabled:text-gray-500"><RefreshCw className={`h-4 w-4 ${isFetchingCivitai || hashProgress ? 'animate-spin' : ''}`} />{isFetchingCivitai || hashProgress ? 'Fetching Info…' : civitai ? 'Refresh Info from Civitai' : 'Fetch Info from Civitai'}</button></div>
-            {hashProgress && <div className="mt-3"><div className="flex justify-between text-xs text-gray-400"><span>Identifying model locally (SHA256)</span><span>{hashPercent}%</span></div><div className="mt-1 h-1.5 overflow-hidden rounded bg-gray-800"><div className="h-full bg-cyan-400" style={{ width: `${hashPercent}%` }} /></div><button type="button" onClick={() => void executeModelCommand({ type: 'cancel' })} className="mt-2 text-xs text-amber-200">Cancel</button></div>}
-            {civitai && <div className="mt-3 space-y-2 text-sm"><Info label="Model / version" value={`${civitai.modelName} · ${civitai.versionName}`} /><Info label="Base model" value={civitai.baseModel || 'Unavailable'} /><Info label="Last fetched" value={formatDate(civitai.fetchedAt)} /><button type="button" onClick={() => void window.electronAPI?.openExternalUrl(civitai.url)} className="inline-flex items-center gap-1.5 text-cyan-200 hover:text-cyan-100"><ExternalLink className="h-3.5 w-3.5" />Open on Civitai</button></div>}
-            {civitaiNotFound && <p className="mt-3 text-sm text-gray-400">No matching Civitai version was found for this file. Last checked {formatDate(civitaiNotFound.fetchedAt)}.</p>}
-          </div>
         </section>
       </div>
 
       {presentation.description && <section className="mt-5 rounded-xl border border-gray-800 bg-gray-900/70 p-4"><h2 className="font-medium">Description</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-300">{presentation.description}</p></section>}
 
-      <div className="mt-5 space-y-4"><ModelUsagePanel item={currentItem} /><ModelActionsPanel item={currentItem} /><HuggingFaceModelPanel item={currentItem} /><ModelMediaPanel item={currentItem} /><ModelLocalEditor item={currentItem} /></div>
+      <div className="mt-5 space-y-4"><ModelDetailsPanels item={currentItem} connectionExtras={<div className="rounded-xl border border-gray-800 bg-gray-900/70 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-medium">Civitai</h2><p className="mt-1 text-xs text-gray-500">Civitai is queried by explicit actions or enabled monitoring.</p></div>{civitai && <button type="button" onClick={() => void fetchCivitai()} disabled={isFetchingCivitai || Boolean(hashProgress)} className="inline-flex items-center gap-2 rounded-md border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100 hover:bg-cyan-500/15 disabled:text-gray-500"><RefreshCw className={`h-4 w-4 ${isFetchingCivitai || hashProgress ? 'animate-spin' : ''}`} />{isFetchingCivitai || hashProgress ? 'Fetching Info…' : civitai ? 'Refresh Info from Civitai' : 'Fetch Info from Civitai'}</button>}</div>
+
+            {civitai && <div className="mt-3 space-y-2 text-sm"><Info label="Model / version" value={`${civitai.modelName} · ${civitai.versionName}`} /><Info label="Base model" value={civitai.baseModel || 'Unavailable'} /><Info label="Last fetched" value={formatDate(civitai.fetchedAt)} /><button type="button" onClick={() => void window.electronAPI?.openExternalUrl(civitai.url)} className="inline-flex items-center gap-1.5 text-cyan-200 hover:text-cyan-100"><ExternalLink className="h-3.5 w-3.5" />Open on Civitai</button></div>}
+            {civitaiNotFound && <p className="mt-3 text-sm text-gray-400">No matching Civitai version was found for this file. Last checked {formatDate(civitaiNotFound.fetchedAt)}.</p>}
+          </div>} /></div>
 
       <details className="mt-5 rounded-xl border border-gray-800 bg-gray-900/70 p-4">
         <summary className="cursor-pointer font-medium">Technical details</summary>

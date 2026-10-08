@@ -1,0 +1,43 @@
+import React from 'react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ModelInspectorItem } from '../services/modelLibrary/types';
+const command = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock('../components/ModelManagerPanels', () => ({ executeModelCommand: command, modelButton: '', modelInput: '' }));
+import ModelMetadataEditor from '../components/ModelMetadataEditor';
+const item = (id: string, notes = 'Saved notes'): ModelInspectorItem => ({ location: { id, sourceKind: 'checkpoint' } as ModelInspectorItem['location'], localMetadata: { notes, tags: [] } as ModelInspectorItem['localMetadata'] });
+afterEach(() => { cleanup(); command.mockReset().mockResolvedValue(undefined); });
+describe('metadata editor', () => {
+  it('preserves unsaved edits across navigation and unmounting and sends only changed fields', async () => {
+    let view = render(<ModelMetadataEditor item={item('editor-a')} />);
+    fireEvent.click(screen.getByText('Edit'));
+    fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'My draft' } });
+    expect(screen.getByText('Unsaved changes')).toBeTruthy();
+    view.rerender(<ModelMetadataEditor item={item('editor-b')} />);
+    expect(screen.getByText('Saved notes')).toBeTruthy();
+    view.rerender(<ModelMetadataEditor item={item('editor-a')} />);
+    expect(screen.getByLabelText('Notes')).toHaveProperty('value', 'My draft');
+    view.unmount(); view = render(<ModelMetadataEditor item={item('editor-a')} />);
+    expect(screen.getByLabelText('Notes')).toHaveProperty('value', 'My draft');
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(command).toHaveBeenCalledExactlyOnceWith({ type: 'saveLocal', locationId: 'editor-a', patch: { notes: 'My draft' } }));
+    expect(screen.queryByText('Unsaved changes')).toBeNull();
+  });
+  it('keeps an asynchronous failure on A after navigating to B and makes conflicts explicit', async () => {
+    let reject!: (error: Error) => void;
+    command.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    const view = render(<ModelMetadataEditor item={item('failure-a')} />);
+    fireEvent.click(screen.getByText('Edit')); fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Pending' } });
+    fireEvent.click(screen.getByText('Save'));
+    view.rerender(<ModelMetadataEditor item={item('failure-b')} />);
+    await act(async () => { reject(new Error('Synthetic save failure')); });
+    expect(screen.queryByText('Synthetic save failure')).toBeNull();
+    view.rerender(<ModelMetadataEditor item={item('failure-a', 'Other window')} />);
+    expect(screen.getByText('Synthetic save failure')).toBeTruthy();
+    expect(screen.getByLabelText('Notes')).toHaveProperty('value', 'Pending');
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByText('Reload saved values'));
+    expect(screen.getByText('Other window')).toBeTruthy();
+    expect(screen.queryByText('Unsaved changes')).toBeNull();
+  });
+});
