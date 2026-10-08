@@ -5,9 +5,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { closeModelPicker, modelFolderWatchDefault, runModelCommand, useModelManager, installedVersions } from '../services/modelLibrary/manager';
 import { modelFamily, unreadVersions, versionDate } from '../services/modelLibrary/updateTracking';
-import { getDefaultLoraSyntax } from '../services/modelLibrary/presentation';
 import { associateReferences, buildModelDescriptors, imageModelReferences } from '../services/modelLibrary/imageAssociations';
-import type { ModelInspectorItem, ModelManagerCommand, ModelLocalMetadata, RemoteModelVersion, ModelWatchRecord } from '../services/modelLibrary/types';
+import type { ModelInspectorItem, ModelManagerCommand, RemoteModelVersion, ModelWatchRecord } from '../services/modelLibrary/types';
 
 export const modelButton = 'rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-100 hover:bg-gray-800 disabled:opacity-50';
 export const modelInput = 'w-full rounded-md border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100';
@@ -20,52 +19,53 @@ export async function executeModelCommand(command: ModelManagerCommand) {
   } else return runModelCommand(command);
 }
 
-export function ModelLocalEditor({ item }: { item: ModelInspectorItem }) {
-  const [draft, setDraft] = useState({ name: '', notes: '', tags: '', triggers: '', strength: '1' });
-  const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    const value = item.localMetadata;
-    setDraft({ name: value?.displayName ?? '', notes: value?.notes ?? '', tags: value?.tags.join(', ') ?? '', triggers: value?.triggerWords?.join(', ') ?? '', strength: String(value?.defaultStrength ?? 1) });
-    setError('');
-  }, [item.location.id, item.localMetadata?.displayName, item.localMetadata?.notes, item.localMetadata?.tags.join(','), item.localMetadata?.triggerWords?.join(','), item.localMetadata?.defaultStrength]);
-  return <form className="space-y-3 rounded-lg border border-gray-800 p-3" onSubmit={(event) => {
-    event.preventDefault(); setSaving(true); setError('');
-    const patch: Partial<ModelLocalMetadata> = { displayName: draft.name, notes: draft.notes, tags: draft.tags.split(','), triggerWords: draft.triggers.split(','), defaultStrength: Number(draft.strength) };
-    void executeModelCommand({ type: 'saveLocal', locationId: item.location.id, patch }).catch((error) => setError(error.message)).finally(() => setSaving(false));
-  }}>
-    <h3 className="font-medium">Your metadata</h3>
-    <label className="block text-xs text-gray-400">Display name<input className={modelInput} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-    <label className="block text-xs text-gray-400">Tags, separated by commas<input className={modelInput} value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} /></label>
-    {item.location.sourceKind === 'lora' && <><label className="block text-xs text-gray-400">Trigger words override<input className={modelInput} value={draft.triggers} onChange={(event) => setDraft({ ...draft, triggers: event.target.value })} /></label><label className="block text-xs text-gray-400">Default strength<input type="number" min="-10" max="10" step="0.05" className={modelInput} value={draft.strength} onChange={(event) => setDraft({ ...draft, strength: event.target.value })} /></label><button type="button" className={modelButton} onClick={() => void window.electronAPI?.copyTextToClipboard(getDefaultLoraSyntax(item.location, item.localMetadata))}>Copy LoRA syntax</button></>}
-    <label className="block text-xs text-gray-400">Notes<textarea rows={3} className={modelInput} value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></label>
-    {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
-    <button className={modelButton} disabled={saving}>{saving ? 'Saving…' : 'Save metadata'}</button>
-  </form>;
+export { default as ModelLocalEditor } from './ModelMetadataEditor';
+
+export function ModelQuickActions({ item }: { item: ModelInspectorItem }) {
+  const manager = useModelManager();
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const selected = useRef(item.location.id); selected.current = item.location.id;
+  useEffect(() => { setError(''); }, [item.location.id]);
+  const locations = item.location.sha256 ? manager.catalog.locations.filter((location) => location.sha256?.toLowerCase() === item.location.sha256?.toLowerCase()) : [item.location];
+  const linked = locations.some((location) => location.huggingFace || location.civitai && 'modelId' in location.civitai);
+  const execute = async (command: ModelManagerCommand) => {
+    const id = item.location.id; setBusy(true); setError('');
+    try { await executeModelCommand(command); } catch (failure) { if (selected.current === id) setError((failure as Error).message); }
+    finally { setBusy(false); }
+  };
+  return <div className="space-y-2"><div className="flex flex-wrap gap-2"><button className={modelButton} disabled={busy || Boolean(manager.progress)} onClick={() => void execute({ type: linked ? 'check' : 'identify', locationId: item.location.id })}>{linked ? 'Check for updates' : 'Identify on Civitai'}</button><button className={modelButton} disabled={busy} onClick={() => void execute({ type: 'saveLocal', locationId: item.location.id, patch: { favorite: !item.localMetadata?.favorite } })}>{item.localMetadata?.favorite ? '★ Favorited' : '☆ Favorite'}</button><button className={modelButton} onClick={() => { const id = item.location.id; void window.electronAPI?.modelLibraryRevealLocation(item.location.absolutePath).then((result) => { if (!result.success) throw new Error(result.error || 'Unable to reveal model file.'); }).catch((failure: Error) => { if (selected.current === id) setError(failure.message); }); }}>Show in folder</button></div>{manager.checkResult?.locationIds.length === 1 && manager.checkResult.locationIds[0] === item.location.id && <p role="status" className="text-xs text-gray-400">{manager.checkResult.message}</p>}{error && <p role="alert" className="text-xs text-red-400">{error}</p>}</div>;
 }
 
-export function ModelActionsPanel({ item, revealUpdates = 0 }: { item: ModelInspectorItem; revealUpdates?: number }) {
+export function ModelFilesPanel({ item }: { item: ModelInspectorItem }) {
+  const manager = useModelManager();
+  const [error, setError] = useState('');
+  const selected = useRef(item.location.id); selected.current = item.location.id;
+  useEffect(() => { setError(''); }, [item.location.id]);
+  const locations = item.location.sha256 ? manager.catalog.locations.filter((location) => location.sha256?.toLowerCase() === item.location.sha256?.toLowerCase()) : [item.location];
+  const paths = [...new Set(locations.map((location) => location.absolutePath))];
+  return <section className="space-y-3 rounded-lg border border-gray-800 p-3"><p className="text-xs text-gray-400">{paths.length} file location{paths.length === 1 ? '' : 's'}</p>{paths.map((path) => <button className="block break-all text-left text-xs text-gray-300" key={path} onClick={() => { void window.electronAPI?.modelLibraryRevealLocation(path).catch((failure: Error) => setError(failure.message)); }}>{path}</button>)}<button className={`${modelButton} border-red-900 text-red-300`} disabled={Boolean(manager.progress)} onClick={() => { const id = item.location.id; void executeModelCommand({ type: 'remove', locationId: id }).catch((failure: Error) => { if (selected.current === id) setError(failure.message); }); }}>Remove files…</button>{error && <p role="alert" className="text-xs text-red-400">{error}</p>}</section>;
+}
+
+export function ModelActionsPanel({ item, revealUpdates = 0, grouped = false }: { item: ModelInspectorItem; revealUpdates?: number; grouped?: boolean }) {
   const manager = useModelManager(); const [link, setLink] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const civitai = item.location.civitai && 'modelId' in item.location.civitai ? item.location.civitai : undefined;
   const watch = civitai ? manager.watches[String(civitai.modelId)] : undefined;
-  const locations = item.location.sha256 ? manager.catalog.locations.filter((location) => location.sha256 === item.location.sha256) : [item.location];
-  const hasHF = locations.some((location) => location.huggingFace);
-  const hasCivitai = locations.some((location) => location.civitai && 'modelId' in location.civitai);
   useEffect(() => { setError(''); setLink(''); }, [item.location.id]);
   const execute = async (command: ModelManagerCommand) => { setError(''); setBusy(true); try { await executeModelCommand(command); } catch (error) { setError((error as Error).message); } finally { setBusy(false); } };
   const folderDefault = modelFolderWatchDefault(item);
   return <section className="space-y-3 rounded-lg border border-gray-800 p-3">
-    <div className="flex flex-wrap gap-2"><button className={modelButton} disabled={busy || Boolean(manager.progress)} onClick={() => void execute({ type: hasCivitai || hasHF ? 'check' : 'identify', locationId: item.location.id })}>{hasCivitai || hasHF ? watch?.error ? 'Try again' : 'Check for updates' : 'Identify on Civitai'}</button><button className={modelButton} onClick={() => void execute({ type: 'saveLocal', locationId: item.location.id, patch: { favorite: !item.localMetadata?.favorite } })}>{item.localMetadata?.favorite ? '★ Favorited' : '☆ Favorite'}</button></div>
+    <h3 className="font-medium">Civitai</h3>
+    {!grouped && <ModelQuickActions item={item} />}
     <details><summary className="cursor-pointer text-xs text-gray-400">Automatic Civitai monitoring</summary><label className="mt-2 block text-xs text-gray-400">Follow this model<select className={modelInput} value={typeof item.localMetadata?.watchUpdates === 'boolean' ? String(item.localMetadata.watchUpdates) : 'inherit'} onChange={(event) => void execute({ type: 'saveLocal', locationId: item.location.id, patch: { watchUpdates: event.target.value === 'inherit' ? undefined : event.target.value === 'true' } })}><option value="inherit">Folder default ({folderDefault ? 'on' : 'off'})</option><option value="true">On</option><option value="false">Off</option></select></label><p className="mt-2 text-xs text-gray-400">Identifies unlinked files and checks Civitai while the app is open.</p></details>
     {!civitai && <p className="text-xs text-gray-400">Not identified on Civitai yet. Identification calculates this file's hash and sends it to Civitai.</p>}
     {civitai && <><p className="text-sm">{civitai.versionName} · {civitai.baseModel || 'Unknown base model'} <span className="text-xs text-gray-400">({civitai.binding || 'hash'} link)</span></p><button className={modelButton} onClick={() => void window.electronAPI?.openExternalUrl(civitai.url)}>Open version on Civitai</button></>}
     <details><summary className="cursor-pointer text-xs text-gray-400">{civitai ? 'Change or remove version link' : 'Link a Civitai version manually'}</summary><p className="my-2 text-xs text-gray-400">Paste the version link containing modelVersionId. A model-only link cannot identify your installed version.</p><input className={modelInput} value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://civitai.com/models/…?modelVersionId=…" /><button className={`${modelButton} mt-2`} disabled={busy || Boolean(manager.progress)} onClick={() => void execute({ type: 'bind', locationId: item.location.id, url: link })}>Validate and link version</button>{civitai && <button className={`${modelButton} ml-2`} onClick={() => void execute({ type: 'unbind', locationId: item.location.id })}>Remove link and stop monitoring</button>}</details>
-    {manager.checkResult?.locationIds.length === 1 && manager.checkResult.locationIds[0] === item.location.id && <p role="status" className="text-xs text-gray-400">{manager.checkResult.message}</p>}
     <ModelVersionLinks item={item} reveal={revealUpdates} />
     {civitai && !watch?.lastSuccessAt && <p className="text-xs text-gray-400">No update check completed yet.</p>}
     {watch && <><p className="text-xs text-gray-400">Last successful check: {watch.lastSuccessAt ? new Date(watch.lastSuccessAt).toLocaleString() : 'Never'}</p>{watch.error && <p className="text-xs text-amber-400">Could not check this model: {watch.error}</p>}{watch.chronologyUnknown && <p className="text-xs text-amber-400">Some version dates are unavailable; chronology is indeterminate.</p>}</>}
     {item.location.metadataError && <p className="text-xs text-amber-400">Embedded metadata: {item.location.metadataError}</p>}
-    <details><summary className="cursor-pointer text-xs text-gray-400">{locations.length} file location{locations.length === 1 ? '' : 's'}</summary>{locations.map((location) => <button className="mt-2 block break-all text-left text-xs text-gray-300" key={location.id} onClick={() => void window.electronAPI?.modelLibraryRevealLocation(location.absolutePath)}>{location.absolutePath}</button>)}</details>
-    <button className={`${modelButton} border-red-900 text-red-300`} disabled={busy || Boolean(manager.progress)} onClick={() => void execute({ type: 'remove', locationId: item.location.id })}>Remove files…</button>
+    {!grouped && <ModelFilesPanel item={item} />}
     {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
   </section>;
 }

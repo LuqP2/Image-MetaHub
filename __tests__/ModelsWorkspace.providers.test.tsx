@@ -10,6 +10,7 @@ vi.mock('../components/ModelManagerPanels', () => ({ executeModelCommand: vi.fn(
 vi.mock('../components/ModelStoragePanel', () => ({ default: () => null, ModelRemovalDialog: () => null }));
 vi.mock('../components/ModelUsagePanel', () => ({ default: () => null }));
 vi.mock('../components/HuggingFaceModelPanel', () => ({ HuggingFaceModelPanel: ({ revealUpdates }: { revealUpdates: number }) => <p>HF reveal {revealUpdates}</p> }));
+vi.mock('../components/ModelDetailsPanels', () => ({ default: ({ revealUpdates }: { revealUpdates: number }) => <p>HF reveal {revealUpdates}</p> }));
 import ModelsWorkspace from '../components/ModelsWorkspace';
 
 beforeEach(() => {
