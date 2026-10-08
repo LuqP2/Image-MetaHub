@@ -211,7 +211,7 @@ describe('smart collection storage', () => {
   });
 
   it('upgrades the draft model database without losing models when adding the main migration outbox', async () => {
-    const { openPreferencesDatabase, PREFERENCES_DB_NAME, PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
+    const { openPreferencesDatabase, PREFERENCES_DB_NAME, PREFERENCES_DB_VERSION, PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
     const completeRequest = <T,>(request: IDBRequest<T>) => new Promise<T>((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -230,8 +230,9 @@ describe('smart collection storage', () => {
 
     const disablePersistence = vi.fn();
     const db = await openPreferencesDatabase({ context: 'draft upgrade test', disablePersistence });
-    expect(db?.version).toBe(12);
+    expect(db?.version).toBe(PREFERENCES_DB_VERSION);
     expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.modelWatches)).toBe(true);
+    expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.huggingFaceWatches)).toBe(true);
     expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.modelManagerSettings)).toBe(true);
     expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.userDataMigrationOutbox)).toBe(true);
     expect(db?.transaction(PREFERENCES_STORE_NAMES.userDataMigrationOutbox).objectStore(PREFERENCES_STORE_NAMES.userDataMigrationOutbox).keyPath).toBe('key');
@@ -247,9 +248,8 @@ describe('smart collection storage', () => {
       getAllAutomationRules,
       saveAutomationRule,
     } = await import('../services/automationRulesStorage');
-    const { PREFERENCES_DB_VERSION, PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
+    const { PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
 
-    expect(PREFERENCES_DB_VERSION).toBe(12);
     expect(PREFERENCES_STORE_NAMES.automationRules).toBe('automationRules');
 
     await saveAutomationRule({
