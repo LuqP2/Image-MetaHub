@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - [2026-10-08]
+
+### Added
+
+- **Model Manager (Pro)**: Introducing a dedicated workspace for managing local LoRAs, checkpoints, and other AI models. Organize your collection with covers, favorites, tags, notes, and custom metadata; identify models through Civitai or link them to Hugging Face; track new releases and file changes; inspect models in a detachable window; find associated images in your Library; and manage storage with duplicate detection and file removal.
+- **Masonry Grid Layout**: Added an optional Library layout that displays thumbnails at their original aspect ratios, with virtualized scrolling, grouping, keyboard navigation, and multi-selection.
+- **Extended Pro Trial**: Users whose original Pro trial has expired can activate an additional three days to explore the latest features. The one-time offer is optional and starts only when activated.
+
+### Improved
+
+- **Detached Viewer**: Added an option to reuse a single viewer window when opening different images, instead of creating multiple windows. Available under Settings → Viewer → Behavior.
+
+### Fixed
+
+- **Detached Viewer Reliability**: Fixed issues with failed or interrupted window launches, image selection synchronization, and reopening viewers.
+- **macOS Large Library Monitoring**: Fixed file descriptor exhaustion when monitoring large libraries, which could prevent detached viewer windows from opening.
+
 ## [0.20.1] - [2026-10-04]
 
 ### Improved
