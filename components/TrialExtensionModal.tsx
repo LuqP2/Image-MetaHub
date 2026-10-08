@@ -17,6 +17,12 @@ const TrialExtensionModal: React.FC<TrialExtensionModalProps> = ({ isOpen, onClo
     if (isOpen) setError(null);
   }, [isOpen]);
 
+  // Another renderer may activate the extension or a paid license while this
+  // offer is open. Release the parent's modal state as well as hiding the UI.
+  useEffect(() => {
+    if (isOpen && !canExtendTrial && !isActivating) onClose();
+  }, [isOpen, canExtendTrial, isActivating, onClose]);
+
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {

@@ -503,7 +503,7 @@ const Header: React.FC<HeaderProps> = ({
           </button>
 
           {!isPro && (
-            <div className="hidden flex-col items-center gap-0.5 lg:flex">
+            <div className={`${canExtendTrial ? 'flex' : 'hidden lg:flex'} flex-col items-center gap-0.5`}>
               <button
                 type="button"
                 onClick={() => setIsPlanSelectorOpen(true)}

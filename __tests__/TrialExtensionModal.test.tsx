@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import TrialExtensionModal from '../components/TrialExtensionModal';
 import { useLicenseStore } from '../store/useLicenseStore';
 
@@ -30,6 +30,24 @@ describe('extra trial offer', () => {
   it('does not show an already-used extension', () => {
     useLicenseStore.setState({ trialExtensionStartDate: Date.now() - 10 * 86400000 });
     render(<TrialExtensionModal isOpen onClose={() => {}} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it.each(['trial', 'pro'] as const)('releases the parent modal state when another window changes eligibility to %s', async (licenseStatus) => {
+    const Parent = () => {
+      const [isOpen, setIsOpen] = React.useState(true);
+      return <>
+        <output>{isOpen ? 'Workspace suspended' : 'Workspace active'}</output>
+        <TrialExtensionModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
+      </>;
+    };
+    render(<Parent />);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByText('Workspace suspended')).toBeTruthy();
+    act(() => {
+      useLicenseStore.setState({ licenseStatus, trialExtensionStartDate: licenseStatus === 'trial' ? Date.now() : null });
+    });
+    await waitFor(() => expect(screen.getByText('Workspace active')).toBeTruthy());
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
