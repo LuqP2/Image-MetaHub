@@ -27,6 +27,7 @@ export function normalizeModelLocalMetadata(
     triggerWords: Array.from(new Set((value.triggerWords ?? []).map((word) => word.trim()).filter(Boolean))),
     defaultStrength,
     favorite: value.favorite === true,
+    hidden: value.hidden === true,
     watchUpdates: typeof value.watchUpdates === 'boolean' ? value.watchUpdates : undefined,
     previewImage: typeof value.previewImage === 'string' && /^imh-model-media:\/\/media\/[a-f0-9]{64}\.(?:jpg|png|webp)$|^data:image\/(png|jpe?g|webp);base64,/i.test(value.previewImage) ? value.previewImage : undefined,
     examples: Array.isArray(value.examples) ? value.examples.filter((entry) => typeof entry?.id === 'string' && typeof entry.preview === 'string') : [],

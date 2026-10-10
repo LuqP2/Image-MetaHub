@@ -15,6 +15,10 @@ vi.mock('../components/ModelUsagePanel', () => ({ default: () => null }));
 vi.mock('../components/ModelDetailsPanels', () => ({ default: ({ item }: { item: ModelInspectorItem }) => <p>Details for {item.location.id}</p> }));
 vi.mock('../components/UnifiedModelUpdatesPanel', () => ({ ModelUpdatesPanel: ({ locationIds }: { locationIds: string[] }) => <p>Update locations: {locationIds.join(',')}</p> }));
 import ModelsWorkspace from '../components/ModelsWorkspace';
+import WorkspaceModels from '../components/comfyui/WorkspaceModels';
+import { executeModelCommand } from '../components/ModelManagerPanels';
+vi.mock('../hooks/useFeatureAccess', () => ({ useFeatureAccess: () => ({ canUseModelManager: true }) }));
+vi.mock('react-virtualized-auto-sizer', () => ({ default: ({ children }: { children: (size: { width: number; height: number }) => React.ReactNode }) => children({ width: 360, height: 450 }) }));
 
 beforeEach(() => {
   for (const fake of [fakes.open, fakes.collection, fakes.selection, fakes.refresh, fakes.scan, fakes.check, fakes.identify]) fake.mockReset().mockResolvedValue({ success: true });
@@ -127,4 +131,40 @@ describe('Storage workspace and Inspector integration', () => {
     for (let step = 0; step < 20; step += 1) fireEvent.keyDown(separator, { key: 'ArrowRight' });
     expect(separator.getAttribute('aria-valuenow')).toBe('320');
   });
+});
+
+it('hides a model in both catalogs and restores it through Hidden without removing its files', async () => {
+  const command = vi.mocked(executeModelCommand);
+  command.mockImplementation(async action => {
+    if (action.type === 'saveLocal') {
+      const location = fakes.state.catalog.locations.find(entry => entry.id === action.locationId)!;
+      const id = location.sha256 ? `sha256:${location.sha256}` : `location:${location.id}`;
+      fakes.state = { ...fakes.state, localMetadata: { ...fakes.state.localMetadata, [id]: { id, tags: [], updatedAt: 1, ...action.patch } } };
+    }
+  });
+  const page = () => <><ModelsWorkspace /><WorkspaceModels active={false} onAddText={vi.fn()} /></>;
+  const view = render(page());
+  const sidebar = () => within(screen.getByRole('region', { name: 'Workspace Model Manager' }));
+  expect(sidebar().getByRole('button', { name: /model2/ })).toBeTruthy();
+  fireEvent.click(sidebar().getByRole('button', { name: /model2/ }));
+  expect(sidebar().getByRole('button', { name: 'Back to models' })).toBeTruthy();
+  fireEvent.contextMenu(screen.getByRole('button', { name: 'Select model2' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Hide model' }));
+  await waitFor(() => expect(command).toHaveBeenCalledWith({ type: 'saveLocal', locationId: 'primary', patch: { hidden: true } }));
+  view.rerender(page());
+  expect(screen.queryByRole('button', { name: 'Select model2' })).toBeNull();
+  expect(sidebar().queryByRole('button', { name: /model2/ })).toBeNull();
+  expect(sidebar().queryByRole('button', { name: 'Back to models' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Hidden', exact: true }));
+  expect(screen.getByRole('button', { name: 'Select model2' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Select lora' })).toBeNull();
+  fireEvent.contextMenu(screen.getByRole('button', { name: 'Select model2' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Unhide model' }));
+  await waitFor(() => expect(command).toHaveBeenCalledWith({ type: 'saveLocal', locationId: 'primary', patch: { hidden: false } }));
+  view.rerender(page());
+  fireEvent.click(screen.getByRole('button', { name: 'All', exact: true }));
+  expect(screen.getByRole('button', { name: 'Select model2' })).toBeTruthy();
+  expect(sidebar().getByRole('button', { name: /model2/ })).toBeTruthy();
+  expect(fakes.state.catalog.locations).toHaveLength(3);
+  expect(fakes.state.storage!.files).toHaveLength(3);
 });

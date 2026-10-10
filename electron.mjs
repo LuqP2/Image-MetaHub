@@ -1,4 +1,5 @@
 import electron from 'electron';
+import { comfyTextRuntime } from './services/comfyTextRuntime.mjs';
 const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol, WebContentsView, safeStorage } = electron;
 // console.log('📦 Loaded electron module');
 
@@ -5312,6 +5313,28 @@ function setupFileOperationHandlers() {
   ipcMain.handle('comfy-view-get-state', async () => {
     return { success: true, state: updateComfyUIViewState() };
   });
+
+  const textOperation = async (event, operation, payload = {}) => {
+    const unavailable = (message) => ({ success: false, code: 'unavailable', message, targets: [] });
+    if (!isPrimaryWindowSender(event)) return unavailable('Access denied.');
+    const contents = comfyUIView?.webContents;
+    if (!contents || contents.isDestroyed() || !isComfyNavigationAllowed(contents.getURL())) {
+      return unavailable('Open ComfyUI on the configured server. Copy text instead.');
+    }
+    if (operation === 'apply' && (!payload || typeof payload.token !== 'string' || typeof payload.text !== 'string'
+      || !['append', 'replace'].includes(payload.mode) || ![', ', ' ', '\n'].includes(payload.separator))) {
+      return { success: false, code: 'invalid', message: 'Invalid text operation.', targets: [] };
+    }
+    try {
+      // Only this static adapter is executable; all caller data is serialized.
+      const expectedOrigin = new URL(contents.getURL()).origin;
+      return await contents.executeJavaScript(`(${comfyTextRuntime.toString()})(${JSON.stringify(operation)}, ${JSON.stringify(payload)}, ${JSON.stringify(expectedOrigin)})`, true);
+    } catch {
+      return unavailable('ComfyUI could not update this field. Copy text instead.');
+    }
+  };
+  ipcMain.handle('comfy-view-text-targets', (event) => textOperation(event, 'query'));
+  ipcMain.handle('comfy-view-apply-text', (event, payload) => textOperation(event, 'apply', payload));
 
   ipcMain.handle('comfy-view-load-workflow', async (event, payload) => {
     try {

@@ -31,3 +31,12 @@ describe('quick model actions', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Synthetic missing file'));
   });
 });
+
+it('hides and unhides through local metadata commands', async () => {
+  const view = render(<ModelQuickActions item={item} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Hide model' }));
+  await waitFor(() => expect(fakes.command).toHaveBeenCalledWith({ type: 'saveLocal', locationId: 'primary', patch: { hidden: true } }));
+  view.rerender(<ModelQuickActions item={{ ...item, localMetadata: { id: 'sha256:' + 'a'.repeat(64), tags: [], updatedAt: 1, hidden: true } }} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Unhide model' }));
+  await waitFor(() => expect(fakes.command).toHaveBeenCalledWith({ type: 'saveLocal', locationId: 'primary', patch: { hidden: false } }));
+});

@@ -63,6 +63,20 @@ export interface ComfyUIViewResult {
   error?: string;
 }
 
+export interface ComfyUITextTarget {
+  token: string;
+  nodeId: string;
+  nodeTitle: string;
+  field: string;
+  preview: string;
+}
+export interface ComfyUITextResult {
+  success: boolean;
+  code?: 'unavailable' | 'unsupported' | 'selection' | 'conflict' | 'invalid';
+  message?: string;
+  targets: ComfyUITextTarget[];
+}
+
 export interface ComfyUIViewWorkflowLoadResult extends ComfyUIViewResult {
   loadedInNewTab?: boolean;
   fallbackUsed?: boolean;
@@ -640,6 +654,8 @@ export interface ElectronAPI {
   comfyUIViewGoBack: () => Promise<ComfyUIViewResult>;
   comfyUIViewGoForward: () => Promise<ComfyUIViewResult>;
   comfyUIViewGetState: () => Promise<ComfyUIViewResult>;
+  comfyUIViewTextTargets: () => Promise<ComfyUITextResult>;
+  comfyUIViewApplyText: (payload: { token: string; text: string; mode: 'append' | 'replace'; separator: ', ' | ' ' | '\n' }) => Promise<ComfyUITextResult>;
   comfyUIViewLoadWorkflow: (payload: {
     url: string;
     bounds?: ComfyUIViewBounds;

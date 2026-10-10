@@ -4623,6 +4623,8 @@ export default function App() {
                     onGenerationStateChange={setIsComfyUIWorkspaceGenerating}
                     suspendBrowser={isGeneratingComfyUI || isComfyUIWorkspaceGenerating}
                     onOpenQueue={() => setIsQueueOpen(true)}
+                    onOpenPromptLibrary={() => setLibraryView('prompts')}
+                    onViewPromptSource={handleOpenFileFromDeepLink}
                     onOpenSettings={handleOpenGeneratorIntegrations}
                     directories={safeDirectories}
                     selectedDirectoryId={comfyUIWorkspaceDirectoryId}
