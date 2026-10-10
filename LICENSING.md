@@ -12,7 +12,7 @@ This permission allows inclusion of the contributed code in the current PolyForm
 
 ## Earlier versions and previously granted rights
 
-Versions and source code already distributed under the **Mozilla Public License 2.0** retain all rights granted by that license. This relicensing does not revoke the earlier MPL 2.0 grants. The historical license text is kept at [LICENSE-MPL-2.0](LICENSE-MPL-2.0).
+Versions and source code already distributed under the **Mozilla Public License 2.0** retain all rights granted by that license. This relicensing does not revoke the earlier MPL 2.0 grants. The historical license text is kept at [the archived MPL 2.0 text](docs/license-history/MPL-2.0.txt).
 
 Earlier distributions of `@image-metahub/metadata-engine` made under the **Apache License 2.0** likewise retain the rights originally granted. The historical Apache license is kept at [packages/metadata-engine/LICENSE-APACHE-2.0](packages/metadata-engine/LICENSE-APACHE-2.0). The package's current repository version uses [PolyForm Perimeter License 1.0.1](packages/metadata-engine/LICENSE).
 
