@@ -29,6 +29,13 @@ type FeatureCopy = {
 };
 
 const featureInfo: Record<ProFeature, FeatureCopy> = {
+  prompt_library_advanced: {
+    contextLine: 'Reuse the parts of your prompts that work.',
+    headline: 'Build prompts from reusable blocks and templates',
+    featureName: 'Advanced Prompt Library', icon: Sparkles,
+    bullets: ['Extract and organize reusable prompt blocks', 'Compose positive and negative prompts with editable variables', 'Organize selections in bulk and find similar prompts'],
+    alsoUnlocks: 'Your saved prompts remain readable, copyable and exportable after your trial.',
+  },
   model_manager: {
     contextLine: 'Keeping track of your checkpoints and LoRAs?',
     headline: 'Know what you have and what came out next',
@@ -176,6 +183,7 @@ const featureInfo: Record<ProFeature, FeatureCopy> = {
 };
 
 const blockedAttemptsCopy: Record<ProFeature, (count: number) => string> = {
+  prompt_library_advanced: (n) => `You've tried advanced prompt creation ${n} times.`,
   model_manager: (n) => `You've tried to open Model Manager ${n} times.`,
   comparison: (n) => `You've tried to compare images ${n} times.`,
   image_editor: (n) => `You've tried to edit an image ${n} times.`,

@@ -13,6 +13,8 @@ import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { comparisonWillAutoOpen, useImageComparison } from '../hooks/useImageComparison';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { selectedPromptText, usePromptBlockExtraction } from '../hooks/usePromptBlockExtraction';
+import { buildSavedPromptSource } from '../hooks/useSavePrompt';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
@@ -561,7 +563,7 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
         )}
       </div>
       {isPrompt ? (
-        <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm mt-1">{displayValue}</pre>
+        <pre data-prompt-text className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm mt-1">{displayValue}</pre>
       ) : (
         <p className="text-gray-200 break-words font-mono text-sm mt-1">{renderValue ? renderValue(displayValue) : displayValue}</p>
       )}
@@ -1204,6 +1206,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const liveImage = imageFromStore ?? image;
   const { metadata: shadowMetadata, isLoading: isShadowLoading, error: shadowError, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(liveImage);
   const savePrompt = useSavePrompt();
+  const blockExtraction = usePromptBlockExtraction();
+  const selectedBlockTextRef = useRef<string | null>(null);
   const thumbnail = useResolvedThumbnail(liveImage);
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
@@ -2016,6 +2020,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   const handleSelectionContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    selectedBlockTextRef.current = selectedPromptText();
     const target = e.target as HTMLElement | null;
     if (target?.closest('input, textarea, [contenteditable="true"]')) {
       return;
@@ -5205,6 +5210,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
         >
           {contextMenu.kind === 'selection' ? (
             <>
+              {selectedBlockTextRef.current && <button
+                onClick={() => { blockExtraction.open(selectedBlockTextRef.current || '', buildSavedPromptSource(liveImage, directoryPath)); hideContextMenu(); }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
+              ><Bookmark className="w-4 h-4" />Save Selection as Block</button>}
               <button
                 onClick={copySelection}
                 className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
@@ -5378,6 +5387,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         </div>
       )}
     </div>
+    {blockExtraction.dialog}
     </React.Profiler>
   );
 };

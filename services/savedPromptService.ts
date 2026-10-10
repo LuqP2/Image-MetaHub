@@ -3,11 +3,13 @@ import type {
   SavedPromptSaveResult,
   SavedPromptSourceResolution,
   SavePromptInput,
+  PromptLibrarySnapshot, PromptLibraryMutation,
 } from '../types';
 import {
   listBrowserSavedPrompts,
   removeBrowserSavedPrompt,
   saveBrowserPrompt,
+  browserPromptLibrary,
 } from './savedPromptStorage';
 
 const listeners = new Set<() => void>();
@@ -80,4 +82,21 @@ export function subscribeSavedPromptChanges(listener: () => void): () => void {
     listeners.delete(listener);
     unsubscribeElectron?.();
   };
+}
+
+export async function listPromptLibrary(): Promise<PromptLibrarySnapshot> {
+  if (window.electronAPI) {
+    if (!window.electronAPI.promptLibraryList) return missingDesktopApi();
+    return unwrap(await window.electronAPI.promptLibraryList());
+  }
+  return browserPromptLibrary();
+}
+export async function mutatePromptLibrary(command: PromptLibraryMutation): Promise<PromptLibrarySnapshot & { selectedId?: string }> {
+  if (window.electronAPI) {
+    if (!window.electronAPI.promptLibraryMutate) return missingDesktopApi();
+    return unwrap(await window.electronAPI.promptLibraryMutate(command));
+  }
+  const result = await browserPromptLibrary(command);
+  emitLocalChange(); ensureBrowserChannel(); browserChannel?.postMessage('changed');
+  return result;
 }
