@@ -84,4 +84,4 @@ npm run cli:index -- ./images --out index.jsonl --recursive
 ```
 
 ## License
-The current desktop app code is source-available under PolyForm Perimeter 1.0.1, except for MPL 2.0 files listed in [LICENSING.md](../LICENSING.md). The separately distributed `@image-metahub/metadata-engine` package remains Apache 2.0. Older MPL 2.0 versions retain their original license.
+The current desktop app and `@image-metahub/metadata-engine` source code are source-available under PolyForm Perimeter License 1.0.1. Older distributions retain their original MPL 2.0 or Apache 2.0 licensing rights. See [LICENSING.md](../LICENSING.md).

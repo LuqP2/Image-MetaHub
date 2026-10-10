@@ -51,13 +51,13 @@ The goal is to preserve the production history around each asset: what prompt, m
 
 ## Source code license
 
-Image MetaHub's current source code is **source-available**, not OSI open-source. Code owned by the project maintainer is offered under the [PolyForm Perimeter License 1.0.1](LICENSE), which restricts use of the covered code to provide competing products. Files containing third-party AVIF contributions remain under MPL 2.0, and the separately licensed metadata-engine package remains under Apache 2.0. Previously published MPL 2.0 versions keep their original license rights.
+Image MetaHub's current first-party source code, including the AVIF contribution and the `metadata-engine` package, is **source-available** under the [PolyForm Perimeter License 1.0.1](LICENSE). The license prohibits using the covered code to provide competing products. It is not OSI open-source. Previously distributed MPL 2.0 and Apache 2.0 versions retain their original license rights.
 
-For the complete file-by-file exceptions, see [LICENSING.md](LICENSING.md).
+See [LICENSING.md](LICENSING.md) for the full licensing history and contributor permission.
 
 ## Free vs Pro
 
-The desktop app's source is publicly available under the PolyForm Perimeter License 1.0.1, with specific files remaining under MPL 2.0. The separate metadata-engine package retains Apache 2.0. See [LICENSING.md](LICENSING.md). Some workflow-heavy features are unlocked through the desktop app's offline Pro license or 7-day trial.
+The desktop app's source is publicly available under the PolyForm Perimeter License 1.0.1. Some workflow-heavy features are unlocked through the desktop app's offline Pro license or 7-day trial.
 
 **Core app includes:**
 

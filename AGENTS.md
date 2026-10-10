@@ -1119,7 +1119,7 @@ See RELEASE-GUIDE.md and `.github/workflows/publish.yml` for additional details.
 
 ## License
 
-PolyForm Perimeter License 1.0.1 for maintainer-owned code, with specific files still under MPL 2.0 (including the AVIF contributor's changes), and `packages/metadata-engine` under Apache 2.0. Consult `LICENSING.md` for the exceptions and historical licensing.
+PolyForm Perimeter License 1.0.1 for current first-party code, including the AVIF contribution (with its author's written permission) and `packages/metadata-engine`. Previously published MPL 2.0 and Apache 2.0 versions retain their earlier rights. See `LICENSING.md` for details.
 
 ## Support
 
