@@ -565,6 +565,10 @@ export interface ElectronAPI {
   stableUserDataTagCounts: () => Promise<StableUserDataIpcResult<TagInfo[]>>;
   onStableUserDataChanged: (callback: (payload: { records: StableUserDataRecord[] }) => void) => () => void;
   savedPromptsList: () => Promise<SavedPromptIpcResult<SavedPrompt[]>>;
+  promptLibraryList: () => Promise<SavedPromptIpcResult<PromptLibrarySnapshot>>;
+  promptLibraryMutate: (input: PromptLibraryMutation) => Promise<SavedPromptIpcResult<PromptLibrarySnapshot & { selectedId?: string }>>;
+  promptLibraryChoosePreview: () => Promise<SavedPromptIpcResult<SavedPromptSource | null>>;
+  promptLibraryResolvePreview: (kind: 'prompt' | 'block', id: string) => Promise<SavedPromptIpcResult<SavedPromptSourceResolution>>;
   savedPromptsSave: (input: SavePromptInput) => Promise<SavedPromptIpcResult<SavedPromptSaveResult>>;
   savedPromptsRemove: (id: string) => Promise<SavedPromptIpcResult<{ id: string; removed: boolean }>>;
   savedPromptsResolveSource: (id: string) => Promise<SavedPromptIpcResult<SavedPromptSourceResolution>>;
@@ -810,9 +814,67 @@ export interface SavedPrompt {
   sourceCreatedAt: number | null;
   positivePrompt: string;
   negativePrompt: string;
-  textBasis: 'effective' | 'original';
+  textBasis: 'effective' | 'original' | 'authored';
   source: SavedPromptSource | null;
+  editor?: PromptEditorData;
+  updatedAt?: number;
+  revision?: number;
 }
+
+export interface PromptVariable {
+  name: string;
+  label: string;
+  type: 'text' | 'select';
+  defaultValue: string;
+  required: boolean;
+  options: string[];
+}
+export interface PromptPart {
+  id: string;
+  kind: 'text' | 'block';
+  text: string;
+  enabled: boolean;
+  blockId?: string;
+  blockRevision?: number;
+  title?: string;
+  variables?: PromptVariable[];
+}
+export interface PromptDocument {
+  version: 1;
+  mode: 'plain' | 'template';
+  positive: PromptPart[];
+  negative: PromptPart[];
+  positiveSeparator: string;
+  negativeSeparator: string;
+  variables: PromptVariable[];
+}
+export interface PromptEditorData {
+  version: 1;
+  title: string;
+  notes: string;
+  tags: string[];
+  favorite: boolean;
+  category: string;
+  metadata: { model: string; generator: string; loras: string[]; sampler: string; scheduler: string };
+  preview: SavedPromptSource | 'hidden' | { kind: 'session'; name: string } | null;
+  document: PromptDocument | null;
+  variables: PromptVariable[];
+}
+export interface PromptBlock {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+  revision: number;
+  text: string;
+  editor: PromptEditorData;
+}
+export type PromptLibraryItem = SavedPrompt | PromptBlock;
+export type PromptLibraryMutation =
+  | { action: 'create' | 'update'; kind: 'prompt' | 'block'; item: Partial<SavedPrompt & PromptBlock>; expectedRevision?: number }
+  | { action: 'duplicate' | 'remove'; kind: 'prompt' | 'block'; id: string }
+  | { action: 'bulk'; kind: 'prompt' | 'block'; ids: string[]; addTags?: string[]; removeTags?: string[]; favorite?: boolean; category?: string }
+  | { action: 'import'; prompts: Partial<SavedPrompt>[]; blocks: Partial<PromptBlock>[]; keepDuplicates: boolean };
+export interface PromptLibrarySnapshot { prompts: SavedPrompt[]; blocks: PromptBlock[] }
 
 export interface SavePromptInput {
   positivePrompt: string;
@@ -820,6 +882,7 @@ export interface SavePromptInput {
   textBasis: 'effective' | 'original';
   source: SavedPromptSource | null;
   sourceCreatedAt?: number | null;
+  editor?: PromptEditorData;
 }
 
 export interface SavedPromptSaveResult {

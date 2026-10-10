@@ -16,6 +16,8 @@ describe('saved prompt service environment selection', () => {
     await expect(service.savePrompt(input)).rejects.toThrow('desktop storage is unavailable');
     await expect(service.removeSavedPrompt(crypto.randomUUID())).rejects.toThrow('desktop storage is unavailable');
     await expect(service.resolveSavedPromptSource(crypto.randomUUID())).rejects.toThrow('desktop storage is unavailable');
+    await expect(service.listPromptLibrary()).rejects.toThrow('desktop storage is unavailable');
+    await expect(service.mutatePromptLibrary({ action: 'create', kind: 'block', item: { text: 'block' } })).rejects.toThrow('desktop storage is unavailable');
     expect(open).not.toHaveBeenCalled();
   });
 

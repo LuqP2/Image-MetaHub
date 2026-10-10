@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { applyMutation, normalizeEditor } from '../services/promptLibrary/core.mjs';
 
 export class SavedPromptRepositoryError extends Error {
   constructor(code, message, cause = null) {
@@ -59,6 +60,7 @@ function serializeRow(row) {
     negativePrompt: row.negative_prompt,
     textBasis: row.text_basis,
     source,
+    ...(row.editor_json ? { editor: normalizeEditor(JSON.parse(row.editor_json)), updatedAt: Number(row.updated_at), revision: Number(row.revision) } : {}),
   };
 }
 
@@ -131,13 +133,14 @@ export class SavedPromptRepository {
       }
       this.database.prepare(`
         INSERT INTO saved_prompts (
-          id, created_at, source_created_at, positive_prompt, negative_prompt, text_basis, source_json, prompt_digest
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          id, created_at, source_created_at, positive_prompt, negative_prompt, text_basis, source_json, prompt_digest, updated_at, revision, editor_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
       `).run(
         prompt.id.toLowerCase(), prompt.createdAt, prompt.sourceCreatedAt, prompt.positivePrompt, prompt.negativePrompt,
-        prompt.textBasis, prompt.source ? JSON.stringify(prompt.source) : null, promptDigest,
+        prompt.textBasis, prompt.source ? JSON.stringify(prompt.source) : null, promptDigest, prompt.createdAt,
+        input.editor ? JSON.stringify(normalizeEditor(input.editor)) : null,
       );
-      return { status: 'saved', prompt: { ...prompt, id: prompt.id.toLowerCase() } };
+      return { status: 'saved', prompt: serializeRow(this.database.prepare('SELECT * FROM saved_prompts WHERE id = ?').get(prompt.id.toLowerCase())) };
     });
   }
 
@@ -147,6 +150,50 @@ export class SavedPromptRepository {
     }
     const result = this.database.prepare('DELETE FROM saved_prompts WHERE id = ?').run(id.toLowerCase());
     return { removed: Number(result.changes) > 0, id: id.toLowerCase() };
+  }
+
+  snapshot() {
+    return { prompts: this.list(), blocks: this.database.prepare('SELECT * FROM prompt_blocks ORDER BY created_at DESC, id DESC').all().map((row) => ({
+      id: row.id, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at), revision: Number(row.revision), text: row.text, editor: normalizeEditor(JSON.parse(row.editor_json)),
+    })) };
+  }
+
+  mutate(command) {
+    return runTransaction(this.database, () => {
+      const before = this.snapshot();
+      const after = applyMutation(before, command, this.randomUUID, this.now);
+      const old = new Map([...before.prompts, ...before.blocks].map((p) => [p.id, p]));
+      for (const item of [...after.prompts, ...after.blocks]) {
+        if (!isUuid(item.id)) throw new SavedPromptRepositoryError('SAVED_PROMPT_INVALID_ID', 'Item id must be a UUID.');
+        if (JSON.stringify(old.get(item.id)) === JSON.stringify(item)) { old.delete(item.id); continue; }
+        item.editor.preview = item.editor.preview && typeof item.editor.preview === 'object' && item.editor.preview.kind !== 'session'
+          ? this.#normalizeSource(item.editor.preview) : item.editor.preview;
+        if ('text' in item) {
+          this.database.prepare('INSERT OR REPLACE INTO prompt_blocks (id, created_at, updated_at, revision, text, editor_json) VALUES (?, ?, ?, ?, ?, ?)')
+            .run(item.id, item.createdAt, item.updatedAt, item.revision, item.text, JSON.stringify(item.editor));
+        } else {
+          item.source = this.#normalizeSource(item.source);
+          this.database.prepare(`INSERT OR REPLACE INTO saved_prompts (id, created_at, source_created_at, positive_prompt, negative_prompt, text_basis, source_json, prompt_digest, updated_at, revision, editor_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(item.id, item.createdAt, item.sourceCreatedAt, item.positivePrompt, item.negativePrompt,
+            item.textBasis, item.source ? JSON.stringify(item.source) : null, this.digest(item.positivePrompt, item.negativePrompt), item.updatedAt, item.revision, JSON.stringify(item.editor));
+        }
+        old.delete(item.id);
+      }
+      for (const item of old.values()) this.database.prepare(`DELETE FROM ${'text' in item ? 'prompt_blocks' : 'saved_prompts'} WHERE id = ?`).run(item.id);
+      return { ...this.snapshot(), selectedId: after.selectedId };
+    });
+  }
+
+  resolvePreview(kind, id) {
+    if (!isUuid(id) || !['prompt', 'block'].includes(kind)) throw new SavedPromptRepositoryError('SAVED_PROMPT_INVALID_ID', 'Invalid preview target.');
+    const row = this.database.prepare(`SELECT * FROM ${kind === 'block' ? 'prompt_blocks' : 'saved_prompts'} WHERE id = ?`).get(id);
+    if (!row) return { status: 'unavailable', reason: 'missing-item' };
+    const editor = row.editor_json ? normalizeEditor(JSON.parse(row.editor_json)) : null;
+    const preview = editor?.preview;
+    if (preview === 'hidden' || preview?.kind === 'session') return { status: 'unavailable', reason: 'no-preview' };
+    const source = preview || (kind === 'prompt' ? serializeRow(row).source : null);
+    if (!source) return { status: 'unavailable', reason: 'no-preview' };
+    return source.kind === 'stable' ? this.#resolveStableSource(source) : this.#resolvePathSource(normalizePathSnapshot(source.pathAtSave));
   }
 
   resolveSource(id) {

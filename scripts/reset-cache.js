@@ -63,6 +63,9 @@ function clearElectronCache() {
   console.log(`📁 Checking Electron userData directory: ${userDataDir}`);
 
   if (fs.existsSync(userDataDir)) {
+    if (fs.existsSync(path.join(userDataDir, 'provenance'))) {
+      throw new Error('Cache reset aborted: this profile contains saved prompts, blocks or other user data. Use the app cache controls.');
+    }
     try {
       // Remove the entire directory
       fs.rmSync(userDataDir, { recursive: true, force: true });

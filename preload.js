@@ -307,6 +307,10 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('stable-user-data-changed', handler);
   },
   savedPromptsList: () => ipcRenderer.invoke('saved-prompts:list'),
+  promptLibraryList: () => ipcRenderer.invoke('prompt-library:list'),
+  promptLibraryMutate: (input) => ipcRenderer.invoke('prompt-library:mutate', input),
+  promptLibraryChoosePreview: () => ipcRenderer.invoke('prompt-library:choose-preview'),
+  promptLibraryResolvePreview: (kind, id) => ipcRenderer.invoke('prompt-library:resolve-preview', kind, id),
   savedPromptsSave: (input) => ipcRenderer.invoke('saved-prompts:save', input),
   savedPromptsRemove: (id) => ipcRenderer.invoke('saved-prompts:remove', id),
   savedPromptsResolveSource: (id) => ipcRenderer.invoke('saved-prompts:resolve-source', id),

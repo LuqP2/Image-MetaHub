@@ -6290,13 +6290,14 @@ function setupFileOperationHandlers() {
     }
   });
 
+  const promptPreviewPaths = new Set();
   ipcMain.handle('generate-thumbnail-from-path', async (event, { filePath, maxEdge = 320, quality = 82 }) => {
     try {
       if (!filePath) {
         return { success: false, error: 'No file path provided' };
       }
 
-      if (!isPathAllowed(filePath)) {
+      if (!isPathAllowed(filePath) && !promptPreviewPaths.has(path.resolve(filePath))) {
         return { success: false, error: 'Access denied: Cannot generate thumbnails outside of allowed directories.' };
       }
 
@@ -7504,6 +7505,28 @@ function setupFileOperationHandlers() {
   ipcMain.handle('saved-prompts:list', () => (
     handleSavedPromptRequest((repository) => repository.listSavedPrompts())
   ));
+  ipcMain.handle('prompt-library:list', () => handleSavedPromptRequest((repository) => repository.listPromptLibrary()));
+  ipcMain.handle('prompt-library:mutate', (_event, input) => {
+    const result = handleSavedPromptRequest((repository) => repository.mutatePromptLibrary(input));
+    if (result.success) notifySavedPromptsChanged();
+    return result;
+  });
+  ipcMain.handle('prompt-library:resolve-preview', (_event, kind, id) => {
+    const result = handleSavedPromptRequest((repository) => repository.resolvePromptLibraryPreview(kind, id));
+    if (result.success && result.data.status === 'available') promptPreviewPaths.add(path.resolve(result.data.absolutePath));
+    return result;
+  });
+  ipcMain.handle('prompt-library:choose-preview', async (event) => {
+    try {
+      const parent = BrowserWindow.fromWebContents(event.sender);
+      const options = { title: 'Link prompt preview', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif'] }] };
+      const choice = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+      if (choice.canceled || !choice.filePaths[0]) return { success: true, data: null };
+      const filePath = choice.filePaths[0];
+      const stat = await fs.stat(filePath);
+      return { success: true, data: { kind: 'path', pathAtSave: { directoryPath: path.dirname(filePath), relativePath: path.basename(filePath), fileSize: stat.size, contentModifiedMs: stat.mtimeMs } } };
+    } catch (error) { return { success: false, error: error.message }; }
+  });
   ipcMain.handle('saved-prompts:save', (_event, input) => {
     const result = handleSavedPromptRequest((repository) => repository.savePrompt(input));
     if (result.success && result.data.status === 'saved') notifySavedPromptsChanged();

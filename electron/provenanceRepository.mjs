@@ -11,7 +11,7 @@ import { StableIdentityUserDataRepository } from './stableIdentityUserDataReposi
 import { SavedPromptRepository } from './savedPromptRepository.mjs';
 
 export { PROVENANCE_DATABASE_NAME, PROVENANCE_DIRECTORY_NAME, resolveProvenanceCatalogPath };
-export const PROVENANCE_SCHEMA_VERSION = 7;
+export const PROVENANCE_SCHEMA_VERSION = 8;
 
 export const ASSET_STATES = Object.freeze(['active', 'missing', 'deleted']);
 export const LOCATION_STATES = Object.freeze(['present', 'missing', 'removed']);
@@ -304,6 +304,29 @@ function migrationSeven(database) {
   `);
 }
 
+function migrationEight(database) {
+  database.exec(`
+    ALTER TABLE saved_prompts RENAME TO saved_prompts_v7;
+    CREATE TABLE saved_prompts (
+      id TEXT PRIMARY KEY, created_at INTEGER NOT NULL CHECK(created_at >= 0),
+      positive_prompt TEXT NOT NULL, negative_prompt TEXT NOT NULL,
+      text_basis TEXT NOT NULL CHECK(text_basis IN ('effective','original','authored')),
+      source_json TEXT, prompt_digest TEXT NOT NULL, source_created_at INTEGER,
+      updated_at INTEGER NOT NULL, revision INTEGER NOT NULL CHECK(revision > 0), editor_json TEXT,
+      CHECK(length(trim(positive_prompt)) > 0 OR length(trim(negative_prompt)) > 0 OR editor_json IS NOT NULL)
+    ) STRICT;
+    INSERT INTO saved_prompts SELECT id, created_at, positive_prompt, negative_prompt, text_basis,
+      source_json, prompt_digest, source_created_at, created_at, 1, NULL FROM saved_prompts_v7;
+    DROP TABLE saved_prompts_v7;
+    CREATE INDEX saved_prompts_digest_idx ON saved_prompts(prompt_digest);
+    CREATE INDEX saved_prompts_created_idx ON saved_prompts(created_at DESC, id DESC);
+    CREATE TABLE prompt_blocks (
+      id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      revision INTEGER NOT NULL CHECK(revision > 0), text TEXT NOT NULL, editor_json TEXT NOT NULL
+    ) STRICT;
+  `);
+}
+
 const MIGRATIONS = new Map([
   [1, migrationOne],
   [2, migrationTwo],
@@ -312,6 +335,7 @@ const MIGRATIONS = new Map([
   [5, migrationFive],
   [6, migrationSix],
   [7, migrationSeven],
+  [8, migrationEight],
 ]);
 
 function serializeAsset(row) {
@@ -570,6 +594,10 @@ export class AssetProvenanceRepository {
     this.#requireSavedPromptRepository();
     return this.savedPrompts.list();
   }
+
+  listPromptLibrary() { this.#requireSavedPromptRepository(); return this.savedPrompts.snapshot(); }
+  mutatePromptLibrary(input) { this.#requireWritable(); this.#requireSavedPromptRepository(); return this.savedPrompts.mutate(input); }
+  resolvePromptLibraryPreview(kind, id) { this.#requireSavedPromptRepository(); return this.savedPrompts.resolvePreview(kind, id); }
 
   savePrompt(input) {
     this.#requireWritable();

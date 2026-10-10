@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { useLicenseStore, TRIAL_DURATION_DAYS, getTrialPeriod } from '../store/useLicenseStore';
 
-export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging' | 'file_management' | 'image_editor' | 'semantic_search' | 'model_manager';
+export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging' | 'file_management' | 'image_editor' | 'semantic_search' | 'model_manager' | 'prompt_library_advanced';
 
 
 export const CLUSTERING_FREE_TIER_LIMIT = 300;
@@ -31,6 +31,7 @@ export const isDevProLicenseOverride = (): boolean =>
 export type ProModalBlockedAttempts = Record<ProFeature, number>;
 
 const EMPTY_BLOCKED_ATTEMPTS: ProModalBlockedAttempts = {
+  prompt_library_advanced: 0,
   a1111: 0,
   comfyui: 0,
   comparison: 0,
@@ -212,6 +213,7 @@ export const useFeatureAccess = () => {
   }, [devOverride]);
 
   return {
+    canUseAdvancedPromptLibrary: allowDuringInit || canUseDuringTrialOrPro,
     // Feature flags
     canUseA1111,
     canUseComfyUI,

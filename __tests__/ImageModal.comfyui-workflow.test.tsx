@@ -1,7 +1,9 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageModal from '../components/ImageModal';
+import ImagePreviewSidebar from '../components/ImagePreviewSidebar';
+import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import type { IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
 
@@ -36,6 +38,7 @@ vi.mock('../hooks/useFeatureAccess', () => ({
     canUseComfyUI: true,
     canUseComparison: true,
     canUseBatchExport: true,
+    canUseAdvancedPromptLibrary: true,
     showProModal: vi.fn(),
     initialized: true,
   }),
@@ -129,6 +132,7 @@ describe('ImageModal ComfyUI workflow action', () => {
   });
 
   afterEach(() => {
+    window.getSelection()?.removeAllRanges();
     vi.restoreAllMocks();
   });
 
@@ -152,5 +156,25 @@ describe('ImageModal ComfyUI workflow action', () => {
       id: image.id,
       name: image.name,
     }));
+  });
+
+  it.each(['modal', 'sidebar'] as const)('saves the captured prompt selection from the %s context menu', async (surface) => {
+    const image = createImage(); const onClose = vi.fn();
+    const mutate = vi.spyOn(useSavedPromptStore.getState(), 'mutate').mockResolvedValue('synthetic-block');
+    useImageStore.setState({ images: [image], filteredImages: [image], previewImage: image });
+    const view = render(surface === 'modal'
+      ? <ImageModal image={image} onClose={onClose} directoryPath="C:/synthetic" isActive />
+      : <ImagePreviewSidebar width={400} isResizing={false} onResizeStart={vi.fn()} />);
+    const prompt = await waitFor(() => {
+      const element = view.container.querySelector('[data-prompt-text]'); expect(element).toBeTruthy(); return element!;
+    });
+    const range = document.createRange(); range.setStart(prompt.firstChild!, 2); range.setEnd(prompt.firstChild!, 7);
+    window.getSelection()!.addRange(range); fireEvent.contextMenu(prompt);
+    const action = await screen.findByRole('button', { name: 'Save Selection as Block' });
+    window.getSelection()!.removeAllRanges(); fireEvent.click(action);
+    expect((screen.getByLabelText('Block text') as HTMLTextAreaElement).value).toBe('quiet');
+    fireEvent.click(screen.getByRole('button', { name: 'Save block' }));
+    await waitFor(() => expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ action: 'create', kind: 'block', item: expect.objectContaining({ text: 'quiet' }) })));
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,7 @@ type FakeDatabaseState = {
   version: number;
   stores: Map<string, FakeStoreState>;
   transactionTail?: Promise<void>;
+  completionAtTaskEnd?: boolean;
 };
 
 type FakeTransaction = IDBTransaction & {
@@ -62,14 +63,17 @@ function createTransaction(
   const scheduleCompletion = () => {
     if (completionScheduled || completed) return;
     completionScheduled = true;
-    enqueue(() => {
+    // IndexedDB stays active through the microtasks of each request event.
+    // Closing it in a promise callback incorrectly rejects grouped reads+writes.
+    const finish = () => {
       completionScheduled = false;
       if (completed || pending !== 0) return;
       completed = true;
       release();
       transaction.oncomplete?.(new Event('complete'));
       for (const handler of internalCompletionHandlers) handler();
-    });
+    };
+    enqueue(() => { if (state.completionAtTaskEnd) setTimeout(finish, 0); else finish(); });
   };
 
   Object.assign(transaction, {
@@ -198,7 +202,7 @@ function createObjectStore(
   } as unknown as IDBObjectStore;
 }
 
-export function createFakeIndexedDb(): IDBFactory {
+export function createFakeIndexedDb({ completionAtTaskEnd = false } = {}): IDBFactory {
   const databases = new Map<string, FakeDatabaseState>();
 
   return {
@@ -207,7 +211,7 @@ export function createFakeIndexedDb(): IDBFactory {
       request.onupgradeneeded = null;
       request.onblocked = null;
       queueMicrotask(() => {
-        const state = databases.get(name) ?? { version: 0, stores: new Map<string, FakeStoreState>() };
+        const state = databases.get(name) ?? { version: 0, stores: new Map<string, FakeStoreState>(), completionAtTaskEnd };
         const requestedVersion = version ?? Math.max(1, state.version);
         if (requestedVersion < state.version) {
           request.error = new DOMException('Requested version is older than the current database.', 'VersionError');
@@ -281,9 +285,9 @@ export function createFakeIndexedDb(): IDBFactory {
   } as unknown as IDBFactory;
 }
 
-export function installFakeIndexedDb(): void {
+export function installFakeIndexedDb(options: { completionAtTaskEnd?: boolean } = {}): void {
   Object.defineProperty(globalThis, 'indexedDB', {
-    value: createFakeIndexedDb(),
+    value: createFakeIndexedDb(options),
     configurable: true,
     writable: true,
   });
