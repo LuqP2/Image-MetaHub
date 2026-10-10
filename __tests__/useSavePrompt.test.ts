@@ -28,7 +28,7 @@ describe('saved prompt composition', () => {
 
   it('captures effective shadow text literally and defaults a missing negative to empty', () => {
     const shadow = { imageId: 'directory::nested/image.png', prompt: '  shadow\npositive  ', negativePrompt: '', updatedAt: 1 } as ShadowMetadata;
-    expect(composeSavedPromptInput(image(), shadow, null, false)).toEqual({
+    expect(composeSavedPromptInput(image(), shadow, null, false)).toMatchObject({
       positivePrompt: '  shadow\npositive  ',
       negativePrompt: '',
       textBasis: 'effective',

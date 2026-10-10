@@ -4,7 +4,7 @@ import { installFakeIndexedDb } from './helpers/fakeIndexedDb';
 describe('browser saved prompt storage', () => {
   beforeEach(() => {
     vi.resetModules();
-    installFakeIndexedDb();
+    installFakeIndexedDb({ completionAtTaskEnd: true });
   });
 
   it('preserves literal text, stores no durable browser source, and removes idempotently', async () => {
@@ -57,5 +57,16 @@ describe('browser saved prompt storage', () => {
     const whitespace = await storage.saveBrowserPrompt({ ...input, positivePrompt: 'same ' });
     expect(whitespace.status).toBe('saved');
     await expect(storage.listBrowserSavedPrompts()).resolves.toHaveLength(2);
+  });
+
+  it('stores blocks and negative-only prompts without desktop links and rejects stale revisions', async () => {
+    const storage = await import('../services/savedPromptStorage');
+    const first = await storage.browserPromptLibrary({ action: 'create', kind: 'block', item: { text: 'literal block' } });
+    const block = first.blocks[0];
+    const second = await storage.browserPromptLibrary({ action: 'create', kind: 'prompt', item: { negativePrompt: 'negative only' } });
+    expect(second.prompts[0]).toMatchObject({ positivePrompt: '', negativePrompt: 'negative only', source: null });
+    await storage.browserPromptLibrary({ action: 'update', kind: 'block', expectedRevision: 1, item: { ...block, text: 'changed' } });
+    await expect(storage.browserPromptLibrary({ action: 'update', kind: 'block', expectedRevision: 1, item: block })).rejects.toThrow('another window');
+    expect((await storage.browserPromptLibrary()).blocks[0]).toMatchObject({ text: 'changed', revision: 2 });
   });
 });

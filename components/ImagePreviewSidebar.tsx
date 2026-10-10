@@ -8,6 +8,8 @@ import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { selectedPromptText, usePromptBlockExtraction } from '../hooks/usePromptBlockExtraction';
+import { buildSavedPromptSource } from '../hooks/useSavePrompt';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
@@ -130,7 +132,7 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
         )}
       </div>
       {isPrompt ? (
-        <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-sm text-gray-200">{displayValue}</pre>
+        <pre data-prompt-text className="mt-1 whitespace-pre-wrap break-words font-mono text-sm text-gray-200">{displayValue}</pre>
       ) : (
         <p className="mt-1 break-words font-mono text-sm text-gray-200">{displayValue}</p>
       )}
@@ -216,6 +218,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const activeImage = previewImageFromStore || previewImage;
   const { metadata: shadowMetadata, isLoading: isShadowLoading, error: shadowError, saveMetadata: saveShadowMetadata } = useShadowMetadata(activeImage);
   const savePrompt = useSavePrompt();
+  const blockExtraction = usePromptBlockExtraction();
+  const selectedBlockTextRef = useRef<string | null>(null);
   const allImages = useImageStore((state) => state.images);
   const thumbnail = useResolvedThumbnail(activeImage);
   const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
@@ -452,6 +456,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   };
 
   const handleSelectionContextMenu = (e: React.MouseEvent<HTMLElement>) => {
+    selectedBlockTextRef.current = selectedPromptText();
     const target = e.target as HTMLElement | null;
     if (target?.closest('input, textarea, [contenteditable="true"]')) {
       return;
@@ -1283,6 +1288,10 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
+          {selectedBlockTextRef.current && <button
+            onClick={() => { blockExtraction.open(selectedBlockTextRef.current || '', activeImage ? buildSavedPromptSource(activeImage, activeImageDirectoryPath) : null); hideContextMenu(); }}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
+          ><Bookmark className="w-4 h-4" />Save Selection as Block</button>}
           <button
             onClick={copySelection}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
@@ -1299,6 +1308,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
           </button>
         </div>
       )}
+      {blockExtraction.dialog}
     </div>
   );
 };

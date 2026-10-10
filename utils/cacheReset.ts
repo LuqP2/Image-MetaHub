@@ -101,6 +101,7 @@ export async function resetAllCaches(): Promise<void> {
       }
     }
     console.log(`✅ Preserved database: ${SAVED_PROMPTS_DATABASE_NAME}`);
+    console.log('✅ Saved prompts, reusable blocks and templates are preserved.');
 
   } catch (error) {
     console.error('❌ Error clearing IndexedDB:', error);

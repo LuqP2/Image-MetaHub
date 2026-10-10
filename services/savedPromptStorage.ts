@@ -1,8 +1,9 @@
-import type { SavedPrompt, SavedPromptSaveResult, SavePromptInput } from '../types';
+import type { SavedPrompt, SavedPromptSaveResult, SavePromptInput, PromptLibrarySnapshot, PromptLibraryMutation } from '../types';
+import { applyMutation } from './promptLibrary/core.mjs';
 
 export const SAVED_PROMPTS_DATABASE_NAME = 'image-metahub-saved-prompts';
 const STORE_NAME = 'saved_prompts';
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 type StoredPrompt = Omit<SavedPrompt, 'sourceCreatedAt'> & { sourceCreatedAt?: number | null; promptDigest: string };
 
@@ -21,10 +22,12 @@ const openDatabase = (): Promise<IDBDatabase> => new Promise((resolve, reject) =
   const request = indexedDB.open(SAVED_PROMPTS_DATABASE_NAME, DATABASE_VERSION);
   request.onupgradeneeded = () => {
     const database = request.result;
-    if (database.objectStoreNames.contains(STORE_NAME)) return;
-    const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
-    store.createIndex('promptDigest', 'promptDigest', { unique: false });
-    store.createIndex('createdAt', 'createdAt', { unique: false });
+    if (!database.objectStoreNames.contains(STORE_NAME)) {
+      const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      store.createIndex('promptDigest', 'promptDigest', { unique: false });
+      store.createIndex('createdAt', 'createdAt', { unique: false });
+    }
+    if (!database.objectStoreNames.contains('prompt_blocks')) database.createObjectStore('prompt_blocks', { keyPath: 'id' });
   };
   request.onsuccess = () => resolve(request.result);
   request.onerror = () => reject(request.error ?? new Error('Could not open saved-prompt storage.'));
@@ -92,6 +95,7 @@ export async function saveBrowserPrompt(input: SavePromptInput): Promise<SavedPr
       textBasis: input.textBasis === 'original' ? 'original' : 'effective',
       source: null,
       promptDigest,
+      ...(input.editor ? { editor: input.editor, revision: 1, updatedAt: Date.now() } : {}),
     };
     store.add(prompt);
     await transactionComplete(transaction);
@@ -113,4 +117,43 @@ export async function removeBrowserSavedPrompt(id: string): Promise<{ id: string
   } finally {
     database.close();
   }
+}
+
+export async function browserPromptLibrary(command?: PromptLibraryMutation): Promise<PromptLibrarySnapshot & { selectedId?: string }> {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction([STORE_NAME, 'prompt_blocks'], command ? 'readwrite' : 'readonly');
+    const done = transactionComplete(transaction);
+    const promptsStore = transaction.objectStore(STORE_NAME);
+    const blocksStore = transaction.objectStore('prompt_blocks');
+    try {
+      // Resolve directly from the last IDB request, while this transaction is active.
+      const requests = [promptsStore.getAll(), blocksStore.getAll()];
+      const [records, blocks] = await new Promise<unknown[]>((resolve, reject) => {
+        let pending = requests.length;
+        for (const request of requests) {
+          request.onsuccess = () => { if (--pending === 0) resolve(requests.map((entry) => entry.result)); };
+          request.onerror = () => reject(request.error || new Error('Could not read prompt library.'));
+        }
+      });
+      const before = { prompts: (records as StoredPrompt[]).map(withoutDigest), blocks } as PromptLibrarySnapshot;
+      if (!command) { await done; return before; }
+      const after = applyMutation(before, command) as PromptLibrarySnapshot & { selectedId?: string };
+      const previous = new Map([...before.prompts, ...before.blocks].map((item) => [item.id, item]));
+      for (const prompt of after.prompts) {
+        prompt.source = null;
+        if (prompt.editor?.preview && typeof prompt.editor.preview === 'object' && prompt.editor.preview.kind !== 'session') prompt.editor.preview = null;
+        if (JSON.stringify(previous.get(prompt.id)) !== JSON.stringify(prompt)) promptsStore.put({ ...prompt, promptDigest: savedPromptDigest(prompt.positivePrompt, prompt.negativePrompt) });
+      }
+      for (const block of after.blocks) {
+        if (block.editor.preview && typeof block.editor.preview === 'object' && block.editor.preview.kind !== 'session') block.editor.preview = null;
+        if (JSON.stringify(previous.get(block.id)) !== JSON.stringify(block)) blocksStore.put(block);
+      }
+      const ids = new Set([...after.prompts, ...after.blocks].map((p) => p.id));
+      for (const prompt of before.prompts) if (!ids.has(prompt.id)) promptsStore.delete(prompt.id);
+      for (const block of before.blocks) if (!ids.has(block.id)) blocksStore.delete(block.id);
+      await done;
+      return after;
+    } catch (error) { transaction.abort(); await done.catch(() => undefined); throw error; }
+  } finally { database.close(); }
 }

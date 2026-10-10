@@ -4,6 +4,7 @@ import { getPersistedShadowMetadata } from '../services/userDataPersistenceAdapt
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import { buildEffectiveMetadata } from '../utils/editableMetadata';
 import { getRelativeImagePath } from '../utils/imagePaths';
+import { emptyEditor } from '../services/promptLibrary/core.mjs';
 
 interface SavePromptOptions {
   directoryPath?: string | null;
@@ -50,10 +51,16 @@ export function composeSavedPromptInput(
   const positivePrompt = typeof effective?.prompt === 'string' ? effective.prompt : '';
   const negativePrompt = typeof effective?.negativePrompt === 'string' ? effective.negativePrompt : '';
   if (!positivePrompt.trim()) throw new Error('This image has no positive prompt to save.');
+  const editor = emptyEditor();
+  editor.metadata = {
+    model: effective?.model || '', generator: effective?.generator || '', sampler: effective?.sampler || '', scheduler: effective?.scheduler || '',
+    loras: (effective?.loras || []).map((lora) => typeof lora === 'string' ? lora : lora.name || '').filter(Boolean),
+  };
   return {
     positivePrompt,
     negativePrompt,
     textBasis: showOriginal ? 'original' : 'effective',
+    editor,
     source: buildSavedPromptSource(image, directoryPath),
     sourceCreatedAt: Number.isFinite(image.lastModified) && image.lastModified > 0
       ? Math.trunc(image.lastModified)
