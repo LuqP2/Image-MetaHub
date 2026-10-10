@@ -115,7 +115,7 @@ export function prepareItem(kind, input) {
     return { text, editor };
   }
   const text = editor.document ? documentText(editor.document) : { positivePrompt: string(input.positivePrompt), negativePrompt: string(input.negativePrompt) };
-  if(!text.positivePrompt.trim() && !text.negativePrompt.trim() && !editor.document?.positive.length && !editor.document?.negative.length)
+  if(!text.positivePrompt.trim() && !text.negativePrompt.trim())
     throw new Error('Add a positive or negative prompt.');
   if(editor.document)
     allVariables(editor.document);

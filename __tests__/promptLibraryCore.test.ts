@@ -7,6 +7,24 @@ import type { PromptBlock, PromptLibrarySnapshot, SavedPrompt } from '../types';
 const block = (): PromptBlock => ({ id: crypto.randomUUID(), createdAt: 1, updatedAt: 1, revision: 1, text: '  soft\nlight  ', editor: { ...emptyEditor(), title: 'Light', category: 'Lighting' } });
 const prompt = (positive = 'cat', negative = ''): SavedPrompt => ({ id: crypto.randomUUID(), createdAt: 1, sourceCreatedAt: null, source: null, textBasis: 'authored', positivePrompt: positive, negativePrompt: negative, editor: emptyEditor(), revision: 1 });
 describe('Prompt Library composition and templates', () => {
+  it.each(['empty', 'whitespace', 'disabled'] as const)('rejects %s compositions on create and update without changing saved data', (state) => {
+    const document = makeDocument(state === 'empty' ? '' : state === 'whitespace' ? ' \n' : 'cat', state === 'empty' ? '' : state === 'whitespace' ? '\t' : 'noise');
+    if (state === 'disabled') for (const part of [...document.positive, ...document.negative]) part.enabled = false;
+    const saved = prompt();
+    const before = { prompts: [saved], blocks: [] };
+    const original = structuredClone(before);
+    const item = { ...saved, editor: { ...emptyEditor(), document } };
+    expect(() => applyMutation(before, { action: 'create', kind: 'prompt', item })).toThrow('Add a positive or negative prompt.');
+    expect(() => applyMutation(before, { action: 'update', kind: 'prompt', item, expectedRevision: 1 })).toThrow('Add a positive or negative prompt.');
+    expect(before).toEqual(original);
+  });
+  it.each(['positive', 'negative'] as const)('allows a composition with only the %s channel enabled', (channel) => {
+    const document = makeDocument('cat', 'noise');
+    document[channel === 'positive' ? 'negative' : 'positive'][0].enabled = false;
+    const result = applyMutation({ prompts: [], blocks: [] }, { action: 'create', kind: 'prompt', item: { editor: { ...emptyEditor(), document } } });
+    expect(result.prompts[0].positivePrompt).toBe(channel === 'positive' ? 'cat' : '');
+    expect(result.prompts[0].negativePrompt).toBe(channel === 'negative' ? 'noise' : '');
+  });
   it('preserves literal text, excludes disabled parts and independently snapshots blocks', () => {
     const b = block(); const doc = makeDocument('cat', 'bad'); doc.positive.push(snapshotBlock(b));
     const p = { ...prompt(), editor: { ...emptyEditor(), document: doc } };
