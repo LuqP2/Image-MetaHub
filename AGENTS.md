@@ -1119,7 +1119,7 @@ See RELEASE-GUIDE.md and `.github/workflows/publish.yml` for additional details.
 
 ## License
 
-Mozilla Public License Version 2.0 (MPL-2.0)
+PolyForm Perimeter License 1.0.1 for maintainer-owned code, with specific files still under MPL 2.0 (including the AVIF contributor's changes), and `packages/metadata-engine` under Apache 2.0. Consult `LICENSING.md` for the exceptions and historical licensing.
 
 ## Support
 

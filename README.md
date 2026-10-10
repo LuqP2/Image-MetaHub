@@ -49,9 +49,15 @@ The goal is to preserve the production history around each asset: what prompt, m
 * Opt-in Civitai lookups for model and LoRA hashes, with results cached locally
 * Analytics Explorer and verified metrics support for images generated with the MetaHub Save Node
 
+## Source code license
+
+Image MetaHub's current source code is **source-available**, not OSI open-source. Code owned by the project maintainer is offered under the [PolyForm Perimeter License 1.0.1](LICENSE), which restricts use of the covered code to provide competing products. Files containing third-party AVIF contributions remain under MPL 2.0, and the separately licensed metadata-engine package remains under Apache 2.0. Previously published MPL 2.0 versions keep their original license rights.
+
+For the complete file-by-file exceptions, see [LICENSING.md](LICENSING.md).
+
 ## Free vs Pro
 
-The repository is MPL 2.0 and the core app remains open-source. Some workflow-heavy features are unlocked through the desktop app's offline Pro license or 7-day trial.
+The desktop app's source is publicly available under the PolyForm Perimeter License 1.0.1, with specific files remaining under MPL 2.0. The separate metadata-engine package retains Apache 2.0. See [LICENSING.md](LICENSING.md). Some workflow-heavy features are unlocked through the desktop app's offline Pro license or 7-day trial.
 
 **Core app includes:**
 

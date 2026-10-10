@@ -1,6 +1,6 @@
 # Image MetaHub CLI
 
-Command-line tool to extract and normalize AI image metadata (PNG/JPG) into JSON/JSONL for pipelines. Uses the same parser/normalizer as the app (MPL‑2.0 codebase).
+Command-line tool to extract and normalize AI image metadata (PNG/JPG) into JSON/JSONL for pipelines. Uses the app's parser/normalizer; consult the repository's mixed licensing terms in [LICENSING.md](../LICENSING.md).
 
 Schema/versioning: every record includes `schema_version: "1.0.0"` and `_telemetry` with parser info and timing.
 
@@ -84,4 +84,4 @@ npm run cli:index -- ./images --out index.jsonl --recursive
 ```
 
 ## License
-The app and parser code are MPL-2.0; the CLI uses the same codebase. Please keep the MPL notice when redistributing.
+The current desktop app code is source-available under PolyForm Perimeter 1.0.1, except for MPL 2.0 files listed in [LICENSING.md](../LICENSING.md). The separately distributed `@image-metahub/metadata-engine` package remains Apache 2.0. Older MPL 2.0 versions retain their original license.

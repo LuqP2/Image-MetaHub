@@ -11,7 +11,7 @@ This repository prepares code and operator tooling only. It does not create or d
 - `utils/licenseCertificate.mjs` defines signed `IMHC1` Ed25519 activation certificates.
 - `electron/licenseClientConfig.generated.mjs` contains public client configuration only.
 
-React state is not durable authorization. On startup and on main-process status notifications, the renderer derives paid access from Electron main. A locally patched open-source client is outside the official-license security boundary.
+React state is not durable authorization. On startup and on main-process status notifications, the renderer derives paid access from Electron main. A locally patched client is outside the official-license security boundary.
 
 License keys are random `IMH2-...` values with 160 bits of source entropy. D1 stores their SHA-256 hashes. Normalized emails are stored only as peppered HMAC lookup values.
 
