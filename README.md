@@ -49,15 +49,9 @@ The goal is to preserve the production history around each asset: what prompt, m
 * Opt-in Civitai lookups for model and LoRA hashes, with results cached locally
 * Analytics Explorer and verified metrics support for images generated with the MetaHub Save Node
 
-## Source code license
-
-Image MetaHub's current first-party source code, including the AVIF contribution and the `metadata-engine` package, is **source-available** under the [PolyForm Perimeter License 1.0.1](LICENSE). The license prohibits using the covered code to provide competing products. It is not OSI open-source. Previously distributed MPL 2.0 and Apache 2.0 versions retain their original license rights.
-
-See [LICENSING.md](LICENSING.md) for the full licensing history and contributor permission.
-
 ## Free vs Pro
 
-The desktop app's source is publicly available under the PolyForm Perimeter License 1.0.1. Some workflow-heavy features are unlocked through the desktop app's offline Pro license or 7-day trial.
+Some workflow-heavy features are unlocked through the desktop app's offline Pro license or 7-day trial.
 
 **Core app includes:**
 
@@ -365,3 +359,11 @@ Image MetaHub is built and maintained by **Lucas (LuqP2)** with community feedba
 * Pro license: [https://www.imagemetahub.com/pro?src=readme](https://www.imagemetahub.com/pro?src=readme)
 * Ko-fi: [https://ko-fi.com/lucaspierri](https://ko-fi.com/lucaspierri)
 * ComfyUI Save Node: [https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save)
+
+## License
+
+Image MetaHub is **source-available** under the [PolyForm Perimeter License 1.0.1](LICENSE).
+
+The license permits use, modification, and redistribution of the source code, but prohibits using it to provide competing products.
+
+For full licensing details, see [LICENSING.md](LICENSING.md).
