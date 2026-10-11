@@ -10,6 +10,16 @@ export function comfyTextRuntime(operation, payload = {}, expectedOrigin) {
   const graph = canvas?.graph;
   const root = app?.rootGraph || app?.graph;
   if (!canvas || !graph || !root) return fail('unavailable', 'ComfyUI is not ready. Copy text instead.');
+  if (operation === 'selection') {
+    const element = document.activeElement;
+    const nodes = graph._nodes || Object.values(canvas.selected_nodes || {});
+    const belongsToNode = nodes.some(node => (node.widgets || []).some(widget => widget.inputEl === element || widget.element === element));
+    if (!belongsToNode || typeof element?.value !== 'string' || !Number.isInteger(element.selectionStart) || !Number.isInteger(element.selectionEnd))
+      return fail('selection', 'Select text inside a node field.');
+    const text = element.value.slice(element.selectionStart, element.selectionEnd);
+    if (!text.trim() || text !== payload.text) return fail('selection', 'The text selection changed.');
+    return { success: true, text, targets: [] };
+  }
   if (typeof graph.beforeChange !== 'function' || typeof graph.afterChange !== 'function')
     return fail('unsupported', 'This frontend does not expose supported undoable text editing. Copy text instead.');
   const key = '__imhTextTargets';

@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ComfyUIWorkspace from '../components/ComfyUIWorkspace';
 import type { IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
@@ -156,6 +156,24 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
 
     expect(onViewFullMetadata).toHaveBeenCalledWith(image);
     expect(screen.queryByRole('dialog', { name: /Workspace image preview/i })).toBeNull();
+  });
+
+  it('saves node selections directly as untitled prompts or blocks without opening a form', async () => {
+    let receive: (payload: { kind: 'prompt' | 'block'; text: string }) => void = () => {};
+    const unsubscribe = vi.fn();
+    window.electronAPI = { ...window.electronAPI, onComfyUISaveSelection: (callback: typeof receive) => { receive = callback; return unsubscribe; } } as never;
+    const mutate = vi.spyOn(useSavedPromptStore.getState(), 'mutate').mockResolvedValue('saved');
+    const image = createImage('node-selection');
+    const view = render(<ComfyUIWorkspace image={image} isActive={false} onOpenQueue={vi.fn()} onOpenSettings={vi.fn()} />);
+    const text = '  café\n<lora:test:1>  ';
+    await act(async () => { receive({ kind: 'prompt', text }); });
+    expect(mutate).toHaveBeenLastCalledWith({ action: 'create', kind: 'prompt', item: { positivePrompt: text } });
+    expect(screen.getByText('Prompt saved.')).toBeTruthy();
+    await act(async () => { receive({ kind: 'block', text }); });
+    expect(mutate).toHaveBeenLastCalledWith({ action: 'create', kind: 'block', item: { text } });
+    expect(screen.getByText('Block saved.')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    view.unmount(); expect(unsubscribe).toHaveBeenCalled();
   });
 
   it('saves the image prompt and captures literal selected text before opening the block editor', async () => {

@@ -581,6 +581,7 @@ export interface ElectronAPI {
   savedPromptsList: () => Promise<SavedPromptIpcResult<SavedPrompt[]>>;
   promptLibraryList: () => Promise<SavedPromptIpcResult<PromptLibrarySnapshot>>;
   promptLibraryMutate: (input: PromptLibraryMutation) => Promise<SavedPromptIpcResult<PromptLibrarySnapshot & { selectedId?: string }>>;
+  onComfyUISaveSelection?: (callback: (payload: { kind: 'prompt' | 'block'; text: string }) => void) => () => void;
   promptLibraryChoosePreview: () => Promise<SavedPromptIpcResult<SavedPromptSource | null>>;
   promptLibraryResolvePreview: (kind: 'prompt' | 'block', id: string) => Promise<SavedPromptIpcResult<SavedPromptSourceResolution>>;
   savedPromptsSave: (input: SavePromptInput) => Promise<SavedPromptIpcResult<SavedPromptSaveResult>>;

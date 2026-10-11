@@ -48,6 +48,7 @@ import type { WorkspaceCompositionRequest } from './comfyui/WorkspacePrompts';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { usePromptBlockExtraction, selectedPromptText } from '../hooks/usePromptBlockExtraction';
 import { buildSavedPromptSource } from '../hooks/useSavePrompt';
+import { useSavedPromptStore } from '../store/useSavedPromptStore';
 
 interface ComfyUIWorkspaceProps {
   onOpenPromptLibrary?: () => void;
@@ -328,6 +329,15 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const [assetContextMenu, setAssetContextMenu] = useState<WorkspaceAssetContextMenu>(null);
   const [inspectorContextMenu, setInspectorContextMenu] = useState<InspectorContextMenu>(null);
   const [assetActionMessage, setAssetActionMessage] = useState<string>('');
+  const [saveSelectionStatus, setSaveSelectionStatus] = useState('');
+  useEffect(() => window.electronAPI?.onComfyUISaveSelection?.(({ kind, text }) => {
+    if (!['prompt', 'block'].includes(kind) || typeof text !== 'string' || !text.trim()) return;
+    if (kind === 'block' && !canUseAdvancedPromptLibrary) { showProModal('prompt_library_advanced'); return; }
+    void useSavedPromptStore.getState().mutate({ action: 'create', kind, item: kind === 'block' ? { text } : { positivePrompt: text } })
+      .then(() => setSaveSelectionStatus(kind === 'block' ? 'Block saved.' : 'Prompt saved.'))
+      .catch(error => setSaveSelectionStatus(error instanceof Error ? error.message : 'Could not save selection.'));
+  }), [canUseAdvancedPromptLibrary, showProModal]);
+  useEffect(() => { if (saveSelectionStatus) { const timer = setTimeout(() => setSaveSelectionStatus(''), 4000); return () => clearTimeout(timer); } }, [saveSelectionStatus]);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isRatingMenuOpen, setIsRatingMenuOpen] = useState(false);
   const [thumbRailWidth, setThumbRailWidth] = useState(() => {
@@ -1113,6 +1123,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-950">
       {extraction.dialog}
+      {saveSelectionStatus && <p role="status" className="shrink-0 border-b border-gray-800 px-3 py-2 text-xs text-accent">{saveSelectionStatus}</p>}
       <div className="shrink-0 border-b border-gray-800 px-3 py-2">
           <div className="space-y-3">
             <div className="flex items-start justify-between gap-3">

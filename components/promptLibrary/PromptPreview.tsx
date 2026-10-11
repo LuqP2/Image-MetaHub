@@ -20,29 +20,29 @@ export default function PromptPreview({ result, heading = 'Final prompt preview'
     </div>}
 
     <div className="flex flex-wrap gap-2">
-      {channel ? <button type="button" className={buttonClass} disabled={!!result.errors.length || !(channel === 'negative' ? result.negativePrompt : result.positivePrompt)} onClick={() => void copy(channel === 'negative' ? result.negativePrompt : result.positivePrompt)}>{channel === 'block' ? 'Copy block' : `Copy ${channel}`}</button> : <>
+      {channel ? <button type="button" className={buttonClass} disabled={!!result.errors.length || !(channel === 'negative' ? result.negativePrompt : result.positivePrompt)} onClick={() => void copy(channel === 'negative' ? result.negativePrompt : result.positivePrompt)}>{channel === 'block' ? 'Copy block' : channel === 'negative' ? 'Copy negative' : 'Copy prompt'}</button> : <>
       <button
         type="button"
         disabled={!!result.errors.length || !result.positivePrompt}
         className={buttonClass}
-        onClick={() => void copy(result.positivePrompt)}>{"Copy Positive"}</button>
-      <button
+        onClick={() => void copy(result.positivePrompt)}>{"Copy prompt"}</button>
+      {result.negativePrompt && <button
         type="button"
         disabled={!!result.errors.length || !result.negativePrompt}
         className={buttonClass}
-        onClick={() => void copy(result.negativePrompt)}>{"Copy Negative"}</button>
-      <button
+        onClick={() => void copy(result.negativePrompt)}>{"Copy negative"}</button>}
+      {result.negativePrompt && <button
         type="button"
         disabled={!!result.errors.length || (!result.positivePrompt && !result.negativePrompt)}
         className={buttonClass}
-        onClick={() => void copy(result.positivePrompt + (result.negativePrompt ? `\nNegative prompt: ${result.negativePrompt}` : ''))}>{"Copy both"}</button>
+        onClick={() => void copy(result.positivePrompt + (result.negativePrompt ? `\nNegative prompt: ${result.negativePrompt}` : ''))}>{"Copy both"}</button>}
       </>}
       <span role="status" className="self-center text-xs text-accent">
         {feedback}
       </span>
     </div>
 
-    {channel !== 'negative' && result.positivePrompt && <><p className="pt-2 text-xs text-gray-400">Positive prompt</p><pre className="whitespace-pre-wrap break-words text-sm leading-relaxed" data-prompt-text>{result.positivePrompt}</pre></>}
+    {channel !== 'negative' && result.positivePrompt && <><p className="pt-2 text-xs text-gray-400">Prompt</p><pre className="whitespace-pre-wrap break-words text-sm leading-relaxed" data-prompt-text>{result.positivePrompt}</pre></>}
     {!['positive', 'block'].includes(channel || '') && result.negativePrompt && <><p className="pt-2 text-xs text-gray-400">Negative prompt</p><pre className="whitespace-pre-wrap break-words text-sm leading-relaxed" data-prompt-text>{result.negativePrompt}</pre></>}
     {!result.positivePrompt && !result.negativePrompt && <p className="text-xs text-gray-500">Add text or blocks to see your prompt here.</p>}
 

@@ -1551,8 +1551,26 @@ function configureComfyUIViewHandlers(view) {
   contents.on('did-navigate', () => updateComfyUIViewState({ lastLoadFailed: false }));
   contents.on('did-navigate-in-page', () => updateComfyUIViewState({ lastLoadFailed: false }));
   contents.on('page-title-updated', () => updateComfyUIViewState());
-  contents.on('context-menu', (_event, params) => {
-    showEditableTextContextMenu(contents, params);
+  contents.on('context-menu', async (_event, params) => {
+    const extraItems = [];
+    if (params.isEditable && params.selectionText?.trim() && isComfyNavigationAllowed(contents.getURL())) {
+      try {
+        const origin = new URL(contents.getURL()).origin;
+        const selection = await contents.executeJavaScript(`(${comfyTextRuntime.toString()})('selection', ${JSON.stringify({ text: params.selectionText })}, ${JSON.stringify(origin)})`);
+        if (selection.success) {
+          for (const kind of ['prompt', 'block']) extraItems.push({
+            label: `Save selection as ${kind}`,
+            click: () => {
+              if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('comfy-view-save-selection', { kind, text: selection.text });
+            },
+          });
+          extraItems.push({ type: 'separator' });
+        }
+      } catch (error) {
+        console.warn('Could not read ComfyUI node selection:', error);
+      }
+    }
+    showEditableTextContextMenu(contents, params, extraItems);
   });
   contents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame || errorCode === -3) {
@@ -1569,12 +1587,13 @@ function configureComfyUIViewHandlers(view) {
   });
 }
 
-function showEditableTextContextMenu(contents, params) {
+function showEditableTextContextMenu(contents, params, extraItems = []) {
   if (!params.isEditable || !contents || contents.isDestroyed()) {
     return;
   }
 
   const menu = Menu.buildFromTemplate([
+    ...extraItems,
     { label: 'Undo', enabled: params.editFlags?.canUndo ?? false, click: () => contents.undo() },
     { label: 'Redo', enabled: params.editFlags?.canRedo ?? false, click: () => contents.redo() },
     { type: 'separator' },

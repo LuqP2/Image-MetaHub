@@ -18,6 +18,20 @@ beforeEach(() => {
   Object.assign(window, { app, __imhTextTargets: undefined });
 });
 describe('ComfyUI selected text editing', () => {
+  it('captures the exact selection only from a node text field without modifying the graph', () => {
+    const input = document.createElement('textarea');
+    input.value = 'prefix  café\n<lora:test:1>  suffix';
+    document.body.append(input);
+    input.focus(); input.setSelectionRange(6, input.value.length - 6);
+    Object.assign(widget, { inputEl: input });
+    const text = input.value.slice(input.selectionStart, input.selectionEnd);
+    expect(comfyTextRuntime('selection', { text })).toMatchObject({ success: true, text });
+    expect(comfyTextRuntime('selection', { text: 'stale' }).success).toBe(false);
+    expect(graph.beforeChange).not.toHaveBeenCalled();
+    Object.assign(widget, { inputEl: undefined });
+    expect(comfyTextRuntime('selection', { text }).success).toBe(false);
+    input.remove();
+  });
   it('appends literal Unicode and code-like text as one undoable change', () => {
     const token = query().targets[0].token;
     const text = 'café "quoted"\n${notCode}';

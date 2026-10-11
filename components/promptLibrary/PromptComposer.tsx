@@ -4,7 +4,7 @@ import type { PromptDocument, PromptBlock, PromptPart } from '../../types';
 import { allVariables, snapshotBlock } from '../../services/promptLibrary/core.mjs';
 import { buttonClass, fieldClass } from './PromptVariables';
 import PromptBlockPicker from './PromptBlockPicker';
-export default function PromptComposer({ document, blocks, disabled, onChange, onExtract, onError, compact = false, channel: activeChannel = 'positive', onChannelChange }: {
+export default function PromptComposer({ document, blocks, disabled, onChange, onExtract, onError, compact = false, channel: activeChannel = 'positive' }: {
   document: PromptDocument;
   blocks: PromptBlock[];
   disabled: boolean;
@@ -41,10 +41,10 @@ export default function PromptComposer({ document, blocks, disabled, onChange, o
       return; const parts = [...document[channel]]; const [part] = parts.splice(from, 1); parts.splice(to, 0, part); change(channel, parts);
   };
   if (compact) return <div className="space-y-3">
-    <div className="flex items-center gap-2"><div className="app-top-segmented flex-1">{(['positive', 'negative'] as const).map(channel => <button key={channel} className={`app-top-segment ${activeChannel === channel ? 'app-top-segment-active' : ''}`} aria-pressed={activeChannel === channel} onClick={() => { onChannelChange?.(channel); setPicker(null); }}>{channel === 'positive' ? 'Positive' : 'Negative'}</button>)}</div>
+    <div className="flex items-center gap-2"><h3 className="flex-1 text-sm font-semibold">{activeChannel === 'negative' ? 'Negative prompt' : 'Prompt'}</h3>
       <select aria-label={`${activeChannel} separator`} className={fieldClass + ' !w-auto !text-xs'} disabled={disabled} value={document[`${activeChannel}Separator`]} onChange={e => onChange({ ...document, [`${activeChannel}Separator`]: e.target.value })}><option value=", ">Comma</option><option value=" ">Space</option><option value={'\n'}>New line</option></select>
     </div>
-    <div className="flex gap-2"><button className={buttonClass} disabled={disabled} onClick={() => change(activeChannel, [...document[activeChannel], { id: crypto.randomUUID(), kind: 'text', text: '', enabled: true }])}>Add text</button><button aria-label={`Add ${activeChannel} block`} className={buttonClass} disabled={disabled} onClick={() => setPicker(picker ? null : activeChannel)}>Add block</button></div>
+    <div className="flex gap-2"><button aria-label={activeChannel === 'negative' ? 'Add negative text' : 'Add prompt text'} className={buttonClass} disabled={disabled} onClick={() => change(activeChannel, [...document[activeChannel], { id: crypto.randomUUID(), kind: 'text', text: '', enabled: true }])}>Add text</button><button aria-label={`Add ${activeChannel} block`} className={buttonClass} disabled={disabled} onClick={() => setPicker(picker ? null : activeChannel)}>Add block</button></div>
     {picker && <PromptBlockPicker inline blocks={blocks} channel={picker} onChoose={insert} onClose={() => setPicker(null)} />}
     {!document[activeChannel].length && <p className="rounded-lg border border-dashed border-gray-700 p-4 text-xs text-gray-400">Write text or add saved blocks. Your composition stays here while you browse the library.</p>}
     {document[activeChannel].map((part, index) => {
@@ -57,13 +57,14 @@ export default function PromptComposer({ document, blocks, disabled, onChange, o
         {part.kind === 'block' && <details className="text-[11px] text-gray-500"><summary className="cursor-pointer">Saved copy · version {part.blockRevision}{changed ? ' · Update available' : !original ? ' · Original unavailable' : ''}</summary><p className="mt-2">Edits to the saved block do not change this composition.</p>{changed && original && <button className={buttonClass} disabled={disabled} onClick={() => { if (window.confirm(`Update this instance?\n\nPrevious:\n${part.text}\n\nNew:\n${original.text}`)) change(activeChannel, document[activeChannel].map(p => p.id === part.id ? { ...snapshotBlock(original), id: part.id, enabled: part.enabled } : p)); }}>Update this copy</button>}</details>}
       </article>;
     })}
+    {activeChannel === 'positive' && (showNegative || document.negative.some(part => !!part.text.trim()) ? <PromptComposer compact channel="negative" document={document} blocks={blocks} disabled={disabled} onChange={onChange} onExtract={onExtract} onError={onError} /> : <button type="button" className={buttonClass} onClick={() => setShowNegative(true)}>Add negative</button>)}
   </div>;
   return <div className="space-y-5">
     <p className="text-xs text-gray-400">Combine blocks and free text. Drag the handle or use the arrows to reorder; disabled parts are left out of the result.</p>
     {(['positive', 'negative'] as const).map((channel) => <section key={channel} className="space-y-2">
       <div className="flex items-center justify-between">
-        {channel === 'negative' ? <button type="button" className="flex items-center gap-2 text-sm font-semibold" onClick={() => setShowNegative(!showNegative)}>{showNegative ? <ChevronDown size={15} /> : <ChevronRight size={15} />}Negative prompt</button> : <h3 className="text-sm font-semibold">Positive prompt</h3>}
-        <select
+        {channel === 'negative' ? <button type="button" className="flex items-center gap-2 text-sm font-semibold" onClick={() => setShowNegative(!showNegative)}>{showNegative ? <ChevronDown size={15} /> : <ChevronRight size={15} />}{showNegative ? 'Negative prompt' : 'Add negative'}</button> : <h3 className="text-sm font-semibold">Prompt</h3>}
+        {(channel === 'positive' || showNegative) && <select
           aria-label={`${channel} separator`}
           disabled={disabled}
           className={fieldClass + ' !w-auto'}
@@ -72,7 +73,7 @@ export default function PromptComposer({ document, blocks, disabled, onChange, o
           <option value=", ">{"Comma"}</option>
           <option value=" ">{"Space"}</option>
           <option value={'\n'}>{"New line"}</option>
-        </select>
+        </select>}
       </div>
 
       {(channel === 'positive' || showNegative) && <>

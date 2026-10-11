@@ -35,6 +35,14 @@ function Harness() {
   const [collapsed, setCollapsed] = useState(false);
   return <WorkspaceContextPanel collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} active imagePanel={<p>Image context</p>} request={null} onOpenLibrary={vi.fn()} onViewSource={vi.fn()} />;
 }
+it('keeps negative composition optional and reveals it on demand', () => {
+  const initial = { editor: { ...emptyEditor(), document: makeDocument('main text') } };
+  render(<PromptEditor compact initial={initial} kind="prompt" onSaved={vi.fn()} onClose={vi.fn()} onDirty={vi.fn()} onViewSource={vi.fn()} />);
+  expect(screen.queryByLabelText('negative part 1')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Add negative' }));
+  fireEvent.change(screen.getByLabelText('negative part 1'), { target: { value: 'optional negative' } });
+  expect(getDraft()?.draft.editor?.document?.negative[0].text).toBe('optional negative');
+});
 it('uses prompts and model trigger words in the same preserved Workspace composition and applies the compiled result', async () => {
   rememberDraft('prompt', { positivePrompt: 'separate library draft' }, { positivePrompt: 'separate library draft' });
   render(<Harness />);
@@ -91,7 +99,7 @@ it('creates a block without replacing the composition and keeps the list visible
   render(<Harness />);
   fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
   fireEvent.click(screen.getByRole('button', { name: 'Compose', exact: true }));
-  fireEvent.click(screen.getByRole('button', { name: 'Add text' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add prompt text' }));
   const inputs = screen.getAllByRole('textbox', { name: /positive part/ });
   fireEvent.change(inputs.at(-1)!, { target: { value: 'synthetic draft preserved' } });
   const composition = getDraft('comfyui')?.draft;

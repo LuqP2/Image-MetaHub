@@ -80,7 +80,7 @@ describe('integrated Prompt Library', () => {
   it('discards only the draft when cancelling an edit', async () => {
     render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Studio portrait');
     expect(screen.queryByRole('region', { name: 'Final prompt preview' })).toBeNull();
-    fireEvent.change(screen.getByLabelText('Positive prompt'), { target: { value: 'changed draft' } });
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'changed draft' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Unsaved changes' })).getByRole('button', { name: 'Discard' }));
     expect(screen.getByRole('region', { name: 'Prompt details' })).toBeTruthy();
@@ -170,6 +170,8 @@ describe('integrated Prompt Library', () => {
   });
   it('creates a negative-only prompt on Free and gates advanced creation', async () => {
     mocks.advanced = false; render(<PromptLibrary onViewSource={vi.fn()} />); fireEvent.click(screen.getByRole('button', { name: 'New prompt' }));
+    expect(screen.queryByLabelText('Negative prompt')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add negative' }));
     fireEvent.change(screen.getByLabelText('Negative prompt'), { target: { value: 'negative only' } }); fireEvent.click(screen.getByRole('button', { name: 'Add template fields' }));
     expect(mocks.gate).toHaveBeenCalledWith('prompt_library_advanced'); fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(data.prompts.some((p) => p.positivePrompt === '' && p.negativePrompt === 'negative only')).toBe(true));
@@ -187,8 +189,8 @@ describe('integrated Prompt Library', () => {
   });
   it('recovers unsaved edits when the Library section remounts', async () => {
     const view = render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Studio portrait');
-    fireEvent.change(screen.getByLabelText('Positive prompt'), { target: { value: 'draft only' } }); view.unmount(); render(<PromptLibrary onViewSource={vi.fn()} />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Open Studio portrait' })).toBeTruthy()); expect((screen.getByLabelText('Positive prompt') as HTMLTextAreaElement).value).toBe('draft only'); expect(mocks.mutate).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'draft only' } }); view.unmount(); render(<PromptLibrary onViewSource={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open Studio portrait' })).toBeTruthy()); expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe('draft only'); expect(mocks.mutate).not.toHaveBeenCalled();
   });
   it('reveals a save failure while preserving the draft and cancelling pending navigation', async () => {
     render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Studio portrait');
@@ -203,7 +205,7 @@ describe('integrated Prompt Library', () => {
   it('gates bulk and structure edits but retains metadata editing and template filling on Free', async () => {
     mocks.advanced = false; const editor = emptyEditor(); editor.title = 'Template'; editor.document = { ...makeDocument('Hello {{subject}}'), mode: 'template', variables: [{ name: 'subject', label: 'Subject', type: 'text', required: true, defaultValue: '', options: [] }] };
     data.prompts[0].editor = editor; data.prompts[0].positivePrompt = 'Hello {{subject}}'; render(<PromptLibrary onViewSource={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Open Template' })); fireEvent.change(screen.getByLabelText('Subject *'), { target: { value: 'world' } }); fireEvent.click(screen.getByRole('button', { name: 'Copy Positive' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Template' })); fireEvent.change(screen.getByLabelText('Subject *'), { target: { value: 'world' } }); fireEvent.click(screen.getByRole('button', { name: 'Copy prompt' }));
     await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('Hello world')); fireEvent.click(screen.getByRole('button', { name: 'Edit' })); fireEvent.click(screen.getByRole('button', { name: 'Compose' }));
     expect(screen.getAllByRole('button', { name: 'Add free text' }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Select', hidden: true })); fireEvent.click(screen.getByLabelText('Select Template')); fireEvent.click(screen.getByRole('button', { name: 'Add tags' })); expect(mocks.gate).toHaveBeenCalled(); expect(mocks.mutate).not.toHaveBeenCalled();

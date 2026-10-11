@@ -54,7 +54,7 @@ export default function ComfyUITextActions({ positive = '', negative = '', error
       {result.targets.length > 1 && target && <p className="line-clamp-2 whitespace-pre-wrap break-words text-gray-400">{target.preview || 'Empty field'}</p>}
     </> : <p className="text-gray-400">{result.message}</p>}
     <div className="flex gap-2">
-      {!sourceChannel && <select aria-label="Text channel" className={fieldClass} value={channel} onChange={e => setChannel(e.target.value as typeof channel)}><option value="positive">Positive</option><option value="negative">Negative</option></select>}
+      {!sourceChannel && negative && <select aria-label="Text channel" className={fieldClass} value={channel} onChange={e => setChannel(e.target.value as typeof channel)}><option value="positive">Prompt</option><option value="negative">Negative</option></select>}
       <details className="min-w-0 flex-1"><summary className="cursor-pointer text-gray-400">Append separator</summary><select aria-label="Append separator" className={fieldClass} value={separator} onChange={e => { sessionSeparator = e.target.value as typeof separator; setSeparator(sessionSeparator); }}><option value=", ">Comma</option><option value=" ">Space</option><option value={'\n'}>New line</option></select></details>
     </div>
     <div className="flex gap-2">{(['append', 'replace'] as const).map(mode => <button key={mode} className={buttonClass} disabled={!active || busy || !token || !text.trim() || !!errors.length} onClick={() => void apply(mode)}>{mode === 'append' ? 'Append to field' : 'Replace field'}</button>)}</div>
