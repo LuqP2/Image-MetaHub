@@ -71,7 +71,12 @@ export function comfyTextRuntime(operation, payload = {}, expectedOrigin) {
     state.targets.clear();
     return { success: true, targets: [], message: 'Updated ' + (node.title || node.type) + ' · ' + widget.name };
   } catch {
-    try { widget.value = before; if (!setter) widget.callback?.(before, canvas, node); } catch {}
+    try {
+      widget.value = before;
+      if (!setter) widget.callback?.(before, canvas, node);
+    } catch {
+      // A custom widget may also reject rollback; report the update failure below.
+    }
     return fail('unsupported', 'The widget could not be updated. Copy text instead.');
   } finally {
     graph.afterChange();
