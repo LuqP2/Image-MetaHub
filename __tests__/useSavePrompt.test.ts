@@ -51,9 +51,17 @@ describe('saved prompt composition', () => {
     expect(composeSavedPromptInput(image({ lastModified: 0 }), null)).toMatchObject({ sourceCreatedAt: null });
   });
 
-  it('uses trim only to reject an empty positive prompt', () => {
+  it('accepts negative-only text but rejects two empty channels', () => {
     const target = image({ metadata: { normalizedMetadata: { prompt: ' \n ', negativePrompt: 'kept' } } as IndexedImage['metadata'] });
-    expect(() => composeSavedPromptInput(target, null)).toThrow('no positive prompt');
+    expect(composeSavedPromptInput(target, null)).toMatchObject({ positivePrompt: ' \n ', negativePrompt: 'kept' });
+    expect(() => composeSavedPromptInput(image({ metadata: { normalizedMetadata: { prompt: ' ', negativePrompt: '\n' } } as IndexedImage['metadata'] }), null)).toThrow('no prompt');
+  });
+
+  it('preserves shadow edits and source metadata for a negative-only prompt', () => {
+    window.electronAPI = {} as never;
+    const target = image({ metadata: { normalizedMetadata: { prompt: '', negativePrompt: 'original', model: 'Original model', sampler: 'Euler', scheduler: 'normal', generator: 'ComfyUI', loras: [{ name: 'light' }] } } as IndexedImage['metadata'] });
+    const shadow = { imageId: target.id, negativePrompt: '  edited negative  ', model: 'Edited model', updatedAt: 1 } as ShadowMetadata;
+    expect(composeSavedPromptInput(target, shadow, 'D:/synthetic')).toMatchObject({ positivePrompt: '', negativePrompt: '  edited negative  ', textBasis: 'effective', sourceCreatedAt: 10, source: { kind: 'path' }, editor: { metadata: { model: 'Edited model', sampler: 'Euler', scheduler: 'normal', generator: 'ComfyUI', loras: ['light'] } } });
   });
 
   it('creates stable source only with the complete identity set and otherwise uses path', () => {

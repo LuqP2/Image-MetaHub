@@ -3,8 +3,7 @@ import { CheckCircle, Clipboard, Copy, Play } from 'lucide-react';
 import type { IndexedImage, BaseMetadata } from '../../types';
 import { hasVerifiedTelemetry } from '../../utils/telemetryDetection';
 import { useResolvedThumbnail } from '../../hooks/useResolvedThumbnail';
-import { useSavePrompt, buildSavedPromptSource } from '../../hooks/useSavePrompt';
-import { useSavedPromptStore } from '../../store/useSavedPromptStore';
+import { useSavePrompt } from '../../hooks/useSavePrompt';
 import { buttonClass } from '../promptLibrary/PromptVariables';
 const formatValue = (value: unknown): string => value == null || value === '' ? 'Not found' : String(value);
 const hasMetadataValue = (value: unknown) => value != null && value !== '';
@@ -108,8 +107,7 @@ return <section aria-label="Workspace Image Inspector" className="h-full overflo
 <button className={buttonClass} disabled={saving || (!metadata.prompt?.trim() && !metadata.negativePrompt?.trim())} onClick={async () => {
  setSaving(true);
  try {
-  if (metadata.prompt?.trim()) await savePrompt(image, { directoryPath, readAuthoritativeShadow: true });
-  else await useSavedPromptStore.getState().mutate({ action: 'create', kind: 'prompt', item: { positivePrompt: '', negativePrompt: metadata.negativePrompt || '', source: buildSavedPromptSource(image, directoryPath) } });
+  await savePrompt(image, { directoryPath, readAuthoritativeShadow: true });
   setMessage('Prompt saved.');
  } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Save failed.'); }
  finally { setSaving(false); }

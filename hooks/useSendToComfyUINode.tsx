@@ -5,22 +5,36 @@ import { buttonClass, fieldClass } from '../components/promptLibrary/PromptVaria
 
 /** One-shot lookup/write. Multiple fields require an explicit destination. */
 export function useSendToComfyUINode() {
-  const [pending, setPending] = useState<{ text: string; targets: ComfyUITextTarget[]; mode: 'append' | 'replace' } | null>(null);
+  const [pending, setPending] = useState<{ text: string; targets: ComfyUITextTarget[]; mode: 'append' | 'replace' | 'replaceSelection' } | null>(null);
+  const [selectionTarget, setSelectionTarget] = useState<ComfyUITextTarget | null>(null);
+  const selectionRequest = useRef(0);
+  const refreshSelection = async () => {
+    const request = ++selectionRequest.current;
+    setSelectionTarget(null);
+    try {
+      const result = await window.electronAPI?.comfyUIViewTextTargets?.();
+      if (request === selectionRequest.current) setSelectionTarget(result?.success ? result.targets.find(target => target.hasSelection) || null : null);
+    } catch { if (request === selectionRequest.current) setSelectionTarget(null); }
+  };
   const [token, setToken] = useState('');
   const [status, setStatus] = useState('');
   const [fallback, setFallback] = useState('');
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
-  const write = async (target: ComfyUITextTarget, text: string, mode: 'append' | 'replace') => {
+  const write = async (target: ComfyUITextTarget, text: string, mode: 'append' | 'replace' | 'replaceSelection') => {
     const result = await window.electronAPI?.comfyUIViewApplyText?.({ token: target.token, text, mode, separator: ', ' });
     setPending(null); setToken('');
     setStatus(result?.message || (result?.success ? 'Added to selected node.' : 'Direct editing is unavailable. Copy the text instead.'));
     setFallback(result?.success ? '' : text);
   };
-  const send = async (text: string, mode: 'append' | 'replace' = 'append') => {
+  const send = async (text: string, mode: 'append' | 'replace' | 'replaceSelection' = 'append') => {
     if (!text.trim() || inFlight.current) return;
     inFlight.current = true; setBusy(true); setStatus('Sending…'); setFallback(''); setPending(null); setToken('');
     try {
+      if (mode === 'replaceSelection') {
+        if (!selectionTarget) { setStatus('Select text inside a node field first.'); return; }
+        await write(selectionTarget, text, mode); setSelectionTarget(null); return;
+      }
       const result = await window.electronAPI?.comfyUIViewTextTargets?.();
       if (!result?.success || !result.targets.length) {
         setStatus(result?.message || 'Select a compatible text node in the embedded ComfyUI Workspace.'); setFallback(text);
@@ -46,5 +60,5 @@ export function useSendToComfyUINode() {
     </section>}
     {fallback && <button className={buttonClass} onClick={async () => { const result = await copyTextToClipboard(fallback); setStatus(result.success ? 'Copied.' : result.error || 'Copy failed.'); }}>Copy text instead</button>}
   </>;
-  return { send, panel, busy };
+  return { send, panel, busy, refreshSelection, hasSelection: !!selectionTarget };
 }

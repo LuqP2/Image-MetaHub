@@ -194,7 +194,10 @@ export function modelFolderWatchDefault(item: ModelInspectorItem): boolean {
 export function installedVersions(modelId: number) {
   return state.catalog.locations.flatMap((location) => location.civitai && 'modelId' in location.civitai && location.civitai.modelId === modelId ? [location.civitai] : []);
 }
-export function unreadModelCount() { return Object.values(modelUpdateCounts(state.catalog, state.watches, state.hfWatches)).filter((count) => count > 0).length; }
+export function unreadModelCount() {
+  const catalog = { ...state.catalog, locations: state.catalog.locations.filter(location => !getModelLocalMetadata(state.localMetadata, location)?.hidden) };
+  return Object.values(modelUpdateCounts(catalog, state.watches, state.hfWatches, state.catalog)).filter((count) => count > 0).length;
+}
 type HFWatchUpdate = { id: string; update: (current: HuggingFaceWatchRecord | undefined) => HuggingFaceWatchRecord | undefined };
 function storeHFWatches(updates: HFWatchUpdate[]) {
   const save = watchWrites.catch(() => {}).then(async () => {

@@ -185,3 +185,17 @@ it('navigates saved items without collapsing the image preview', async () => {
   expect(screen.getByText('Preview image').closest('details')!.open).toBe(true);
   expect((screen.getByRole('button', { name: 'Previous item' }) as HTMLButtonElement).disabled).toBe(true);
 });
+
+it('disables Replace selected without a node selection and sends to the captured field when available', async () => {
+  render(<Harness />); fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  const card = await screen.findByRole('button', { name: 'Open Portrait' });
+  fireEvent.contextMenu(card);
+  expect((screen.getByRole('menuitem', { name: 'Replace selected with prompt' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Close card menu' }));
+  mocks.targets.mockResolvedValue({ success: true, targets: [{ token: 'selected-range', nodeId: '12', nodeTitle: 'Positive', field: 'text', preview: 'before old after', hasSelection: true }] });
+  fireEvent.contextMenu(card);
+  await waitFor(() => expect((screen.getByRole('menuitem', { name: 'Replace selected with prompt' }) as HTMLButtonElement).disabled).toBe(false));
+  mocks.targets.mockResolvedValue({ success: true, targets: [] });
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Replace selected with prompt' }));
+  await waitFor(() => expect(mocks.apply).toHaveBeenLastCalledWith({ token: 'selected-range', text: 'studio portrait', mode: 'replaceSelection', separator: ', ' }));
+});

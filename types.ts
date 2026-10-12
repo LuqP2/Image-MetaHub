@@ -64,6 +64,7 @@ export interface ComfyUIViewResult {
 }
 
 export interface ComfyUITextTarget {
+  hasSelection?: boolean;
   token: string;
   nodeId: string;
   nodeTitle: string;
@@ -656,7 +657,7 @@ export interface ElectronAPI {
   comfyUIViewGoForward: () => Promise<ComfyUIViewResult>;
   comfyUIViewGetState: () => Promise<ComfyUIViewResult>;
   comfyUIViewTextTargets: () => Promise<ComfyUITextResult>;
-  comfyUIViewApplyText: (payload: { token: string; text: string; mode: 'append' | 'replace'; separator: ', ' | ' ' | '\n' }) => Promise<ComfyUITextResult>;
+  comfyUIViewApplyText: (payload: { token: string; text: string; mode: 'append' | 'replace' | 'replaceSelection'; separator: ', ' | ' ' | '\n' }) => Promise<ComfyUITextResult>;
   comfyUIViewLoadWorkflow: (payload: {
     url: string;
     bounds?: ComfyUIViewBounds;

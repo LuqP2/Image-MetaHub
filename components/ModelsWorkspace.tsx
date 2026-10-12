@@ -6,7 +6,7 @@ import { FileBox, FolderPlus, Search, Settings, PanelLeftClose, PanelLeftOpen, P
 import { MODEL_KIND_LABELS, modelKindLabel } from '../services/modelLibrary/modelKinds';
 import { buildManagedModels, getManagedModelPrimaryLocations } from '../services/modelLibrary/catalog';
 import { getEffectiveModelPresentation, getModelLocalMetadata, modelInspectorSearchText } from '../services/modelLibrary/presentation';
-import { getModelManagerState, addModelSource, cancelModelJob, checkModelUpdates, identifyModels, managerMessage, removeModelSource, scanModelSources, setModelInterval, showModelUpdates, unreadModelCount, updateModelSource, useModelManager } from '../services/modelLibrary/manager';
+import { getModelManagerState, addModelSource, cancelModelJob, checkModelUpdates, identifyModels, managerMessage, removeModelSource, scanModelSources, setModelInterval, showModelUpdates, updateModelSource, useModelManager } from '../services/modelLibrary/manager';
 import { linkedModelLocationIds, modelUpdateCounts } from '../services/modelLibrary/huggingFaceTracking';
 import { ModelUpdatesPanel } from './UnifiedModelUpdatesPanel';
 import { executeModelCommand, modelButton, modelInput } from './ModelManagerPanels';
@@ -72,12 +72,13 @@ export default function ModelsWorkspace() {
   const matchesLocation = (item: ModelInspectorItem, folder: string, type: string) => (relatedLocations.get(item.location.sha256 ? `sha256:${item.location.sha256.toLowerCase()}` : `location:${item.location.id}`) ?? []).some((location) => (folder === 'all' || location.sourceId === folder) && (type === 'all' || location.sourceKind === type));
   const folderItems = allItems.filter((item) => matchesLocation(item, sourceId, 'all') && (view === 'hidden' ? item.localMetadata?.hidden === true : !item.localMetadata?.hidden));
   const updateLocationIds = useMemo(() => {
-    if (sourceId === 'all' && kind === 'all') return manager.catalog.locations.map((location) => location.id);
-    const sourceLocationIds = new Set(manager.catalog.locations.filter((location) => (sourceId === 'all' || location.sourceId === sourceId) && (kind === 'all' || location.sourceKind === kind)).map((location) => location.id));
-    return buildManagedModels(manager.catalog.locations)
+    const locations = manager.catalog.locations.filter(location => !getModelLocalMetadata(manager.localMetadata, location)?.hidden);
+    if (sourceId === 'all' && kind === 'all') return locations.map((location) => location.id);
+    const sourceLocationIds = new Set(locations.filter((location) => (sourceId === 'all' || location.sourceId === sourceId) && (kind === 'all' || location.sourceKind === kind)).map((location) => location.id));
+    return buildManagedModels(locations)
       .filter((model) => model.locationIds.some((id) => sourceLocationIds.has(id)))
       .flatMap((model) => model.locationIds);
-  }, [manager.catalog, sourceId, kind]);
+  }, [manager.catalog, manager.localMetadata, sourceId, kind]);
   const categories = (Object.keys(MODEL_KIND_LABELS) as ModelKind[]).map((value) => ({ value, label: value === 'lora' ? 'LoRAs' : MODEL_KIND_LABELS[value], count: folderItems.filter((item) => matchesLocation(item, sourceId, value)).length })).filter((entry) => entry.count > 0).sort((a, b) => a.label.localeCompare(b.label));
   const selectedSource = manager.sources.find((source) => source.id === sourceId);
   useEffect(() => { if (sourceId !== 'all' && !manager.sources.some((source) => source.id === sourceId)) setSourceId('all'); }, [manager.sources, sourceId]);
@@ -93,7 +94,7 @@ export default function ModelsWorkspace() {
       setSelectedId(null); setRetainedInspectorId(null);
     }
   }, [storageOpen, view, selected?.localMetadata?.hidden]);
-  const count = unreadModelCount();
+  const count = allItems.filter(item => !item.localMetadata?.hidden && newCount(item) > 0).length;
   const catalogFiltered = Boolean(query.trim() || sourceId !== 'all' || kind !== 'all' || base !== 'all' || tag !== 'all' || view !== 'all' || issuesOnly);
   const clearCatalogFilters = () => { setQuery(''); setSourceId('all'); setKind('all'); setBase('all'); setTag('all'); setView('all'); setIssuesOnly(false); };
   const report = (action: Promise<unknown>) => { void action.catch((error) => managerMessage(error.message)); };

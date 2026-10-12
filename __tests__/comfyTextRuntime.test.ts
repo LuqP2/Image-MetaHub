@@ -32,6 +32,22 @@ describe('ComfyUI selected text editing', () => {
     expect(comfyTextRuntime('selection', { text }).success).toBe(false);
     input.remove();
   });
+  it('replaces only the selected range and rejects changed or absent selections', () => {
+    const input = document.createElement('textarea'); input.value = 'before old after';
+    document.body.append(input); input.focus(); input.setSelectionRange(7, 10);
+    widget.value = input.value; Object.assign(widget, { inputEl: input });
+    const target = query().targets[0]; expect(target.hasSelection).toBe(true);
+    expect(apply(target.token, 'new', 'replaceSelection').success).toBe(true);
+    expect(widget.value).toBe('before new after');
+    expect(graph.beforeChange).toHaveBeenCalledTimes(1); expect(graph.afterChange).toHaveBeenCalledTimes(1);
+    widget.value = input.value;
+    const stale = query().targets[0]; input.setSelectionRange(0, 6);
+    expect(apply(stale.token, 'new', 'replaceSelection').code).toBe('conflict');
+    input.setSelectionRange(0, 0);
+    const empty = query().targets[0]; expect(empty.hasSelection).toBe(false);
+    expect(apply(empty.token, 'new', 'replaceSelection').code).toBe('conflict');
+    expect(graph.beforeChange).toHaveBeenCalledTimes(1); input.remove();
+  });
   it('appends literal Unicode and code-like text as one undoable change', () => {
     const token = query().targets[0].token;
     const text = 'café "quoted"\n${notCode}';

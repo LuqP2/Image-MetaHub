@@ -39,24 +39,33 @@ export function comfyTextRuntime(operation, payload = {}, expectedOrigin) {
   };
   const widgets = (node.widgets || []).filter(compatible);
   if (!widgets.length) return fail('unsupported', 'The selected node has no editable text field. Copy text instead.');
+  const selectedRange = (widget) => {
+    const element = widget.inputEl || widget.element;
+    if (element !== document.activeElement || typeof element?.value !== 'string' || element.value !== widget.value
+      || !Number.isInteger(element.selectionStart) || !Number.isInteger(element.selectionEnd)
+      || element.selectionEnd <= element.selectionStart) return null;
+    return { element, start: element.selectionStart, end: element.selectionEnd };
+  };
   const lookup = (widget) => {
+    const selection = selectedRange(widget);
     for (const [token, entry] of state.targets) {
-      if (entry.node === node && entry.widget === widget && entry.value === widget.value) return token;
+      if (entry.node === node && entry.widget === widget && entry.value === widget.value
+        && entry.selection?.element === selection?.element && entry.selection?.start === selection?.start && entry.selection?.end === selection?.end) return token;
     }
     const token = crypto.randomUUID();
-    state.targets.set(token, { node, widget, value: widget.value });
+    state.targets.set(token, { node, widget, value: widget.value, selection });
     return token;
   };
   if (operation === 'query') {
     const tokens = new Set();
     const targets = widgets.map((widget) => {
       const token = lookup(widget); tokens.add(token);
-      return { token, nodeId: String(node.id), nodeTitle: node.title || node.type || String(node.id), field: widget.name, preview: widget.value.slice(0, 100) };
+      return { token, nodeId: String(node.id), nodeTitle: node.title || node.type || String(node.id), field: widget.name, preview: widget.value.slice(0, 100), hasSelection: !!state.targets.get(token).selection };
     });
     for (const token of state.targets.keys()) if (!tokens.has(token)) state.targets.delete(token);
     return { success: true, targets };
   }
-  if (operation !== 'apply' || !['append', 'replace'].includes(payload.mode)
+  if (operation !== 'apply' || !['append', 'replace', 'replaceSelection'].includes(payload.mode)
     || typeof payload.text !== 'string' || !payload.text.trim()
     || ![', ', ' ', '\n'].includes(payload.separator)) return fail('invalid', 'Invalid text operation.');
   const entry = state.targets.get(payload.token);
@@ -64,7 +73,11 @@ export function comfyTextRuntime(operation, payload = {}, expectedOrigin) {
     return fail('conflict', 'The destination changed. Review the selected field and try again.');
   const widget = entry.widget;
   const before = widget.value;
-  const after = payload.mode === 'replace' || !before.length ? payload.text : before + payload.separator + payload.text;
+  const range = entry.selection;
+  if (payload.mode === 'replaceSelection' && (!range || !range.element.isConnected
+    || range.element.value !== before || range.element.selectionStart !== range.start || range.element.selectionEnd !== range.end))
+    return fail('conflict', 'The text selection changed. Select the fragment again.');
+  const after = payload.mode === 'replaceSelection' ? before.slice(0, range.start) + payload.text + before.slice(range.end) : payload.mode === 'replace' || !before.length ? payload.text : before + payload.separator + payload.text;
   if (before === after) return { success: true, targets: [], message: 'The field already contains this text.' };
   // DOM widgets invoke their callback from the value setter; ordinary widgets do not.
   let owner = widget, setter = false;

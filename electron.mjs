@@ -5341,7 +5341,7 @@ function setupFileOperationHandlers() {
       return unavailable('Open ComfyUI on the configured server. Copy text instead.');
     }
     if (operation === 'apply' && (!payload || typeof payload.token !== 'string' || typeof payload.text !== 'string'
-      || !['append', 'replace'].includes(payload.mode) || ![', ', ' ', '\n'].includes(payload.separator))) {
+      || !['append', 'replace', 'replaceSelection'].includes(payload.mode) || ![', ', ' ', '\n'].includes(payload.separator))) {
       return { success: false, code: 'invalid', message: 'Invalid text operation.', targets: [] };
     }
     try {

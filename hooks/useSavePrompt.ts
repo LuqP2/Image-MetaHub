@@ -50,7 +50,7 @@ export function composeSavedPromptInput(
   );
   const positivePrompt = typeof effective?.prompt === 'string' ? effective.prompt : '';
   const negativePrompt = typeof effective?.negativePrompt === 'string' ? effective.negativePrompt : '';
-  if (!positivePrompt.trim()) throw new Error('This image has no positive prompt to save.');
+  if (!positivePrompt.trim() && !negativePrompt.trim()) throw new Error('This image has no prompt to save.');
   const editor = emptyEditor();
   editor.metadata = {
     model: effective?.model || '', generator: effective?.generator || '', sampler: effective?.sampler || '', scheduler: effective?.scheduler || '',
@@ -95,7 +95,7 @@ export function useIsPromptSaved(
   const positive = typeof positivePrompt === 'string' ? positivePrompt : '';
   const negative = typeof negativePrompt === 'string' ? negativePrompt : '';
   return useSavedPromptStore((state) => (
-    Boolean(positive.trim())
+    Boolean(positive.trim() || negative.trim())
     && state.prompts.some((prompt) => (
       prompt.positivePrompt === positive
       && prompt.negativePrompt === negative

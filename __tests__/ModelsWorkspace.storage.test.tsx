@@ -168,3 +168,14 @@ it('hides a model in both catalogs and restores it through Hidden without removi
   expect(fakes.state.catalog.locations).toHaveLength(3);
   expect(fakes.state.storage!.files).toHaveLength(3);
 });
+
+it('excludes all copies of hidden identities from updates and restores them when unhidden', async () => {
+  const hash = 'a'.repeat(64);
+  fakes.state.localMetadata = { [`sha256:${hash}`]: { hidden: true } } as ModelManagerSnapshot['localMetadata'];
+  const view = render(<ModelsWorkspace />);
+  fireEvent.click(screen.getByRole('button', { name: /What's new/ }));
+  view.rerender(<ModelsWorkspace />);
+  expect(screen.getByText('Update locations: lora')).toBeTruthy();
+  fakes.state = { ...fakes.state, localMetadata: {} }; view.rerender(<ModelsWorkspace />);
+  expect(screen.getByText('Update locations: primary,copy,lora')).toBeTruthy();
+});
