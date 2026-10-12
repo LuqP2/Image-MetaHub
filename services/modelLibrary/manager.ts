@@ -184,6 +184,7 @@ export function saveModelPatch(locationId: string, patch: Partial<ModelLocalMeta
   return save;
 }
 export function isModelWatched(item: ModelInspectorItem): boolean {
+  if (item.localMetadata?.hidden) return false;
   if (typeof item.localMetadata?.watchUpdates === 'boolean') return item.localMetadata.watchUpdates;
   return modelFolderWatchDefault(item);
 }
@@ -494,7 +495,7 @@ export async function checkModelUpdates(locationIds: string[], automatic = false
   const linkedIds = linkedModelLocationIds(state.catalog);
   startJob('updates', selectedIds.length);
   const failed = new Set<string>(), checked = new Set<number>();
-  let notificationCount = 0;
+  const civitaiNotices = new Map<number, number>();
   const hfNotices = new Map<string, number>();
   const fail = (ids: string[]) => ids.forEach((id) => failed.add(id));
   try {
@@ -527,7 +528,7 @@ export async function checkModelUpdates(locationIds: string[], automatic = false
           const next = reconcileWatch(latest, link.modelId, result.modelName || link.modelName, result.versions || [], installedVersions(link.modelId), Date.now());
           const fresh = unreadVersions(next, installedVersions(link.modelId).map((version) => version.versionId)).filter((version) => !next.notifiedVersionIds.includes(version.id));
           const stillWatched = state.catalog.locations.some((location) => location.civitai && 'modelId' in location.civitai && location.civitai.modelId === link.modelId && isModelWatched(modelItem(location.id)));
-          if (automatic && stillWatched) notificationCount += fresh.length;
+          if (automatic && stillWatched) civitaiNotices.set(link.modelId, fresh.length);
           next.notifiedVersionIds = [...new Set([...next.notifiedVersionIds, ...fresh.map((version) => version.id)])];
           return next;
         });
@@ -542,7 +543,7 @@ export async function checkModelUpdates(locationIds: string[], automatic = false
     const groups = new Map<string, { id: string; binding: HuggingFaceBinding; revision: number }[]>();
     for (const id of selectedIds) {
       const binding = state.catalog.locations.find((location) => location.id === id)?.huggingFace;
-      if (!binding || (automatic && (!huggingFaceConfig(binding).monitoringEnabled || !isWatchDue(state.hfWatches?.[huggingFaceWatchId(binding)], state.intervalHours, Date.now())))) continue;
+      if (!binding || (automatic && (modelItem(id).localMetadata?.hidden || !huggingFaceConfig(binding).monitoringEnabled || !isWatchDue(state.hfWatches?.[huggingFaceWatchId(binding)], state.intervalHours, Date.now())))) continue;
       const key = huggingFaceQueryKey(binding), targets = groups.get(key) ?? [];
       targets.push({ id, binding, revision: hfBindingRevisions.get(id) ?? 0 }); groups.set(key, targets);
     }
@@ -550,7 +551,7 @@ export async function checkModelUpdates(locationIds: string[], automatic = false
       if (cancelled) break;
       const active = (target: typeof targets[number]) => {
         const binding = state.catalog.locations.find((location) => location.id === target.id)?.huggingFace;
-        return Boolean(binding && currentHFOperation(target.id, target.revision) && huggingFaceWatchId(binding) === huggingFaceWatchId(target.binding));
+        return Boolean(binding && (!automatic || !modelItem(target.id).localMetadata?.hidden) && currentHFOperation(target.id, target.revision) && huggingFaceWatchId(binding) === huggingFaceWatchId(target.binding));
       };
       const valid = targets.filter(active);
       if (!valid.length) continue;
@@ -582,7 +583,8 @@ export async function checkModelUpdates(locationIds: string[], automatic = false
       }
     }
   } finally {
-    const hfNotifications = cancelled ? 0 : [...hfNotices].reduce((total, [watchId, count]) => total + (state.catalog.locations.some((location) => location.huggingFace && huggingFaceWatchId(location.huggingFace) === watchId && huggingFaceConfig(location.huggingFace).monitoringEnabled) ? count : 0), 0);
+    const notificationCount = cancelled ? 0 : [...civitaiNotices].reduce((total, [modelId, count]) => total + (state.catalog.locations.some(location => location.civitai && 'modelId' in location.civitai && location.civitai.modelId === modelId && isModelWatched(modelItem(location.id))) ? count : 0), 0);
+    const hfNotifications = cancelled ? 0 : [...hfNotices].reduce((total, [watchId, count]) => total + (state.catalog.locations.some((location) => !getModelLocalMetadata(state.localMetadata, location)?.hidden && location.huggingFace && huggingFaceWatchId(location.huggingFace) === watchId && huggingFaceConfig(location.huggingFace).monitoringEnabled) ? count : 0), 0);
     const counts = modelUpdateCounts(state.catalog, state.watches, state.hfWatches);
     const updated = selectedModels.filter((model) => counts[model.id] > 0).length;
     const failures = selectedModels.filter((model) => model.locationIds.some((id) => failed.has(id))).length;
@@ -654,6 +656,7 @@ async function scheduledCheck() {
   if (!managerRunning || state.loading || state.progress) return;
   const ids = state.catalog.locations.filter((location) => {
     const item = modelItem(location.id);
+    if (item.localMetadata?.hidden) return false;
     if (location.huggingFace && huggingFaceConfig(location.huggingFace).monitoringEnabled && isWatchDue(state.hfWatches?.[huggingFaceWatchId(location.huggingFace)], state.intervalHours, Date.now())) return true;
     if (!isModelWatched(item)) return false;
     const remoteId = location.civitai && 'modelId' in location.civitai ? location.civitai.modelId : undefined;

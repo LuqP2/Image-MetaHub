@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useComfyTextFeedback } from '../../hooks/useComfyTextFeedback';
 import type { ComfyUITextResult } from '../../types';
 import { buttonClass, fieldClass } from '../promptLibrary/PromptVariables';
 let sessionSeparator: ', ' | ' ' | '\n' = ', ';
@@ -10,7 +11,7 @@ export default function ComfyUITextActions({ positive = '', negative = '', error
   const [token, setToken] = useState('');
   const [channel, setChannel] = useState<'positive' | 'negative'>('positive');
   const [separator, setSeparator] = useState<', ' | ' ' | '\n'>(sessionSeparator);
-  const [status, setStatus] = useState('');
+  const feedback = useComfyTextFeedback();
   const [busy, setBusy] = useState(false);
   const applying = useRef(false);
   useEffect(() => {
@@ -34,13 +35,13 @@ export default function ComfyUITextActions({ positive = '', negative = '', error
   const text = (sourceChannel || channel) === 'positive' ? positive : negative;
   const apply = async (mode: 'append' | 'replace') => {
     if (applying.current || !active || !token || !text.trim() || errors.length) return;
-    applying.current = true; setBusy(true); setStatus('');
+    applying.current = true; setBusy(true);
     try {
       const response = await window.electronAPI?.comfyUIViewApplyText({ token, text, mode, separator });
-      setStatus(response?.message || 'ComfyUI is unavailable.');
+      feedback.report(response, mode, text, result.targets.find(target => target.token === token));
       setToken('');
       if (!response?.success) setResult(response || { success: false, targets: [] });
-    } catch { setStatus('Could not apply the text. Copy text instead.'); setToken(''); }
+    } catch { feedback.report(undefined, mode, text); setToken(''); }
     finally { applying.current = false; setBusy(false); }
   };
   const target = result.targets.find(t => t.token === token);
@@ -59,6 +60,6 @@ export default function ComfyUITextActions({ positive = '', negative = '', error
     </div>
     <div className="flex gap-2">{(['append', 'replace'] as const).map(mode => <button key={mode} className={buttonClass} disabled={!active || busy || !token || !text.trim() || !!errors.length} onClick={() => void apply(mode)}>{mode === 'append' ? 'Append to field' : 'Replace field'}</button>)}</div>
     {!!errors.length && <p className="text-amber-300">Fill valid template values before applying.</p>}
-    {status && <p role="status" className="break-words">{status}</p>}
+    {feedback.toast}
   </section>;
 }

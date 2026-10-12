@@ -153,6 +153,7 @@ it('does not write when no compatible selected node exists', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
   fireEvent.click(await screen.findByRole('button', { name: 'Add to selected node Lighting' }));
   expect(await screen.findByRole('button', { name: 'Copy text instead' })).toBeTruthy();
+  expect(screen.getByRole('alert').textContent).toContain('Select a text node in ComfyUI.');
   expect(mocks.apply).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Copy text instead' }));
   await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('soft light'));
@@ -168,6 +169,8 @@ it('adds either prompt channel from its card and replaces node text from its con
   fireEvent.contextMenu(screen.getByRole('button', { name: 'Open Portrait' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Replace node text with prompt' }));
   await waitFor(() => expect(mocks.apply).toHaveBeenLastCalledWith({ token: 'field', text: 'studio portrait', mode: 'replace', separator: ', ' }));
+  expect(screen.getByRole('status').textContent).toContain('Node text replaced');
+  expect(screen.queryByText('Updated Positive · text')).toBeNull();
   expect(mocks.mutate).not.toHaveBeenCalled();
 });
 
