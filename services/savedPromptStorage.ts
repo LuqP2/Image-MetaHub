@@ -68,7 +68,7 @@ export async function listBrowserSavedPrompts(): Promise<SavedPrompt[]> {
 export async function saveBrowserPrompt(input: SavePromptInput): Promise<SavedPromptSaveResult> {
   const positivePrompt = typeof input.positivePrompt === 'string' ? input.positivePrompt : '';
   const negativePrompt = typeof input.negativePrompt === 'string' ? input.negativePrompt : '';
-  if (!positivePrompt.trim()) throw new Error('A non-empty positive prompt is required.');
+  if (!positivePrompt.trim() && !negativePrompt.trim()) throw new Error('A non-empty prompt is required.');
   const promptDigest = savedPromptDigest(positivePrompt, negativePrompt);
   const database = await openDatabase();
   try {
