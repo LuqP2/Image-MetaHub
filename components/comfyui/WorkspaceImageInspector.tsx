@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { CheckCircle, Clipboard, Copy, Play } from 'lucide-react';
 import type { IndexedImage, BaseMetadata } from '../../types';
 import { hasVerifiedTelemetry } from '../../utils/telemetryDetection';
 import { useResolvedThumbnail } from '../../hooks/useResolvedThumbnail';
-import { useSavePrompt } from '../../hooks/useSavePrompt';
+import { composeSavedPromptInput, useSavePrompt } from '../../hooks/useSavePrompt';
+import { getPersistedShadowMetadata } from '../../services/userDataPersistenceAdapter';
 import { buttonClass } from '../promptLibrary/PromptVariables';
 const formatValue = (value: unknown): string => value == null || value === '' ? 'Not found' : String(value);
 const hasMetadataValue = (value: unknown) => value != null && value !== '';
@@ -100,6 +101,8 @@ type Props = {
 };
 export default function WorkspaceImageInspector({ image, metadata, directoryPath, thumbnail, currentPosition, normalizedNavigationImages, canNavigatePrevious, canNavigateNext, onNavigatePrevious, onNavigateNext, isGenerating, isCopying, generateFromMetadata, copyToComfyUI, onOpenQueue, copyStatus, generateStatus, assetActionMessage, startImageFileDrag, showInspectorSelectionContextMenu, showInspectorFieldContextMenu, copyInspectorValue, onUseComposer }: Props) {
 const savePrompt = useSavePrompt();
+const currentImageId = useRef(image?.id);
+currentImageId.current = image?.id;
 const [saving, setSaving] = useState(false);
 const [message, setMessage] = useState('');
 return <section aria-label="Workspace Image Inspector" className="h-full overflow-y-auto p-4">
@@ -112,7 +115,18 @@ return <section aria-label="Workspace Image Inspector" className="h-full overflo
  } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Save failed.'); }
  finally { setSaving(false); }
 }}>Save prompt</button>
-<button className={buttonClass} disabled={!metadata?.prompt?.trim() && !metadata?.negativePrompt?.trim()} onClick={() => onUseComposer(metadata?.prompt || '', metadata?.negativePrompt || '')}>Use in composer</button>
+<button className={buttonClass} disabled={saving} onClick={async () => {
+ setSaving(true);
+ setMessage('');
+ try {
+  const shadow = await getPersistedShadowMetadata(image);
+  if (currentImageId.current !== image.id) return;
+  const effective = composeSavedPromptInput(image, shadow, directoryPath);
+  onUseComposer(effective.positivePrompt, effective.negativePrompt);
+ } catch (cause) {
+  if (currentImageId.current === image.id) setMessage(cause instanceof Error ? cause.message : 'Could not open composer.');
+ } finally { setSaving(false); }
+}}>Use in composer</button>
 </div>}
 {message && <p role="status" className="mt-2 text-xs text-gray-400">{message}</p>}
           {!image ? (
