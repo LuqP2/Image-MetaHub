@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import WorkspacePrompts from '../components/comfyui/WorkspacePrompts';
 import WorkspaceContextPanel from '../components/comfyui/WorkspaceContextPanel';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import { applyMutation, emptyEditor, makeDocument } from '../services/promptLibrary/core.mjs';
@@ -30,7 +31,13 @@ beforeEach(() => {
   useSavedPromptStore.setState({ prompts: [], blocks: [], error: null, isLoading: false, selectedPromptId: null });
   window.electronAPI = { comfyUIViewTextTargets: mocks.targets, comfyUIViewApplyText: mocks.apply } as never;
 });
-afterEach(() => { cleanup(); delete window.electronAPI; vi.clearAllMocks(); clearDraft(); clearDraft('comfyui'); });
+afterEach(() => {
+  cleanup();
+  // Reset the session navigation explicitly; remounts now retain it by design.
+  render(<WorkspacePrompts active={false} request={null} onOpenLibrary={vi.fn()} onViewSource={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Prompts', exact: true }));
+  cleanup(); delete window.electronAPI; vi.clearAllMocks(); clearDraft(); clearDraft('comfyui'); clearDraft('comfyui-block');
+});
 function Harness() {
   const [collapsed, setCollapsed] = useState(false);
   return <WorkspaceContextPanel collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} active imagePanel={<p>Image context</p>} request={null} onOpenLibrary={vi.fn()} onViewSource={vi.fn()} />;
@@ -201,4 +208,27 @@ it('disables Replace selected without a node selection and sends to the captured
   mocks.targets.mockResolvedValue({ success: true, targets: [] });
   fireEvent.click(screen.getByRole('menuitem', { name: 'Replace selected with prompt' }));
   await waitFor(() => expect(mocks.apply).toHaveBeenLastCalledWith({ token: 'selected-range', text: 'studio portrait', mode: 'replaceSelection', separator: ', ' }));
+});
+
+it('restores composition, block details and block editing after the Workspace remounts', async () => {
+  data.blocks = [{ id: 'light', text: 'soft light', editor: { ...emptyEditor(), title: 'Lighting' }, createdAt: 1, revision: 1 } as PromptBlock];
+  const props = { active: true, request: null, onOpenLibrary: vi.fn(), onViewSource: vi.fn() };
+  let view = render(<WorkspacePrompts {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Compose', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add prompt text' }));
+  fireEvent.change(screen.getAllByRole('textbox', { name: /positive part/ }).at(-1)!, { target: { value: 'draft survives remount' } });
+  view.unmount(); view = render(<WorkspacePrompts {...props} />);
+  expect(screen.getByRole('region', { name: 'Prompt editor' })).toBeTruthy();
+  expect((screen.getAllByRole('textbox', { name: /positive part/ }).at(-1)! as HTMLTextAreaElement).value).toBe('draft survives remount');
+  fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Open Lighting' }));
+  view.unmount(); view = render(<WorkspacePrompts {...props} />);
+  expect(screen.getByRole('region', { name: 'Prompt details' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Edit saved block' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit saved block' }));
+  fireEvent.change(screen.getByLabelText('Block text'), { target: { value: 'block draft survives remount' } });
+  view.unmount(); render(<WorkspacePrompts {...props} />);
+  expect((screen.getByLabelText('Block text') as HTMLTextAreaElement).value).toBe('block draft survives remount');
+  expect(getDraft('comfyui')?.draft.editor?.document?.positive.at(-1)?.text).toBe('draft survives remount');
+  expect(mocks.mutate).not.toHaveBeenCalled();
 });

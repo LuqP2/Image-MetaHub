@@ -37,12 +37,12 @@ export default function WorkspacePrompts({ active, request, onOpenLibrary, onVie
   const { prompts, blocks, loadLibrary, mutate, error, isLoading } = useSavedPromptStore();
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
   const direct = useSendToComfyUINode();
-  const [kind, setKind] = useState<'prompt' | 'block'>('prompt');
+  const [kind, setKind] = useState<'prompt' | 'block'>(session.kind);
   const [filters, setFilters] = useState(session.filters);
   const [selected, setSelected] = useState(session.selected);
   const [editing, setEditing] = useState<Draft | null>(() => getDraft('comfyui')?.initial || session.editing || (canUseAdvancedPromptLibrary ? emptyComposition() : { editor: emptyEditor(), positivePrompt: '', negativePrompt: '' }));
   const [editingKind, setEditingKind] = useState(getDraft('comfyui')?.kind || session.editingKind);
-  const [mode, setMode] = useState<typeof session.mode>('browse');
+  const [mode, setMode] = useState<typeof session.mode>(session.mode);
   const [editorKey, setEditorKey] = useState(0);
   const [blockEditing, setBlockEditing] = useState<Draft | null>(() => getDraft('comfyui-block')?.initial || null);
   const [blockKey, setBlockKey] = useState(0);

@@ -37,6 +37,10 @@ describe('saved prompt composition', () => {
     });
   });
 
+  it('saves text supplied only by shadow metadata when embedded text is empty', () => {
+    const target = image({ metadata: { normalizedMetadata: { prompt: '', negativePrompt: '' } } as IndexedImage['metadata'] });
+    expect(composeSavedPromptInput(target, { imageId: target.id, prompt: 'shadow-only text', updatedAt: 1 } as ShadowMetadata)).toMatchObject({ positivePrompt: 'shadow-only text', textBasis: 'effective' });
+  });
   it('captures the displayed original instead of shadow metadata', () => {
     const shadow = { imageId: 'directory::nested/image.png', prompt: 'edited', updatedAt: 1 } as ShadowMetadata;
     expect(composeSavedPromptInput(image(), shadow, null, true)).toMatchObject({

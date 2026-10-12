@@ -103,8 +103,8 @@ const savePrompt = useSavePrompt();
 const [saving, setSaving] = useState(false);
 const [message, setMessage] = useState('');
 return <section aria-label="Workspace Image Inspector" className="h-full overflow-y-auto p-4">
-{image && metadata && <div className="flex flex-wrap gap-2">
-<button className={buttonClass} disabled={saving || (!metadata.prompt?.trim() && !metadata.negativePrompt?.trim())} onClick={async () => {
+{image && <div className="flex flex-wrap gap-2">
+<button className={buttonClass} disabled={saving} onClick={async () => {
  setSaving(true);
  try {
   await savePrompt(image, { directoryPath, readAuthoritativeShadow: true });
@@ -112,7 +112,7 @@ return <section aria-label="Workspace Image Inspector" className="h-full overflo
  } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Save failed.'); }
  finally { setSaving(false); }
 }}>Save prompt</button>
-<button className={buttonClass} disabled={!metadata.prompt?.trim() && !metadata.negativePrompt?.trim()} onClick={() => onUseComposer(metadata.prompt || '', metadata.negativePrompt || '')}>Use in composer</button>
+<button className={buttonClass} disabled={!metadata?.prompt?.trim() && !metadata?.negativePrompt?.trim()} onClick={() => onUseComposer(metadata?.prompt || '', metadata?.negativePrompt || '')}>Use in composer</button>
 </div>}
 {message && <p role="status" className="mt-2 text-xs text-gray-400">{message}</p>}
           {!image ? (

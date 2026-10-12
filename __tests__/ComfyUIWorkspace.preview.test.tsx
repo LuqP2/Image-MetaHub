@@ -195,4 +195,16 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
     await waitFor(() => expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ action: 'create', kind: 'block', item: expect.objectContaining({ text: '  warm\n light  ' }) })));
     expect(window.electronAPI?.comfyUIViewOpen).not.toHaveBeenCalled();
   });
+  it('allows saving an image without embedded prompt text through authoritative shadow validation', async () => {
+    const image = createImage('shadow-only');
+    image.metadata!.normalizedMetadata!.prompt = '';
+    image.metadata!.normalizedMetadata!.negativePrompt = '';
+    promptMocks.save.mockClear().mockResolvedValue({ success: true });
+    render(<ComfyUIWorkspace image={image} navigationImages={[image]} currentIndex={0} isActive={false} directoryPath="C:/synthetic" onOpenQueue={vi.fn()} onOpenSettings={vi.fn()} />);
+    const button = screen.getByRole('button', { name: 'Save prompt' });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(promptMocks.save).toHaveBeenCalledWith(image, { directoryPath: 'C:/synthetic', readAuthoritativeShadow: true }));
+  });
+
 });
