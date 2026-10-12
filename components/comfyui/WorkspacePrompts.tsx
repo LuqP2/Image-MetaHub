@@ -28,8 +28,8 @@ function NodeItemActions({ result, busy, onSend }: { result: ReturnType<typeof c
 export type WorkspaceCompositionRequest = { id: number; positive: string; negative: string } | { id: number; text: string; channel: 'positive' | 'negative'; block?: PromptBlock };
 type Draft = Partial<SavedPrompt & PromptBlock>;
 const emptyComposition = (): Draft => ({ positivePrompt: '', negativePrompt: '', editor: { ...emptyEditor(), document: { ...makeDocument(), positive: [], negative: [] } } });
-const session: { kind: 'prompt' | 'block'; filters: PromptLibraryFilters; selected: string | null; editing: Draft | null; editingKind: 'prompt' | 'block'; mode: 'browse' | 'details' | 'edit' | 'blockedit'; offset: number } = {
-  kind: 'prompt', filters: emptyFilters, selected: null, editing: null, editingKind: 'prompt', mode: 'browse', offset: 0,
+const session: { kind: 'prompt' | 'block'; filters: PromptLibraryFilters; selected: string | null; editing: Draft | null; blockEditing: Draft | null; editingKind: 'prompt' | 'block'; mode: 'browse' | 'details' | 'edit' | 'blockedit'; offset: number } = {
+  kind: 'prompt', filters: emptyFilters, selected: null, editing: null, blockEditing: null, editingKind: 'prompt', mode: 'browse', offset: 0,
 };
 export default function WorkspacePrompts({ active, request, onOpenLibrary, onViewSource }: {
   active: boolean; request: WorkspaceCompositionRequest | null; onOpenLibrary: () => void; onViewSource: (path: string) => void | Promise<void>;
@@ -44,7 +44,7 @@ export default function WorkspacePrompts({ active, request, onOpenLibrary, onVie
   const [editingKind, setEditingKind] = useState(getDraft('comfyui')?.kind || session.editingKind);
   const [mode, setMode] = useState<typeof session.mode>(session.mode);
   const [editorKey, setEditorKey] = useState(0);
-  const [blockEditing, setBlockEditing] = useState<Draft | null>(() => getDraft('comfyui-block')?.initial || null);
+  const [blockEditing, setBlockEditing] = useState<Draft | null>(() => getDraft('comfyui-block')?.initial || session.blockEditing);
   const [blockKey, setBlockKey] = useState(0);
   const [append, setAppend] = useState<Extract<WorkspaceCompositionRequest, { text: string }> | undefined>();
   const [showFilters, setShowFilters] = useState(false);
@@ -52,7 +52,7 @@ export default function WorkspacePrompts({ active, request, onOpenLibrary, onVie
   const dirty = useRef(Boolean(getDraft('comfyui')));
   const onDirty = useCallback((value: boolean) => { dirty.current = value; }, []);
   useEffect(() => { void loadLibrary(); }, [loadLibrary]);
-  useEffect(() => { Object.assign(session, { kind, filters, selected, editing, editingKind, mode }); }, [kind, filters, selected, editing, editingKind, mode]);
+  useEffect(() => { Object.assign(session, { kind, filters, selected, editing, blockEditing, editingKind, mode }); }, [kind, filters, selected, editing, blockEditing, editingKind, mode]);
   const all = kind === 'prompt' ? prompts : blocks;
   const visible = useMemo(() => filterItems(all, filters), [all, filters]);
   const item = all.find(entry => entry.id === selected);

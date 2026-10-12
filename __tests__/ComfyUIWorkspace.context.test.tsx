@@ -232,3 +232,27 @@ it('restores composition, block details and block editing after the Workspace re
   expect(getDraft('comfyui')?.draft.editor?.document?.positive.at(-1)?.text).toBe('draft survives remount');
   expect(mocks.mutate).not.toHaveBeenCalled();
 });
+
+it.each(['existing', 'new'] as const)('restores a clean %s block editor and clears it after cancel', async kind => {
+  data.blocks = [{ id: 'light', text: 'soft light', editor: { ...emptyEditor(), title: 'Lighting' }, createdAt: 1, revision: 1 } as PromptBlock];
+  const props = { active: false, request: null, onOpenLibrary: vi.fn(), onViewSource: vi.fn() };
+  let view = render(<WorkspacePrompts {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+  if (kind === 'existing') {
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Lighting' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit saved block' }));
+  } else fireEvent.click(screen.getByRole('button', { name: 'New block' }));
+  expect(getDraft('comfyui-block')).toBeNull();
+  for (let repeat = 0; repeat < 2; repeat++) {
+    view.unmount(); view = render(<WorkspacePrompts {...props} />);
+    expect(screen.getByRole('region', { name: 'Prompt editor' })).toBeTruthy();
+    expect((screen.getByLabelText('Block text') as HTMLTextAreaElement).value).toBe(kind === 'existing' ? 'soft light' : '');
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe(kind === 'existing' ? 'Lighting' : '');
+    expect(getDraft('comfyui-block')).toBeNull();
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+  view.unmount(); render(<WorkspacePrompts {...props} />);
+  expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
+  expect(await screen.findByRole('button', { name: 'Open Lighting' })).toBeTruthy();
+  expect(mocks.mutate).not.toHaveBeenCalled();
+});
