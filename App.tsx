@@ -4548,7 +4548,18 @@ export default function App() {
                         />
                   )
                 ) : libraryView === 'prompts' ? (
-                  <PromptLibrary onViewSource={handleOpenFileFromDeepLink} />
+                  <PromptLibrary onViewSource={handleOpenFileFromDeepLink} onFindImages={prompt => {
+                    handleClearAllFilters();
+                    useImageStore.getState().clearFolderSelection();
+                    useSemanticStore.getState().clearQuery();
+                    useImageStore.getState().clearImageSelection();
+                    useImageStore.getState().setPreviewImage(null);
+                    setSearchInputValue(prompt);
+                    setSearchQuery(prompt);
+                    setCurrentPage(1);
+                    resetLibraryGridScrollPosition();
+                    setLibraryView('library');
+                  }} />
                 ) : libraryView === 'explore' ? (
                   <ExploreWorkspace
                     onNavigateToLibrary={() => {

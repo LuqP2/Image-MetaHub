@@ -29,6 +29,45 @@ async function editItem(name: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 }
 describe('integrated Prompt Library', () => {
+  it('finds images from the card menu and opened details without changing the saved prompt', async () => {
+    const findImages = vi.fn();
+    render(<PromptLibrary onViewSource={vi.fn()} onFindImages={findImages} />);
+    const card = await screen.findByRole('button', { name: 'Open Studio portrait' });
+    fireEvent.contextMenu(card.closest('article')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Find images' }));
+    expect(findImages).toHaveBeenLastCalledWith('Studio portrait');
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(card);
+    fireEvent.click(screen.getByRole('button', { name: 'Find images' }));
+    expect(findImages).toHaveBeenCalledTimes(2);
+    expect(findImages).toHaveBeenLastCalledWith('Studio portrait');
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
+  it('opens templates to fill required values before finding images, including on Free', async () => {
+    mocks.advanced = false;
+    data.prompts[0].editor!.title = 'Template';
+    data.prompts[0].editor!.document = { ...makeDocument('Hello {{subject}}'), mode: 'template', variables: [{ name: 'subject', label: 'Subject', type: 'text', required: true, defaultValue: '', options: [] }] };
+    const findImages = vi.fn();
+    render(<PromptLibrary onViewSource={vi.fn()} onFindImages={findImages} />);
+    fireEvent.contextMenu((await screen.findByRole('button', { name: 'Open Template' })).closest('article')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Find images' }));
+    expect(findImages).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: 'Prompt details' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Find images' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Subject *'), { target: { value: 'world' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Find images' }));
+    expect(findImages).toHaveBeenLastCalledWith('Hello world');
+    expect(mocks.gate).not.toHaveBeenCalled();
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
+  it('finds images using negative text when the saved prompt has no positive text', async () => {
+    data.prompts[0].positivePrompt = '';
+    const findImages = vi.fn();
+    render(<PromptLibrary onViewSource={vi.fn()} onFindImages={findImages} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Studio portrait' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Find images' }));
+    expect(findImages).toHaveBeenCalledWith('bad hands');
+  });
   it('selects cards in list and grid without opening details or toggling twice', async () => {
     render(<PromptLibrary onViewSource={vi.fn()} />);
     await screen.findByRole('button', { name: 'Open Studio portrait' });
