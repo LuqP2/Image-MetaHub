@@ -1,28 +1,51 @@
 import React, { useEffect, useState } from 'react';
 import { getPreviewValues, rememberPreviewValues } from '../../services/promptLibrary/sessionDraft';
-import { Heart, MoreHorizontal, Pencil, X } from 'lucide-react';
+import { Heart, MoreHorizontal, Pencil, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { PromptLibraryItem } from '../../types';
 import { allVariables, compilePrompt, makeDocument, normalizeEditor } from '../../services/promptLibrary/core.mjs';
 import { usePromptLibraryPreview } from '../../hooks/usePromptLibraryPreview';
 import { selectedPromptText, usePromptBlockExtraction } from '../../hooks/usePromptBlockExtraction';
 import PromptPreview from './PromptPreview';
 import { VariableValues, buttonClass } from './PromptVariables';
+import PromptTagsInput from './PromptTagsInput';
+import { useSavedPromptStore } from '../../store/useSavedPromptStore';
 
-export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDuplicate, onRemove, onDuplicates, onViewSource, renderActions, workspace = false, onSendSelection }: {
+export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDuplicate, onRemove, onDuplicates, onViewSource, renderActions, renderSecondaryActions, workspace = false, onSendSelection, onPrevious, onNext, position }: {
   item: PromptLibraryItem; onEdit: () => void; onClose: () => void; onFavorite: () => void;
   onDuplicate: () => void; onRemove: () => void; onDuplicates: () => void; onViewSource: (path: string) => void | Promise<void>;
   renderActions?: (result: ReturnType<typeof compilePrompt>) => React.ReactNode;
+  renderSecondaryActions?: () => React.ReactNode;
+  onPrevious?: () => void;
+  onNext?: () => void;
+  position?: string;
   workspace?: boolean;
   onSendSelection?: (text: string) => void;
 }) {
   const editor = normalizeEditor(item.editor);
   const block = 'text' in item;
   const preview = usePromptLibraryPreview(item);
+  const [previewOpen, setPreviewOpen] = useState(() => localStorage.getItem('imh-prompt-details-preview-open') === 'true');
   const [values, setValues] = useState<Record<string, string>>(() => workspace ? getPreviewValues('comfyui', 'details:' + item.id) : {});
   useEffect(() => { if (workspace) rememberPreviewValues('comfyui', 'details:' + item.id, values); }, [workspace, item.id, values]);
   const [menu, setMenu] = useState(false);
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
   const [error, setError] = useState('');
+  const [savingTags, setSavingTags] = useState(false);
+  const [tagStatus, setTagStatus] = useState('');
+  const libraryPrompts = useSavedPromptStore(state => state.prompts);
+  const libraryBlocks = useSavedPromptStore(state => state.blocks);
+  const suggestions = [...new Set([...libraryPrompts, ...libraryBlocks].flatMap(entry => entry.editor?.tags || []))];
+  const saveTags = async (tags: string[]) => {
+    if (savingTags) return;
+    setSavingTags(true); setError(''); setTagStatus('');
+    try {
+      const state = useSavedPromptStore.getState();
+      const latest = (block ? state.blocks : state.prompts).find(entry => entry.id === item.id) || item;
+      await state.mutate({ action: 'update', kind: block ? 'block' : 'prompt', item: { ...latest, editor: { ...normalizeEditor(latest.editor), tags } }, expectedRevision: latest.revision || 1 });
+      setTagStatus('Tags saved.');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save tags.'); }
+    finally { setSavingTags(false); }
+  };
   const extraction = usePromptBlockExtraction();
   let variables = editor.variables;
   try { if (!block) variables = editor.document?.mode === 'template' ? allVariables(editor.document) : []; } catch { variables = []; }
@@ -35,26 +58,27 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
     else setError('Source unavailable');
   };
   return <section aria-label="Prompt details" className="flex h-full min-h-0 flex-col rounded-xl border border-gray-700 bg-gray-900/50">
-    <header className="flex items-center gap-2 border-b border-gray-700 p-3">
+    <header className={`flex shrink-0 items-center border-b border-gray-700 ${workspace ? 'gap-1 p-2' : 'gap-2 p-3'}`}>
+      {position && <><button className="app-top-icon-button" aria-label="Previous item" title="Previous" disabled={!onPrevious} onClick={onPrevious}><ChevronLeft size={16} /></button><span className="shrink-0 text-[11px] text-gray-400">{position}</span><button className="app-top-icon-button" aria-label="Next item" title="Next" disabled={!onNext} onClick={onNext}><ChevronRight size={16} /></button></>}
       <div className="min-w-0 flex-1">{(editor.title.trim() || block) && <h3 className="truncate text-sm font-semibold">{editor.title.trim() || 'Untitled block'}</h3>}</div>
       <button className={`app-top-icon-button ${editor.favorite ? '!text-red-400' : ''}`} aria-label="Toggle favorite" aria-pressed={editor.favorite} onClick={onFavorite}><Heart size={16} fill={editor.favorite ? 'currentColor' : 'none'} /></button>
-      <button className={buttonClass} onClick={onEdit}><Pencil size={14} />{workspace ? block ? 'Edit saved block' : 'Edit saved prompt' : 'Edit'}</button>
+      <button className={workspace ? 'app-top-icon-button' : buttonClass} aria-label={workspace ? block ? 'Edit saved block' : 'Edit saved prompt' : 'Edit'} title="Edit" onClick={onEdit}><Pencil size={14} />{!workspace && 'Edit'}</button>
       <div className="relative"><button className="app-top-icon-button" aria-label="Item actions" aria-expanded={menu} onClick={() => setMenu(!menu)}><MoreHorizontal size={16} /></button>{menu && <><button tabIndex={-1} aria-label="Close item actions" className="fixed inset-0 z-20 cursor-default" onClick={() => setMenu(false)} /><div className="absolute right-0 top-11 z-30 w-44 rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl">{[['Duplicate', onDuplicate], ['Check duplicates', onDuplicates], ['Remove', onRemove]].map(([label, action]) => <button key={label as string} className={`block w-full rounded p-2 text-left text-xs hover:bg-gray-800 ${label === 'Remove' ? 'text-red-400' : ''}`} onClick={() => { setMenu(false); (action as () => void)(); }}>{label as string}</button>)}</div></>}</div>
       <button className="app-top-icon-button" aria-label="Close details" onClick={onClose}><X size={16} /></button>
     </header>
-    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+    <div className={`min-h-0 flex-1 overflow-y-auto ${workspace ? 'space-y-2 p-2' : 'space-y-4 p-4'}`}>
       {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
-      {!editor.title.trim() && <button className="text-xs text-accent hover:underline" onClick={onEdit}>Add a title to make this {block ? 'block' : 'prompt'} easier to find</button>}
-      {workspace && renderActions?.(result)}
-      {variables.length > 0 && <section className="space-y-2 rounded-lg border border-accent/25 bg-accent/5 p-3"><h4 className="text-sm font-semibold">Fill template fields</h4><p className="text-xs text-gray-400">These values are used for copying. Your saved template stays unchanged.</p><VariableValues variables={variables} values={values} onChange={setValues} /></section>}
-      <div onContextMenu={e => { const text = selectedPromptText(); if (text) { e.preventDefault(); setSelection({ text, x: Math.min(e.clientX, window.innerWidth - 240), y: Math.min(e.clientY, window.innerHeight - (onSendSelection ? 150 : 100)) }); } }}><PromptPreview channel={workspace && block ? 'block' : undefined} result={result} heading={block ? 'Block text' : 'Prompt'} /></div>
+      {(workspace || preview.url) && <details open={previewOpen} onToggle={e => { const open = e.currentTarget.open; setPreviewOpen(open); localStorage.setItem('imh-prompt-details-preview-open', String(open)); }} className="rounded-lg border border-gray-700 p-2 text-xs text-gray-400"><summary className="cursor-pointer">Preview image</summary>{preview.url ? <img src={preview.url} alt="Linked preview" className="mt-2 max-h-44 w-full rounded bg-gray-950/50 object-contain" /> : <p className="pt-2">No preview image.</p>}</details>}
+      {variables.length > 0 && <section className="space-y-2 rounded-lg border border-accent/25 bg-accent/5 p-3"><h4 className="text-sm font-semibold">Fill values</h4><p className="text-xs text-gray-400">These values replace the placeholders in the final text when copying or sending to a node. Your saved text stays unchanged.</p><VariableValues variables={variables} values={values} onChange={setValues} /></section>}
+      <div onContextMenu={e => { const text = selectedPromptText(); if (text) { e.preventDefault(); setSelection({ text, x: Math.min(e.clientX, window.innerWidth - 240), y: Math.min(e.clientY, window.innerHeight - (onSendSelection ? 150 : 100)) }); } }}><PromptPreview compact={workspace} channel={workspace && block ? 'block' : undefined} result={result} heading={block ? 'Block text' : 'Prompt'} /></div>
       {!workspace && renderActions?.(result)}
-      {preview.url && <img src={preview.url} alt="Linked preview" className="max-h-52 w-full rounded-lg bg-gray-950/50 object-contain" />}
-      {!!editor.tags.length && <div className="flex flex-wrap gap-1.5">{editor.tags.map(tag => <span key={tag} className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-400">{tag}</span>)}</div>}
+      <div className="space-y-1"><PromptTagsInput compact={workspace} tags={editor.tags} suggestions={suggestions} disabled={savingTags} onChange={tags => void saveTags(tags)} />{(savingTags || tagStatus) && <p role="status" className="text-[11px] text-gray-500">{savingTags ? 'Saving tags…' : tagStatus}</p>}</div>
+      {renderSecondaryActions?.()}
       {editor.category && <p className="text-xs text-gray-400">Category: {editor.category}</p>}
       {editor.notes && <section><h4 className="mb-2 text-xs text-gray-400">Notes</h4><p className="whitespace-pre-wrap break-words text-sm">{editor.notes}</p></section>}
       <details className="space-y-3 border-t border-gray-700 pt-3 text-xs text-gray-400"><summary className="cursor-pointer">Information</summary>{metadata.map(([key, value]) => <div key={key} className="break-words"><span className="capitalize">{key}: </span>{Array.isArray(value) ? value.join(', ') : value}</div>)}<p>Saved {new Date(item.createdAt).toLocaleString()}</p>{item.updatedAt && <p>Updated {new Date(item.updatedAt).toLocaleString()}</p>}{'sourceCreatedAt' in item && item.sourceCreatedAt && <p>Source date {new Date(item.sourceCreatedAt).toLocaleString()}</p>}{'source' in item && item.source && window.electronAPI && <button className={buttonClass} onClick={() => void source()}>View Source</button>}</details>
     </div>
+    {workspace && renderActions && <footer className="shrink-0 border-t border-gray-700 p-2">{renderActions(result)}</footer>}
     {selection && <><button className="fixed inset-0 z-[11000] cursor-default" aria-label="Dismiss selection menu" onClick={() => setSelection(null)} /><div className="fixed z-[11001] flex flex-col items-stretch rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl" style={{ left: selection.x, top: selection.y }}>{onSendSelection && <button className={buttonClass} onClick={() => { onSendSelection(selection.text); setSelection(null); }}>Send to selected node</button>}<button className={buttonClass} onClick={() => { extraction.open(selection.text, 'source' in item ? item.source : null); setSelection(null); }}>Save Selection as Block</button></div></>}
     {extraction.dialog}
   </section>;

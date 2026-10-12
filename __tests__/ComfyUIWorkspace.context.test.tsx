@@ -50,7 +50,6 @@ it('uses prompts and model trigger words in the same preserved Workspace composi
   fireEvent.click(screen.getByRole('button', { name: 'Prompts', exact: true }));
   fireEvent.click(await screen.findByRole('button', { name: 'Open Portrait' }));
   fireEvent.click(screen.getByText('Use in Compose'));
-  fireEvent.click(screen.getByRole('button', { name: 'Use prompt in Compose' }));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Append to field' }).hasAttribute('disabled')).toBe(false));
   fireEvent.click(screen.getByRole('button', { name: 'Append to field' }));
   await waitFor(() => expect(mocks.apply).toHaveBeenCalledWith({ token: 'field', text: 'studio portrait', mode: 'append', separator: ', ' }));
@@ -67,8 +66,7 @@ it('uses prompts and model trigger words in the same preserved Workspace composi
   expect(screen.getByText('Image context')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Collapse context panel' }));
   fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
-  expect(await screen.findByRole('button', { name: 'Open Portrait' })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Compose', exact: true }));
+  expect(await screen.findByRole('button', { name: 'Append to field' })).toBeTruthy();
   expect(screen.getByText('studio portrait, studio_trigger')).toBeTruthy();
 });
 
@@ -158,4 +156,32 @@ it('does not write when no compatible selected node exists', async () => {
   expect(mocks.apply).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Copy text instead' }));
   await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('soft light'));
+});
+
+
+it('adds either prompt channel from its card and replaces node text from its context menu', async () => {
+  render(<Harness />); fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Add prompt to selected node Portrait' }));
+  await waitFor(() => expect(mocks.apply).toHaveBeenLastCalledWith({ token: 'field', text: 'studio portrait', mode: 'append', separator: ', ' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add negative to selected node Portrait' }));
+  await waitFor(() => expect(mocks.apply).toHaveBeenLastCalledWith({ token: 'field', text: 'noise', mode: 'append', separator: ', ' }));
+  fireEvent.contextMenu(screen.getByRole('button', { name: 'Open Portrait' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Replace node text with prompt' }));
+  await waitFor(() => expect(mocks.apply).toHaveBeenLastCalledWith({ token: 'field', text: 'studio portrait', mode: 'replace', separator: ', ' }));
+  expect(mocks.mutate).not.toHaveBeenCalled();
+});
+
+it('navigates saved items without collapsing the image preview', async () => {
+  data.prompts.push({ ...data.prompts[0], id: 'second', positivePrompt: 'landscape', editor: { ...emptyEditor(), title: 'Landscape' } });
+  render(<Harness />); fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Open Portrait' }));
+  const preview = screen.getByText('Preview image').closest('details')!;
+  preview.open = true; fireEvent(preview, new Event('toggle'));
+  fireEvent.click(screen.getByRole('button', { name: 'Next item' }));
+  expect(screen.getByRole('button', { name: 'Edit saved prompt' })).toBeTruthy();
+  expect(screen.getByText('Preview image').closest('details')!.open).toBe(true);
+  expect((screen.getByRole('button', { name: 'Next item' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Previous item' }));
+  expect(screen.getByText('Preview image').closest('details')!.open).toBe(true);
+  expect((screen.getByRole('button', { name: 'Previous item' }) as HTMLButtonElement).disabled).toBe(true);
 });
