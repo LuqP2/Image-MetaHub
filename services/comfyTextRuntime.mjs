@@ -52,7 +52,8 @@ export function comfyTextRuntime(operation, payload = {}, expectedOrigin) {
       if (entry.node === node && entry.widget === widget && entry.value === widget.value
         && entry.selection?.element === selection?.element && entry.selection?.start === selection?.start && entry.selection?.end === selection?.end) return token;
     }
-    const token = crypto.randomUUID();
+    // getRandomValues is also available on plain-HTTP LAN origins.
+    const token = Array.from(crypto.getRandomValues(new Uint32Array(4)), value => value.toString(16).padStart(8, '0')).join('');
     state.targets.set(token, { node, widget, value: widget.value, selection });
     return token;
   };

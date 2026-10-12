@@ -18,6 +18,20 @@ beforeEach(() => {
   Object.assign(window, { app, __imhTextTargets: undefined });
 });
 describe('ComfyUI selected text editing', () => {
+  it('queries and edits on LAN-like origins without crypto.randomUUID', () => {
+    const context = { window, document, crypto: { getRandomValues: crypto.getRandomValues.bind(crypto) } };
+    const execute = (operation: string, payload = {}) => runInNewContext('(' + comfyTextRuntime.toString() + ')(' + JSON.stringify(operation) + ',' + JSON.stringify(payload) + ')', context);
+    const first = execute('query').targets[0].token;
+    expect(first).toMatch(/^[a-f0-9]{32}$/);
+    expect(execute('query').targets[0].token).toBe(first);
+    expect(execute('apply', { token: first, text: 'added', mode: 'append', separator: ', ' }).success).toBe(true);
+    expect(widget.value).toBe('old, added');
+    const next = execute('query').targets[0].token;
+    expect(next).not.toBe(first);
+    expect(execute('apply', { token: first, text: 'stale', mode: 'replace', separator: ', ' }).code).toBe('conflict');
+    expect(execute('apply', { token: next, text: 'new', mode: 'replace', separator: ', ' }).success).toBe(true);
+    expect(widget.value).toBe('new');
+  });
   it('captures the exact selection only from a node text field without modifying the graph', () => {
     const input = document.createElement('textarea');
     input.value = 'prefix  café\n<lora:test:1>  suffix';
