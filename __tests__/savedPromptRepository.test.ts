@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AssetProvenanceRepository, PROVENANCE_SCHEMA_VERSION } from '../electron/provenanceRepository.mjs';
 import { SavedPromptRepository } from '../electron/savedPromptRepository.mjs';
+import { normalizeEditor } from '../services/promptLibrary/core.mjs';
 
 const temporaryDirectories: string[] = [];
 const makeTempDirectory = () => {
@@ -21,6 +22,28 @@ afterEach(() => {
 });
 
 describe('saved prompt repository', () => {
+  it('persists negative-only saves across reopen, deduplicates them, and rejects empty pairs', () => {
+    const directory = makeTempDirectory();
+    const databasePath = path.join(directory, 'catalog.sqlite');
+    const repository = new AssetProvenanceRepository({ databasePath, randomUUID: () => uuid(1) });
+    repository.open();
+    const input = {
+      positivePrompt: '', negativePrompt: '  Negative\nonly  ',
+      textBasis: 'effective' as const, source: null, sourceCreatedAt: 100,
+      editor: normalizeEditor({ metadata: { model: 'synthetic-model' } }),
+    };
+    const saved = repository.savePrompt(input);
+    expect(saved).toMatchObject({ status: 'saved', prompt: input });
+    expect(repository.savePrompt(input)).toEqual({ status: 'already-saved', prompt: saved.prompt });
+    expect(() => repository.savePrompt({ ...input, positivePrompt: ' \n', negativePrompt: '\t' }))
+      .toThrow('A non-empty prompt is required.');
+    repository.close();
+    const reopened = new AssetProvenanceRepository({ databasePath });
+    reopened.open();
+    expect(reopened.listSavedPrompts()).toEqual([saved.prompt]);
+    reopened.close();
+  });
+
   it('migrates to the current schema and preserves literal prompts across reopen and idempotent removal', () => {
     const directory = makeTempDirectory();
     const databasePath = path.join(directory, 'catalog.sqlite');

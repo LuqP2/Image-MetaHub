@@ -152,6 +152,7 @@ export interface ModelLocalMetadata {
   triggerWords?: string[];
   defaultStrength?: number;
   favorite?: boolean;
+  hidden?: boolean;
   watchUpdates?: boolean;
   previewImage?: string;
   examples?: ModelExample[];

@@ -4,7 +4,8 @@ import type { PromptBlock, PromptLibraryItem, SavedPrompt } from '../types';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { usePromptDialogFocus } from '../hooks/usePromptDialogFocus';
-import { emptyEditor, normalizeEditor } from '../services/promptLibrary/core.mjs';
+import { emptyEditor, normalizeEditor, compilePrompt, makeDocument } from '../services/promptLibrary/core.mjs';
+import { copyTextToClipboard } from '../utils/imageUtils';
 import { emptyFilters, filterItems, type PromptLibraryFilters } from '../services/promptLibrary/search';
 import { sessionDraft, clearDraft } from '../services/promptLibrary/sessionDraft';
 import PromptLibraryBrowser from './promptLibrary/PromptLibraryBrowser';
@@ -34,6 +35,7 @@ export default function PromptLibrary({ onViewSource }: { onViewSource: (path: s
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [toolsMenu, setToolsMenu] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [copyStatus, setCopyStatus] = useState('');
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [bulkCategory, setBulkCategory] = useState('');
   const dirty = useRef(false);
@@ -50,6 +52,13 @@ export default function PromptLibrary({ onViewSource }: { onViewSource: (path: s
     else { clearDraft(); action(); }
   };
   const open = (item: PromptLibraryItem) => change(() => { setEditing(null); select(item.id); setShowDuplicates(false); dirty.current = false; });
+  const copyItem = async (item: PromptLibraryItem) => {
+    const editor = normalizeEditor(item.editor);
+    const result = 'text' in item ? compilePrompt({ positivePrompt: item.text, editor: { ...editor, document: { ...makeDocument(item.text), mode: 'template', variables: editor.variables } } }) : compilePrompt(item);
+    if (result.errors.length) { open(item); setActionError('Fill the required values before copying.'); return; }
+    const response = await copyTextToClipboard(result.positivePrompt + (result.negativePrompt ? `\nNegative prompt: ${result.negativePrompt}` : ''));
+    setCopyStatus(response.success ? 'Copied.' : response.error || 'Copy failed.');
+  };
   const startEdit = () => { if (active) { setEditing(active); setEditorKey(k => k + 1); } };
   const selectId = (id: string) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const run = async (operation: Parameters<typeof mutate>[0]) => {
@@ -92,6 +101,7 @@ export default function PromptLibrary({ onViewSource }: { onViewSource: (path: s
       <button className={buttonClass + ' !border-accent/40 !bg-accent/15 !text-gray-100'} onClick={create}><Plus size={15} />New {kind}</button>
       <div className="relative"><button className="app-top-icon-button" aria-label="Library tools" aria-expanded={toolsMenu} onClick={() => setToolsMenu(!toolsMenu)}><MoreHorizontal size={18} /></button>{toolsMenu && <><button tabIndex={-1} className="fixed inset-0 z-20 cursor-default" aria-label="Close library tools" onClick={() => setToolsMenu(false)} /><div className="absolute right-0 top-11 z-30 w-48 rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl"><button className="block w-full rounded p-2 text-left text-xs hover:bg-gray-800 disabled:opacity-40" disabled={kind !== 'prompt' || !visible.length} onClick={() => { setToolsMenu(false); const candidates = visible.length > 1 ? visible.filter(p => p.id !== active?.id) : visible; open(candidates[Math.floor(Math.random() * candidates.length)]); }}>Random</button><button className="block w-full rounded p-2 text-left text-xs hover:bg-gray-800" onClick={() => { setToolsMenu(false); setShowTransfer(true); }}>Import / Export</button></div></>}</div>
     </header>
+    {copyStatus && <p role="status" className="text-xs text-accent">{copyStatus}</p>}
     {(error || actionError) && <div role="alert" className="shrink-0 rounded border border-red-500/40 p-2 text-sm text-red-400">{actionError || error}<button className={buttonClass + ' ml-2'} onClick={() => void loadLibrary()}>Retry</button></div>}
     {selectionMode && <div className="shrink-0 space-y-2 rounded-xl border border-accent/25 bg-accent/5 p-3 text-xs">
       <div className="flex flex-wrap items-center gap-2"><span className="mr-auto font-semibold">{selected.size} selected</span><button className={buttonClass} onClick={() => setSelected(new Set(visible.map(p => p.id)))}>Select filtered ({visible.length})</button><button className={buttonClass} onClick={() => { setSelected(new Set()); setSelectionMode(false); }}>Clear selection</button></div>
@@ -100,7 +110,11 @@ export default function PromptLibrary({ onViewSource }: { onViewSource: (path: s
     <div className="relative flex min-h-0 min-w-0 flex-1 gap-3">
       {showFilters && !editing && <div className="absolute inset-y-0 left-0 z-10 w-60 bg-gray-950 lg:static lg:shrink-0"><PromptLibraryFiltersPanel all={all} kind={kind} filters={filters} onChange={setBrowseFilters} onClose={() => setShowFilters(false)} /></div>}
       <div className={`min-h-0 min-w-0 flex-1 ${editing || active ? 'hidden lg:block' : ''} ${editing ? 'lg:!hidden' : ''}`}>
-        {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser all={all} visible={visible} filters={filters} onFilters={setBrowseFilters} selected={selected} selectionMode={selectionMode} onSelectionMode={() => { setSelectionMode(!selectionMode); setSelected(new Set()); }} activeId={active?.id} onOpen={open} onSelect={selectId} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} />}
+        {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser all={all} visible={visible} filters={filters} onFilters={setBrowseFilters} selected={selected} selectionMode={selectionMode} onSelectionMode={() => { setSelectionMode(!selectionMode); setSelected(new Set()); }} activeId={active?.id} contextNodeActions={false} onCopyItem={item => void copyItem(item)} onContextAction={(item, action) => {
+          if (action === 'edit') change(() => { select(item.id); setEditing(item); setEditorKey(key => key + 1); });
+          else if (action === 'duplicate') void run({ action: 'duplicate', kind, id: item.id }).then(result => { if (result.success) change(() => { setEditing(null); select(result.id || null); setShowDuplicates(false); dirty.current = false; }); });
+          else if (action === 'remove' && window.confirm('Delete this saved item?')) void run({ action: 'remove', kind, id: item.id }).then(result => { if (result.success && selectedPromptId === item.id) select(null); });
+        }} onOpen={open} onSelect={selectId} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} />}
       </div>
       {editing ? <div className="min-h-0 min-w-0 flex-1"><PromptEditor key={editorKey} initial={editing} kind={kind} onDirty={onDirty} onViewSource={onViewSource} requestSave={requestSave} onSaved={afterSaved} onSaveFailed={() => { saveIntent.current = null; setPending(null); setRequestSave(0); }} onClose={() => change(() => { setEditing(null); dirty.current = false; })} /></div> : active && <div className="flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl"><PromptDetails key={active.id} item={active} onEdit={startEdit} onClose={() => { select(null); setShowDuplicates(false); }} onFavorite={() => favorite(active)} onDuplicate={duplicate} onRemove={remove} onDuplicates={() => setShowDuplicates(!showDuplicates)} onViewSource={onViewSource} />{showDuplicates && <PromptDuplicatesPanel item={active} items={all} onOpen={open} />}</div>}
     </div>

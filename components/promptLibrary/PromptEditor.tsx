@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { copyTextToClipboard } from '../../utils/imageUtils';
 import { Heart } from 'lucide-react';
 import PromptTagsInput from './PromptTagsInput';
 import type { PromptLibraryItem, PromptBlock, SavedPrompt } from '../../types';
-import { normalizeEditor, makeDocument, compilePrompt, allVariables, documentText } from '../../services/promptLibrary/core.mjs';
+import { normalizeEditor, makeDocument, compilePrompt, allVariables, documentText, snapshotBlock } from '../../services/promptLibrary/core.mjs';
 import { useSavedPromptStore } from '../../store/useSavedPromptStore';
 import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { useImageStore } from '../../store/useImageStore';
@@ -11,9 +12,10 @@ import { usePromptBlockExtraction, selectedPromptText } from '../../hooks/usePro
 import { usePromptLibraryPreview, linkSessionPreview } from '../../hooks/usePromptLibraryPreview';
 import PromptComposer from './PromptComposer';
 import PromptPreview from './PromptPreview';
-import { sessionDraft, rememberDraft, clearDraft } from '../../services/promptLibrary/sessionDraft';
+import { getDraft, rememberDraft, clearDraft, getPreviewValues, rememberPreviewValues, type PromptDraftContext } from '../../services/promptLibrary/sessionDraft';
 import { VariableDefinitions, VariableValues, buttonClass, fieldClass } from './PromptVariables';
-export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty, onViewSource, onSaveFailed, requestSave = 0 }: {
+import { createSelectionField, usePromptSelectionMenu } from '../../hooks/usePromptSelectionMenu';
+export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty, onViewSource, onSaveFailed, requestSave = 0, draftContext = 'library', compact = false, renderActions, appendText }: {
   initial: Partial<SavedPrompt & PromptBlock>;
   kind: 'prompt' | 'block';
   onSaved: (id?: string) => void;
@@ -22,17 +24,28 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
   onViewSource: (path: string) => void | Promise<void>;
   requestSave?: number;
   onSaveFailed?: () => void;
+  draftContext?: PromptDraftContext;
+  compact?: boolean;
+  renderActions?: (result: ReturnType<typeof compilePrompt>, visible: boolean, channel?: 'positive' | 'negative') => React.ReactNode;
+  appendText?: { id: number; text: string; channel: 'positive' | 'negative'; block?: PromptBlock };
 }) {
+  const sessionDraft = getDraft(draftContext);
   const [draft, setDraft] = useState(() => {
     const recovered = sessionDraft?.kind === kind && sessionDraft.initial.id === initial.id ? sessionDraft.draft : initial;
     return { ...recovered, editor: recovered === initial ? normalizeEditor(initial.editor) : recovered.editor || normalizeEditor(null) };
   });
-  const [tab, setTab] = useState<'content' | 'compose' | 'fields' | 'details'>(kind === 'prompt' && initial.editor?.document ? 'compose' : 'content');
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [showFields, setShowFields] = useState(false);
+  const previewKey = 'edit:' + (initial.id || kind);
+  const [values, setValues] = useState<Record<string, string>>(() => getPreviewValues(draftContext, previewKey));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [mobilePreview, setMobilePreview] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState('');
+  const [saveDetails, setSaveDetails] = useState(false);
+  const [showNegative, setShowNegative] = useState(Boolean(draft.negativePrompt || draft.editor.document?.negative.some(part => part.text.trim())));
   const [selectedText, setSelectedText] = useState<string | null>(null);
+  const [fieldStatus, setFieldStatus] = useState('');
+  const textSelection = usePromptSelectionMenu();
   const [pendingFile, setPendingFile] = useState<File | null>(() => sessionDraft?.kind === kind && sessionDraft.initial.id === initial.id ? sessionDraft.pendingFile : null);
   const prompts = useSavedPromptStore((s) => s.prompts);
   const blocks = useSavedPromptStore((s) => s.blocks);
@@ -48,16 +61,31 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
   const dirty = JSON.stringify(draft) !== JSON.stringify({ ...initial, editor: normalizeEditor(initial.editor) });
   useEffect(() => {
     onDirty(dirty); if(dirty)
-      rememberDraft(kind, initial, draft, pendingFile);
+      rememberDraft(kind, initial, draft, pendingFile, draftContext);
     else
-      clearDraft();
-  }, [dirty, onDirty, draft, kind, initial, pendingFile]);
+      clearDraft(draftContext);
+  }, [dirty, onDirty, draft, kind, initial, pendingFile, draftContext]);
+  useEffect(() => { rememberPreviewValues(draftContext, previewKey, values); }, [draftContext, previewKey, values, dirty]);
   useEffect(() => {
     if(!dirty)
       return; const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
   const update = (patch: Partial<typeof draft>) => setDraft((p) => ({ ...p, ...patch }));
   const updateEditor = (patch: Partial<typeof editor>) => update({ editor: { ...editor, ...patch } });
+  useEffect(() => {
+    if (!appendText || !canUseAdvancedPromptLibrary) return;
+    setDraft(current => {
+      const document = current.editor.document || makeDocument(current.positivePrompt, current.negativePrompt);
+      const requestPartId = `workspace-request:${appendText.id}`;
+      if (document[appendText.channel].some(part => part.id === requestPartId)) return current;
+      const part = appendText.block ? snapshotBlock(appendText.block) : { id: crypto.randomUUID(), kind: 'text' as const, text: appendText.text, enabled: true };
+      const next = { ...document, mode: appendText.block?.editor.variables.length ? 'template' as const : document.mode, [appendText.channel]: [...document[appendText.channel].filter(part => !(part.kind === 'text' && !part.text)), { ...part, id: requestPartId }] };
+      try { allVariables(next); }
+      catch (cause) { setError(cause instanceof Error ? cause.message : 'Conflicting variables'); return current; }
+      return { ...current, editor: { ...current.editor, document: next } };
+    });
+    if (appendText.channel === 'negative') setShowNegative(true);
+  }, [appendText?.id]);
   const variables = useMemo(() => {
     try {
       return kind === 'block' ? editor.variables : editor.document?.mode === 'template' ? allVariables(editor.document) : [];
@@ -85,7 +113,7 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
       const id = await mutate({ action: copy || !initial.id ? 'create' : 'update', kind, item, expectedRevision: initial.revision || 1 });
       if(pendingFile && id)
         linkSessionPreview(id, pendingFile);
-      clearDraft();
+      clearDraft(draftContext);
       onDirty(false);
       onSaved(id);
     }
@@ -102,7 +130,7 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
     setError('');
     try {
       const id = await mutate({ action: 'create', kind: 'prompt', item: { positivePrompt: result.positivePrompt, negativePrompt: result.negativePrompt, editor: { ...editor, title: `${editor.title} Copy`, document: null, favorite: false } } });
-      clearDraft();
+      clearDraft(draftContext);
       onSaved(id);
     }
     catch(cause) {
@@ -113,10 +141,20 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
     }
   };
   const context = (e: React.MouseEvent<HTMLTextAreaElement>) => {
-    const text = e.currentTarget.value.slice(e.currentTarget.selectionStart, e.currentTarget.selectionEnd); if(text.trim()) {
-      e.preventDefault();
-      setSelectedText(text);
-    }
+    const channel = e.currentTarget.getAttribute('aria-label') === 'Negative prompt' ? 'negativePrompt' : 'positivePrompt';
+    textSelection.open(e, text => extraction.open(text, 'source' in initial ? initial.source || null : null), (text, start, end) => {
+      if (!gate()) return;
+      const field = createSelectionField(text, variables.map(variable => variable.name));
+      const currentText = kind === 'block' ? draft.text || '' : draft[channel] || '';
+      const replaced = currentText.slice(0, start) + '{{' + field.name + '}}' + currentText.slice(end);
+      if (kind === 'block') update({ text: replaced, editor: { ...editor, variables: [...editor.variables, field] } });
+      else {
+        const document = makeDocument(channel === 'positivePrompt' ? replaced : draft.positivePrompt, channel === 'negativePrompt' ? replaced : draft.negativePrompt);
+        update({ [channel]: replaced, editor: { ...editor, document: { ...document, mode: 'template', variables: [field] } } });
+      }
+      setShowFields(true);
+      setFieldStatus(`{{${field.name}}} replaces “${text}”. Its default value preserves the original text.`);
+    });
   };
   useEffect(() => {
     if(requestSave > 0)
@@ -157,14 +195,59 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
       if (!gate()) return;
       updateEditor({ document: makeDocument(draft.positivePrompt, draft.negativePrompt) });
     }
-    setTab('compose');
   };
-  const startTemplate = () => {
+  const fieldDefinitions = kind === 'block' ? <VariableDefinitions disabled={!editableContent} variables={editor.variables} onChange={variables => updateEditor({ variables })} /> : <VariableDefinitions disabled={!canUseAdvancedPromptLibrary} variables={editor.document?.variables || []} onChange={variables => {
     if (!gate()) return;
-    if (kind === 'prompt') updateEditor({ document: { ...(editor.document || makeDocument(draft.positivePrompt, draft.negativePrompt)), mode: 'template' } });
-    setTab('fields');
-  };
+    updateEditor({ document: { ...(editor.document || makeDocument(draft.positivePrompt, draft.negativePrompt)), mode: 'template', variables } });
+  }} />;
   const suggestions = [...new Set([...prompts, ...blocks].flatMap(item => item.editor?.tags || []))];
+  if (compact && kind === 'block') return <section aria-label="Prompt editor" className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900/50">
+    <header className="flex shrink-0 items-center gap-2 border-b border-gray-700 p-3"><h3 className="mr-auto text-sm font-semibold">{initial.id ? 'Edit saved block' : 'New block'}</h3><button className={buttonClass} disabled={busy} onClick={onClose}>Cancel</button><button className={buttonClass} disabled={busy || !dirty || conflict} onClick={() => void save()}>{busy ? 'Saving…' : 'Save block'}</button></header>
+    <div className="min-h-0 flex-1 space-y-4 overflow-auto p-3">
+      {fieldStatus && <p role="status" className="text-xs text-accent">{fieldStatus}</p>}
+      {(error || conflict) && <p role="alert" className="text-xs text-amber-300">{error || 'This block changed in another window. Reopen it or save a copy.'}</p>}
+      {conflict && <button className={buttonClass} disabled={busy} onClick={() => void save(true)}>Save as a copy</button>}
+      <label className="block text-xs">Block name<input aria-label="Title" className={fieldClass} value={editor.title} placeholder="Name this reusable block…" onChange={e => updateEditor({ title: e.target.value })} /></label>
+      <label className="block text-xs">Block text<textarea aria-label="Block text" className={fieldClass} rows={6} readOnly={!editableContent} value={draft.text || ''} onChange={e => update({ text: e.target.value })} onContextMenu={context} /></label>
+      <label className="block text-xs">Category<input aria-label="Category" className={fieldClass} value={editor.category} onChange={e => updateEditor({ category: e.target.value })} /></label>
+      <PromptTagsInput tags={editor.tags} suggestions={suggestions} onChange={tags => updateEditor({ tags })} /><details className="space-y-3 text-xs text-gray-400"><summary className="cursor-pointer">Notes and preview image</summary><label className="block">Notes<textarea aria-label="Notes" rows={2} className={fieldClass} value={editor.notes} onChange={e => updateEditor({ notes: e.target.value })} /></label>{preview.url && <img src={preview.url} alt="Linked preview" className="max-h-32 w-full object-contain" />}<button className={buttonClass} onClick={linkLibrary}>Link selected Library image</button>{window.electronAPI && <button className={buttonClass} onClick={async () => { const response = await window.electronAPI.promptLibraryChoosePreview(); if (response.success && response.data) updateEditor({ preview: response.data }); else if (response.success === false) setError(response.error); }}>Link image file</button>}<button className={buttonClass} onClick={() => updateEditor({ preview: 'hidden' })}>Hide preview</button></details>
+      <details className="space-y-3 text-xs text-gray-400"><summary className="cursor-pointer">Fillable text (optional)</summary><VariableDefinitions disabled={!editableContent} variables={editor.variables} onChange={variables => updateEditor({ variables })} /></details>
+      {!!variables.length && <VariableValues variables={variables} values={values} onChange={setValues} />}
+      <details className="space-y-3 text-xs"><summary className="cursor-pointer">Block preview</summary><PromptPreview channel="block" result={result} /></details>
+    </div>
+    {textSelection.menu}
+    {extraction.dialog}
+  </section>;
+  if (compact && kind === 'prompt') return <section aria-label="Prompt editor" className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900/50">
+    <header className="flex shrink-0 items-center gap-2 border-b border-gray-700 p-3">
+      <h3 className="mr-auto text-sm font-semibold">{initial.id ? 'Edit saved prompt' : 'Compose prompt'}</h3>
+      <button className={buttonClass} disabled={busy} onClick={onClose}>{initial.id ? 'Cancel edit' : 'Clear'}</button>
+      <button className={buttonClass} disabled={busy} aria-expanded={saveDetails} onClick={() => setSaveDetails(!saveDetails)}>{initial.id ? 'Save changes' : 'Save to library'}</button>
+    </header>
+    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+      {fieldStatus && <p role="status" className="text-xs text-accent">{fieldStatus}</p>}
+      {(error || conflict) && <p role="alert" className="text-xs text-amber-300">{error || 'This saved prompt changed in another window. Your draft is preserved; save a copy or reopen it before updating.'}</p>}
+      {saveDetails && <section aria-label="Save composition" className="space-y-3 rounded-lg border border-gray-700 p-3">
+        <label className="block text-xs">Title (optional)<input aria-label="Title" className={fieldClass} value={editor.title} onChange={e => updateEditor({ title: e.target.value })} /></label>
+        <PromptTagsInput tags={editor.tags} suggestions={suggestions} onChange={tags => updateEditor({ tags })} />
+        <label className="block text-xs">Notes<textarea aria-label="Notes" rows={2} className={fieldClass} value={editor.notes} onChange={e => updateEditor({ notes: e.target.value })} /></label>
+        <details className="space-y-3 text-xs text-gray-400"><summary className="cursor-pointer">More library options</summary><button className={buttonClass} aria-pressed={editor.favorite} onClick={() => updateEditor({ favorite: !editor.favorite })}>{editor.favorite ? 'Unfavorite' : 'Favorite'}</button>{preview.url && <img src={preview.url} alt="Linked preview" className="max-h-32 w-full object-contain" />}<button className={buttonClass} onClick={linkLibrary}>Link selected Library image</button>{window.electronAPI && <button className={buttonClass} onClick={async () => { const response = await window.electronAPI.promptLibraryChoosePreview(); if (response.success && response.data) updateEditor({ preview: response.data }); else if (response.success === false) setError(response.error); }}>Link image file</button>}<button className={buttonClass} onClick={() => updateEditor({ preview: 'hidden' })}>Hide preview</button>{(['model', 'generator', 'sampler', 'scheduler'] as const).map(key => <label key={key} className="block capitalize">{key}<input className={fieldClass} value={editor.metadata[key]} onChange={e => updateEditor({ metadata: { ...editor.metadata, [key]: e.target.value } })} /></label>)}<label className="block">LoRAs (one per line)<textarea className={fieldClass} value={editor.metadata.loras.join('\n')} onChange={e => updateEditor({ metadata: { ...editor.metadata, loras: e.target.value.split('\n') } })} /></label></details>
+        <button className={buttonClass} disabled={busy || !dirty || conflict} onClick={() => void save()}>{busy ? 'Saving…' : initial.id ? 'Update saved prompt' : 'Save prompt'}</button>
+        {conflict && <button className={buttonClass} disabled={busy} onClick={() => void save(true)}>Save as a copy</button>}
+      </section>}
+      {editor.document ? <PromptComposer compact document={editor.document} blocks={blocks} disabled={!canUseAdvancedPromptLibrary} onChange={document => update({ ...documentText(document), editor: { ...editor, document } })} onExtract={text => extraction.open(text)} onError={setError} /> : <>
+        <label className="block text-xs">Prompt<textarea aria-label="Prompt" className={fieldClass} rows={6} value={draft.positivePrompt || ''} onChange={e => update({ positivePrompt: e.target.value })} onContextMenu={context} /></label>
+        {showNegative || draft.negativePrompt ? <label className="block text-xs">Negative prompt<textarea aria-label="Negative prompt" className={fieldClass} rows={4} value={draft.negativePrompt || ''} onChange={e => update({ negativePrompt: e.target.value })} onContextMenu={context} /></label> : <button className={buttonClass} onClick={() => setShowNegative(true)}>Add negative</button>}
+        <button className={buttonClass} onClick={startComposition}>Compose with blocks</button>
+      </>}
+      {!!variables.length && <section className="space-y-2"><h4 className="text-xs font-semibold">Fill values</h4><VariableValues variables={variables} values={values} onChange={setValues} /></section>}
+      <details className="space-y-3 rounded-lg border border-gray-700 p-3"><summary className="cursor-pointer text-xs font-semibold">Final text</summary><PromptPreview result={result} /></details>
+      <details className="space-y-3 text-xs text-gray-400"><summary className="cursor-pointer">Fillable text (optional)</summary>{fieldDefinitions}</details>
+    </div>
+    <footer aria-label="Composition actions" className="shrink-0 space-y-2 border-t border-gray-700 bg-gray-900 p-3"><div className="flex items-center gap-2"><button className={buttonClass} disabled={!!result.errors.length || !result.positivePrompt} onClick={async () => { const response = await copyTextToClipboard(result.positivePrompt); setCopyFeedback(response.success ? 'Copied' : response.error || 'Copy failed'); }}>Copy prompt</button>{copyFeedback && <span role="status" className="text-xs text-accent">{copyFeedback}</span>}</div>{renderActions?.(result, true)}</footer>
+    {textSelection.menu}
+    {extraction.dialog}
+  </section>;
   return <section aria-label="Prompt editor" className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900/50 text-gray-100">
     <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-gray-700 p-3">
       <div className="mr-auto min-w-0"><h3 className="truncate text-sm font-semibold">{initial.id ? `Edit ${kind}` : `New ${kind}`}{initial.editor?.title ? ` · ${initial.editor.title}` : ''}</h3><p className="text-[11px] text-gray-400">{dirty ? 'Unsaved changes' : 'No changes yet'}</p></div>
@@ -172,36 +255,39 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
       <button type="button" className={buttonClass + ' !border-accent/40 !bg-accent/15 !text-gray-100'} disabled={busy || !dirty} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</button>
     </header>
     <div className="shrink-0 space-y-3 border-b border-gray-700 p-3">
-      <div className="flex items-end gap-3"><label className="block min-w-0 flex-1 text-xs text-gray-400">Title<input aria-label="Title" className={fieldClass} placeholder={kind === 'block' ? 'Name this reusable block…' : 'Give this prompt a name…'} value={editor.title} onChange={e => updateEditor({ title: e.target.value })} /></label><button type="button" className={`app-top-icon-button ${editor.favorite ? '!text-red-400' : ''}`} aria-label="Favorite" aria-pressed={editor.favorite} onClick={() => updateEditor({ favorite: !editor.favorite })}><Heart size={16} fill={editor.favorite ? 'currentColor' : 'none'} /></button></div>
+      <div className="flex items-end gap-3"><label className="block min-w-0 flex-1 text-xs text-gray-400">Title (optional)<input aria-label="Title" className={fieldClass} placeholder={kind === 'block' ? 'Name this reusable block…' : 'Give this prompt a name…'} value={editor.title} onChange={e => updateEditor({ title: e.target.value })} /></label><button type="button" className={`app-top-icon-button ${editor.favorite ? '!text-red-400' : ''}`} aria-label="Favorite" aria-pressed={editor.favorite} onClick={() => updateEditor({ favorite: !editor.favorite })}><Heart size={16} fill={editor.favorite ? 'currentColor' : 'none'} /></button></div>
       <div className="flex flex-wrap items-center gap-2">
-        <div className="app-top-segmented">{(['content', 'compose', 'fields', 'details'] as const).filter(t => kind !== 'block' || t !== 'compose').map(t => <button type="button" key={t} aria-pressed={tab === t} className={`app-top-segment ${tab === t ? 'app-top-segment-active' : ''}`} onClick={() => t === 'compose' ? startComposition() : setTab(t)}>{t === 'content' ? 'Text' : t === 'compose' ? 'Compose' : t === 'fields' ? 'Template fields' : 'Organization'}</button>)}</div>
-        {(editor.document || variables.length > 0) && <button type="button" className={buttonClass + ' lg:hidden'} onClick={() => setMobilePreview(!mobilePreview)}>{mobilePreview ? 'Back to editing' : 'Show result'}</button>}
+        {<button type="button" className={buttonClass + (compact ? '' : ' lg:hidden')} onClick={() => setMobilePreview(!mobilePreview)}>{mobilePreview ? 'Back to editing' : 'Show result'}</button>}
       </div>
     </div>
-    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      <div className={`min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto p-4 ${mobilePreview ? 'hidden lg:block' : ''}`}>
+    <div className={`flex min-h-0 flex-1 flex-col ${compact ? '' : 'lg:flex-row'}`}>
+      <div hidden={compact && mobilePreview} className={`min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto p-4 ${mobilePreview ? compact ? 'hidden' : 'hidden lg:block' : ''}`}>
         {conflict && <div role="alert" className="space-y-2 rounded border border-amber-500/50 p-3 text-xs text-amber-400">This item changed in another window. Your draft is preserved.<div className="flex gap-2"><button className={buttonClass} onClick={() => { if (window.confirm('Discard this draft and reload?')) onSaved(initial.id); }}>Reload</button><button className={buttonClass} onClick={() => void save(true)}>Save as a copy</button></div></div>}
+        {fieldStatus && <p role="status" className="text-xs text-accent">{fieldStatus}</p>}
         {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
         {!editableContent && <p className="text-xs text-gray-400">Advanced structure is read-only on Free. You can edit organization, fill fields, copy or export your saved content.</p>}
-        {tab === 'content' && <div className="space-y-4">
-          {kind === 'block' ? <label className="block text-xs text-gray-400">Block text<textarea aria-label="Block text" rows={8} readOnly={!editableContent} className={fieldClass} value={draft.text || ''} onChange={e => update({ text: e.target.value })} onContextMenu={context} /></label> : editor.document ? <div className="space-y-3 rounded-lg border border-gray-700 p-4"><p className="text-sm">This prompt is made from blocks and free text.</p><p className="text-xs text-gray-400">Edit each part in Compose. The expanded result is shown in the preview.</p><button className={buttonClass} onClick={() => setTab('compose')}>Open composition</button><details className="space-y-2 text-xs"><summary className="cursor-pointer text-gray-400">Convert or create a text copy</summary><p className="pt-2 text-gray-400">Converting replaces the block structure with the expanded text.</p><button disabled={!canUseAdvancedPromptLibrary} className={buttonClass} onClick={convertPlain}>Convert to plain text</button><button className={buttonClass} disabled={!!result.errors.length} onClick={() => void copyAsText()}>Create copy as text</button></details></div> : <>{(['positivePrompt', 'negativePrompt'] as const).map(key => <label key={key} className="block text-xs text-gray-400">{key === 'positivePrompt' ? 'Positive prompt' : 'Negative prompt'}<textarea aria-label={key === 'positivePrompt' ? 'Positive prompt' : 'Negative prompt'} rows={key === 'positivePrompt' ? 10 : 5} className={fieldClass + ' leading-relaxed'} value={draft[key] || ''} onChange={e => update({ [key]: e.target.value })} onContextMenu={context} /></label>)}<div className="flex flex-wrap gap-2"><button className={buttonClass} onClick={startComposition}>Compose with blocks</button><button className={buttonClass} onClick={startTemplate}>Add template fields</button></div></>}
+        {(kind === 'block' || !editor.document) && <div className="space-y-4">
+          {kind === 'block' ? <label className="block text-xs text-gray-400">Block text<textarea aria-label="Block text" rows={8} readOnly={!editableContent} className={fieldClass} value={draft.text || ''} onChange={e => update({ text: e.target.value })} onContextMenu={context} /></label> : <>{(['positivePrompt', 'negativePrompt'] as const).filter(key => key === 'positivePrompt' || showNegative || !!draft.negativePrompt).map(key => <label key={key} className="block text-xs text-gray-400">{key === 'positivePrompt' ? 'Prompt' : 'Negative prompt'}<textarea aria-label={key === 'positivePrompt' ? 'Prompt' : 'Negative prompt'} rows={key === 'positivePrompt' ? 10 : 5} className={fieldClass + ' leading-relaxed'} value={draft[key] || ''} onChange={e => update({ [key]: e.target.value })} onContextMenu={context} /></label>)}{!showNegative && !draft.negativePrompt && <button className={buttonClass} onClick={() => setShowNegative(true)}>Add negative</button>}<div className="flex flex-wrap gap-2"><button className={buttonClass} onClick={startComposition}>Compose with blocks</button></div></>}
         </div>}
-        {tab === 'compose' && editor.document && <PromptComposer document={editor.document} blocks={blocks} disabled={!canUseAdvancedPromptLibrary} onChange={document => { const text = documentText(document); update({ ...text, editor: { ...editor, document } }); }} onExtract={text => extraction.open(text)} onError={setError} />}
-        {tab === 'fields' && <section className="space-y-4"><h3 className="text-sm font-semibold">Define template fields</h3><p className="text-xs text-gray-400">Name the fields people will fill when using this {kind}. Include each field in your text as {'{{name}}'}.</p>{kind === 'block' ? <VariableDefinitions disabled={!editableContent} variables={editor.variables} onChange={variables => updateEditor({ variables })} /> : editor.document?.mode === 'template' ? <VariableDefinitions disabled={!canUseAdvancedPromptLibrary} variables={editor.document.variables} onChange={variables => updateEditor({ document: { ...editor.document!, variables } })} /> : <button className={buttonClass} onClick={startTemplate}>Add template fields</button>}</section>}
-        {tab === 'details' && <div className="space-y-5">
+        {kind === 'prompt' && editor.document && <PromptComposer compact={compact} document={editor.document} blocks={blocks} disabled={!canUseAdvancedPromptLibrary} onChange={document => { const text = documentText(document); update({ ...text, editor: { ...editor, document } }); }} onExtract={text => extraction.open(text)} onError={setError} />}
+        {kind === 'prompt' && editor.document && <details className="space-y-2 text-xs text-gray-400"><summary className="cursor-pointer">Convert or copy as plain text</summary><button disabled={!canUseAdvancedPromptLibrary} className={buttonClass} onClick={convertPlain}>Convert to plain text</button><button className={buttonClass} disabled={!!result.errors.length} onClick={() => void copyAsText()}>Create copy as text</button></details>}
+        <details open={showFields} onToggle={e => setShowFields(e.currentTarget.open)} className="space-y-3 rounded-lg border border-gray-700 p-3"><summary className="cursor-pointer text-sm font-semibold">Fillable text (optional)</summary>{fieldDefinitions}</details>
+        <div className="space-y-5 border-t border-gray-700 pt-4">
           <PromptTagsInput tags={editor.tags} onChange={tags => updateEditor({ tags })} suggestions={suggestions} />
           {kind === 'block' && <label className="block text-xs text-gray-400">Category<input className={fieldClass} value={editor.category} onChange={e => updateEditor({ category: e.target.value })} /></label>}
           <label className="block text-xs text-gray-400">Notes<textarea aria-label="Notes" className={fieldClass} rows={4} value={editor.notes} onChange={e => updateEditor({ notes: e.target.value })} /></label>
           <section className="space-y-3 rounded-lg border border-gray-700 p-3"><h3 className="text-xs font-semibold">Preview image</h3>{preview.url && <img src={preview.url} alt="Linked preview" className="max-h-40 w-full object-contain" />}<p className="text-xs text-gray-400">{pendingFile ? pendingFile.name : preview.status}</p><div className="flex flex-wrap gap-2"><button className={buttonClass} onClick={linkLibrary}>Link selected Library image</button>{window.electronAPI ? <button className={buttonClass} onClick={async () => { const response = await window.electronAPI.promptLibraryChoosePreview(); if (response.success && response.data) updateEditor({ preview: response.data }); else if (response.success === false) setError(response.error); }}>Link image file</button> : <label className={buttonClass}>Link image file<input type="file" accept="image/*" className="sr-only" onChange={e => { const file = e.target.files?.[0]; if (file) { setPendingFile(file); updateEditor({ preview: { kind: 'session', name: file.name } }); } }} /></label>}<button className={buttonClass} onClick={() => { setPendingFile(null); updateEditor({ preview: 'hidden' }); }}>Hide preview</button></div></section>
           <details className="space-y-3 rounded-lg border border-gray-700 p-3 text-xs text-gray-400"><summary className="cursor-pointer font-semibold">Generation parameters (optional)</summary><div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">{(['model', 'generator', 'sampler', 'scheduler'] as const).map(key => <label key={key} className="block capitalize">{key}<input className={fieldClass} value={editor.metadata[key]} onChange={e => updateEditor({ metadata: { ...editor.metadata, [key]: e.target.value } })} /></label>)}</div><label className="block">LoRAs (one per line)<textarea className={fieldClass} value={editor.metadata.loras.join('\n')} onChange={e => updateEditor({ metadata: { ...editor.metadata, loras: e.target.value.split('\n') } })} /></label></details>
-        </div>}
+        </div>
         {selectedText && <div className="flex flex-wrap gap-2 rounded border border-gray-700 p-2"><button className={buttonClass} onClick={() => { extraction.open(selectedText, 'source' in initial ? initial.source || null : null); setSelectedText(null); }}>Save Selection as Block</button><button className={buttonClass} onClick={() => setSelectedText(null)}>Cancel selection</button></div>}
       </div>
-      {(editor.document || variables.length > 0) && <aside aria-label="Composition result" className={`min-h-0 flex-1 space-y-4 overflow-y-auto border-t border-gray-700 p-4 lg:w-[40%] lg:min-w-[300px] lg:flex-none lg:border-l lg:border-t-0 ${mobilePreview ? '' : 'hidden lg:block'}`}>
-        {variables.length > 0 && <section className="space-y-2"><h3 className="text-xs font-semibold">Try template fields</h3><p className="text-xs text-gray-400">Preview values are used for copying, without changing saved defaults.</p><VariableValues variables={variables} values={values} onChange={setValues} /></section>}
+      <aside hidden={compact && !mobilePreview} aria-label="Composition result" className={`min-h-0 flex-1 space-y-4 overflow-y-auto border-t border-gray-700 p-4 ${compact ? mobilePreview ? '' : 'hidden' : 'lg:w-[40%] lg:min-w-[300px] lg:flex-none lg:border-l lg:border-t-0 ' + (mobilePreview ? '' : 'hidden lg:block')}`}>
+        {variables.length > 0 && <section className="space-y-2"><h3 className="text-xs font-semibold">Fill values</h3><p className="text-xs text-gray-400">These values replace the placeholders in the final text. Saved defaults stay unchanged.</p><VariableValues variables={variables} values={values} onChange={setValues} /></section>}
         <div onContextMenu={e => { const text = selectedPromptText(); if (text) { e.preventDefault(); setSelectedText(text); } }}><PromptPreview result={result} /></div>
-      </aside>}
+        {renderActions?.(result, !compact || mobilePreview)}
+      </aside>
     </div>
+    {textSelection.menu}
     {extraction.dialog}
   </section>;
 }

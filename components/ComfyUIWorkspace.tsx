@@ -42,8 +42,17 @@ import { formatImageForComfyUI } from '../utils/comfyUIFormatter';
 import { FileOperations } from '../services/fileOperations';
 import { useImageStore } from '../store/useImageStore';
 import TagManagerModal from './TagManagerModal';
+import WorkspaceContextPanel from './comfyui/WorkspaceContextPanel';
+import WorkspaceImageInspector from './comfyui/WorkspaceImageInspector';
+import type { WorkspaceCompositionRequest } from './comfyui/WorkspacePrompts';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { usePromptBlockExtraction, selectedPromptText } from '../hooks/usePromptBlockExtraction';
+import { buildSavedPromptSource } from '../hooks/useSavePrompt';
+import { useSavedPromptStore } from '../store/useSavedPromptStore';
 
 interface ComfyUIWorkspaceProps {
+  onOpenPromptLibrary?: () => void;
+  onViewPromptSource?: (path: string) => void | Promise<void>;
   image: IndexedImage | null;
   directoryPath?: string;
   navigationImages?: IndexedImage[];
@@ -123,84 +132,6 @@ const hasMetadataValue = (value: unknown): boolean => (
   value !== null && value !== undefined && value !== ''
 );
 
-const MetadataLine: React.FC<{
-  label: string;
-  value: unknown;
-  onCopy?: (label: string, value: string) => void;
-  onContextMenu?: (event: React.MouseEvent<HTMLElement>, label: string, value: string) => void;
-}> = ({ label, value, onCopy, onContextMenu }) => {
-  const displayValue = formatValue(value);
-  const canCopy = hasMetadataValue(value);
-
-  return (
-    <div
-      className="group rounded-md border border-gray-800 bg-gray-950/60 px-3 py-2"
-      onContextMenu={(event) => {
-        if (canCopy) {
-          onContextMenu?.(event, label, displayValue);
-        }
-      }}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
-        {canCopy && onCopy && (
-          <button
-            type="button"
-            onClick={() => onCopy(label, displayValue)}
-            className="text-gray-500 opacity-0 transition-opacity hover:text-gray-100 group-hover:opacity-100 focus:opacity-100"
-            title={`Copy ${label}`}
-            aria-label={`Copy ${label}`}
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-      <div className="mt-1 truncate font-mono text-xs text-gray-200" title={formatValue(value)}>
-        {displayValue}
-      </div>
-    </div>
-  );
-};
-
-const MetadataTextBlock: React.FC<{
-  label: string;
-  value: unknown;
-  maxHeightClass: string;
-  onCopy: (label: string, value: string) => void;
-  onContextMenu: (event: React.MouseEvent<HTMLElement>, label: string, value: string) => void;
-}> = ({ label, value, maxHeightClass, onCopy, onContextMenu }) => {
-  const displayValue = formatValue(value);
-  const canCopy = hasMetadataValue(value);
-
-  return (
-    <div
-      className="group rounded-lg border border-gray-800 bg-gray-950/80 p-3"
-      onContextMenu={(event) => {
-        if (canCopy) {
-          onContextMenu(event, label, displayValue);
-        }
-      }}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
-        {canCopy && (
-          <button
-            type="button"
-            onClick={() => onCopy(label, displayValue)}
-            className="text-gray-500 opacity-0 transition-opacity hover:text-gray-100 group-hover:opacity-100 focus:opacity-100"
-            title={`Copy ${label}`}
-            aria-label={`Copy ${label}`}
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-      <p className={`mt-2 overflow-y-auto whitespace-pre-wrap break-words text-xs text-gray-200 ${maxHeightClass}`}>
-        {displayValue}
-      </p>
-    </div>
-  );
-};
 
 const WorkspaceThumbnailButton: React.FC<{
   image: IndexedImage;
@@ -337,6 +268,7 @@ type InspectorContextMenu = {
   y: number;
   label: string;
   value: string;
+  blockText?: string;
 } | null;
 
 const getSameOriginUrl = (candidateUrl: string, configuredUrl: string): string => {
@@ -373,7 +305,19 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   onOpenCompare,
   workflowLoadRequest,
   onWorkflowLoadRequestHandled,
+  onOpenPromptLibrary = () => {},
+  onViewPromptSource = () => {},
 }) => {
+  const [compositionRequest, setCompositionRequest] = useState<WorkspaceCompositionRequest | null>(null);
+  const [hasOverlay, setHasOverlay] = useState(false);
+  const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
+  const extraction = usePromptBlockExtraction();
+  useEffect(() => {
+    const check = () => setHasOverlay(Boolean(document.querySelector('[role="dialog"][aria-modal="true"]')));
+    const observer = new MutationObserver(check); check();
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-modal'] });
+    return () => observer.disconnect();
+  }, []);
   const browserHostRef = useRef<HTMLDivElement>(null);
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const thumbRailResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -385,6 +329,15 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const [assetContextMenu, setAssetContextMenu] = useState<WorkspaceAssetContextMenu>(null);
   const [inspectorContextMenu, setInspectorContextMenu] = useState<InspectorContextMenu>(null);
   const [assetActionMessage, setAssetActionMessage] = useState<string>('');
+  const [saveSelectionStatus, setSaveSelectionStatus] = useState('');
+  useEffect(() => window.electronAPI?.onComfyUISaveSelection?.(({ kind, text }) => {
+    if (!['prompt', 'block'].includes(kind) || typeof text !== 'string' || !text.trim()) return;
+    if (kind === 'block' && !canUseAdvancedPromptLibrary) { showProModal('prompt_library_advanced'); return; }
+    void useSavedPromptStore.getState().mutate({ action: 'create', kind, item: kind === 'block' ? { text } : { positivePrompt: text } })
+      .then(() => setSaveSelectionStatus(kind === 'block' ? 'Block saved.' : 'Prompt saved.'))
+      .catch(error => setSaveSelectionStatus(error instanceof Error ? error.message : 'Could not save selection.'));
+  }), [canUseAdvancedPromptLibrary, showProModal]);
+  useEffect(() => { if (saveSelectionStatus) { const timer = setTimeout(() => setSaveSelectionStatus(''), 4000); return () => clearTimeout(timer); } }, [saveSelectionStatus]);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isRatingMenuOpen, setIsRatingMenuOpen] = useState(false);
   const [thumbRailWidth, setThumbRailWidth] = useState(() => {
@@ -473,7 +426,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     ? getSameOriginUrl(comfyUIWorkspaceLastUrl, comfyUIServerUrl)
     : comfyUIServerUrl;
   const hasBrowserLoadFailure = Boolean(loadFailure || viewState.lastLoadFailed);
-  const shouldShowBrowser = isActive && !suspendBrowser && !hasBrowserLoadFailure;
+  const shouldShowBrowser = isActive && !suspendBrowser && !hasBrowserLoadFailure && !hasOverlay;
   const shouldShowBrowserFallback = suspendBrowser || hasBrowserLoadFailure || !viewState.visible;
 
   useEffect(() => {
@@ -841,6 +794,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       y: event.clientY,
       label: selection ? 'Selection' : label,
       value: selection || value,
+      blockText: selectedPromptText() || undefined,
     });
   }, []);
 
@@ -863,6 +817,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       y: event.clientY,
       label: 'Selection',
       value: selection,
+      blockText: selectedPromptText() || undefined,
     });
   }, []);
 
@@ -1167,6 +1122,48 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-950">
+      {extraction.dialog}
+      {saveSelectionStatus && <p role="status" className="shrink-0 border-b border-gray-800 px-3 py-2 text-xs text-accent">{saveSelectionStatus}</p>}
+      <div className="shrink-0 border-b border-gray-800 px-3 py-2">
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <div
+                    className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs ${connectionClasses}`}
+                    title={`${comfyUILastConnectionStatus === 'connected' ? 'Connected' : loadFailure ? 'Load failed' : 'ComfyUI'} - ${viewState.url || targetUrl}`}
+                  >
+                    {viewState.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+                  </div>
+                  <h2 className="truncate text-sm font-semibold text-gray-100">ComfyUI Workspace</h2>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {connectionMessage || comfyUILastConnectionStatus}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button onClick={() => window.electronAPI?.comfyUIViewGoBack?.()} disabled={!viewState.canGoBack} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Back" aria-label="Back">
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <button onClick={() => window.electronAPI?.comfyUIViewGoForward?.()} disabled={!viewState.canGoForward} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Forward" aria-label="Forward">
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+                <button onClick={openExternally} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open externally" aria-label="Open externally">
+                  <ExternalLink className="h-4 w-4" />
+                </button>
+                <button onClick={reloadEmbeddedView} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Refresh ComfyUI" aria-label="Refresh ComfyUI">
+                  <RefreshCw className="h-4 w-4" />
+                </button>
+                <button onClick={togglePanelCollapsed} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Hide context panel" aria-label="Hide context panel">
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <button onClick={onOpenSettings} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open integration settings" aria-label="Open integration settings">
+                  <SlidersHorizontal className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+      </div>
       <div className="flex min-h-0 flex-1">
         <aside
           className="flex min-h-0 shrink-0 flex-col border-r border-gray-800 bg-gray-900/95"
@@ -1406,203 +1403,11 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           />
         )}
 
-        <aside
-          className={`min-h-0 border-l border-gray-800 bg-gray-900/95 transition-[width] duration-200 ${
-            isPanelCollapsed ? 'overflow-hidden p-0' : 'overflow-y-auto p-4'
-          }`}
-          style={{ width: isPanelCollapsed ? 44 : panelWidth }}
-        >
-          {isPanelCollapsed ? (
-            <button
-              onClick={togglePanelCollapsed}
-              className="flex h-full w-full items-start justify-center pt-3 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
-              title="Show IMH context panel"
-              aria-label="Show IMH context panel"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-          ) : (
-          <>
-          <div className="space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <div
-                    className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs ${connectionClasses}`}
-                    title={`${comfyUILastConnectionStatus === 'connected' ? 'Connected' : loadFailure ? 'Load failed' : 'ComfyUI'} - ${viewState.url || targetUrl}`}
-                  >
-                    {viewState.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
-                  </div>
-                  <h2 className="truncate text-sm font-semibold text-gray-100">Image Inspector</h2>
-                </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  {connectionMessage || (currentPosition > 0 ? `${currentPosition} / ${normalizedNavigationImages.length}` : 'No image selected')}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <button onClick={() => window.electronAPI?.comfyUIViewGoBack?.()} disabled={!viewState.canGoBack} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Back" aria-label="Back">
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-                <button onClick={() => window.electronAPI?.comfyUIViewGoForward?.()} disabled={!viewState.canGoForward} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Forward" aria-label="Forward">
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-                <button onClick={openExternally} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open externally" aria-label="Open externally">
-                  <ExternalLink className="h-4 w-4" />
-                </button>
-                <button onClick={reloadEmbeddedView} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Refresh ComfyUI" aria-label="Refresh ComfyUI">
-                  <RefreshCw className="h-4 w-4" />
-                </button>
-                <button onClick={togglePanelCollapsed} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Hide image inspector" aria-label="Hide image inspector">
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <button onClick={onOpenSettings} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open integration settings" aria-label="Open integration settings">
-                  <SlidersHorizontal className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {!image ? (
-            <div className="mt-6 rounded-lg border border-gray-800 bg-gray-950/80 p-4 text-sm text-gray-400">
-              Select an image to send workflow data from Image MetaHub into ComfyUI.
-            </div>
-          ) : (
-            <div className="mt-4 space-y-4">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={onNavigatePrevious}
-                  disabled={!canNavigatePrevious}
-                  className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40"
-                >
-                  Previous
-                </button>
-                <div className="min-w-0 flex-1 truncate text-center text-xs text-gray-500">
-                  {currentPosition} / {normalizedNavigationImages.length}
-                </div>
-                <button
-                  onClick={onNavigateNext}
-                  disabled={!canNavigateNext}
-                  className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40"
-                >
-                  Next
-                </button>
-              </div>
-
-              <div className="overflow-hidden rounded-lg border border-gray-800 bg-gray-950">
-                {thumbnail?.thumbnailUrl ? (
-                  <img
-                    src={thumbnail.thumbnailUrl}
-                    alt={image.name}
-                    className="h-44 w-full cursor-grab object-contain bg-black active:cursor-grabbing"
-                    draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
-                    onDragStart={(event) => startImageFileDrag(event, image, directoryPath)}
-                    title="Drag into ComfyUI"
-                  />
-                ) : (
-                  <div className="flex h-44 items-center justify-center bg-black text-xs text-gray-600">No thumbnail</div>
-                )}
-                <div className="border-t border-gray-800 p-3">
-                  <div className="truncate text-sm font-medium text-gray-100" title={image.name}>{image.name}</div>
-                  {hasVerifiedTelemetry(image) && (
-                    <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-green-500/30 bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-300">
-                      <CheckCircle className="h-3.5 w-3.5" />
-                      Verified
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={generateFromMetadata}
-                  disabled={isGenerating || !metadata?.prompt}
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-purple-500/40 bg-purple-500/15 px-3 py-2 text-xs font-semibold text-purple-100 hover:bg-purple-500/25 disabled:opacity-50"
-                >
-                  <Play className="h-3.5 w-3.5" />
-                  Generate
-                </button>
-                <button
-                  onClick={() => copyToComfyUI(image)}
-                  disabled={isCopying || !metadata?.prompt}
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-50"
-                >
-                  <Clipboard className="h-3.5 w-3.5" />
-                  Copy JSON
-                </button>
-                <button
-                  onClick={onOpenQueue}
-                  className="col-span-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800"
-                >
-                  Open generation queue
-                </button>
-              </div>
-
-              {(copyStatus || generateStatus) && (
-                <div className={`rounded-md border px-3 py-2 text-xs ${
-                  (copyStatus?.success || generateStatus?.success)
-                    ? 'border-green-700/40 bg-green-500/10 text-green-200'
-                    : 'border-red-700/40 bg-red-500/10 text-red-200'
-                }`}>
-                  {copyStatus?.message || generateStatus?.message}
-                </div>
-              )}
-
-              {assetActionMessage && (
-                <div className="rounded-md border border-blue-700/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
-                  {assetActionMessage}
-                </div>
-              )}
-
-              {metadata ? (
-                  <div className="space-y-3" onContextMenu={showInspectorSelectionContextMenu}>
-                  <div className="grid grid-cols-2 gap-2">
-                    <MetadataLine label="Model" value={metadata.model} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
-                    <MetadataLine label="Seed" value={metadata.seed} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
-                    <MetadataLine label="Steps" value={metadata.steps} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
-                    <MetadataLine label="CFG" value={(metadata as any).cfgScale ?? metadata.cfg_scale} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
-                    <MetadataLine label="Sampler" value={metadata.sampler} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
-                    <MetadataLine label="Scheduler" value={metadata.scheduler} onCopy={copyInspectorValue} onContextMenu={showInspectorFieldContextMenu} />
-                    <MetadataLine
-                      label="Dimensions"
-                      value={metadata.width && metadata.height ? `${metadata.width}x${metadata.height}` : undefined}
-                      onCopy={copyInspectorValue}
-                      onContextMenu={showInspectorFieldContextMenu}
-                    />
-                    <MetadataLine
-                      label="LoRAs"
-                      value={Array.isArray(metadata.loras) && metadata.loras.length > 0
-                        ? metadata.loras.map((lora) => typeof lora === 'string' ? lora : lora.name || lora.model_name || '').filter(Boolean).join(', ')
-                        : undefined}
-                      onCopy={copyInspectorValue}
-                      onContextMenu={showInspectorFieldContextMenu}
-                    />
-                  </div>
-
-                  <MetadataTextBlock
-                    label="Prompt"
-                    value={metadata.prompt}
-                    maxHeightClass="max-h-40"
-                    onCopy={copyInspectorValue}
-                    onContextMenu={showInspectorFieldContextMenu}
-                  />
-
-                  <MetadataTextBlock
-                    label="Negative prompt"
-                    value={metadata.negativePrompt}
-                    maxHeightClass="max-h-32"
-                    onCopy={copyInspectorValue}
-                    onContextMenu={showInspectorFieldContextMenu}
-                  />
-                </div>
-                ) : (
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-4 text-sm text-gray-400">
-                    No normalized metadata is available for this image.
-                  </div>
-              )}
-            </div>
-          )}
-          </>
-          )}
+        <aside className="min-h-0 shrink-0 border-l border-gray-800 bg-gray-900/95 transition-[width] duration-200" style={{ width: isPanelCollapsed ? 44 : panelWidth }}>
+          <WorkspaceContextPanel collapsed={isPanelCollapsed} onToggle={togglePanelCollapsed} active={shouldShowBrowser && viewState.visible} request={compositionRequest} onOpenLibrary={onOpenPromptLibrary} onViewSource={onViewPromptSource} imagePanel={<WorkspaceImageInspector image={image} metadata={metadata} directoryPath={directoryPath} thumbnail={thumbnail} currentPosition={currentPosition} normalizedNavigationImages={normalizedNavigationImages} canNavigatePrevious={canNavigatePrevious} canNavigateNext={canNavigateNext} onNavigatePrevious={onNavigatePrevious} onNavigateNext={onNavigateNext} isGenerating={isGenerating} isCopying={isCopying} generateFromMetadata={generateFromMetadata} copyToComfyUI={copyToComfyUI} onOpenQueue={onOpenQueue} copyStatus={copyStatus} generateStatus={generateStatus} assetActionMessage={assetActionMessage} startImageFileDrag={startImageFileDrag} showInspectorSelectionContextMenu={showInspectorSelectionContextMenu} showInspectorFieldContextMenu={showInspectorFieldContextMenu} copyInspectorValue={copyInspectorValue} onUseComposer={(positive, negative) => {
+  if (!canUseAdvancedPromptLibrary) { showProModal('prompt_library_advanced'); return; }
+  setCompositionRequest({ id: Date.now(), positive, negative });
+}} />} />
         </aside>
       </div>
       {inspectorContextMenu && (
@@ -1618,6 +1423,10 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             <Copy className="h-4 w-4" />
             Copy {inspectorContextMenu.label}
           </button>
+          {inspectorContextMenu.blockText && <button className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-800" onClick={() => {
+            extraction.open(inspectorContextMenu.blockText!, image ? buildSavedPromptSource(image, directoryPath) : null);
+            setInspectorContextMenu(null);
+          }}>Save Selection as Block</button>}
         </div>
       )}
       {assetContextMenu && (

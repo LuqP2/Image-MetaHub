@@ -1,4 +1,5 @@
 import electron from 'electron';
+import { comfyTextRuntime } from './services/comfyTextRuntime.mjs';
 const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol, WebContentsView, safeStorage } = electron;
 // console.log('📦 Loaded electron module');
 
@@ -1550,8 +1551,26 @@ function configureComfyUIViewHandlers(view) {
   contents.on('did-navigate', () => updateComfyUIViewState({ lastLoadFailed: false }));
   contents.on('did-navigate-in-page', () => updateComfyUIViewState({ lastLoadFailed: false }));
   contents.on('page-title-updated', () => updateComfyUIViewState());
-  contents.on('context-menu', (_event, params) => {
-    showEditableTextContextMenu(contents, params);
+  contents.on('context-menu', async (_event, params) => {
+    const extraItems = [];
+    if (params.isEditable && params.selectionText?.trim() && isComfyNavigationAllowed(contents.getURL())) {
+      try {
+        const origin = new URL(contents.getURL()).origin;
+        const selection = await contents.executeJavaScript(`(${comfyTextRuntime.toString()})('selection', ${JSON.stringify({ text: params.selectionText })}, ${JSON.stringify(origin)})`);
+        if (selection.success) {
+          for (const kind of ['prompt', 'block']) extraItems.push({
+            label: `Save selection as ${kind}`,
+            click: () => {
+              if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('comfy-view-save-selection', { kind, text: selection.text });
+            },
+          });
+          extraItems.push({ type: 'separator' });
+        }
+      } catch (error) {
+        console.warn('Could not read ComfyUI node selection:', error);
+      }
+    }
+    showEditableTextContextMenu(contents, params, extraItems);
   });
   contents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame || errorCode === -3) {
@@ -1568,12 +1587,13 @@ function configureComfyUIViewHandlers(view) {
   });
 }
 
-function showEditableTextContextMenu(contents, params) {
+function showEditableTextContextMenu(contents, params, extraItems = []) {
   if (!params.isEditable || !contents || contents.isDestroyed()) {
     return;
   }
 
   const menu = Menu.buildFromTemplate([
+    ...extraItems,
     { label: 'Undo', enabled: params.editFlags?.canUndo ?? false, click: () => contents.undo() },
     { label: 'Redo', enabled: params.editFlags?.canRedo ?? false, click: () => contents.redo() },
     { type: 'separator' },
@@ -5312,6 +5332,28 @@ function setupFileOperationHandlers() {
   ipcMain.handle('comfy-view-get-state', async () => {
     return { success: true, state: updateComfyUIViewState() };
   });
+
+  const textOperation = async (event, operation, payload = {}) => {
+    const unavailable = (message) => ({ success: false, code: 'unavailable', message, targets: [] });
+    if (!isPrimaryWindowSender(event)) return unavailable('Access denied.');
+    const contents = comfyUIView?.webContents;
+    if (!contents || contents.isDestroyed() || !isComfyNavigationAllowed(contents.getURL())) {
+      return unavailable('Open ComfyUI on the configured server. Copy text instead.');
+    }
+    if (operation === 'apply' && (!payload || typeof payload.token !== 'string' || typeof payload.text !== 'string'
+      || !['append', 'replace', 'replaceSelection'].includes(payload.mode) || ![', ', ' ', '\n'].includes(payload.separator))) {
+      return { success: false, code: 'invalid', message: 'Invalid text operation.', targets: [] };
+    }
+    try {
+      // Only this static adapter is executable; all caller data is serialized.
+      const expectedOrigin = new URL(contents.getURL()).origin;
+      return await contents.executeJavaScript(`(${comfyTextRuntime.toString()})(${JSON.stringify(operation)}, ${JSON.stringify(payload)}, ${JSON.stringify(expectedOrigin)})`, true);
+    } catch {
+      return unavailable('ComfyUI could not update this field. Copy text instead.');
+    }
+  };
+  ipcMain.handle('comfy-view-text-targets', (event) => textOperation(event, 'query'));
+  ipcMain.handle('comfy-view-apply-text', (event, payload) => textOperation(event, 'apply', payload));
 
   ipcMain.handle('comfy-view-load-workflow', async (event, payload) => {
     try {

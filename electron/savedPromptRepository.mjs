@@ -103,8 +103,8 @@ export class SavedPromptRepository {
   save(input) {
     const positivePrompt = typeof input?.positivePrompt === 'string' ? input.positivePrompt : '';
     const negativePrompt = typeof input?.negativePrompt === 'string' ? input.negativePrompt : '';
-    if (!positivePrompt.trim()) {
-      throw new SavedPromptRepositoryError('SAVED_PROMPT_EMPTY_POSITIVE', 'A non-empty positive prompt is required.');
+    if (!positivePrompt.trim() && !negativePrompt.trim()) {
+      throw new SavedPromptRepositoryError('SAVED_PROMPT_EMPTY', 'A non-empty prompt is required.');
     }
     const textBasis = input?.textBasis === 'original' ? 'original' : 'effective';
     const promptDigest = this.digest(positivePrompt, negativePrompt);

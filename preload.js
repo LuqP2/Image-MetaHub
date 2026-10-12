@@ -366,6 +366,13 @@ const electronAPI = {
   comfyUIViewGoBack: () => ipcRenderer.invoke('comfy-view-go-back'),
   comfyUIViewGoForward: () => ipcRenderer.invoke('comfy-view-go-forward'),
   comfyUIViewGetState: () => ipcRenderer.invoke('comfy-view-get-state'),
+  comfyUIViewTextTargets: () => ipcRenderer.invoke('comfy-view-text-targets'),
+  onComfyUISaveSelection: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('comfy-view-save-selection', handler);
+    return () => ipcRenderer.removeListener('comfy-view-save-selection', handler);
+  },
+  comfyUIViewApplyText: (payload) => ipcRenderer.invoke('comfy-view-apply-text', payload),
   comfyUIViewLoadWorkflow: (payload) => ipcRenderer.invoke('comfy-view-load-workflow', payload),
   comfyUIViewRunWorkflow: () => ipcRenderer.invoke('comfy-view-run-workflow'),
   onComfyUIViewStateChanged: (callback) => {

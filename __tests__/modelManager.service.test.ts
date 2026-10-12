@@ -826,6 +826,21 @@ describe('single-owner model service', () => {
     expect(manager.getModelManagerState().watches['1'].versions).toHaveLength(2);
     expect(manager.getModelManagerState().watches['1'].retryAt).toBeGreaterThan(Date.now());
   });
+  it('skips hidden monitored identities in scheduled Civitai and Hugging Face checks', async () => {
+    vi.useFakeTimers();
+    catalog.locations[0].huggingFace = { ...hfBinding, monitoringEnabled: true };
+    fakes.locals = [{ id: `location:${location('one').id}`, hidden: true, watchUpdates: true } as ModelLocalMetadata];
+    const manager = await initialize();
+    await manager.updateModelSource({ ...source, watchUpdates: true });
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(api.modelManagerRemote).not.toHaveBeenCalled();
+    expect(api.modelManagerHuggingFaceWatch).not.toHaveBeenCalled();
+    expect(manager.getModelManagerState().notification).toBeNull();
+    await manager.runModelCommand({ type: 'saveLocal', locationId: location('one').id, patch: { hidden: false } });
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(api.modelManagerRemote).toHaveBeenCalled();
+    expect(api.modelManagerHuggingFaceWatch).toHaveBeenCalled();
+  });
   it('runs due checks without a mounted Models workspace and emits only one notification', async () => {
     vi.useFakeTimers();
     const manager = await initialize();

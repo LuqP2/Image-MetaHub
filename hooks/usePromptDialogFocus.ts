@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-export function usePromptDialogFocus(onClose: () => void, busy = false) {
+export function usePromptDialogFocus(onClose: () => void, busy = false, modal = true) {
   const ref = useRef<HTMLElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -10,13 +10,14 @@ export function usePromptDialogFocus(onClose: () => void, busy = false) {
     const elements = () => Array.from(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]') || []);
     elements()[0]?.focus();
     const keydown = (event: KeyboardEvent) => {
+      if (!modal && (!ref.current?.contains(document.activeElement) || ref.current.closest('[hidden]'))) return;
       if(event.key === 'Escape') {
         event.preventDefault();
         event.stopImmediatePropagation();
         if(!isBusy.current)
           close.current();
       }
-      if(event.key === 'Tab') {
+      if(event.key === 'Tab' && modal) {
         const list = elements();
         const first = list[0];
         const last = list[list.length - 1];
@@ -32,6 +33,6 @@ export function usePromptDialogFocus(onClose: () => void, busy = false) {
     };
     window.addEventListener('keydown', keydown, true);
     return () => { window.removeEventListener('keydown', keydown, true); previous.current?.focus(); };
-  }, []);
+  }, [modal]);
   return ref;
 }

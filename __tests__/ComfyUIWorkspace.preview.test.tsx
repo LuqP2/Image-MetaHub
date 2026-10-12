@@ -1,9 +1,13 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ComfyUIWorkspace from '../components/ComfyUIWorkspace';
 import type { IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
+import { useSavedPromptStore } from '../store/useSavedPromptStore';
+const promptMocks = vi.hoisted(() => ({ save: vi.fn() }));
+vi.mock('../hooks/useSavePrompt', () => ({ useSavePrompt: () => promptMocks.save, buildSavedPromptSource: () => null }));
+vi.mock('../hooks/useFeatureAccess', () => ({ useFeatureAccess: () => ({ canUseAdvancedPromptLibrary: true, canUseModelManager: true, showProModal: vi.fn() }) }));
 
 vi.mock('../hooks/useGenerateWithComfyUI', () => ({
   useGenerateWithComfyUI: () => ({ generateWithComfyUI: vi.fn(), isGenerating: false, generateStatus: null }),
@@ -70,6 +74,8 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
   let originalRevokeObjectURL: typeof URL.revokeObjectURL | undefined;
 
   beforeEach(() => {
+    localStorage.clear();
+    promptMocks.save.mockReset().mockResolvedValue(undefined);
     useImageStore.getState().resetState();
     vi.stubGlobal('ResizeObserver', class {
       observe = vi.fn();
@@ -102,6 +108,8 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
   });
 
   afterEach(() => {
+    cleanup();
+    window.getSelection()?.removeAllRanges();
     vi.unstubAllGlobals();
     Object.defineProperty(URL, 'createObjectURL', {
       configurable: true,
@@ -149,4 +157,54 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
     expect(onViewFullMetadata).toHaveBeenCalledWith(image);
     expect(screen.queryByRole('dialog', { name: /Workspace image preview/i })).toBeNull();
   });
+
+  it('saves node selections directly as untitled prompts or blocks without opening a form', async () => {
+    let receive: (payload: { kind: 'prompt' | 'block'; text: string }) => void = () => {};
+    const unsubscribe = vi.fn();
+    window.electronAPI = { ...window.electronAPI, onComfyUISaveSelection: (callback: typeof receive) => { receive = callback; return unsubscribe; } } as never;
+    const mutate = vi.spyOn(useSavedPromptStore.getState(), 'mutate').mockResolvedValue('saved');
+    const image = createImage('node-selection');
+    const view = render(<ComfyUIWorkspace image={image} isActive={false} onOpenQueue={vi.fn()} onOpenSettings={vi.fn()} />);
+    const text = '  café\n<lora:test:1>  ';
+    await act(async () => { receive({ kind: 'prompt', text }); });
+    expect(mutate).toHaveBeenLastCalledWith({ action: 'create', kind: 'prompt', item: { positivePrompt: text } });
+    expect(screen.getByText('Prompt saved.')).toBeTruthy();
+    await act(async () => { receive({ kind: 'block', text }); });
+    expect(mutate).toHaveBeenLastCalledWith({ action: 'create', kind: 'block', item: { text } });
+    expect(screen.getByText('Block saved.')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    view.unmount(); expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('saves the image prompt and captures literal selected text before opening the block editor', async () => {
+    const image = createImage('selection');
+    image.metadata!.normalizedMetadata!.prompt = '  warm\n light  ';
+    const mutate = vi.spyOn(useSavedPromptStore.getState(), 'mutate').mockResolvedValue('block');
+    const view = render(<ComfyUIWorkspace image={image} navigationImages={[image]} currentIndex={0} isActive={false} directoryPath="C:/synthetic" onOpenQueue={vi.fn()} onOpenSettings={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Save prompt' }));
+    await waitFor(() => expect(promptMocks.save).toHaveBeenCalledWith(image, expect.objectContaining({ directoryPath: 'C:/synthetic' })));
+    const prompt = view.container.querySelector('[data-prompt-text]')!;
+    const range = document.createRange(); range.selectNodeContents(prompt);
+    window.getSelection()!.addRange(range);
+    fireEvent.contextMenu(prompt);
+    const action = await screen.findByRole('button', { name: 'Save Selection as Block' });
+    window.getSelection()!.removeAllRanges();
+    fireEvent.click(action);
+    expect((screen.getByLabelText('Block text') as HTMLTextAreaElement).value).toBe('  warm\n light  ');
+    fireEvent.click(screen.getByRole('button', { name: 'Save block' }));
+    await waitFor(() => expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ action: 'create', kind: 'block', item: expect.objectContaining({ text: '  warm\n light  ' }) })));
+    expect(window.electronAPI?.comfyUIViewOpen).not.toHaveBeenCalled();
+  });
+  it('allows saving an image without embedded prompt text through authoritative shadow validation', async () => {
+    const image = createImage('shadow-only');
+    image.metadata!.normalizedMetadata!.prompt = '';
+    image.metadata!.normalizedMetadata!.negativePrompt = '';
+    promptMocks.save.mockClear().mockResolvedValue({ success: true });
+    render(<ComfyUIWorkspace image={image} navigationImages={[image]} currentIndex={0} isActive={false} directoryPath="C:/synthetic" onOpenQueue={vi.fn()} onOpenSettings={vi.fn()} />);
+    const button = screen.getByRole('button', { name: 'Save prompt' });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(promptMocks.save).toHaveBeenCalledWith(image, { directoryPath: 'C:/synthetic', readAuthoritativeShadow: true }));
+  });
+
 });

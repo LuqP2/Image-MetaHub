@@ -7,15 +7,18 @@ import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { usePromptDialogFocus } from '../../hooks/usePromptDialogFocus';
 import { buttonClass, fieldClass, VariableDefinitions } from './PromptVariables';
 import PromptTagsInput from './PromptTagsInput';
-export default function PromptBlockEditor({ initial, onClose }: {
+import { createSelectionField, usePromptSelectionMenu } from '../../hooks/usePromptSelectionMenu';
+export default function PromptBlockEditor({ initial, onClose, onSaved }: {
   initial: Partial<PromptBlock>;
   onClose: () => void;
+  onSaved?: (id?: string) => void;
 }) {
   const [editor, setEditor] = useState(normalizeEditor(initial.editor));
   const [text, setText] = useState(initial.text || '');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [fieldStatus, setFieldStatus] = useState('');
+  const selection = usePromptSelectionMenu();
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
   const mutate = useSavedPromptStore((s) => s.mutate);
   const dialogRef = usePromptDialogFocus(onClose, busy);
@@ -27,8 +30,8 @@ export default function PromptBlockEditor({ initial, onClose }: {
     setBusy(true);
     setError('');
     try {
-      await mutate({ action: initial.id ? 'update' : 'create', kind: 'block', item: { ...initial, text, editor }, expectedRevision: initial.revision || 1 });
-      setSaved(true);
+      const id = await mutate({ action: initial.id ? 'update' : 'create', kind: 'block', item: { ...initial, text, editor }, expectedRevision: initial.revision || 1 });
+      if (onSaved) onSaved(id); else onClose();
     }
     catch(cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save block');
@@ -46,7 +49,6 @@ export default function PromptBlockEditor({ initial, onClose }: {
       className="max-h-[90vh] w-full max-w-xl space-y-3 overflow-auto rounded-xl border border-gray-700 bg-gray-900 p-5 text-gray-100">
 
 
-      {saved ? <><h2 className="font-semibold">Block saved</h2><p role="status" className="text-sm text-gray-400">Your reusable block is available in Prompt Library → Blocks.</p><button autoFocus className={buttonClass} onClick={onClose}>Close</button></> : <>
       <h2 className="font-semibold">
         {initial.id ? 'Edit block' : 'Save Selection as Block'}
       </h2>
@@ -63,8 +65,9 @@ export default function PromptBlockEditor({ initial, onClose }: {
           rows={5}
           className={fieldClass}
           value={text}
-          onChange={(e) => setText(e.target.value)} />
+          onChange={(e) => setText(e.target.value)} onContextMenu={e => selection.open(e, undefined, (selected, start, end) => { const field = createSelectionField(selected, editor.variables.map(v => v.name)); setText(text.slice(0, start) + '{{' + field.name + '}}' + text.slice(end)); setEditor({ ...editor, variables: [...editor.variables, field] }); setFieldStatus(`{{${field.name}}} replaces “${selected}”. Its default value preserves the original text.`); })} />
       </label>
+      {fieldStatus && <p role="status" className="text-xs text-accent">{fieldStatus}</p>}
 
 
       {editor.preview && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={editor.preview !== 'hidden'} onChange={e => setEditor({ ...editor, preview: e.target.checked ? initial.editor?.preview || null : 'hidden' })} />Use current image as preview</label>}
@@ -91,7 +94,7 @@ export default function PromptBlockEditor({ initial, onClose }: {
           onChange={(e) => setEditor({ ...editor, notes: e.target.value })} />
       </label>
       </details>
-      <details className="space-y-3 rounded-lg border border-gray-700 p-3 text-xs"><summary className="cursor-pointer text-gray-400">Template fields (optional)</summary><div className="pt-3"><VariableDefinitions variables={editor.variables} onChange={(variables) => setEditor({ ...editor, variables })} /></div></details>
+      <details className="space-y-3 rounded-lg border border-gray-700 p-3 text-xs"><summary className="cursor-pointer text-gray-400">Fillable text (optional)</summary><div className="pt-3"><VariableDefinitions variables={editor.variables} onChange={(variables) => setEditor({ ...editor, variables })} /></div></details>
 
 
       {error && <p role="alert" className="text-sm text-red-400">
@@ -111,7 +114,7 @@ export default function PromptBlockEditor({ initial, onClose }: {
           {busy ? 'Saving…' : 'Save block'}
         </button>
       </div>
-      </>}
+      {selection.menu}
     </section>
   </div>, document.body);
 }

@@ -63,6 +63,21 @@ export interface ComfyUIViewResult {
   error?: string;
 }
 
+export interface ComfyUITextTarget {
+  hasSelection?: boolean;
+  token: string;
+  nodeId: string;
+  nodeTitle: string;
+  field: string;
+  preview: string;
+}
+export interface ComfyUITextResult {
+  success: boolean;
+  code?: 'unavailable' | 'unsupported' | 'selection' | 'conflict' | 'invalid';
+  message?: string;
+  targets: ComfyUITextTarget[];
+}
+
 export interface ComfyUIViewWorkflowLoadResult extends ComfyUIViewResult {
   loadedInNewTab?: boolean;
   fallbackUsed?: boolean;
@@ -567,6 +582,7 @@ export interface ElectronAPI {
   savedPromptsList: () => Promise<SavedPromptIpcResult<SavedPrompt[]>>;
   promptLibraryList: () => Promise<SavedPromptIpcResult<PromptLibrarySnapshot>>;
   promptLibraryMutate: (input: PromptLibraryMutation) => Promise<SavedPromptIpcResult<PromptLibrarySnapshot & { selectedId?: string }>>;
+  onComfyUISaveSelection?: (callback: (payload: { kind: 'prompt' | 'block'; text: string }) => void) => () => void;
   promptLibraryChoosePreview: () => Promise<SavedPromptIpcResult<SavedPromptSource | null>>;
   promptLibraryResolvePreview: (kind: 'prompt' | 'block', id: string) => Promise<SavedPromptIpcResult<SavedPromptSourceResolution>>;
   savedPromptsSave: (input: SavePromptInput) => Promise<SavedPromptIpcResult<SavedPromptSaveResult>>;
@@ -640,6 +656,8 @@ export interface ElectronAPI {
   comfyUIViewGoBack: () => Promise<ComfyUIViewResult>;
   comfyUIViewGoForward: () => Promise<ComfyUIViewResult>;
   comfyUIViewGetState: () => Promise<ComfyUIViewResult>;
+  comfyUIViewTextTargets: () => Promise<ComfyUITextResult>;
+  comfyUIViewApplyText: (payload: { token: string; text: string; mode: 'append' | 'replace' | 'replaceSelection'; separator: ', ' | ' ' | '\n' }) => Promise<ComfyUITextResult>;
   comfyUIViewLoadWorkflow: (payload: {
     url: string;
     bounds?: ComfyUIViewBounds;

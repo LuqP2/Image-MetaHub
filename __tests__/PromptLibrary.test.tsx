@@ -75,12 +75,12 @@ describe('integrated Prompt Library', () => {
     expect(screen.queryByText(/Untitled prompt/i)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Open Studio portrait' }));
     expect(screen.queryByText(/Untitled prompt/i)).toBeNull();
-    expect(screen.getByRole('button', { name: /Add a title/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Add a title/ })).toBeNull();
   });
   it('discards only the draft when cancelling an edit', async () => {
     render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Studio portrait');
-    expect(screen.queryByRole('region', { name: 'Final prompt preview' })).toBeNull();
-    fireEvent.change(screen.getByLabelText('Positive prompt'), { target: { value: 'changed draft' } });
+    expect(screen.getByRole('complementary', { name: 'Composition result' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'changed draft' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Unsaved changes' })).getByRole('button', { name: 'Discard' }));
     expect(screen.getByRole('region', { name: 'Prompt details' })).toBeTruthy();
@@ -160,7 +160,7 @@ describe('integrated Prompt Library', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'flux "bad hands"' } });
     expect(screen.queryByRole('button', { name: 'Open Golden landscape' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Open Studio portrait' }));
-    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByLabelText('Prompt')).toBeNull();
     expect(within(screen.getByRole('region', { name: 'Prompt details' })).getByText('bad hands')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Copy both' }));
     await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('Studio portrait\nNegative prompt: bad hands'));
@@ -170,8 +170,9 @@ describe('integrated Prompt Library', () => {
   });
   it('creates a negative-only prompt on Free and gates advanced creation', async () => {
     mocks.advanced = false; render(<PromptLibrary onViewSource={vi.fn()} />); fireEvent.click(screen.getByRole('button', { name: 'New prompt' }));
-    fireEvent.change(screen.getByLabelText('Negative prompt'), { target: { value: 'negative only' } }); fireEvent.click(screen.getByRole('button', { name: 'Add template fields' }));
-    expect(mocks.gate).toHaveBeenCalledWith('prompt_library_advanced'); fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.queryByLabelText('Negative prompt')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add negative' }));
+    fireEvent.change(screen.getByLabelText('Negative prompt'), { target: { value: 'negative only' } }); expect((screen.getByRole('button', { name: 'Add field', hidden: true }) as HTMLButtonElement).disabled).toBe(true); fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(data.prompts.some((p) => p.positivePrompt === '' && p.negativePrompt === 'negative only')).toBe(true));
   });
   it('guards unsaved navigation and resumes after saving', async () => {
@@ -187,8 +188,8 @@ describe('integrated Prompt Library', () => {
   });
   it('recovers unsaved edits when the Library section remounts', async () => {
     const view = render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Studio portrait');
-    fireEvent.change(screen.getByLabelText('Positive prompt'), { target: { value: 'draft only' } }); view.unmount(); render(<PromptLibrary onViewSource={vi.fn()} />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Open Studio portrait' })).toBeTruthy()); expect((screen.getByLabelText('Positive prompt') as HTMLTextAreaElement).value).toBe('draft only'); expect(mocks.mutate).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'draft only' } }); view.unmount(); render(<PromptLibrary onViewSource={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open Studio portrait' })).toBeTruthy()); expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe('draft only'); expect(mocks.mutate).not.toHaveBeenCalled();
   });
   it('reveals a save failure while preserving the draft and cancelling pending navigation', async () => {
     render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Studio portrait');
@@ -203,8 +204,8 @@ describe('integrated Prompt Library', () => {
   it('gates bulk and structure edits but retains metadata editing and template filling on Free', async () => {
     mocks.advanced = false; const editor = emptyEditor(); editor.title = 'Template'; editor.document = { ...makeDocument('Hello {{subject}}'), mode: 'template', variables: [{ name: 'subject', label: 'Subject', type: 'text', required: true, defaultValue: '', options: [] }] };
     data.prompts[0].editor = editor; data.prompts[0].positivePrompt = 'Hello {{subject}}'; render(<PromptLibrary onViewSource={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Open Template' })); fireEvent.change(screen.getByLabelText('Subject *'), { target: { value: 'world' } }); fireEvent.click(screen.getByRole('button', { name: 'Copy Positive' }));
-    await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('Hello world')); fireEvent.click(screen.getByRole('button', { name: 'Edit' })); fireEvent.click(screen.getByRole('button', { name: 'Compose' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Template' })); fireEvent.change(screen.getByLabelText('Subject *'), { target: { value: 'world' } }); fireEvent.click(screen.getByRole('button', { name: 'Copy prompt' }));
+    await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('Hello world')); fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getAllByRole('button', { name: 'Add free text' }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Select', hidden: true })); fireEvent.click(screen.getByLabelText('Select Template')); fireEvent.click(screen.getByRole('button', { name: 'Add tags' })); expect(mocks.gate).toHaveBeenCalled(); expect(mocks.mutate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Done selecting', hidden: true }));
@@ -214,7 +215,7 @@ describe('integrated Prompt Library', () => {
     const block = { id: 'block', createdAt: 1, updatedAt: 1, revision: 1, text: 'soft light', editor: { ...emptyEditor(), title: 'Light' } };
     const editor = emptyEditor(); editor.title = 'Composition'; editor.document = makeDocument('portrait'); editor.document.positive.push(snapshotBlock(block));
     data.prompts[0].editor = editor; data.prompts[0].positivePrompt = 'portrait, soft light'; data.blocks = [{ ...block, revision: 2, text: 'hard light' }];
-    render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Composition'); fireEvent.click(screen.getByRole('button', { name: 'Compose' }));
+    render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Composition');
     fireEvent.click(screen.getByRole('button', { name: 'Show text' }));
     expect((screen.getByLabelText('positive part 2') as HTMLTextAreaElement).value).toBe('soft light'); vi.spyOn(window, 'confirm').mockReturnValue(true); fireEvent.click(screen.getByRole('button', { name: 'Update this block' }));
     fireEvent.click(screen.getByRole('button', { name: 'Move positive part 2 up' })); fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -236,9 +237,39 @@ describe('integrated Prompt Library', () => {
     render(<Extract />); const trigger = screen.getByRole('button', { name: 'Extract' }); trigger.focus(); fireEvent.click(trigger);
     expect((screen.getByLabelText('Block text') as HTMLTextAreaElement).value).toBe('  selected\ntext  '); fireEvent.keyDown(window, { key: 'Escape' }); expect(screen.queryByRole('dialog')).toBeNull(); expect(document.activeElement).toBe(trigger);
     fireEvent.click(trigger); fireEvent.click(screen.getByRole('button', { name: 'Save block' })); await waitFor(() => expect(data.blocks[0]?.text).toBe('  selected\ntext  '));
-    expect(await screen.findByText('Block saved')).toBeTruthy();
+    expect(await screen.findByText('Block saved.')).toBeTruthy();
     expect(screen.queryByLabelText('Block text')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit block' }));
+    expect((screen.getByLabelText('Block text') as HTMLTextAreaElement).value).toBe('  selected\ntext  ');
+    expect(data.blocks).toHaveLength(1);
   });
+  it('copies, duplicates, edits and deletes saved items directly from their card menu', async () => {
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    const card = await screen.findByRole('button', { name: 'Open Studio portrait' });
+    fireEvent.contextMenu(card);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy text' }));
+    await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('Studio portrait\nNegative prompt: bad hands'));
+    expect(screen.queryByRole('region', { name: 'Prompt details' })).toBeNull();
+    fireEvent.contextMenu(card); fireEvent.click(screen.getByRole('menuitem', { name: 'Duplicate' }));
+    const duplicate = await screen.findByRole('button', { name: 'Open Studio portrait Copy' });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.contextMenu(duplicate); fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    await waitFor(() => expect(data.prompts).toHaveLength(2));
+    fireEvent.contextMenu(card); fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
+    expect(screen.getByLabelText('Prompt')).toBeTruthy();
+  });
+  it('turns selected text into a field and preserves the rendered text through its default', async () => {
+    render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Studio portrait');
+    const text = screen.getByLabelText('Prompt') as HTMLTextAreaElement;
+    text.setSelectionRange(0, 6); fireEvent.contextMenu(text);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Make selection a fillable field' }));
+    expect((screen.getByLabelText('positive part 1') as HTMLTextAreaElement).value).toBe('{{subject}} portrait');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(data.prompts[0].editor?.document?.variables[0]).toMatchObject({ name: 'subject', defaultValue: 'Studio', required: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy prompt' }));
+    await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('Studio portrait'));
+  });
+
 });

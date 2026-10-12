@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { installFakeIndexedDb } from './helpers/fakeIndexedDb';
+import { normalizeEditor } from '../services/promptLibrary/core.mjs';
 
 describe('browser saved prompt storage', () => {
   beforeEach(() => {
@@ -57,6 +58,21 @@ describe('browser saved prompt storage', () => {
     const whitespace = await storage.saveBrowserPrompt({ ...input, positivePrompt: 'same ' });
     expect(whitespace.status).toBe('saved');
     await expect(storage.listBrowserSavedPrompts()).resolves.toHaveLength(2);
+  });
+
+  it('persists negative-only saves, deduplicates them, and rejects empty pairs', async () => {
+    const storage = await import('../services/savedPromptStorage');
+    const input = {
+      positivePrompt: '', negativePrompt: '  Negative\nonly  ',
+      textBasis: 'effective' as const, source: null, sourceCreatedAt: 100,
+      editor: normalizeEditor({ metadata: { model: 'synthetic-model' } }),
+    };
+    const saved = await storage.saveBrowserPrompt(input);
+    expect(saved).toMatchObject({ status: 'saved', prompt: input });
+    await expect(storage.saveBrowserPrompt(input)).resolves.toEqual({ status: 'already-saved', prompt: saved.prompt });
+    await expect(storage.saveBrowserPrompt({ ...input, positivePrompt: ' \n', negativePrompt: '\t' }))
+      .rejects.toThrow('A non-empty prompt is required.');
+    await expect(storage.listBrowserSavedPrompts()).resolves.toEqual([saved.prompt]);
   });
 
   it('stores blocks and negative-only prompts without desktop links and rejects stale revisions', async () => {
