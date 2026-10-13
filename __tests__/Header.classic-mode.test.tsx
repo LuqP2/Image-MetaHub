@@ -88,12 +88,14 @@ describe('Header classic mode', () => {
     expect(screen.getByRole('button', { name: /explore/i })).toBeTruthy();
   });
 
-  it('keeps Library as a text destination and opens prompts from a compact bookmark button', () => {
+  it('opens Prompts and Library from their text tabs', () => {
     const onLibraryViewChange = vi.fn();
     renderHeader({ onLibraryViewChange });
 
-    expect(screen.queryByRole('button', { name: /^prompts$/i })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Prompt Library' }));
+    const promptsTab = screen.getByRole('button', { name: /^prompts$/i });
+    expect(promptsTab.textContent).toBe('Prompts');
+    expect(promptsTab.querySelector('svg')).toBeNull();
+    fireEvent.click(promptsTab);
     expect(onLibraryViewChange).toHaveBeenCalledWith('prompts');
 
     fireEvent.click(screen.getByRole('button', { name: /^library$/i }));
