@@ -75,13 +75,19 @@ describe('integrated Prompt Library', () => {
     expect(findImages).toHaveBeenCalledWith('portrait');
     expect(mocks.mutate).not.toHaveBeenCalled();
   });
-  it('finds images using negative text when the saved prompt has no positive text', async () => {
-    data.prompts[0].positivePrompt = '';
+  it.each(['', '   \n\t '])('finds images using negative text when positive text is blank (%j)', async (positive) => {
+    data.prompts[0].positivePrompt = positive;
     const findImages = vi.fn();
     render(<PromptLibrary onViewSource={vi.fn()} onFindImages={findImages} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Open Studio portrait' }));
+    const card = await screen.findByRole('button', { name: 'Open Studio portrait' });
+    fireEvent.contextMenu(card.closest('article')!);
+    expect((screen.getByRole('menuitem', { name: 'Find images' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Find images' }));
+    expect(findImages).toHaveBeenCalledWith('bad hands');
+    fireEvent.click(card);
     fireEvent.click(screen.getByRole('button', { name: 'Find images' }));
     expect(findImages).toHaveBeenCalledWith('bad hands');
+    expect(findImages).toHaveBeenCalledTimes(2);
   });
   it('selects cards in list and grid without opening details or toggling twice', async () => {
     render(<PromptLibrary onViewSource={vi.fn()} />);
