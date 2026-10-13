@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getPreviewValues, rememberPreviewValues } from '../../services/promptLibrary/sessionDraft';
-import { Heart, MoreHorizontal, Pencil, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Heart, MoreHorizontal, Pencil, X, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import type { PromptLibraryItem } from '../../types';
 import { allVariables, compilePrompt, makeDocument, normalizeEditor } from '../../services/promptLibrary/core.mjs';
 import { usePromptLibraryPreview } from '../../hooks/usePromptLibraryPreview';
@@ -10,11 +10,12 @@ import { VariableValues, buttonClass } from './PromptVariables';
 import PromptTagsInput from './PromptTagsInput';
 import { useSavedPromptStore } from '../../store/useSavedPromptStore';
 
-export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDuplicate, onRemove, onDuplicates, onViewSource, renderActions, renderSecondaryActions, workspace = false, onSendSelection, onPrevious, onNext, position }: {
+export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDuplicate, onRemove, onDuplicates, onViewSource, onFindImages, renderActions, renderSecondaryActions, workspace = false, onSendSelection, onPrevious, onNext, position }: {
   item: PromptLibraryItem; onEdit: () => void; onClose: () => void; onFavorite: () => void;
   onDuplicate: () => void; onRemove: () => void; onDuplicates: () => void; onViewSource: (path: string) => void | Promise<void>;
   renderActions?: (result: ReturnType<typeof compilePrompt>) => React.ReactNode;
   renderSecondaryActions?: () => React.ReactNode;
+  onFindImages?: (prompt: string) => void;
   onPrevious?: () => void;
   onNext?: () => void;
   position?: string;
@@ -72,6 +73,7 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
       {variables.length > 0 && <section className="space-y-2 rounded-lg border border-accent/25 bg-accent/5 p-3"><h4 className="text-sm font-semibold">Fill values</h4><p className="text-xs text-gray-400">These values replace the placeholders in the final text when copying or sending to a node. Your saved text stays unchanged.</p><VariableValues variables={variables} values={values} onChange={setValues} /></section>}
       <div onContextMenu={e => { const text = selectedPromptText(); if (text) { e.preventDefault(); setSelection({ text, x: Math.min(e.clientX, window.innerWidth - 240), y: Math.min(e.clientY, window.innerHeight - (onSendSelection ? 150 : 100)) }); } }}><PromptPreview compact={workspace} channel={workspace && block ? 'block' : undefined} result={result} heading={block ? 'Block text' : 'Prompt'} /></div>
       {!workspace && renderActions?.(result)}
+      {onFindImages && <button className={buttonClass} disabled={result.errors.length > 0 || !(result.positivePrompt.trim() || result.negativePrompt.trim())} onClick={() => onFindImages(result.positivePrompt.trim() || result.negativePrompt.trim())}><Search size={14} />Find images</button>}
       <div className="space-y-1"><PromptTagsInput compact={workspace} tags={editor.tags} suggestions={suggestions} disabled={savingTags} onChange={tags => void saveTags(tags)} />{(savingTags || tagStatus) && <p role="status" className="text-[11px] text-gray-500">{savingTags ? 'Saving tags…' : tagStatus}</p>}</div>
       {renderSecondaryActions?.()}
       {editor.category && <p className="text-xs text-gray-400">Category: {editor.category}</p>}

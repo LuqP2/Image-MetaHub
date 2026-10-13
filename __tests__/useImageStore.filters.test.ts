@@ -378,6 +378,24 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['searchable.png']);
   });
 
+  it('keeps an exact long prompt searchable when its trailing term is outside the metadata budget', async () => {
+    const prompt = 'portrait '.repeat(1024) + 'unique-outside-index';
+    const image = createImage({ name: 'long-prompt.png', prompt });
+    useImageStore.getState().resetState();
+    useImageStore.setState({ directories: [directory], images: [image], filteredImages: [image], sortOrder: 'asc' });
+    useImageStore.getState().setSearchQuery(prompt);
+    await flushSearchWorker();
+    expect(useImageStore.getState().filteredImages).toEqual([]);
+    useImageStore.getState().setSearchQuery('');
+    await flushSearchWorker();
+    useImageStore.getState().setActiveImageScope({ type: 'prompt', id: prompt, label: prompt });
+    expect(useImageStore.getState().getScopedFilteredImages().map(entry => entry.id)).toEqual([image.id]);
+    // Standalone blocks also match beyond the indexed prefix.
+    useImageStore.getState().setActiveImageScope({ type: 'prompt', id: 'unique-outside-index', label: 'Block' });
+    expect(useImageStore.getState().getScopedFilteredImages().map(entry => entry.id)).toEqual([image.id]);
+    useImageStore.getState().setActiveImageScope(null);
+    expect(useImageStore.getState().getScopedFilteredImages().map(entry => entry.id)).toEqual([image.id]);
+  });
   it('rebuilds memoized search text when an image is replaced by a new object', async () => {
     // buildCatalogSearchText/buildCompactSearchText are memoized in WeakMaps keyed
     // by the IndexedImage object itself. That is only sound because every store

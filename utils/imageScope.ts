@@ -28,6 +28,21 @@ export const resolveScopeImageIds = (
     return null;
   }
 
+  if (scope.type === 'prompt') {
+    const terms = [...new Set(scope.id.toLowerCase().split(/\s+/).filter(Boolean))];
+    const ids = new Set<string>();
+    if (terms.length) {
+      for (const image of sources.images) {
+        // Prompt Library searches must include blocks anywhere in either prompt,
+        // even beyond the compact metadata search's character budget.
+        const text = `${image.prompt || ''} ${image.negativePrompt || ''}`.toLowerCase();
+        if (terms.every(term => text.includes(term))) ids.add(image.id);
+      }
+    }
+    // Empty results (including during hydration) must not clear the query.
+    return { ids, valid: true };
+  }
+
   if (scope.type === 'managedModel') {
     return { ids: scope.managedModel ? resolveManagedModelImages(sources.images, scope.managedModel) : new Set(), valid: true };
   }

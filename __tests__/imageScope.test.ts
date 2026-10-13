@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { IndexedImage, ImageCluster, SmartCollection } from '../types';
 import {
   resolveScopeImageIds,
@@ -51,6 +51,42 @@ const collection: SmartCollection = {
 const sources = { images, clusters: [cluster], collections: [collection] };
 
 describe('resolveScopeImageIds', () => {
+  it('checks each distinct normalized term once per image for repetitive prompts', () => {
+    const matching = { ...alpha, prompt: 'portrait cinematic' };
+    const partial = { ...beta, prompt: 'portrait' };
+    const scope = { type: 'prompt' as const, id: 'PORTRAIT portrait\n'.repeat(512) + 'cinematic', label: 'Repeated prompt' };
+    const includes = vi.spyOn(String.prototype, 'includes');
+    let resolved: ReturnType<typeof resolveScopeImageIds>;
+    let checks: number;
+    try {
+      resolved = resolveScopeImageIds(scope, { ...sources, images: [matching, partial] });
+      checks = includes.mock.calls.length;
+    } finally {
+      includes.mockRestore();
+    }
+    expect([...(resolved!.ids)]).toEqual([alpha.id]);
+    expect(checks!).toBe(4);
+  });
+
+  it('matches blocks after long positive and negative prompt prefixes without matching filenames', () => {
+    const prefix = 'portrait '.repeat(1024);
+    const positive = { ...alpha, prompt: prefix + 'Tail block' };
+    const negative = { ...beta, negativePrompt: prefix + 'Tail block' };
+    const filenameOnly = { ...gamma, name: 'Tail block.png', prompt: 'unrelated' };
+    const scope = { type: 'prompt' as const, id: 'TAIL\nblock', label: 'Tail block' };
+    const resolved = resolveScopeImageIds(scope, { ...sources, images: [positive, negative, filenameOnly] });
+    expect(resolved?.valid).toBe(true);
+    expect([...(resolved?.ids ?? [])]).toEqual([alpha.id, beta.id]);
+  });
+
+  it('preserves a prompt scope with no matches and resolves newly hydrated images', () => {
+    const scope = { type: 'prompt' as const, id: 'hydrated block', label: 'Block' };
+    expect(resolveScopeImageIds(scope, { ...sources, images: [] })).toEqual({ ids: new Set(), valid: true });
+    const hydrated = { ...alpha, prompt: 'hydrated block' };
+    expect(resolveScopeImageIds(scope, { ...sources, images: [hydrated] })?.ids.has(alpha.id)).toBe(true);
+    expect(resolveScopeImageIds({ ...scope, id: '   ' }, sources)?.ids.size).toBe(0);
+  });
+
   it('returns null when there is no scope', () => {
     expect(resolveScopeImageIds(null, sources)).toBeNull();
   });

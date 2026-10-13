@@ -21,7 +21,7 @@ function UnsavedDialog({ onSave, onDiscard, onCancel }: { onSave: () => void; on
   const ref = usePromptDialogFocus(onCancel);
   return <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 p-4"><section ref={ref} role="dialog" aria-modal="true" aria-label="Unsaved changes" className="space-y-4 rounded-xl border border-gray-700 bg-gray-900 p-5"><h3 className="font-semibold">Save your changes before leaving?</h3><p className="text-xs text-gray-400">Your saved item has not been changed yet.</p><div className="flex justify-end gap-2"><button className={buttonClass} onClick={onCancel}>Cancel</button><button className={buttonClass} onClick={onDiscard}>Discard</button><button className={buttonClass + ' !border-accent/40 !bg-accent/15'} onClick={onSave}>Save</button></div></section></div>;
 }
-export default function PromptLibrary({ onViewSource }: { onViewSource: (path: string) => void | Promise<void> }) {
+export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSource: (path: string) => void | Promise<void>; onFindImages?: (prompt: string) => void }) {
   const { prompts, blocks, loadLibrary, mutate, error, isLoading, selectedPromptId, select } = useSavedPromptStore();
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
   const [kind, setKind] = useState<'prompt' | 'block'>(sessionDraft?.kind || 'prompt');
@@ -60,6 +60,14 @@ export default function PromptLibrary({ onViewSource }: { onViewSource: (path: s
     setCopyStatus(response.success ? 'Copied.' : response.error || 'Copy failed.');
   };
   const startEdit = () => { if (active) { setEditing(active); setEditorKey(k => k + 1); } };
+  const findImages = (item: PromptLibraryItem) => {
+    const editor = normalizeEditor(item.editor);
+    const result = 'text' in item ? compilePrompt({ positivePrompt: item.text, editor: { ...editor, document: { ...makeDocument(item.text), mode: 'template', variables: editor.variables } } }) : compilePrompt(item);
+    if (result.errors.length) { open(item); setActionError('Fill the required values before finding images.'); return; }
+    const query = result.positivePrompt.trim() || result.negativePrompt.trim();
+    if (!query) { open(item); setActionError('Fill a value before finding images.'); return; }
+    onFindImages?.(query);
+  };
   const selectId = (id: string) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const run = async (operation: Parameters<typeof mutate>[0]) => {
     try { setActionError(''); const id = await mutate(operation); return { success: true as const, id }; }
@@ -110,13 +118,13 @@ export default function PromptLibrary({ onViewSource }: { onViewSource: (path: s
     <div className="relative flex min-h-0 min-w-0 flex-1 gap-3">
       {showFilters && !editing && <div className="absolute inset-y-0 left-0 z-10 w-60 bg-gray-950 lg:static lg:shrink-0"><PromptLibraryFiltersPanel all={all} kind={kind} filters={filters} onChange={setBrowseFilters} onClose={() => setShowFilters(false)} /></div>}
       <div className={`min-h-0 min-w-0 flex-1 ${editing || active ? 'hidden lg:block' : ''} ${editing ? 'lg:!hidden' : ''}`}>
-        {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser all={all} visible={visible} filters={filters} onFilters={setBrowseFilters} selected={selected} selectionMode={selectionMode} onSelectionMode={() => { setSelectionMode(!selectionMode); setSelected(new Set()); }} activeId={active?.id} contextNodeActions={false} onCopyItem={item => void copyItem(item)} onContextAction={(item, action) => {
+        {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser all={all} visible={visible} filters={filters} onFilters={setBrowseFilters} selected={selected} selectionMode={selectionMode} onSelectionMode={() => { setSelectionMode(!selectionMode); setSelected(new Set()); }} activeId={active?.id} contextNodeActions={false} onFindImages={onFindImages ? findImages : undefined} onCopyItem={item => void copyItem(item)} onContextAction={(item, action) => {
           if (action === 'edit') change(() => { select(item.id); setEditing(item); setEditorKey(key => key + 1); });
           else if (action === 'duplicate') void run({ action: 'duplicate', kind, id: item.id }).then(result => { if (result.success) change(() => { setEditing(null); select(result.id || null); setShowDuplicates(false); dirty.current = false; }); });
           else if (action === 'remove' && window.confirm('Delete this saved item?')) void run({ action: 'remove', kind, id: item.id }).then(result => { if (result.success && selectedPromptId === item.id) select(null); });
         }} onOpen={open} onSelect={selectId} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} />}
       </div>
-      {editing ? <div className="min-h-0 min-w-0 flex-1"><PromptEditor key={editorKey} initial={editing} kind={kind} onDirty={onDirty} onViewSource={onViewSource} requestSave={requestSave} onSaved={afterSaved} onSaveFailed={() => { saveIntent.current = null; setPending(null); setRequestSave(0); }} onClose={() => change(() => { setEditing(null); dirty.current = false; })} /></div> : active && <div className="flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl"><PromptDetails key={active.id} item={active} onEdit={startEdit} onClose={() => { select(null); setShowDuplicates(false); }} onFavorite={() => favorite(active)} onDuplicate={duplicate} onRemove={remove} onDuplicates={() => setShowDuplicates(!showDuplicates)} onViewSource={onViewSource} />{showDuplicates && <PromptDuplicatesPanel item={active} items={all} onOpen={open} />}</div>}
+      {editing ? <div className="min-h-0 min-w-0 flex-1"><PromptEditor key={editorKey} initial={editing} kind={kind} onDirty={onDirty} onViewSource={onViewSource} requestSave={requestSave} onSaved={afterSaved} onSaveFailed={() => { saveIntent.current = null; setPending(null); setRequestSave(0); }} onClose={() => change(() => { setEditing(null); dirty.current = false; })} /></div> : active && <div className="flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl"><PromptDetails key={active.id} item={active} onEdit={startEdit} onClose={() => { select(null); setShowDuplicates(false); }} onFavorite={() => favorite(active)} onDuplicate={duplicate} onRemove={remove} onDuplicates={() => setShowDuplicates(!showDuplicates)} onFindImages={onFindImages} onViewSource={onViewSource} />{showDuplicates && <PromptDuplicatesPanel item={active} items={all} onOpen={open} />}</div>}
     </div>
     {pending && <UnsavedDialog onSave={() => { saveIntent.current = pending; setRequestSave(n => n + 1); }} onDiscard={() => { const action = pending; setPending(null); saveIntent.current = null; clearDraft(); dirty.current = false; action(); }} onCancel={() => { setPending(null); saveIntent.current = null; }} />}
     {showTransfer && <PromptImportExportDialog snapshot={exportSnapshot} librarySnapshot={{ prompts, blocks }} filteredSnapshot={selected.size ? filteredSnapshot : undefined} scope={selected.size ? 'Selected items' : visible.length !== all.length ? 'Filtered items' : 'All items in this view'} onClose={() => setShowTransfer(false)} />}

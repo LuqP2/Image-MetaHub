@@ -1659,7 +1659,7 @@ export interface ComparisonMetadataPanelProps {
 /**
  * Image cluster - groups images with similar prompts
  */
-export type ImageScopeType = 'model' | 'managedModel' | 'cluster' | 'collection';
+export type ImageScopeType = 'model' | 'managedModel' | 'cluster' | 'collection' | 'prompt';
 
 /** The active dimension of the Explore surface (unifies Model View / Smart Library / Collections). */
 export type ExploreDimension = 'models' | 'clusters' | 'collections';
