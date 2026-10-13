@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { IndexedImage, ImageCluster, SmartCollection } from '../types';
 import {
   resolveScopeImageIds,
@@ -51,6 +51,23 @@ const collection: SmartCollection = {
 const sources = { images, clusters: [cluster], collections: [collection] };
 
 describe('resolveScopeImageIds', () => {
+  it('checks each distinct normalized term once per image for repetitive prompts', () => {
+    const matching = { ...alpha, prompt: 'portrait cinematic' };
+    const partial = { ...beta, prompt: 'portrait' };
+    const scope = { type: 'prompt' as const, id: 'PORTRAIT portrait\n'.repeat(512) + 'cinematic', label: 'Repeated prompt' };
+    const includes = vi.spyOn(String.prototype, 'includes');
+    let resolved: ReturnType<typeof resolveScopeImageIds>;
+    let checks: number;
+    try {
+      resolved = resolveScopeImageIds(scope, { ...sources, images: [matching, partial] });
+      checks = includes.mock.calls.length;
+    } finally {
+      includes.mockRestore();
+    }
+    expect([...(resolved!.ids)]).toEqual([alpha.id]);
+    expect(checks!).toBe(4);
+  });
+
   it('matches blocks after long positive and negative prompt prefixes without matching filenames', () => {
     const prefix = 'portrait '.repeat(1024);
     const positive = { ...alpha, prompt: prefix + 'Tail block' };

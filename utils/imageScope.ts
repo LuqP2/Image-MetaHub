@@ -29,7 +29,7 @@ export const resolveScopeImageIds = (
   }
 
   if (scope.type === 'prompt') {
-    const terms = scope.id.toLowerCase().split(/\s+/).filter(Boolean);
+    const terms = [...new Set(scope.id.toLowerCase().split(/\s+/).filter(Boolean))];
     const ids = new Set<string>();
     if (terms.length) {
       for (const image of sources.images) {
