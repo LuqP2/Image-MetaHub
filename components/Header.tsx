@@ -382,11 +382,12 @@ const Header: React.FC<HeaderProps> = ({
           {libraryView && onLibraryViewChange && (
             <div className="min-w-0 max-w-full overflow-x-auto scrollbar-thin">
               <div className="app-top-segmented w-max">
-                {viewTabs.map((tab) => {
+                {viewTabs.map((tab, index) => {
                   const isComfyUITab = tab.id === 'comfyui';
                   return (
+                    <React.Fragment key={tab.id}>
+                    {index > 0 && <span aria-hidden="true" className="select-none px-0.5 text-xs text-gray-600">|</span>}
                     <button
-                      key={tab.id}
                       onClick={() => handleViewTabClick(tab.id)}
                       onDragEnter={isComfyUITab ? (event) => {
                         if (hasInternalImageDragType(event.dataTransfer)) {
@@ -432,6 +433,7 @@ const Header: React.FC<HeaderProps> = ({
                     >
                       <span>{tab.label}</span>
                     </button>
+                    </React.Fragment>
                   );
                 })}
                 {classicTabs.map((tab) => (
