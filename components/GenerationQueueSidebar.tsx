@@ -330,7 +330,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
       data-area="queue"
       tabIndex={-1}
       style={{ width }}
-      className={`fixed right-0 top-0 h-full bg-gray-800 border-l border-gray-700 z-40 flex flex-col ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}
+      className={`fixed right-0 top-[var(--imh-header-height,61px)] bottom-0 bg-gray-800 border-l border-gray-700 z-40 flex flex-col ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}
     >
       <div
         role="separator"

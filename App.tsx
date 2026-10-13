@@ -754,13 +754,21 @@ export default function App() {
     }
   }, [activeImageScope, clusters, collections, safeImages, validateActiveImageScope]);
 
-  const hasLeftSidebar = hasDirectories && !['prompts', 'models', 'comfyui', 'editor'].includes(libraryView);
-  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && !['prompts', 'models', 'comfyui', 'editor'].includes(libraryView)));
-  const previousHasRightSidebarRef = useRef(hasRightSidebar);
-  const rightSidebarVisibilityChanged = previousHasRightSidebarRef.current !== hasRightSidebar;
+  const globalHeaderRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    previousHasRightSidebarRef.current = hasRightSidebar;
-  }, [hasRightSidebar]);
+    const header = globalHeaderRef.current;
+    if (!header) return;
+    const updateHeaderHeight = () => {
+      header.parentElement?.style.setProperty('--imh-header-height', `${header.getBoundingClientRect().height}px`);
+    };
+    updateHeaderHeight();
+    const observer = new ResizeObserver(updateHeaderHeight);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
+  const hasLeftSidebar = hasDirectories && ['library', 'explore'].includes(libraryView);
+  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && !['prompts', 'models', 'comfyui', 'editor'].includes(libraryView)));
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
       resolveSidebarWidths({
@@ -784,7 +792,6 @@ export default function App() {
     ? (isSidebarCollapsed ? SIDEBAR_COLLAPSED_CONTENT_OFFSET : sidebarWidth)
     : 0;
   const mainContentMarginRight = hasRightSidebar ? rightSidebarWidth : 0;
-  const isSidebarResizing = sidebarResizeState !== null;
   const isLeftSidebarResizing = sidebarResizeState?.side === 'left';
   const isRightSidebarResizing = sidebarResizeState?.side === 'right';
 
@@ -4068,8 +4075,7 @@ export default function App() {
 
   return (
     <React.Profiler id="App" onRender={appProfilerOnRender}>
-    <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
-      <BrowserCompatibilityWarning />
+    <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
       {canUseModelManager && <ModelLibraryPicker />}
       {canUseModelManager && <ModelRemovalDialog />}
       {canUseModelManager && modelManager.notification && <div role="status" className="fixed bottom-5 right-5 z-[80] flex max-w-sm items-center gap-3 rounded-lg border border-cyan-500/40 bg-gray-900 p-4 text-sm text-gray-100 shadow-xl"><button className="text-left" onClick={() => { setLibraryView('models'); showModelUpdates(true); dismissModelNotification(); }}>{modelManager.notification} <span className="text-cyan-300">View updates</span></button><button aria-label="Dismiss model notification" onClick={dismissModelNotification}>×</button></div>}
@@ -4112,6 +4118,28 @@ export default function App() {
         preferredSource={batchExportRequest?.preferredSource ?? null}
         restrictToRequestedSelection={!canUseBatchExport && (batchExportRequest?.imageIds?.length ?? 0) === 1}
       />
+
+      <div ref={globalHeaderRef} className="shrink-0">
+        <BrowserCompatibilityWarning />
+        <Header
+          onOpenSettings={() => handleOpenSettings()}
+          onOpenLicense={handleOpenLicenseSettings}
+          onOpenTrialExtension={() => setIsTrialExtensionModalOpen(true)}
+          onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
+          libraryView={libraryView}
+          onLibraryViewChange={(view) => { if (view === 'models' && !canUseModelManager) { showProModal('model_manager'); return; } setLibraryView(view); }}
+          onNavigateExplore={(dimension) => {
+            setExploreDimension(dimension);
+            setLibraryView('explore');
+          }}
+          onOpenDroppedImageInComfyUI={(imageId) => {
+            const image = imageLookup.get(imageId);
+            if (image) {
+              openComfyUIWorkflowInWorkspace(image, displayImages);
+            }
+          }}
+        />
+      </div>
 
       {hasLeftSidebar && (
         <Sidebar
@@ -4222,28 +4250,9 @@ export default function App() {
       )}
 
       <div
-        className={`h-screen flex flex-col ${isSidebarResizing || rightSidebarVisibilityChanged ? 'transition-none' : 'transition-[margin] duration-300 ease-in-out'}`}
+        className="flex min-h-0 flex-1 flex-col"
         style={{ marginLeft: mainContentMarginLeft, marginRight: mainContentMarginRight }}
       >
-        <Header
-          onOpenSettings={() => handleOpenSettings()}
-          onOpenLicense={handleOpenLicenseSettings}
-          onOpenTrialExtension={() => setIsTrialExtensionModalOpen(true)}
-          onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
-          libraryView={libraryView}
-          onLibraryViewChange={(view) => { if (view === 'models' && !canUseModelManager) { showProModal('model_manager'); return; } setLibraryView(view); }}
-          onNavigateExplore={(dimension) => {
-            setExploreDimension(dimension);
-            setLibraryView('explore');
-          }}
-          onOpenDroppedImageInComfyUI={(imageId) => {
-            const image = imageLookup.get(imageId);
-            if (image) {
-              openComfyUIWorkflowInWorkspace(image, displayImages);
-            }
-          }}
-        />
-
         <TrialExpiredBanner />
 
         <CollectionFormModal

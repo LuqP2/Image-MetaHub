@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Bug, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow, Image as ImageIcon, Compass, Bookmark, Box } from 'lucide-react';
+import { Settings, Bug, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -314,10 +314,11 @@ const Header: React.FC<HeaderProps> = ({
   const viewTabs = useMemo(
     () => [
       { id: 'library' as const, label: 'Library' },
-      { id: 'explore' as const, label: 'Explore', icon: Compass },
-      { id: 'models' as const, label: 'Models', icon: Box },
-      { id: 'editor' as const, label: 'Image Editor', icon: ImageIcon },
-      { id: 'comfyui' as const, label: 'ComfyUI', icon: Workflow },
+      { id: 'prompts' as const, label: 'Prompts' },
+      { id: 'explore' as const, label: 'Explore' },
+      { id: 'models' as const, label: 'Models' },
+      { id: 'editor' as const, label: 'Image Editor' },
+      { id: 'comfyui' as const, label: 'ComfyUI' },
     ],
     []
   );
@@ -356,6 +357,15 @@ const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-4 py-2.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
       <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <div className="flex shrink-0 items-center gap-2 pr-2">
+            <img src="logo1.png" alt="" className="h-9 w-9 rounded-xl object-contain" />
+            <div className="hidden xl:flex flex-col">
+              <span className="text-sm font-semibold text-gray-100">
+                {isPro ? 'Image MetaHub Pro' : isTrialActive ? 'Image MetaHub Pro Trial' : 'Image MetaHub'}
+              </span>
+              <span className="text-[10px] text-gray-500">v0.21.0</span>
+            </div>
+          </div>
           {!isPro && !isTrialActive && (
             <button
               onClick={onOpenLicense}
@@ -373,11 +383,10 @@ const Header: React.FC<HeaderProps> = ({
             <div className="min-w-0 max-w-full overflow-x-auto scrollbar-thin">
               <div className="app-top-segmented w-max">
                 {viewTabs.map((tab) => {
-                  const Icon = 'icon' in tab ? tab.icon : null;
                   const isComfyUITab = tab.id === 'comfyui';
                   return (
-                    <React.Fragment key={tab.id}>
                     <button
+                      key={tab.id}
                       onClick={() => handleViewTabClick(tab.id)}
                       onDragEnter={isComfyUITab ? (event) => {
                         if (hasInternalImageDragType(event.dataTransfer)) {
@@ -421,23 +430,8 @@ const Header: React.FC<HeaderProps> = ({
                       }`}
                       title={isComfyUITab ? 'Open ComfyUI, or drop an image here to load its workflow' : undefined}
                     >
-                      {Icon && <Icon size={14} />}
                       <span>{tab.label}</span>
                     </button>
-                    {tab.id === 'library' && (
-                      <button
-                        type="button"
-                        onClick={() => handleViewTabClick('prompts')}
-                        className={`app-top-segment px-2.5 ${
-                          libraryView === 'prompts' ? 'app-top-segment-active' : ''
-                        }`}
-                        title="Prompt Library"
-                        aria-label="Prompt Library"
-                      >
-                        <Bookmark size={14} />
-                      </button>
-                    )}
-                    </React.Fragment>
                   );
                 })}
                 {classicTabs.map((tab) => (

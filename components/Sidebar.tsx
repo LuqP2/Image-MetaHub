@@ -1,12 +1,11 @@
 
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronLeft, Plus } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import SemanticSearchBar from './SemanticSearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
 import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
-import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
 import { createProfilerOnRender } from '../utils/performanceDiagnostics';
 
@@ -85,7 +84,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   onExcludeFolder,
   onIncludeFolder,
 }) => {
-  const { isPro, isTrialActive } = useFeatureAccess();
   const [isGenerationParametersExpanded, setIsGenerationParametersExpanded] = useState(true);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
@@ -218,14 +216,14 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div
         data-area="sidebar"
         tabIndex={-1}
-        className="fixed left-0 top-0 z-40 flex h-full w-16 flex-col items-center border-r border-gray-800/70 bg-gray-900/90 py-6 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300 ease-in-out">
+        className="fixed left-0 top-[var(--imh-header-height,61px)] bottom-0 z-40 flex w-16 flex-col items-center border-r border-gray-800/70 bg-gray-900/90 py-3 backdrop-blur-md shadow-lg shadow-black/20">
         <button
           onClick={onToggleCollapse}
-          className="mt-4 mb-6 rounded-xl p-0 text-gray-400 transition-colors duration-200 hover:bg-gray-800/50 hover:text-gray-100"
+          className="mb-6 rounded-xl p-2 text-gray-400 transition-colors duration-200 hover:bg-gray-800/50 hover:text-gray-100"
           title="Expand sidebar"
           aria-label="Expand sidebar"
         >
-           <img src="logo1.png" alt="Expand" className="h-10 w-10 rounded-xl object-contain" />
+          <ChevronRight className="h-4 w-4" />
         </button>
         <div className="flex flex-col space-y-3">
           {(selectedModels.length > 0 ||
@@ -263,7 +261,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       data-area="sidebar"
       tabIndex={-1}
       style={{ width }}
-      className={`fixed left-0 top-0 z-40 flex h-full flex-col border-r border-gray-800/70 bg-gray-900/90 backdrop-blur-md shadow-2xl shadow-black/40 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}>
+      className={`fixed left-0 top-[var(--imh-header-height,61px)] bottom-0 z-40 flex flex-col border-r border-gray-800/70 bg-gray-900/90 backdrop-blur-md shadow-2xl shadow-black/40 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}>
       <div
         role="separator"
         aria-label="Resize filters sidebar"
@@ -277,13 +275,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* Header with collapse button */}
       <div className="flex flex-col border-b border-gray-800/70 bg-gray-900/55">
         <div className="flex items-center gap-3 px-4 py-3">
-          <img src="logo1.png" alt="Image MetaHub" className="h-11 w-11 flex-shrink-0 rounded-xl object-contain" />
-          <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
-            <h1 className="truncate text-lg font-semibold tracking-tight text-gray-100">
-              {isPro ? 'Image MetaHub Pro' : isTrialActive ? 'Image MetaHub Pro Trial' : 'Image MetaHub'}
-            </h1>
-            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.21.0</span>
-          </div>
+          <h2 className="text-sm font-semibold text-gray-100">Filters</h2>
           <button
             onClick={onToggleCollapse}
             className="app-top-icon-button ml-auto h-8 w-8"
