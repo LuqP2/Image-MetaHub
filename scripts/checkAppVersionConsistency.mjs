@@ -31,7 +31,7 @@ export function verifyAppVersionConsistency(root = repositoryRoot) {
     ['cli.ts', `.version('${version}')`],
     ['components/FolderSelector.tsx', `Welcome to Image MetaHub v${major}.${minor}`],
     ['components/FolderSelector.tsx', `>v${version}</p>`],
-    ['components/Sidebar.tsx', `>v${version}</span>`],
+    ['components/Header.tsx', `>v${version}</span>`],
     ['electron.mjs', `Image MetaHub v${version}`],
     ['index.html', `<title>Image MetaHub v${version}</title>`],
   ];

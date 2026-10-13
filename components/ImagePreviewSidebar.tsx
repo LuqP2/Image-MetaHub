@@ -529,7 +529,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
       data-area="preview"
       tabIndex={-1}
       style={{ width }}
-      className={`fixed right-0 top-0 z-40 flex h-full flex-col border-l border-gray-700 bg-gray-900 shadow-xl ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}
+      className={`fixed right-0 top-[var(--imh-header-height,61px)] bottom-0 z-40 flex flex-col border-l border-gray-700 bg-gray-900 shadow-xl ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}
       onClick={hideContextMenu}
     >
       <div
