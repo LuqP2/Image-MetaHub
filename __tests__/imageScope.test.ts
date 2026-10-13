@@ -51,6 +51,25 @@ const collection: SmartCollection = {
 const sources = { images, clusters: [cluster], collections: [collection] };
 
 describe('resolveScopeImageIds', () => {
+  it('matches blocks after long positive and negative prompt prefixes without matching filenames', () => {
+    const prefix = 'portrait '.repeat(1024);
+    const positive = { ...alpha, prompt: prefix + 'Tail block' };
+    const negative = { ...beta, negativePrompt: prefix + 'Tail block' };
+    const filenameOnly = { ...gamma, name: 'Tail block.png', prompt: 'unrelated' };
+    const scope = { type: 'prompt' as const, id: 'TAIL\nblock', label: 'Tail block' };
+    const resolved = resolveScopeImageIds(scope, { ...sources, images: [positive, negative, filenameOnly] });
+    expect(resolved?.valid).toBe(true);
+    expect([...(resolved?.ids ?? [])]).toEqual([alpha.id, beta.id]);
+  });
+
+  it('preserves a prompt scope with no matches and resolves newly hydrated images', () => {
+    const scope = { type: 'prompt' as const, id: 'hydrated block', label: 'Block' };
+    expect(resolveScopeImageIds(scope, { ...sources, images: [] })).toEqual({ ids: new Set(), valid: true });
+    const hydrated = { ...alpha, prompt: 'hydrated block' };
+    expect(resolveScopeImageIds(scope, { ...sources, images: [hydrated] })?.ids.has(alpha.id)).toBe(true);
+    expect(resolveScopeImageIds({ ...scope, id: '   ' }, sources)?.ids.size).toBe(0);
+  });
+
   it('returns null when there is no scope', () => {
     expect(resolveScopeImageIds(null, sources)).toBeNull();
   });

@@ -55,7 +55,6 @@ import { ModelRemovalDialog } from './components/ModelStoragePanel';
 import { ModelLibraryPicker } from './components/ModelManagerPanels';
 import { startModelManager, setModelLibraryOpener, setModelImageOpener, useModelManager, dismissModelNotification, showModelUpdates } from './services/modelLibrary/manager';
 import PromptLibrary from './components/PromptLibrary';
-import { boundImageSearchQuery } from './utils/imageSearchQuery';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
@@ -4394,6 +4393,12 @@ export default function App() {
                     onExitScope={
                       activeImageScope
                         ? () => {
+                            if (activeImageScope.type === 'prompt') {
+                              setActiveImageScope(null);
+                              resetLibraryGridScrollPosition();
+                              setLibraryView('prompts');
+                              return;
+                            }
                             const dimension: ExploreDimension =
                               activeImageScope.type === 'cluster'
                                 ? 'clusters'
@@ -4409,7 +4414,9 @@ export default function App() {
                     }
                     scopeReturnLabel={
                       activeImageScope
-                        ? activeImageScope.type === 'cluster'
+                        ? activeImageScope.type === 'prompt'
+                          ? 'Prompt Library'
+                          : activeImageScope.type === 'cluster'
                           ? 'Clusters'
                           : activeImageScope.type === 'model' || activeImageScope.type === 'managedModel'
                           ? 'Models'
@@ -4550,14 +4557,13 @@ export default function App() {
                   )
                 ) : libraryView === 'prompts' ? (
                   <PromptLibrary onViewSource={handleOpenFileFromDeepLink} onFindImages={prompt => {
-                    const query = boundImageSearchQuery(prompt);
+                    const query = prompt.trim();
                     handleClearAllFilters();
                     useImageStore.getState().clearFolderSelection();
                     useSemanticStore.getState().clearQuery();
                     useImageStore.getState().clearImageSelection();
                     useImageStore.getState().setPreviewImage(null);
-                    setSearchInputValue(query);
-                    setSearchQuery(query);
+                    setActiveImageScope({ type: 'prompt', id: query, label: query });
                     setCurrentPage(1);
                     resetLibraryGridScrollPosition();
                     setLibraryView('library');

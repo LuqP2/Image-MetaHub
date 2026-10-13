@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Calendar, CheckCircle, FolderOpen, Heart, Layers, Settings, X, type LucideIcon } from 'lucide-react';
+import { Box, Calendar, CheckCircle, FolderOpen, Heart, Layers, Search, Settings, X, type LucideIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
 import type { AdvancedFilters, ImageScope, NumericRangeFilter } from '../types';
@@ -10,6 +10,7 @@ const SCOPE_ICONS: Record<ImageScope['type'], LucideIcon> = {
   managedModel: Box,
   cluster: Layers,
   collection: FolderOpen,
+  prompt: Search,
 };
 
 const SCOPE_LABELS: Record<ImageScope['type'], string> = {
@@ -17,6 +18,7 @@ const SCOPE_LABELS: Record<ImageScope['type'], string> = {
   managedModel: 'Managed model',
   cluster: 'Cluster',
   collection: 'Collection',
+  prompt: 'Prompt',
 };
 
 const formatRangeLabel = (label: string, range?: NumericRangeFilter, suffix = '') => {
