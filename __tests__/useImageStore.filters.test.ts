@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Directory, IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { boundImageSearchQuery, MAX_SEARCH_TEXT_LENGTH } from '../utils/imageSearchQuery';
 
 const directory: Directory = {
   id: 'dir-1',
@@ -378,6 +379,21 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['searchable.png']);
   });
 
+  it('keeps an exact long prompt searchable when its trailing term is outside the metadata budget', async () => {
+    const prompt = 'portrait '.repeat(1024) + 'unique-outside-index';
+    const image = createImage({ name: 'long-prompt.png', prompt });
+    useImageStore.getState().resetState();
+    useImageStore.setState({ directories: [directory], images: [image], filteredImages: [image], sortOrder: 'asc' });
+    useImageStore.getState().setSearchQuery(prompt);
+    await flushSearchWorker();
+    expect(useImageStore.getState().filteredImages).toEqual([]);
+    const query = boundImageSearchQuery(prompt);
+    expect(query.length).toBeLessThanOrEqual(MAX_SEARCH_TEXT_LENGTH);
+    expect(query).not.toContain('unique-outside-index');
+    useImageStore.getState().setSearchQuery(query);
+    await flushSearchWorker();
+    expect(useImageStore.getState().filteredImages.map(entry => entry.id)).toEqual([image.id]);
+  });
   it('rebuilds memoized search text when an image is replaced by a new object', async () => {
     // buildCatalogSearchText/buildCompactSearchText are memoized in WeakMaps keyed
     // by the IndexedImage object itself. That is only sound because every store

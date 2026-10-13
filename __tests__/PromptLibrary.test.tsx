@@ -60,6 +60,21 @@ describe('integrated Prompt Library', () => {
     expect(mocks.gate).not.toHaveBeenCalled();
     expect(mocks.mutate).not.toHaveBeenCalled();
   });
+  it('opens an optional-only template when its compiled search text is empty', async () => {
+    data.prompts[0].editor!.title = 'Optional template';
+    data.prompts[0].editor!.document = { ...makeDocument('{{subject}}'), mode: 'template', variables: [{ name: 'subject', label: 'Subject', type: 'text', required: false, defaultValue: '', options: [] }] };
+    const findImages = vi.fn();
+    render(<PromptLibrary onViewSource={vi.fn()} onFindImages={findImages} />);
+    fireEvent.contextMenu((await screen.findByRole('button', { name: 'Open Optional template' })).closest('article')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Find images' }));
+    expect(findImages).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: 'Prompt details' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Find images' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'portrait' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Find images' }));
+    expect(findImages).toHaveBeenCalledWith('portrait');
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
   it('finds images using negative text when the saved prompt has no positive text', async () => {
     data.prompts[0].positivePrompt = '';
     const findImages = vi.fn();

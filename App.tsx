@@ -55,6 +55,7 @@ import { ModelRemovalDialog } from './components/ModelStoragePanel';
 import { ModelLibraryPicker } from './components/ModelManagerPanels';
 import { startModelManager, setModelLibraryOpener, setModelImageOpener, useModelManager, dismissModelNotification, showModelUpdates } from './services/modelLibrary/manager';
 import PromptLibrary from './components/PromptLibrary';
+import { boundImageSearchQuery } from './utils/imageSearchQuery';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
@@ -4549,13 +4550,14 @@ export default function App() {
                   )
                 ) : libraryView === 'prompts' ? (
                   <PromptLibrary onViewSource={handleOpenFileFromDeepLink} onFindImages={prompt => {
+                    const query = boundImageSearchQuery(prompt);
                     handleClearAllFilters();
                     useImageStore.getState().clearFolderSelection();
                     useSemanticStore.getState().clearQuery();
                     useImageStore.getState().clearImageSelection();
                     useImageStore.getState().setPreviewImage(null);
-                    setSearchInputValue(prompt);
-                    setSearchQuery(prompt);
+                    setSearchInputValue(query);
+                    setSearchQuery(query);
                     setCurrentPage(1);
                     resetLibraryGridScrollPosition();
                     setLibraryView('library');

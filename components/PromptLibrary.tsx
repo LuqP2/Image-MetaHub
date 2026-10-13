@@ -65,7 +65,8 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
     const result = 'text' in item ? compilePrompt({ positivePrompt: item.text, editor: { ...editor, document: { ...makeDocument(item.text), mode: 'template', variables: editor.variables } } }) : compilePrompt(item);
     if (result.errors.length) { open(item); setActionError('Fill the required values before finding images.'); return; }
     const query = result.positivePrompt.trim() || result.negativePrompt.trim();
-    if (query) onFindImages?.(query);
+    if (!query) { open(item); setActionError('Fill a value before finding images.'); return; }
+    onFindImages?.(query);
   };
   const selectId = (id: string) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const run = async (operation: Parameters<typeof mutate>[0]) => {

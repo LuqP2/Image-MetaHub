@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { MAX_SEARCH_TEXT_LENGTH } from '../utils/imageSearchQuery';
 import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode, type ImageScope, type ExploreDimension, type SortOrder, type SemanticSearchResult, type UserDataSemanticPatch } from '../types';
 import { resolveScopeImageIds, filterImagesByScope, getScopeToastMessage } from '../utils/imageScope';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
@@ -625,8 +626,6 @@ const buildCatalogSearchText = (image: IndexedImage): string => {
     catalogSearchTextCache.set(image, text);
     return text;
 };
-
-const MAX_SEARCH_TEXT_LENGTH = 8192;
 
 const buildCompactSearchTextUncached = (image: IndexedImage): string => {
     const segments: string[] = [];
