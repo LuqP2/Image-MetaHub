@@ -40,7 +40,7 @@ const FolderSelector: React.FC<FolderSelectorProps> = ({ onSelectFolder }) => {
         Select Image Folder
       </button>
        <p className="text-xs text-gray-500 mt-6 whitespace-nowrap">
-        All processing happens locally in your browser. Your images never leave your computer.
+        All processing happens locally. Your images never leave your computer.
       </p>
     </div>
   );
