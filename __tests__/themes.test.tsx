@@ -13,14 +13,57 @@ describe('theme selection', () => {
   beforeEach(() => useSettingsStore.getState().resetState());
   afterEach(() => cleanup());
 
-  it('keeps all 16 choices and resolves every new theme as dark', () => {
-    expect(themeOptions).toHaveLength(16);
-    expect(themeOptions.slice(6).map((option) => option.id)).toEqual(newThemeIds);
+  it('adds Ayu Light and makes System follow the Ayu family', () => {
+    expect(themeOptions).toHaveLength(17);
+    expect(themeOptions.slice(6).filter((option) => option.dark).map((option) => option.id)).toEqual(newThemeIds);
     for (const id of newThemeIds) {
       expect(resolveTheme(id as (typeof themeOptions)[number]['id'], false)).toEqual({ id, dark: true });
     }
-    expect(resolveTheme('system', false)).toEqual({ id: 'light', dark: false });
-    expect(resolveTheme('system', true)).toEqual({ id: 'dark', dark: true });
+    expect(resolveTheme('system', false)).toEqual({ id: 'ayu-light', dark: false });
+    expect(resolveTheme('system', true)).toEqual({ id: 'ayu', dark: true });
+    expect(resolveTheme('ayu-light', true)).toEqual({ id: 'ayu-light', dark: false });
+  });
+
+  it('keeps every explicit choice independent of the system appearance', () => {
+    for (const option of themeOptions) {
+      if (option.id === 'system') continue;
+      for (const systemDark of [false, true]) {
+        expect(resolveTheme(option.id, systemDark)).toEqual({ id: option.id, dark: option.dark });
+      }
+    }
+  });
+
+  it('keeps System as the saved default while its resolved appearance changes', () => {
+    expect(useSettingsStore.getState().theme).toBe('system');
+    const before = localStorage.getItem('image-metahub-settings');
+    expect(resolveTheme(useSettingsStore.getState().theme, true).id).toBe('ayu');
+    expect(resolveTheme(useSettingsStore.getState().theme, false).id).toBe('ayu-light');
+    expect(useSettingsStore.getState().theme).toBe('system');
+    expect(localStorage.getItem('image-metahub-settings')).toBe(before);
+  });
+
+  it.each(['light', 'dark', 'ayu', 'ayu-light'] as const)('restores the explicit %s preference unchanged', async (id) => {
+    useSettingsStore.getState().setTheme(id);
+    const saved = localStorage.getItem('image-metahub-settings');
+    expect(saved).not.toBeNull();
+    await act(async () => {
+      useSettingsStore.getState().resetState();
+      localStorage.setItem('image-metahub-settings', saved!);
+      await useSettingsStore.persist.rehydrate();
+    });
+    expect(useSettingsStore.getState().theme).toBe(id);
+  });
+
+  it('explains the default and lets the user select Ayu Light explicitly', () => {
+    render(<AppearanceSettingsPanel />);
+    const trigger = screen.getByRole('button', { name: 'Theme' });
+    expect(trigger.textContent).toContain('System (Default)');
+    expect(screen.getByText('Uses Ayu Dark or Ayu Light to match your system appearance.')).toBeTruthy();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('option', { name: 'Ayu Light' }));
+    expect(useSettingsStore.getState().theme).toBe('ayu-light');
+    expect(trigger.textContent).toContain('Ayu Light');
+    expect(screen.queryByText('Uses Ayu Dark or Ayu Light to match your system appearance.')).toBeNull();
   });
 
   it('selects a theme by keyboard and retains the saved choice', async () => {
@@ -28,7 +71,7 @@ describe('theme selection', () => {
     const trigger = screen.getByRole('button', { name: 'Theme' });
     fireEvent.click(trigger);
     const list = screen.getByRole('listbox', { name: 'Available themes' });
-    expect(screen.getAllByRole('option')).toHaveLength(16);
+    expect(screen.getAllByRole('option')).toHaveLength(17);
     fireEvent.keyDown(list, { key: 'End' });
     fireEvent.keyDown(list, { key: 'Enter' });
     expect(useSettingsStore.getState().theme).toBe('tokyo-night');
@@ -96,6 +139,22 @@ const contrast = (first: number[], second: number[]) => {
 };
 
 describe('new theme palette contrast', () => {
+  it('keeps Ayu Light text, accents and buttons readable on light surfaces', () => {
+    const color = (token: string) => channels('ayu-light', token);
+    for (const surface of ['gray-950', 'gray-900', 'gray-800']) {
+      for (const foreground of ['gray-500', 'gray-400', 'gray-300', 'gray-200', 'gray-100', 'blue-500']) {
+        expect(contrast(color(foreground), color(surface))).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+    expect(contrast(color('gray-700'), color('gray-900'))).toBeGreaterThanOrEqual(3);
+    for (const button of ['blue-500', 'blue-600', 'accent-strong']) {
+      expect(contrast([255, 255, 255], color(button))).toBeGreaterThanOrEqual(4.5);
+    }
+    const option = themeOptions.find((theme) => theme.id === 'ayu-light')!;
+    expect(color('gray-950')).toEqual(channelsFromHex(option.colors[0]));
+    expect(color('blue-500')).toEqual(channelsFromHex(option.colors[1]));
+  });
+
   it.each(newThemeIds)('%s meets the principal text and control targets', (id) => {
     const color = (token: string) => channels(id, token);
     expect(contrast(color('gray-500'), color('gray-800'))).toBeGreaterThanOrEqual(4.5);

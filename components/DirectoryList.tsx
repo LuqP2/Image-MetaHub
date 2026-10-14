@@ -675,8 +675,8 @@ export default function DirectoryList({
               <div className="w-4 mr-1 flex-shrink-0" /> // Spacer
             )}
             
-            <Folder className={`w-3 h-3 mr-2 ${isExcluded ? 'text-gray-600' : isSelected ? 'text-blue-300' : 'text-gray-400'}`} />
-            <span className={`text-sm truncate flex-1 ${isExcluded ? 'text-gray-500 line-through' : isSelected ? 'text-blue-100' : 'text-gray-300'}`}>{child.name}</span>
+            <Folder className={`w-3 h-3 mr-2 ${isExcluded ? 'text-gray-600' : isSelected ? 'text-blue-300 light:text-gray-100' : 'text-gray-400'}`} />
+            <span className={`text-sm truncate flex-1 ${isExcluded ? 'text-gray-500 line-through' : isSelected ? 'text-blue-100 light:text-gray-100' : 'text-gray-300'}`}>{child.name}</span>
             
             {/* Action Buttons (Visible on Hover) */}
             <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
@@ -1090,12 +1090,12 @@ export default function DirectoryList({
                         <div className="w-4 h-4 ml-1 flex-shrink-0" /> // Spacer
                       )}
                       
-                      <FolderOpen className={`w-4 h-4 flex-shrink-0 ml-1 ${isRootSelected ? 'text-blue-300' : 'text-gray-400'}`} />
+                      <FolderOpen className={`w-4 h-4 flex-shrink-0 ml-1 ${isRootSelected ? 'text-blue-300 light:text-gray-100' : 'text-gray-400'}`} />
                       <button
                         onClick={(e) => handleFolderClick(dir.path, e)}
                         onContextMenu={(e) => handleContextMenu(e, dir.path)}
                         className={`ml-2 text-sm truncate text-left transition-colors flex-1 ${
-                          isRootSelected ? 'text-blue-100' : 'text-gray-300 hover:text-gray-100'
+                          isRootSelected ? 'text-blue-100 light:text-gray-100' : 'text-gray-300 hover:text-gray-100'
                         }`}
                         title={`Select folder: ${dir.path}`}
                       >

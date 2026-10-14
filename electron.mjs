@@ -189,7 +189,7 @@ function getIconPath() {
     return path.join(__dirname, 'public', 'icon.ico');
   } else {
     // macOS and Linux prefer PNG
-    return path.join(__dirname, 'public', 'logo1.png');
+    return path.join(__dirname, 'public', 'branding', 'app-icon.png');
   }
 }
 

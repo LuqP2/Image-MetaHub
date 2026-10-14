@@ -11,6 +11,7 @@ import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDra
 import type { ExploreDimension } from '../types';
 import { TRIAL_EXTENSION_DAYS, useLicenseStore } from '../store/useLicenseStore';
 import { formatLicenseValidity } from '../utils/licenseDisplay';
+import BrandLogo from './BrandLogo';
 
 type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor';
 
@@ -358,7 +359,7 @@ const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <div className="flex shrink-0 items-center gap-2 pr-2">
-            <img src="logo1.png" alt="" className="h-9 w-9 rounded-xl object-contain" />
+            <BrandLogo variant="header" />
             <div className="hidden xl:flex flex-col">
               <span className="text-sm font-semibold text-gray-100">
                 {isPro ? 'Image MetaHub Pro' : isTrialActive ? 'Image MetaHub Pro Trial' : 'Image MetaHub'}

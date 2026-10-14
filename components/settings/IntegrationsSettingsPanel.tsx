@@ -222,7 +222,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
             href="https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-blue-300 hover:text-blue-200"
+            className="inline-flex items-center gap-2 text-sm text-blue-300 hover:text-blue-200 light:text-accent light:hover:text-accent-strong"
           >
             <ExternalLink size={14} />
             MetaHub Save Node

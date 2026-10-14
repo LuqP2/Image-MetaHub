@@ -21,7 +21,7 @@
     "utils/**/*.js",
     "utils/**/*.mjs",
     "public/icon.ico",
-    "public/logo1.png"
+    "public/branding/app-icon.png"
   ],
   "win": {
     "icon": "public/icon.ico",
@@ -31,7 +31,7 @@
     ]
   },
   "mac": {
-    "icon": "public/logo1.png",
+    "icon": "public/branding/app-icon.png",
     "target": [
       {
         "target": "dmg",
@@ -46,7 +46,7 @@
     "identity": null
   },
   "linux": {
-    "icon": "public/logo1.png",
+    "icon": "public/branding/app-icon.png",
     "target": [
       {
         "target": "AppImage",

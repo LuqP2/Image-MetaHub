@@ -171,7 +171,7 @@ return <section aria-label="Workspace Image Inspector" className="h-full overflo
                 <div className="border-t border-gray-800 p-3">
                   <div className="truncate text-sm font-medium text-gray-100" title={image.name}>{image.name}</div>
                   {hasVerifiedTelemetry(image) && (
-                    <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-green-500/30 bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-300">
+                    <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-green-500/30 bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-300 light:text-green-800">
                       <CheckCircle className="h-3.5 w-3.5" />
                       Verified
                     </div>
@@ -183,7 +183,7 @@ return <section aria-label="Workspace Image Inspector" className="h-full overflo
                 <button
                   onClick={generateFromMetadata}
                   disabled={isGenerating || !metadata?.prompt}
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-purple-500/40 bg-purple-500/15 px-3 py-2 text-xs font-semibold text-purple-100 hover:bg-purple-500/25 disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-purple-500/40 bg-purple-500/15 px-3 py-2 text-xs font-semibold text-purple-100 light:text-purple-900 hover:bg-purple-500/25 disabled:opacity-50"
                 >
                   <Play className="h-3.5 w-3.5" />
                   Generate
@@ -207,15 +207,15 @@ return <section aria-label="Workspace Image Inspector" className="h-full overflo
               {(copyStatus || generateStatus) && (
                 <div className={`rounded-md border px-3 py-2 text-xs ${
                   (copyStatus?.success || generateStatus?.success)
-                    ? 'border-green-700/40 bg-green-500/10 text-green-200'
-                    : 'border-red-700/40 bg-red-500/10 text-red-200'
+                    ? 'border-green-700/40 bg-green-500/10 text-green-200 light:text-green-800'
+                    : 'border-red-700/40 bg-red-500/10 text-red-200 light:text-red-800'
                 }`}>
                   {copyStatus?.message || generateStatus?.message}
                 </div>
               )}
 
               {assetActionMessage && (
-                <div className="rounded-md border border-blue-700/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
+                <div className="rounded-md border border-blue-700/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-100 light:text-blue-900">
                   {assetActionMessage}
                 </div>
               )}

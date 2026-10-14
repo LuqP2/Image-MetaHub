@@ -157,11 +157,11 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                       aria-pressed={selected}
                       className={`rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                         selected
-                          ? 'border-indigo-500 bg-indigo-500/10'
+                          ? 'border-indigo-500 bg-indigo-500/10 light:border-accent/60 light:bg-accent/10'
                           : 'border-gray-700 hover:bg-gray-800/60'
                       }`}
                     >
-                      <p className={`text-xs font-medium ${selected ? 'text-indigo-200' : 'text-gray-200'}`}>
+                      <p className={`text-xs font-medium ${selected ? 'text-indigo-200 light:text-gray-100' : 'text-gray-200'}`}>
                         {option.label}
                       </p>
                       <p className="mt-0.5 text-[11px] leading-snug text-gray-400">{option.description}</p>
@@ -196,11 +196,11 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                       aria-pressed={selected}
                       className={`rounded-lg border px-3 py-2 text-left transition-colors ${
                         selected
-                          ? 'border-indigo-500 bg-indigo-500/10'
+                          ? 'border-indigo-500 bg-indigo-500/10 light:border-accent/60 light:bg-accent/10'
                           : 'border-gray-700 hover:bg-gray-800/60'
                       }`}
                     >
-                      <p className={`text-xs font-medium ${selected ? 'text-indigo-200' : 'text-gray-200'}`}>
+                      <p className={`text-xs font-medium ${selected ? 'text-indigo-200 light:text-gray-100' : 'text-gray-200'}`}>
                         {option.label}
                       </p>
                       <p className="mt-0.5 text-[11px] leading-snug text-gray-400">{option.description}</p>
@@ -234,7 +234,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                     {gpuNeedsDownload ? 'Download GPU model' : 'Download model'}
                   </button>
                 ) : (
-                  <span className="text-xs font-medium text-emerald-400">
+                  <span className="text-xs font-medium text-emerald-400 light:text-emerald-800">
                     Installed{usingGpu ? (activeDevice === 'webgpu' ? ' · GPU' : ' · CPU (GPU unavailable)') : ''}
                   </span>
                 )}
@@ -314,7 +314,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                 )}
 
                 {!canUseUnlimitedSemanticSearch && coverage && coverage.total > SEMANTIC_FREE_TIER_LIMIT && (
-                  <p className="text-xs text-indigo-300/80">
+                  <p className="text-xs text-indigo-300/80 light:text-indigo-800">
                     Free indexes your {SEMANTIC_FREE_TIER_LIMIT.toLocaleString()} newest images. Upgrade to Pro to search all {coverage.total.toLocaleString()}.
                   </p>
                 )}

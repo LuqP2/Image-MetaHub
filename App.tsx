@@ -1022,7 +1022,14 @@ export default function App() {
       };
     } else {
       // Fallback for browser
-      applyTheme(window.matchMedia('(prefers-color-scheme: dark)').matches);
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const onChange = (event: MediaQueryListEvent) => applyTheme(event.matches);
+      applyTheme(mediaQuery.matches);
+      mediaQuery.addEventListener('change', onChange);
+      return () => {
+        active = false;
+        mediaQuery.removeEventListener('change', onChange);
+      };
     }
   }, [theme]);
 
