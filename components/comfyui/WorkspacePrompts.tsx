@@ -139,7 +139,7 @@ export default function WorkspacePrompts({ active, request, onOpenLibrary, onVie
       <button className="ml-auto text-xs text-gray-400 hover:text-gray-100" onClick={onOpenLibrary}>Open full library ↗</button>
     </div>}
     {direct.panel}
-    {(error || actionError) && <p role="alert" className="text-xs text-red-400">{actionError || error}<button className={buttonClass} onClick={() => void loadLibrary()}>Retry</button></p>}
+    {(error || actionError) && <p role="alert" className="text-xs text-red-400 light:text-red-800">{actionError || error}<button className={buttonClass} onClick={() => void loadLibrary()}>Retry</button></p>}
     <div hidden={mode !== 'browse'} className={`flex min-h-0 flex-1 flex-col gap-2 ${mode === 'browse' ? '' : 'hidden'}`}>
       {showFilters && <div className="max-h-56 shrink-0 overflow-auto"><PromptLibraryFiltersPanel kind={kind} all={all} filters={filters} onChange={setFilters} onClose={() => setShowFilters(false)} /></div>}
       {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser key={kind} onContextOpen={() => void direct.refreshSelection()} canReplaceSelection={direct.hasSelection} compact directBlocks directPrompts useBusy={direct.busy} all={all} visible={visible} filters={filters} onFilters={setFilters} selected={new Set()} selectionMode={false} onSelectionMode={() => {}} activeId={selected || undefined} onOpen={target => { setSelected(target.id); setMode('details'); }} onSelect={() => {}} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} onContextAction={(target, action, channel) => {

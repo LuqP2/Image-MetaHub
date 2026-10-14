@@ -1,3 +1,28 @@
+.dark .folder-selector-button {
+  color: #fff;
+  background-color: rgb(var(--blue-600, 37 99 235));
+}
+
+.dark .folder-selector-button:hover {
+  background-color: rgb(var(--accent-strong, 29 78 216));
+}
+
+.brand-logo-light {
+  display: block;
+}
+
+.brand-logo-dark {
+  display: none;
+}
+
+.dark .brand-logo-light {
+  display: none;
+}
+
+.dark .brand-logo-dark {
+  display: block;
+}
+
 :root, [data-theme="dark"] {
   --gray-950: 10 10 10;
   --gray-900: 26 26 26;
@@ -28,6 +53,24 @@
   --gray-50: 3 7 18;
   --blue-500: 37 99 235;
   --accent: 37 99 235;
+}
+
+[data-theme="ayu-light"] {
+  --gray-950: 250 248 244;
+  --gray-900: 240 235 228;
+  --gray-800: 238 233 225;
+  --gray-700: 135 126 114;
+  --gray-600: 117 127 137;
+  --gray-500: 89 97 106;
+  --gray-400: 81 89 98;
+  --gray-300: 70 78 87;
+  --gray-200: 54 61 69;
+  --gray-100: 39 46 54;
+  --gray-50: 28 34 41;
+  --blue-500: 157 87 0;
+  --accent: 157 87 0;
+  --blue-600: 135 73 0;
+  --accent-strong: 113 59 0;
 }
 
 [data-theme="dracula"] {

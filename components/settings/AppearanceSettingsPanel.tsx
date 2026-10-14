@@ -93,6 +93,11 @@ const ThemeSelector: React.FC = () => {
         <span className="flex-1 font-medium">{selected.name}</span>
         <ChevronDown size={18} className={`text-gray-300 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
+      {theme === 'system' && (
+        <p className="mt-2 text-xs text-gray-400">
+          Uses Ayu Dark or Ayu Light to match your system appearance.
+        </p>
+      )}
       {open && (
         <div
           ref={listRef}

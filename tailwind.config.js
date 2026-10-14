@@ -38,7 +38,7 @@ export default {
     // dark themes (dark/dracula/nord/ocean). Use for accent-colored text
     // (red/blue/yellow literals) that don't flip via the gray/accent CSS vars.
     plugin(({ addVariant }) => {
-      addVariant('light', '[data-theme="light"] &');
+      addVariant('light', ':is([data-theme="light"], [data-theme="ayu-light"]) &');
     }),
   ],
 }

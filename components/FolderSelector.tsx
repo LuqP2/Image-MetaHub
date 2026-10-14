@@ -1,6 +1,7 @@
 
 import React, { useEffect } from 'react';
 import { useImageStore } from '../store/useImageStore';
+import BrandLogo from './BrandLogo';
 
 interface FolderSelectorProps {
   onSelectFolder: () => void;
@@ -16,7 +17,7 @@ const FolderSelector: React.FC<FolderSelectorProps> = ({ onSelectFolder }) => {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 border-2 border-dashed border-gray-700 rounded-xl bg-gray-800/50">
-      <img src="logo1.png" alt="Image MetaHub Logo" className="h-64 w-64 mb-4 rounded-lg shadow-lg" />
+      <BrandLogo variant="welcome" />
   <h2 className="text-2xl font-semibold mb-2 text-gray-100">Welcome to Image MetaHub v0.21</h2>
   <p className="text-xs text-gray-500 mb-4">v0.21.0</p>
       <p className="text-gray-400 max-w-md mb-6">
@@ -34,11 +35,11 @@ const FolderSelector: React.FC<FolderSelectorProps> = ({ onSelectFolder }) => {
       </div>
       <button
         onClick={onSelectFolder}
-        className="bg-blue-500 hover:bg-blue-600 text-gray-950 hover:text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
+        className="folder-selector-button bg-blue-500 hover:bg-blue-600 text-gray-950 hover:text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
       >
         Select Image Folder
       </button>
-       <p className="text-xs text-gray-500 mt-6 max-w-md">
+       <p className="text-xs text-gray-500 mt-6 whitespace-nowrap">
         All processing happens locally in your browser. Your images never leave your computer.
       </p>
     </div>

@@ -26,6 +26,7 @@ import type {
   ModelInspectorSnapshot,
 } from '../services/modelLibrary/types';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { resolveTheme } from '../src/theme/themeRegistry';
 
 const formatBytes = (value: number): string => {
   if (!Number.isFinite(value)) return '—';
@@ -51,17 +52,22 @@ const ModelInspectorApp: React.FC = () => {
   useEffect(() => { if (!manager.progress) setHashProgress(null); }, [manager.progress]);
 
   useEffect(() => {
+    let active = true;
     const applyTheme = (systemShouldUseDark: boolean) => {
-      const isDark = ['dark', 'dracula', 'nord', 'ocean'].includes(theme)
-        || (theme === 'system' && systemShouldUseDark);
-      document.documentElement.classList.toggle('dark', isDark);
-      document.documentElement.setAttribute('data-theme', theme === 'system' ? (systemShouldUseDark ? 'dark' : 'light') : theme);
+      if (!active) return;
+      const resolved = resolveTheme(theme, systemShouldUseDark);
+      document.documentElement.classList.toggle('dark', resolved.dark);
+      document.documentElement.setAttribute('data-theme', resolved.id);
     };
     const api = window.electronAPI;
     if (!api) return;
     void useSettingsStore.persist.rehydrate();
     void api.getTheme().then(({ shouldUseDarkColors }) => applyTheme(shouldUseDarkColors));
-    return api.onThemeUpdated(({ shouldUseDarkColors }) => applyTheme(shouldUseDarkColors));
+    const unsubscribe = api.onThemeUpdated(({ shouldUseDarkColors }) => applyTheme(shouldUseDarkColors));
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [theme]);
 
   useEffect(() => {

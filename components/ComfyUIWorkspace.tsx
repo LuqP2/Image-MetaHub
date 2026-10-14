@@ -181,7 +181,7 @@ const WorkspaceThumbnailButton: React.FC<{
         <button
           onClick={onToggleSelected}
           className={`absolute left-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
-            isSelected ? 'text-blue-300 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100'
+            isSelected ? 'text-blue-300 light:text-blue-800 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100'
           }`}
           title={isSelected ? 'Deselect image' : 'Select image'}
           aria-label={isSelected ? 'Deselect image' : 'Select image'}
@@ -191,7 +191,7 @@ const WorkspaceThumbnailButton: React.FC<{
         <button
           onClick={onToggleFavorite}
           className={`absolute right-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
-            image.isFavorite ? 'text-pink-300 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-pink-300'
+            image.isFavorite ? 'text-pink-300 light:text-pink-800 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-pink-300 light:hover:text-pink-800'
           }`}
           title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
           aria-label={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
@@ -200,7 +200,7 @@ const WorkspaceThumbnailButton: React.FC<{
         </button>
         {dimensionsLabel && (
           <div
-            className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[10px] leading-none text-gray-100 shadow"
+            className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[10px] leading-none text-white shadow"
             title={`Dimensions: ${dimensionsLabel}`}
           >
             {dimensionsLabel}
@@ -477,10 +477,10 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
   const connectionClasses = useMemo(() => {
     if (comfyUILastConnectionStatus === 'connected') {
-      return 'border-green-500/30 bg-green-500/10 text-green-200';
+      return 'border-green-500/30 bg-green-500/10 text-green-200 light:text-green-800';
     }
     if (comfyUILastConnectionStatus === 'error' || loadFailure) {
-      return 'border-red-500/30 bg-red-500/10 text-red-200';
+      return 'border-red-500/30 bg-red-500/10 text-red-200 light:text-red-800';
     }
     return 'border-gray-700 bg-gray-900 text-gray-300';
   }, [comfyUILastConnectionStatus, loadFailure]);
@@ -1104,14 +1104,14 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     return (
       <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-gray-800 bg-gray-950 p-8 text-center">
         <div className="max-w-md">
-          <Rocket className="mx-auto h-10 w-10 text-purple-300" />
+          <Rocket className="mx-auto h-10 w-10 text-purple-300 light:text-purple-800" />
           <h2 className="mt-4 text-lg font-semibold text-gray-100">ComfyUI workspace is desktop-only</h2>
           <p className="mt-2 text-sm text-gray-400">
             The embedded ComfyUI browser uses Electron. In the browser build, use the external ComfyUI window.
           </p>
           <button
             onClick={() => window.open(targetUrl, '_blank', 'noopener,noreferrer')}
-            className="mt-5 rounded-md border border-purple-500/40 bg-purple-500/15 px-4 py-2 text-sm font-semibold text-purple-100 hover:bg-purple-500/25"
+            className="mt-5 rounded-md border border-purple-500/40 bg-purple-500/15 px-4 py-2 text-sm font-semibold text-purple-100 light:text-purple-900 hover:bg-purple-500/25"
           >
             Open ComfyUI externally
           </button>
@@ -1236,16 +1236,16 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
               <button
                 onClick={handleBulkFavorite}
                 disabled={selectedWorkspaceCount === 0}
-                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-pink-300 disabled:cursor-not-allowed disabled:text-gray-700"
+                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-pink-300 light:hover:text-pink-800 disabled:cursor-not-allowed disabled:text-gray-700"
                 title={selectedWorkspaceCount === 0 ? 'Select images to favorite' : allSelectedWorkspaceFavorites ? 'Remove selected from favorites' : 'Favorite selected'}
                 aria-label={allSelectedWorkspaceFavorites ? 'Remove selected from favorites' : 'Favorite selected'}
               >
-                <Heart className={`h-3.5 w-3.5 ${allSelectedWorkspaceFavorites ? 'fill-current text-pink-300' : ''}`} />
+                <Heart className={`h-3.5 w-3.5 ${allSelectedWorkspaceFavorites ? 'fill-current text-pink-300 light:text-pink-800' : ''}`} />
               </button>
               <button
                 onClick={handleBulkTag}
                 disabled={selectedWorkspaceCount === 0}
-                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-blue-300 disabled:cursor-not-allowed disabled:text-gray-700"
+                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-blue-300 light:hover:text-blue-800 disabled:cursor-not-allowed disabled:text-gray-700"
                 title={selectedWorkspaceCount === 0 ? 'Select images to tag' : 'Tag selected'}
                 aria-label="Tag selected"
               >
@@ -1255,7 +1255,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 <button
                   onClick={() => setIsRatingMenuOpen((open) => !open)}
                   disabled={selectedWorkspaceCount === 0}
-                  className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-yellow-300 disabled:cursor-not-allowed disabled:text-gray-700"
+                  className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-yellow-300 light:hover:text-yellow-800 disabled:cursor-not-allowed disabled:text-gray-700"
                   title={selectedWorkspaceCount === 0 ? 'Select images to rate' : 'Rate selected'}
                   aria-label="Rate selected"
                 >
@@ -1278,7 +1278,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
               <button
                 onClick={handleBulkCompare}
                 disabled={selectedWorkspaceCount < 2 || selectedWorkspaceCount > 4}
-                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-purple-300 disabled:cursor-not-allowed disabled:text-gray-700"
+                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-purple-300 light:hover:text-purple-800 disabled:cursor-not-allowed disabled:text-gray-700"
                 title={selectedWorkspaceCount < 2 ? 'Select at least 2 images to compare' : selectedWorkspaceCount > 4 ? 'Select at most 4 images to compare' : 'Compare selected'}
                 aria-label="Compare selected"
               >
@@ -1287,7 +1287,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
               <button
                 onClick={handleBulkDelete}
                 disabled={selectedWorkspaceCount === 0}
-                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-red-300 disabled:cursor-not-allowed disabled:text-gray-700"
+                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-red-300 light:hover:text-red-800 disabled:cursor-not-allowed disabled:text-gray-700"
                 title={selectedWorkspaceCount === 0 ? 'Select images to delete' : 'Delete selected'}
                 aria-label="Delete selected"
               >
@@ -1350,9 +1350,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             <div className="absolute inset-0 flex items-center justify-center bg-gray-950 text-center">
               <div className="max-w-sm px-6">
                 {suspendBrowser ? (
-                  <Loader2 className="mx-auto h-9 w-9 animate-spin text-purple-300" />
+                  <Loader2 className="mx-auto h-9 w-9 animate-spin text-purple-300 light:text-purple-800" />
                 ) : (
-                  <AlertTriangle className="mx-auto h-9 w-9 text-amber-300" />
+                  <AlertTriangle className="mx-auto h-9 w-9 text-amber-300 light:text-amber-800" />
                 )}
                 <h3 className="mt-3 text-base font-semibold text-gray-100">
                   {suspendBrowser ? 'ComfyUI browser paused during generation' : 'ComfyUI is not visible yet'}
@@ -1366,7 +1366,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                   <div className="mt-5 flex flex-wrap justify-center gap-2">
                     <button
                       onClick={reloadEmbeddedView}
-                      className="inline-flex items-center gap-2 rounded-md border border-purple-500/40 bg-purple-500/15 px-3 py-2 text-sm font-semibold text-purple-100 hover:bg-purple-500/25"
+                      className="inline-flex items-center gap-2 rounded-md border border-purple-500/40 bg-purple-500/15 px-3 py-2 text-sm font-semibold text-purple-100 light:text-purple-900 hover:bg-purple-500/25"
                     >
                       <RefreshCw className="h-4 w-4" />
                       Refresh
@@ -1489,7 +1489,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             Export Workflow
           </button>
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-red-300 hover:bg-red-950/40"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-red-300 hover:bg-red-950/40 light:text-red-800 light:hover:bg-red-500/10"
             onClick={() => deleteAsset(assetContextMenu.image)}
           >
             <Trash2 className="h-4 w-4" />
