@@ -622,7 +622,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     <>
       <div className="flex items-center justify-between gap-2 px-5 min-h-[32px]">
         {/* Selection Context Toolbar - Centered or justified as needed */}
-        <div className="flex items-center gap-1 flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1 flex-1 min-w-0">
             {onExitScope && (
               <>
                 <Tooltip label={scopeReturnLabel ? `Back to ${scopeReturnLabel}` : 'Back'}>
@@ -1142,7 +1142,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
             )}
 
             {/* Active Filters */}
-            <div className="flex-1 min-w-0 overflow-hidden">
+            <div className={`flex-1 overflow-hidden ${hasActiveFilters ? 'min-w-[min(100%,12rem)]' : 'min-w-0'}`}>
                <ActiveFilters onClearAll={onClearAllFilters} />
             </div>
         </div>
