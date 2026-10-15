@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Bug, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Settings, Bug, Crown, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -65,11 +65,6 @@ const Header: React.FC<HeaderProps> = ({
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
   const licensePlan = useLicenseStore((state) => state.licensePlan);
   const licenseExpiresAt = useLicenseStore((state) => state.licenseExpiresAt);
-  const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
-  const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
-  const viewingStackPrompt = useImageStore((state) => state.viewingStackPrompt);
-  const setViewingStackPrompt = useImageStore((state) => state.setViewingStackPrompt);
-  const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const clustersCount = useImageStore((state) => state.clusters.length);
   const setSuccess = useImageStore((state) => state.setSuccess);
   const setError = useImageStore((state) => state.setError);
@@ -456,33 +451,7 @@ const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {libraryView === 'library' && (
-            <>
-              <span className="app-top-divider shrink-0" />
-              <button
-                onClick={() => setStackingEnabled(!isStackingEnabled)}
-                className={`${utilityButtonClassName} shrink-0 ${isStackingEnabled ? 'border-accent/40 bg-accent/15 text-accent hover:border-accent/50 hover:bg-accent/20 hover:text-accent' : ''}`}
-                title={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'} aria-label={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'}
-              >
-                {isStackingEnabled ? <Layers2 size={16} /> : <Layers size={16} />}
-              </button>
 
-              {viewingStackPrompt && (
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setStackingEnabled(true);
-                    setViewingStackPrompt(null);
-                  }}
-                  className="app-top-pill shrink-0 px-2.5 text-gray-300"
-                  title="Return to the stacked results"
-                >
-                  <ArrowLeft size={12} />
-                  <span>Back</span>
-                </button>
-              )}
-            </>
-          )}
 
         </div>
 
