@@ -204,19 +204,19 @@ export const HotkeySettings = () => {
         <input type="file" id="import-keymap" className="hidden" accept=".json" onChange={handleImport} />
         <button
             onClick={() => document.getElementById('import-keymap')?.click()}
-            className="px-4 py-2 text-sm font-semibold rounded-md bg-blue-500 text-gray-950 hover:bg-blue-600 hover:text-white"
+            className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-700 bg-gray-800 text-gray-100 hover:border-accent/50 hover:bg-gray-700"
         >
             Import
         </button>
         <button
             onClick={handleExport}
-            className="px-4 py-2 text-sm font-semibold rounded-md bg-green-500 text-white hover:bg-green-600"
+            className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-700 bg-gray-800 text-gray-100 hover:border-accent/50 hover:bg-gray-700"
         >
             Export
         </button>
         <button
             onClick={handleResetAll}
-            className="px-4 py-2 text-sm font-semibold rounded-md bg-red-500 text-white hover:bg-red-600"
+            className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-700 bg-gray-800 text-gray-100 hover:border-accent/50 hover:bg-gray-700"
         >
             Reset All
         </button>

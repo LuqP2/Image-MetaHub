@@ -4688,7 +4688,7 @@ export default function App() {
                   ) : (
                     <div className="flex h-full items-center justify-center bg-gray-950 p-8 text-gray-300">
                       <div className="max-w-md rounded-lg border border-gray-800 bg-gray-900/70 p-6 text-center shadow-xl shadow-black/20">
-                        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
+                        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-accent/30 bg-accent/10 text-accent">
                           <ImageIcon className="h-6 w-6" />
                         </div>
                         <h2 className="text-lg font-semibold text-gray-100">Image Editor</h2>

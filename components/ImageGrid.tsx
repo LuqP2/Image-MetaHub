@@ -618,7 +618,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         ) : isAudio ? (
           <div className="flex h-full w-full items-center justify-center bg-gray-900">
             <div className="flex flex-col items-center gap-2 px-3 text-center text-gray-300">
-              <div className="rounded-full border border-cyan-400/30 bg-cyan-400/10 p-3 text-cyan-200">
+              <div className="rounded-full border border-accent/30 bg-accent/10 p-3 text-accent">
                 <Music className="h-7 w-7" />
               </div>
               <span className="max-w-full truncate text-xs font-medium text-gray-200">Audio</span>

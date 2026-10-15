@@ -2187,7 +2187,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           <section className="rounded-md border border-gray-800 bg-gray-950 p-3">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold text-gray-100">AI Transform</h3>
-              <span className="rounded-full border border-purple-400/30 bg-purple-500/15 px-2 py-0.5 text-[11px] font-semibold uppercase text-purple-200">
+              <span className="rounded-full border border-gray-700 bg-gray-800 px-2 py-0.5 text-[11px] font-semibold uppercase text-gray-300">
                 Planned
               </span>
             </div>
@@ -2715,7 +2715,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                 onClick={() => setInspectorTab(tab.id)}
                 className={`rounded-md px-1.5 py-1.5 text-xs font-medium transition-colors ${
                   inspectorTab === tab.id
-                    ? 'bg-cyan-500/20 text-cyan-100'
+                    ? 'bg-accent/15 text-accent'
                     : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                 }`}
               >
