@@ -14,15 +14,15 @@ import {
   RefreshCw,
   Plus,
   Play,
+  Layers,
+  Layers2,
   Workflow,
   Image as ImageIcon,
   X,
   Search,
   ArrowLeft,
-  Wand2,
   SlidersHorizontal,
-  BarChart3,
-  Crown
+  BarChart3
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -241,15 +241,18 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const [previewJumpGroupId, setPreviewJumpGroupId] = useState<string | null>(null);
   const [previewJumpPosition, setPreviewJumpPosition] = useState<PreviewPosition | null>(null);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
-  const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
   const [isAutomationRulesOpen, setIsAutomationRulesOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const collectionActionsRef = useRef<HTMLDivElement>(null);
   const jumpMenuRef = useRef<HTMLDivElement>(null);
-  const toolsMenuRef = useRef<HTMLDivElement>(null);
   const calendarInitializedRef = useRef(false);
   const bulkToggleFavorite = useImageStore((state) => state.bulkToggleFavorite);
   const clearImageSelection = useImageStore((state) => state.clearImageSelection);
+  const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
+  const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
+  const viewingStackPrompt = useImageStore((state) => state.viewingStackPrompt);
+  const setViewingStackPrompt = useImageStore((state) => state.setViewingStackPrompt);
+  const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const collections = useImageStore((state) => state.collections);
   const allImages = useImageStore((state) => state.images);
   const startAutoTagging = useImageStore((state) => state.startAutoTagging);
@@ -269,7 +272,6 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     if (!hasDirectories || isAutoTagging) {
       return;
     }
-    setIsToolsMenuOpen(false);
     startAutoTagging(primaryPath, scanSubfolders);
   };
 
@@ -323,9 +325,6 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       }
       if (jumpMenuRef.current && !jumpMenuRef.current.contains(event.target as Node)) {
         closeJumpMenu();
-      }
-      if (toolsMenuRef.current && !toolsMenuRef.current.contains(event.target as Node)) {
-        setIsToolsMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -599,21 +598,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       selectedRatings.length > 0 ||
       (advancedFilters && Object.keys(advancedFilters).length > 0);
 
-  // The persistent right-side cluster (Library Tools + Analytics) and the scope
-  // Back button must stay visible even with no selection/filters, so the toolbar
-  // only collapses when there is genuinely nothing to show.
-  const hasPersistentActions = Boolean(onOpenAnalytics) || Boolean(onExitScope);
-
-  if (
-    selectedCount === 0 &&
-    !hasActiveFilters &&
-    !canUseFilteredCollectionActions &&
-    slideshowImageCount === 0 &&
-    !canJumpToGroups &&
-    !hasPersistentActions
-  ) {
-    return null;
-  }
+  // Keep the Library toolbar visible: stacking is always available.
 
   const handleAddToCollection = async (collection: SmartCollection) => {
     if (!onAddCurrentFilteredToCollection) {
@@ -633,7 +618,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
 
   return (
     <>
-      <div className="flex items-center justify-between gap-2 mb-1 px-5 min-h-[36px]">
+      <div className="flex items-center justify-between gap-2 px-5 min-h-[32px]">
         {/* Selection Context Toolbar - Centered or justified as needed */}
         <div className="flex items-center gap-1 flex-1 min-w-0">
             {onExitScope && (
@@ -659,16 +644,146 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                   <button
                     onClick={onStartSlideshow}
                     className="p-1.5 text-gray-400 hover:text-blue-300 hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    title={`Start slideshow from ${slideshowSourceLabel} (${slideshowImageCount} item${slideshowImageCount === 1 ? '' : 's'})`}
                     aria-label="Start slideshow"
                   >
                     <Play className="w-4 h-4" />
                   </button>
                 </Tooltip>
-                {(selectedCount > 0 || hasActiveFilters || canUseFilteredCollectionActions) && (
-                  <div className="w-px h-4 bg-gray-700 mx-1" />
-                )}
               </>
+            )}
+
+            {canUseFilteredCollectionActions && (
+              <>
+                {selectedCount > 0 && <div className="w-px h-4 bg-gray-700 mx-1" />}
+                <div className="relative" ref={collectionActionsRef}>
+                  <Tooltip label={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}>
+                    <button
+                      onClick={() => setIsCollectionActionsOpen((open) => !open)}
+                      className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      aria-label="Collection actions"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
+
+                  {isCollectionActionsOpen && (
+                    <div className="absolute left-0 top-full mt-1 min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl z-50">
+                      <div
+                        className="relative"
+                        onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
+                        onMouseLeave={() => setIsAddToCollectionSubmenuOpen(false)}
+                      >
+                        <button
+                          onClick={() => setIsAddToCollectionSubmenuOpen((open) => !open)}
+                          disabled={!onAddCurrentFilteredToCollection}
+                          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
+                        >
+                          <span>Add filtered images to collection</span>
+                          <ChevronDown className={`h-4 w-4 transition-transform ${isAddToCollectionSubmenuOpen ? '-rotate-90' : 'rotate-[-90deg]'}`} />
+                        </button>
+
+                        {isAddToCollectionSubmenuOpen && onAddCurrentFilteredToCollection && (
+                          <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl">
+                            {collections.length === 0 ? (
+                              <div className="px-3 py-2 text-sm text-gray-500">No collections yet</div>
+                            ) : (
+                              collections.map((collection) => (
+                                <button
+                                  key={collection.id}
+                                  onClick={() => void handleAddToCollection(collection)}
+                                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                                >
+                                  <span className="truncate">{collection.name}</span>
+                                  {collection.sourceTag && (
+                                    <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                                      {collection.autoUpdate !== false ? 'Auto' : 'Linked'}
+                                    </span>
+                                  )}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={handleCreateCollectionFromFiltered}
+                        disabled={!onCreateCollectionFromFiltered}
+                        className="w-full px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
+                      >
+                        Create new collection from filtered images
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            <Tooltip label={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'}>
+              <button
+                onClick={() => setStackingEnabled(!isStackingEnabled)}
+                className={`rounded p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${isStackingEnabled ? 'bg-accent/15 text-accent hover:bg-accent/20' : 'text-gray-400 hover:bg-gray-700 hover:text-accent'}`}
+                aria-label={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'}
+                aria-pressed={isStackingEnabled}
+              >
+                {isStackingEnabled ? <Layers2 size={16} /> : <Layers size={16} />}
+              </button>
+            </Tooltip>
+            {viewingStackPrompt && (
+              <Tooltip label="Return to the stacked results">
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setStackingEnabled(true);
+                    setViewingStackPrompt(null);
+                  }}
+                  className="flex items-center gap-1 rounded px-2 py-1.5 text-gray-300 transition-colors hover:bg-gray-700 hover:text-accent"
+                >
+                  <ArrowLeft size={12} />
+                  <span className="text-[11px] font-medium">Back</span>
+                </button>
+              </Tooltip>
+            )}
+
+            <Tooltip label="Automation rules">
+              <button
+                onClick={() => setIsAutomationRulesOpen(true)}
+                className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                aria-label="Automation rules"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+              </button>
+            </Tooltip>
+            <Tooltip label={isAutoTagging ? `Auto-tagging${autoTagPercent !== null ? ` ${autoTagPercent}%` : '…'}` : 'Auto-tag library'}>
+              <button
+                onClick={handleAutoTagLibrary}
+                disabled={!hasDirectories || isAutoTagging}
+                className={`flex items-center gap-1 rounded p-1.5 transition-colors hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50 ${isAutoTagging ? 'text-accent' : 'text-gray-400 hover:text-accent'}`}
+                aria-label="Auto-tag library"
+              >
+                <Tag className={`h-4 w-4 ${isAutoTagging ? 'animate-pulse' : ''}`} />
+                {isAutoTagging && autoTagPercent !== null && (
+                  <span className="text-[10px] font-semibold tabular-nums">{autoTagPercent}%</span>
+                )}
+              </button>
+            </Tooltip>
+
+            {onOpenAnalytics && (
+            <Tooltip label="Analytics">
+              <button
+                onClick={() => {
+                  if (canUseAnalytics) {
+                    onOpenAnalytics();
+                  } else {
+                    showProModal('analytics');
+                  }
+                }}
+                className="relative p-1.5 text-gray-400 hover:text-accent hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                aria-label="Analytics"
+              >
+                <BarChart3 className="w-4 h-4" />
+              </button>
+            </Tooltip>
             )}
 
             {selectedCount > 0 && (
@@ -866,75 +981,6 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
               </>
             )}
 
-            {canUseFilteredCollectionActions && (
-              <>
-                {selectedCount > 0 && <div className="w-px h-4 bg-gray-700 mx-1" />}
-                <div className="relative" ref={collectionActionsRef}>
-                  <Tooltip label={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}>
-                    <button
-                      onClick={() => setIsCollectionActionsOpen((open) => !open)}
-                      className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                      title={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}
-                      aria-label="Collection actions"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </Tooltip>
-
-                  {isCollectionActionsOpen && (
-                    <div className="absolute left-0 top-full mt-1 min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl z-50">
-                      <div
-                        className="relative"
-                        onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
-                        onMouseLeave={() => setIsAddToCollectionSubmenuOpen(false)}
-                      >
-                        <button
-                          onClick={() => setIsAddToCollectionSubmenuOpen((open) => !open)}
-                          disabled={!onAddCurrentFilteredToCollection}
-                          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
-                        >
-                          <span>Add filtered images to collection</span>
-                          <ChevronDown className={`h-4 w-4 transition-transform ${isAddToCollectionSubmenuOpen ? '-rotate-90' : 'rotate-[-90deg]'}`} />
-                        </button>
-
-                        {isAddToCollectionSubmenuOpen && onAddCurrentFilteredToCollection && (
-                          <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl">
-                            {collections.length === 0 ? (
-                              <div className="px-3 py-2 text-sm text-gray-500">No collections yet</div>
-                            ) : (
-                              collections.map((collection) => (
-                                <button
-                                  key={collection.id}
-                                  onClick={() => void handleAddToCollection(collection)}
-                                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
-                                >
-                                  <span className="truncate">{collection.name}</span>
-                                  {collection.sourceTag && (
-                                    <span className="text-[10px] uppercase tracking-wide text-gray-500">
-                                      {collection.autoUpdate !== false ? 'Auto' : 'Linked'}
-                                    </span>
-                                  )}
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <button
-                        onClick={handleCreateCollectionFromFiltered}
-                        disabled={!onCreateCollectionFromFiltered}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
-                      >
-                        Create new collection from filtered images
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {hasActiveFilters && <div className="w-px h-6 bg-gray-600 mx-2 flex-shrink-0" />}
-              </>
-            )}
-
             {canJumpToGroups && (
               <>
                 {(selectedCount > 0 || canUseFilteredCollectionActions || slideshowImageCount > 0) && (
@@ -1097,77 +1143,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
             </div>
         </div>
 
-        {/* Persistent library actions (relocated from the global header) */}
-        {onOpenAnalytics && (
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <div className="relative" ref={toolsMenuRef}>
-              <Tooltip label="Library tools (automation rules, auto-tag)">
-                <button
-                  onClick={() => setIsToolsMenuOpen((prev) => !prev)}
-                  className={`flex items-center gap-1 p-1.5 rounded transition-colors hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                    isAutoTagging ? 'text-cyan-300' : 'text-gray-400 hover:text-white'
-                  }`}
-                  title="Library tools (automation rules, auto-tag)"
-                  aria-label="Library tools"
-                  aria-haspopup="menu"
-                  aria-expanded={isToolsMenuOpen}
-                >
-                  <Wand2 className={`w-4 h-4 ${isAutoTagging ? 'animate-pulse' : ''}`} />
-                  {autoTagPercent !== null && (
-                    <span className="text-[10px] font-semibold tabular-nums">{autoTagPercent}%</span>
-                  )}
-                </button>
-              </Tooltip>
-              {isToolsMenuOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-lg border border-gray-700 bg-gray-900 shadow-xl shadow-black/40"
-                >
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setIsToolsMenuOpen(false);
-                      setIsAutomationRulesOpen(true);
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800"
-                  >
-                    <SlidersHorizontal size={15} className="text-gray-400" />
-                    <span>Automation rules…</span>
-                  </button>
-                  <button
-                    role="menuitem"
-                    onClick={handleAutoTagLibrary}
-                    disabled={!hasDirectories || isAutoTagging}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Tag size={15} className="text-gray-400" />
-                    <span>{isAutoTagging ? `Auto-tagging${autoTagPercent !== null ? ` ${autoTagPercent}%` : '…'}` : 'Auto-tag library'}</span>
-                  </button>
-                </div>
-              )}
-            </div>
 
-            <Tooltip label={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature)'}>
-              <button
-                onClick={() => {
-                  if (canUseAnalytics) {
-                    onOpenAnalytics();
-                  } else {
-                    showProModal('analytics');
-                  }
-                }}
-                className="relative p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                title={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature)'}
-                aria-label={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature)'}
-              >
-                <BarChart3 className="w-4 h-4" />
-                <div className="absolute -right-0.5 -top-0.5">
-                  <Crown className={`w-2.5 h-2.5 ${canUseAnalytics ? 'text-gray-500' : 'text-amber-400'}`} />
-                </div>
-              </button>
-            </Tooltip>
-          </div>
-        )}
       </div>
 
       <TagManagerModal

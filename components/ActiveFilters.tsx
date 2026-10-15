@@ -130,9 +130,9 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
   };
 
   return (
-    <div className="px-4 pb-3 pt-2">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+    <div className="flex min-w-0 items-center gap-2 px-2">
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="sr-only">
           Active Filters
         </span>
         {onClearAll && hasClearableFilters && (
@@ -144,7 +144,7 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
           </button>
         )}
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
         <AnimatePresence mode="popLayout">
         {selectedFolderPaths.length > 0 && (
           <motion.div
