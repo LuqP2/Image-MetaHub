@@ -4369,6 +4369,7 @@ export default function App() {
                 )}
                 {(libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                   <GridToolbar
+                    isLibraryView={libraryView === 'library'}
                     selectedImages={safeSelectedImages}
                     images={imagesForGrid}
                     directories={safeDirectories}

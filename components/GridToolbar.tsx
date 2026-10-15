@@ -49,6 +49,7 @@ const canOpenImageEditorForImage = (image?: IndexedImage): boolean => (
 );
 
 interface GridToolbarProps {
+  isLibraryView?: boolean;
 
   selectedImages: Set<string>;
   images: IndexedImage[];
@@ -207,6 +208,7 @@ const showNotification = (message: string, type: 'success' | 'error' = 'success'
 };
 
 const GridToolbar: React.FC<GridToolbarProps> = ({
+  isLibraryView = false,
   selectedImages,
   images,
   directories,
@@ -729,7 +731,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 {isStackingEnabled ? <Layers2 size={16} /> : <Layers size={16} />}
               </button>
             </Tooltip>
-            {viewingStackPrompt && (
+            {isLibraryView && viewingStackPrompt && (
               <Tooltip label="Return to the stacked results">
                 <button
                   onClick={() => {
