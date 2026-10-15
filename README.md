@@ -1,369 +1,142 @@
 # Image MetaHub
 
-[![Join our Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/2MXWxjKyJ5)
-[![Buy License – $39](https://img.shields.io/badge/Buy%20License-%2439-4b8bbe)](https://www.imagemetahub.com/pro?src=readme)
+**Find, organize, and reuse your AI generations — all on your own machine.**
 
-**Local-first AI image organizer and generative media library manager for ComfyUI, Automatic1111, InvokeAI, Forge, and more.**
+Image MetaHub turns your output folders into a searchable desktop library. Find an image by its prompt, model, LoRA, or visual similarity; save prompts for later; and continue working in ComfyUI or Automatic1111. Your files stay where they are, with no uploads or account required.
 
-Image MetaHub indexes large folders of AI-generated media without moving or uploading your files. Search and organize generations by prompt, checkpoint, LoRA, sampler, seed, workflow metadata, tags, ratings, or visual similarity, then send compatible workflows straight back into ComfyUI.
+**[Download the app](https://github.com/LuqP2/Image-MetaHub/releases/latest)** · [Website](https://www.imagemetahub.com?src=readme) · [Get Pro](https://www.imagemetahub.com/pro?src=readme) · [Discord](https://discord.gg/2MXWxjKyJ5)
 
-> **Join the community on [Discord](https://discord.gg/2MXWxjKyJ5)** — feature requests, bug reports, metadata parsing help, and early builds.
+![Image MetaHub Library with the Ayu theme and Masonry layout](assets/screenshot-hero-grid.webp)
 
-![Image MetaHub main UI](assets/screenshot-hero-grid.webp)
+## Get started
 
-## What is Image MetaHub?
+1. Download the build for your system from [GitHub Releases](https://github.com/LuqP2/Image-MetaHub/releases/latest).
+2. Open Image MetaHub and add your generation folders.
+3. Let the first scan finish, then browse, search, and filter your library.
 
-Image MetaHub is a desktop app for organizing and browsing large local libraries of AI-generated images, video, audio, and other generative media. It is built for people who have outgrown a normal output folder or basic ComfyUI gallery and need a searchable library that still understands how each generation was made.
+There is no need to move your files or change your folder structure. Enable folder watching to keep the library updated as new generations arrive.
 
-It scans your existing folders in place, extracts generation metadata from ComfyUI, Automatic1111, InvokeAI, Forge, and other tools, caches results for fast reuse, and lets you combine metadata search, filters, tags, ratings, collections, lineage, and local visual similarity search. Your files stay on your machine.
+**Windows:** choose Setup for a standard installation or Portable to keep the app's settings and data beside the executable. When updating Portable, replace only the executable and keep its `ImageMetaHubData` folder.
 
-## Organize ComfyUI generations at scale
-
-Image MetaHub works as a standalone ComfyUI output organizer for large generation folders. It reads embedded prompt and workflow metadata, lets you search by checkpoint, LoRA, sampler, scheduler, seed, dimensions, node types, tags, ratings, and more, and can send compatible generations back into ComfyUI as working workflows.
-
-You do not need to import your library into a proprietary cloud or reorganize your output folders first. Image MetaHub indexes the files where they already live and can keep watching those folders while ComfyUI generates new media.
-
-## Manage large AI-generation libraries
-
-Image MetaHub is more than an output gallery. It is designed for long-term retrieval and curation across large local collections, with metadata search, visual similarity, tags and ratings, stacks, collections, lineage, compare tools, deduplication helpers, and support for multiple generation ecosystems.
-
-The goal is to preserve the production history around each asset: what prompt, model, LoRAs, workflow, and source image created it, how related generations connect to each other, and how to continue working from it later.
-
-## Highlights
-
-* Local-first browsing with no mandatory account, no cloud sync, and no outbound telemetry
-* Fast indexing and thumbnail caching for large libraries
-* **Find Similar — Local Visual Search** for discovering related images even when they have no prompt or generation metadata
-* Metadata parsing for Automatic1111, ComfyUI, InvokeAI, SD.Next, Forge, SwarmUI, Fooocus, Draw Things, Midjourney/Niji, Firefly, DreamStudio, DALL-E, and more
-* Support for PNG, JPG, JPEG, WEBP, AVIF, GIF, MP4, WEBM, MKV, MOV, and AVI
-* Faceted sidebar filters with explicit include/exclude actions for checkpoints, LoRAs, samplers, schedulers, ratings, generation modes, media types, ComfyUI node types.
-* Unified Explore surface for drilling into Models, Clusters, and Collections, with the drill-in kept as a combinable filter chip
-* Embedded ComfyUI Workspace with a live ComfyUI browser, library thumbnails, workflow metadata, and quick generation actions
-* Live step-by-step generation previews in the queue for ComfyUI jobs
-* Image lineage detection for `img2img`, `inpaint`, and `outpaint`, including source-image recovery when possible
-* Multi-window image viewer with move, resize, docking/collapsible details, and fast cross-reference workflows
-* Built-in image editor with adjustments, crop, transform, resize, enhance, annotations, and metadata-preserving export
-* Prompt clustering, TF-IDF auto-tags, manual tag management, and deduplication helpers
-* Startup verification modes for reopening saved libraries from cache or validating them against disk
-* Automatic1111 and ComfyUI integrations with queueing, progress tracking, and optional launcher shortcuts
-* Opt-in Civitai lookups for model and LoRA hashes, with results cached locally
-* Analytics Explorer and verified metrics support for images generated with the MetaHub Save Node
-
-## Free vs Pro
-
-Some workflow-heavy features are unlocked through the desktop app's offline Pro license or 7-day trial.
-
-**Core app includes:**
-
-* Local indexing, metadata parsing, search, sort, and filtering
-* Tags, favorites, safe mode, and shadow metadata editing
-* Auto-watch for generation folders
-* Image lineage display and multi-window viewer workflows
-* Explore workspace with auto-tags and clustering under free-tier limits
-* Built-in image editor
-* Deduplication helpers and stack browsing
-
-**Pro currently unlocks:**
-
-* Automatic1111 generation and parameter copy workflows
-* ComfyUI generation, embedded workspace, workflow-native editing, and progress tracking
-* Compare View with 2-4 image layouts and metadata diff tools
-* Analytics Explorer
-* Batch export
-* Bulk tagging
-* In-app file management (copy/move between indexed folders)
-* Unlimited clustering scale
-* Unlimited Local Visual Search indexing
-
-## Getting Started
-
-1. Download the latest desktop release from [GitHub Releases](https://github.com/LuqP2/Image-MetaHub/releases).
-2. Install and launch Image MetaHub.
-3. Add one or more folders that contain your generated images or videos.
-4. Wait for the first indexing pass to finish.
-5. Use search, sidebar facets, tags, and advanced filters to explore the library.
-
-### Windows installer and portable build
-
-Windows releases provide a standard Setup executable and a separate Portable executable. The portable build keeps its settings, browser data, metadata cache and thumbnails in an `ImageMetaHubData` folder beside the executable, without using the Image MetaHub profile in AppData.
-
-To update the portable build, close Image MetaHub, replace only the Portable executable, and keep the existing `ImageMetaHubData` folder beside it.
-
-### macOS unsigned builds
-
-Current GitHub release builds are not signed with an Apple Developer ID yet. If macOS blocks the app after you download and move it to Applications, remove the quarantine flag from Terminal:
+**macOS:** current builds are unsigned. If macOS blocks the app after you move it to Applications, run this in Terminal:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Image MetaHub.app"
 ```
 
-This is a temporary workaround for unsigned builds until macOS signing and notarization are available.
+## Find the generation you had in mind
 
-![Browsing and filters](assets/screenshot-gallery.webp)
+Search prompts and metadata, then narrow the results by checkpoint, LoRA, sampler, tags, rating, folder, media type, or ComfyUI node. Include what you want and exclude what you don't; active filters stay visible above the results.
 
-## Browsing and Curation
+Browse in grid, Masonry, or table view. Use favorites, ratings, manual tags, and Auto-Tag to keep useful work easy to find. Explore groups images into models, prompt clusters, and collections, while stacks and duplicate helpers make large batches easier to curate. Themes include Ayu, Ayu Light, and additional choices in Settings.
 
-Image MetaHub is built around fast local curation:
+**Find Similar** searches for visually related images, including files with no generation metadata. It runs locally after a separate, explicit model download, with pausable indexing and optional GPU acceleration. Text-to-image visual queries are also available as an experimental option.
 
-* **Search + facets**: combine free-text search with include/exclude facets for checkpoints, LoRAs, samplers, schedulers, ComfyUI node types, tags, favorites, ratings, generation modes, media types, and advanced ranges
-* **Stacking**: group identical prompts in the main library view for faster browsing
-* **Sort + Group By**: sort order and grouping live in the persistent grid footer, with grouping by date, name, generation session, checkpoint model, or cluster, plus Jump To navigation
-* **Manual tags + ratings**: keep a persistent manual tag catalog, switch included tags between `Any` and `All`, and curate with 1-5 ratings
-* **Metadata recovery**: reparse selected images without running a full folder refresh or clearing cache — a single reparse patches only the affected cache chunk, so it stays fast on large libraries
-* **Image editor**: adjust, crop, rotate, flip, resize, sharpen, blur, annotate, and redact from the viewer, then Save As a metadata-preserving copy or overwrite eligible originals on desktop
-* **Startup verification**: choose whether saved folders reopen from cache, reconcile in the background, or verify strictly before startup completes
-* **Shadow metadata**: edit metadata non-destructively and keep the original payload available for inspection or revert
-* **Viewer workflows**: in the desktop app, open each image in a separate native window above Image MetaHub while the ComfyUI Workspace stays alive; minimize and restore viewers from the footer, or select the legacy in-app viewer in Settings
-* **Auto-watch**: keep output folders in sync while A1111 or ComfyUI is generating
+![Library filters combining ratings and included or excluded LoRAs](assets/screenshot-gallery.webp)
 
-## Find Similar — Local Visual Search
+## Inspect an image and recover how it was made
 
-Select any image and find visually related results across your library, including files with no prompt or generation metadata. Processing runs locally using an optional on-device model.
+Open an image to read its prompt, model, LoRAs, seed, and other available generation settings. Use a separate viewer window, keep several references open, or reuse a single window as you browse.
 
-Local Visual Search is off by default. Enabling it does not download anything: the model download is a separate, explicit action, and downloaded files are verified before use. Indexing can be paused and resumed, works offline after the model is installed, and uses optional WebGPU acceleration with an automatic WASM fallback.
+For related generations, lineage can show source images and transformation chains such as img2img, inpaint, and outpaint. Provenance summarizes available source evidence and offers an optional SHA-256 fingerprint. Shadow metadata lets you edit information while keeping the original available to restore.
 
-Find Similar is the primary supported workflow in v0.19. Experimental text-to-image queries are also available, but their results are approximate. They do not replace Image MetaHub's deterministic search across prompts, metadata, models, LoRAs, and workflows.
+![Image viewer with prompts, auto-tags, and generation details](assets/screenshot-imagemodal.webp)
 
-## Explore
+## Keep your best prompts ready to reuse
 
-Explore is the single discovery workspace that replaced the separate Model View, Smart Library, and Collections screens. It presents your library across three dimensions — **Models**, **Clusters**, and **Collections** — as browsable cards.
+Save a prompt from any image into **Prompt Library**, then search, favorite, copy, or return to its source. **Find images** takes you back to library images matching a saved prompt or block. Import and export through JSON or `styles.csv` to move your prompts between tools.
 
-* **Scope drill-in**: opening a card scopes the Library grid to it and shows the scope as a dedicated chip in Active Filters, so it stays combinable with every other filter instead of trapping you in a separate screen
-* **Prompt clustering**: a background worker groups related images by prompt similarity
-* **TF-IDF auto-tags**: generate useful tags from prompts, models, LoRAs, and workflow metadata
-* **Stack browsing**: open a stack, paginate inside it, and keep navigation context in the image viewer
-* **Deduplication helper**: rank likely keep/archive candidates and estimate space savings
-* **Back button**: return from a drill-in scope straight to the matching Explore dimension
-* **Free-tier limits**: the open-source app includes Explore workflows, while Pro removes clustering scale limits
+With Pro, turn useful fragments into reusable **blocks**, compose positive and negative prompts, and create **templates** with fillable fields. Saved compositions keep their own block snapshots, so later edits to a block won't silently change your earlier work.
 
-Library-wide operations (automation rules, auto-tagging the library, analytics) live in the Library Tools menu in the library toolbar.
+![Prompt Library with saved prompts and a source-image preview](assets/screenshot-prompt-library.webp)
 
-### Classic Mode
+## Manage your local AI models · Pro
 
-If you prefer the previous navigation, **Settings → Appearance → Classic Mode** restores the old Model View / Smart Library / Collections / Node View labels as shortcuts that deep-link into Explore.
+The **Models** workspace organizes checkpoints, LoRAs, diffusion models, VAEs, text encoders, and other local model files with covers, tags, favorites, notes, and trigger words.
 
-## ComfyUI Nodes Filter
+Identify versions through Civitai, link files to Hugging Face, and follow new releases or file changes in **What's new**. Both services have independent, optional monitoring controls. Checks retrieve information without downloading or replacing your model weights.
 
-The standalone Node View has been retired in favor of a multi-select **ComfyUI Nodes** filter in the sidebar's Generation Parameters, for libraries with embedded ComfyUI workflows:
+See which library images use a model, inspect it in a detached window, or open **Storage** to review file sizes, locations, and verified duplicate copies. File removal lets you review the selected paths before moving them to the system Trash.
 
-* Search exact node-type names across the current scope
-* Multi-select node filters with OR matching
-* See per-node result counts before applying a filter
-* Combine node filters with every other filter and the active scope, without leaving the library grid
+![Model Manager showing installed versions and available Civitai releases](assets/screenshot-model-updates.webp)
 
-## Metadata Support
+## Continue creating in ComfyUI or Automatic1111 · Pro
 
-Image MetaHub reads metadata from:
+Open **ComfyUI Workspace** to work with a running local ComfyUI instance inside the app, alongside your library images, saved prompts, blocks, and models. Reuse prompt text in compatible node fields or save selected node text for later.
 
-* Stable Diffusion / Automatic1111 images
-* ComfyUI workflows and prompt graphs
-* InvokeAI
-* SD.Next
-* Forge
-* Fooocus
-* SwarmUI
-* Draw Things
-* Midjourney / Niji Journey
-* Adobe Firefly
-* DreamStudio
-* DALL-E
-* Other tools that embed generation parameters into PNG/JPEG/WebP/AVIF metadata or sidecar payloads
+Generate from a compatible original workflow or rebuild a simpler workflow from image metadata. Inspect nodes, adjust parameters, and follow queued jobs with live previews. Automatic1111 integration also lets you copy generation parameters or send a generation directly to its API.
 
-Supported media types:
+Connect your running generator in Settings. For richer ComfyUI outputs, the companion [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) preserves workflow metadata, tags, notes, and available performance metrics. Generation requires the appropriate models and nodes in your generator.
 
-* **Images**: PNG, JPG, JPEG, WEBP, AVIF, GIF
-* **Video**: MP4, WEBM, MKV, MOV, AVI
-* **Audio**: MP3, WAV, FLAC, OGG, OGA, M4A, AAC, OPUS, AIFF, AIF, WMA
+## Compare, edit, and understand your results · Pro
 
-For video and audio metadata, Image MetaHub uses container metadata plus `ffprobe` when available to extract duration, codec, frame count, resolution, sample rate, channels, and bit rate. Audio files can be indexed even when a codec is not playable by Chromium/Electron on the current system.
+Compare up to **four images**, with synchronized zoom and metadata differences. Two-image modes include a slider, flicker, loupe, difference map, and edge comparison.
 
-### AVIF metadata
+The built-in **Image Editor** provides adjustments, crop, rotation, resizing, sharpening, and annotations, with metadata-preserving exports.
 
-Image MetaHub reads ComfyUI prompt and workflow documents from standard AVIF XMP items, including files produced by the proposed ComfyUI AVIF saver and frontend loader. It also reads the older EXIF convention used by existing ComfyUI AVIF files.
+![Compare View with two images and highlighted metadata differences](assets/screenshot-compare.webp)
 
-New Image MetaHub AVIF exports are intentionally compact: the full prompt and workflow graphs stay in their established ComfyUI XMP fields rather than being copied again. The Image MetaHub namespace stores app-specific fields (tags, notes, attribution, analytics, lineage, source generator) alongside the extracted parameter snapshot (model, seed, steps, cfg, sampler, scheduler, negative prompt) the Save Node records — those structured fields are kept because re-deriving them from arbitrary custom-node graphs is unreliable. When a legacy nested prompt conflicts with a standalone XMP prompt, the standalone document wins and the viewer shows a metadata-conflict badge.
+**Analytics Explorer** shows which models, LoRAs, samplers, and generators you use, across the full library or current results. Images with MetaHub Save Node telemetry can also contribute generation-time, speed, GPU, and VRAM metrics.
 
-### Civitai links (opt-in)
+![Analytics Explorer showing LoRA and sampler usage](assets/screenshot-analytics.webp)
 
-Model and LoRA hashes in the Image Modal are clickable and open the matching Civitai page. The lookup only happens when you click — a single request to Civitai's public API, cached locally so each hash is looked up at most once. It works with A1111, Forge, SD.Next, and Fooocus images, plus ComfyUI images saved with the MetaHub Save Node, and can be disabled entirely under **Settings → Privacy**. Indexing and browsing stay fully offline either way.
+## Images, video, audio, and 3D in one library
 
-### MetaHub Save Node
+Image MetaHub reads generation metadata from ComfyUI, Automatic1111, InvokeAI, Forge, SD.Next, SwarmUI, Fooocus, Draw Things, Midjourney/Niji, Firefly, DreamStudio, DALL-E, and other compatible exports. Available details depend on what the source tool saved.
 
-For ComfyUI, the best experience comes from the companion [ImageMetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) on the [ComfyUI Registry](https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save).
+| Media | Supported formats |
+| --- | --- |
+| Images | PNG, JPG/JPEG, WEBP, AVIF, GIF |
+| Video | MP4, WEBM, MKV, MOV, AVI |
+| Audio | MP3, WAV, FLAC, OGG/OGA, M4A, AAC, OPUS, AIFF/AIF, WMA |
+| 3D | GLB, GLTF, OBJ, FBX, STL |
 
-With the Save Node, Image MetaHub can ingest:
+Browse and play media, or inspect 3D assets in the interactive viewer and export them. Audio/video playback depends on the codecs available on your system. Files without generation metadata can still be browsed and organized.
 
-* Full workflow and prompt payloads
-* Tags and notes saved by the workflow
-* GPU and timing analytics
-* Explicit lineage metadata for derived images
+![Interactive local 3D model viewer](assets/screenshot-3d-model-library.webp)
 
-For older ComfyUI images without the node, Image MetaHub still attempts best-effort parsing from embedded workflow data.
+## Free and Pro
 
-![Image details and metadata](assets/screenshot-imagemodal.webp)
+The core library is free to use. Pro adds generation, model management, and more tools for larger workflows. A **7-day Pro trial** is available on eligible desktop installations.
 
-## Image Lineage and Viewer
+| Feature | Free | Pro |
+| --- | --- | --- |
+| Local browsing, metadata search, filters, tags, ratings, and favorites | Included | Included |
+| Folder watching, viewer windows, lineage, and shadow metadata | Included | Included |
+| Basic Prompt Library, import/export, and exact prompt duplicate detection | Included | Included |
+| Local Visual Search indexing | 2,000 newest images | Unlimited |
+| Prompt clustering | Limited scale | Unlimited |
+| Prompt block creation, composition, and template editing | — | Included |
+| Model Manager and model update tracking | — | Included |
+| ComfyUI Workspace and Automatic1111 integration | — | Included |
+| Image Editor, Compare, and Analytics | — | Included |
+| Batch export, bulk tagging, and in-app file copy/move | — | Included |
 
-The image viewer is no longer just a single modal. In the current app it supports:
+If Pro or a trial expires, existing prompt blocks and templates remain readable, fillable, copyable, and exportable.
 
-* Multiple open image windows at the same time
-* Move, resize, minimize, maximize, and focus management
-* Docked or collapsed detail panels
-* Lineage display for transformations like `img2img`, `inpaint`, and `outpaint`, including generation-type and denoise context when available
-* Source-image recovery from explicit references or inferred metadata when possible
-* Derived-image previews to navigate transformation chains
-
-## Automatic1111 Integration (Pro)
-
-With Pro enabled, Image MetaHub can talk directly to a running Automatic1111 instance.
-
-Main workflows:
-
-* **Copy to A1111**: format metadata into A1111's three-line parameter block for the blue-arrow import flow
-* **Generate with A1111**: send normalized metadata directly to the API for quick regeneration
-* **Model and LoRA selection**: browse available models/LoRAs and override prompt parameters before generation
-* **Queue-aware progress**: generations feed the shared queue and progress surfaces
-
-Basic setup:
-
-1. Start A1111 with `--api`.
-2. If needed, allow the app origin with `--cors-allow-origins=http://localhost:5173`.
-3. Configure the server URL in Image MetaHub settings.
-
-## ComfyUI Integration (Pro)
-
-With Pro enabled, Image MetaHub can generate through ComfyUI using either the original embedded workflow or a safe metadata rebuild.
-
-The ComfyUI Workspace adds a full working area around a running local ComfyUI instance: an embedded browser, selected-image context, library thumbnails, directory scoping, workflow/raw metadata tabs, copy/generate actions, and direct routes from the grid, table, toolbar, and image viewer. In the browser build, the same entry points open ComfyUI externally instead of embedding it.
-
-**Current flow:**
-
-1. Open an image with compatible metadata.
-2. Click `Generate with ComfyUI`.
-3. Choose `Original workflow` or `Simple rebuild`.
-4. Adjust prompt, negative prompt, seed, steps, CFG, dimensions, model overrides, LoRAs, and source image policy when relevant.
-5. Optionally use the visual workflow editor or advanced JSON editor.
-6. Queue the workflow to ComfyUI and follow progress in real time over WebSocket.
-
-**What exists today:**
-
-* **Workflow-native mode** for executable embedded prompt graphs
-* **Simple rebuild mode** for metadata-only images
-* **Visual workflow inspector/editor** with pan/zoom and per-node field editing
-* **Embedded ComfyUI Workspace** for staying inside Image MetaHub while browsing source images and working in ComfyUI
-* **Model-family aware overrides** for checkpoints, UNETs, VAEs, CLIP loaders, and LoRAs when supported
-* **Transform-aware source image policies** for img2img/inpaint-style workflows
-* **Shared queue** with retry, cancel, cleanup actions, and optional detection of ComfyUI jobs started outside Image MetaHub
-* **Live generation preview** in the queue, updating step-by-step during generation for jobs started from MetaHub *and* from the embedded ComfyUI UI, with a resizable preview box that remembers its height
-* **Run current workflow** straight from the queue, queueing whatever workflow is loaded in the embedded ComfyUI workspace
-* **Metadata-rich outputs** when used with the MetaHub Save Node and Timer node
-
-**Setup:**
-
-1. Run ComfyUI locally, usually on `http://127.0.0.1:8188`.
-2. Install the MetaHub Save Node.
-3. Configure the ComfyUI URL in settings.
-4. Optionally save a local launch command so the desktop header can start or reopen ComfyUI for you.
-5. Test the connection from the app and start generating.
-
-## Compare View (Pro)
-
-Image MetaHub currently supports comparing **up to 4 images** with:
-
-* Side-by-side mode with optional synchronized zoom/pan
-* Side Strip and 2x2 Grid layouts for 3-4 image sets
-* Slider, hover, flicker, difference map, loupe, and edge modes for two-image comparisons
-* Metadata comparison in standard or diff view, with all panels expanding, collapsing, and scrolling in sync
-* Quick swap and keyboard shortcuts
-
-![Compare panel](assets/screenshot-compare.webp)
-
-## Analytics (Pro)
-
-The Analytics Explorer summarizes library usage and generation performance:
-
-* `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views
-* Scope switching between the current filtered results and the full library
-* Cohort comparisons for generators, models, LoRAs, samplers, GPU devices, ratings, and more
-* One-click promotion of analytics insights into live filters
-* Average speed, VRAM, and generation time for MetaHub Save Node images
-* Performance charts grouped over time or by GPU
-
-![Analytics dashboard](assets/screenshot-analytics.webp)
-
-## Development
-
-This repository contains the desktop app source code.
-
-**Stack:**
-
-* React 18 + TypeScript
-* Electron
-* Zustand
-* Vite
-* Tailwind CSS
-* Vitest
-
-**Common commands:**
-
-```bash
-npm install
-npm run dev
-npm run dev:app
-npm run build
-npm run electron-dist
-npm run test
-npm run lint
-```
-
-**CLI helpers:**
-
-```bash
-npm run cli:parse -- path/to/file.png --pretty --raw
-npm run cli:index -- path/to/folder --out index.jsonl --recursive
-```
-
-For release work, see [RELEASE-GUIDE.md](RELEASE-GUIDE.md) and [RELEASE-AUTOMATION.md](RELEASE-AUTOMATION.md).
-
-## Troubleshooting
-
-On macOS, if audio or video playback crashes the Electron Helper, quit Image MetaHub first, then launch it from Terminal with the opt-in media safe mode:
-
-```bash
-IMH_MEDIA_SAFE_MODE=1 /Applications/Image\ MetaHub.app/Contents/MacOS/Image\ MetaHub
-```
-
-To confirm the flag was applied, `process-events.log` should include `mediaSafeModeEnabled: true` in the `app-startup` entry. This disables hardware acceleration plus accelerated video decode/compositing switches for that launch only. The lower-level `IMH_DISABLE_GPU=1` flag is also available when you want to test GPU acceleration separately.
+[See Pro plans](https://www.imagemetahub.com/pro?src=readme)
 
 ## Privacy
 
-Image MetaHub is designed to stay local:
+Your library, prompts, tags, and metadata stay on your machine. Browsing and indexing work locally, with no cloud sync or outbound telemetry. Local Visual Search also works offline after its optional model is downloaded.
 
-* Your files, cache, tags, and metadata stay on your machine.
-* There is no required account system.
-* Pro licenses are validated offline.
-* Network activity is limited to things that explicitly need it, such as:
-  * auto-update checks
-  * local A1111 / ComfyUI APIs
-  * Civitai hash lookups you explicitly click (can be disabled in Settings → Privacy)
-  * links you choose to open
+Network access is used for updates, services you connect to, and optional actions such as Civitai/Hugging Face lookups, model monitoring, and downloads. Pro licenses are verified locally.
 
-## Credits
+## Help and development
 
-Image MetaHub is built and maintained by **Lucas (LuqP2)** with community feedback and contributions.
+Join [Discord](https://discord.gg/2MXWxjKyJ5) for questions, metadata parsing help, and feature requests, or report a bug through [GitHub Issues](https://github.com/LuqP2/Image-MetaHub/issues). See the [changelog](CHANGELOG.md) for release history.
 
-## Links
+To run the desktop app from source:
 
-* Website: [https://www.imagemetahub.com?src=readme](https://www.imagemetahub.com?src=readme)
-* Discord: [https://discord.gg/2MXWxjKyJ5](https://discord.gg/2MXWxjKyJ5)
-* Pro license: [https://www.imagemetahub.com/pro?src=readme](https://www.imagemetahub.com/pro?src=readme)
-* Ko-fi: [https://ko-fi.com/lucaspierri](https://ko-fi.com/lucaspierri)
-* ComfyUI Save Node: [https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save)
+```bash
+npm install
+npm run dev:app
+```
+
+Developer references: [Architecture](ARCHITECTURE.md) · [CLI](docs/CLI-README.md) · [Prompt Library](docs/PROMPT_LIBRARY.md) · [ComfyUI context tools](docs/COMFYUI_CONTEXT_TOOLS.md) · [Release guide](docs/RELEASE-GUIDE.md)
+
+Built and maintained by **Lucas (LuqP2)** with community feedback and contributions.
 
 ## License
 
-Image MetaHub is **source-available** under the [PolyForm Perimeter License 1.0.1](LICENSE).
-
-The license permits use, modification, and redistribution of the source code, but prohibits using it to provide competing products.
-
-For full licensing details, see [LICENSING.md](LICENSING.md).
+Image MetaHub is **source-available** under the [PolyForm Perimeter License 1.0.1](LICENSE), which permits use, modification, and redistribution for permitted purposes while prohibiting competing products. See [LICENSING.md](LICENSING.md) for details.
