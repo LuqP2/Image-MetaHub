@@ -721,16 +721,18 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
               </>
             )}
 
-            <Tooltip label={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'}>
-              <button
-                onClick={() => setStackingEnabled(!isStackingEnabled)}
-                className={`rounded p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${isStackingEnabled ? 'bg-accent/15 text-accent hover:bg-accent/20' : 'text-gray-400 hover:bg-gray-700 hover:text-accent'}`}
-                aria-label={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'}
-                aria-pressed={isStackingEnabled}
-              >
-                {isStackingEnabled ? <Layers2 size={16} /> : <Layers size={16} />}
-              </button>
-            </Tooltip>
+            {isLibraryView && (
+              <Tooltip label={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'}>
+                <button
+                  onClick={() => setStackingEnabled(!isStackingEnabled)}
+                  className={`rounded p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${isStackingEnabled ? 'bg-accent/15 text-accent hover:bg-accent/20' : 'text-gray-400 hover:bg-gray-700 hover:text-accent'}`}
+                  aria-label={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'}
+                  aria-pressed={isStackingEnabled}
+                >
+                  {isStackingEnabled ? <Layers2 size={16} /> : <Layers size={16} />}
+                </button>
+              </Tooltip>
+            )}
             {isLibraryView && viewingStackPrompt && (
               <Tooltip label="Return to the stacked results">
                 <button
