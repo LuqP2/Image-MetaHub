@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { getPreviewValues, rememberPreviewValues } from '../../services/promptLibrary/sessionDraft';
 import { Heart, MoreHorizontal, Pencil, X, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import type { PromptLibraryItem } from '../../types';
@@ -8,6 +8,9 @@ import { selectedPromptText, usePromptBlockExtraction } from '../../hooks/usePro
 import PromptPreview from './PromptPreview';
 import { VariableValues, buttonClass } from './PromptVariables';
 import PromptTagsInput from './PromptTagsInput';
+import { startComfyTextDrag } from '../comfyui/ComfyTextDrag';
+import BlockFieldSuggestions from './BlockFieldSuggestions';
+import { compileBlockForUse } from '../../services/promptLibrary/blockFields';
 import { useSavedPromptStore } from '../../store/useSavedPromptStore';
 
 export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDuplicate, onRemove, onDuplicates, onViewSource, onFindImages, renderActions, renderSecondaryActions, workspace = false, onSendSelection, onPrevious, onNext, position }: {
@@ -33,6 +36,7 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
   const [error, setError] = useState('');
   const [savingTags, setSavingTags] = useState(false);
   const [tagStatus, setTagStatus] = useState('');
+  const pendingFields = useRef<Promise<void> | null>(null);
   const libraryPrompts = useSavedPromptStore(state => state.prompts);
   const libraryBlocks = useSavedPromptStore(state => state.blocks);
   const suggestions = [...new Set([...libraryPrompts, ...libraryBlocks].flatMap(entry => entry.editor?.tags || []))];
@@ -50,7 +54,17 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
   const extraction = usePromptBlockExtraction();
   let variables = editor.variables;
   try { if (!block) variables = editor.document?.mode === 'template' ? allVariables(editor.document) : []; } catch { variables = []; }
-  const result = block ? compilePrompt({ positivePrompt: item.text, editor: { ...editor, document: { ...makeDocument(item.text), mode: 'template', variables: editor.variables } } }, values) : compilePrompt(item, values);
+  const result = block ? { positivePrompt: item.text, negativePrompt: '', errors: [] } : compilePrompt(item, values);
+  const blockUse = block && workspace ? compileBlockForUse(item, () => 0) : null;
+  const canDragBlock = !!blockUse && !blockUse.errors.length && !!blockUse.positivePrompt.trim();
+  const findResult = block ? compilePrompt({ editor: { ...editor, document: { ...makeDocument(item.text), mode: 'template', variables: editor.variables } } }) : result;
+  const sendSelection = () => {
+    if (!selection || !onSendSelection) return;
+    const resolved = block ? compileBlockForUse({ ...item, text: selection.text }) : null;
+    if (resolved?.errors.length) setError(resolved.errors.join(' '));
+    else onSendSelection(resolved ? resolved.positivePrompt : selection.text);
+    setSelection(null);
+  };
   const metadata = Object.entries(editor.metadata).filter(([, value]) => Array.isArray(value) ? value.length : !!value);
   const source = async () => {
     if (!window.electronAPI) return;
@@ -63,17 +77,22 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
       {position && <><button className="app-top-icon-button" aria-label="Previous item" title="Previous" disabled={!onPrevious} onClick={onPrevious}><ChevronLeft size={16} /></button><span className="shrink-0 text-[11px] text-gray-400">{position}</span><button className="app-top-icon-button" aria-label="Next item" title="Next" disabled={!onNext} onClick={onNext}><ChevronRight size={16} /></button></>}
       <div className="min-w-0 flex-1">{(editor.title.trim() || block) && <h3 className="truncate text-sm font-semibold">{editor.title.trim() || 'Untitled block'}</h3>}</div>
       <button className={`app-top-icon-button ${editor.favorite ? '!text-red-400' : ''}`} aria-label="Toggle favorite" aria-pressed={editor.favorite} onClick={onFavorite}><Heart size={16} fill={editor.favorite ? 'currentColor' : 'none'} /></button>
-      <button className={workspace ? 'app-top-icon-button' : buttonClass} aria-label={workspace ? block ? 'Edit saved block' : 'Edit saved prompt' : 'Edit'} title="Edit" onClick={onEdit}><Pencil size={14} />{!workspace && 'Edit'}</button>
+      <button className={workspace ? 'app-top-icon-button' : buttonClass} aria-label={workspace ? block ? 'Edit saved block' : 'Edit saved prompt' : 'Edit'} title="Edit" onClick={() => { if (pendingFields.current) void pendingFields.current.then(onEdit, () => undefined); else onEdit(); }}><Pencil size={14} />{!workspace && 'Edit'}</button>
       <div className="relative"><button className="app-top-icon-button" aria-label="Item actions" aria-expanded={menu} onClick={() => setMenu(!menu)}><MoreHorizontal size={16} /></button>{menu && <><button tabIndex={-1} aria-label="Close item actions" className="fixed inset-0 z-20 cursor-default" onClick={() => setMenu(false)} /><div className="absolute right-0 top-11 z-30 w-44 rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl">{[['Duplicate', onDuplicate], ['Check duplicates', onDuplicates], ['Remove', onRemove]].map(([label, action]) => <button key={label as string} className={`block w-full rounded p-2 text-left text-xs hover:bg-gray-800 ${label === 'Remove' ? 'text-red-400' : ''}`} onClick={() => { setMenu(false); (action as () => void)(); }}>{label as string}</button>)}</div></>}</div>
       <button className="app-top-icon-button" aria-label="Close details" onClick={onClose}><X size={16} /></button>
     </header>
     <div className={`min-h-0 flex-1 overflow-y-auto ${workspace ? 'space-y-2 p-2' : 'space-y-4 p-4'}`}>
       {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
       {(workspace || preview.url) && <details open={previewOpen} onToggle={e => { const open = e.currentTarget.open; setPreviewOpen(open); localStorage.setItem('imh-prompt-details-preview-open', String(open)); }} className="rounded-lg border border-gray-700 p-2 text-xs text-gray-400"><summary className="cursor-pointer">Preview image</summary>{preview.url ? <img src={preview.url} alt="Linked preview" className="mt-2 max-h-44 w-full rounded bg-gray-950/50 object-contain" /> : <p className="pt-2">No preview image.</p>}</details>}
-      {variables.length > 0 && <section className="space-y-2 rounded-lg border border-accent/25 bg-accent/5 p-3"><h4 className="text-sm font-semibold">Fill values</h4><p className="text-xs text-gray-400">These values replace the placeholders in the final text when copying or sending to a node. Your saved text stays unchanged.</p><VariableValues variables={variables} values={values} onChange={setValues} /></section>}
-      <div onContextMenu={e => { const text = selectedPromptText(); if (text) { e.preventDefault(); setSelection({ text, x: Math.min(e.clientX, window.innerWidth - 240), y: Math.min(e.clientY, window.innerHeight - (onSendSelection ? 150 : 100)) }); } }}><PromptPreview compact={workspace} channel={workspace && block ? 'block' : undefined} result={result} heading={block ? 'Block text' : 'Prompt'} /></div>
+      {!block && variables.length > 0 && <section className="space-y-2 rounded-lg border border-accent/25 bg-accent/5 p-3"><h4 className="text-sm font-semibold">Fill values</h4><p className="text-xs text-gray-400">These values replace the placeholders in the final text when copying or sending to a node. Your saved text stays unchanged.</p><VariableValues variables={variables} values={values} onChange={setValues} /></section>}
+      {block && !workspace && <BlockFieldSuggestions block={item} onPending={operation => {
+        pendingFields.current = operation;
+        void operation.then(() => { if (pendingFields.current === operation) pendingFields.current = null; }, () => { if (pendingFields.current === operation) pendingFields.current = null; });
+      }} />}
+      <div draggable={canDragBlock} onDragStart={event => { if (block) { if (canDragBlock) startComfyTextDrag(event, compileBlockForUse(item).positivePrompt); else event.preventDefault(); } }} onContextMenu={e => { const text = selectedPromptText(); if (text) { e.preventDefault(); setSelection({ text, x: Math.min(e.clientX, window.innerWidth - 240), y: Math.min(e.clientY, window.innerHeight - (onSendSelection ? 150 : 100)) }); } }}><PromptPreview compact={workspace} channel={block ? 'block' : undefined} result={result} heading={block ? 'Preview' : 'Prompt'} /></div>
+      {block && workspace && <p className="text-xs text-gray-400">Drag to a node to pick a random suggested value for each field.</p>}
       {!workspace && renderActions?.(result)}
-      {onFindImages && <button className={buttonClass} disabled={result.errors.length > 0 || !(result.positivePrompt.trim() || result.negativePrompt.trim())} onClick={() => onFindImages(result.positivePrompt.trim() || result.negativePrompt.trim())}><Search size={14} />Find images</button>}
+      {onFindImages && <button className={buttonClass} disabled={findResult.errors.length > 0 || !(findResult.positivePrompt.trim() || findResult.negativePrompt.trim())} onClick={() => onFindImages(findResult.positivePrompt.trim() || findResult.negativePrompt.trim())}><Search size={14} />Find images</button>}
       <div className="space-y-1"><PromptTagsInput compact={workspace} tags={editor.tags} suggestions={suggestions} disabled={savingTags} onChange={tags => void saveTags(tags)} />{(savingTags || tagStatus) && <p role="status" className="text-[11px] text-gray-500">{savingTags ? 'Saving tags…' : tagStatus}</p>}</div>
       {renderSecondaryActions?.()}
       {editor.category && <p className="text-xs text-gray-400">Category: {editor.category}</p>}
@@ -81,7 +100,7 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
       <details className="space-y-3 border-t border-gray-700 pt-3 text-xs text-gray-400"><summary className="cursor-pointer">Information</summary>{metadata.map(([key, value]) => <div key={key} className="break-words"><span className="capitalize">{key}: </span>{Array.isArray(value) ? value.join(', ') : value}</div>)}<p>Saved {new Date(item.createdAt).toLocaleString()}</p>{item.updatedAt && <p>Updated {new Date(item.updatedAt).toLocaleString()}</p>}{'sourceCreatedAt' in item && item.sourceCreatedAt && <p>Source date {new Date(item.sourceCreatedAt).toLocaleString()}</p>}{'source' in item && item.source && window.electronAPI && <button className={buttonClass} onClick={() => void source()}>View Source</button>}</details>
     </div>
     {workspace && renderActions && <footer className="shrink-0 border-t border-gray-700 p-2">{renderActions(result)}</footer>}
-    {selection && <><button className="fixed inset-0 z-[11000] cursor-default" aria-label="Dismiss selection menu" onClick={() => setSelection(null)} /><div className="fixed z-[11001] flex flex-col items-stretch rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl" style={{ left: selection.x, top: selection.y }}>{onSendSelection && <button className={buttonClass} onClick={() => { onSendSelection(selection.text); setSelection(null); }}>Send to selected node</button>}<button className={buttonClass} onClick={() => { extraction.open(selection.text, 'source' in item ? item.source : null); setSelection(null); }}>Save Selection as Block</button></div></>}
+    {selection && <><button className="fixed inset-0 z-[11000] cursor-default" aria-label="Dismiss selection menu" onClick={() => setSelection(null)} /><div className="fixed z-[11001] flex flex-col items-stretch rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl" style={{ left: selection.x, top: selection.y }}>{onSendSelection && <button className={buttonClass} onClick={sendSelection}>Send to selected node</button>}<button className={buttonClass} onClick={() => { extraction.open(selection.text, 'source' in item ? item.source : null); setSelection(null); }}>Save Selection as Block</button></div></>}
     {extraction.dialog}
   </section>;
 }

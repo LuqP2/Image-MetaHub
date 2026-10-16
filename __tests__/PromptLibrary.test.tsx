@@ -6,7 +6,7 @@ import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import { applyMutation, emptyEditor, makeDocument, snapshotBlock } from '../services/promptLibrary/core.mjs';
 import { clearDraft } from '../services/promptLibrary/sessionDraft';
 import { usePromptBlockExtraction } from '../hooks/usePromptBlockExtraction';
-import type { SavedPrompt, PromptLibrarySnapshot } from '../types';
+import type { SavedPrompt, PromptBlock, PromptLibrarySnapshot } from '../types';
 const mocks = vi.hoisted(() => ({ list: vi.fn(), mutate: vi.fn(), copy: vi.fn(), gate: vi.fn(), advanced: true }));
 vi.mock('../services/savedPromptService', () => ({ listSavedPrompts: vi.fn(), listPromptLibrary: mocks.list, mutatePromptLibrary: mocks.mutate, removeSavedPrompt: vi.fn(), savePrompt: vi.fn(), subscribeSavedPromptChanges: vi.fn() }));
 vi.mock('../hooks/useFeatureAccess', () => ({ useFeatureAccess: () => ({ canUseAdvancedPromptLibrary: mocks.advanced, showProModal: mocks.gate }) }));
@@ -28,7 +28,92 @@ async function editItem(name: string) {
   fireEvent.click(await screen.findByRole('button', { name: `Open ${name}` }));
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 }
+function fieldBlock(): PromptBlock {
+  return { id: 'fields', text: 'She has {{color}} hair and is wearing {{clothes}}', createdAt: 1, revision: 1, editor: { ...emptyEditor(), title: 'Hair and clothes', tags: ['portrait'], variables: [
+    { name: 'color', label: 'Color', type: 'text', required: true, defaultValue: '', options: ['red', 'blue'] },
+    { name: 'clothes', label: 'Clothes', type: 'select', required: true, defaultValue: 'a dress', options: ['a dress', 'a jacket'] },
+  ] } };
+}
+async function openFieldBlock() {
+  render(<PromptLibrary onViewSource={vi.fn()} />);
+  await screen.findByRole('button', { name: 'Open Studio portrait' });
+  fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Open Hair and clothes' }));
+}
 describe('integrated Prompt Library', () => {
+  it.each(['prompt', 'block'] as const)('edits a saved %s in its existing details panel and keeps the browser beside it', async kind => {
+    data.blocks = [fieldBlock()];
+    if (kind === 'block') await openFieldBlock();
+    else { render(<PromptLibrary onViewSource={vi.fn()} />); fireEvent.click(await screen.findByRole('button', { name: 'Open Studio portrait' })); }
+    const panel = screen.getByLabelText('Selected library item');
+    const panelClass = panel.className;
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByRole('region', { name: 'Prompt editor' }).parentElement).toBe(panel);
+    expect(panel.className).toBe(panelClass);
+    expect(screen.getByRole('button', { name: kind === 'block' ? 'Open Hair and clothes' : 'Open Studio portrait' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(kind === 'block' ? 'Block text' : 'Prompt'), { target: { value: 'Edited in place' } });
+    fireEvent.click(screen.getByRole('button', { name: kind === 'block' ? 'Save block' : 'Save' }));
+    await screen.findByRole('region', { name: 'Prompt details' });
+    expect(screen.getByLabelText('Selected library item').className).toBe(panelClass);
+    expect(kind === 'block' ? data.blocks[0].text : data.prompts.find(entry => entry.id === 'one')!.positivePrompt).toBe('Edited in place');
+  });
+  it('shows editable suggestions immediately and saves quick edits to separate fields without overwriting either', async () => {
+    data.blocks = [fieldBlock()]; await openFieldBlock();
+    const color = screen.getByLabelText('Suggested values for color');
+    const clothes = screen.getByLabelText('Suggested values for clothes');
+    expect((color as HTMLTextAreaElement).value).toBe('red\nblue');
+    expect((clothes as HTMLTextAreaElement).value).toBe('a dress\na jacket');
+    fireEvent.change(color, { target: { value: 'green\npurple' } });
+    expect(mocks.mutate).not.toHaveBeenCalled();
+    fireEvent.blur(color, { relatedTarget: clothes });
+    fireEvent.change(clothes, { target: { value: 'a coat\na suit' } });
+    fireEvent.blur(clothes);
+    await waitFor(() => expect(data.blocks[0].revision).toBe(3));
+    expect(data.blocks[0].editor.variables.map(field => field.options)).toEqual([['green', 'purple'], ['a coat', 'a suit']]);
+    expect(data.blocks[0].text).toBe(fieldBlock().text);
+    expect(data.blocks[0].editor.tags).toEqual(['portrait']);
+    expect(data.blocks[0].editor.variables[1].defaultValue).toBe('a dress');
+    expect(mocks.mutate.mock.calls.map(([command]) => command.expectedRevision)).toEqual([1, 2]);
+    expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
+  });
+  it('keeps failed suggestion edits visible and lets the user retry without entering Edit', async () => {
+    data.blocks = [fieldBlock()]; await openFieldBlock();
+    mocks.mutate.mockRejectedValueOnce(new Error('Disk full'));
+    const color = screen.getByLabelText('Suggested values for color');
+    fireEvent.change(color, { target: { value: 'green' } }); fireEvent.blur(color);
+    await screen.findByRole('alert');
+    expect((color as HTMLTextAreaElement).value).toBe('green');
+    expect(data.blocks[0].editor.variables[0].options).toEqual(['red', 'blue']);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry saving color' }));
+    await waitFor(() => expect(data.blocks[0].editor.variables[0].options).toEqual(['green']));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it('keeps an external field change instead of silently overwriting it with a local suggestion edit', async () => {
+    data.blocks = [fieldBlock()]; await openFieldBlock();
+    const color = screen.getByLabelText('Suggested values for color');
+    fireEvent.change(color, { target: { value: 'local green' } });
+    const updated = structuredClone(data.blocks[0]); updated.revision = 2; updated.editor.variables[0].options = ['external blue'];
+    act(() => { data.blocks = [updated]; useSavedPromptStore.setState({ blocks: [updated] }); });
+    fireEvent.blur(color);
+    expect(await screen.findByText(/This field changed elsewhere/)).toBeTruthy();
+    expect((color as HTMLTextAreaElement).value).toBe('local green');
+    expect(data.blocks[0].editor.variables[0].options).toEqual(['external blue']);
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
+  it('waits for a suggestion save before opening Edit with the latest revision', async () => {
+    data.blocks = [fieldBlock()]; await openFieldBlock();
+    let finish: () => void = () => {};
+    mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
+    const color = screen.getByLabelText('Suggested values for color');
+    fireEvent.change(color, { target: { value: 'green' } }); fireEvent.blur(color);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+    await act(async () => { finish(); });
+    await screen.findByRole('region', { name: 'Prompt editor' });
+    expect((screen.getByLabelText('Suggested values for color') as HTMLTextAreaElement).value).toBe('green');
+    expect(screen.queryByText(/This item changed in another window/)).toBeNull();
+  });
   it('finds images from the card menu and opened details without changing the saved prompt', async () => {
     const findImages = vi.fn();
     render(<PromptLibrary onViewSource={vi.fn()} onFindImages={findImages} />);
@@ -88,6 +173,25 @@ describe('integrated Prompt Library', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Find images' }));
     expect(findImages).toHaveBeenCalledWith('bad hands');
     expect(findImages).toHaveBeenCalledTimes(2);
+  });
+  it('lets saved legacy Options fields use custom text and random suggestions without changing the saved prompt', async () => {
+    data.prompts[0].editor!.document = { ...makeDocument('A {{color}} car'), mode: 'template', variables: [
+      { name: 'color', label: 'Color', type: 'select', defaultValue: 'red', required: true, options: ['red', 'green', 'blue'] },
+    ] };
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    try {
+      render(<PromptLibrary onViewSource={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Open Studio portrait' }));
+      const input = screen.getByRole('combobox', { name: 'Color *' });
+      fireEvent.change(input, { target: { value: 'burgundy' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Copy prompt' }));
+      await waitFor(() => expect(mocks.copy).toHaveBeenLastCalledWith('A burgundy car'));
+      fireEvent.click(screen.getByRole('button', { name: 'Randomize Color' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy prompt' }));
+      await waitFor(() => expect(mocks.copy).toHaveBeenLastCalledWith('A blue car'));
+      expect(random).toHaveBeenCalledTimes(1);
+      expect(mocks.mutate).not.toHaveBeenCalled();
+    } finally { random.mockRestore(); }
   });
   it('selects cards in list and grid without opening details or toggling twice', async () => {
     render(<PromptLibrary onViewSource={vi.fn()} />);
@@ -181,17 +285,31 @@ describe('integrated Prompt Library', () => {
     data.blocks = [{ id: 'light', createdAt: 1, updatedAt: 1, revision: 3, text: 'soft light', editor: { ...emptyEditor(), title: 'Studio light', category: 'Lighting', tags: ['soft'] } }];
     render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Studio portrait');
     fireEvent.click(screen.getByRole('button', { name: 'Compose with blocks' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add positive block' }));
-    const dialog = screen.getByRole('dialog', { name: 'Choose a prompt block' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add positive blocks' }));
+    const dialog = screen.getByRole('dialog', { name: 'Choose prompt blocks' });
     fireEvent.change(within(dialog).getByRole('searchbox'), { target: { value: 'missing' } });
     expect(within(dialog).getByText('No matching blocks.')).toBeTruthy();
     fireEvent.change(within(dialog).getByRole('searchbox'), { target: { value: 'soft' } });
     fireEvent.click(within(dialog).getByRole('button', { name: /Studio light/ }));
+    expect(mocks.mutate).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add 1 block' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(within(screen.getByRole('region', { name: 'Final prompt preview' })).getByText('Studio portrait, soft light')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(data.prompts.find(p => p.id === 'one')?.editor?.document?.positive[1]).toMatchObject({ text: 'soft light', blockRevision: 3, blockId: 'light' }));
     expect(screen.getByRole('region', { name: 'Prompt details' })).toBeTruthy();
+  });
+  it('opens a new unsaved composition from the Blocks context menu', async () => {
+    data.blocks = [{ id: 'light', createdAt: 1, revision: 2, text: 'soft light', editor: { ...emptyEditor(), title: 'Lighting' } }];
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    const card = await screen.findByRole('button', { name: 'Open Lighting' });
+    fireEvent.contextMenu(card.closest('article')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add to Compose' }));
+    expect(screen.getByRole('button', { name: 'Compose with blocks' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(screen.getByRole('region', { name: 'Final prompt preview' })).getByText('soft light')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Save', exact: true }) as HTMLButtonElement).disabled).toBe(false);
+    expect(mocks.mutate).not.toHaveBeenCalled();
   });
   it('offers explicit selected, filtered and entire-library export scopes', async () => {
     data.blocks = [{ id: 'block', createdAt: 1, updatedAt: 1, revision: 1, text: 'soft light', editor: emptyEditor() }];
@@ -207,6 +325,32 @@ describe('integrated Prompt Library', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Import' }));
     expect(within(dialog).getByLabelText('Import styles.csv or Prompt Library JSON')).toBeTruthy();
     expect(within(dialog).queryByRole('button', { name: 'Export file' })).toBeNull();
+  });
+  it('copies literal blocks and keeps node-only drag out of the library, including on Free', async () => {
+    mocks.advanced = false;
+    const template = 'She has {{color}} hair and is wearing {{clothes}}';
+    data.blocks = [{ id: 'synthetic-template', text: template, createdAt: 1, revision: 1, editor: { ...emptyEditor(), title: 'Hair and clothes', variables: [
+      { name: 'color', label: 'Color', type: 'text', required: true, defaultValue: '', options: ['red', 'blue'] },
+      { name: 'clothes', label: 'Clothes', type: 'select', required: true, defaultValue: '', options: ['a dress', 'a jacket'] },
+    ] } }];
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Open Studio portrait' });
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    const card = await screen.findByRole('button', { name: 'Open Hair and clothes' });
+    expect(card.closest('article')!.draggable).toBe(false);
+    fireEvent.contextMenu(card.closest('article')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy text' }));
+    await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith(template));
+    fireEvent.click(card);
+    expect(screen.queryByText('Fill values')).toBeNull();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy block' })); });
+    expect(mocks.copy).toHaveBeenLastCalledWith(template);
+    expect(screen.queryByLabelText('Drag to node')).toBeNull();
+    expect(screen.queryByText(/Drag to a node/)).toBeNull();
+    expect(screen.getByRole('region', { name: 'Final prompt preview' }).parentElement!.draggable).toBe(false);
+    expect(screen.getByLabelText('Suggested values for color').matches(':disabled')).toBe(true);
+    expect(data.blocks[0].text).toBe(template);
+    expect(mocks.mutate).not.toHaveBeenCalled(); expect(mocks.gate).not.toHaveBeenCalled();
   });
   it('shows an empty state and disables Random', async () => {
     data.prompts = []; render(<PromptLibrary onViewSource={vi.fn()} />);
@@ -266,7 +410,7 @@ describe('integrated Prompt Library', () => {
     data.prompts[0].editor = editor; data.prompts[0].positivePrompt = 'Hello {{subject}}'; render(<PromptLibrary onViewSource={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Template' })); fireEvent.change(screen.getByLabelText('Subject *'), { target: { value: 'world' } }); fireEvent.click(screen.getByRole('button', { name: 'Copy prompt' }));
     await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('Hello world')); fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    expect(screen.getAllByRole('button', { name: 'Add free text' }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.getAllByRole('button', { name: /Add (prompt|negative) text/ }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Select', hidden: true })); fireEvent.click(screen.getByLabelText('Select Template')); fireEvent.click(screen.getByRole('button', { name: 'Add tags' })); expect(mocks.gate).toHaveBeenCalled(); expect(mocks.mutate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Done selecting', hidden: true }));
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Renamed template' } }); fireEvent.click(screen.getByRole('button', { name: 'Save' })); await screen.findByRole('button', { name: 'Open Renamed template' });
@@ -277,7 +421,7 @@ describe('integrated Prompt Library', () => {
     data.prompts[0].editor = editor; data.prompts[0].positivePrompt = 'portrait, soft light'; data.blocks = [{ ...block, revision: 2, text: 'hard light' }];
     render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Composition');
     fireEvent.click(screen.getByRole('button', { name: 'Show text' }));
-    expect((screen.getByLabelText('positive part 2') as HTMLTextAreaElement).value).toBe('soft light'); vi.spyOn(window, 'confirm').mockReturnValue(true); fireEvent.click(screen.getByRole('button', { name: 'Update this block' }));
+    expect((screen.getByLabelText('positive part 2') as HTMLTextAreaElement).value).toBe('soft light'); vi.spyOn(window, 'confirm').mockReturnValue(true); fireEvent.click(screen.getByText('Update available')); fireEvent.click(screen.getByRole('button', { name: 'Update this block' }));
     fireEvent.click(screen.getByRole('button', { name: 'Move positive part 2 up' })); fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(data.prompts.find((p) => p.id === 'one')?.positivePrompt).toBe('hard light, portrait'));
   });

@@ -7,7 +7,8 @@ export function usePromptDialogFocus(onClose: () => void, busy = false, modal = 
   isBusy.current = busy;
   const previous = useRef(document.activeElement as HTMLElement | null);
   useEffect(() => {
-    const elements = () => Array.from(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]') || []);
+    const elements = () => Array.from(ref.current?.querySelectorAll<HTMLElement>(':is(button, input, textarea, select, [tabindex="0"]):not(:disabled)') || [])
+      .filter(element => element.tabIndex >= 0 && !element.closest('[hidden], [inert]'));
     elements()[0]?.focus();
     const keydown = (event: KeyboardEvent) => {
       if (!modal && (!ref.current?.contains(document.activeElement) || ref.current.closest('[hidden]'))) return;

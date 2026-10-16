@@ -46,7 +46,7 @@ it('keeps negative composition optional and reveals it on demand', () => {
   const initial = { editor: { ...emptyEditor(), document: makeDocument('main text') } };
   render(<PromptEditor compact initial={initial} kind="prompt" onSaved={vi.fn()} onClose={vi.fn()} onDirty={vi.fn()} onViewSource={vi.fn()} />);
   expect(screen.queryByLabelText('negative part 1')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Add negative' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add negative prompt' }));
   fireEvent.change(screen.getByLabelText('negative part 1'), { target: { value: 'optional negative' } });
   expect(getDraft()?.draft.editor?.document?.negative[0].text).toBe('optional negative');
 });
@@ -57,8 +57,8 @@ it('uses prompts and model trigger words in the same preserved Workspace composi
   fireEvent.click(screen.getByRole('button', { name: 'Prompts', exact: true }));
   fireEvent.click(await screen.findByRole('button', { name: 'Open Portrait' }));
   fireEvent.click(screen.getByText('Use in Compose'));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Append to field' }).hasAttribute('disabled')).toBe(false));
-  fireEvent.click(screen.getByRole('button', { name: 'Append to field' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add to node' }).hasAttribute('disabled')).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: 'Add to node' }));
   await waitFor(() => expect(mocks.apply).toHaveBeenCalledWith({ token: 'field', text: 'studio portrait', mode: 'append', separator: ', ' }));
   fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
   fireEvent.click(await screen.findByRole('button', { name: /Studio LoRA/ }));
@@ -66,14 +66,13 @@ it('uses prompts and model trigger words in the same preserved Workspace composi
   expect(screen.getByRole('tab', { name: 'Prompts' }).getAttribute('aria-selected')).toBe('true');
   await waitFor(() => expect(getDraft('comfyui')?.draft.editor?.document?.positive.some(part => part.text === 'studio_trigger')).toBe(true));
   expect(getDraft()?.draft.positivePrompt).toBe('separate library draft');
-  const finalText = screen.getByText('Final text').closest('details')!;
-  fireEvent.click(screen.getByText('Final text'));
+  const finalText = screen.getByRole('region', { name: 'Composition result' });
   expect(within(finalText).getByText('studio portrait, studio_trigger')).toBeTruthy();
   fireEvent.click(screen.getByRole('tab', { name: 'Image' }));
   expect(screen.getByText('Image context')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Collapse context panel' }));
   fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
-  expect(await screen.findByRole('button', { name: 'Append to field' })).toBeTruthy();
+  expect(await screen.findByRole('button', { name: 'Add to node' })).toBeTruthy();
   expect(screen.getByText('studio portrait, studio_trigger')).toBeTruthy();
 });
 
@@ -90,12 +89,14 @@ it('inserts each Workspace request once in StrictMode and starts without empty f
   expect(getDraft('comfyui')?.draft.editor?.document?.positive).toHaveLength(1);
   view.rerender(renderEditor(101));
   await waitFor(() => expect(getDraft('comfyui')?.draft.editor?.document?.positive).toHaveLength(2));
-  fireEvent.click(screen.getByRole('button', { name: 'Add positive block' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add positive blocks' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add block Lighting' }));
+  expect(getDraft('comfyui')?.draft.editor?.document?.positive).toHaveLength(2);
+  expect(screen.getByRole('dialog', { name: 'Choose prompt blocks' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Add 1 block' }));
   await waitFor(() => expect(getDraft('comfyui')?.draft.editor?.document?.positive).toHaveLength(3));
-  expect(screen.getByRole('dialog', { name: 'Choose a prompt block' })).toBeTruthy();
+  expect(screen.queryByRole('dialog', { name: 'Choose prompt blocks' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Move positive part 3 up' })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Close block picker' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Enable positive part 2' }));
   expect(getDraft('comfyui')?.draft.editor?.document?.positive[1].enabled).toBe(false);
 });
@@ -123,7 +124,91 @@ it('creates a block without replacing the composition and keeps the list visible
   expect(getDraft('comfyui')?.draft).toEqual(composition);
   expect(getDraft('comfyui')?.draft.editor?.document?.positive.some(part => part.text === 'synthetic draft preserved')).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Compose', exact: true }));
-  expect(screen.getByRole('button', { name: 'Append to field' }).closest('footer')?.getAttribute('aria-label')).toBe('Composition actions');
+  expect((await screen.findByRole('button', { name: 'Add to node' })).closest('footer')?.getAttribute('aria-label')).toBe('Composition actions');
+});
+
+it('adds a block from its context menu to the preserved Workspace composition', async () => {
+  data.blocks = [{ id: 'light', text: 'soft light', editor: { ...emptyEditor(), title: 'Lighting' }, createdAt: 1, revision: 1 } as PromptBlock];
+  render(<Harness />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Compose', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add prompt text' }));
+  fireEvent.change(screen.getAllByRole('textbox', { name: /positive part/ }).at(-1)!, { target: { value: 'keep this text' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+  const card = await screen.findByRole('button', { name: 'Open Lighting' });
+  fireEvent.contextMenu(card.closest('article')!);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Add to Compose' }));
+  await waitFor(() => expect(screen.getByRole('region', { name: 'Composition result' }).textContent).toContain('keep this text, soft light'));
+  expect(mocks.mutate).not.toHaveBeenCalled(); expect(mocks.apply).not.toHaveBeenCalled();
+});
+
+it('copies literal blocks and automatically fills every field once per drag, including repeated placeholders', async () => {
+  const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+  try {
+    const template = 'She has {{color}} hair and is wearing {{clothes}}. {{color}} shoes.';
+    data.blocks = [{ id: 'random-color', text: template, editor: { ...emptyEditor(), title: 'Color variations', variables: [
+      { name: 'color', label: 'Color', type: 'select', defaultValue: '', required: true, options: ['red', 'green', 'blue'] },
+      { name: 'clothes', label: 'Clothes', type: 'text', defaultValue: '', required: true, options: ['a dress', 'a jacket'] },
+    ] }, createdAt: 1, revision: 1 }];
+    const props = { active: true, request: null, onOpenLibrary: vi.fn(), onViewSource: vi.fn() };
+    let view = render(<WorkspacePrompts {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    const card = await screen.findByRole('button', { name: 'Open Color variations' });
+    expect(random).not.toHaveBeenCalled();
+    const setData = vi.fn();
+    const expected = 'She has green hair and is wearing a jacket. green shoes.';
+    fireEvent.dragStart(card.closest('article')!, { dataTransfer: { setData } });
+    expect(setData.mock.calls).toEqual([['text/plain', expected], ['application/x-imagemetahub-prompt-text', expected]]);
+    expect(random).toHaveBeenCalledTimes(2);
+    random.mockReturnValueOnce(0).mockReturnValueOnce(0);
+    fireEvent.dragStart(screen.getByRole('button', { name: 'Add to selected node Color variations' }), { shiftKey: true, dataTransfer: { setData } });
+    expect(setData).toHaveBeenLastCalledWith('application/x-imagemetahub-prompt-text', 'She has red hair and is wearing a dress. red shoes.');
+    expect(random).toHaveBeenCalledTimes(4);
+    fireEvent.click(card);
+    expect(screen.queryByText('Fill values')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Randomize/ })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Final prompt preview' }).textContent).toContain(template);
+    view.unmount(); view = render(<WorkspacePrompts {...props} />);
+    expect(screen.getByRole('region', { name: 'Final prompt preview' }).textContent).toContain(template);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy block' }));
+    await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith(template));
+    expect(random).toHaveBeenCalledTimes(4);
+    fireEvent.dragStart(within(screen.getByRole('region', { name: 'Prompt details' })).getByLabelText('Drag to node'), { dataTransfer: { setData } });
+    expect(setData).toHaveBeenCalledWith('text/plain', expected);
+    expect(random).toHaveBeenCalledTimes(6);
+    fireEvent.dragStart(screen.getByRole('region', { name: 'Final prompt preview' }).querySelector('pre')!, { dataTransfer: { setData } });
+    expect(random).toHaveBeenCalledTimes(8);
+    fireEvent.click(screen.getByRole('button', { name: '+ Add to node' }));
+    await waitFor(() => expect(mocks.apply).toHaveBeenCalledWith({ token: 'field', text: expected, mode: 'append', separator: ', ' }));
+    expect(random).toHaveBeenCalledTimes(10);
+    const previewText = screen.getByRole('region', { name: 'Final prompt preview' }).querySelector('pre')!;
+    const range = document.createRange(); range.selectNodeContents(previewText);
+    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+    fireEvent.contextMenu(previewText); selection.removeAllRanges();
+    fireEvent.click(screen.getByRole('button', { name: 'Send to selected node' }));
+    await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(2));
+    expect(mocks.apply).toHaveBeenLastCalledWith({ token: 'field', text: expected, mode: 'append', separator: ', ' });
+    expect(random).toHaveBeenCalledTimes(12);
+    expect(data.blocks[0].text).toBe(template);
+    expect(mocks.mutate).not.toHaveBeenCalled();
+    view.unmount();
+  } finally { random.mockRestore(); }
+});
+
+it('allows copying an incomplete block but prevents sending unresolved required fields to a node', async () => {
+  data.blocks = [{ id: 'missing-options', text: '{{color}} hair', editor: { ...emptyEditor(), title: 'Needs suggestions', variables: [
+    { name: 'color', label: 'Color', type: 'text', defaultValue: '', required: true, options: [] },
+  ] }, createdAt: 1, revision: 1 }];
+  render(<WorkspacePrompts active request={null} onOpenLibrary={vi.fn()} onViewSource={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+  const card = await screen.findByRole('button', { name: 'Open Needs suggestions' });
+  expect(card.closest('article')!.draggable).toBe(false);
+  fireEvent.click(card);
+  expect((screen.getByRole('button', { name: '+ Add to node' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText(/Add suggested values or a default for Color/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Copy block' }));
+  await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('{{color}} hair'));
+  expect(mocks.apply).not.toHaveBeenCalled(); expect(mocks.mutate).not.toHaveBeenCalled();
 });
 
 it('opens saved prompts first, preserves literal selected text, and requests a field when the node has several', async () => {
@@ -177,7 +262,7 @@ it('adds either prompt channel from its card and replaces node text from its con
   fireEvent.click(screen.getByRole('menuitem', { name: 'Replace node text with prompt' }));
   await waitFor(() => expect(mocks.apply).toHaveBeenLastCalledWith({ token: 'field', text: 'studio portrait', mode: 'replace', separator: ', ' }));
   expect(screen.getByRole('status').textContent).toContain('Node text replaced');
-  expect(screen.queryByText('Updated Positive · text')).toBeNull();
+  expect(screen.queryByText('Updated Positive Â· text')).toBeNull();
   expect(mocks.mutate).not.toHaveBeenCalled();
 });
 

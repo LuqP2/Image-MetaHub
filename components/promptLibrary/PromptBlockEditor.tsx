@@ -5,7 +5,9 @@ import { normalizeEditor } from '../../services/promptLibrary/core.mjs';
 import { useSavedPromptStore } from '../../store/useSavedPromptStore';
 import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { usePromptDialogFocus } from '../../hooks/usePromptDialogFocus';
-import { buttonClass, fieldClass, VariableDefinitions } from './PromptVariables';
+import { buttonClass, fieldClass } from './PromptVariables';
+import BlockContentEditor from './BlockContentEditor';
+import { activeBlockFields, rememberBlockFields } from '../../services/promptLibrary/blockFields';
 import PromptTagsInput from './PromptTagsInput';
 import { createSelectionField, usePromptSelectionMenu } from '../../hooks/usePromptSelectionMenu';
 export default function PromptBlockEditor({ initial, onClose, onSaved }: {
@@ -22,6 +24,7 @@ export default function PromptBlockEditor({ initial, onClose, onSaved }: {
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
   const mutate = useSavedPromptStore((s) => s.mutate);
   const dialogRef = usePromptDialogFocus(onClose, busy);
+  const variables = activeBlockFields(text, editor.variables);
   const save = async () => {
     if(!canUseAdvancedPromptLibrary) {
       showProModal('prompt_library_advanced');
@@ -30,7 +33,7 @@ export default function PromptBlockEditor({ initial, onClose, onSaved }: {
     setBusy(true);
     setError('');
     try {
-      const id = await mutate({ action: initial.id ? 'update' : 'create', kind: 'block', item: { ...initial, text, editor }, expectedRevision: initial.revision || 1 });
+      const id = await mutate({ action: initial.id ? 'update' : 'create', kind: 'block', item: { ...initial, text, editor: { ...editor, variables } }, expectedRevision: initial.revision || 1 });
       if (onSaved) onSaved(id); else onClose();
     }
     catch(cause) {
@@ -60,13 +63,10 @@ export default function PromptBlockEditor({ initial, onClose, onSaved }: {
       </label>
 
 
-      <label className="block text-xs">{"Block text"}<textarea
-          aria-label="Block text"
-          rows={5}
-          className={fieldClass}
-          value={text}
-          onChange={(e) => setText(e.target.value)} onContextMenu={e => selection.open(e, undefined, (selected, start, end) => { const field = createSelectionField(selected, editor.variables.map(v => v.name)); setText(text.slice(0, start) + '{{' + field.name + '}}' + text.slice(end)); setEditor({ ...editor, variables: [...editor.variables, field] }); setFieldStatus(`{{${field.name}}} replaces “${selected}”. Its default value preserves the original text.`); })} />
-      </label>
+      <BlockContentEditor text={text} variables={variables} rows={5} disabled={!canUseAdvancedPromptLibrary || busy}
+        onTextChange={next => { setText(next); setEditor(current => ({ ...current, variables: rememberBlockFields(next, current.variables) })); }}
+        onVariableChange={variable => setEditor(current => ({ ...current, variables: rememberBlockFields(text, [...current.variables.filter(entry => entry.name !== variable.name), variable]) }))}
+        onContextMenu={e => selection.open(e, undefined, (selected, start, end) => { const field = createSelectionField(selected, editor.variables.map(v => v.name)); setText(text.slice(0, start) + '{{' + field.name + '}}' + text.slice(end)); setEditor({ ...editor, variables: [...editor.variables, field] }); setFieldStatus(`{{${field.name}}} replaces “${selected}”. Its default value preserves the original text.`); })} />
       {fieldStatus && <p role="status" className="text-xs text-accent">{fieldStatus}</p>}
 
 
@@ -94,7 +94,6 @@ export default function PromptBlockEditor({ initial, onClose, onSaved }: {
           onChange={(e) => setEditor({ ...editor, notes: e.target.value })} />
       </label>
       </details>
-      <details className="space-y-3 rounded-lg border border-gray-700 p-3 text-xs"><summary className="cursor-pointer text-gray-400">Fillable text (optional)</summary><div className="pt-3"><VariableDefinitions variables={editor.variables} onChange={(variables) => setEditor({ ...editor, variables })} /></div></details>
 
 
       {error && <p role="alert" className="text-sm text-red-400">
