@@ -18,8 +18,7 @@ const FolderSelector: React.FC<FolderSelectorProps> = ({ onSelectFolder }) => {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 border-2 border-dashed border-gray-700 rounded-xl bg-gray-800/50">
       <BrandLogo variant="welcome" />
-  <h2 className="text-2xl font-semibold mb-2 text-gray-100">Welcome to Image MetaHub v0.21</h2>
-  <p className="text-xs text-gray-500 mb-4">v0.21.0</p>
+  <h2 className="text-2xl font-semibold mb-2 text-gray-100">Welcome to Image MetaHub v0.22</h2>
       <p className="text-gray-400 max-w-md mb-6">
         Select a folder to get started. The app will automatically scan <strong className="text-gray-200">all subfolders</strong> and display images from the entire directory tree.
       </p>

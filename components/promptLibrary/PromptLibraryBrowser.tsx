@@ -8,6 +8,8 @@ import { itemTitle, itemType, type PromptLibraryFilters } from '../../services/p
 import { usePromptLibraryPreview } from '../../hooks/usePromptLibraryPreview';
 import { buttonClass, fieldClass } from './PromptVariables';
 import { documentText } from '../../services/promptLibrary/core.mjs';
+import { compilePrompt, makeDocument, normalizeEditor } from '../../services/promptLibrary/core.mjs';
+import { startComfyTextDrag } from '../comfyui/ComfyTextDrag';
 
 type Rows = {
   onFindImages?: (item: PromptLibraryItem) => void;
@@ -21,6 +23,7 @@ type Rows = {
   directBlocks?: boolean;
   directPrompts?: boolean;
   useBusy?: boolean;
+  textDrag?: boolean;
   selected: Set<string>; activeId?: string; selectionMode: boolean;
   onOpen: (item: PromptLibraryItem) => void; onSelect: (id: string) => void; onFavorite: (item: PromptLibraryItem) => void;
 };
@@ -33,11 +36,14 @@ function Card({ item, data, grid }: { item: PromptLibraryItem; data: Rows; grid:
   const directActions = !!data.onUse && (data.directPrompts || data.directBlocks);
   const promptText = 'text' in item ? null : item.editor?.document ? documentText(item.editor.document) : item;
   const channels = promptText ? (['positive', 'negative'] as const).filter(channel => (channel === 'positive' ? promptText.positivePrompt : promptText.negativePrompt)?.trim()) : [];
-  return <article onContextMenu={e => { if (data.onCardContextMenu && !data.selectionMode) { e.preventDefault(); data.onCardContextMenu(item, e.clientX, e.clientY); } }} onClick={() => { if (data.selectionMode) data.onSelect(item.id); }} className={`group relative flex h-full min-w-0 rounded-xl border transition-colors ${data.selectionMode ? 'cursor-pointer' : ''} ${grid ? 'flex-col' : directActions ? 'flex-col gap-2 p-3' : 'items-center gap-3 p-3'} ${(data.selectionMode ? data.selected.has(item.id) : data.activeId === item.id) ? 'border-accent/60 bg-accent/10' : 'border-gray-700/70 bg-gray-900/50 hover:border-gray-600'}`}>
+  const editor = data.textDrag ? normalizeEditor(item.editor) : null;
+  const compiled = editor ? 'text' in item ? compilePrompt({ positivePrompt: item.text, editor: { ...editor, document: { ...makeDocument(item.text), mode: 'template', variables: editor.variables } } }) : compilePrompt(item) : null;
+  const dragText = compiled?.positivePrompt || compiled?.negativePrompt || '';
+  return <article draggable={!!compiled && !compiled.errors.length && !!dragText.trim() && !data.useBusy && !data.selectionMode} onDragStart={event => { if (compiled && !compiled.errors.length && !data.useBusy && !data.selectionMode) startComfyTextDrag(event, dragText); else event.preventDefault(); }} onContextMenu={e => { if (data.onCardContextMenu && !data.selectionMode) { e.preventDefault(); data.onCardContextMenu(item, e.clientX, e.clientY); } }} onClick={() => { if (data.selectionMode) data.onSelect(item.id); }} className={`group relative flex h-full min-w-0 rounded-xl border transition-colors ${data.selectionMode ? 'cursor-pointer' : ''} ${grid ? 'flex-col' : directActions ? 'flex-col gap-2 p-3' : 'items-center gap-3 p-3'} ${(data.selectionMode ? data.selected.has(item.id) : data.activeId === item.id) ? 'border-accent/60 bg-accent/10' : 'border-gray-700/70 bg-gray-900/50 hover:border-gray-600'}`}>
     {data.selectionMode && <input className={grid ? 'absolute left-3 top-3 z-10' : 'shrink-0'} aria-label={`Select ${itemTitle(item)}`} type="checkbox" checked={data.selected.has(item.id)} onClick={e => e.stopPropagation()} onChange={() => data.onSelect(item.id)} />}
     <button type="button" aria-label={`${data.selectionMode ? 'Select card' : 'Open'} ${itemTitle(item)}`} aria-pressed={data.selectionMode ? data.selected.has(item.id) : undefined} className={`flex min-w-0 flex-1 text-left ${grid ? 'flex-col overflow-hidden' : 'items-center gap-3'}`} onClick={e => { e.stopPropagation(); if (data.selectionMode) data.onSelect(item.id); else data.onOpen(item); }}>
       <div className={`flex shrink-0 items-center justify-center overflow-hidden bg-gray-950/60 text-gray-600 ${grid ? 'h-32 w-full rounded-t-xl' : 'h-16 w-16 rounded-lg'}`}>
-        {preview.url ? <img src={preview.url} alt="" className="h-full w-full object-cover" /> : 'text' in item ? <Blocks size={24} /> : <Bookmark size={24} />}
+        {preview.url ? <img draggable={false} src={preview.url} alt="" className="h-full w-full object-cover" /> : 'text' in item ? <Blocks size={24} /> : <Bookmark size={24} />}
       </div>
       <div className={`min-w-0 flex-1 ${grid ? 'p-3 pr-10' : 'pr-8'}`}>
         {title && <p className="truncate text-sm font-semibold">{title}</p>}
@@ -50,7 +56,7 @@ function Card({ item, data, grid }: { item: PromptLibraryItem; data: Rows; grid:
       </div>
     </button>
     {directActions ? <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-      {('text' in item ? ['positive' as const] : channels).map(channel => <button key={channel} type="button" disabled={data.useBusy} title={channel === 'negative' ? 'Append negative text to the selected node' : 'Append prompt text to the selected node'} className="rounded border border-accent/30 bg-gray-900 px-2 py-1 text-xs text-accent disabled:opacity-40" aria-label={`${'text' in item ? 'Add to selected node' : channel === 'negative' ? 'Add negative to selected node' : 'Add prompt to selected node'} ${itemTitle(item)}`} onClick={e => { e.stopPropagation(); data.onUse?.(item, channel); }}>{channels.length > 1 ? channel === 'negative' ? '+ Negative' : '+ Prompt' : channel === 'negative' ? '+ Add negative' : '+ Add to node'}</button>)}
+      {('text' in item ? ['positive' as const] : channels).map(channel => <button key={channel} type="button" draggable={!!compiled && !compiled.errors.length && !data.useBusy} onDragStart={event => { const text = channel === 'negative' ? compiled?.negativePrompt : compiled?.positivePrompt; if (compiled && !compiled.errors.length && !data.useBusy && text) startComfyTextDrag(event, text); else event.preventDefault(); }} disabled={data.useBusy} title={compiled ? 'Click to add to the selected node. Drag to add; hold Shift when dropping for Add / Replace.' : channel === 'negative' ? 'Append negative text to the selected node' : 'Append prompt text to the selected node'} className="rounded border border-accent/30 bg-gray-900 px-2 py-1 text-xs text-accent disabled:opacity-40" aria-label={`${'text' in item ? 'Add to selected node' : channel === 'negative' ? 'Add negative to selected node' : 'Add prompt to selected node'} ${itemTitle(item)}`} onClick={e => { e.stopPropagation(); data.onUse?.(item, channel); }}>{channels.length > 1 ? channel === 'negative' ? '+ Negative' : '+ Prompt' : channel === 'negative' ? '+ Add negative' : '+ Add to node'}</button>)}
     </div> : data.onUse && <button type="button" className="absolute bottom-2 right-2 rounded border border-accent/30 bg-gray-900 px-2 py-1 text-xs text-accent" aria-label={`${'text' in item ? 'Add block' : 'Use prompt'} ${itemTitle(item)}`} onClick={() => data.onUse?.(item)}>{'text' in item ? '+ Add' : 'Use prompt'}</button>}
     <button type="button" aria-label={`${item.editor?.favorite ? 'Unfavorite' : 'Favorite'} ${itemTitle(item)}`} className={`absolute right-2 ${grid ? 'bottom-16' : 'top-3'} rounded-md p-1.5 ${item.editor?.favorite ? 'text-red-400' : 'text-gray-500 hover:text-gray-200'}`} onClick={e => { e.stopPropagation(); data.onFavorite(item); }}><Heart size={16} fill={item.editor?.favorite ? 'currentColor' : 'none'} /></button>
   </article>;
@@ -61,7 +67,7 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
     {data.items.slice(index * data.columns, (index + 1) * data.columns).map(item => <Card key={item.id} item={item} data={data} grid={data.grid} />)}
   </div></div>;
 }
-export default function PromptLibraryBrowser({ all, visible, filters, onFilters, selected, activeId, onOpen, onSelect, onFavorite, selectionMode, onSelectionMode, showFilters, onToggleFilters, compact = false, scrollOffset = 0, onScrollOffset, onUse, directBlocks, directPrompts, useBusy, onContextAction, onCopyItem, onFindImages, contextNodeActions = true, onContextOpen, canReplaceSelection = false }: Rows & {
+export default function PromptLibraryBrowser({ all, visible, filters, onFilters, selected, activeId, onOpen, onSelect, onFavorite, selectionMode, onSelectionMode, showFilters, onToggleFilters, compact = false, scrollOffset = 0, onScrollOffset, onUse, directBlocks, directPrompts, useBusy, textDrag, onContextAction, onCopyItem, onFindImages, contextNodeActions = true, onContextOpen, canReplaceSelection = false }: Rows & {
   all: PromptLibraryItem[]; visible: PromptLibraryItem[]; filters: PromptLibraryFilters;
   onFilters: (filters: PromptLibraryFilters) => void; onSelectionMode: () => void;
   showFilters: boolean; onToggleFilters: () => void;
@@ -70,7 +76,7 @@ export default function PromptLibraryBrowser({ all, visible, filters, onFilters,
   const [grid, setGrid] = useState(false);
   const [context, setContext] = useState<{ item: PromptLibraryItem; x: number; y: number } | null>(null);
   useEffect(() => { if (!context) return; const close = (e: KeyboardEvent) => { if (e.key === 'Escape') setContext(null); }; window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close); }, [context]);
-  const rows = useMemo(() => ({ items: visible, selected, activeId, onOpen, onSelect, onFavorite, selectionMode, onUse, directBlocks, directPrompts, useBusy, onCardContextMenu: onContextAction ? (item: PromptLibraryItem, x: number, y: number) => { setContext({ item, x, y }); onContextOpen?.(); } : undefined }), [visible, selected, activeId, onOpen, onSelect, onFavorite, selectionMode, onUse, directBlocks, directPrompts, useBusy, onContextAction, onContextOpen]);
+  const rows = useMemo(() => ({ items: visible, selected, activeId, onOpen, onSelect, onFavorite, selectionMode, onUse, directBlocks, directPrompts, useBusy, textDrag, onCardContextMenu: onContextAction ? (item: PromptLibraryItem, x: number, y: number) => { setContext({ item, x, y }); onContextOpen?.(); } : undefined }), [visible, selected, activeId, onOpen, onSelect, onFavorite, selectionMode, onUse, directBlocks, directPrompts, useBusy, textDrag, onContextAction, onContextOpen]);
   const contextText = context && !('text' in context.item) ? context.item.editor?.document ? documentText(context.item.editor.document) : context.item : null;
   const contextChannels = contextText ? (['positive', 'negative'] as const).filter(channel => (channel === 'positive' ? contextText.positivePrompt : contextText.negativePrompt)?.trim()) : ['positive' as const];
   const filterCount = filters.tags.length + filters.models.length + Number(filters.favorite) + Number(!!filters.type) + Number(!!filters.category) + Number(!!filters.from || !!filters.to);

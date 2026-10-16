@@ -28,14 +28,36 @@ export function comfyTextRuntime(operation, payload = {}, expectedOrigin) {
     state = window[key] = { root, graph, workflow: app.workflowManager?.activeWorkflow, targets: new Map() };
   }
   const selected = Object.values(canvas.selected_nodes || {});
-  if (selected.length !== 1) return fail('selection', selected.length ? 'Select just one node.' : 'Select a text node in ComfyUI.');
-  const node = selected[0];
+  const isDrop = operation === 'drop' || operation === 'dropQuery';
+  const dropEntry = operation === 'applyDrop' ? state.targets.get(payload.token) : null;
+  let dropElement;
+  let dropNode;
+  if (isDrop) {
+    if (!Number.isFinite(payload.x) || !Number.isFinite(payload.y)) return fail('invalid', 'Invalid drop position.');
+    dropElement = document.elementFromPoint(payload.x, payload.y);
+    dropNode = (graph._nodes || []).find(candidate => (candidate.widgets || []).some(widget => {
+      const element = widget.inputEl || widget.element;
+      return element && (element === dropElement || element.contains?.(dropElement));
+    }));
+    // ComfyUI's DOM text widgets sit ABOVE the canvas, rather than inside it.
+    // Hit-test the graph for those overlays too; element ancestry is insufficient.
+    const rect = canvas.canvas?.getBoundingClientRect();
+    const overCanvas = rect && payload.x >= rect.left && payload.x <= rect.right && payload.y >= rect.top && payload.y <= rect.bottom;
+    if (!dropNode && (overCanvas || dropElement === canvas.canvas || canvas.canvas?.contains(dropElement))) {
+      const point = canvas.convertEventToCanvasOffset?.({ clientX: payload.x, clientY: payload.y });
+      if (point) dropNode = graph.getNodeOnPos?.(point[0], point[1]);
+    }
+    if (!dropNode) return fail('selection', 'Drop onto an editable text field or text node.');
+  }
+  if (operation === 'applyDrop' && (!dropEntry || !(dropEntry.dropExpiresAt > Date.now()) || !(graph._nodes || []).includes(dropEntry.node))) return fail('conflict', 'The destination changed. Drag the text again.');
+  if (!isDrop && operation !== 'applyDrop' && selected.length !== 1) return fail('selection', selected.length ? 'Select just one node.' : 'Select a text node in ComfyUI.');
+  const node = dropNode || dropEntry?.node || selected[0];
   const compatible = (widget) => {
     const type = String(widget.type || '').toLowerCase();
     const input = node.inputs?.find((entry) => entry.name === widget.name);
     return typeof widget.value === 'string' && ['text', 'string', 'customtext'].includes(type)
       && !widget.disabled && !widget.computedDisabled && !widget.options?.readOnly && !widget.options?.readonly
-      && !widget.inputEl?.readOnly && input?.link == null;
+      && !widget.inputEl?.readOnly && !widget.inputEl?.disabled && !widget.element?.readOnly && !widget.element?.disabled && input?.link == null;
   };
   const widgets = (node.widgets || []).filter(compatible);
   if (!widgets.length) return fail('unsupported', 'The selected node has no editable text field. Copy text instead.');
@@ -57,13 +79,33 @@ export function comfyTextRuntime(operation, payload = {}, expectedOrigin) {
     state.targets.set(token, { node, widget, value: widget.value, selection });
     return token;
   };
+  if (isDrop) {
+    const pointedWidgets = (node.widgets || []).filter(widget => {
+      const element = widget.inputEl || widget.element;
+      return element && (element === dropElement || element.contains?.(dropElement));
+    });
+    const pointed = widgets.filter(widget => {
+      const element = widget.inputEl || widget.element;
+      return element && (element === dropElement || element.contains?.(dropElement));
+    });
+    const widget = pointed.length === 1 ? pointed[0] : !pointedWidgets.length && widgets.length === 1 ? widgets[0] : null;
+    if (!widget) return fail('selection', 'This node has multiple text fields. Drop directly onto the destination field.');
+    if (operation === 'dropQuery') {
+      const token = lookup(widget);
+      state.targets.get(token).dropExpiresAt = Date.now() + 30000;
+      return { success: true, targets: [{ token, nodeId: String(node.id), nodeTitle: node.title || node.type, field: widget.name }] };
+    }
+    payload = { token: lookup(widget), text: payload.text, mode: 'append', separator: ', ' };
+    operation = 'apply';
+  }
+  if (operation === 'applyDrop') operation = 'apply';
   if (operation === 'query') {
     const tokens = new Set();
     const targets = widgets.map((widget) => {
       const token = lookup(widget); tokens.add(token);
       return { token, nodeId: String(node.id), nodeTitle: node.title || node.type || String(node.id), field: widget.name, preview: widget.value.slice(0, 100), hasSelection: !!state.targets.get(token).selection };
     });
-    for (const token of state.targets.keys()) if (!tokens.has(token)) state.targets.delete(token);
+    for (const [token, entry] of state.targets) if (!tokens.has(token) && !(entry.dropExpiresAt > Date.now())) state.targets.delete(token);
     return { success: true, targets };
   }
   if (operation !== 'apply' || !['append', 'replace', 'replaceSelection'].includes(payload.mode)
