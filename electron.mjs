@@ -1,5 +1,6 @@
 import electron from 'electron';
 import { comfyTextRuntime } from './services/comfyTextRuntime.mjs';
+import { installComfyTextDrop } from './services/comfyTextDrop.mjs';
 const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol, WebContentsView, safeStorage } = electron;
 // console.log('📦 Loaded electron module');
 
@@ -1523,6 +1524,13 @@ async function openExternalIfSafe(url) {
 
 function configureComfyUIViewHandlers(view) {
   const contents = view.webContents;
+
+  contents.on('did-finish-load', () => {
+    if (!isComfyNavigationAllowed(contents.getURL())) return;
+    const origin = new URL(contents.getURL()).origin;
+    contents.executeJavaScript(`(${installComfyTextDrop.toString()})(${comfyTextRuntime.toString()}, ${JSON.stringify(origin)})`)
+      .catch(error => console.warn('Could not install ComfyUI text drop:', error));
+  });
 
   contents.setWindowOpenHandler(({ url }) => {
     if (isComfyNavigationAllowed(url)) {
@@ -3305,7 +3313,7 @@ async function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.21.0');
+    mainWindow.setTitle('Image MetaHub v0.22.0');
   }
 
   // Load the app

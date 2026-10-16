@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useComfyTextFeedback } from '../../hooks/useComfyTextFeedback';
 import type { ComfyUITextResult } from '../../types';
 import { buttonClass, fieldClass } from '../promptLibrary/PromptVariables';
+import ComfyTextDrag from './ComfyTextDrag';
 let sessionSeparator: ', ' | ' ' | '\n' = ', ';
 
 export default function ComfyUITextActions({ positive = '', negative = '', errors = [], active, sourceChannel }: {
@@ -47,6 +48,7 @@ export default function ComfyUITextActions({ positive = '', negative = '', error
   const target = result.targets.find(t => t.token === token);
   return <section aria-label="Apply text to ComfyUI" className="space-y-2 rounded-lg border border-purple-500/25 bg-purple-500/5 p-3 text-xs">
     <h4 className="font-semibold">Apply to ComfyUI</h4>
+    <ComfyTextDrag text={text} disabled={!active || busy || !!errors.length} />
     {result.targets.length ? <>
       <p className="break-words">{result.targets[0].nodeTitle} · #{result.targets[0].nodeId}</p>
       {result.targets.length === 1 ? <p className="text-gray-400">Field: {result.targets[0].field}</p> : <select aria-label="Destination field" className={fieldClass} value={token} onChange={e => setToken(e.target.value)}>

@@ -11,6 +11,7 @@ import PromptDetails from '../promptLibrary/PromptDetails';
 import PromptEditor from '../promptLibrary/PromptEditor';
 import { useSendToComfyUINode } from '../../hooks/useSendToComfyUINode';
 import ComfyUITextActions from './ComfyUITextActions';
+import ComfyTextDrag from './ComfyTextDrag';
 import { buttonClass } from '../promptLibrary/PromptVariables';
 import { fieldClass } from '../promptLibrary/PromptVariables';
 
@@ -18,7 +19,8 @@ function NodeItemActions({ result, busy, onSend }: { result: ReturnType<typeof c
   const [channel, setChannel] = useState<'positive' | 'negative'>('positive');
   const effectiveChannel = !result.positivePrompt ? 'negative' : !result.negativePrompt ? 'positive' : channel;
   const text = effectiveChannel === 'negative' ? result.negativePrompt : result.positivePrompt;
-  return <div className="flex items-center gap-1.5">
+  return <div className="flex flex-wrap items-center gap-1.5">
+    <ComfyTextDrag text={text} disabled={busy || !!result.errors.length} />
     {result.positivePrompt && result.negativePrompt && <select aria-label="Text to send" className={fieldClass + ' min-w-0 flex-1 !px-2 !py-1.5 !text-xs'} value={effectiveChannel} onChange={e => setChannel(e.target.value as typeof channel)}><option value="positive">Prompt</option><option value="negative">Negative</option></select>}
     <button className={buttonClass + ' !px-2 !py-1.5'} title="Append text to the selected node field" disabled={busy || !!result.errors.length || !text.trim()} onClick={() => onSend(text, 'append')}>+ Add to node</button>
     <button className={buttonClass + ' !px-2 !py-1.5'} title="Replace the selected node field with this text" disabled={busy || !!result.errors.length || !text.trim()} onClick={() => onSend(text, 'replace')}>Replace</button>
@@ -142,7 +144,7 @@ export default function WorkspacePrompts({ active, request, onOpenLibrary, onVie
     {(error || actionError) && <p role="alert" className="text-xs text-red-400 light:text-red-800">{actionError || error}<button className={buttonClass} onClick={() => void loadLibrary()}>Retry</button></p>}
     <div hidden={mode !== 'browse'} className={`flex min-h-0 flex-1 flex-col gap-2 ${mode === 'browse' ? '' : 'hidden'}`}>
       {showFilters && <div className="max-h-56 shrink-0 overflow-auto"><PromptLibraryFiltersPanel kind={kind} all={all} filters={filters} onChange={setFilters} onClose={() => setShowFilters(false)} /></div>}
-      {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser key={kind} onContextOpen={() => void direct.refreshSelection()} canReplaceSelection={direct.hasSelection} compact directBlocks directPrompts useBusy={direct.busy} all={all} visible={visible} filters={filters} onFilters={setFilters} selected={new Set()} selectionMode={false} onSelectionMode={() => {}} activeId={selected || undefined} onOpen={target => { setSelected(target.id); setMode('details'); }} onSelect={() => {}} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} onContextAction={(target, action, channel) => {
+      {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser textDrag key={kind} onContextOpen={() => void direct.refreshSelection()} canReplaceSelection={direct.hasSelection} compact directBlocks directPrompts useBusy={direct.busy} all={all} visible={visible} filters={filters} onFilters={setFilters} selected={new Set()} selectionMode={false} onSelectionMode={() => {}} activeId={selected || undefined} onOpen={target => { setSelected(target.id); setMode('details'); }} onSelect={() => {}} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} onContextAction={(target, action, channel) => {
         if (action === 'edit') replaceEditor(target, 'text' in target ? 'block' : 'prompt');
         else if (action === 'duplicate') duplicateItem(target);
         else if (action === 'remove') removeItem(target);
