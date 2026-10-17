@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { PromptBlock, PromptDocument, PromptVariable, SavedPrompt } from '../types';
 import { allVariables, compilePrompt, emptyEditor, makeDocument, normalizeDocument, snapshotBlock } from '../services/promptLibrary/core.mjs';
-import { appendAdditions, promptAddition, type CompositionAddition } from '../services/promptLibrary/composition';
+import { appendAdditions, blockAddition, promptAddition, type CompositionAddition } from '../services/promptLibrary/composition';
 import { clearDraft, getDraft } from '../services/promptLibrary/sessionDraft';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import PromptBlockPicker from '../components/promptLibrary/PromptBlockPicker';
@@ -135,6 +135,48 @@ it('allows adding a block with pending fields and preserves its snapshot after t
   view.rerender(<PromptBlockPicker {...props} blocks={[]} />);
   fireEvent.click(screen.getByRole('button', { name: 'Add 1 block' }));
   expect(confirm.mock.calls[0][0][0].positive).toMatchObject([{ text: '{{subject}}', blockRevision: 2, variables: [subject] }]);
+});
+
+it.each(['positive', 'negative'] as const)('requires missing legacy block fields when appended to a plain %s composition', channel => {
+  const legacy = block('Legacy', '{{subject}}');
+  const before = structuredClone(legacy);
+  const addition = blockAddition(legacy, channel);
+  const document = appendAdditions(makeDocument(), [addition]);
+  expect(addition.template).toBe(true);
+  expect(addition[channel][0].variables).toMatchObject([{ name: 'subject', required: true }]);
+  expect(document.mode).toBe('template');
+  expect(compilePrompt({ editor: { ...emptyEditor(), document } }).errors).toHaveLength(1);
+  const compiled = compilePrompt({ editor: { ...emptyEditor(), document } }, { subject: 'fox' });
+  expect(compiled.errors).toEqual([]);
+  expect(compiled[channel === 'positive' ? 'positivePrompt' : 'negativePrompt']).toBe('fox');
+  expect(legacy).toEqual(before);
+});
+
+it('excludes inactive block definitions without creating false conflicts or enabling template mode', () => {
+  const stale = block('Stale', 'soft light', [{ ...subject, defaultValue: 'unused' }]);
+  const before = structuredClone(stale);
+  const addition = blockAddition(stale, 'positive');
+  expect(addition.template).toBe(false);
+  expect(addition.positive[0].variables).toEqual([]);
+  expect(appendAdditions(makeDocument(), [addition]).mode).toBe('plain');
+  const document = { ...makeDocument('{{subject}}'), mode: 'template' as const, variables: [subject] };
+  const appended = appendAdditions(document, [addition]);
+  expect(compilePrompt({ editor: { ...emptyEditor(), document: appended } }, { subject: 'fox' }))
+    .toEqual({ positivePrompt: 'fox, soft light', negativePrompt: '', errors: [] });
+  expect(stale).toEqual(before);
+});
+
+it('preserves active block definitions and isolates their snapshots from later edits', () => {
+  const active = { ...subject, defaultValue: 'fox', options: ['fox', 'cat'] };
+  const source = block('Mixed', '{{subject}} {{subject}}', [active, { ...subject, name: 'unused' }]);
+  const addition = blockAddition(source, 'positive');
+  expect(addition.positive[0].variables).toEqual([active]);
+  active.options.push('wolf');
+  active.defaultValue = 'wolf';
+  const document = appendAdditions(makeDocument(), [addition]);
+  expect(compilePrompt({ editor: { ...emptyEditor(), document } }))
+    .toEqual({ positivePrompt: 'fox fox', negativePrompt: '', errors: [] });
+  expect(addition.positive[0].variables?.[0].options).toEqual(['fox', 'cat']);
 });
 
 it('filters a large virtualized catalog by search, category and favorite', () => {
