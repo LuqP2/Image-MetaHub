@@ -41,6 +41,85 @@ async function openFieldBlock() {
   fireEvent.click(await screen.findByRole('button', { name: 'Open Hair and clothes' }));
 }
 describe('integrated Prompt Library', () => {
+  it.each((['prompt', 'block'] as const).flatMap(kind => (['Edit', 'favorite', 'card favorite', 'card Edit'] as const).map(action => ({ kind, action }))))('waits for tag saves before $action on a $kind and uses the latest revision', async ({ kind, action }) => {
+      data.blocks = [fieldBlock()];
+      if (kind === 'block') await openFieldBlock();
+      else { render(<PromptLibrary onViewSource={vi.fn()} />); fireEvent.click(await screen.findByRole('button', { name: 'Open Studio portrait' })); }
+      let finish: () => void = () => {};
+      mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
+      fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'new-tag' } });
+      fireEvent.blur(screen.getByLabelText('Tags'));
+      await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+      const title = kind === 'block' ? 'Hair and clothes' : 'Studio portrait';
+      if (action === 'Edit') fireEvent.click(screen.getByRole('button', { name: 'Edit', exact: true }));
+      else if (action === 'favorite') fireEvent.click(screen.getByRole('button', { name: 'Toggle favorite' }));
+      else if (action === 'card favorite') fireEvent.click(screen.getByRole('button', { name: `Favorite ${title}` }));
+      else { fireEvent.contextMenu(screen.getByRole('button', { name: `Open ${title}` }).closest('article')!); fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' })); }
+      expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
+      expect(mocks.mutate).toHaveBeenCalledTimes(1);
+      await act(async () => { finish(); });
+      const saved = () => (kind === 'block' ? data.blocks : data.prompts).find(item => item.id === (kind === 'block' ? 'fields' : 'one'))!;
+      if (action.endsWith('Edit')) {
+        const editor = await screen.findByRole('region', { name: 'Prompt editor' });
+        expect(within(editor).getByRole('button', { name: 'Remove tag new-tag' })).toBeTruthy();
+        expect(saved().revision).toBe(2);
+      } else {
+        await waitFor(() => expect(saved().revision).toBe(3));
+        expect(saved().editor?.favorite).toBe(true);
+        expect(mocks.mutate.mock.calls.map(([command]) => command.expectedRevision)).toEqual([1, 2]);
+      }
+      expect(saved().editor?.tags).toContain('new-tag');
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+  it.each([true, false])('opens context-menu Edit from the latest block after suggestion saving, already finished=%s', async finishedBeforeClick => {
+    data.blocks = [fieldBlock()]; await openFieldBlock();
+    let finish: () => void = () => {};
+    mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
+    const color = screen.getByLabelText('Suggested values for color');
+    fireEvent.change(color, { target: { value: 'green' } }); fireEvent.blur(color);
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Open Hair and clothes' }).closest('article')!);
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+    if (finishedBeforeClick) await act(async () => { finish(); });
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
+    if (!finishedBeforeClick) {
+      expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
+      await act(async () => { finish(); });
+    }
+    await screen.findByRole('region', { name: 'Prompt editor' });
+    expect((screen.getByLabelText('Suggested values for color') as HTMLTextAreaElement).value).toBe('green');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it('serializes suggestion saves behind pending tag saves too', async () => {
+    data.blocks = [fieldBlock()]; await openFieldBlock();
+    let finish: () => void = () => {};
+    mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
+    fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'new-tag' } });
+    fireEvent.blur(screen.getByLabelText('Tags'));
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+    const color = screen.getByLabelText('Suggested values for color');
+    fireEvent.change(color, { target: { value: 'green' } }); fireEvent.blur(color);
+    expect(mocks.mutate).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(); });
+    await waitFor(() => expect(data.blocks[0].revision).toBe(3));
+    expect(data.blocks[0].editor.tags).toContain('new-tag');
+    expect(data.blocks[0].editor.variables[0].options).toEqual(['green']);
+    expect(mocks.mutate.mock.calls.map(([command]) => command.expectedRevision)).toEqual([1, 2]);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it.each(['Edit', 'Toggle favorite'])('does not run %s when the pending tag save fails', async action => {
+    data.blocks = [fieldBlock()]; await openFieldBlock();
+    let fail: () => void = () => {};
+    mocks.mutate.mockImplementationOnce(() => new Promise((_, reject) => { fail = () => reject(new Error('Disk full')); }));
+    fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'new-tag' } });
+    fireEvent.blur(screen.getByLabelText('Tags'));
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: action, exact: true }));
+    await act(async () => { fail(); });
+    expect(await screen.findByText('Disk full')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
+    expect(mocks.mutate).toHaveBeenCalledTimes(1);
+    expect(data.blocks[0].revision).toBe(1);
+  });
   it.each([true, false])('finds images from suggested block values through the card menu and details, Pro=%s', async advanced => {
     mocks.advanced = advanced;
     data.blocks = [fieldBlock()];

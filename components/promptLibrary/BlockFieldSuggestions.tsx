@@ -33,17 +33,20 @@ function FieldSuggestions({ variable, disabled, save }: {
   </fieldset>;
 }
 
-export default function BlockFieldSuggestions({ block, onPending }: {
+export default function BlockFieldSuggestions({ block, onPending, beforeSave }: {
   block: PromptBlock; onPending: (operation: Promise<void>) => void;
+  beforeSave?: () => Promise<void> | null;
 }) {
   const { canUseAdvancedPromptLibrary } = useFeatureAccess();
   const tail = useRef<Promise<void>>(Promise.resolve());
   const variables = activeBlockFields(block.text, normalizeEditor(block.editor).variables);
   if (!variables.length) return null;
   const save = (baseline: PromptVariable, options: string[]) => {
+    const previous = beforeSave?.();
     // Read the latest item after the previous field finishes saving, so quick
     // edits to different fields preserve each other's values and revisions.
     const operation = tail.current.catch(() => undefined).then(async () => {
+      if (previous) await previous;
       if (!canUseAdvancedPromptLibrary) return;
       const state = useSavedPromptStore.getState();
       const latest = state.blocks.find(entry => entry.id === block.id);

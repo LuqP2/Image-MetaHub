@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import WorkspacePrompts from '../components/comfyui/WorkspacePrompts';
 import WorkspaceContextPanel from '../components/comfyui/WorkspaceContextPanel';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
@@ -42,6 +42,22 @@ function Harness() {
   const [collapsed, setCollapsed] = useState(false);
   return <WorkspaceContextPanel collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} active imagePanel={<p>Image context</p>} request={null} onOpenLibrary={vi.fn()} onViewSource={vi.fn()} />;
 }
+it('opens the Workspace editor with the latest item after a pending tag save', async () => {
+  render(<WorkspacePrompts active request={null} onOpenLibrary={vi.fn()} onViewSource={vi.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Open Portrait' }));
+  let finish: () => void = () => {};
+  mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
+  fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'new-tag' } });
+  fireEvent.blur(screen.getByLabelText('Tags'));
+  await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit saved prompt' }));
+  expect(screen.queryByText('Edit saved prompt', { selector: 'h3' })).toBeNull();
+  await act(async () => { finish(); });
+  expect(await screen.findByText('Edit saved prompt', { selector: 'h3' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  expect(screen.getByRole('button', { name: 'Remove tag new-tag' })).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
+});
 it('keeps negative composition optional and reveals it on demand', () => {
   const initial = { editor: { ...emptyEditor(), document: makeDocument('main text') } };
   render(<PromptEditor compact initial={initial} kind="prompt" onSaved={vi.fn()} onClose={vi.fn()} onDirty={vi.fn()} onViewSource={vi.fn()} />);
