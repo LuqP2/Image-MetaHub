@@ -9,6 +9,7 @@ export function documentText(document: PromptDocument): {
   negativePrompt: string;
 };
 export function allVariables(document: PromptDocument): PromptVariable[];
+export function sameVariableDefinition(a: PromptVariable, b: PromptVariable): boolean;
 export function compilePrompt(item: Partial<SavedPrompt>, values?: Record<string, string>): {
   positivePrompt: string;
   negativePrompt: string;

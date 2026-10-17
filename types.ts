@@ -842,6 +842,7 @@ export interface SavedPrompt {
 export interface PromptVariable {
   name: string;
   label: string;
+  /** Legacy discriminator retained for saved-data compatibility; options are suggestions for either type. */
   type: 'text' | 'select';
   defaultValue: string;
   required: boolean;

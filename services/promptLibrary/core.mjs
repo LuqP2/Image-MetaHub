@@ -13,11 +13,7 @@ export function normalizeVariables(values) {
     const options = [...new Set((Array.isArray(v.options) ? v.options : []).map(string))];
     if(v.type !== 'text' && v.type !== 'select')
       throw new Error('Unknown variable type.');
-    if(v.type === 'select' && !options.length)
-      throw new Error(`Add options for ${v.name}.`);
     const defaultValue = string(v.defaultValue);
-    if(v.type === 'select' && defaultValue && !options.includes(defaultValue))
-      throw new Error(`Default for ${v.name} is not an option.`);
     return { name: v.name, label: string(v.label) || v.name, type: v.type, defaultValue, required: v.required === true, options };
   });
 }
@@ -36,7 +32,8 @@ export function normalizeDocument(value) {
       ids.add(p.id);
       return {
         id: p.id, kind: p.kind, text: string(p.text), enabled: p.enabled !== false,
-        ...(p.kind === 'block' ? { blockId: string(p.blockId), blockRevision: Number.isInteger(p.blockRevision) ? p.blockRevision : 1, title: string(p.title), variables: normalizeVariables(p.variables) } : {})
+        ...(p.kind === 'block' ? { blockId: string(p.blockId), blockRevision: Number.isInteger(p.blockRevision) ? p.blockRevision : 1, title: string(p.title), variables: normalizeVariables(p.variables) } :
+          p.variables ? { variables: normalizeVariables(p.variables) } : {})
       };
     });
   };
@@ -59,12 +56,18 @@ export function documentText(document) {
   const join = (parts, separator) => parts.filter((p) => p.enabled && p.text.length).map((p) => p.text).join(separator);
   return { positivePrompt: join(document.positive, document.positiveSeparator), negativePrompt: join(document.negative, document.negativeSeparator) };
 }
+// The historical text/select discriminator remains in saved data, but both now
+// accept free text and optional suggestions.
+export function sameVariableDefinition(a, b) {
+  const definition = (v) => [v.name, v.label, v.defaultValue, v.required, v.options];
+  return JSON.stringify(definition(a)) === JSON.stringify(definition(b));
+}
 export function allVariables(document) {
   const result = new Map(document.variables.map((v) => [v.name, v]));
   for(const part of [...document.positive, ...document.negative].filter((p) => p.enabled)) {
     for(const variable of part.variables || []) {
       const existing = result.get(variable.name);
-      if(existing && JSON.stringify(existing) !== JSON.stringify(variable))
+      if(existing && !sameVariableDefinition(existing, variable))
         throw new Error(`Conflicting definitions for ${variable.name}. Rename the variable before inserting this block.`);
       result.set(variable.name, variable);
     }
@@ -94,8 +97,6 @@ export function compilePrompt(item, values = {}) {
     const value = Object.prototype.hasOwnProperty.call(values, name) ? string(values[name]) : v.defaultValue;
     if(v.required && !value.trim())
       errors.push(`Fill ${v.label}.`);
-    if(v.type === 'select' && value && !v.options.includes(value))
-      errors.push(`Choose an option for ${v.label}.`);
     return value;
   });
   return { positivePrompt: expand(text.positivePrompt), negativePrompt: expand(text.negativePrompt), errors: [...new Set(errors)] };

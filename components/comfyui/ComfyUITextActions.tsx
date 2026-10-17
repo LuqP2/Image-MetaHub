@@ -5,8 +5,8 @@ import { buttonClass, fieldClass } from '../promptLibrary/PromptVariables';
 import ComfyTextDrag from './ComfyTextDrag';
 let sessionSeparator: ', ' | ' ' | '\n' = ', ';
 
-export default function ComfyUITextActions({ positive = '', negative = '', errors = [], active, sourceChannel }: {
-  positive?: string; negative?: string; errors?: string[]; active: boolean; sourceChannel?: 'positive' | 'negative';
+export default function ComfyUITextActions({ positive = '', negative = '', errors = [], active, sourceChannel, compact = false }: {
+  positive?: string; negative?: string; errors?: string[]; active: boolean; sourceChannel?: 'positive' | 'negative'; compact?: boolean;
 }) {
   const [result, setResult] = useState<ComfyUITextResult>({ success: false, targets: [], message: 'Select a text node in ComfyUI.' });
   const [token, setToken] = useState('');
@@ -46,6 +46,15 @@ export default function ComfyUITextActions({ positive = '', negative = '', error
     finally { applying.current = false; setBusy(false); }
   };
   const target = result.targets.find(t => t.token === token);
+  if (compact) return <section aria-label="Apply text to ComfyUI" className="space-y-2 border-t border-gray-700 pt-2 text-xs">
+    {result.targets.length ? <>
+      <p className="truncate text-gray-400" title={`${result.targets[0].nodeTitle} · #${result.targets[0].nodeId}`}>ComfyUI · {result.targets[0].nodeTitle} · {target?.field || 'Choose a field'}</p>
+      {result.targets.length > 1 && <select aria-label="Destination field" className={fieldClass + ' !py-1 !text-xs'} value={token} onChange={e => setToken(e.target.value)}><option value="" disabled>Choose a field</option>{result.targets.map(t => <option key={t.token} value={t.token}>{t.field} — {t.preview || 'Empty'}</option>)}</select>}
+    </> : <p className="text-gray-400">{result.message}</p>}
+    <div className="flex flex-wrap items-center gap-2"><ComfyTextDrag text={text} disabled={!active || busy || !text.trim() || !!errors.length} />{result.targets.length > 0 && <><button type="button" className={buttonClass + ' !border-accent/30 !py-1'} disabled={!active || busy || !token || !text.trim() || !!errors.length} onClick={() => void apply('append')}>Add to node</button><button type="button" className={buttonClass + ' !py-1'} disabled={!active || busy || !token || !text.trim() || !!errors.length} onClick={() => void apply('replace')}>Replace field</button></>}</div>
+    {result.targets.length > 0 && <details><summary className="cursor-pointer text-[11px] text-gray-400">Append separator</summary><select aria-label="Append separator" className={fieldClass + ' !py-1 !text-xs'} value={separator} onChange={e => { sessionSeparator = e.target.value as typeof separator; setSeparator(sessionSeparator); }}><option value=", ">Comma</option><option value=" ">Space</option><option value={'\n'}>New line</option></select></details>}
+    {feedback.toast}
+  </section>;
   return <section aria-label="Apply text to ComfyUI" className="space-y-2 rounded-lg border border-purple-500/25 bg-purple-500/5 p-3 text-xs">
     <h4 className="font-semibold">Apply to ComfyUI</h4>
     <ComfyTextDrag text={text} disabled={!active || busy || !!errors.length} />
