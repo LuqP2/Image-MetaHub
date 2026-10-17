@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowDown, ArrowUp, GripVertical, X } from 'lucide-react';
 import { Reorder, useDragControls, useReducedMotion } from 'framer-motion';
 import type { PromptBlock, PromptPart } from '../../types';
+import { blockSnapshotContent, normalizeVariables } from '../../services/promptLibrary/core.mjs';
 import { buttonClass, fieldClass } from './PromptVariables';
 
 export default function PromptPartCard({ part, index, count, channel, reorderValue, disabled, compact = false, highlighted = false, original, onToggle, onMove, onRemove, onUpdate, onTextChange, onContextMenu }: {
@@ -24,7 +25,8 @@ export default function PromptPartCard({ part, index, count, channel, reorderVal
   const [expanded, setExpanded] = useState(false);
   const dragControls = useDragControls();
   const reducedMotion = useReducedMotion();
-  const changed = original && (original.text !== part.text || original.editor.title !== part.title || JSON.stringify(original.editor.variables) !== JSON.stringify(part.variables || []));
+  const source = original ? blockSnapshotContent(original) : null;
+  const changed = source && (source.text !== part.text || source.title !== part.title || JSON.stringify(source.variables) !== JSON.stringify(normalizeVariables(part.variables)));
   const actionClass = 'flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-800 hover:text-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-30';
   return <Reorder.Item as="article" value={reorderValue ?? part} layout dragListener={false} dragControls={dragControls} drag={!disabled ? 'y' : false} style={{ position: 'relative' }} whileDrag={{ zIndex: 20, scale: reducedMotion ? 1 : 1.02, boxShadow: '0 12px 28px rgba(0,0,0,0.25)' }} transition={{ duration: reducedMotion ? 0 : 0.18 }} data-part-id={part.id} className={`space-y-2 rounded-lg border bg-gray-950 ${compact ? 'p-2' : 'p-3'} ${highlighted ? 'border-accent ring-1 ring-accent/30' : 'border-gray-700'} ${part.enabled ? '' : 'opacity-60'}`}>
     <div className="flex min-w-0 items-center gap-1.5">

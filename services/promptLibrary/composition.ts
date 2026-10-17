@@ -1,6 +1,6 @@
 import type { PromptBlock, PromptDocument, PromptPart, PromptVariable, SavedPrompt } from '../../types';
 import { allVariables, documentText, normalizeEditor, sameVariableDefinition, snapshotBlock } from './core.mjs';
-import { activeBlockFields, blockFieldNames } from './blockFields';
+import { blockFieldNames } from './blockFields';
 
 export interface CompositionAddition {
   id: string;
@@ -13,9 +13,7 @@ export interface CompositionAddition {
 }
 
 export function blockAddition(block: PromptBlock, channel: 'positive' | 'negative'): CompositionAddition {
-  const editor = normalizeEditor(block.editor);
-  const variables = activeBlockFields(block.text, editor.variables);
-  const part = snapshotBlock({ ...block, editor: { ...editor, variables } });
+  const part = snapshotBlock(block);
   return { id: part.id, title: part.title || 'Untitled block', kind: 'block', positive: [], negative: [], [channel]: [part], variables: [], template: !!part.variables?.length };
 }
 

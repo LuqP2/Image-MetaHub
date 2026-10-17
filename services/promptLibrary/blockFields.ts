@@ -1,16 +1,6 @@
 import type { PromptBlock, PromptVariable } from '../../types';
-import { compilePrompt, makeDocument, normalizeEditor } from './core.mjs';
-
-export function blockFieldNames(text: string): string[] {
-  return [...new Set(Array.from(text.matchAll(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g), match => match[1]))];
-}
-
-export function activeBlockFields(text: string, definitions: PromptVariable[]): PromptVariable[] {
-  const known = new Map(definitions.map(variable => [variable.name, variable]));
-  return blockFieldNames(text).map((name): PromptVariable => known.get(name) || {
-    name, label: '', type: 'text', defaultValue: '', required: true, options: [],
-  });
-}
+import { activeBlockFields, compilePrompt, makeDocument, normalizeEditor } from './core.mjs';
+export { activeBlockFields, blockFieldNames } from './core.mjs';
 
 // Keep inactive definitions in the draft so temporarily editing a placeholder does not erase its settings.
 // Only active definitions are included when the user explicitly saves the block.

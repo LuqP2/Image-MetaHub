@@ -17,6 +17,21 @@ export function normalizeVariables(values) {
     return { name: v.name, label: string(v.label) || v.name, type: v.type, defaultValue, required: v.required === true, options };
   });
 }
+export function blockFieldNames(text) {
+  return [...new Set(Array.from(text.matchAll(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g), match => match[1]))];
+}
+export function activeBlockFields(text, definitions) {
+  const known = new Map(definitions.map(variable => [variable.name, variable]));
+  return blockFieldNames(text).map(name => known.get(name) || {
+    name, label: '', type: 'text', defaultValue: '', required: true, options: [],
+  });
+}
+const normalizeBlockVariables = (text, definitions) => normalizeVariables(activeBlockFields(text, normalizeVariables(definitions)));
+// One content contract for creation, persistence, comparison and explicit refresh.
+export function blockSnapshotContent(block) {
+  const text = string(block.text);
+  return { title: string(block.editor?.title), text, variables: normalizeBlockVariables(text, block.editor?.variables) };
+}
 export function normalizeDocument(value) {
   if(!value)
     return null;
@@ -32,13 +47,15 @@ export function normalizeDocument(value) {
       ids.add(p.id);
       return {
         id: p.id, kind: p.kind, text: string(p.text), enabled: p.enabled !== false,
-        ...(p.kind === 'block' ? { blockId: string(p.blockId), blockRevision: Number.isInteger(p.blockRevision) ? p.blockRevision : 1, title: string(p.title), variables: normalizeVariables(p.variables) } :
+        ...(p.kind === 'block' ? { blockId: string(p.blockId), blockRevision: Number.isInteger(p.blockRevision) ? p.blockRevision : 1, title: string(p.title), variables: normalizeBlockVariables(string(p.text), p.variables) } :
           p.variables ? { variables: normalizeVariables(p.variables) } : {})
       };
     });
   };
   const separator = (v) => [', ', ' ', '\n'].includes(v) ? v : ', ';
-  return { version: 1, mode: value.mode, positive: parts(value.positive), negative: parts(value.negative), positiveSeparator: separator(value.positiveSeparator), negativeSeparator: separator(value.negativeSeparator), variables: normalizeVariables(value.variables) };
+  const positive = parts(value.positive), negative = parts(value.negative);
+  const mode = [...positive, ...negative].some(part => part.kind === 'block' && part.variables.length) ? 'template' : value.mode;
+  return { version: 1, mode, positive, negative, positiveSeparator: separator(value.positiveSeparator), negativeSeparator: separator(value.negativeSeparator), variables: normalizeVariables(value.variables) };
 }
 export function normalizeEditor(value) {
   if(value != null && (typeof value !== 'object' || (value.version !== undefined && value.version !== 1)))
@@ -65,7 +82,8 @@ export function sameVariableDefinition(a, b) {
 export function allVariables(document) {
   const result = new Map(document.variables.map((v) => [v.name, v]));
   for(const part of [...document.positive, ...document.negative].filter((p) => p.enabled)) {
-    for(const variable of part.variables || []) {
+    const variables = part.kind === 'block' ? normalizeBlockVariables(part.text, part.variables) : part.variables || [];
+    for(const variable of variables) {
       const existing = result.get(variable.name);
       if(existing && !sameVariableDefinition(existing, variable))
         throw new Error(`Conflicting definitions for ${variable.name}. Rename the variable before inserting this block.`);
@@ -105,7 +123,7 @@ export function makeDocument(positivePrompt = '', negativePrompt = '') {
   const part = (text) => ({ id: crypto.randomUUID(), kind: 'text', text, enabled: true });
   return { version: 1, mode: 'plain', positive: [part(positivePrompt)], negative: [part(negativePrompt)], positiveSeparator: ', ', negativeSeparator: ', ', variables: [] };
 }
-export function snapshotBlock(block) { return { id: crypto.randomUUID(), kind: 'block', enabled: true, blockId: block.id, blockRevision: block.revision, title: block.editor.title, text: block.text, variables: structuredClone(block.editor.variables) }; }
+export function snapshotBlock(block) { return { id: crypto.randomUUID(), kind: 'block', enabled: true, blockId: block.id, blockRevision: block.revision, ...blockSnapshotContent(block) }; }
 export function prepareItem(kind, input) {
   const editor = normalizeEditor(input.editor);
   if(kind === 'block') {

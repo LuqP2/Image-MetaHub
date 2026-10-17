@@ -179,6 +179,95 @@ it('preserves active block definitions and isolates their snapshots from later e
   expect(addition.positive[0].variables?.[0].options).toEqual(['fox', 'cat']);
 });
 
+it.each((['positive', 'negative'] as const).flatMap(channel => [false, true].map(missing => ({ channel, missing }))))('keeps a fresh and reopened $channel snapshot current with missing fields=$missing and inactive definitions', ({ channel, missing }) => {
+  const original = block('Legacy', missing ? '{{subject}}' : 'soft light', [{ ...subject, name: 'unused' }]);
+  const document = appendAdditions(makeDocument(), [blockAddition(original, channel)]);
+  const props = { blocks: [original], disabled: false, onChange: vi.fn(), onExtract: vi.fn(), onError: vi.fn() };
+  const view = render(<PromptComposer {...props} document={document} />);
+  expect(screen.queryByText('Update available')).toBeNull();
+  const reopened = normalizeDocument(JSON.parse(JSON.stringify(document)))!;
+  const inactiveEdit = { ...original, editor: { ...original.editor, variables: [{ ...subject, name: 'unused', defaultValue: 'changed' }] } };
+  view.rerender(<PromptComposer {...props} blocks={[inactiveEdit]} document={reopened} />);
+  expect(screen.queryByText('Update available')).toBeNull();
+  expect(props.onChange).not.toHaveBeenCalled();
+  expect(reopened[channel][1].variables).toHaveLength(missing ? 1 : 0);
+});
+
+it.each(['positive', 'negative'] as const)('refreshes a %s block with active fields, preserves identity and exclusion, and remains current after saving', channel => {
+  const old = block('Legacy', 'soft light');
+  const document = appendAdditions(makeDocument(), [blockAddition(old, channel)]);
+  const instance = document[channel][1]; instance.enabled = false;
+  const original = { ...old, revision: 3, text: '{{subject}}', editor: { ...old.editor, variables: [{ ...subject, name: 'unused', defaultValue: 'stale' }] } };
+  const before = structuredClone(original);
+  const other = block('Other', '{{unused}}', [{ ...subject, name: 'unused', defaultValue: 'valid' }]);
+  const errors = vi.fn(); const changed = vi.fn();
+  function Harness() {
+    const [current, setCurrent] = useState(document);
+    return <PromptComposer document={current} blocks={[original, other]} disabled={false} onChange={next => { changed(next); setCurrent(normalizeDocument(JSON.parse(JSON.stringify(next)))!); }} onExtract={vi.fn()} onError={errors} />;
+  }
+  render(<Harness />);
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValue(true);
+  fireEvent.click(screen.getByText('Update available'));
+  fireEvent.click(screen.getByRole('button', { name: 'Update this block' }));
+  expect(changed).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Update this block' }));
+  expect(confirm).toHaveBeenCalledTimes(2);
+  const refreshed = changed.mock.calls[0][0] as PromptDocument;
+  expect(refreshed.mode).toBe('template');
+  expect(refreshed[channel][1]).toMatchObject({ id: instance.id, enabled: false, blockRevision: 3, text: '{{subject}}', variables: [{ name: 'subject', label: 'subject', required: true }] });
+  expect(refreshed[channel][1].variables).toHaveLength(1);
+  expect(screen.queryByText('Update available')).toBeNull();
+  fireEvent.click(screen.getByLabelText(`Enable ${channel} part 2`));
+  const enabled = changed.mock.calls[1][0] as PromptDocument;
+  expect(compilePrompt({ editor: { ...emptyEditor(), document: enabled } }).errors).toEqual(['Fill subject.']);
+  fireEvent.click(screen.getByRole('button', { name: `Add ${channel} blocks` }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add block Other' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add 1 block' }));
+  const appended = changed.mock.calls[2][0] as PromptDocument;
+  expect(compilePrompt({ editor: { ...emptyEditor(), document: appended } }, { subject: 'fox' })[channel === 'positive' ? 'positivePrompt' : 'negativePrompt']).toBe('fox, valid');
+  expect(errors).toHaveBeenLastCalledWith('');
+  expect(screen.queryByText('Update available')).toBeNull();
+  expect(original).toEqual(before);
+});
+
+it('refreshes changed active settings while leaving another excluded instance frozen', () => {
+  const old = block('Subject', '{{subject}}', [{ ...subject, defaultValue: 'fox', options: ['fox'] }]);
+  const document = appendAdditions(makeDocument(), [blockAddition(old, 'positive'), blockAddition(old, 'positive')]);
+  document.positive[2].enabled = false;
+  const excluded = structuredClone(document.positive[2]);
+  const updated = { ...old, revision: 3, editor: { ...old.editor, variables: [{ ...subject, label: 'Animal', defaultValue: 'wolf', required: false, options: ['wolf'] }] } };
+  const onChange = vi.fn();
+  function Harness() {
+    const [current, setCurrent] = useState(document);
+    return <PromptComposer document={current} blocks={[updated]} disabled={false} onChange={next => { onChange(next); setCurrent(normalizeDocument(next)!); }} onExtract={vi.fn()} onError={vi.fn()} />;
+  }
+  render(<Harness />);
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  fireEvent.click(screen.getAllByText('Update available')[0]);
+  fireEvent.click(screen.getAllByRole('button', { name: 'Update this block' })[0]);
+  const refreshed = onChange.mock.calls[0][0] as PromptDocument;
+  expect(refreshed.positive[1]).toMatchObject({ id: document.positive[1].id, blockRevision: 3, variables: updated.editor.variables });
+  expect(refreshed.positive[2]).toEqual(excluded);
+  expect(compilePrompt({ editor: { ...emptyEditor(), document: refreshed } })).toEqual({ positivePrompt: 'wolf', negativePrompt: '', errors: [] });
+  expect(screen.getAllByText('Update available')).toHaveLength(1);
+  updated.editor.variables[0].options.push('cat');
+  expect(refreshed.positive[1].variables?.[0].options).toEqual(['wolf']);
+});
+
+it('detects real active-field changes and rejects a refresh that conflicts with the other channel', () => {
+  const old = block('Subject', '{{subject}}', [{ ...subject, defaultValue: 'fox' }]);
+  const document = appendAdditions(makeDocument(), [blockAddition(old, 'positive'), blockAddition(block('Other', '{{subject}}', old.editor.variables), 'negative')]);
+  const updated = { ...old, revision: 3, editor: { ...old.editor, variables: [{ ...subject, defaultValue: 'wolf' }] } };
+  const before = structuredClone(document); const onChange = vi.fn(); const onError = vi.fn();
+  render(<PromptComposer document={document} blocks={[updated]} disabled={false} onChange={onChange} onExtract={vi.fn()} onError={onError} />);
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  fireEvent.click(screen.getByText('Update available'));
+  fireEvent.click(screen.getByRole('button', { name: 'Update this block' }));
+  expect(onChange).not.toHaveBeenCalled();
+  expect(onError).toHaveBeenCalledWith(expect.stringContaining('Conflicting definitions for subject'));
+  expect(document).toEqual(before);
+});
+
 it('filters a large virtualized catalog by search, category and favorite', () => {
   const blocks = Array.from({ length: 10000 }, (_, i) => block(`Block ${i}`, `text ${i}`));
   blocks[9999].editor.favorite = true;

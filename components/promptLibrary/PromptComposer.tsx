@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Reorder } from 'framer-motion';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import type { PromptDocument, PromptBlock, PromptPart, SavedPrompt } from '../../types';
-import { appendAdditions, type CompositionAddition } from '../../services/promptLibrary/composition';
-import { allVariables, snapshotBlock } from '../../services/promptLibrary/core.mjs';
+import { appendAdditions, blockAddition, type CompositionAddition } from '../../services/promptLibrary/composition';
+import { allVariables } from '../../services/promptLibrary/core.mjs';
 import { buttonClass, fieldClass } from './PromptVariables';
 import PromptBlockPicker from './PromptBlockPicker';
 import PromptPartCard from './PromptPartCard';
@@ -80,7 +80,10 @@ export default function PromptComposer({ document, blocks, prompts = [], disable
             onTextChange={text => change(channel, document[channel].map(p => p.id === part.id ? { ...p, text } : p))}
             onContextMenu={event => selectedPart(event, channel, part)}
             onUpdate={part.kind === 'block' ? () => {
-              if (original && window.confirm(`Update this instance?\n\nPrevious:\n${part.text}\n\nNew:\n${original.text}`)) change(channel, document[channel].map(p => p.id === part.id ? { ...snapshotBlock(original), id: part.id, enabled: part.enabled } : p));
+              if (original && window.confirm(`Update this instance?\n\nPrevious:\n${part.text}\n\nNew:\n${original.text}`)) {
+                const addition = blockAddition(original, channel);
+                commit({ ...document, mode: addition.template ? 'template' : document.mode, [channel]: document[channel].map(p => p.id === part.id ? { ...addition[channel][0], id: part.id, enabled: part.enabled } : p) });
+              }
             } : undefined} />;
         })}</Reorder.Group>
         <div className="flex flex-wrap gap-2"><button type="button" aria-label={`Add ${channel} blocks`} className={buttonClass + ' !border-accent/40 !bg-accent/10'} disabled={disabled} onClick={() => setPicker(channel)}><Plus size={14} />Add blocks</button><button type="button" aria-label={channel === 'negative' ? 'Add negative text' : 'Add prompt text'} className={buttonClass} disabled={disabled} onClick={() => change(channel, [...document[channel], { id: crypto.randomUUID(), kind: 'text', text: '', enabled: true }])}>Write text</button></div>
