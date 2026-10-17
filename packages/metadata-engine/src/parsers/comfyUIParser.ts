@@ -704,6 +704,7 @@ function createNodeMap(workflow: any, prompt: any): Graph {
 function findTerminalNode(graph: Graph): ParserNode | null {
     let terminalNode: ParserNode | null = null;
     let kSamplerNode: ParserNode | null = null;
+    let fallbackSamplerNode: ParserNode | null = null;
 
     for (const nodeId in graph) {
         const node = graph[nodeId];
@@ -718,6 +719,16 @@ function findTerminalNode(graph: Graph): ParserNode | null {
         if (nodeDef?.roles.includes('SINK')) {
             // Prioritize KSampler variants and workflow sampler nodes (main generation nodes)
             if (node.class_type.includes('KSampler') || node.class_type.includes('Sampler')) {
+                // Canvas copies with widget values only must not replace a connected sampler.
+                const hasConnectedInput = Object.values(node.inputs || {}).some(value => {
+                    const sourceId = getConnectionNodeId(value);
+                    return sourceId !== null && !!graph[sourceId];
+                });
+                if (!hasConnectedInput) {
+                    // Incomplete/workflow-only exports can still provide widget parameters.
+                    fallbackSamplerNode = node;
+                    continue;
+                }
                 kSamplerNode = node;
             } else if (!terminalNode) {
                 terminalNode = node;
@@ -726,7 +737,7 @@ function findTerminalNode(graph: Graph): ParserNode | null {
     }
 
     // Return KSampler if found, otherwise return any SINK node
-    const result = kSamplerNode || terminalNode;
+    const result = kSamplerNode || fallbackSamplerNode || terminalNode;
     return result;
 }/**
  * Ponto de entrada principal. Resolve todos os parâmetros de metadados de um grafo.
