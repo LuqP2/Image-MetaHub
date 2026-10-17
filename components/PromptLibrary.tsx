@@ -74,12 +74,19 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
     } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not open this item.'); }
   };
   const startEdit = () => { if (selectedPromptId) void editLatest(selectedPromptId, kind); };
-  const findImages = (item: PromptLibraryItem) => {
-    const result = 'text' in item ? compileBlockForUse(item) : compilePrompt(item);
-    if (result.errors.length) { open(item); setActionError('Fill the required values before finding images.'); return; }
-    const query = result.positivePrompt.trim() || result.negativePrompt.trim();
-    if (!query) { open(item); setActionError('Fill a value before finding images.'); return; }
-    onFindImages?.(query);
+  const findImages = async (item: PromptLibraryItem) => {
+    try {
+      let operation = pendingSaves.current.get(item.id);
+      while (operation) { await operation; operation = pendingSaves.current.get(item.id); }
+      const state = useSavedPromptStore.getState();
+      const latest = ('text' in item ? state.blocks : state.prompts).find(entry => entry.id === item.id);
+      if (!latest) throw new Error('This item no longer exists.');
+      const result = 'text' in latest ? compileBlockForUse(latest) : compilePrompt(latest);
+      if (result.errors.length) { open(latest); setActionError('Fill the required values before finding images.'); return; }
+      const query = result.positivePrompt.trim() || result.negativePrompt.trim();
+      if (!query) { open(latest); setActionError('Fill a value before finding images.'); return; }
+      setActionError(''); onFindImages?.(query);
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not find images.'); }
   };
   const selectId = (id: string) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const run = async (operation: Parameters<typeof mutate>[0]) => {
@@ -87,14 +94,21 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
     catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Operation failed'); return { success: false as const }; }
   };
   const gate = () => { if (canUseAdvancedPromptLibrary) return true; showProModal('prompt_library_advanced'); return false; };
-  const addToCompose = (block: PromptBlock) => {
+  const addToCompose = async (block: PromptBlock) => {
     if (!gate()) return;
-    change(() => {
-      setKind('prompt'); select(null); setShowDuplicates(false);
-      setEditing({ positivePrompt: '', negativePrompt: '', editor: { ...emptyEditor(), document: { ...makeDocument(), positive: [], negative: [] } } });
-      setComposeAppend({ id: ++composeRequestId.current, text: block.text, channel: 'positive', block });
-      setEditorKey(key => key + 1); dirty.current = false;
-    });
+    try {
+      let operation = pendingSaves.current.get(block.id);
+      while (operation) { await operation; operation = pendingSaves.current.get(block.id); }
+      const latest = useSavedPromptStore.getState().blocks.find(entry => entry.id === block.id);
+      if (!latest) throw new Error('This block no longer exists.');
+      setActionError('');
+      change(() => {
+        setKind('prompt'); select(null); setShowDuplicates(false);
+        setEditing({ positivePrompt: '', negativePrompt: '', editor: { ...emptyEditor(), document: { ...makeDocument(), positive: [], negative: [] } } });
+        setComposeAppend({ id: ++composeRequestId.current, text: latest.text, channel: 'positive', block: latest });
+        setEditorKey(key => key + 1); dirty.current = false;
+      });
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not add this block.'); }
   };
   const create = () => {
     if (kind === 'block' && !gate()) return;

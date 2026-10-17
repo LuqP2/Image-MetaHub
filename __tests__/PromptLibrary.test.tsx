@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import PromptLibrary from '../components/PromptLibrary';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import { applyMutation, emptyEditor, makeDocument, snapshotBlock } from '../services/promptLibrary/core.mjs';
-import { clearDraft } from '../services/promptLibrary/sessionDraft';
+import { clearDraft, getDraft } from '../services/promptLibrary/sessionDraft';
 import { usePromptBlockExtraction } from '../hooks/usePromptBlockExtraction';
 import type { SavedPrompt, PromptBlock, PromptLibrarySnapshot } from '../types';
 const mocks = vi.hoisted(() => ({ list: vi.fn(), mutate: vi.fn(), copy: vi.fn(), gate: vi.fn(), advanced: true }));
@@ -88,6 +88,81 @@ describe('integrated Prompt Library', () => {
     await screen.findByRole('region', { name: 'Prompt editor' });
     expect((screen.getByLabelText('Suggested values for color') as HTMLTextAreaElement).value).toBe('green');
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it.each([true, false])('composes from the latest block suggestions after saving, already finished=%s', async finishedBeforeClick => {
+    data.blocks = [fieldBlock()]; await openFieldBlock();
+    let finish: () => void = () => {};
+    mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
+    const color = screen.getByLabelText('Suggested values for color');
+    fireEvent.change(color, { target: { value: 'green' } }); fireEvent.blur(color);
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Open Hair and clothes' }).closest('article')!);
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+    if (finishedBeforeClick) await act(async () => { finish(); });
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add to Compose' }));
+    if (!finishedBeforeClick) {
+      expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
+      expect(getDraft()).toBeNull();
+      await act(async () => { finish(); });
+    }
+    await screen.findByRole('region', { name: 'Prompt editor' });
+    const snapshot = getDraft()?.draft.editor?.document?.positive.find(part => part.kind === 'block');
+    expect(snapshot).toMatchObject({ blockId: 'fields', blockRevision: 2, variables: [
+      { name: 'color', options: ['green'] }, { name: 'clothes', options: ['a dress', 'a jacket'] },
+    ] });
+    expect(data.blocks[0].editor.variables[0].options).toEqual(['green']);
+    expect(mocks.mutate).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('Color *')).toBeTruthy();
+  });
+  it.each([true, false])('searches from the latest card suggestions after saving, already finished=%s', async finishedBeforeClick => {
+    data.blocks = [fieldBlock()];
+    data.blocks[0].editor.variables[0].options = [];
+    const findImages = vi.fn();
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    render(<PromptLibrary onViewSource={vi.fn()} onFindImages={findImages} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Hair and clothes' }));
+    let finish: () => void = () => {};
+    mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
+    const color = screen.getByLabelText('Suggested values for color');
+    fireEvent.change(color, { target: { value: 'green' } }); fireEvent.blur(color);
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Open Hair and clothes' }).closest('article')!);
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+    if (finishedBeforeClick) await act(async () => { finish(); });
+    random.mockClear();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Find images' }));
+    if (!finishedBeforeClick) {
+      expect(findImages).not.toHaveBeenCalled();
+      expect(random).not.toHaveBeenCalled();
+      await act(async () => { finish(); });
+    }
+    await waitFor(() => expect(findImages).toHaveBeenCalledWith('She has green hair and is wearing a dress'));
+    expect(findImages).toHaveBeenCalledTimes(1);
+    expect(random).toHaveBeenCalledTimes(2);
+    expect(mocks.mutate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it.each(['Add to Compose', 'Find images'])('cancels card action %s and preserves suggestions when saving fails', async action => {
+    data.blocks = [fieldBlock()];
+    const findImages = vi.fn();
+    render(<PromptLibrary onViewSource={vi.fn()} onFindImages={findImages} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Hair and clothes' }));
+    let fail: () => void = () => {};
+    mocks.mutate.mockImplementationOnce(() => new Promise((_, reject) => { fail = () => reject(new Error('Disk full')); }));
+    const color = screen.getByLabelText('Suggested values for color');
+    fireEvent.change(color, { target: { value: 'green' } }); fireEvent.blur(color);
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Open Hair and clothes' }).closest('article')!);
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('menuitem', { name: action }));
+    await act(async () => { fail(); });
+    expect(screen.getAllByText('Disk full').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
+    expect(getDraft()).toBeNull();
+    expect(findImages).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Suggested values for color') as HTMLTextAreaElement).value).toBe('green');
+    expect(screen.getByRole('button', { name: 'Retry saving color' })).toBeTruthy();
+    expect(data.blocks[0].revision).toBe(1);
+    expect(mocks.mutate).toHaveBeenCalledTimes(1);
   });
   it('serializes suggestion saves behind pending tag saves too', async () => {
     data.blocks = [fieldBlock()]; await openFieldBlock();
