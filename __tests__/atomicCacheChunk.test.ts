@@ -42,17 +42,26 @@ describe('atomic cache chunk replacement', () => {
     const file = await destination();
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
+    let markFirstRenameStarted!: () => void;
+    const firstRenameStarted = new Promise<void>(resolve => { markFirstRenameStarted = resolve; });
     const rename = vi.fn().mockImplementationOnce(async (...args: Parameters<typeof fs.rename>) => {
+      markFirstRenameStarted();
       await gate;
       return fs.rename(...args);
     }).mockImplementation(fs.rename);
     const write = createAtomicCacheChunkWriter({ ...fs, rename });
     const first = write(file, ['first']);
     const second = write(file, ['second']);
-    await write(`${file}.other`, ['independent']);
-    expect(rename).toHaveBeenCalledTimes(2);
-    release();
-    await Promise.all([first, second]);
+    try {
+      await firstRenameStarted;
+      expect(rename).toHaveBeenCalledTimes(1);
+      await write(`${file}.other`, ['independent']);
+      expect(rename).toHaveBeenCalledTimes(2);
+      expect(JSON.parse(await fs.readFile(`${file}.other`, 'utf8'))).toEqual(['independent']);
+    } finally {
+      release();
+      await Promise.all([first, second]);
+    }
     expect(JSON.parse(await fs.readFile(file, 'utf8'))).toEqual(['second']);
   });
 });
