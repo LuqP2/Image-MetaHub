@@ -43,6 +43,8 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
   const [bulkCategory, setBulkCategory] = useState('');
   const dirty = useRef(false);
   const pendingSaves = useRef(new Map<string, Promise<void>>());
+  const suggestionDrafts = useRef(new Map<string, Set<string>>());
+  const navigationRequest = useRef(0);
   const saveIntent = useRef<(() => void) | null>(null);
   const [pending, setPending] = useState<(() => void) | null>(null);
   const [requestSave, setRequestSave] = useState(0);
@@ -52,9 +54,25 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
   const visible = useMemo(() => filterItems(all, filters), [all, filters]);
   const active = all.find(item => item.id === selectedPromptId);
   const change = (action: () => void) => {
-    const navigate = () => { setComposeAppend(undefined); action(); };
-    if (dirty.current) setPending(() => navigate);
-    else { clearDraft(); navigate(); }
+    const request = ++navigationRequest.current;
+    const id = selectedPromptId;
+    const navigate = () => {
+      if (request !== navigationRequest.current) return;
+      if (id && suggestionDrafts.current.get(id)?.size) {
+        setActionError('Save the pending field suggestions before leaving.'); return;
+      }
+      const proceed = () => { setActionError(''); setComposeAppend(undefined); action(); };
+      if (dirty.current) setPending(() => proceed);
+      else { clearDraft(); proceed(); }
+    };
+    if (!id || !pendingSaves.current.has(id)) { navigate(); return; }
+    void (async () => {
+      let operation = pendingSaves.current.get(id);
+      while (operation) { await operation; operation = pendingSaves.current.get(id); }
+      navigate();
+    })().catch(cause => {
+      if (request === navigationRequest.current) setActionError(cause instanceof Error ? cause.message : 'Could not save changes.');
+    });
   };
   const open = (item: PromptLibraryItem) => change(() => { setEditing(null); select(item.id); setShowDuplicates(false); dirty.current = false; });
   const copyItem = async (item: PromptLibraryItem) => {
@@ -73,7 +91,7 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
       setKind(itemKind); select(id); setEditing(latest); setEditorKey(key => key + 1);
     } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not open this item.'); }
   };
-  const startEdit = () => { if (selectedPromptId) void editLatest(selectedPromptId, kind); };
+  const startEdit = () => change(() => { if (selectedPromptId) void editLatest(selectedPromptId, kind); });
   const findImages = async (item: PromptLibraryItem) => {
     try {
       let operation = pendingSaves.current.get(item.id);
@@ -119,12 +137,17 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
     setComposeAppend(undefined); setRequestSave(0); setEditing(null); select(id || null); setEditorKey(key => key + 1); dirty.current = false;
     if (saveIntent.current) { const action = saveIntent.current; saveIntent.current = null; setPending(null); action(); }
   };
-  const duplicate = () => { if (active) void run({ action: 'duplicate', kind, id: active.id }).then(result => { if (result.success) afterSaved(result.id); }); };
+  const duplicate = () => change(() => { if (active) void run({ action: 'duplicate', kind, id: active.id }).then(result => { if (result.success) afterSaved(result.id); }); });
   const remove = () => { if (active && window.confirm('Remove this saved item?')) void run({ action: 'remove', kind, id: active.id }).then(result => { if (result.success) { setEditing(null); select(null); } }); };
   const trackPendingSave = (id: string, operation: Promise<void>) => {
     pendingSaves.current.set(id, operation);
     const clear = () => { if (pendingSaves.current.get(id) === operation) pendingSaves.current.delete(id); };
     void operation.then(clear, clear);
+  };
+  const trackSuggestionDraft = (id: string, name: string, dirty: boolean) => {
+    const fields = suggestionDrafts.current.get(id) || new Set<string>();
+    if (dirty) fields.add(name); else fields.delete(name);
+    if (fields.size) suggestionDrafts.current.set(id, fields); else suggestionDrafts.current.delete(id);
   };
   const favorite = async (item: PromptLibraryItem) => {
     try {
@@ -168,11 +191,11 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
       <div className={`min-h-0 min-w-0 flex-1 ${editing || active ? 'hidden lg:block' : ''} ${editing && !editing.id ? 'lg:!hidden' : ''}`}>
         {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser onAddToCompose={addToCompose} all={all} visible={visible} filters={filters} onFilters={setBrowseFilters} selected={selected} selectionMode={selectionMode} onSelectionMode={() => { setSelectionMode(!selectionMode); setSelected(new Set()); }} activeId={editing?.id || active?.id} contextNodeActions={false} onFindImages={onFindImages ? findImages : undefined} onCopyItem={item => void copyItem(item)} onContextAction={(item, action) => {
           if (action === 'edit') change(() => { void editLatest(item.id, 'text' in item ? 'block' : 'prompt'); });
-          else if (action === 'duplicate') void run({ action: 'duplicate', kind, id: item.id }).then(result => { if (result.success) change(() => { setEditing(null); select(result.id || null); setShowDuplicates(false); dirty.current = false; }); });
+          else if (action === 'duplicate') change(() => { void run({ action: 'duplicate', kind, id: item.id }).then(result => { if (result.success) { setEditing(null); select(result.id || null); setShowDuplicates(false); dirty.current = false; } }); });
           else if (action === 'remove' && window.confirm('Delete this saved item?')) void run({ action: 'remove', kind, id: item.id }).then(result => { if (result.success && selectedPromptId === item.id) select(null); });
         }} onOpen={open} onSelect={selectId} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} />}
       </div>
-      {editing ? <div aria-label="Selected library item" className={editing.id ? "flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl" : "min-h-0 min-w-0 flex-1"}><PromptEditor withinPanel={!!editing.id} key={editorKey} appendText={composeAppend} initial={editing} kind={kind} onDirty={onDirty} onViewSource={onViewSource} requestSave={requestSave} onSaved={afterSaved} onSaveFailed={() => { saveIntent.current = null; setPending(null); setRequestSave(0); }} onClose={() => change(() => { setEditing(null); dirty.current = false; })} /></div> : active && <div aria-label="Selected library item" className="flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl"><PromptDetails key={active.id} item={active} onPendingSave={operation => trackPendingSave(active.id, operation)} onEdit={startEdit} onClose={() => { select(null); setShowDuplicates(false); }} onFavorite={favorite} onDuplicate={duplicate} onRemove={remove} onDuplicates={() => setShowDuplicates(!showDuplicates)} onFindImages={onFindImages} onViewSource={onViewSource} />{showDuplicates && <PromptDuplicatesPanel item={active} items={all} onOpen={open} />}</div>}
+      {editing ? <div aria-label="Selected library item" className={editing.id ? "flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl" : "min-h-0 min-w-0 flex-1"}><PromptEditor withinPanel={!!editing.id} key={editorKey} appendText={composeAppend} initial={editing} kind={kind} onDirty={onDirty} onViewSource={onViewSource} requestSave={requestSave} onSaved={afterSaved} onSaveFailed={() => { saveIntent.current = null; setPending(null); setRequestSave(0); }} onClose={() => change(() => { setEditing(null); dirty.current = false; })} /></div> : active && <div aria-label="Selected library item" className="flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl"><PromptDetails key={active.id} item={active} onPendingSave={operation => trackPendingSave(active.id, operation)} onSuggestionDraftChange={(name, dirty) => trackSuggestionDraft(active.id, name, dirty)} onEdit={startEdit} onClose={() => change(() => { select(null); setShowDuplicates(false); })} onFavorite={favorite} onDuplicate={duplicate} onRemove={remove} onDuplicates={() => setShowDuplicates(!showDuplicates)} onFindImages={onFindImages} onViewSource={onViewSource} />{showDuplicates && <PromptDuplicatesPanel item={active} items={all} onOpen={open} />}</div>}
     </div>
     {pending && <UnsavedDialog onSave={() => { saveIntent.current = pending; setRequestSave(n => n + 1); }} onDiscard={() => { const action = pending; setPending(null); saveIntent.current = null; clearDraft(); dirty.current = false; action(); }} onCancel={() => { setPending(null); saveIntent.current = null; }} />}
     {showTransfer && <PromptImportExportDialog snapshot={exportSnapshot} librarySnapshot={{ prompts, blocks }} filteredSnapshot={selected.size ? filteredSnapshot : undefined} scope={selected.size ? 'Selected items' : visible.length !== all.length ? 'Filtered items' : 'All items in this view'} onClose={() => setShowTransfer(false)} />}

@@ -14,7 +14,7 @@ export function rememberBlockFields(text: string, definitions: PromptVariable[])
 export function compileBlockForUse(block: PromptBlock, random: () => number = Math.random) {
   const editor = normalizeEditor(block.editor);
   const variables = activeBlockFields(block.text, editor.variables);
-  const values: Record<string, string> = {};
+  const values: Record<string, string> = Object.create(null);
   for (const variable of variables) {
     const options = [...new Set(variable.options.filter(option => option.trim()))];
     values[variable.name] = options.length ? options[Math.floor(random() * options.length)] : variable.defaultValue;

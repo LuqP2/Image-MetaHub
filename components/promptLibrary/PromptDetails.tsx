@@ -13,13 +13,14 @@ import BlockFieldSuggestions from './BlockFieldSuggestions';
 import { compileBlockForUse } from '../../services/promptLibrary/blockFields';
 import { useSavedPromptStore } from '../../store/useSavedPromptStore';
 
-export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDuplicate, onRemove, onDuplicates, onViewSource, onFindImages, onPendingSave, renderActions, renderSecondaryActions, workspace = false, onSendSelection, onPrevious, onNext, position }: {
+export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDuplicate, onRemove, onDuplicates, onViewSource, onFindImages, onPendingSave, onSuggestionDraftChange, renderActions, renderSecondaryActions, workspace = false, onSendSelection, onPrevious, onNext, position }: {
   item: PromptLibraryItem; onEdit: (latest: PromptLibraryItem) => void; onClose: () => void; onFavorite: (latest: PromptLibraryItem) => void;
   onDuplicate: () => void; onRemove: () => void; onDuplicates: () => void; onViewSource: (path: string) => void | Promise<void>;
   renderActions?: (result: ReturnType<typeof compilePrompt>) => React.ReactNode;
   renderSecondaryActions?: () => React.ReactNode;
   onFindImages?: (prompt: string) => void;
   onPendingSave?: (operation: Promise<void>) => void;
+  onSuggestionDraftChange?: (name: string, dirty: boolean) => void;
   onPrevious?: () => void;
   onNext?: () => void;
   position?: string;
@@ -114,7 +115,7 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
       {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
       {(workspace || preview.url) && <details open={previewOpen} onToggle={e => { const open = e.currentTarget.open; setPreviewOpen(open); localStorage.setItem('imh-prompt-details-preview-open', String(open)); }} className="rounded-lg border border-gray-700 p-2 text-xs text-gray-400"><summary className="cursor-pointer">Preview image</summary>{preview.url ? <img src={preview.url} alt="Linked preview" className="mt-2 max-h-44 w-full rounded bg-gray-950/50 object-contain" /> : <p className="pt-2">No preview image.</p>}</details>}
       {!block && variables.length > 0 && <section className="space-y-2 rounded-lg border border-accent/25 bg-accent/5 p-3"><h4 className="text-sm font-semibold">Fill values</h4><p className="text-xs text-gray-400">These values replace the placeholders in the final text when copying or sending to a node. Your saved text stays unchanged.</p><VariableValues variables={variables} values={values} onChange={setValues} /></section>}
-      {block && !workspace && <BlockFieldSuggestions block={item} beforeSave={() => pendingSave.current} onPending={trackPendingSave} />}
+      {block && !workspace && <BlockFieldSuggestions block={item} beforeSave={() => pendingSave.current} onPending={trackPendingSave} onDraftChange={onSuggestionDraftChange} />}
       <div draggable={canDragBlock} onDragStart={event => { if (block) { if (canDragBlock) startComfyTextDrag(event, compileBlockForUse(item).positivePrompt); else event.preventDefault(); } }} onContextMenu={e => { const text = selectedPromptText(); if (text) { e.preventDefault(); setSelection({ text, x: Math.min(e.clientX, window.innerWidth - 240), y: Math.min(e.clientY, window.innerHeight - (onSendSelection ? 150 : 100)) }); } }}><PromptPreview compact={workspace} channel={block ? 'block' : undefined} result={result} heading={block ? 'Preview' : 'Prompt'} /></div>
       {block && workspace && <p className="text-xs text-gray-400">Drag to a node to pick a random suggested value for each field.</p>}
       {!workspace && renderActions?.(result)}

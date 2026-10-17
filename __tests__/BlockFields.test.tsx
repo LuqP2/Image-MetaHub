@@ -7,6 +7,7 @@ import PromptBlockEditor from '../components/promptLibrary/PromptBlockEditor';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import { applyMutation, emptyEditor } from '../services/promptLibrary/core.mjs';
 import { compileBlockForUse } from '../services/promptLibrary/blockFields';
+import { VariableValues } from '../components/promptLibrary/PromptVariables';
 import { clearDraft, getDraft } from '../services/promptLibrary/sessionDraft';
 
 const mocks = vi.hoisted(() => ({ mutate: vi.fn(), copy: vi.fn(), advanced: true, gate: vi.fn() }));
@@ -140,6 +141,37 @@ it('resolves each used field once per use, preserving repeated values, whitespac
   expect(random).toHaveBeenCalledTimes(2);
   expect(compileBlockForUse(block, random).positivePrompt).toBe('  She has red hair and is wearing a dress\nred shoes  ');
   expect(block).toEqual(before);
+});
+
+it.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty'])('resolves the accepted field name %s from suggestions and defaults without inherited properties', name => {
+  const block = savedBlock([{ ...variable(name, ['chosen']), defaultValue: 'fallback' }], `{{${name}}} {{${name}}}`);
+  const before = structuredClone(block); const random = vi.fn(() => 0);
+  expect(compileBlockForUse(block, random)).toEqual({ positivePrompt: 'chosen chosen', negativePrompt: '', errors: [] });
+  expect(random).toHaveBeenCalledTimes(1);
+  expect(block).toEqual(before);
+  block.editor.variables[0].options = [];
+  expect(compileBlockForUse(block)).toEqual({ positivePrompt: 'fallback fallback', negativePrompt: '', errors: [] });
+  block.editor.variables[0].defaultValue = '';
+  expect(compileBlockForUse(block).errors).toEqual([`Add suggested values or a default for ${name} in the block editor.`]);
+});
+
+it.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty'])('fills and randomizes %s using own values in the field UI', name => {
+  const onChange = vi.fn();
+  function Harness() {
+    const [values, setValues] = React.useState<Record<string, string>>({});
+    return <VariableValues variables={[{ ...variable(name, ['chosen']), defaultValue: 'fallback' }]} values={values} onChange={next => { onChange(next); setValues(next); }} />;
+  }
+  render(<Harness />);
+  const input = screen.getByLabelText(`${name} *`) as HTMLInputElement;
+  expect(input.value).toBe('fallback');
+  fireEvent.change(input, { target: { value: 'typed' } });
+  expect(input.value).toBe('typed');
+  fireEvent.click(screen.getByRole('button', { name: `Randomize ${name}` }));
+  expect(input.value).toBe('chosen');
+  const values = onChange.mock.calls.at(-1)![0];
+  expect(Object.prototype.hasOwnProperty.call(values, name)).toBe(true);
+  expect(values[name]).toBe('chosen');
+  expect(Object.getPrototypeOf(values)).toBe(Object.prototype);
 });
 
 it('uses defaults when no suggestions exist, allows optional empty text and reports unresolved required fields', () => {

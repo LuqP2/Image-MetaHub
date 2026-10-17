@@ -94,7 +94,7 @@ export function VariableValues({ variables, values, onChange }: {
         <div className="flex items-center gap-2">
           <input id={inputId} list={options.length ? `${inputId}-suggestions` : undefined} className={fieldClass}
             placeholder={options.length ? 'Type or choose a value' : 'Type a value'}
-            value={values[v.name] ?? v.defaultValue}
+            value={Object.prototype.hasOwnProperty.call(values, v.name) ? values[v.name] : v.defaultValue}
             onChange={event => onChange({ ...values, [v.name]: event.target.value })} />
           {!!options.length && <button type="button" className={buttonClass + ' shrink-0'} aria-label={`Randomize ${label}`}
             title="Choose a random suggested value"

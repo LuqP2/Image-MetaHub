@@ -6,9 +6,10 @@ import { activeBlockFields } from '../../services/promptLibrary/blockFields';
 import { normalizeEditor, sameVariableDefinition } from '../../services/promptLibrary/core.mjs';
 import { buttonClass, SuggestedValues } from './PromptVariables';
 
-function FieldSuggestions({ variable, disabled, save }: {
+function FieldSuggestions({ variable, disabled, save, onDraftChange }: {
   variable: PromptVariable; disabled: boolean;
   save: (baseline: PromptVariable, options: string[]) => Promise<void>;
+  onDraftChange: (dirty: boolean) => void;
 }) {
   const [draft, setDraft] = useState<{ baseline: PromptVariable; options: string[] } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -16,7 +17,7 @@ function FieldSuggestions({ variable, disabled, save }: {
   const persist = async () => {
     if (!draft || busy || disabled) return;
     setBusy(true); setError('');
-    try { await save(draft.baseline, draft.options); setDraft(null); }
+    try { await save(draft.baseline, draft.options); setDraft(null); onDraftChange(false); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save suggestions.'); }
     finally { setBusy(false); }
   };
@@ -26,6 +27,7 @@ function FieldSuggestions({ variable, disabled, save }: {
     <legend className="px-1 text-xs font-semibold">{variable.label || variable.name}</legend>
     <SuggestedValues variable={{ ...variable, options: draft?.options || variable.options }} onChange={options => {
       setDraft(current => JSON.stringify(options) === JSON.stringify(variable.options) ? null : { baseline: current?.baseline || structuredClone(variable), options });
+      onDraftChange(JSON.stringify(options) !== JSON.stringify(variable.options));
       setError('');
     }} />
     {busy && <p role="status" className="text-xs text-gray-400">Saving suggestions…</p>}
@@ -33,9 +35,10 @@ function FieldSuggestions({ variable, disabled, save }: {
   </fieldset>;
 }
 
-export default function BlockFieldSuggestions({ block, onPending, beforeSave }: {
+export default function BlockFieldSuggestions({ block, onPending, beforeSave, onDraftChange }: {
   block: PromptBlock; onPending: (operation: Promise<void>) => void;
   beforeSave?: () => Promise<void> | null;
+  onDraftChange?: (name: string, dirty: boolean) => void;
 }) {
   const { canUseAdvancedPromptLibrary } = useFeatureAccess();
   const tail = useRef<Promise<void>>(Promise.resolve());
@@ -66,6 +69,6 @@ export default function BlockFieldSuggestions({ block, onPending, beforeSave }: 
   return <section aria-label="Block field suggestions" className="space-y-3">
     <h3 className="text-sm font-semibold">Fields</h3>
     <p className="text-xs text-gray-400">Changes save when you leave a field.</p>
-    {variables.map(variable => <FieldSuggestions key={variable.name} variable={variable} disabled={!canUseAdvancedPromptLibrary} save={save} />)}
+    {variables.map(variable => <FieldSuggestions key={variable.name} variable={variable} disabled={!canUseAdvancedPromptLibrary} save={save} onDraftChange={dirty => onDraftChange?.(variable.name, dirty)} />)}
   </section>;
 }
