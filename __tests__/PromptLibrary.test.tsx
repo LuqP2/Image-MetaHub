@@ -529,6 +529,55 @@ describe('integrated Prompt Library', () => {
     expect((screen.getByRole('button', { name: 'Save', exact: true }) as HTMLButtonElement).disabled).toBe(false);
     expect(mocks.mutate).not.toHaveBeenCalled();
   });
+  it('requires a missing legacy field when composing from the card menu', async () => {
+    const legacy: PromptBlock = { id: 'legacy', createdAt: 1, revision: 2, text: 'portrait of {{subject}}', editor: { ...emptyEditor(), title: 'Legacy' } };
+    data.blocks = [legacy];
+    const before = structuredClone(legacy);
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    fireEvent.contextMenu((await screen.findByRole('button', { name: 'Open Legacy' })).closest('article')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add to Compose' }));
+    await screen.findByRole('region', { name: 'Prompt editor' });
+    expect(getDraft()?.draft.editor?.document).toMatchObject({ mode: 'template', positive: [
+      { blockId: 'legacy', blockRevision: 2, variables: [{ name: 'subject', required: true }] },
+    ] });
+    expect((screen.getByRole('button', { name: 'Copy prompt' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('subject *'), { target: { value: 'fox' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Copy prompt' }));
+    await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('portrait of fox'));
+    expect(data.blocks[0]).toEqual(before);
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
+  it('keeps a card-menu composition plain when all saved block fields are inactive', async () => {
+    const stale = fieldBlock(); stale.text = 'soft light'; data.blocks = [stale];
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    fireEvent.contextMenu((await screen.findByRole('button', { name: 'Open Hair and clothes' })).closest('article')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add to Compose' }));
+    await screen.findByRole('region', { name: 'Prompt editor' });
+    expect(getDraft()?.draft.editor?.document).toMatchObject({ mode: 'plain', positive: [{ text: 'soft light', variables: [] }] });
+    expect(screen.queryByText('Fill values')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy prompt' }));
+    await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('soft light'));
+    expect(data.blocks[0].editor.variables).toHaveLength(2);
+  });
+  it('omits stale card-menu fields so a later active definition can be added without a false conflict', async () => {
+    const mixed = fieldBlock(); mixed.text = '{{clothes}}'; data.blocks = [mixed];
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    fireEvent.contextMenu((await screen.findByRole('button', { name: 'Open Hair and clothes' })).closest('article')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add to Compose' }));
+    await screen.findByRole('region', { name: 'Prompt editor' });
+    expect(getDraft()?.draft.editor?.document?.positive[0].variables).toEqual([mixed.editor.variables[1]]);
+    const active: PromptBlock = { ...mixed, id: 'new-color', text: '{{color}}', editor: { ...mixed.editor, title: 'New color', variables: [{ ...mixed.editor.variables[0], defaultValue: 'green' }] } };
+    act(() => useSavedPromptStore.setState({ blocks: [mixed, active] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add positive blocks' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add block New color' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 block' }));
+    expect(within(screen.getByRole('region', { name: 'Final prompt preview' })).getByText('a dress, green')).toBeTruthy();
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
   it('offers explicit selected, filtered and entire-library export scopes', async () => {
     data.blocks = [{ id: 'block', createdAt: 1, updatedAt: 1, revision: 1, text: 'soft light', editor: emptyEditor() }];
     render(<PromptLibrary onViewSource={vi.fn()} />); await screen.findByRole('button', { name: 'Open Studio portrait' });

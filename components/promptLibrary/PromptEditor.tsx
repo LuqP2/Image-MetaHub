@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Heart } from 'lucide-react';
 import PromptTagsInput from './PromptTagsInput';
 import type { PromptLibraryItem, PromptBlock, SavedPrompt } from '../../types';
-import { normalizeEditor, makeDocument, compilePrompt, allVariables, documentText, snapshotBlock } from '../../services/promptLibrary/core.mjs';
+import { normalizeEditor, makeDocument, compilePrompt, allVariables, documentText } from '../../services/promptLibrary/core.mjs';
+import { blockAddition } from '../../services/promptLibrary/composition';
 import { useSavedPromptStore } from '../../store/useSavedPromptStore';
 import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { useImageStore } from '../../store/useImageStore';
@@ -83,8 +84,9 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
       const document = current.editor.document || makeDocument(current.positivePrompt, current.negativePrompt);
       const requestPartId = `workspace-request:${appendText.id}`;
       if (document[appendText.channel].some(part => part.id === requestPartId)) return current;
-      const part = appendText.block ? snapshotBlock(appendText.block) : { id: crypto.randomUUID(), kind: 'text' as const, text: appendText.text, enabled: true };
-      const next = { ...document, mode: appendText.block?.editor.variables.length ? 'template' as const : document.mode, [appendText.channel]: [...document[appendText.channel].filter(part => !(part.kind === 'text' && !part.text)), { ...part, id: requestPartId }] };
+      const addition = appendText.block ? blockAddition(appendText.block, appendText.channel) : null;
+      const part = addition ? addition[appendText.channel][0] : { id: crypto.randomUUID(), kind: 'text' as const, text: appendText.text, enabled: true };
+      const next = { ...document, mode: addition?.template ? 'template' as const : document.mode, [appendText.channel]: [...document[appendText.channel].filter(part => !(part.kind === 'text' && !part.text)), { ...part, id: requestPartId }] };
       try { allVariables(next); }
       catch (cause) { setError(cause instanceof Error ? cause.message : 'Conflicting variables'); return current; }
       return { ...current, editor: { ...current.editor, document: next } };
