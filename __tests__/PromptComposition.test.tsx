@@ -361,6 +361,61 @@ it('removes imported fields with their last card while preserving the other chan
   expect((screen.getByLabelText('positive part 1') as HTMLTextAreaElement).value).toBe('{{subject}} portrait');
 });
 
+it.each((['positive', 'negative'] as const).flatMap(channel => [false, true].map(rename => ({ channel, rename }))))('drops detached imported fields after editing the $channel card, rename=$rename, and allows a new definition', ({ channel, rename }) => {
+  const sourceDocument = makeDocument(); sourceDocument[channel][0].text = '{{subject}} portrait';
+  sourceDocument.mode = 'template'; sourceDocument.variables = [{ ...subject, defaultValue: 'cat' }];
+  const source: SavedPrompt = { id: 'source', positivePrompt: '', negativePrompt: '', createdAt: 1, sourceCreatedAt: null, source: null, textBasis: 'authored', revision: 1, editor: { ...emptyEditor(), document: sourceDocument } };
+  const document = appendAdditions({ ...makeDocument(), positive: [], negative: [], variables: [{ ...subject, name: 'animal', label: 'Animal', defaultValue: 'fox' }] }, [promptAddition(source)]);
+  const replacement = block('Replacement', '{{subject}}', [{ ...subject, defaultValue: 'wolf' }]);
+  useSavedPromptStore.setState({ blocks: [replacement] });
+  render(<PromptEditor {...editorProps} initial={{ ...editorProps.initial, editor: { ...emptyEditor(), document } }} />);
+  expect(screen.getByLabelText('Subject *')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText(`${channel} part 1`), { target: { value: rename ? '{{animal}} portrait' : 'portrait' } });
+  expect(screen.queryByLabelText('Subject *')).toBeNull();
+  expect(screen.getByLabelText('Animal *')).toBeTruthy();
+  expect((screen.getByRole('button', { name: channel === 'positive' ? 'Copy prompt' : 'Copy negative' }) as HTMLButtonElement).disabled).toBe(false);
+  const edited = getDraft()?.draft.editor?.document;
+  expect(allVariables(edited!).map(variable => variable.name)).toEqual(['animal']);
+  const reopened = normalizeDocument(JSON.parse(JSON.stringify(edited)))!;
+  expect(reopened[channel][0].variables).toEqual([]);
+  expect(reopened.variables).toEqual(document.variables);
+  fireEvent.click(screen.getByRole('button', { name: `Add ${channel} blocks` }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add block Replacement' }));
+  expect(screen.queryByRole('alert')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Add 1 block' }));
+  const result = compilePrompt(getDraft()!.draft);
+  expect(result.errors).toEqual([]);
+  expect(result[channel === 'positive' ? 'positivePrompt' : 'negativePrompt']).toBe((rename ? 'fox portrait' : 'portrait') + ', wolf');
+  expect(source.editor?.document?.variables[0].defaultValue).toBe('cat');
+});
+
+it('keeps an imported field active until its last placeholder in either channel is removed', () => {
+  const document = makeDocument('{{subject}} {{subject}}', '{{subject}}'); document.mode = 'template';
+  document.positive[0].variables = [subject]; document.negative[0].variables = [subject];
+  document.positive[0].text = '{{subject}}';
+  expect(allVariables(document)).toEqual([subject]);
+  document.positive[0].text = 'portrait';
+  expect(allVariables(document)).toEqual([subject]);
+  const conflict = blockAddition(block('Conflict', '{{subject}}', [{ ...subject, defaultValue: 'different' }]), 'positive');
+  expect(() => appendAdditions(document, [conflict])).toThrow('Conflicting definitions for subject');
+  document.negative[0].enabled = false;
+  expect(allVariables(document)).toEqual([]);
+  document.negative[0].enabled = true;
+  expect(allVariables(document)).toEqual([subject]);
+  document.negative[0].text = 'noise';
+  expect(allVariables(document)).toEqual([]);
+  expect(() => appendAdditions(document, [conflict])).not.toThrow();
+});
+
+it('reports an undefined replacement placeholder instead of reusing its detached imported definition', () => {
+  const document = makeDocument('{{animal}}'); document.mode = 'template'; document.positive[0].variables = [subject];
+  expect(allVariables(document)).toEqual([]);
+  expect(compilePrompt({ editor: { ...emptyEditor(), document } }).errors).toEqual(['Define variable animal.']);
+  const reopened = normalizeDocument(document)!;
+  expect(reopened.positive[0].variables).toEqual([]);
+  expect(compilePrompt({ editor: { ...emptyEditor(), document: reopened } }).errors).toEqual(['Define variable animal.']);
+});
+
 it('preserves imported text-part fields through persistence and independent repeated additions', () => {
   const source = { id: 'source', positivePrompt: '', negativePrompt: '', createdAt: 1, sourceCreatedAt: null,
     source: null, textBasis: 'authored' as const, editor: { ...emptyEditor(), document: {

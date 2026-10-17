@@ -52,6 +52,21 @@ describe('Prompt Library transactional repository', () => {
     expect(compilePrompt(reopened, { subject: 'fox' })).toEqual({ positivePrompt: 'fox', negativePrompt: '', errors: [] });
   });
 
+  it.each(['portrait', '{{animal}} portrait'])('drops detached text fields when saving and reopening an edited imported card: %s', text => {
+    const databasePath = path.join(temp(), 'catalog.sqlite'); const repository = open(databasePath);
+    const field = { name: 'subject', label: 'Subject', type: 'text' as const, required: true, defaultValue: 'cat', options: [] };
+    const document = makeDocument('{{subject}} portrait'); document.mode = 'template'; document.positive[0].variables = [field];
+    document.variables = [{ ...field, name: 'animal', label: 'Animal', defaultValue: 'fox' }];
+    const saved = repository.mutatePromptLibrary({ action: 'create', kind: 'prompt', item: { editor: { ...emptyEditor(), document } } }).prompts[0];
+    const edited = structuredClone(saved); edited.editor!.document!.positive[0].text = text;
+    repository.mutatePromptLibrary({ action: 'update', kind: 'prompt', item: edited, expectedRevision: saved.revision! });
+    repository.close();
+    const reopened = open(databasePath).listPromptLibrary().prompts[0];
+    expect(reopened.editor?.document?.positive[0].variables).toEqual([]);
+    expect(reopened.editor?.document?.variables).toEqual(document.variables);
+    expect(compilePrompt(reopened)).toEqual({ positivePrompt: text.replace('{{animal}}', 'fox'), negativePrompt: '', errors: [] });
+  });
+
   it('rejects stale edits and rolls back multi-item persistence failures completely', () => {
     const repository = open(path.join(temp(), 'catalog.sqlite'));
     const first = repository.mutatePromptLibrary({ action: 'create', kind: 'prompt', item: { positivePrompt: 'first' } }).prompts[0];

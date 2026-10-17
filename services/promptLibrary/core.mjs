@@ -27,6 +27,10 @@ export function activeBlockFields(text, definitions) {
   });
 }
 const normalizeBlockVariables = (text, definitions) => normalizeVariables(activeBlockFields(text, normalizeVariables(definitions)));
+const normalizeTextVariables = (text, definitions) => {
+  const names = new Set(blockFieldNames(text));
+  return normalizeVariables(definitions).filter(variable => names.has(variable.name));
+};
 // One content contract for creation, persistence, comparison and explicit refresh.
 export function blockSnapshotContent(block) {
   const text = string(block.text);
@@ -48,7 +52,7 @@ export function normalizeDocument(value) {
       return {
         id: p.id, kind: p.kind, text: string(p.text), enabled: p.enabled !== false,
         ...(p.kind === 'block' ? { blockId: string(p.blockId), blockRevision: Number.isInteger(p.blockRevision) ? p.blockRevision : 1, title: string(p.title), variables: normalizeBlockVariables(string(p.text), p.variables) } :
-          p.variables ? { variables: normalizeVariables(p.variables) } : {})
+          p.variables ? { variables: normalizeTextVariables(string(p.text), p.variables) } : {})
       };
     });
   };
@@ -82,7 +86,7 @@ export function sameVariableDefinition(a, b) {
 export function allVariables(document) {
   const result = new Map(document.variables.map((v) => [v.name, v]));
   for(const part of [...document.positive, ...document.negative].filter((p) => p.enabled)) {
-    const variables = part.kind === 'block' ? normalizeBlockVariables(part.text, part.variables) : part.variables || [];
+    const variables = part.kind === 'block' ? normalizeBlockVariables(part.text, part.variables) : normalizeTextVariables(part.text, part.variables);
     for(const variable of variables) {
       const existing = result.get(variable.name);
       if(existing && !sameVariableDefinition(existing, variable))
