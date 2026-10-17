@@ -27,6 +27,28 @@ for (const [name, parse] of [
       seed: 42, steps: 20, cfg: 7, sampler_name: 'euler', scheduler: 'normal',
     };
 
+    for (const prompt of [undefined, null, {}, []]) {
+      it(`recovers workflow-only widget parameters with prompt=${JSON.stringify(prompt)}`, () => {
+        const workflow = {
+          nodes: [{
+            id: 94, type: 'KSampler', mode: 0,
+            widgets_values: ['0xABCDEF12', 'fixed', 20, 7, 'euler', 'normal', 1],
+            inputs: [{ name: 'model', link: null }, { name: 'positive', link: null }],
+          }],
+          links: [],
+        };
+        expect(parse(workflow, prompt)).toMatchObject({
+          seed: 2882400018, steps: 20, cfg: 7, sampler_name: 'euler', scheduler: 'normal',
+        });
+      });
+    }
+
+    it('preserves scalar-only incomplete execution exports', () => {
+      expect(parse({}, { '152': makePrompt()['152'] })).toMatchObject({
+        seed: 123, steps: 4, cfg: 1, sampler_name: 'euler', scheduler: 'sgm_uniform',
+      });
+    });
+
     for (const source of ['prompt', 'merged'] as const) {
       it(`ignores a later unconnected sampler in ${source} data`, () => {
         const prompt = makePrompt();

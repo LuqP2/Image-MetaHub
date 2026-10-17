@@ -704,6 +704,7 @@ function createNodeMap(workflow: any, prompt: any): Graph {
 function findTerminalNode(graph: Graph): ParserNode | null {
     let terminalNode: ParserNode | null = null;
     let kSamplerNode: ParserNode | null = null;
+    let fallbackSamplerNode: ParserNode | null = null;
 
     for (const nodeId in graph) {
         const node = graph[nodeId];
@@ -723,7 +724,11 @@ function findTerminalNode(graph: Graph): ParserNode | null {
                     const sourceId = getConnectionNodeId(value);
                     return sourceId !== null && !!graph[sourceId];
                 });
-                if (!hasConnectedInput) continue;
+                if (!hasConnectedInput) {
+                    // Incomplete/workflow-only exports can still provide widget parameters.
+                    fallbackSamplerNode = node;
+                    continue;
+                }
                 kSamplerNode = node;
             } else if (!terminalNode) {
                 terminalNode = node;
@@ -732,7 +737,7 @@ function findTerminalNode(graph: Graph): ParserNode | null {
     }
 
     // Return KSampler if found, otherwise return any SINK node
-    const result = kSamplerNode || terminalNode;
+    const result = kSamplerNode || fallbackSamplerNode || terminalNode;
     return result;
 }/**
  * Ponto de entrada principal. Resolve todos os parâmetros de metadados de um grafo.
