@@ -41,6 +41,70 @@ async function openFieldBlock() {
   fireEvent.click(await screen.findByRole('button', { name: 'Open Hair and clothes' }));
 }
 describe('integrated Prompt Library', () => {
+  it.each([true, false])('finds images from suggested block values through the card menu and details, Pro=%s', async advanced => {
+    mocks.advanced = advanced;
+    data.blocks = [fieldBlock()];
+    data.blocks[0].editor.variables[1].defaultValue = '';
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const findImages = vi.fn();
+    render(<PromptLibrary onViewSource={vi.fn()} onFindImages={findImages} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    const card = await screen.findByRole('button', { name: 'Open Hair and clothes' });
+    fireEvent.contextMenu(card.closest('article')!);
+    random.mockClear();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Find images' }));
+    expect(findImages).toHaveBeenLastCalledWith('She has blue hair and is wearing a jacket');
+    expect(random).toHaveBeenCalledTimes(2);
+    fireEvent.click(card);
+    const find = screen.getByRole('button', { name: 'Find images' });
+    expect((find as HTMLButtonElement).disabled).toBe(false);
+    random.mockClear(); fireEvent.click(find);
+    expect(findImages).toHaveBeenCalledTimes(2);
+    expect(findImages).toHaveBeenLastCalledWith('She has blue hair and is wearing a jacket');
+    expect(random).toHaveBeenCalledTimes(2);
+    expect(mocks.mutate).not.toHaveBeenCalled(); expect(mocks.gate).not.toHaveBeenCalled();
+    expect(data.blocks[0].text).toBe(fieldBlock().text);
+  });
+  it.each(['favorite', 'card favorite', 'tags'] as const)('waits for a pending suggestion save before changing %s', async action => {
+    data.blocks = [fieldBlock()]; await openFieldBlock();
+    let finish: () => void = () => {};
+    mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
+    const color = screen.getByLabelText('Suggested values for color');
+    fireEvent.change(color, { target: { value: 'green' } }); fireEvent.blur(color);
+    if (action === 'favorite') fireEvent.click(screen.getByRole('button', { name: 'Toggle favorite' }));
+    else if (action === 'card favorite') fireEvent.click(screen.getByRole('button', { name: 'Favorite Hair and clothes' }));
+    else {
+      fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'new-tag' } });
+      fireEvent.keyDown(screen.getByLabelText('Tags'), { key: 'Enter' });
+    }
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+    await act(async () => { finish(); });
+    await waitFor(() => expect(data.blocks[0].revision).toBe(3));
+    expect(data.blocks[0].editor.variables[0].options).toEqual(['green']);
+    expect(action !== 'tags' ? data.blocks[0].editor.favorite : data.blocks[0].editor.tags.includes('new-tag')).toBe(true);
+    expect(mocks.mutate.mock.calls.map(([command]) => command.expectedRevision)).toEqual([1, 2]);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it.each(['prompt', 'block'] as const)('recovers an edited %s as a copy after its card is deleted', async kind => {
+    data.blocks = [fieldBlock()];
+    if (kind === 'block') { await openFieldBlock(); fireEvent.click(screen.getByRole('button', { name: 'Edit' })); }
+    else { render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Studio portrait'); }
+    fireEvent.change(screen.getByLabelText(kind === 'block' ? 'Block text' : 'Prompt'), { target: { value: 'Draft to keep' } });
+    const oldId = kind === 'block' ? 'fields' : 'one';
+    const title = kind === 'block' ? 'Hair and clothes' : 'Studio portrait';
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.contextMenu(screen.getByRole('button', { name: `Open ${title}` }).closest('article')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    await screen.findByText('This saved item was deleted. Save a copy to keep your draft.');
+    expect((screen.getByLabelText(kind === 'block' ? 'Block text' : 'Prompt') as HTMLTextAreaElement).value).toBe('Draft to keep');
+    expect((screen.getByRole('button', { name: kind === 'block' ? 'Save block' : 'Save', exact: true }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Save as a copy' }));
+    await screen.findByRole('region', { name: 'Prompt details' });
+    const saved = (kind === 'block' ? data.blocks : data.prompts).find(item => item.editor?.title === title)!;
+    expect(saved.id).not.toBe(oldId);
+    expect('text' in saved ? saved.text : saved.positivePrompt).toBe('Draft to keep');
+    expect((kind === 'block' ? data.blocks : data.prompts).some(item => item.id === oldId)).toBe(false);
+  });
   it.each(['prompt', 'block'] as const)('edits a saved %s in its existing details panel and keeps the browser beside it', async kind => {
     data.blocks = [fieldBlock()];
     if (kind === 'block') await openFieldBlock();

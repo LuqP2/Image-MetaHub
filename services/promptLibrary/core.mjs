@@ -32,7 +32,8 @@ export function normalizeDocument(value) {
       ids.add(p.id);
       return {
         id: p.id, kind: p.kind, text: string(p.text), enabled: p.enabled !== false,
-        ...(p.kind === 'block' ? { blockId: string(p.blockId), blockRevision: Number.isInteger(p.blockRevision) ? p.blockRevision : 1, title: string(p.title), variables: normalizeVariables(p.variables) } : {})
+        ...(p.kind === 'block' ? { blockId: string(p.blockId), blockRevision: Number.isInteger(p.blockRevision) ? p.blockRevision : 1, title: string(p.title), variables: normalizeVariables(p.variables) } :
+          p.variables ? { variables: normalizeVariables(p.variables) } : {})
       };
     });
   };

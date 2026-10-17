@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { PromptBlock, PromptDocument, PromptVariable, SavedPrompt } from '../types';
-import { compilePrompt, emptyEditor, makeDocument, normalizeDocument, snapshotBlock } from '../services/promptLibrary/core.mjs';
-import { appendAdditions, type CompositionAddition } from '../services/promptLibrary/composition';
+import { allVariables, compilePrompt, emptyEditor, makeDocument, normalizeDocument, snapshotBlock } from '../services/promptLibrary/core.mjs';
+import { appendAdditions, promptAddition, type CompositionAddition } from '../services/promptLibrary/composition';
 import { clearDraft, getDraft } from '../services/promptLibrary/sessionDraft';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import PromptBlockPicker from '../components/promptLibrary/PromptBlockPicker';
@@ -196,6 +196,52 @@ it('starts in Text, enters Compose without empty cards, and requires confirmatio
   fireEvent.click(screen.getByRole('button', { name: 'Text' })); expect(screen.getByLabelText('positive part 1')).toBeTruthy();
   confirm.mockReturnValue(true); fireEvent.click(screen.getByRole('button', { name: 'Text' }));
   expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe('  portrait\nexact text  ');
+});
+
+it('removes imported fields with their last card while preserving the other channel and authored fields', () => {
+  const saved = (name: string): SavedPrompt => ({ id: name, positivePrompt: '', negativePrompt: '', createdAt: 1,
+    sourceCreatedAt: null, source: null, textBasis: 'authored', revision: 1,
+    editor: { ...emptyEditor(), title: name, document: { ...makeDocument('{{subject}} portrait', '{{subject}} flaws'), mode: 'template', variables: [{ ...subject, defaultValue: name }] } } });
+  const cat = saved('cat'); const dog = saved('dog');
+  const authored = { ...subject, name: 'authored', label: 'Authored', required: false };
+  function Harness() {
+    const [document, setDocument] = useState<PromptDocument>({ ...makeDocument(), positive: [], negative: [], variables: [authored] });
+    return <><PromptComposer document={document} prompts={[cat, dog]} blocks={[]} disabled={false}
+      onChange={next => setDocument(normalizeDocument(next)!)} onExtract={vi.fn()} onError={vi.fn()} />
+      <output aria-label="Active fields">{allVariables(document).map(variable => variable.name).join(',')}</output></>;
+  }
+  render(<Harness />);
+  const add = (name: string) => {
+    fireEvent.click(screen.getByRole('button', { name: 'Add positive blocks' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+    fireEvent.click(screen.getByRole('button', { name: `Add prompt ${name}` }));
+  };
+  add('cat'); fireEvent.click(screen.getByRole('button', { name: 'Add 1 prompt' }));
+  expect(screen.getByLabelText('Active fields').textContent).toBe('authored,subject');
+  fireEvent.click(screen.getByRole('button', { name: 'Remove positive part 1' }));
+  expect(screen.getByLabelText('Active fields').textContent).toBe('authored,subject');
+  add('dog');
+  expect(screen.getByRole('alert').textContent).toContain('Conflicting definitions for subject');
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Remove negative part 1' }));
+  expect(screen.getByLabelText('Active fields').textContent).toBe('authored');
+  add('dog'); fireEvent.click(screen.getByRole('button', { name: 'Add 1 prompt' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect((screen.getByLabelText('positive part 1') as HTMLTextAreaElement).value).toBe('{{subject}} portrait');
+});
+
+it('preserves imported text-part fields through persistence and independent repeated additions', () => {
+  const source = { id: 'source', positivePrompt: '', negativePrompt: '', createdAt: 1, sourceCreatedAt: null,
+    source: null, textBasis: 'authored' as const, editor: { ...emptyEditor(), document: {
+      ...makeDocument('{{subject}}'), mode: 'template' as const, variables: [{ ...subject, defaultValue: 'cat' }],
+    } } };
+  const document = normalizeDocument(appendAdditions({ ...makeDocument(), positive: [], negative: [] }, [promptAddition(source), promptAddition(source)]))!;
+  expect(document.variables).toEqual([]);
+  document.positive.shift();
+  expect(compilePrompt({ editor: { ...emptyEditor(), document } })).toEqual({ positivePrompt: 'cat', negativePrompt: '', errors: [] });
+  document.positive = [];
+  expect(allVariables(document)).toEqual([]);
+  expect(source.editor.document.variables[0].defaultValue).toBe('cat');
 });
 
 it('preserves both literal channels when entering Compose and retains Free gating', () => {

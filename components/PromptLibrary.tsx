@@ -8,6 +8,7 @@ import { emptyEditor, normalizeEditor, compilePrompt, makeDocument } from '../se
 import { copyTextToClipboard } from '../utils/imageUtils';
 import { emptyFilters, filterItems, type PromptLibraryFilters } from '../services/promptLibrary/search';
 import { sessionDraft, clearDraft } from '../services/promptLibrary/sessionDraft';
+import { compileBlockForUse } from '../services/promptLibrary/blockFields';
 import PromptLibraryBrowser from './promptLibrary/PromptLibraryBrowser';
 import PromptLibraryFiltersPanel from './promptLibrary/PromptLibraryFilters';
 import PromptDetails from './promptLibrary/PromptDetails';
@@ -41,6 +42,7 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [bulkCategory, setBulkCategory] = useState('');
   const dirty = useRef(false);
+  const fieldSaves = useRef(new Map<string, Promise<void>>());
   const saveIntent = useRef<(() => void) | null>(null);
   const [pending, setPending] = useState<(() => void) | null>(null);
   const [requestSave, setRequestSave] = useState(0);
@@ -67,8 +69,7 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
     if (latest) { setEditing(latest); setEditorKey(k => k + 1); }
   };
   const findImages = (item: PromptLibraryItem) => {
-    const editor = normalizeEditor(item.editor);
-    const result = 'text' in item ? compilePrompt({ positivePrompt: item.text, editor: { ...editor, document: { ...makeDocument(item.text), mode: 'template', variables: editor.variables } } }) : compilePrompt(item);
+    const result = 'text' in item ? compileBlockForUse(item) : compilePrompt(item);
     if (result.errors.length) { open(item); setActionError('Fill the required values before finding images.'); return; }
     const query = result.positivePrompt.trim() || result.negativePrompt.trim();
     if (!query) { open(item); setActionError('Fill a value before finding images.'); return; }
@@ -100,9 +101,21 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
   };
   const duplicate = () => { if (active) void run({ action: 'duplicate', kind, id: active.id }).then(result => { if (result.success) afterSaved(result.id); }); };
   const remove = () => { if (active && window.confirm('Remove this saved item?')) void run({ action: 'remove', kind, id: active.id }).then(result => { if (result.success) { setEditing(null); select(null); } }); };
-  const favorite = (item: PromptLibraryItem) => {
-    const editor = normalizeEditor(item.editor);
-    void run({ action: 'update', kind: 'text' in item ? 'block' : 'prompt', item: { ...item, editor: { ...editor, favorite: !editor.favorite } }, expectedRevision: item.revision || 1 });
+  const trackFieldSave = (id: string, operation: Promise<void>) => {
+    fieldSaves.current.set(id, operation);
+    const clear = () => { if (fieldSaves.current.get(id) === operation) fieldSaves.current.delete(id); };
+    void operation.then(clear, clear);
+  };
+  const favorite = async (item: PromptLibraryItem) => {
+    try {
+      const pending = fieldSaves.current.get(item.id);
+      if (pending) await pending;
+      const state = useSavedPromptStore.getState();
+      const latest = ('text' in item ? state.blocks : state.prompts).find(entry => entry.id === item.id);
+      if (!latest) throw new Error('This item no longer exists.');
+      const editor = normalizeEditor(latest.editor);
+      await run({ action: 'update', kind: 'text' in latest ? 'block' : 'prompt', item: { ...latest, editor: { ...editor, favorite: !editor.favorite } }, expectedRevision: latest.revision || 1 });
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not save favorite.'); }
   };
   const resetKind = (next: 'prompt' | 'block') => change(() => { setComposeAppend(undefined); setKind(next); setEditing(null); select(null); setSelected(new Set()); setSelectionMode(false); setFilters(emptyFilters); setShowDuplicates(false); dirty.current = false; });
   const setBrowseFilters = (next: PromptLibraryFilters) => { setFilters(next); setSelected(new Set()); };
@@ -139,7 +152,7 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
           else if (action === 'remove' && window.confirm('Delete this saved item?')) void run({ action: 'remove', kind, id: item.id }).then(result => { if (result.success && selectedPromptId === item.id) select(null); });
         }} onOpen={open} onSelect={selectId} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} />}
       </div>
-      {editing ? <div aria-label="Selected library item" className={editing.id ? "flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl" : "min-h-0 min-w-0 flex-1"}><PromptEditor withinPanel={!!editing.id} key={editorKey} appendText={composeAppend} initial={editing} kind={kind} onDirty={onDirty} onViewSource={onViewSource} requestSave={requestSave} onSaved={afterSaved} onSaveFailed={() => { saveIntent.current = null; setPending(null); setRequestSave(0); }} onClose={() => change(() => { setEditing(null); dirty.current = false; })} /></div> : active && <div aria-label="Selected library item" className="flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl"><PromptDetails key={active.id} item={active} onEdit={startEdit} onClose={() => { select(null); setShowDuplicates(false); }} onFavorite={() => favorite(active)} onDuplicate={duplicate} onRemove={remove} onDuplicates={() => setShowDuplicates(!showDuplicates)} onFindImages={onFindImages} onViewSource={onViewSource} />{showDuplicates && <PromptDuplicatesPanel item={active} items={all} onOpen={open} />}</div>}
+      {editing ? <div aria-label="Selected library item" className={editing.id ? "flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl" : "min-h-0 min-w-0 flex-1"}><PromptEditor withinPanel={!!editing.id} key={editorKey} appendText={composeAppend} initial={editing} kind={kind} onDirty={onDirty} onViewSource={onViewSource} requestSave={requestSave} onSaved={afterSaved} onSaveFailed={() => { saveIntent.current = null; setPending(null); setRequestSave(0); }} onClose={() => change(() => { setEditing(null); dirty.current = false; })} /></div> : active && <div aria-label="Selected library item" className="flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl"><PromptDetails key={active.id} item={active} onPendingFields={operation => trackFieldSave(active.id, operation)} onEdit={startEdit} onClose={() => { select(null); setShowDuplicates(false); }} onFavorite={favorite} onDuplicate={duplicate} onRemove={remove} onDuplicates={() => setShowDuplicates(!showDuplicates)} onFindImages={onFindImages} onViewSource={onViewSource} />{showDuplicates && <PromptDuplicatesPanel item={active} items={all} onOpen={open} />}</div>}
     </div>
     {pending && <UnsavedDialog onSave={() => { saveIntent.current = pending; setRequestSave(n => n + 1); }} onDiscard={() => { const action = pending; setPending(null); saveIntent.current = null; clearDraft(); dirty.current = false; action(); }} onCancel={() => { setPending(null); saveIntent.current = null; }} />}
     {showTransfer && <PromptImportExportDialog snapshot={exportSnapshot} librarySnapshot={{ prompts, blocks }} filteredSnapshot={selected.size ? filteredSnapshot : undefined} scope={selected.size ? 'Selected items' : visible.length !== all.length ? 'Filtered items' : 'All items in this view'} onClose={() => setShowTransfer(false)} />}

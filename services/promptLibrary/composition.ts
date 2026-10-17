@@ -1,5 +1,6 @@
 import type { PromptBlock, PromptDocument, PromptPart, PromptVariable, SavedPrompt } from '../../types';
 import { allVariables, documentText, normalizeEditor, sameVariableDefinition, snapshotBlock } from './core.mjs';
+import { blockFieldNames } from './blockFields';
 
 export interface CompositionAddition {
   id: string;
@@ -19,11 +20,19 @@ export function blockAddition(block: PromptBlock, channel: 'positive' | 'negativ
 export function promptAddition(prompt: SavedPrompt): CompositionAddition {
   const editor = normalizeEditor(prompt.editor);
   const text = editor.document ? documentText(editor.document) : prompt;
-  const parts = (content: string): PromptPart[] => content.length ? [{ id: crypto.randomUUID(), kind: 'text', enabled: true, text: content }] : [];
+  const variables = editor.document?.mode === 'template' ? allVariables(editor.document) : [];
+  const parts = (content: string): PromptPart[] => {
+    if (!content.length) return [];
+    const names = new Set(blockFieldNames(content));
+    const fields = variables.filter(variable => names.has(variable.name));
+    return [{ id: crypto.randomUUID(), kind: 'text', enabled: true, text: content,
+      ...(fields.length ? { variables: structuredClone(fields) } : {}) }];
+  };
   return {
     id: crypto.randomUUID(), title: editor.title || 'Untitled prompt', kind: 'prompt',
     positive: parts(text.positivePrompt), negative: parts(text.negativePrompt),
-    variables: editor.document?.mode === 'template' ? structuredClone(allVariables(editor.document)) : [],
+    // Imported fields belong to their text parts, so removing a part removes its fields too.
+    variables: [],
     template: editor.document?.mode === 'template',
   };
 }

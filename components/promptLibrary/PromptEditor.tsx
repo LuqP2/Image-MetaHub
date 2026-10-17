@@ -55,7 +55,9 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
   const extraction = usePromptBlockExtraction();
   const live = [...prompts, ...blocks].find((p) => p.id === initial.id);
-  const conflict = !!live && (live.revision || 1) !== (initial.revision || 1);
+  const removed = !!initial.id && !live;
+  const conflict = removed || (!!live && (live.revision || 1) !== (initial.revision || 1));
+  const conflictMessage = removed ? 'This saved item was deleted. Save a copy to keep your draft.' : 'This item changed in another window. Reopen it or save a copy.';
   const advanced = kind === 'block' || !!draft.editor.document;
   const editableContent = !advanced || canUseAdvancedPromptLibrary;
   const editor = draft.editor;
@@ -222,7 +224,7 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
     <header className="flex shrink-0 items-center gap-2 border-b border-gray-700 p-3"><h3 className="mr-auto text-sm font-semibold">{initial.id ? 'Edit saved block' : 'New block'}</h3></header>
     <div className="min-h-0 flex-1 space-y-4 overflow-auto p-3">
       {fieldStatus && <p role="status" className="text-xs text-accent">{fieldStatus}</p>}
-      {(error || conflict) && <p role="alert" className="text-xs text-amber-300">{error || 'This block changed in another window. Reopen it or save a copy.'}</p>}
+      {(error || conflict) && <p role="alert" className="text-xs text-amber-300">{error || conflictMessage}</p>}
       {conflict && <button className={buttonClass} disabled={busy} onClick={() => void save(true)}>Save as a copy</button>}
       <label className="block text-xs">Block name<input aria-label="Title" className={fieldClass} value={editor.title} placeholder="Name this reusable block…" onChange={e => updateEditor({ title: e.target.value })} /></label>
       {blockContent}
@@ -244,7 +246,7 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
     <div className="shrink-0 border-b border-gray-700 px-3 py-2">{modeControl}</div>
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
       {fieldStatus && <p role="status" className="text-xs text-accent">{fieldStatus}</p>}
-      {(error || conflict) && <p role="alert" className="text-xs text-amber-300">{error || 'This saved prompt changed in another window. Your draft is preserved; save a copy or reopen it before updating.'}</p>}
+      {(error || conflict) && <p role="alert" className="text-xs text-amber-300">{error || conflictMessage}</p>}
       {saveDetails && <section aria-label="Save composition" className="space-y-3 rounded-lg border border-gray-700 p-3">
         <label className="block text-xs">Title (optional)<input aria-label="Title" className={fieldClass} value={editor.title} onChange={e => updateEditor({ title: e.target.value })} /></label>
         <PromptTagsInput tags={editor.tags} suggestions={suggestions} onChange={tags => updateEditor({ tags })} />
@@ -268,7 +270,7 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
     <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-gray-700 p-3">
       <div className="mr-auto min-w-0"><h3 className="truncate text-sm font-semibold">{initial.id ? `Edit ${kind}` : `New ${kind}`}{initial.editor?.title ? ` · ${initial.editor.title}` : ''}</h3><p className="text-[11px] text-gray-400">{dirty ? 'Unsaved changes' : 'No changes yet'}</p></div>
       {kind === 'prompt' && <><button type="button" className={buttonClass} disabled={busy} onClick={onClose}>Cancel</button>
-      <button type="button" className={buttonClass + ' !border-accent/40 !bg-accent/15 !text-gray-100'} disabled={busy || !dirty} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</button></>}
+      <button type="button" className={buttonClass + ' !border-accent/40 !bg-accent/15 !text-gray-100'} disabled={busy || !dirty || conflict} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</button></>}
     </header>
     <div className="shrink-0 space-y-3 border-b border-gray-700 p-3">
       <div className="flex flex-wrap items-center gap-3">{kind === 'prompt' && modeControl}<label className="block min-w-0 flex-1 text-xs text-gray-400">Title (optional)<input aria-label="Title" className={fieldClass} placeholder={kind === 'block' ? 'Name this reusable block…' : 'Give this prompt a name…'} value={editor.title} onChange={e => updateEditor({ title: e.target.value })} /></label><button type="button" className={`app-top-icon-button ${editor.favorite ? '!text-red-400' : ''}`} aria-label="Favorite" aria-pressed={editor.favorite} onClick={() => updateEditor({ favorite: !editor.favorite })}><Heart size={16} fill={editor.favorite ? 'currentColor' : 'none'} /></button></div>
@@ -278,7 +280,7 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
     </div>
     <div className={`flex min-h-0 flex-1 flex-col ${withinPanel ? 'overflow-y-auto' : compact ? '' : 'lg:flex-row'}`}>
       <div hidden={compact && mobilePreview} className={`min-h-0 min-w-0 space-y-4 p-4 ${withinPanel ? 'shrink-0' : 'flex-1 overflow-y-auto'} ${mobilePreview ? compact ? 'hidden' : 'hidden lg:block' : ''}`}>
-        {conflict && <div role="alert" className="space-y-2 rounded border border-amber-500/50 p-3 text-xs text-amber-400">This item changed in another window. Your draft is preserved.<div className="flex gap-2"><button className={buttonClass} onClick={() => { if (window.confirm('Discard this draft and reload?')) onSaved(initial.id); }}>Reload</button><button className={buttonClass} onClick={() => void save(true)}>Save as a copy</button></div></div>}
+        {conflict && <div role="alert" className="space-y-2 rounded border border-amber-500/50 p-3 text-xs text-amber-400">{removed ? conflictMessage : 'This item changed in another window. Your draft is preserved.'}<div className="flex gap-2">{!removed && <button className={buttonClass} onClick={() => { if (window.confirm('Discard this draft and reload?')) onSaved(initial.id); }}>Reload</button>}<button className={buttonClass} onClick={() => void save(true)}>Save as a copy</button></div></div>}
         {fieldStatus && <p role="status" className="text-xs text-accent">{fieldStatus}</p>}
         {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
         {!editableContent && <p className="text-xs text-gray-400">Advanced structure is read-only on Free. You can edit organization, fill fields, copy or export your saved content.</p>}
