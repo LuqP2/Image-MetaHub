@@ -13,13 +13,28 @@ export function normalizeVariables(values) {
     const options = [...new Set((Array.isArray(v.options) ? v.options : []).map(string))];
     if(v.type !== 'text' && v.type !== 'select')
       throw new Error('Unknown variable type.');
-    if(v.type === 'select' && !options.length)
-      throw new Error(`Add options for ${v.name}.`);
     const defaultValue = string(v.defaultValue);
-    if(v.type === 'select' && defaultValue && !options.includes(defaultValue))
-      throw new Error(`Default for ${v.name} is not an option.`);
     return { name: v.name, label: string(v.label) || v.name, type: v.type, defaultValue, required: v.required === true, options };
   });
+}
+export function blockFieldNames(text) {
+  return [...new Set(Array.from(text.matchAll(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g), match => match[1]))];
+}
+export function activeBlockFields(text, definitions) {
+  const known = new Map(definitions.map(variable => [variable.name, variable]));
+  return blockFieldNames(text).map(name => known.get(name) || {
+    name, label: '', type: 'text', defaultValue: '', required: true, options: [],
+  });
+}
+const normalizeBlockVariables = (text, definitions) => normalizeVariables(activeBlockFields(text, normalizeVariables(definitions)));
+const normalizeTextVariables = (text, definitions) => {
+  const names = new Set(blockFieldNames(text));
+  return normalizeVariables(definitions).filter(variable => names.has(variable.name));
+};
+// One content contract for creation, persistence, comparison and explicit refresh.
+export function blockSnapshotContent(block) {
+  const text = string(block.text);
+  return { title: string(block.editor?.title), text, variables: normalizeBlockVariables(text, block.editor?.variables) };
 }
 export function normalizeDocument(value) {
   if(!value)
@@ -36,12 +51,15 @@ export function normalizeDocument(value) {
       ids.add(p.id);
       return {
         id: p.id, kind: p.kind, text: string(p.text), enabled: p.enabled !== false,
-        ...(p.kind === 'block' ? { blockId: string(p.blockId), blockRevision: Number.isInteger(p.blockRevision) ? p.blockRevision : 1, title: string(p.title), variables: normalizeVariables(p.variables) } : {})
+        ...(p.kind === 'block' ? { blockId: string(p.blockId), blockRevision: Number.isInteger(p.blockRevision) ? p.blockRevision : 1, title: string(p.title), variables: normalizeBlockVariables(string(p.text), p.variables) } :
+          p.variables ? { variables: normalizeTextVariables(string(p.text), p.variables) } : {})
       };
     });
   };
   const separator = (v) => [', ', ' ', '\n'].includes(v) ? v : ', ';
-  return { version: 1, mode: value.mode, positive: parts(value.positive), negative: parts(value.negative), positiveSeparator: separator(value.positiveSeparator), negativeSeparator: separator(value.negativeSeparator), variables: normalizeVariables(value.variables) };
+  const positive = parts(value.positive), negative = parts(value.negative);
+  const mode = [...positive, ...negative].some(part => part.kind === 'block' && part.variables.length) ? 'template' : value.mode;
+  return { version: 1, mode, positive, negative, positiveSeparator: separator(value.positiveSeparator), negativeSeparator: separator(value.negativeSeparator), variables: normalizeVariables(value.variables) };
 }
 export function normalizeEditor(value) {
   if(value != null && (typeof value !== 'object' || (value.version !== undefined && value.version !== 1)))
@@ -59,12 +77,19 @@ export function documentText(document) {
   const join = (parts, separator) => parts.filter((p) => p.enabled && p.text.length).map((p) => p.text).join(separator);
   return { positivePrompt: join(document.positive, document.positiveSeparator), negativePrompt: join(document.negative, document.negativeSeparator) };
 }
+// The historical text/select discriminator remains in saved data, but both now
+// accept free text and optional suggestions.
+export function sameVariableDefinition(a, b) {
+  const definition = (v) => [v.name, v.label, v.defaultValue, v.required, v.options];
+  return JSON.stringify(definition(a)) === JSON.stringify(definition(b));
+}
 export function allVariables(document) {
   const result = new Map(document.variables.map((v) => [v.name, v]));
   for(const part of [...document.positive, ...document.negative].filter((p) => p.enabled)) {
-    for(const variable of part.variables || []) {
+    const variables = part.kind === 'block' ? normalizeBlockVariables(part.text, part.variables) : normalizeTextVariables(part.text, part.variables);
+    for(const variable of variables) {
       const existing = result.get(variable.name);
-      if(existing && JSON.stringify(existing) !== JSON.stringify(variable))
+      if(existing && !sameVariableDefinition(existing, variable))
         throw new Error(`Conflicting definitions for ${variable.name}. Rename the variable before inserting this block.`);
       result.set(variable.name, variable);
     }
@@ -94,8 +119,6 @@ export function compilePrompt(item, values = {}) {
     const value = Object.prototype.hasOwnProperty.call(values, name) ? string(values[name]) : v.defaultValue;
     if(v.required && !value.trim())
       errors.push(`Fill ${v.label}.`);
-    if(v.type === 'select' && value && !v.options.includes(value))
-      errors.push(`Choose an option for ${v.label}.`);
     return value;
   });
   return { positivePrompt: expand(text.positivePrompt), negativePrompt: expand(text.negativePrompt), errors: [...new Set(errors)] };
@@ -104,7 +127,7 @@ export function makeDocument(positivePrompt = '', negativePrompt = '') {
   const part = (text) => ({ id: crypto.randomUUID(), kind: 'text', text, enabled: true });
   return { version: 1, mode: 'plain', positive: [part(positivePrompt)], negative: [part(negativePrompt)], positiveSeparator: ', ', negativeSeparator: ', ', variables: [] };
 }
-export function snapshotBlock(block) { return { id: crypto.randomUUID(), kind: 'block', enabled: true, blockId: block.id, blockRevision: block.revision, title: block.editor.title, text: block.text, variables: structuredClone(block.editor.variables) }; }
+export function snapshotBlock(block) { return { id: crypto.randomUUID(), kind: 'block', enabled: true, blockId: block.id, blockRevision: block.revision, ...blockSnapshotContent(block) }; }
 export function prepareItem(kind, input) {
   const editor = normalizeEditor(input.editor);
   if(kind === 'block') {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allVariables, applyMutation, compilePrompt, emptyEditor, makeDocument, snapshotBlock } from '../services/promptLibrary/core.mjs';
+import { allVariables, applyMutation, compilePrompt, emptyEditor, makeDocument, normalizeDocument, normalizeVariables, snapshotBlock } from '../services/promptLibrary/core.mjs';
 import { exportCsv, exportJson, parseCsv, parseImport } from '../services/promptLibrary/importExport';
 import { dice, findDuplicates } from '../services/promptLibrary/duplicates';
 import { emptyFilters, filterItems } from '../services/promptLibrary/search';
@@ -36,19 +36,52 @@ describe('Prompt Library composition and templates', () => {
     doc.negativeSeparator = '\n'; doc.negative.push({ id: crypto.randomUUID(), kind: 'text', text: 'noise', enabled: true });
     expect(compilePrompt(p).negativePrompt).toBe('bad\nnoise');
   });
+  it('normalizes imported snapshots by their own saved text without consulting the live block', () => {
+    const unused = { name: 'unused', label: 'Unused', type: 'text' as const, required: true, defaultValue: 'stale', options: [] };
+    const document = makeDocument();
+    document.positive = [{ id: 'imported', kind: 'block', enabled: true, blockId: 'deleted', blockRevision: 1, title: 'Legacy', text: '{{subject}}', variables: [unused] }];
+    document.variables = [{ ...unused, defaultValue: 'valid' }];
+    const before = structuredClone(document);
+    expect(allVariables(document).map(variable => variable.name)).toEqual(['unused', 'subject']);
+    const normalized = normalizeDocument(document)!;
+    expect(normalized.mode).toBe('template');
+    expect(normalized.positive[0]).toMatchObject({ blockId: 'deleted', variables: [{ name: 'subject', label: 'subject', required: true }] });
+    expect(normalized.positive[0].variables).toHaveLength(1);
+    expect(compilePrompt({ editor: { ...emptyEditor(), document: normalized } }).errors).toEqual(['Fill subject.']);
+    expect(normalizeDocument(JSON.parse(JSON.stringify(normalized)))).toEqual(normalized);
+    expect(document).toEqual(before);
+  });
   it('expands once, shares variables across channels and reports missing required values', () => {
     const doc = makeDocument('a {{subject}} {{light}}', '{{subject}}'); doc.mode = 'template';
     doc.variables = [{ name: 'subject', label: 'Subject', type: 'text', required: true, defaultValue: '', options: [] }, { name: 'light', label: 'Light', type: 'select', required: false, defaultValue: 'soft', options: ['soft', 'hard'] }];
     const p = { ...prompt(), editor: { ...emptyEditor(), document: doc } };
     expect(compilePrompt(p).errors).toEqual(['Fill Subject.']);
     expect(compilePrompt(p, { subject: '{{other}}' })).toEqual({ positivePrompt: 'a {{other}} soft', negativePrompt: '{{other}}', errors: [] });
-    expect(compilePrompt(p, { subject: 'cat', light: 'invalid' }).errors).toHaveLength(1);
+    expect(compilePrompt(p, { subject: 'cat', light: 'neon' })).toEqual({ positivePrompt: 'a cat neon', negativePrompt: 'cat', errors: [] });
     expect(compilePrompt(prompt('{{not_a_template}}')).positivePrompt).toBe('{{not_a_template}}');
   });
   it('rejects conflicting variables in inserted snapshots', () => {
-    const doc = makeDocument(); const b = block(); b.editor.variables = [{ name: 'x', label: 'X', type: 'text', required: true, defaultValue: '', options: [] }];
+    const doc = makeDocument(); const b = block(); b.text = '{{x}}'; b.editor.variables = [{ name: 'x', label: 'X', type: 'text', required: true, defaultValue: '', options: [] }];
     doc.variables = [{ ...b.editor.variables[0], defaultValue: 'different' }]; doc.positive.push(snapshotBlock(b));
     expect(() => allVariables(doc)).toThrow('Conflicting');
+  });
+  it('preserves legacy select definitions while accepting defaults outside the suggestions or an empty list', () => {
+    const variable = { name: 'color', label: 'Color', type: 'select' as const, required: true, defaultValue: 'burgundy', options: ['red', 'blue'] };
+    expect(normalizeVariables([variable])).toEqual([variable]);
+    const p = prompt(); p.editor!.document = { ...makeDocument('{{color}}', '{{color}}'), mode: 'template', variables: [variable] };
+    expect(compilePrompt(p)).toEqual({ positivePrompt: 'burgundy', negativePrompt: 'burgundy', errors: [] });
+    p.editor!.document.variables = normalizeVariables([{ ...variable, options: [] }]);
+    const imported = parseImport(exportJson({ prompts: [p], blocks: [] }), 'json');
+    expect(compilePrompt(imported.prompts[0], { color: 'green' })).toEqual({ positivePrompt: 'green', negativePrompt: 'green', errors: [] });
+    expect(compilePrompt(imported.prompts[0], { color: '' }).errors).toEqual(['Fill Color.']);
+  });
+  it('treats legacy text/select fields as compatible when their actual definitions agree', () => {
+    const variable = { name: 'color', label: 'Color', type: 'text' as const, required: true, defaultValue: '', options: ['red', 'blue'] };
+    const b = block(); b.text = '{{color}}'; b.editor.variables = [{ ...variable, type: 'select' }];
+    const doc = { ...makeDocument('{{color}}'), mode: 'template' as const, variables: [variable] };
+    doc.positive.push(snapshotBlock(b));
+    expect(() => allVariables(doc)).not.toThrow();
+    expect(compilePrompt({ editor: { ...emptyEditor(), document: doc } }, { color: 'green' }).errors).toEqual([]);
   });
   it('allows deliberate duplicates, enforces revisions and rejects invalid batches without changing input', () => {
     const p = prompt(); const before = { prompts: [p], blocks: [] };

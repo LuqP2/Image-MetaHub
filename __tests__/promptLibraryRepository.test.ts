@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AssetProvenanceRepository, PROVENANCE_SCHEMA_VERSION, ProvenanceRepositoryLifecycle } from '../electron/provenanceRepository.mjs';
 import { runSavedPromptPackagedSmoke } from '../electron/savedPromptPackagedSmoke.mjs';
-import { emptyEditor, makeDocument, snapshotBlock } from '../services/promptLibrary/core.mjs';
+import { compilePrompt, emptyEditor, makeDocument, snapshotBlock } from '../services/promptLibrary/core.mjs';
 
 const directories: string[] = [];
 const repositories: AssetProvenanceRepository[] = [];
@@ -34,6 +34,37 @@ describe('Prompt Library transactional repository', () => {
     repository.close(); const reopened = open(databasePath).listPromptLibrary();
     expect(reopened.blocks).toEqual([]); expect(reopened.prompts.find((p) => p.id === composed.selectedId)?.positivePrompt).toBe('  soft light  ');
     expect(reopened.prompts.some((p) => p.positivePrompt === '' && p.negativePrompt === '  bad hands  ')).toBe(true);
+  });
+
+  it('persists canonical legacy fields and reopens a self-contained template after its source is deleted', () => {
+    const databasePath = path.join(temp(), 'catalog.sqlite'); const repository = open(databasePath);
+    const source = repository.mutatePromptLibrary({ action: 'create', kind: 'block', item: {
+      text: '{{subject}}', editor: { ...emptyEditor(), variables: [{ name: 'unused', label: 'Unused', type: 'text', required: true, defaultValue: 'stale', options: [] }] },
+    } }).blocks[0];
+    const document = makeDocument(); document.positive = [snapshotBlock(source)];
+    const saved = repository.mutatePromptLibrary({ action: 'create', kind: 'prompt', item: { editor: { ...emptyEditor(), document } } });
+    repository.mutatePromptLibrary({ action: 'remove', kind: 'block', id: source.id });
+    repository.close();
+    const reopened = open(databasePath).listPromptLibrary().prompts.find(prompt => prompt.id === saved.selectedId)!;
+    expect(reopened.editor?.document?.mode).toBe('template');
+    expect(reopened.editor?.document?.positive[0].variables).toEqual([{ name: 'subject', label: 'subject', type: 'text', required: true, defaultValue: '', options: [] }]);
+    expect(compilePrompt(reopened).errors).toEqual(['Fill subject.']);
+    expect(compilePrompt(reopened, { subject: 'fox' })).toEqual({ positivePrompt: 'fox', negativePrompt: '', errors: [] });
+  });
+
+  it.each(['portrait', '{{animal}} portrait'])('drops detached text fields when saving and reopening an edited imported card: %s', text => {
+    const databasePath = path.join(temp(), 'catalog.sqlite'); const repository = open(databasePath);
+    const field = { name: 'subject', label: 'Subject', type: 'text' as const, required: true, defaultValue: 'cat', options: [] };
+    const document = makeDocument('{{subject}} portrait'); document.mode = 'template'; document.positive[0].variables = [field];
+    document.variables = [{ ...field, name: 'animal', label: 'Animal', defaultValue: 'fox' }];
+    const saved = repository.mutatePromptLibrary({ action: 'create', kind: 'prompt', item: { editor: { ...emptyEditor(), document } } }).prompts[0];
+    const edited = structuredClone(saved); edited.editor!.document!.positive[0].text = text;
+    repository.mutatePromptLibrary({ action: 'update', kind: 'prompt', item: edited, expectedRevision: saved.revision! });
+    repository.close();
+    const reopened = open(databasePath).listPromptLibrary().prompts[0];
+    expect(reopened.editor?.document?.positive[0].variables).toEqual([]);
+    expect(reopened.editor?.document?.variables).toEqual(document.variables);
+    expect(compilePrompt(reopened)).toEqual({ positivePrompt: text.replace('{{animal}}', 'fox'), negativePrompt: '', errors: [] });
   });
 
   it('rejects stale edits and rolls back multi-item persistence failures completely', () => {

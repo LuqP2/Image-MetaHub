@@ -12,18 +12,22 @@ import PromptEditor from '../promptLibrary/PromptEditor';
 import { useSendToComfyUINode } from '../../hooks/useSendToComfyUINode';
 import ComfyUITextActions from './ComfyUITextActions';
 import ComfyTextDrag from './ComfyTextDrag';
+import { compileBlockForUse } from '../../services/promptLibrary/blockFields';
 import { buttonClass } from '../promptLibrary/PromptVariables';
 import { fieldClass } from '../promptLibrary/PromptVariables';
 
-function NodeItemActions({ result, busy, onSend }: { result: ReturnType<typeof compilePrompt>; busy: boolean; onSend: (text: string, mode: 'append' | 'replace') => void }) {
+function NodeItemActions({ result, block, busy, onSend }: { result: ReturnType<typeof compilePrompt>; block?: PromptBlock; busy: boolean; onSend: (text: string, mode: 'append' | 'replace') => void }) {
   const [channel, setChannel] = useState<'positive' | 'negative'>('positive');
   const effectiveChannel = !result.positivePrompt ? 'negative' : !result.negativePrompt ? 'positive' : channel;
   const text = effectiveChannel === 'negative' ? result.negativePrompt : result.positivePrompt;
+  const useResult = block ? compileBlockForUse(block, () => 0) : result;
+  const resolveText = () => block ? compileBlockForUse(block).positivePrompt : text;
   return <div className="flex flex-wrap items-center gap-1.5">
-    <ComfyTextDrag text={text} disabled={busy || !!result.errors.length} />
+    <ComfyTextDrag text={text} disabled={busy || !!useResult.errors.length || !(block ? useResult.positivePrompt : text).trim()} resolveText={block ? resolveText : undefined} />
     {result.positivePrompt && result.negativePrompt && <select aria-label="Text to send" className={fieldClass + ' min-w-0 flex-1 !px-2 !py-1.5 !text-xs'} value={effectiveChannel} onChange={e => setChannel(e.target.value as typeof channel)}><option value="positive">Prompt</option><option value="negative">Negative</option></select>}
-    <button className={buttonClass + ' !px-2 !py-1.5'} title="Append text to the selected node field" disabled={busy || !!result.errors.length || !text.trim()} onClick={() => onSend(text, 'append')}>+ Add to node</button>
-    <button className={buttonClass + ' !px-2 !py-1.5'} title="Replace the selected node field with this text" disabled={busy || !!result.errors.length || !text.trim()} onClick={() => onSend(text, 'replace')}>Replace</button>
+    <button className={buttonClass + ' !px-2 !py-1.5'} title="Append text to the selected node field" disabled={busy || !!useResult.errors.length || !(block ? useResult.positivePrompt : text).trim()} onClick={() => onSend(resolveText(), 'append')}>+ Add to node</button>
+    <button className={buttonClass + ' !px-2 !py-1.5'} title="Replace the selected node field with this text" disabled={busy || !!useResult.errors.length || !(block ? useResult.positivePrompt : text).trim()} onClick={() => onSend(resolveText(), 'replace')}>Replace</button>
+    {block && !!useResult.errors.length && <p className="w-full text-xs text-amber-400">{useResult.errors.join(' ')}</p>}
   </div>;
 }
 
@@ -106,9 +110,8 @@ export default function WorkspacePrompts({ active, request, onOpenLibrary, onVie
     setAppend({ id: Date.now(), text: target.text, channel, block: target }); setMode('edit');
   };
   const sendBlock = (block: PromptBlock, mode: 'append' | 'replace' | 'replaceSelection' = 'append') => {
-    const editor = normalizeEditor(block.editor);
-    const result = compilePrompt({ positivePrompt: block.text, editor: { ...editor, document: { ...makeDocument(block.text), mode: 'template', variables: editor.variables } } });
-    if (result.errors.length) { setKind('block'); setSelected(block.id); setMode('details'); setActionError('Fill the template fields, then use Add to selected node.'); return; }
+    const result = compileBlockForUse(block);
+    if (result.errors.length) { setKind('block'); setSelected(block.id); setMode('details'); setActionError(result.errors.join(' ')); return; }
     setActionError(''); void direct.send(result.positivePrompt, mode);
   };
   const sendPrompt = (prompt: SavedPrompt, channel: 'positive' | 'negative' = 'positive', mode: 'append' | 'replace' | 'replaceSelection' = 'append') => {
@@ -128,11 +131,12 @@ export default function WorkspacePrompts({ active, request, onOpenLibrary, onVie
     });
   };
   const currentIndex = visible.findIndex(entry => entry.id === selected);
+  const activeSection = mode === 'edit' ? 'compose' : mode === 'blockedit' ? 'block' : kind;
   const navigate = (delta: number) => { const target = visible[currentIndex + delta]; if (target) { setSelected(target.id); setMode('details'); } };
   return <section aria-label="Workspace Prompt Library" className="flex h-full min-h-0 flex-col gap-1.5 p-2 text-gray-100">
     <div className="flex items-center gap-1 app-top-segmented">
-      {(['prompt', 'block'] as const).map(value => <button key={value} className={`app-top-segment ${mode === 'browse' && kind === value ? 'app-top-segment-active' : ''}`} aria-pressed={mode === 'browse' && kind === value} onClick={() => { session.offset = 0; setKind(value); setFilters(emptyFilters); setSelected(null); setMode('browse'); setShowFilters(false); }}>{value === 'prompt' ? 'Prompts' : 'Blocks'}</button>)}
-      <button className={`app-top-segment ${mode === 'edit' ? 'app-top-segment-active' : ''}`} aria-pressed={mode === 'edit'} onClick={() => { if (editing) setMode('edit'); else replaceEditor(canUseAdvancedPromptLibrary ? emptyComposition() : { editor: emptyEditor(), positivePrompt: '', negativePrompt: '' }, 'prompt'); }}>Compose</button>
+      {(['prompt', 'block'] as const).map(value => <button key={value} className={`app-top-segment ${activeSection === value ? 'app-top-segment-active' : ''}`} aria-pressed={activeSection === value} onClick={() => { session.offset = 0; setKind(value); setFilters(emptyFilters); setSelected(null); setMode('browse'); setShowFilters(false); }}>{value === 'prompt' ? 'Prompts' : 'Blocks'}</button>)}
+      <button className={`app-top-segment ${activeSection === 'compose' ? 'app-top-segment-active' : ''}`} aria-pressed={activeSection === 'compose'} onClick={() => { if (editing) setMode('edit'); else replaceEditor(canUseAdvancedPromptLibrary ? emptyComposition() : { editor: emptyEditor(), positivePrompt: '', negativePrompt: '' }, 'prompt'); }}>Compose</button>
     </div>
     {mode !== 'details' && <div className="flex flex-wrap items-center gap-2">
       {mode === 'browse' && kind === 'block' && <button className={buttonClass} onClick={() => { if (gate()) replaceEditor({ editor: emptyEditor(), text: '' }, 'block'); }}>New block</button>}
@@ -144,7 +148,7 @@ export default function WorkspacePrompts({ active, request, onOpenLibrary, onVie
     {(error || actionError) && <p role="alert" className="text-xs text-red-400 light:text-red-800">{actionError || error}<button className={buttonClass} onClick={() => void loadLibrary()}>Retry</button></p>}
     <div hidden={mode !== 'browse'} className={`flex min-h-0 flex-1 flex-col gap-2 ${mode === 'browse' ? '' : 'hidden'}`}>
       {showFilters && <div className="max-h-56 shrink-0 overflow-auto"><PromptLibraryFiltersPanel kind={kind} all={all} filters={filters} onChange={setFilters} onClose={() => setShowFilters(false)} /></div>}
-      {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser textDrag key={kind} onContextOpen={() => void direct.refreshSelection()} canReplaceSelection={direct.hasSelection} compact directBlocks directPrompts useBusy={direct.busy} all={all} visible={visible} filters={filters} onFilters={setFilters} selected={new Set()} selectionMode={false} onSelectionMode={() => {}} activeId={selected || undefined} onOpen={target => { setSelected(target.id); setMode('details'); }} onSelect={() => {}} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} onContextAction={(target, action, channel) => {
+      {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser onAddToCompose={block => addBlock(block, 'positive')} textDrag key={kind} onContextOpen={() => void direct.refreshSelection()} canReplaceSelection={direct.hasSelection} compact directBlocks directPrompts useBusy={direct.busy} all={all} visible={visible} filters={filters} onFilters={setFilters} selected={new Set()} selectionMode={false} onSelectionMode={() => {}} activeId={selected || undefined} onOpen={target => { setSelected(target.id); setMode('details'); }} onSelect={() => {}} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} onContextAction={(target, action, channel) => {
         if (action === 'edit') replaceEditor(target, 'text' in target ? 'block' : 'prompt');
         else if (action === 'duplicate') duplicateItem(target);
         else if (action === 'remove') removeItem(target);
@@ -152,9 +156,9 @@ export default function WorkspacePrompts({ active, request, onOpenLibrary, onVie
         else sendPrompt(target, channel, action);
       }} onUse={(target, channel) => 'text' in target ? sendBlock(target) : sendPrompt(target, channel)} scrollOffset={session.offset} onScrollOffset={offset => { if (active && mode === 'browse') session.offset = offset; }} />}
     </div>
-    {item && <div hidden={mode !== 'details'} className={`min-h-0 flex-1 ${mode === 'details' ? '' : 'hidden'}`}><PromptDetails workspace onSendSelection={text => { setActionError(''); void direct.send(text); }} key={item.id} item={item} onClose={() => setMode('browse')} onEdit={() => replaceEditor(item, kind)} onFavorite={() => favorite(item)} onDuplicate={() => duplicateItem(item)} onRemove={() => removeItem(item)} onPrevious={currentIndex > 0 ? () => navigate(-1) : undefined} onNext={currentIndex >= 0 && currentIndex < visible.length - 1 ? () => navigate(1) : undefined} position={currentIndex >= 0 ? `${currentIndex + 1}/${visible.length}` : undefined} onDuplicates={onOpenLibrary} onViewSource={onViewSource} renderActions={result => <NodeItemActions key={item.id} result={result} busy={direct.busy} onSend={(text, mode) => { setActionError(''); void direct.send(text, mode); }} />} renderSecondaryActions={() => <button className="text-xs text-gray-400 hover:text-accent" onClick={() => 'text' in item ? addBlock(item, 'positive') : useBase(item)}>Use in Compose</button>} /></div>}
+    {item && <div hidden={mode !== 'details'} className={`min-h-0 flex-1 ${mode === 'details' ? '' : 'hidden'}`}><PromptDetails workspace onSendSelection={text => { setActionError(''); void direct.send(text); }} key={item.id} item={item} onClose={() => setMode('browse')} onEdit={latest => replaceEditor(latest, kind)} onFavorite={favorite} onDuplicate={() => duplicateItem(item)} onRemove={() => removeItem(item)} onPrevious={currentIndex > 0 ? () => navigate(-1) : undefined} onNext={currentIndex >= 0 && currentIndex < visible.length - 1 ? () => navigate(1) : undefined} position={currentIndex >= 0 ? `${currentIndex + 1}/${visible.length}` : undefined} onDuplicates={onOpenLibrary} onViewSource={onViewSource} renderActions={result => <NodeItemActions key={item.id} block={'text' in item ? item : undefined} result={result} busy={direct.busy} onSend={(text, mode) => { setActionError(''); void direct.send(text, mode); }} />} renderSecondaryActions={() => <button className="text-xs text-gray-400 hover:text-accent" onClick={() => 'text' in item ? addBlock(item, 'positive') : useBase(item)}>Use in Compose</button>} /></div>}
     {mode === 'details' && !item && <p className="text-xs text-gray-400">This item is no longer available.</p>}
-    {editing && <div hidden={mode !== 'edit'} className={`min-h-0 flex-1 ${mode === 'edit' ? '' : 'hidden'}`}><PromptEditor key={editorKey} initial={editing} kind={editingKind} compact draftContext="comfyui" appendText={append} onDirty={onDirty} onViewSource={onViewSource} onClose={() => { if (!dirty.current || window.confirm('Discard this Workspace draft?')) { clearDraft('comfyui'); setEditing(canUseAdvancedPromptLibrary ? emptyComposition() : { editor: emptyEditor(), positivePrompt: '', negativePrompt: '' }); setEditorKey(key => key + 1); setAppend(undefined); setMode('edit'); dirty.current = false; } }} onSaved={id => { clearDraft('comfyui'); setEditing(null); setAppend(undefined); setKind(editingKind); setSelected(id || null); setMode(id ? 'details' : 'browse'); dirty.current = false; }} renderActions={(result, visible, channel) => <ComfyUITextActions sourceChannel={channel} positive={result.positivePrompt} negative={result.negativePrompt} errors={result.errors} active={active && mode === 'edit' && visible} />} /></div>}
+    {editing && <div hidden={mode !== 'edit'} className={`min-h-0 flex-1 ${mode === 'edit' ? '' : 'hidden'}`}><PromptEditor key={editorKey} initial={editing} kind={editingKind} compact draftContext="comfyui" appendText={append} onDirty={onDirty} onViewSource={onViewSource} onClose={() => { if (!dirty.current || window.confirm('Discard this Workspace draft?')) { clearDraft('comfyui'); setEditing(canUseAdvancedPromptLibrary ? emptyComposition() : { editor: emptyEditor(), positivePrompt: '', negativePrompt: '' }); setEditorKey(key => key + 1); setAppend(undefined); setMode('edit'); dirty.current = false; } }} onSaved={id => { clearDraft('comfyui'); setEditing(null); setAppend(undefined); setKind(editingKind); setSelected(id || null); setMode(id ? 'details' : 'browse'); dirty.current = false; }} renderActions={(result, visible, channel) => <ComfyUITextActions compact sourceChannel={channel} positive={result.positivePrompt} negative={result.negativePrompt} errors={result.errors} active={active && mode === 'edit' && visible} />} /></div>}
     {blockEditing && <div hidden={mode !== 'blockedit'} className={`min-h-0 flex-1 ${mode === 'blockedit' ? '' : 'hidden'}`}><PromptEditor key={blockKey} initial={blockEditing} kind="block" compact draftContext="comfyui-block" onDirty={() => {}} onViewSource={onViewSource} onClose={() => { if (!getDraft('comfyui-block') || window.confirm('Discard this unsaved block edit?')) { clearDraft('comfyui-block'); setBlockEditing(null); setMode('browse'); } }} onSaved={id => { clearDraft('comfyui-block'); setBlockEditing(null); setKind('block'); setSelected(id || null); setMode(id ? 'details' : 'browse'); }} /></div>}
   </section>;
 }

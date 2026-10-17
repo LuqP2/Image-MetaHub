@@ -3,12 +3,16 @@ export function emptyEditor(): PromptEditorData;
 export function normalizeEditor(value?: unknown): PromptEditorData;
 export function normalizeTags(value?: unknown): string[];
 export function normalizeVariables(value?: unknown): PromptVariable[];
+export function blockFieldNames(text: string): string[];
+export function activeBlockFields(text: string, definitions: PromptVariable[]): PromptVariable[];
+export function blockSnapshotContent(block: PromptBlock): { title: string; text: string; variables: PromptVariable[] };
 export function normalizeDocument(value?: unknown): PromptDocument | null;
 export function documentText(document: PromptDocument): {
   positivePrompt: string;
   negativePrompt: string;
 };
 export function allVariables(document: PromptDocument): PromptVariable[];
+export function sameVariableDefinition(a: PromptVariable, b: PromptVariable): boolean;
 export function compilePrompt(item: Partial<SavedPrompt>, values?: Record<string, string>): {
   positivePrompt: string;
   negativePrompt: string;

@@ -8,6 +8,7 @@ import { emptyEditor, normalizeEditor, compilePrompt, makeDocument } from '../se
 import { copyTextToClipboard } from '../utils/imageUtils';
 import { emptyFilters, filterItems, type PromptLibraryFilters } from '../services/promptLibrary/search';
 import { sessionDraft, clearDraft } from '../services/promptLibrary/sessionDraft';
+import { compileBlockForUse } from '../services/promptLibrary/blockFields';
 import PromptLibraryBrowser from './promptLibrary/PromptLibraryBrowser';
 import PromptLibraryFiltersPanel from './promptLibrary/PromptLibraryFilters';
 import PromptDetails from './promptLibrary/PromptDetails';
@@ -31,6 +32,8 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
   const [showFilters, setShowFilters] = useState(false);
   const [editing, setEditing] = useState<Partial<SavedPrompt & PromptBlock> | null>(sessionDraft?.initial || null);
   const [editorKey, setEditorKey] = useState(0);
+  const [composeAppend, setComposeAppend] = useState<{ id: number; text: string; channel: 'positive'; block: PromptBlock }>();
+  const composeRequestId = useRef(0);
   const [showTransfer, setShowTransfer] = useState(false);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [toolsMenu, setToolsMenu] = useState(false);
@@ -39,6 +42,9 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [bulkCategory, setBulkCategory] = useState('');
   const dirty = useRef(false);
+  const pendingSaves = useRef(new Map<string, Promise<void>>());
+  const suggestionDrafts = useRef(new Map<string, Set<string>>());
+  const navigationRequest = useRef(0);
   const saveIntent = useRef<(() => void) | null>(null);
   const [pending, setPending] = useState<(() => void) | null>(null);
   const [requestSave, setRequestSave] = useState(0);
@@ -48,25 +54,57 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
   const visible = useMemo(() => filterItems(all, filters), [all, filters]);
   const active = all.find(item => item.id === selectedPromptId);
   const change = (action: () => void) => {
-    if (dirty.current) setPending(() => action);
-    else { clearDraft(); action(); }
+    const request = ++navigationRequest.current;
+    const id = selectedPromptId;
+    const navigate = () => {
+      if (request !== navigationRequest.current) return;
+      if (id && suggestionDrafts.current.get(id)?.size) {
+        setActionError('Save the pending field suggestions before leaving.'); return;
+      }
+      const proceed = () => { setActionError(''); setComposeAppend(undefined); action(); };
+      if (dirty.current) setPending(() => proceed);
+      else { clearDraft(); proceed(); }
+    };
+    if (!id || !pendingSaves.current.has(id)) { navigate(); return; }
+    void (async () => {
+      let operation = pendingSaves.current.get(id);
+      while (operation) { await operation; operation = pendingSaves.current.get(id); }
+      navigate();
+    })().catch(cause => {
+      if (request === navigationRequest.current) setActionError(cause instanceof Error ? cause.message : 'Could not save changes.');
+    });
   };
   const open = (item: PromptLibraryItem) => change(() => { setEditing(null); select(item.id); setShowDuplicates(false); dirty.current = false; });
   const copyItem = async (item: PromptLibraryItem) => {
-    const editor = normalizeEditor(item.editor);
-    const result = 'text' in item ? compilePrompt({ positivePrompt: item.text, editor: { ...editor, document: { ...makeDocument(item.text), mode: 'template', variables: editor.variables } } }) : compilePrompt(item);
+    const result = 'text' in item ? { positivePrompt: item.text, negativePrompt: '', errors: [] } : compilePrompt(item);
     if (result.errors.length) { open(item); setActionError('Fill the required values before copying.'); return; }
     const response = await copyTextToClipboard(result.positivePrompt + (result.negativePrompt ? `\nNegative prompt: ${result.negativePrompt}` : ''));
     setCopyStatus(response.success ? 'Copied.' : response.error || 'Copy failed.');
   };
-  const startEdit = () => { if (active) { setEditing(active); setEditorKey(k => k + 1); } };
-  const findImages = (item: PromptLibraryItem) => {
-    const editor = normalizeEditor(item.editor);
-    const result = 'text' in item ? compilePrompt({ positivePrompt: item.text, editor: { ...editor, document: { ...makeDocument(item.text), mode: 'template', variables: editor.variables } } }) : compilePrompt(item);
-    if (result.errors.length) { open(item); setActionError('Fill the required values before finding images.'); return; }
-    const query = result.positivePrompt.trim() || result.negativePrompt.trim();
-    if (!query) { open(item); setActionError('Fill a value before finding images.'); return; }
-    onFindImages?.(query);
+  const editLatest = async (id: string, itemKind: 'prompt' | 'block') => {
+    try {
+      let operation = pendingSaves.current.get(id);
+      while (operation) { await operation; operation = pendingSaves.current.get(id); }
+      const state = useSavedPromptStore.getState();
+      const latest = (itemKind === 'block' ? state.blocks : state.prompts).find(item => item.id === id);
+      if (!latest) throw new Error('This item no longer exists.');
+      setKind(itemKind); select(id); setEditing(latest); setEditorKey(key => key + 1);
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not open this item.'); }
+  };
+  const startEdit = () => change(() => { if (selectedPromptId) void editLatest(selectedPromptId, kind); });
+  const findImages = async (item: PromptLibraryItem) => {
+    try {
+      let operation = pendingSaves.current.get(item.id);
+      while (operation) { await operation; operation = pendingSaves.current.get(item.id); }
+      const state = useSavedPromptStore.getState();
+      const latest = ('text' in item ? state.blocks : state.prompts).find(entry => entry.id === item.id);
+      if (!latest) throw new Error('This item no longer exists.');
+      const result = 'text' in latest ? compileBlockForUse(latest) : compilePrompt(latest);
+      if (result.errors.length) { open(latest); setActionError('Fill the required values before finding images.'); return; }
+      const query = result.positivePrompt.trim() || result.negativePrompt.trim();
+      if (!query) { open(latest); setActionError('Fill a value before finding images.'); return; }
+      setActionError(''); onFindImages?.(query);
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not find images.'); }
   };
   const selectId = (id: string) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const run = async (operation: Parameters<typeof mutate>[0]) => {
@@ -74,22 +112,55 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
     catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Operation failed'); return { success: false as const }; }
   };
   const gate = () => { if (canUseAdvancedPromptLibrary) return true; showProModal('prompt_library_advanced'); return false; };
+  const addToCompose = async (block: PromptBlock) => {
+    if (!gate()) return;
+    try {
+      let operation = pendingSaves.current.get(block.id);
+      while (operation) { await operation; operation = pendingSaves.current.get(block.id); }
+      const latest = useSavedPromptStore.getState().blocks.find(entry => entry.id === block.id);
+      if (!latest) throw new Error('This block no longer exists.');
+      setActionError('');
+      change(() => {
+        setKind('prompt'); select(null); setShowDuplicates(false);
+        setEditing({ positivePrompt: '', negativePrompt: '', editor: { ...emptyEditor(), document: { ...makeDocument(), positive: [], negative: [] } } });
+        setComposeAppend({ id: ++composeRequestId.current, text: latest.text, channel: 'positive', block: latest });
+        setEditorKey(key => key + 1); dirty.current = false;
+      });
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not add this block.'); }
+  };
   const create = () => {
     if (kind === 'block' && !gate()) return;
-    change(() => { setEditing({ editor: emptyEditor(), positivePrompt: '', negativePrompt: '', text: '' }); setEditorKey(k => k + 1); select(null); dirty.current = false; });
+    change(() => { setComposeAppend(undefined); setEditing({ editor: emptyEditor(), positivePrompt: '', negativePrompt: '', text: '' }); setEditorKey(k => k + 1); select(null); dirty.current = false; });
   };
   const bulk = (patch: { addTags?: string[]; removeTags?: string[]; favorite?: boolean; category?: string }) => { if (gate()) void run({ action: 'bulk', kind, ids: [...selected], ...patch }); };
   const afterSaved = (id?: string) => {
-    setRequestSave(0); setEditing(null); select(id || null); setEditorKey(key => key + 1); dirty.current = false;
+    setComposeAppend(undefined); setRequestSave(0); setEditing(null); select(id || null); setEditorKey(key => key + 1); dirty.current = false;
     if (saveIntent.current) { const action = saveIntent.current; saveIntent.current = null; setPending(null); action(); }
   };
-  const duplicate = () => { if (active) void run({ action: 'duplicate', kind, id: active.id }).then(result => { if (result.success) afterSaved(result.id); }); };
+  const duplicate = () => change(() => { if (active) void run({ action: 'duplicate', kind, id: active.id }).then(result => { if (result.success) afterSaved(result.id); }); });
   const remove = () => { if (active && window.confirm('Remove this saved item?')) void run({ action: 'remove', kind, id: active.id }).then(result => { if (result.success) { setEditing(null); select(null); } }); };
-  const favorite = (item: PromptLibraryItem) => {
-    const editor = normalizeEditor(item.editor);
-    void run({ action: 'update', kind: 'text' in item ? 'block' : 'prompt', item: { ...item, editor: { ...editor, favorite: !editor.favorite } }, expectedRevision: item.revision || 1 });
+  const trackPendingSave = (id: string, operation: Promise<void>) => {
+    pendingSaves.current.set(id, operation);
+    const clear = () => { if (pendingSaves.current.get(id) === operation) pendingSaves.current.delete(id); };
+    void operation.then(clear, clear);
   };
-  const resetKind = (next: 'prompt' | 'block') => change(() => { setKind(next); setEditing(null); select(null); setSelected(new Set()); setSelectionMode(false); setFilters(emptyFilters); setShowDuplicates(false); dirty.current = false; });
+  const trackSuggestionDraft = (id: string, name: string, dirty: boolean) => {
+    const fields = suggestionDrafts.current.get(id) || new Set<string>();
+    if (dirty) fields.add(name); else fields.delete(name);
+    if (fields.size) suggestionDrafts.current.set(id, fields); else suggestionDrafts.current.delete(id);
+  };
+  const favorite = async (item: PromptLibraryItem) => {
+    try {
+      let operation = pendingSaves.current.get(item.id);
+      while (operation) { await operation; operation = pendingSaves.current.get(item.id); }
+      const state = useSavedPromptStore.getState();
+      const latest = ('text' in item ? state.blocks : state.prompts).find(entry => entry.id === item.id);
+      if (!latest) throw new Error('This item no longer exists.');
+      const editor = normalizeEditor(latest.editor);
+      await run({ action: 'update', kind: 'text' in latest ? 'block' : 'prompt', item: { ...latest, editor: { ...editor, favorite: !editor.favorite } }, expectedRevision: latest.revision || 1 });
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not save favorite.'); }
+  };
+  const resetKind = (next: 'prompt' | 'block') => change(() => { setComposeAppend(undefined); setKind(next); setEditing(null); select(null); setSelected(new Set()); setSelectionMode(false); setFilters(emptyFilters); setShowDuplicates(false); dirty.current = false; });
   const setBrowseFilters = (next: PromptLibraryFilters) => { setFilters(next); setSelected(new Set()); };
   const exportSnapshot = useMemo(() => {
     if (kind === 'block') return { prompts: [], blocks: selected.size ? blocks.filter(item => selected.has(item.id)) : visible as PromptBlock[] };
@@ -116,15 +187,15 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
       {selected.size > 0 && <div className="flex flex-wrap items-end gap-2"><div className="w-56"><PromptTagsInput label="Bulk tags" tags={bulkTags} onChange={setBulkTags} suggestions={all.flatMap(i => i.editor?.tags || [])} /></div><button className={buttonClass} onClick={() => bulk({ addTags: bulkTags })}>Add tags</button><button className={buttonClass} onClick={() => bulk({ removeTags: bulkTags })}>Remove tags</button><button className={buttonClass} onClick={() => bulk({ favorite: true })}>Favorite</button><button className={buttonClass} onClick={() => bulk({ favorite: false })}>Unfavorite</button><button className={buttonClass} onClick={() => setShowTransfer(true)}>Export selected</button>{kind === 'block' && <><input aria-label="Bulk category" className={fieldClass + ' !w-32'} placeholder="Category" value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} /><button className={buttonClass} onClick={() => bulk({ category: bulkCategory })}>Set category</button></>}</div>}
     </div>}
     <div className="relative flex min-h-0 min-w-0 flex-1 gap-3">
-      {showFilters && !editing && <div className="absolute inset-y-0 left-0 z-10 w-60 bg-gray-950 lg:static lg:shrink-0"><PromptLibraryFiltersPanel all={all} kind={kind} filters={filters} onChange={setBrowseFilters} onClose={() => setShowFilters(false)} /></div>}
-      <div className={`min-h-0 min-w-0 flex-1 ${editing || active ? 'hidden lg:block' : ''} ${editing ? 'lg:!hidden' : ''}`}>
-        {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser all={all} visible={visible} filters={filters} onFilters={setBrowseFilters} selected={selected} selectionMode={selectionMode} onSelectionMode={() => { setSelectionMode(!selectionMode); setSelected(new Set()); }} activeId={active?.id} contextNodeActions={false} onFindImages={onFindImages ? findImages : undefined} onCopyItem={item => void copyItem(item)} onContextAction={(item, action) => {
-          if (action === 'edit') change(() => { select(item.id); setEditing(item); setEditorKey(key => key + 1); });
-          else if (action === 'duplicate') void run({ action: 'duplicate', kind, id: item.id }).then(result => { if (result.success) change(() => { setEditing(null); select(result.id || null); setShowDuplicates(false); dirty.current = false; }); });
+      {showFilters && (!editing || editing.id) && <div className="absolute inset-y-0 left-0 z-10 w-60 bg-gray-950 lg:static lg:shrink-0"><PromptLibraryFiltersPanel all={all} kind={kind} filters={filters} onChange={setBrowseFilters} onClose={() => setShowFilters(false)} /></div>}
+      <div className={`min-h-0 min-w-0 flex-1 ${editing || active ? 'hidden lg:block' : ''} ${editing && !editing.id ? 'lg:!hidden' : ''}`}>
+        {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser onAddToCompose={addToCompose} all={all} visible={visible} filters={filters} onFilters={setBrowseFilters} selected={selected} selectionMode={selectionMode} onSelectionMode={() => { setSelectionMode(!selectionMode); setSelected(new Set()); }} activeId={editing?.id || active?.id} contextNodeActions={false} onFindImages={onFindImages ? findImages : undefined} onCopyItem={item => void copyItem(item)} onContextAction={(item, action) => {
+          if (action === 'edit') change(() => { void editLatest(item.id, 'text' in item ? 'block' : 'prompt'); });
+          else if (action === 'duplicate') change(() => { void run({ action: 'duplicate', kind, id: item.id }).then(result => { if (result.success) { setEditing(null); select(result.id || null); setShowDuplicates(false); dirty.current = false; } }); });
           else if (action === 'remove' && window.confirm('Delete this saved item?')) void run({ action: 'remove', kind, id: item.id }).then(result => { if (result.success && selectedPromptId === item.id) select(null); });
         }} onOpen={open} onSelect={selectId} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} />}
       </div>
-      {editing ? <div className="min-h-0 min-w-0 flex-1"><PromptEditor key={editorKey} initial={editing} kind={kind} onDirty={onDirty} onViewSource={onViewSource} requestSave={requestSave} onSaved={afterSaved} onSaveFailed={() => { saveIntent.current = null; setPending(null); setRequestSave(0); }} onClose={() => change(() => { setEditing(null); dirty.current = false; })} /></div> : active && <div className="flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl"><PromptDetails key={active.id} item={active} onEdit={startEdit} onClose={() => { select(null); setShowDuplicates(false); }} onFavorite={() => favorite(active)} onDuplicate={duplicate} onRemove={remove} onDuplicates={() => setShowDuplicates(!showDuplicates)} onFindImages={onFindImages} onViewSource={onViewSource} />{showDuplicates && <PromptDuplicatesPanel item={active} items={all} onOpen={open} />}</div>}
+      {editing ? <div aria-label="Selected library item" className={editing.id ? "flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl" : "min-h-0 min-w-0 flex-1"}><PromptEditor withinPanel={!!editing.id} key={editorKey} appendText={composeAppend} initial={editing} kind={kind} onDirty={onDirty} onViewSource={onViewSource} requestSave={requestSave} onSaved={afterSaved} onSaveFailed={() => { saveIntent.current = null; setPending(null); setRequestSave(0); }} onClose={() => change(() => { setEditing(null); dirty.current = false; })} /></div> : active && <div aria-label="Selected library item" className="flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl"><PromptDetails key={active.id} item={active} onPendingSave={operation => trackPendingSave(active.id, operation)} onSuggestionDraftChange={(name, dirty) => trackSuggestionDraft(active.id, name, dirty)} onEdit={startEdit} onClose={() => change(() => { select(null); setShowDuplicates(false); })} onFavorite={favorite} onDuplicate={duplicate} onRemove={remove} onDuplicates={() => setShowDuplicates(!showDuplicates)} onFindImages={onFindImages} onViewSource={onViewSource} />{showDuplicates && <PromptDuplicatesPanel item={active} items={all} onOpen={open} />}</div>}
     </div>
     {pending && <UnsavedDialog onSave={() => { saveIntent.current = pending; setRequestSave(n => n + 1); }} onDiscard={() => { const action = pending; setPending(null); saveIntent.current = null; clearDraft(); dirty.current = false; action(); }} onCancel={() => { setPending(null); saveIntent.current = null; }} />}
     {showTransfer && <PromptImportExportDialog snapshot={exportSnapshot} librarySnapshot={{ prompts, blocks }} filteredSnapshot={selected.size ? filteredSnapshot : undefined} scope={selected.size ? 'Selected items' : visible.length !== all.length ? 'Filtered items' : 'All items in this view'} onClose={() => setShowTransfer(false)} />}
