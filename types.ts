@@ -475,6 +475,14 @@ export interface TrialExtensionActivationResult {
 }
 
 export interface ElectronAPI {
+  enrichmentMemoryDiagnosticsEnabled?: boolean;
+  reportEnrichmentMemory?: (sample: {
+    event: 'start' | 'checkpoint' | 'complete' | 'cancelled';
+    processed: number;
+    total: number;
+    chunks?: number;
+    heapUsedBytes?: number;
+  }) => void;
   trashFile: (filename: string, userDataContext?: StableUserDataOperationContext) => Promise<{
     success: boolean;
     error?: string;
@@ -758,6 +766,8 @@ export interface ElectronAPI {
   onUpdateDownloaded: (callback: (update: UpdateNotificationPayload) => void) => () => void;
   onUpdateError: (callback: (error: { message: string }) => void) => () => void;
   testUpdateDialog?: () => Promise<{ success: boolean; response?: number; error?: string }>;
+  testRendererRecovery?: () => Promise<{ success: boolean; simulated?: boolean; error?: string }>;
+  consumeRendererRecovery?: () => Promise<boolean>;
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   getZoomFactor: () => Promise<number>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;
