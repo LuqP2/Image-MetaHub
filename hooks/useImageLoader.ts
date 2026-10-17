@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { processFiles } from '../services/fileIndexer';
+import { resumeRecoveredEnrichment } from '../services/resumeRecoveredEnrichment';
 import { cacheManager, IncrementalCacheWriter } from '../services/cacheManager';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { IndexedImage, Directory } from '../types';
@@ -1127,6 +1128,7 @@ export function useImageLoader() {
         options: {
             suppressSuccessMessage?: boolean;
             suppressErrorMessage?: boolean;
+            awaitEnrichment?: boolean;
         } = {}
     ) => {
         const loadStart = performance.now();
@@ -1490,13 +1492,13 @@ export function useImageLoader() {
                     });
                 };
 
-                if (isScopedRefresh) {
+                if (isScopedRefresh || options.awaitEnrichment) {
                     try {
                         const phaseBStart = performance.now();
                         await phaseB;
                         logIndexingPerf('load-directory:phase-b-complete', {
                             directoryId: directory.id,
-                            scopedRefresh: true,
+                            scopedRefresh: isScopedRefresh,
                             durationMs: toFixedMs(performance.now() - phaseBStart),
                         });
                         if (shouldApplyScopedCacheDelta && getIsElectron()) {
@@ -1519,7 +1521,7 @@ export function useImageLoader() {
                         handlePhaseBComplete();
                     } catch (err) {
                         releaseThumbnailPause();
-                        console.error('Scoped refresh enrichment failed', err);
+                        console.error('Directory enrichment failed', err);
                         setTimeout(() => setEnrichmentProgress(null), 2000);
                         throw err;
                     }
@@ -1794,12 +1796,39 @@ export function useImageLoader() {
                         scheduleLineageRebuild(1200);
                     }
 
+                    // Recovery resumes unfinished explicit indexing even when normal
+                    // startup verification is off. Use the checkpointed writer path.
+                    const recovery = await resumeRecoveredEnrichment({
+                        consumeRecovery: window.electronAPI?.consumeRendererRecovery,
+                        directories: directoriesToLoad,
+                        getImages: () => useImageStore.getState().images,
+                        resume: (dir) => loadDirectory(dir, true, undefined, {
+                            suppressSuccessMessage: true,
+                            awaitEnrichment: true,
+                        }),
+                    });
+                    const verificationDirectories = directoriesToLoad.filter(dir => !recovery.resumed.has(dir.id));
+                    if (recovery.resumed.size > 0) {
+                        // Do not keep the startup hydration screen open during Phase B.
+                        // Other verification waits so directory jobs remain serial.
+                        void recovery.completion.then(async () => {
+                            if (startupVerificationMode === 'strict') {
+                                for (const dir of verificationDirectories) await reconcileCachedDirectory(dir);
+                            } else if (startupVerificationMode === 'idle') {
+                                scheduleIdleReconcile(verificationDirectories);
+                            }
+                        }).catch(recoveryError => {
+                            console.error('Recovery enrichment failed', recoveryError);
+                            setError('Failed to resume indexing after renderer recovery.');
+                        });
+                        return;
+                    }
                     if (startupVerificationMode === 'strict') {
-                        for (const dir of directoriesToLoad) {
+                        for (const dir of verificationDirectories) {
                             await reconcileCachedDirectory(dir);
                         }
                     } else if (startupVerificationMode === 'idle') {
-                        scheduleIdleReconcile(directoriesToLoad);
+                        scheduleIdleReconcile(verificationDirectories);
                     }
 
                     return;
@@ -1820,7 +1849,7 @@ export function useImageLoader() {
             setLineageRebuildSuspended(false);
             setLoading(false);
         }
-    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, reconcileCachedDirectory, recomputeDerivedState, scheduleIdleReconcile, scheduleLineageRebuild, setLineageRebuildSuspended, setLoading, setError, setSuccess]);
+    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, loadDirectory, reconcileCachedDirectory, recomputeDerivedState, scheduleIdleReconcile, scheduleLineageRebuild, setLineageRebuildSuspended, setLoading, setError, setSuccess]);
 
     const handleRemoveDirectory = useCallback(async (directoryId: string) => {
         const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();

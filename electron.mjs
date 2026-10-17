@@ -1,4 +1,11 @@
 import electron from 'electron';
+import { createAtomicCacheChunkWriter } from './electron/atomicCacheChunk.mjs';
+import { attachMainWindowRecovery } from './electron/mainWindowRecovery.mjs';
+import { registerRendererRecoveryTest } from './electron/rendererRecoveryTest.mjs';
+import { createRendererRecoveryState } from './electron/rendererRecoveryState.mjs';
+import { attachEnrichmentMemoryDiagnostics } from './electron/enrichmentMemoryDiagnostics.mjs';
+const writeAtomicCacheChunk = createAtomicCacheChunkWriter();
+const enrichmentMemoryDiagnosticsEnabled = process.env.IMH_ENRICHMENT_MEMORY_DIAGNOSTICS === '1';
 import { comfyTextRuntime } from './services/comfyTextRuntime.mjs';
 import { installComfyTextDrop } from './services/comfyTextDrop.mjs';
 const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol, WebContentsView, safeStorage } = electron;
@@ -638,6 +645,9 @@ async function readMediaMetadataWithFfprobe(filePath) {
 }
 
 let mainWindow;
+let appIsQuitting = false;
+let disposeMainWindowRecovery = null;
+let rendererRecoveryState = null;
 let licenseManager;
 let provenanceRepositoryLifecycle;
 let stableIdentityIndexer;
@@ -3460,6 +3470,15 @@ async function createWindow(startupDirectory = null) {
   });
 
   attachWindowProcessDiagnostics(mainWindow);
+  const recoveryWindow = mainWindow;
+  disposeMainWindowRecovery = attachMainWindowRecovery(recoveryWindow, {
+    isCurrent: () => mainWindow === recoveryWindow,
+    isQuitting: () => appIsQuitting,
+    onBeforeReload: () => rendererRecoveryState?.mark(recoveryWindow.webContents),
+    showDialog: (window, options) => dialog.showMessageBox(window, options),
+    quit: () => app.quit(),
+    log: logProcessEvent,
+  });
 }
 
 // App event handlers
@@ -5593,6 +5612,16 @@ function setupFileOperationHandlers() {
     }
   });
 
+  attachEnrichmentMemoryDiagnostics({
+    enabled: enrichmentMemoryDiagnosticsEnabled, ipcMain, app,
+    getWindow: () => mainWindow, log: logProcessEvent,
+  });
+  registerRendererRecoveryTest({
+    ipcMain, isDevelopment: isDev && !app.isPackaged,
+    getWindow: () => mainWindow, log: logProcessEvent,
+  });
+  rendererRecoveryState = createRendererRecoveryState({ ipcMain, getWindow: () => mainWindow });
+
   ipcMain.handle('write-cache-chunk', async (event, { cacheId, chunkIndex, data }) => {
     const start = Date.now();
     try {
@@ -5601,14 +5630,13 @@ function setupFileOperationHandlers() {
       const cacheDir = path.join(rootPath, 'json_cache');
       await fs.mkdir(cacheDir, { recursive: true });
       const chunkPath = path.join(cacheDir, `${safeCacheId}_${chunkIndex}.json`);
-      const json = JSON.stringify(data);
-      await fs.writeFile(chunkPath, json);
-      if (isSlowMainOp(start) || json.length > 8_000_000) {
+      const bytes = await writeAtomicCacheChunk(chunkPath, data);
+      if (isSlowMainOp(start) || bytes > 8_000_000) {
         logMainPerf('write-cache-chunk:slow', {
           cacheId,
           chunkIndex,
           records: Array.isArray(data) ? data.length : null,
-          bytes: json.length,
+          bytes,
           durationMs: elapsedMs(start),
         });
       }
@@ -8935,6 +8963,8 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  appIsQuitting = true;
+  disposeMainWindowRecovery?.();
   // Stop all file watchers before quitting
   fileWatcher.stopAllWatchers();
   licenseManager?.dispose?.();

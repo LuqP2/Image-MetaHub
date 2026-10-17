@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager';
+import { createEnrichmentCheckpoints } from './enrichmentCheckpoints';
 
 import { type IndexedImage, type Directory, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, hasUsableComfyGraphMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { getFilesystemPathComparisonKey, normalizeFilesystemPath } from '../utils/filesystemPath';
@@ -2786,22 +2787,28 @@ export async function processFiles(
     const ret: Promise<R>[] = [];
     const executing = new Set<Promise<R>>();
 
-    for (const item of iterable) {
-      if (abortSignal?.aborted) {
-        break;
+    try {
+      for (const item of iterable) {
+        if (abortSignal?.aborted) {
+          break;
+        }
+
+        const p = Promise.resolve().then(() => iteratorFn(item));
+        ret.push(p);
+        executing.add(p);
+        const clean = () => executing.delete(p);
+        p.then(clean).catch(clean);
+        if (executing.size >= concurrency) {
+          await Promise.race(executing);
+        }
       }
 
-      const p = Promise.resolve().then(() => iteratorFn(item));
-      ret.push(p);
-      executing.add(p);
-      const clean = () => executing.delete(p);
-      p.then(clean).catch(clean);
-      if (executing.size >= concurrency) {
-        await Promise.race(executing);
-      }
+      return await Promise.all(ret);
+    } catch (error) {
+      // Do not leave in-flight parsers running after a persistence failure.
+      await Promise.allSettled(ret);
+      throw error;
     }
-
-    return Promise.all(ret);
   };
 
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
@@ -2965,11 +2972,34 @@ export async function processFiles(
     const queue = [...needsEnrichment];
     throttledEnrichmentProgress({ processed: 0, total: totalEnrichment });
     const resultsBatch: IndexedImage[] = [];
-    const touchedChunks = new Set<number>();
-    const DIRTY_CHUNK_FLUSH_THRESHOLD = 12;
-    const canWriteCache = Boolean(cacheWriter);
-    const DEFER_CACHE_FLUSH_THRESHOLD = 5000;
-    const deferCacheFlush = canWriteCache && totalEnrichment >= DEFER_CACHE_FLUSH_THRESHOLD;
+    const reportMemory = (event: 'start' | 'checkpoint' | 'complete' | 'cancelled', details: Record<string, number> = {}) => {
+      const api = typeof window !== 'undefined' ? window.electronAPI : undefined;
+      if (!api?.enrichmentMemoryDiagnosticsEnabled) return;
+      try { api.reportEnrichmentMemory?.({
+        event, processed: phaseBStats.processed, total: totalEnrichment,
+        heapUsedBytes: (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize,
+        ...details,
+      }); } catch { /* Optional diagnostics must not stop enrichment. */ }
+    };
+    const checkpoints = createEnrichmentCheckpoints({
+      total: totalEnrichment,
+      write: cacheWriter ? async (chunkIndex) => {
+        const metadata = chunkRecords[chunkIndex];
+        const start = performance.now();
+        await cacheWriter.overwrite(chunkIndex, metadata);
+        const durationMs = performance.now() - start;
+        phaseBStats.bytesWritten += JSON.stringify(metadata).length;
+        phaseBStats.diskWrites += 1;
+        phaseBStats.ipcCalls += 1;
+        phaseBStats.flushMs += durationMs;
+        phaseBStats.flushChunks += 1;
+        performance.mark('indexing:phaseB:chunk-flush', { detail: { chunkIndex, durationMs } });
+      } : undefined,
+      onSaved: (processed, chunks) => {
+        reportMemory('checkpoint', { processed, chunks });
+      },
+    });
+    reportMemory('start');
 
     const logPhaseBProgress = (queueLength: number) => {
       const now = performance.now();
@@ -3050,35 +3080,7 @@ export async function processFiles(
         resultsBatch.length = 0;
       }
 
-      if (
-        cacheWriter &&
-        touchedChunks.size > 0 &&
-        (force || !deferCacheFlush) &&
-        (force || touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD)
-      ) {
-        const chunkIndices = Array.from(touchedChunks);
-        const start = performance.now();
-        await Promise.all(chunkIndices.map(async (chunkIndex) => {
-          const metadata = chunkRecords[chunkIndex];
-          const rewriteStart = performance.now();
-          await cacheWriter.overwrite(chunkIndex, metadata);
-          const duration = performance.now() - rewriteStart;
-          const bytesWritten = JSON.stringify(metadata).length;
-          phaseBStats.bytesWritten += bytesWritten;
-          phaseBStats.diskWrites += 1;
-          phaseBStats.ipcCalls += 1;
-          performance.mark('indexing:phaseB:chunk-flush', {
-            detail: { chunkIndex, durationMs: duration, bytesWritten }
-          });
-        }));
-        const batchDuration = performance.now() - start;
-        phaseBStats.flushMs += batchDuration;
-        phaseBStats.flushChunks += chunkIndices.length;
-        performance.mark('indexing:phaseB:chunk-flush-batch', {
-          detail: { chunks: chunkIndices.length, durationMs: batchDuration }
-        });
-        touchedChunks.clear();
-      }
+      await checkpoints.flush(force);
     };
 
     const applyMergedEntry = async (
@@ -3095,9 +3097,7 @@ export async function processFiles(
       entry.needsEnrichment = false;
       resultsBatch.push(merged);
       const loc = chunkMap.get(merged.id);
-      if (loc && canWriteCache) {
-        touchedChunks.add(loc.chunkIndex);
-      }
+      checkpoints.mark(loc?.chunkIndex);
 
       phaseBStats.processed += 1;
       incrementCounter(phaseBStats.metadataKinds, classifyMetadataKind(merged.metadata));
@@ -3118,7 +3118,7 @@ export async function processFiles(
 
       if (
         resultsBatch.length >= enrichmentBatchSize ||
-        (canWriteCache && !deferCacheFlush && touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD)
+        checkpoints.due()
       ) {
         await commitBatch();
       }
@@ -3347,6 +3347,7 @@ export async function processFiles(
     if (useOptimizedPath) {
       const batches = chunkArray(queue, FILE_READ_BATCH_SIZE);
       for (const batch of batches) {
+        if (abortSignal?.aborted) break;
         const filePaths = batch
           .map(entry => (entry.source?.handle as ElectronFileHandle)?._filePath)
           .filter((path): path is string => typeof path === 'string' && path.length > 0);
@@ -3618,6 +3619,7 @@ export async function processFiles(
     }
 
     await commitBatch(true);
+    reportMemory(abortSignal?.aborted ? 'cancelled' : 'complete');
 
     const elapsedMs = performance.now() - phaseBStats.startTime;
     performance.mark('indexing:phaseB:complete', {
@@ -3659,7 +3661,8 @@ export async function processFiles(
       },
     }));
     throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
+    throttledEnrichmentProgress.flush();
   };
 
-  return { phaseB: runEnrichmentPhase() };
+  return { phaseB: runEnrichmentPhase().finally(() => throttledEnrichmentProgress.cancel()) };
 }

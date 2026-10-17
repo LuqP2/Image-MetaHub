@@ -14,7 +14,24 @@ ipcRenderer.on('open-file-from-deep-link', (_event, filePath) => {
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
+const enrichmentMemoryDiagnosticsEnabled = process.env.IMH_ENRICHMENT_MEMORY_DIAGNOSTICS === '1';
+let enrichmentMemoryProgress = {};
+if (enrichmentMemoryDiagnosticsEnabled) {
+  // Continues after Phase B to compare idle memory, until this renderer unloads.
+  setInterval(() => {
+    ipcRenderer.send('enrichment-memory-sample', {
+      ...enrichmentMemoryProgress, event: 'sample',
+      heapUsedBytes: performance.memory?.usedJSHeapSize,
+    });
+  }, 60_000);
+}
 const electronAPI = {
+  enrichmentMemoryDiagnosticsEnabled,
+  reportEnrichmentMemory: (sample) => {
+    if (!enrichmentMemoryDiagnosticsEnabled) return;
+    enrichmentMemoryProgress = sample;
+    ipcRenderer.send('enrichment-memory-sample', sample);
+  },
   // --- Listeners for main-to-renderer events ---
   onLoadDirectoryFromCLI: (callback) => {
     const handler = (event, ...args) => callback(...args);
@@ -486,6 +503,8 @@ const electronAPI = {
 };
 
 electronAPI.testUpdateDialog = () => ipcRenderer.invoke('test-update-dialog');
+electronAPI.testRendererRecovery = () => ipcRenderer.invoke('test-renderer-recovery');
+electronAPI.consumeRendererRecovery = () => ipcRenderer.invoke('consume-renderer-recovery');
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
 
