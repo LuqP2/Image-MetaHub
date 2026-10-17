@@ -809,6 +809,12 @@ function findTerminalNode(graph: Graph): ParserNode | null {
         if (nodeDef?.roles.includes('SINK')) {
             // Prioritize KSampler variants and workflow sampler nodes (main generation nodes)
             if (node.class_type.includes('KSampler') || node.class_type.includes('Sampler')) {
+                // Canvas copies with widget values only must not replace a connected sampler.
+                const hasConnectedInput = Object.values(node.inputs || {}).some(value => {
+                    const sourceId = getConnectionNodeId(value);
+                    return sourceId !== null && !!graph[sourceId];
+                });
+                if (!hasConnectedInput) continue;
                 kSamplerNode = node;
             } else if (!terminalNode) {
                 terminalNode = node;
