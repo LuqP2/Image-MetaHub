@@ -167,6 +167,66 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
             </div>
           ) : (
             <>
+              {/* Message from the Dev for v0.22 */}
+              {currentVersion.startsWith('0.22.') && (
+              <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
+                <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
+                <div className="space-y-3 text-sm leading-relaxed">
+                  <p className="text-gray-300">
+                    Hey, Lucas here - the solo dev behind Image MetaHub.
+                  </p>
+                  <p className="text-gray-300">
+                    As you've probably noticed, Image MetaHub looks a bit different now.
+                  </p>
+                  <p className="text-gray-300">
+                    I've been wanting to move away from the whole magenta-and-cyan aesthetic that seems to have taken over everything AI-related. Nothing against those colors, but I figured the world had enough of that already.
+                  </p>
+                  <p className="text-gray-300">
+                    So, new branding, new icons, and a new default theme. I personally think it suits IMH much better. But that's my taste, not necessarily yours, so if you preferred the previous look, the original themes are still available under Settings → Appearance, along with all the others.
+                  </p>
+                  <p className="text-gray-300">
+                    The other major addition is the expanded Prompt Library. The original implementation was fairly basic, and I wanted to turn it into something genuinely useful beyond just saving and copying prompts. You can now work with reusable blocks, compose prompts, create templates, and drag &amp; drop blocks and prompts directly to ComfyUI text nodes.
+                  </p>
+                  <p className="text-gray-300">
+                    It's a first implementation of a much more ambitious feature, and I'm sure there are things I haven't considered, especially since everyone seems to have their own way of working with prompts. So please, give it a try and let me know what you think. And if something feels unnecessarily complicated, I'd particularly like to hear about it.
+                  </p>
+                  <p className="text-gray-300">
+                    I also want to take a moment to thank everyone who's purchased a Pro license. Seriously, thank you. I'm developing Image MetaHub independently, and those purchases make a real difference in allowing me to keep working on it. I know there are plenty of things competing for your money, and the fact that some of you chose to spend it on something I've built means a lot to me.
+                  </p>
+                  <p className="text-gray-300">
+                    And to everyone who's reported bugs, contributed code, suggested features, or taken the time to write to me, thank you as well. I may not implement every suggestion, but I do read them, and quite a few features exist today because someone took the time to ask.
+                  </p>
+                  <p className="text-gray-300">
+                    If you'd like to get in touch, ask for help, share ideas, or just have a chat, you're always welcome to {renderMarkdownLink('[join the Discord](https://discord.gg/2MXWxjKyJ5)')}. Fair warning: it's been pretty quiet in there lately. People keep joining, but apparently everyone's waiting for someone else to start a conversation. 😅 I'd genuinely love to see a little more life in there, so don't be shy!
+                  </p>
+                  <p className="text-gray-300">
+                    Anyway, I hope you enjoy the update. Thanks for being here.
+                  </p>
+                  <p className="text-gray-300">
+                    Lucas
+                  </p>
+
+                  <div className="flex gap-3 mt-6 pt-4 border-t border-blue-500/20 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setIsPlanSelectorOpen(true)}
+                      className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-accent-strong text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Get Pro
+                    </button>
+                    <a
+                      href="https://discord.gg/2MXWxjKyJ5"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Join Discord
+                    </a>
+                  </div>
+                </div>
+              </div>
+              )}
+
               {/* Message for the Dev */}
               {currentVersion === '0.19.3' && (
               <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">

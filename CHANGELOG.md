@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - [2026-10-17]
+
+### Added
+
+- **Reusable Prompt Blocks and Templates (Pro)**: Expanded the Prompt Library with reusable text blocks, prompt composition, and fillable templates. Combine positive and negative prompts, arrange blocks with drag-and-drop, insert multiple saved items, and preview the final result. Block instances preserve their content independently of later changes to the originals.
+- **Prompt Library Organization**: Added tags, favorites, notes, advanced filters, bulk actions, exact and similar duplicate detection, and JSON / `styles.csv` import and export.
+- **ComfyUI Workspace Context Tools (Pro)**: Added Image, Prompts, and Models tabs to the Workspace sidebar. Browse saved prompts and blocks, compose new prompts, access model trigger words, and send text directly to compatible fields in selected ComfyUI nodes.
+- **ComfyUI Prompt Drag-and-Drop (Pro)**: Drag saved prompts, blocks, or composed text directly into ComfyUI node fields. Drop to append text, or hold Shift while dropping to choose between Add and Replace.
+- **Find Images from Prompts**: Find matching Library images directly from saved prompts and blocks, including text fragments embedded within longer generation prompts.
+
+### Improved
+
+- **Prompt Library Experience**: Redesigned browsing and editing with list and grid views, a dedicated details panel, inline tag editing, searchable multi-item selection, reusable block suggestions, and a live composition preview. Unsaved drafts are preserved while navigating between library sections.
+- **ComfyUI Workflow Integration**: Save selected node text directly as prompts or blocks, append or replace existing node text, and preserve workflow history with undo/redo support. Compatible actions provide immediate feedback and protect against overwriting changed node values.
+- **Ayu Themes and Branding**: Added Ayu Light and made the Ayu theme family the default for system appearance. Refreshed application logos and icons, with improved contrast across light themes and workspace controls.
+- **Library Navigation and Controls**: Stabilized the main navigation layout, introduced text-only section tabs, consolidated Library toolbar actions, and made active filters more compact.
+- **Model Manager Visibility**: Added the ability to hide models from the main catalog and Workspace sidebar. Hidden models are also excluded from automatic update checks and notification counts.
+
+### Changed
+
+- **Source Code Licensing**: Updated the project's current source license from MPL 2.0 to PolyForm Perimeter 1.0.1. Previously distributed versions retain their original license grants.
+
+### Fixed
+
+- **Large Library Processing and Recovery**: Metadata enrichment now saves progress incrementally, reducing lost work after interruptions. The main application window can recover from renderer crashes or out-of-memory failures and resume unfinished processing from saved checkpoints.
+- **ComfyUI MiniMax H3 Metadata**: Added support for extracting prompts, model information, and generation parameters from MiniMax H3 workflows, including multiframe configurations and linked conditioning nodes.
+- **ComfyUI Disconnected Samplers**: Fixed incorrect or missing metadata when disconnected sampler nodes appeared after the active generation sampler in a workflow.
+- **Prompt Preservation**: Fixed handling of negative-only prompts and edited shadow metadata when saving or composing prompts, preserving available source and generation information.
+
 ## [0.21.0] - [2026-10-08]
 
 ### Added
