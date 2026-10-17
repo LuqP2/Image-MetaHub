@@ -24,6 +24,83 @@ function loadFixture(name: string): any {
   return JSON.parse(content);
 }
 
+describe('MiniMax H3 metadata (issue #594)', () => {
+  const expectedPrompt = 'A paper boat floats across a quiet pond';
+
+  const makePrompt = (linked: boolean, seed: number) => ({
+    '1': { class_type: 'UNETLoader', inputs: { unet_name: 'synthetic-h3.safetensors' } },
+    '2': { class_type: 'MiniMaxLowVRAMAttention', inputs: { model: ['1', 0] } },
+    '3': { class_type: 'MiniMaxChunkFeedForward', inputs: { model: ['2', 0] } },
+    '4': { class_type: 'ModelAttentionBackend', inputs: {
+      model: ['3', 0], backend: 'unrelated attention option',
+    } },
+    '5': { class_type: 'EasyCache', inputs: { model: ['4', 0] } },
+    '6': { class_type: 'PrimitiveStringMultiline', inputs: { value: expectedPrompt } },
+    '7': { class_type: 'MiniMaxH3ReferenceToVideo', inputs: {
+      prompt: linked ? ['6', 0] : expectedPrompt,
+      filename: 'unrelated-reference.png', notes: 'This is not the generation prompt',
+    } },
+    '8': { class_type: 'BasicGuider', inputs: { model: ['5', 0], conditioning: ['7', 0] } },
+    '9': { class_type: 'RandomNoise', inputs: { noise_seed: seed } },
+    '10': { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler' } },
+    '11': { class_type: 'BasicScheduler', inputs: {
+      model: ['5', 0], scheduler: 'simple', steps: 24, denoise: 1,
+    } },
+    '12': { class_type: 'SamplerCustomAdvanced', inputs: {
+      noise: ['9', 0], guider: ['8', 0], sampler: ['10', 0], sigmas: ['11', 0],
+    } },
+    '13': { class_type: 'VHS_VideoCombine', inputs: {
+      images: ['12', 0], filename_prefix: 'unrelated-output',
+    } },
+  });
+
+  for (const [parserName, parse] of [
+    ['app', resolvePromptFromGraph],
+    ['metadata-engine', resolveEnginePromptFromGraph],
+  ] as const) {
+    for (const linked of [false, true]) {
+      for (const withWorkflow of [false, true]) {
+        it(`${parserName}: extracts ${linked ? 'linked' : 'direct'} prompt ${withWorkflow ? 'with workflow data' : 'from execution graph'}`, () => {
+          const seed = linked ? 0 : 42;
+          const prompt = makePrompt(linked, seed);
+          const workflow = withWorkflow ? {
+            nodes: Object.entries(prompt).map(([id, node]) => ({
+              id: Number(id), type: node.class_type, mode: 0, widgets_values: [],
+            })),
+          } : {};
+
+          const result = parse(workflow, prompt);
+          expect(result).toMatchObject({
+            prompt: expectedPrompt,
+            negativePrompt: null,
+            model: 'synthetic-h3.safetensors',
+            seed,
+            steps: 24,
+            sampler_name: 'euler',
+            scheduler: 'simple',
+          });
+          expect(result._telemetry.unknown_nodes_count).toBe(0);
+          if (withWorkflow) {
+            expect(result).toEqual(parse({}, prompt));
+          }
+        });
+      }
+    }
+
+    it(`${parserName}: does not guess prompt text from an unknown node`, () => {
+      const prompt = {
+        ...makePrompt(true, 0),
+        '6': { class_type: 'UnregisteredH3String', inputs: { value: expectedPrompt } },
+      };
+      const result = parse({}, prompt);
+      expect(result.prompt).toBeNull();
+      expect(result.negativePrompt).toBeNull();
+      expect(result.model).toBe('synthetic-h3.safetensors');
+      expect(result._telemetry.unknown_nodes_count).toBe(1);
+    });
+  }
+});
+
 describe('Qwen Image 2.1 metadata', () => {
   const makePrompt = (negativePrompt: unknown = 'direct negative') => ({
     '1': { class_type: 'UNETLoader', inputs: { unet_name: 'qwen_image_2.1.safetensors' } },

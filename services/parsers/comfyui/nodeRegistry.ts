@@ -1503,6 +1503,53 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     }
   },
 
+  // MiniMax H3 conditioning carries prompt text directly or through a string node.
+  MiniMaxH3ReferenceToVideo: {
+    category: 'CONDITIONING',
+    roles: ['TRANSFORM'],
+    inputs: { prompt: { type: 'STRING' } },
+    outputs: { conditioning: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: { source: 'input', key: 'prompt' }
+    }
+  },
+
+  EasyCache: {
+    category: 'TRANSFORM',
+    roles: ['PASS_THROUGH'],
+    inputs: { model: { type: 'MODEL' } },
+    outputs: { MODEL: { type: 'MODEL' } },
+    param_mapping: {},
+    pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+  },
+
+  ModelAttentionBackend: {
+    category: 'TRANSFORM',
+    roles: ['PASS_THROUGH'],
+    inputs: { model: { type: 'MODEL' } },
+    outputs: { MODEL: { type: 'MODEL' } },
+    param_mapping: {},
+    pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+  },
+
+  MiniMaxChunkFeedForward: {
+    category: 'TRANSFORM',
+    roles: ['PASS_THROUGH'],
+    inputs: { model: { type: 'MODEL' } },
+    outputs: { MODEL: { type: 'MODEL' } },
+    param_mapping: {},
+    pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+  },
+
+  MiniMaxLowVRAMAttention: {
+    category: 'TRANSFORM',
+    roles: ['PASS_THROUGH'],
+    inputs: { model: { type: 'MODEL' } },
+    outputs: { MODEL: { type: 'MODEL' } },
+    param_mapping: {},
+    pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+  },
+
   BasicGuider: {
     category: 'CONDITIONING', roles: ['TRANSFORM'],
     inputs: {
