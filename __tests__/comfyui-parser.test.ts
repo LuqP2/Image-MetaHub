@@ -87,6 +87,64 @@ describe('MiniMax H3 metadata (issue #594)', () => {
       }
     }
 
+    for (const guideCount of [1, 3]) {
+      it(`${parserName}: follows ${guideCount} guides from the official multiframe topology`, () => {
+        // Reduced topology from Comfy-Org/workflow_templates:
+        // templates/video_minimax_h3_multiframe_reference.json
+        // Keep exported node IDs, positive slots and the three-guide chain;
+        // replace asset references and prompt text with synthetic values.
+        const guideIds = [147, 162, 169].slice(0, guideCount);
+        const prompt: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {
+          ...makePrompt(true, 0),
+          '136': { class_type: 'MiniMaxH3ReferenceToVideo', inputs: { prompt: ['138', 0] } },
+          '138': { class_type: 'PrimitiveStringMultiline', inputs: { value: expectedPrompt } },
+          '126': { class_type: 'BasicGuider', inputs: {
+            model: ['5', 0], conditioning: [String(guideIds[guideCount - 1]), 0],
+          } },
+          '125': { class_type: 'SamplerCustomAdvanced', inputs: {
+            noise: ['9', 0], guider: ['126', 0], sampler: ['10', 0],
+            sigmas: ['11', 0], latent_image: ['136', 1],
+          } },
+          '157': { class_type: 'LoadImage', inputs: { image: 'synthetic-guide.png' } },
+        };
+        delete prompt['8'];
+        delete prompt['12'];
+        prompt['13'].inputs.images = ['125', 0];
+
+        for (const [index, id] of guideIds.entries()) {
+          prompt[String(id)] = { class_type: 'MiniMaxH3AddGuide', inputs: {
+            // Put other branches first to catch indiscriminate input traversal.
+            latent: ['136', 1], image: ['157', 0], frame_idx: index * 24,
+            positive: [String(index === 0 ? 136 : guideIds[index - 1]), 0],
+          } };
+        }
+        const workflow = {
+          nodes: Object.entries(prompt).map(([id, node]) => ({
+            id: Number(id), type: node.class_type, mode: 0,
+            widgets_values: node.class_type === 'MiniMaxH3AddGuide' ? [0] : [],
+          })),
+          links: [
+            [292, 136, 0, 147, 0, 'CONDITIONING'],
+            ...(guideCount === 3 ? [
+              [312, 147, 0, 162, 0, 'CONDITIONING'],
+              [329, 162, 0, 169, 0, 'CONDITIONING'],
+            ] : []),
+            [330, guideIds[guideCount - 1], 0, 126, 1, 'CONDITIONING'],
+            [254, 126, 0, 125, 1, 'GUIDER'],
+            [333, 138, 0, 136, 8, 'STRING'],
+          ],
+        };
+
+        for (const uiWorkflow of [{}, workflow]) {
+          expect(parse(uiWorkflow, prompt)).toMatchObject({
+            prompt: expectedPrompt, negativePrompt: null,
+            model: 'synthetic-h3.safetensors', seed: 0, steps: 24,
+            sampler_name: 'euler', scheduler: 'simple',
+          });
+        }
+      });
+    }
+
     it(`${parserName}: does not guess prompt text from an unknown node`, () => {
       const prompt = {
         ...makePrompt(true, 0),

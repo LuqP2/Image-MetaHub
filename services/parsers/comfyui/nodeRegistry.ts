@@ -1514,6 +1514,17 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     }
   },
 
+  MiniMaxH3AddGuide: {
+    category: 'CONDITIONING',
+    roles: ['PASS_THROUGH'],
+    inputs: { positive: { type: 'CONDITIONING' } },
+    outputs: { positive: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: { source: 'trace', input: 'positive' }
+    },
+    pass_through_rules: [{ from_input: 'positive', to_output: 'positive' }]
+  },
+
   EasyCache: {
     category: 'TRANSFORM',
     roles: ['PASS_THROUGH'],
