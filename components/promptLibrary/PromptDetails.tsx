@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getPreviewValues, rememberPreviewValues } from '../../services/promptLibrary/sessionDraft';
 import { Heart, MoreHorizontal, Pencil, X, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import type { PromptLibraryItem } from '../../types';
+import type { IndexedImage, PromptEditorData, PromptLibraryItem } from '../../types';
 import { allVariables, compilePrompt, normalizeEditor } from '../../services/promptLibrary/core.mjs';
 import { usePromptLibraryPreview } from '../../hooks/usePromptLibraryPreview';
 import { selectedPromptText, usePromptBlockExtraction } from '../../hooks/usePromptBlockExtraction';
@@ -12,6 +12,10 @@ import { startComfyTextDrag } from '../comfyui/ComfyTextDrag';
 import BlockFieldSuggestions from './BlockFieldSuggestions';
 import { compileBlockForUse } from '../../services/promptLibrary/blockFields';
 import { useSavedPromptStore } from '../../store/useSavedPromptStore';
+import { useImageStore } from '../../store/useImageStore';
+import { buildSavedPromptSource } from '../../hooks/useSavePrompt';
+import { linkSessionPreview, removeSessionPreview, sessionPreviewFile } from '../../services/promptLibrary/sessionPreviews';
+import PromptPreviewPicker from './PromptPreviewPicker';
 
 export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDuplicate, onRemove, onDuplicates, onViewSource, onFindImages, onPendingSave, onSuggestionDraftChange, renderActions, renderSecondaryActions, workspace = false, onSendSelection, onPrevious, onNext, position }: {
   item: PromptLibraryItem; onEdit: (latest: PromptLibraryItem) => void; onClose: () => void; onFavorite: (latest: PromptLibraryItem) => void;
@@ -38,6 +42,9 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
   const [error, setError] = useState('');
   const [savingTags, setSavingTags] = useState(false);
   const [tagStatus, setTagStatus] = useState('');
+  const [previewPicker, setPreviewPicker] = useState(false);
+  const [savingPreview, setSavingPreview] = useState(false);
+  const previewBusy = useRef(false);
   const pendingSave = useRef<Promise<void> | null>(null);
   const pendingTags = useRef<Promise<void> | null>(null);
   const libraryPrompts = useSavedPromptStore(state => state.prompts);
@@ -73,6 +80,41 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
     trackPendingSave(operation);
     void operation.then(() => setTagStatus('Tags saved.'), cause => setError(cause instanceof Error ? cause.message : 'Could not save tags.'))
       .finally(() => { pendingTags.current = null; setSavingTags(false); });
+  };
+  const savePreview = (image: IndexedImage | null) => {
+    if (previewBusy.current) return;
+    previewBusy.current = true;
+    setSavingPreview(true); setError('');
+    const previous = pendingSave.current;
+    const operation = (async () => {
+      if (previous) await previous;
+      let nextPreview: PromptEditorData['preview'] = 'hidden';
+      let file: File | undefined;
+      if (image) {
+        if (window.electronAPI) {
+          const directory = useImageStore.getState().directories.find(entry => entry.id === image.directoryId)?.path;
+          const source = buildSavedPromptSource(image, directory);
+          if (!source) throw new Error('This image cannot be linked. Its Library folder is unavailable.');
+          nextPreview = source;
+        } else {
+          file = await image.handle.getFile();
+          nextPreview = { kind: 'session', name: file.name };
+        }
+      }
+      const latest = latestItem();
+      const previousFile = sessionPreviewFile(item.id);
+      if (file) linkSessionPreview(item.id, file);
+      try {
+        await useSavedPromptStore.getState().mutate({ action: 'update', kind: block ? 'block' : 'prompt', item: { ...latest, editor: { ...normalizeEditor(latest.editor), preview: nextPreview } }, expectedRevision: latest.revision || 1 });
+        if (!image) removeSessionPreview(item.id);
+      } catch (cause) {
+        if (file) { if (previousFile) linkSessionPreview(item.id, previousFile); else removeSessionPreview(item.id); }
+        throw cause;
+      }
+    })();
+    trackPendingSave(operation);
+    void operation.then(() => setPreviewPicker(false), cause => setError(cause instanceof Error ? cause.message : 'Could not save preview.'))
+      .finally(() => { previewBusy.current = false; setSavingPreview(false); });
   };
   const extraction = usePromptBlockExtraction();
   let variables = editor.variables;
@@ -113,7 +155,15 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
     </header>
     <div className={`min-h-0 flex-1 overflow-y-auto ${workspace ? 'space-y-2 p-2' : 'space-y-4 p-4'}`}>
       {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
-      {(workspace || preview.url) && <details open={previewOpen} onToggle={e => { const open = e.currentTarget.open; setPreviewOpen(open); localStorage.setItem('imh-prompt-details-preview-open', String(open)); }} className="rounded-lg border border-gray-700 p-2 text-xs text-gray-400"><summary className="cursor-pointer">Preview image</summary>{preview.url ? <img src={preview.url} alt="Linked preview" className="mt-2 max-h-44 w-full rounded bg-gray-950/50 object-contain" /> : <p className="pt-2">No preview image.</p>}</details>}
+      <details open={previewOpen} onToggle={e => { const open = e.currentTarget.open; setPreviewOpen(open); localStorage.setItem('imh-prompt-details-preview-open', String(open)); }} className="rounded-lg border border-gray-700 p-2 text-xs text-gray-400">
+        <summary className="cursor-pointer">Preview image</summary>
+        {preview.url ? <img src={preview.url} alt="Linked preview" className="mt-2 max-h-44 w-full rounded bg-gray-950/50 object-contain" /> : <p className="pt-2">{editor.preview && editor.preview !== 'hidden' ? preview.status : 'No preview image.'}</p>}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button type="button" className={buttonClass} disabled={savingPreview} onClick={() => { setError(''); setPreviewPicker(true); }}>{preview.url || (editor.preview && editor.preview !== 'hidden') ? 'Replace' : 'Add'}</button>
+          {(preview.url || (editor.preview && editor.preview !== 'hidden')) && <button type="button" className={buttonClass} disabled={savingPreview} onClick={() => savePreview(null)}>Remove</button>}
+          {savingPreview && <span role="status">Saving preview…</span>}
+        </div>
+      </details>
       {!block && variables.length > 0 && <section className="space-y-2 rounded-lg border border-accent/25 bg-accent/5 p-3"><h4 className="text-sm font-semibold">Fill values</h4><p className="text-xs text-gray-400">These values replace the placeholders in the final text when copying or sending to a node. Your saved text stays unchanged.</p><VariableValues variables={variables} values={values} onChange={setValues} /></section>}
       {block && !workspace && <BlockFieldSuggestions block={item} beforeSave={() => pendingSave.current} onPending={trackPendingSave} onDraftChange={onSuggestionDraftChange} />}
       <div draggable={canDragBlock} onDragStart={event => { if (block) { if (canDragBlock) startComfyTextDrag(event, compileBlockForUse(item).positivePrompt); else event.preventDefault(); } }} onContextMenu={e => { const text = selectedPromptText(); if (text) { e.preventDefault(); setSelection({ text, x: Math.min(e.clientX, window.innerWidth - 240), y: Math.min(e.clientY, window.innerHeight - (onSendSelection ? 150 : 100)) }); } }}><PromptPreview compact={workspace} channel={block ? 'block' : undefined} result={result} heading={block ? 'Preview' : 'Prompt'} /></div>
@@ -129,5 +179,6 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
     {workspace && renderActions && <footer className="shrink-0 border-t border-gray-700 p-2">{renderActions(result)}</footer>}
     {selection && <><button className="fixed inset-0 z-[11000] cursor-default" aria-label="Dismiss selection menu" onClick={() => setSelection(null)} /><div className="fixed z-[11001] flex flex-col items-stretch rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl" style={{ left: selection.x, top: selection.y }}>{onSendSelection && <button className={buttonClass} onClick={sendSelection}>Send to selected node</button>}<button className={buttonClass} onClick={() => { extraction.open(selection.text, 'source' in item ? item.source : null); setSelection(null); }}>Save Selection as Block</button></div></>}
     {extraction.dialog}
+    {previewPicker && <PromptPreviewPicker busy={savingPreview} error={error} onChoose={savePreview} onClose={() => setPreviewPicker(false)} />}
   </section>;
 }
