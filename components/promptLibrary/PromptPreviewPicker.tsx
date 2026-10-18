@@ -9,7 +9,7 @@ import { buttonClass, fieldClass } from './PromptVariables';
 
 function PreviewChoice({ image, disabled, blurred, onChoose }: { image: IndexedImage; disabled: boolean; blurred: boolean; onChoose: () => void }) {
   const thumbnail = useResolvedThumbnail(image);
-  useEffect(() => { void thumbnailManager.loadIndexedThumbnail(image).catch(() => {}); }, [image.id, image.lastModified]);
+  useEffect(() => { void thumbnailManager.ensureThumbnail(image, 'high', { markLoading: true }).catch(() => {}); }, [image.id, image.lastModified]);
   return <button type="button" disabled={disabled} className="min-w-0 rounded-lg border border-gray-700 p-2 text-left hover:border-accent focus-visible:outline focus-visible:outline-accent disabled:opacity-50" onClick={onChoose} title={image.name}>
     <div className="overflow-hidden rounded">{thumbnail?.thumbnailUrl ? <img src={thumbnail.thumbnailUrl} alt="" className={`h-24 w-full object-contain ${blurred ? 'filter blur-xl scale-110 opacity-80' : ''}`} /> : <div className="flex h-24 items-center justify-center text-xs text-gray-500">{thumbnail?.thumbnailStatus === 'error' ? 'Thumbnail unavailable' : 'Loading…'}</div>}</div>
     <p className="mt-1 truncate text-xs">{image.name}</p>
