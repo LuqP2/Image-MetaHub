@@ -1766,7 +1766,14 @@ export default function App() {
     }));
 
     const result = await window.electronAPI.downloadUpdate();
-    if (!result?.success) {
+    if (result?.success && result.openedExternal) {
+      setUpdateModalState((current) => ({
+        ...current,
+        isOpen: false,
+        status: 'available',
+        progress: null,
+      }));
+    } else if (!result?.success) {
       setUpdateModalState((current) => ({
         ...current,
         status: 'error',
