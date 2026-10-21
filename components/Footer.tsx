@@ -11,6 +11,7 @@ import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useThumbnail } from '../hooks/useThumbnail';
 
 interface FooterProps {
+  windowsOnly?: boolean;
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
@@ -61,6 +62,7 @@ const Token: React.FC<{ children: React.ReactNode; title?: string }> = ({ childr
 );
 
 const Footer: React.FC<FooterProps> = ({
+  windowsOnly = false,
   currentPage,
   totalPages,
   onPageChange,
@@ -179,6 +181,8 @@ const Footer: React.FC<FooterProps> = ({
 
   const hasAnyJob = hasEnrichmentJob || hasA1111Job || hasTransferJob || hasSemanticJob;
 
+  if (windowsOnly && windowItems.length === 0) return null;
+
   return (
     <footer className={`${sticky ? 'sticky bottom-0' : 'relative'} z-[55] bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up`}>
       {windowItems.length > 0 && (
@@ -267,7 +271,7 @@ const Footer: React.FC<FooterProps> = ({
           </div>
         </div>
       )}
-      <div className={`px-6 flex items-center gap-4 ${hasAnyJob ? 'h-14 md:h-16' : 'h-12 md:h-14'}`}>
+      {!windowsOnly && <div className={`px-6 flex items-center gap-4 ${hasAnyJob ? 'h-14 md:h-16' : 'h-12 md:h-14'}`}>
       <div className="min-w-0 flex-1 flex items-center gap-3 text-xs">
         {customText ? (
            <Token>
@@ -527,7 +531,7 @@ const Footer: React.FC<FooterProps> = ({
           </Tooltip>
         )}
       </div>
-      </div>
+      </div>}
     </footer>
   );
 };

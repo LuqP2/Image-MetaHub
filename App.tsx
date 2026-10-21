@@ -754,6 +754,7 @@ export default function App() {
     }
   }, [activeImageScope, clusters, collections, safeImages, validateActiveImageScope]);
 
+  const [comfyUIWorkspaceToolbarHost, setComfyUIWorkspaceToolbarHost] = useState<HTMLDivElement | null>(null);
   const globalHeaderRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const header = globalHeaderRef.current;
@@ -4129,6 +4130,7 @@ export default function App() {
       <div ref={globalHeaderRef} className="shrink-0">
         <BrowserCompatibilityWarning />
         <Header
+          workspaceToolbarRef={setComfyUIWorkspaceToolbarHost}
           onOpenSettings={() => handleOpenSettings()}
           onOpenLicense={handleOpenLicenseSettings}
           onOpenTrialExtension={() => setIsTrialExtensionModalOpen(true)}
@@ -4648,6 +4650,8 @@ export default function App() {
                   </CollectionsWorkspace>
                 ) : libraryView === 'comfyui' ? (
                   <ComfyUIWorkspace
+                    toolbarHost={comfyUIWorkspaceToolbarHost}
+                    queueCount={queueCount}
                     image={comfyUIWorkspaceImage}
                     directoryPath={comfyUIWorkspaceImage?.directoryId ? directoryPathById.get(comfyUIWorkspaceImage.directoryId) : undefined}
                     navigationImages={comfyUIWorkspaceNavigationImages}
@@ -4721,6 +4725,7 @@ export default function App() {
 
               {(libraryView === 'library' || libraryView === 'comfyui' || libraryView === 'editor' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                 <Footer
+                  windowsOnly={libraryView === 'comfyui'}
                   currentPage={currentPage}
                   totalPages={totalPages}
                   onPageChange={setCurrentPage}
