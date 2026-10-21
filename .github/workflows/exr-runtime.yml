@@ -1,0 +1,79 @@
+name: EXR runtime
+on:
+  push:
+    branches: ['feat/exr-ocio']
+    paths: ['native/exr/**', 'scripts/*ExrRuntime*', '.github/workflows/exr-runtime.yml']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish verified optional component assets (never latest)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, triplet: x64-windows-static, platform: win32-x64 }
+          - { os: ubuntu-22.04, triplet: x64-linux, platform: linux-x64 }
+          - { os: macos-15-intel, triplet: x64-osx, platform: darwin-x64 }
+          - { os: macos-15, triplet: arm64-osx, platform: darwin-arm64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: a2f9862da6d88040a8537fb9b8cb24deaa9a196b
+          path: .tmp/exr-vcpkg
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Native dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: .tmp/exr-vcpkg-cache
+          key: exr-${{ matrix.triplet }}-${{ hashFiles('native/exr/vcpkg.json') }}
+      - name: Configure
+        shell: bash
+        env:
+          VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.tmp/exr-vcpkg-cache,readwrite
+          MACOSX_DEPLOYMENT_TARGET: '12.0'
+        run: |
+          mkdir -p .tmp/exr-vcpkg-cache
+          cmake -S native/exr -B .tmp/exr-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$PWD/.tmp/exr-vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DCMAKE_INSTALL_PREFIX="$PWD/.tmp/exr-install"
+      - name: Build and test
+        shell: bash
+        run: |
+          cmake --build .tmp/exr-build --config Release --parallel 2
+          ctest --test-dir .tmp/exr-build -C Release --output-on-failure
+          cmake --install .tmp/exr-build --config Release
+      - name: Package verified runtime
+        shell: bash
+        run: node scripts/packageExrRuntime.mjs --platform ${{ matrix.platform }} --input .tmp/exr-install --out .tmp/exr-assets --licenses .tmp/exr-build/vcpkg_installed/${{ matrix.triplet }}/share
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exr-${{ matrix.platform }}
+          path: .tmp/exr-assets/*
+  assemble:
+    needs: native
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'exr-*', path: .tmp/exr-assets, merge-multiple: true }
+      - run: node scripts/assembleExrRuntimePolicy.mjs .tmp/exr-assets .tmp/exr-assets/exrRuntimePolicy.generated.mjs
+      - uses: actions/upload-artifact@v4
+        with: { name: exr-release, path: '.tmp/exr-assets/*' }
+      - name: Publish optional component
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create exr-runtime-v1.0.0 .tmp/exr-assets/* --title 'EXR / OpenColorIO runtime 1.0.0' --notes 'Optional local EXR / OpenColorIO component. Installed explicitly from Image MetaHub Settings.' --latest=false

@@ -1,0 +1,10 @@
+{
+  "name": "imh-exr",
+  "version": "1.0.0",
+  "builtin-baseline": "a2f9862da6d88040a8537fb9b8cb24deaa9a196b",
+  "dependencies": [
+    { "name": "openimageio", "default-features": false },
+    { "name": "opencolorio", "default-features": false },
+    "nlohmann-json"
+  ]
+}
