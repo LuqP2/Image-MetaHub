@@ -1265,18 +1265,6 @@ export default function App() {
 
   const normalizeFolderPath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
 
-  const getWatchedFileFolderPath = (directoryPath: string, file: { path?: string; name: string }) => {
-    const rawPath = file.path && file.path.trim().length > 0
-      ? file.path
-      : `${directoryPath}/${file.name}`;
-    const normalizedPath = normalizeFolderPath(rawPath);
-    const lastSlash = normalizedPath.lastIndexOf('/');
-    if (lastSlash <= 0) {
-      return normalizeFolderPath(directoryPath);
-    }
-    return normalizedPath.slice(0, lastSlash);
-  };
-
   const resolveWatchedRemovalIds = useCallback((
     directory: Directory,
     payload: WatchedFilesRemovedPayload
@@ -1389,50 +1377,11 @@ export default function App() {
 
       // Processar novos arquivos usando a função do useImageLoader
       await processNewWatchedFiles(directory, files);
-
-      if (sortOrder !== 'date-desc') {
-        return;
-      }
-
-      if (directory.visible === false) {
-        return;
-      }
-
-      const normalizedExcludedFolders = Array.from(excludedFolders).map(normalizeFolderPath);
-      const relevantFolderPaths = files
-        .map((file) => getWatchedFileFolderPath(directory.path, file))
-        .filter((folderPath) => {
-          return !normalizedExcludedFolders.some((excludedFolder) =>
-            folderPath === excludedFolder || folderPath.startsWith(`${excludedFolder}/`)
-          );
-        });
-
-      if (relevantFolderPaths.length === 0) {
-        return;
-      }
-
-      if (selectedFolders.size === 0) {
-        resetLibraryGridScrollPosition();
-        setCurrentPage(1);
-        return;
-      }
-
-      const normalizedSelectedFolders = Array.from(selectedFolders).map(normalizeFolderPath);
-      const affectsVisibleScope = relevantFolderPaths.some((folderPath) =>
-        normalizedSelectedFolders.some((selectedFolder) =>
-          folderPath === selectedFolder ||
-          (includeSubfolders && folderPath.startsWith(`${selectedFolder}/`))
-        )
-      );
-
-      if (affectsVisibleScope) {
-        resetLibraryGridScrollPosition();
-        setCurrentPage(1);
-      }
+      // Background arrivals update the library without interrupting browsing.
     });
 
     return () => unsubscribe();
-  }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, resetLibraryGridScrollPosition, selectedFolders, sortOrder]);
+  }, [directories, processNewWatchedFiles]);
 
   useEffect(() => {
     // Grouping has no meaning under an ordering with no stable buckets: random
@@ -2867,13 +2816,14 @@ export default function App() {
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
 
   const libraryGridSignature = useMemo(() => {
-    const firstImageId = safeFilteredImages[0]?.id ?? '';
-    const lastImageId = safeFilteredImages[safeFilteredImages.length - 1]?.id ?? '';
-
+    // Reset for navigation/filter changes, not for background image arrivals.
     return [
-      safeFilteredImages.length,
-      firstImageId,
-      lastImageId,
+      safeDirectories.map((directory) => `${directory.id}:${directory.visible !== false}`).join('\u001f'),
+      Array.from(selectedFolders).sort().join('\u001f'),
+      Array.from(excludedFolders).sort().join('\u001f'),
+      includeSubfolders,
+      JSON.stringify(activeImageScope),
+      selectedNodes.join('\u001f'),
       findSimilarGridFilter?.imageIds.join('\u001f') ?? '',
       searchQuery,
       selectedModels.join('\u001f'),
@@ -2901,7 +2851,9 @@ export default function App() {
       groupBy,
     ].join('\u001e');
   }, [
+    activeImageScope,
     advancedFilters,
+    excludedFolders,
     excludedAutoTags,
     excludedGenerators,
     excludedGpuDevices,
@@ -2913,9 +2865,12 @@ export default function App() {
     favoriteFilterMode,
     findSimilarGridFilter,
     groupBy,
+    includeSubfolders,
     randomSeed,
-    safeFilteredImages,
+    safeDirectories,
     searchQuery,
+    selectedFolders,
+    selectedNodes,
     selectedAutoTags,
     selectedGenerators,
     selectedGpuDevices,
