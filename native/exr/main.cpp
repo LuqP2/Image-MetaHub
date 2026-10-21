@@ -222,11 +222,38 @@ static json render(const json& request) {
   std::vector<std::vector<float>> rows(channelIndices.size(),std::vector<float>(rowSize));
   std::vector<uint32_t> idRow(rowSize);
   const bool integerIds=mode=="id" && spec.channelformat(channelIndices[0])==OIIO::TypeDesc::UINT;
+  std::vector<uint32_t> sourceIds;
+  int idTileY=std::numeric_limits<int>::min(),idTileX=0,idTileWidth=0;
+  if(integerIds) {
+    // Mixed-channel ImageCache tiles may choose FLOAT as their common format.
+    // Read UINT channels directly to avoid losing IDs above 2^24.
+    input=OIIO::ImageInput::open(filename);
+    ensure(input && input->seek_subimage(selected.part,0),"Cannot open integer EXR channel");
+    if(!spec.tile_width) { ensure(uint64_t(spec.width)*sizeof(uint32_t)<=64*1024*1024,"ID scanline exceeds memory budget");sourceIds.resize(spec.width); }
+  }
   for(int y=0;y<height;y++) {
     const int sampleY=spec.full_y+ry+std::min(rh-1,int((y+0.5)*rh/height));
     const bool rowInside=sampleY>=spec.y && sampleY<int64_t(spec.y)+spec.height;
     if(rowInside && rowSize) {
-      if(integerIds) ensure(cache->get_pixels(OIIO::ustring(filename),selected.part,0,rowBegin,rowEnd,sampleY,sampleY+1,0,1,channelIndices[0],channelIndices[0]+1,OIIO::TypeDesc::UINT,idRow.data(),OIIO::AutoStride,OIIO::AutoStride,OIIO::AutoStride,channelIndices[0],channelIndices[0]+1),"Cannot read integer EXR IDs");
+      if(integerIds) {
+        if(spec.tile_width) {
+          const int tileY=spec.y+(sampleY-spec.y)/spec.tile_height*spec.tile_height;
+          if(tileY!=idTileY) {
+            idTileX=spec.x+(rowBegin-spec.x)/spec.tile_width*spec.tile_width;
+            const int tileEndX=static_cast<int>(std::min(int64_t(spec.x)+spec.width,int64_t(spec.x)+((int64_t(rowEnd)-spec.x+spec.tile_width-1)/spec.tile_width)*spec.tile_width));
+            const int tileEndY=static_cast<int>(std::min(int64_t(spec.y)+spec.height,int64_t(tileY)+spec.tile_height));
+            idTileWidth=tileEndX-idTileX;
+            ensure(uint64_t(idTileWidth)*(tileEndY-tileY)*sizeof(uint32_t)<=64*1024*1024,"ID tile row exceeds memory budget");
+            sourceIds.resize(size_t(idTileWidth)*(tileEndY-tileY));
+            ensure(input->read_tiles(selected.part,0,idTileX,tileEndX,tileY,tileEndY,0,1,channelIndices[0],channelIndices[0]+1,OIIO::TypeDesc::UINT,sourceIds.data()),"Cannot read integer EXR tiles");
+            idTileY=tileY;
+          }
+          std::copy_n(sourceIds.data()+size_t(sampleY-idTileY)*idTileWidth+(rowBegin-idTileX),rowSize,idRow.data());
+        } else {
+          ensure(input->read_scanlines(selected.part,0,sampleY,sampleY+1,0,channelIndices[0],channelIndices[0]+1,OIIO::TypeDesc::UINT,sourceIds.data()),"Cannot read integer EXR scanline");
+          std::copy_n(sourceIds.data()+(rowBegin-spec.x),rowSize,idRow.data());
+        }
+      }
       else for(size_t c=0;c<channelIndices.size();c++) ensure(cache->get_pixels(OIIO::ustring(filename),selected.part,0,rowBegin,rowEnd,sampleY,sampleY+1,0,1,channelIndices[c],channelIndices[c]+1,OIIO::TypeDesc::FLOAT,rows[c].data(),OIIO::AutoStride,OIIO::AutoStride,OIIO::AutoStride,channelIndices[c],channelIndices[c]+1),"Cannot decode EXR scanline: "+cache->geterror());
     }
     for(int x=0;x<width;x++) {
