@@ -249,6 +249,24 @@ function extractIdeogram4PromptBuilderKJ(
 // SECTION: Node Registry
 // =============================================================================
 
+// RES4LYF variants share conditioning links, but have different widget layouts.
+// Keep this definition limited to graph paths rather than guessing widget indices.
+const clownsharkSamplerDefinition: NodeDefinition = {
+  category: 'SAMPLING', roles: ['SINK'],
+  inputs: {
+    model: { type: 'MODEL' },
+    positive: { type: 'CONDITIONING' },
+    negative: { type: 'CONDITIONING' },
+    latent_image: { type: 'LATENT' },
+  },
+  outputs: { output: { type: 'LATENT' }, denoised: { type: 'LATENT' } },
+  param_mapping: {
+    model: { source: 'trace', input: 'model' },
+    prompt: { source: 'trace', input: 'positive' },
+    negativePrompt: { source: 'trace', input: 'negative' },
+  },
+};
+
 export const NodeRegistry: Record<string, NodeDefinition> = {
   // --- LOADING NODES (Fontes de Verdade) ---
   'Efficient Loader': {
@@ -286,6 +304,8 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
   },
 
   // --- SAMPLING NODES (Sinks e Caixas-Pretas) ---
+  ClownsharKSampler: clownsharkSamplerDefinition,
+  ClownsharKSampler_Beta: clownsharkSamplerDefinition,
   KSampler: {
     category: 'SAMPLING', roles: ['SINK'],
     inputs: { model: { type: 'MODEL' }, positive: { type: 'CONDITIONING' }, negative: { type: 'CONDITIONING' }, latent_image: { type: 'LATENT' }, },
