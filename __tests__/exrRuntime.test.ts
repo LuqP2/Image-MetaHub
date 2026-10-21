@@ -57,6 +57,26 @@ describe('optional EXR runtime boundaries', () => {
     expect(resolveExrProfile('d:\\renders\\shot\\frame.exr', prefs, path.win32)).toEqual(nested);
     expect(resolveExrProfile('D:\\RendersOther\\frame.exr', prefs, path.win32)).toEqual(EXR_DEFAULT_PROFILE);
   });
+  it('preserves unchanged removed-folder profiles across restart without allowing unauthorized edits', async () => {
+    const f = await fixture();
+    const folder = path.join(f.root, 'removed-renders');
+    const profile = { ...EXR_DEFAULT_PROFILE, input: 'ACEScg' };
+    await f.runtime.saveSettings({ ...EXR_DEFAULT_SETTINGS, folders: { [folder]: profile } });
+    await f.runtime.dispose();
+    const restarted = createExrRuntime({ userDataPath: f.root, cacheRoot: async () => f.root, isPathAllowed: () => false, spawnImpl: f.spawn, fetchImpl: f.fetch, platform: 'test', packages: {} });
+    try {
+      const saved = await restarted.settings();
+      const updated = await restarted.saveSettings({ ...saved, global: { ...EXR_DEFAULT_PROFILE, view: 'new view' } });
+      expect(updated.folders[folder]).toEqual(profile);
+      await expect(restarted.saveSettings({ ...updated, folders: { [folder]: { ...profile, input: 'changed' } } })).rejects.toThrow('outside authorized directories');
+      await expect(restarted.saveSettings({ ...updated, folders: { ...updated.folders, [path.join(f.root, 'new-root')]: profile } })).rejects.toThrow('outside authorized directories');
+      await expect(restarted.saveSettings({ ...updated, enabled: false })).resolves.toMatchObject({ enabled: false });
+      await expect(restarted.remove()).resolves.toBeNull();
+      expect((await restarted.settings()).folders[folder]).toEqual(profile);
+      await expect(restarted.saveSettings({ ...await restarted.settings(), folders: {} })).resolves.toMatchObject({ folders: {} });
+      expect(f.spawn).not.toHaveBeenCalled(); expect(f.fetch).not.toHaveBeenCalled();
+    } finally { await restarted.dispose(); }
+  });
   it('rejects path traversal and missing package integrity metadata', () => {
     const bytes = Buffer.from('synthetic executable'); const compressed = gzipSync(bytes);
     const good = { name: 'imh-exr', size: bytes.length, sha256: hash(bytes), downloadSize: compressed.length, downloadSha256: hash(compressed) };

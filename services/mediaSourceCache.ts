@@ -138,7 +138,10 @@ class MediaSourceCache {
 
     const loading = this.loadSource(image, directoryPath)
       .then(({ url, revoke, detail }) => {
-        this.entries.set(cacheKey, {
+        // EXR URLs refer to a bounded, shared disk cache. Keep only in-flight
+        // deduplication here so revisits validate/regenerate through the owner.
+        if (isExrFileName(image.name)) this.entries.delete(cacheKey);
+        else this.entries.set(cacheKey, {
           url,
           lastAccess: Date.now(),
           revokeOnEvict: revoke,
@@ -185,6 +188,7 @@ class MediaSourceCache {
    * the getOrLoad that follows a render promotes the entry anyway.
    */
   peek(image: IndexedImage, directoryPath?: string): string | null {
+    if (isExrFileName(image.name)) return null;
     // Entries still loading are stored with an empty url, so this also filters those out.
     const entry = this.entries.get(this.getCacheKey(image, directoryPath));
     return entry?.url ? entry.url : null;

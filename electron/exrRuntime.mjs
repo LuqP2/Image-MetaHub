@@ -213,8 +213,14 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
     const global = validateExrProfile(incoming.global);
     const folders = {};
     for (const [folder, value] of Object.entries(incoming.folders ?? {})) {
-      if (!path.isAbsolute(folder) || !isPathAllowed(folder)) throw fail('Folder is outside authorized directories');
-      folders[path.resolve(folder)] = validateExrProfile(value);
+      if (!path.isAbsolute(folder)) throw fail('Folder is outside authorized directories');
+      const normalized = path.resolve(folder);
+      const profile = validateExrProfile(value);
+      // Retain preferences for removed roots without authorizing new access or edits.
+      const previous = saved.folders[normalized];
+      const unchanged = previous && JSON.stringify(validateExrProfile(previous)) === JSON.stringify(profile);
+      if (!isPathAllowed(normalized) && !unchanged) throw fail('Folder is outside authorized directories');
+      folders[normalized] = profile;
     }
     for (const profile of [global, ...Object.values(folders)]) if (!EXR_BUILTINS.has(profile.config) && !configs.has(profile.config) && ![saved.global, ...Object.values(saved.folders)].some(p => p.config === profile.config)) throw fail('Unapproved OCIO configuration');
     settings = { enabled: incoming.enabled === true, global, folders, revision: saved.revision + 1 };
