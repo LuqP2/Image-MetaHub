@@ -5,6 +5,11 @@ on:
     paths: ['native/exr/**', 'scripts/*ExrRuntime*', '.github/workflows/exr-runtime.yml']
   workflow_dispatch:
     inputs:
+      platform:
+        description: Native build targets
+        type: choice
+        options: [all, linux]
+        default: all
       publish:
         description: Publish verified optional component assets (never latest)
         type: boolean
@@ -15,12 +20,7 @@ jobs:
   native:
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { os: windows-latest, triplet: x64-windows-static, platform: win32-x64 }
-          - { os: ubuntu-22.04, triplet: x64-linux, platform: linux-x64 }
-          - { os: macos-15-intel, triplet: x64-osx, platform: darwin-x64 }
-          - { os: macos-15, triplet: arm64-osx, platform: darwin-arm64 }
+      matrix: ${{ fromJSON((github.event_name == 'push' || inputs.platform == 'linux') && '{"include":[{"os":"ubuntu-22.04","triplet":"x64-linux","platform":"linux-x64"}]}' || '{"include":[{"os":"windows-latest","triplet":"x64-windows-static","platform":"win32-x64"},{"os":"ubuntu-22.04","triplet":"x64-linux","platform":"linux-x64"},{"os":"macos-15-intel","triplet":"x64-osx","platform":"darwin-x64"},{"os":"macos-15","triplet":"arm64-osx","platform":"darwin-arm64"}]}') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     steps:
@@ -32,6 +32,8 @@ jobs:
           path: .tmp/exr-vcpkg
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
       - name: Native dependencies cache
         uses: actions/cache@v4
         with:
@@ -51,6 +53,12 @@ jobs:
           cmake --build .tmp/exr-build --config Release --parallel 2
           ctest --test-dir .tmp/exr-build -C Release --output-on-failure
           cmake --install .tmp/exr-build --config Release
+      - name: Numerical EXR and OCIO integration tests
+        shell: bash
+        run: |
+          python -m pip install OpenEXR==3.3.5 opencolorio==2.5.1 numpy==2.2.6 Pillow==11.3.0
+          if [[ "${{ matrix.platform }}" == win32-* ]]; then HELPER=.tmp/exr-install/imh-exr.exe; else HELPER=.tmp/exr-install/imh-exr; fi
+          python scripts/testExrRuntime.py --helper "$HELPER" --work .tmp/exr-fixtures
       - name: Package verified runtime
         shell: bash
         run: node scripts/packageExrRuntime.mjs --platform ${{ matrix.platform }} --input .tmp/exr-install --out .tmp/exr-assets --licenses .tmp/exr-build/vcpkg_installed/${{ matrix.triplet }}/share
@@ -59,6 +67,7 @@ jobs:
           name: exr-${{ matrix.platform }}
           path: .tmp/exr-assets/*
   assemble:
+    if: github.event_name == 'workflow_dispatch' && inputs.platform == 'all'
     needs: native
     runs-on: ubuntu-22.04
     permissions:

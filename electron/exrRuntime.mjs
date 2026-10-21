@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -40,6 +41,7 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
   const queue = [];
   const pending = new Map();
   const previewFiles = new Map();
+  const dependencyWatches = new Set();
   const cancelledOwners = new Set();
   let progress;
 
@@ -71,10 +73,16 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
     for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(fail(reason, 'CANCELLED')); }
     pending.clear();
   }
+  function clearDependencyWatches() {
+    for (const file of dependencyWatches) fsSync.unwatchFile(file);
+    dependencyWatches.clear();
+  }
   function cancel(owner, requestId) {
     const key = `${owner}:${requestId}`;
+    cancelledOwners.add(key);
+    if (cancelledOwners.size > 2048) cancelledOwners.delete(cancelledOwners.values().next().value);
     for (let i = queue.length - 1; i >= 0; i--) if (queue[i].key === key) queue.splice(i, 1)[0].reject(fail('Cancelled', 'CANCELLED'));
-    if (active?.key === key) { cancelledOwners.add(key); stop(); }
+    if (active?.key === key) stop();
   }
   async function verifyFiles(base) {
     for (const file of policy.files) {
@@ -87,7 +95,7 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
     const id = String(++counter);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { pending.delete(id); reject(fail('EXR processing timed out', 'TIMEOUT')); stop(); }, timeout);
-      pending.set(id, { resolve, reject, timer });
+      pending.set(id, { resolve, reject, timer, process });
       process.stdin.write(`${JSON.stringify({ ...command, id })}\n`, error => {
         if (error) { const entry = pending.get(id); pending.delete(id); clearTimeout(timer); entry?.reject(error); }
       });
@@ -110,8 +118,7 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
     process.stderr.on('data', () => {});
     const closed = error => {
       if (child === process) child = null;
-      for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(fail(errorText(error || 'EXR helper exited'), 'RUNTIME_EXIT')); }
-      pending.clear();
+      for (const [id, entry] of pending) if (entry.process === process) { clearTimeout(entry.timer); entry.reject(fail(errorText(error || 'EXR helper exited'), 'RUNTIME_EXIT')); pending.delete(id); }
     };
     process.on('error', closed); process.on('exit', () => closed());
     return process;
@@ -151,6 +158,7 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
     }
   }
   function job(command, owner = 0, requestId = crypto.randomUUID(), priority = 1) {
+    if (cancelledOwners.delete(`${owner}:${requestId}`)) return Promise.reject(fail('Cancelled', 'CANCELLED'));
     return new Promise((resolve, reject) => { queue.push({ command, key: `${owner}:${requestId}`, priority, resolve, reject }); void pump(); });
   }
   async function assertFile(filePath) {
@@ -166,7 +174,17 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
       const approved = [saved.global, ...Object.values(saved.folders)].some(p => p.config === configId);
       if (!approved) throw fail('Select this OCIO configuration through the file dialog first', 'ACCESS_DENIED');
     }
-    return job({ op: 'config', config: configId });
+    const result = await job({ op: 'config', config: configId });
+    for (const dependency of result.dependencies ?? []) {
+      if (typeof dependency !== 'string' || !path.isAbsolute(dependency) || dependencyWatches.has(dependency)) continue;
+      dependencyWatches.add(dependency);
+      fsSync.watchFile(dependency, { persistent: false, interval: 2000 }, (current, previous) => {
+        if (current.mtimeMs !== previous.mtimeMs || current.size !== previous.size || current.ino !== previous.ino) {
+          stop('OCIO configuration changed'); previewFiles.clear(); changed();
+        }
+      });
+    }
+    return result;
   }
   async function saveSettings(incoming) {
     const saved = await getSettings();
@@ -183,6 +201,7 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
       await fs.writeFile(`${settingsPath}.part`, JSON.stringify(settings)); await fs.rename(`${settingsPath}.part`, settingsPath);
     } catch (error) { settings = saved; throw error; }
     stop('EXR settings changed');
+    clearDependencyWatches();
     for (const entry of queue.splice(0)) entry.reject(fail('EXR settings changed', 'CANCELLED'));
     previewFiles.clear(); changed();
     return structuredClone(settings);
@@ -199,7 +218,7 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
       for (const file of policy.files) {
         validateRuntimeFile(file);
         const url = new URL(file.url);
-        if (url.protocol !== 'https:' || url.hostname !== 'github.com' || !url.pathname.startsWith('/LuqP2/image-metahub/releases/download/')) throw fail('Invalid trusted EXR origin');
+        if (url.protocol !== 'https:' || url.hostname !== 'github.com' || !url.pathname.toLowerCase().startsWith('/luqp2/image-metahub/releases/download/')) throw fail('Invalid trusted EXR origin');
         progress = { phase: 'downloading', receivedBytes }; changed(await status());
         const response = await fetchImpl(url, { signal });
         if (!response.ok) throw fail(`EXR download failed: HTTP ${response.status}`);
@@ -238,15 +257,22 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
     } catch (error) { progress = signal.aborted ? undefined : { phase: 'error', error: errorText(error) }; changed(await status()); throw error; }
     finally { installController = null; await fs.rm(staging, { recursive: true, force: true }); }
   }
-  async function inspect(filePath) { return job({ op: 'inspect', filePath: await assertFile(filePath) }); }
+  async function inspect(filePath) {
+    const real = await assertFile(filePath);
+    return { ...await job({ op: 'inspect', filePath: real }), profile: resolveExrProfile(real, await getSettings()) };
+  }
   async function preview(request, owner = 0) {
+    const requestKey = `${owner}:${request.requestId}`;
+    if (cancelledOwners.delete(requestKey)) throw fail('Cancelled', 'CANCELLED');
     const filePath = await assertFile(request.filePath);
     const saved = await getSettings();
     if (!saved.enabled || !await installed()) throw fail('EXR support not installed or disabled', 'UNAVAILABLE');
     const profile = validateExrProfile(request.profile ?? resolveExrProfile(filePath, saved));
     // Serialize config dependency checks: the native helper reports a content hash
     // of the config and resolved LUTs, not just the config's path or mtime.
-    const info = await config(profile.config);
+    const explicitData = ['scalar', 'normal', 'id'].includes(request.mode) || (request.mode !== 'color' && request.channels?.length === 1);
+    const info = explicitData ? { fingerprint: 'diagnostic-data' } : await config(profile.config);
+    if (cancelledOwners.delete(requestKey)) throw fail('Cancelled', 'CANCELLED');
     const stat = await fs.stat(filePath);
     const isThumb = request.purpose === 'thumbnail';
     const maxEdge = isThumb ? 320 : Math.max(64, Math.min(4096, Number(request.maxEdge) || 2048));
@@ -303,6 +329,6 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
       await saveSettings({ ...await getSettings(), enabled: false });
       await fs.rm(versionRoot, { recursive: true, force: true }); progress = undefined; changed(); return null;
     },
-    dispose: () => { installController?.abort(); stop(); for (const entry of queue.splice(0)) entry.reject(fail('Cancelled', 'CANCELLED')); },
+    dispose: () => { installController?.abort(); clearDependencyWatches(); stop(); for (const entry of queue.splice(0)) entry.reject(fail('Cancelled', 'CANCELLED')); },
   };
 }

@@ -57,7 +57,7 @@ static OCIO::ConstConfigRcPtr loadConfig(const std::string& id) {
   ensure(fs::u8path(id).extension() == ".ocio", "Select a .ocio configuration");
   auto config = OCIO::Config::CreateFromFile(id.c_str()); config->validate(); return config;
 }
-static std::string fingerprint(const OCIO::ConstConfigRcPtr& config) {
+static std::string fingerprint(const OCIO::ConstConfigRcPtr& config, std::set<std::string>* dependencies=nullptr) {
   uint64_t hash = 1469598103934665603ULL; std::set<std::string> files;
   std::ostringstream serialized; config->serialize(serialized); hashBytes(hash, serialized.str());
   const auto context = config->getCurrentContext();
@@ -80,6 +80,7 @@ static std::string fingerprint(const OCIO::ConstConfigRcPtr& config) {
     fingerprintTransform(named->getTransform(OCIO::TRANSFORM_DIR_FORWARD), context, hash, files);
     fingerprintTransform(named->getTransform(OCIO::TRANSFORM_DIR_INVERSE), context, hash, files);
   }
+  if(dependencies) *dependencies=files;
   std::ostringstream result; result << std::hex << hash; return result.str();
 }
 static json configInfo(const std::string& id) {
@@ -91,7 +92,9 @@ static json configInfo(const std::string& id) {
     displays.push_back({ {"name", display}, {"views", views} });
   }
   const auto display = cfg->getDefaultDisplay();
-  return {{"spaces",spaces},{"displays",displays},{"defaultDisplay",display},{"defaultView",cfg->getDefaultView(display)},{"fingerprint",fingerprint(cfg)}};
+  std::set<std::string> dependencies; const auto contentHash=fingerprint(cfg,&dependencies);
+  if(id.rfind("ocio://",0)!=0) dependencies.insert(id);
+  return {{"spaces",spaces},{"displays",displays},{"defaultDisplay",display},{"defaultView",cfg->getDefaultView(display)},{"fingerprint",contentHash},{"dependencies",dependencies}};
 }
 static json inspect(const std::string& filename) {
   auto input = OIIO::ImageInput::open(filename); ensure(bool(input), "Cannot read EXR: " + OIIO::geterror());
@@ -187,7 +190,9 @@ static json render(const json& request) {
   if(mode=="color") {
     const auto profile=request.at("profile"); auto cfg=loadConfig(text(profile,"config")); inputName=text(profile,"input","auto");
     if(inputName=="auto") {
-      inputName=spec.get_string_attribute("oiio:ColorSpace");
+      inputName=spec.get_string_attribute("colorInteropID");
+      if(inputName.empty()) inputName=spec.get_string_attribute("oiio:ColorSpace");
+      assumed=spec.find_attribute("chromaticities")==nullptr && spec.get_string_attribute("colorInteropID").empty();
       if(inputName.empty() || !cfg->getColorSpace(inputName.c_str())) {
         size_t rule=0; const auto match=cfg->getColorSpaceFromFilepath(filename.c_str(),rule);
         inputName=match && rule+1<cfg->getFileRules()->getNumEntries() ? match : "";
@@ -210,15 +215,30 @@ static json render(const json& request) {
     displayProcessor=cfg->getProcessor(linear->getName(),display.c_str(),view.c_str(),OCIO::TRANSFORM_DIR_FORWARD)->getDefaultCPUProcessor();
   }
   std::vector<unsigned char> pixels(size_t(width)*height*4);
-  for(int y=0;y<height;y++) for(int x=0;x<width;x++) {
+  const int rowBegin=std::max(spec.x,spec.full_x+rx);
+  const int rowEnd=static_cast<int>(std::min(int64_t(spec.x)+spec.width,int64_t(spec.full_x)+rx+rw));
+  const int rowSize=std::max(0,rowEnd-rowBegin);
+  ensure(uint64_t(rowSize)*channelIndices.size()*sizeof(float)<=64*1024*1024,"EXR scanline exceeds memory budget");
+  std::vector<std::vector<float>> rows(channelIndices.size(),std::vector<float>(rowSize));
+  std::vector<uint32_t> idRow(rowSize);
+  const bool integerIds=mode=="id" && spec.channelformat(channelIndices[0])==OIIO::TypeDesc::UINT;
+  for(int y=0;y<height;y++) {
+    const int sampleY=spec.full_y+ry+std::min(rh-1,int((y+0.5)*rh/height));
+    const bool rowInside=sampleY>=spec.y && sampleY<int64_t(spec.y)+spec.height;
+    if(rowInside && rowSize) {
+      if(integerIds) ensure(cache->get_pixels(OIIO::ustring(filename),selected.part,0,rowBegin,rowEnd,sampleY,sampleY+1,0,1,channelIndices[0],channelIndices[0]+1,OIIO::TypeDesc::UINT,idRow.data(),OIIO::AutoStride,OIIO::AutoStride,OIIO::AutoStride,channelIndices[0],channelIndices[0]+1),"Cannot read integer EXR IDs");
+      else for(size_t c=0;c<channelIndices.size();c++) ensure(cache->get_pixels(OIIO::ustring(filename),selected.part,0,rowBegin,rowEnd,sampleY,sampleY+1,0,1,channelIndices[c],channelIndices[c]+1,OIIO::TypeDesc::FLOAT,rows[c].data(),OIIO::AutoStride,OIIO::AutoStride,OIIO::AutoStride,channelIndices[c],channelIndices[c]+1),"Cannot decode EXR scanline: "+cache->geterror());
+    }
+    for(int x=0;x<width;x++) {
     const int sx=spec.full_x+rx+std::min(rw-1,int((x+0.5)*rw/width));
     const int sy=spec.full_y+ry+std::min(rh-1,int((y+0.5)*rh/height));
     float rgba[4]={0,0,0,1}; bool finite=true;
-    if(mode=="id" && spec.channelformat(channelIndices[0])==OIIO::TypeDesc::UINT) {
-      uint32_t id=0;read(sx,sy,channelIndices[0],OIIO::TypeDesc::UINT,&id); const auto color=idColor(id);
+    const bool inside=rowInside && sx>=rowBegin && sx<rowEnd;
+    if(integerIds) {
+      const uint32_t id=inside ? idRow[sx-rowBegin] : 0; const auto color=idColor(id);
       rgba[0]=float(color&255)/255;rgba[1]=float((color>>8)&255)/255;rgba[2]=float((color>>16)&255)/255;
     } else {
-      for(size_t c=0;c<channelIndices.size();c++) { read(sx,sy,channelIndices[c],OIIO::TypeDesc::FLOAT,&rgba[c]);finite=finite&&std::isfinite(rgba[c]); }
+      for(size_t c=0;c<channelIndices.size();c++) { rgba[c]=inside ? rows[c][sx-rowBegin] : 0;finite=finite&&std::isfinite(rgba[c]); }
       if(mode=="color" && finite) {
         float rgb[3]={rgba[0],rgba[1],rgba[2]};
         if(rgba[3]>0) for(float& value:rgb) value/=rgba[3];
@@ -235,6 +255,7 @@ static json render(const json& request) {
     if(!finite) { rgba[0]=1;rgba[1]=0;rgba[2]=1;rgba[3]=1; }
     auto offset=(size_t(y)*width+x)*4;
     for(int c=0;c<4;c++) pixels[offset+c]=static_cast<unsigned char>(std::round(std::clamp(rgba[c],0.0f,1.0f)*255));
+    }
   }
   const auto outputPath=text(request,"output"); auto output=OIIO::ImageOutput::create("png");ensure(bool(output),"PNG output plugin is unavailable");
   OIIO::ImageSpec outSpec(width,height,4,OIIO::TypeDesc::UINT8); outSpec.attribute("oiio:ColorSpace","sRGB"); outSpec.attribute("oiio:UnassociatedAlpha",1);
