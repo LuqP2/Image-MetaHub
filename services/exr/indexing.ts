@@ -18,7 +18,9 @@ export async function refreshPendingExrMetadata() {
     if (!state.installed || !state.enabled) return;
     const [{ useImageStore }, { reparseIndexedImage }] = await Promise.all([import('../../store/useImageStore'), import('../fileIndexer')]);
     const snapshot = useImageStore.getState();
-    const pending = snapshot.images.filter(image => image.name.toLowerCase().endsWith('.exr') && !(image.metadata as unknown as { exr?: unknown })?.exr && !(image.metadata as unknown as { exrError?: unknown })?.exrError);
+    // Each explicit recovery event gets one attempt per pending item, including
+    // previous helper errors. There is no timer or self-triggered retry loop.
+    const pending = snapshot.images.filter(image => image.name.toLowerCase().endsWith('.exr') && !(image.metadata as unknown as { exr?: unknown })?.exr);
     const updates = new Map<string, IndexedImage>();
     for (const image of pending) {
       const status = unwrapExr(await window.electronAPI.exr.status());

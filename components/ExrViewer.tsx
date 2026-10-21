@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import type { IndexedImage, ZoomState } from '../types';
 import type { ExrAssetInfo, ExrColorProfile, ExrConfigInfo, ExrMode, ExrPreviewResult } from '../services/exr/contracts';
 import { DEFAULT_EXR_PROFILE, EXR_CONFIGS, exrChannelGroups } from '../services/exr/model';
 import { loadExrPreview, resolveExrPath, subscribeExrChanged, unwrapExr } from '../services/exr/client';
 import SettingsModal from './SettingsModal';
+import { ExrPreviewLayers } from './ExrPreviewLayers';
 
 const control = 'max-w-48 rounded border border-gray-600 bg-gray-900 px-2 py-1 text-xs text-gray-200';
 export default function ExrViewer({ image, directoryPath, externalZoom, onZoomChange }: { image: IndexedImage; directoryPath?: string; externalZoom?: ZoomState; onZoomChange?: (zoom: number, x: number, y: number) => void }) {
@@ -29,11 +30,14 @@ export default function ExrViewer({ image, directoryPath, externalZoom, onZoomCh
   const [viewport, setViewport] = useState({ width: 800, height: 600 });
   const viewportRef = useRef<HTMLDivElement>(null);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
-  useEffect(() => {
-    if (!externalZoom || !transformRef.current) return;
-    const current = transformRef.current.state;
-    if (Math.abs(current.scale - externalZoom.zoom) > .001 || Math.abs(current.positionX - externalZoom.x) > .1 || Math.abs(current.positionY - externalZoom.y) > .1) transformRef.current.setTransform(externalZoom.x, externalZoom.y, externalZoom.zoom, 0);
+  const syncExternalZoom = useCallback((instance: ReactZoomPanPinchRef) => {
+    if (!externalZoom) return;
+    const current = instance.state;
+    if (Math.abs(current.scale - externalZoom.zoom) > .001 || Math.abs(current.positionX - externalZoom.x) > .1 || Math.abs(current.positionY - externalZoom.y) > .1) instance.setTransform(externalZoom.x, externalZoom.y, externalZoom.zoom, 0);
   }, [externalZoom]);
+  useEffect(() => {
+    if (transformRef.current) syncExternalZoom(transformRef.current);
+  }, [syncExternalZoom]);
   useEffect(() => subscribeExrChanged(() => setRevision(n => n + 1)), []);
   useEffect(() => {
     if (!viewportRef.current) return;
@@ -115,12 +119,11 @@ export default function ExrViewer({ image, directoryPath, externalZoom, onZoomCh
       <button className={`${control} ml-auto`} onClick={() => setSettingsOpen(true)}>EXR settings</button>
     </div>
     <div className="relative min-h-0 flex-1 overflow-hidden" ref={viewportRef}>
-      {overview && <TransformWrapper ref={transformRef} key={`${image.id}:${partIndex}`} minScale={1} maxScale={64} centerOnInit onTransformed={(_, state) => { setView({ scale: state.scale, x: state.positionX, y: state.positionY }); onZoomChange?.(state.scale, state.positionX, state.positionY); }}>
+      {overview && <TransformWrapper ref={transformRef} key={`${image.id}:${partIndex}`} minScale={1} maxScale={64} centerOnInit={!externalZoom} onInit={syncExternalZoom} onTransformed={(_, state) => { setView({ scale: state.scale, x: state.positionX, y: state.positionY }); onZoomChange?.(state.scale, state.positionX, state.positionY); }}>
         {({ zoomIn, zoomOut, resetTransform }) => <>
           <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }} contentStyle={{ width: fitWidth, height: fitHeight }}>
             <div className="relative shrink-0" style={{ width: fitWidth, height: fitHeight, background: 'repeating-conic-gradient(#222 0% 25%, #333 0% 50%) 0 / 16px 16px' }}>
-              <img src={overview.url} alt={image.name} draggable={false} className="h-full w-full" />
-              {detail && detailRegion && <img src={detail.url} alt="EXR inspection region" draggable={false} className="absolute" style={{ left: detailRegion.x / sourceWidth * fitWidth, top: detailRegion.y / sourceHeight * fitHeight, width: detailRegion.width / sourceWidth * fitWidth, height: detailRegion.height / sourceHeight * fitHeight }} />}
+              <ExrPreviewLayers overviewUrl={overview.url} detailUrl={detail?.url} region={detailRegion} width={sourceWidth} height={sourceHeight} name={image.name} />
             </div>
           </TransformComponent>
           <div className="absolute bottom-2 left-2 flex gap-2"><button className={control} onClick={() => zoomOut()}>−</button><button className={control} onClick={() => zoomIn()}>+</button><button className={control} onClick={() => resetTransform()}>Fit</button></div>

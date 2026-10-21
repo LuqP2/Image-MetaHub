@@ -167,7 +167,9 @@ static json render(const json& request) {
   const double scale=std::min(1.0,std::min(maxEdge/(rw*double(aspect)),maxEdge/double(rh)));
   const int width=std::max(1,int(std::round(rw*aspect*scale))),height=std::max(1,int(std::round(rh*scale)));
   ensure(uint64_t(width)*height*4<=64*1024*1024,"EXR preview exceeds memory budget");
-  auto cache=OIIO::ImageCache::create(false);
+  // OIIO 3.1 returns a shared_ptr with resource cleanup on scope exit, including
+  // exceptions. Keep the owner explicit: this private cache is never retained.
+  std::shared_ptr<OIIO::ImageCache> cache=OIIO::ImageCache::create(false);
   cache->attribute("max_memory_MB",128.0f); cache->attribute("max_open_files",4); cache->attribute("autotile",64);
   cache->attribute("threads",2);
   auto read = [&](int x,int y,int c,OIIO::TypeDesc type,void* value) {
