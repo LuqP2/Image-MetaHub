@@ -49,9 +49,10 @@ import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal
 import { transferIndexedImages } from '../services/fileTransferService';
 import { toggleRejectedCandidates, REJECTED_TAG } from '../services/candidateActions';
 import { thumbnailManager } from '../services/thumbnailManager';
+import { openExrSettings } from '../services/exr/client';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
-import { getFileExtension, isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { canEditRasterFile, isExrFileName, isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import Model3DThumbnail from './Model3DThumbnail';
 import { groupImages, type ImageGroup, type ImageGroupByMode, type ImageGroupingSortOrder } from '../utils/imageGrouping';
 import {
@@ -612,7 +613,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
               <svg className="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
-              <p className="text-xs">Preview unavailable</p>
+              <p className="text-xs">{isExrFileName(image.name) ? thumbnail?.thumbnailError || 'EXR preview unavailable' : 'Preview unavailable'}</p>
+              {isExrFileName(image.name) && <button className="mt-2 rounded border border-gray-600 px-2 py-1 text-xs" onClick={event => { event.stopPropagation(); openExrSettings(); }}>EXR settings</button>}
             </div>
           </div>
         ) : isAudio ? (
@@ -1547,7 +1549,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) ||
       isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) ||
       isModel3DFileName(contextMenu.image.name, contextMenu.image.fileType) ||
-      getFileExtension(contextMenu.image.name) === '.gif'
+      !canEditRasterFile(contextMenu.image.name)
     ) {
       return;
     }
@@ -1617,7 +1619,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     !isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) &&
     !isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) &&
     !isModel3DFileName(contextMenu.image.name, contextMenu.image.fileType) &&
-    getFileExtension(contextMenu.image.name) !== '.gif',
+    canEditRasterFile(contextMenu.image.name),
   );
 
   const getContextTargetImages = useCallback(() => {

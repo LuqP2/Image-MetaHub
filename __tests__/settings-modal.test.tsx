@@ -14,10 +14,22 @@ describe('SettingsModal', () => {
     cleanup();
   });
 
-  it('maps the legacy general tab to the Library panel', () => {
+  it('places EXR under General optional components without a dedicated navigation tab', () => {
     render(<SettingsModal isOpen={true} onClose={() => {}} initialTab="general" />);
 
-    expect(screen.getByRole('heading', { name: 'Library' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'General' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Optional components' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'EXR / OpenColorIO' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'EXR / OpenColorIO' })).toBeNull();
+  });
+
+  it('focuses the EXR component when opened from a preview shortcut', () => {
+    const scroll = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scroll });
+    render(<SettingsModal isOpen={true} onClose={() => {}} initialTab="general" focusSection="exr" />);
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('EXR / OpenColorIO');
+    expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
   });
 
   it('maps the legacy hotkeys tab to the Shortcuts panel', () => {

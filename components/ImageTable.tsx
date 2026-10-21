@@ -25,7 +25,7 @@ import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import RenameImageModal from './RenameImageModal';
-import { getFileExtension, isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { canEditRasterFile, isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import Model3DThumbnail from './Model3DThumbnail';
 import { groupImages, type ImageGroupByMode, type ImageGroupingSortOrder, type ImageGroupRenderItem } from '../utils/imageGrouping';
 import { clearInternalImageDragData, setInternalImageDragData } from '../utils/internalImageDrag';
@@ -228,7 +228,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
       isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) ||
       isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) ||
       isModel3DFileName(contextMenu.image.name, contextMenu.image.fileType) ||
-      getFileExtension(contextMenu.image.name) === '.gif'
+      !canEditRasterFile(contextMenu.image.name)
     ) {
       return;
     }
@@ -262,7 +262,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
     !isVideoFileName(contextMenu.image.name, contextMenu.image.fileType) &&
     !isAudioFileName(contextMenu.image.name, contextMenu.image.fileType) &&
     !isModel3DFileName(contextMenu.image.name, contextMenu.image.fileType) &&
-    getFileExtension(contextMenu.image.name) !== '.gif',
+    canEditRasterFile(contextMenu.image.name),
   );
 
   const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {

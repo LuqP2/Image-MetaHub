@@ -457,6 +457,24 @@ const electronAPI = {
   statEmbeddingIndex: (args) => ipcRenderer.invoke('stat-embedding-index', args),
   deleteEmbeddingIndex: (args) => ipcRenderer.invoke('delete-embedding-index', args),
   getEmbeddingModelStatus: (args) => ipcRenderer.invoke('get-embedding-model-status', args),
+  exr: {
+    status: () => ipcRenderer.invoke('exr-status'),
+    install: () => ipcRenderer.invoke('exr-install'),
+    cancelInstall: () => ipcRenderer.invoke('exr-cancel-install'),
+    remove: () => ipcRenderer.invoke('exr-remove'),
+    settings: () => ipcRenderer.invoke('exr-settings'),
+    saveSettings: (settings) => ipcRenderer.invoke('exr-save-settings', settings),
+    chooseConfig: () => ipcRenderer.invoke('exr-choose-config'),
+    config: (config) => ipcRenderer.invoke('exr-config', config),
+    inspect: (filePath) => ipcRenderer.invoke('exr-inspect', filePath),
+    preview: (request) => ipcRenderer.invoke('exr-preview', request),
+    cancel: (requestId) => { void ipcRenderer.invoke('exr-cancel', requestId); },
+    onChanged: (callback) => {
+      const listener = (_event, status) => callback(status);
+      ipcRenderer.on('exr-changed', listener);
+      return () => ipcRenderer.removeListener('exr-changed', listener);
+    },
+  },
   downloadEmbeddingModel: (args) => ipcRenderer.invoke('download-embedding-model', args),
   cancelEmbeddingModelDownload: () => ipcRenderer.invoke('cancel-embedding-model-download'),
   deleteEmbeddingModel: (args) => ipcRenderer.invoke('delete-embedding-model', args),

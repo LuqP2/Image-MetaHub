@@ -1,3 +1,5 @@
+import ExrViewer from './ExrViewer';
+import { isExrFileName } from '../utils/mediaTypes.js';
 import React, { useState, useEffect, useRef, FC } from 'react';
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Sparkles, X } from 'lucide-react';
@@ -20,7 +22,8 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
-  const { imageUrl, loadError } = useComparisonImageSource(image, directoryPath);
+  const isExr = isExrFileName(image.name);
+  const { imageUrl, loadError } = useComparisonImageSource(image, directoryPath, isExr);
 
   // Apply external zoom when sync enabled
   useEffect(() => {
@@ -30,6 +33,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
     }
   }, [syncEnabled, externalZoom]);
 
+  if (isExr) return <div className={`relative min-h-0 ${className ?? ''}`} onMouseEnter={() => onHoverChange?.(true)} onMouseLeave={() => onHoverChange?.(false)}><ExrViewer image={image} directoryPath={directoryPath} externalZoom={syncEnabled ? externalZoom : undefined} onZoomChange={onZoomChange} />{onRemove && <button className="absolute bottom-8 right-2 rounded bg-black/75 px-2 py-1 text-xs text-white" onClick={onRemove}>Remove</button>}</div>;
   if (loadError) {
     return (
       <div className={`flex items-center justify-center bg-gray-900/50 ${className ?? ''}`}>

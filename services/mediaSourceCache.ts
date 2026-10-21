@@ -1,3 +1,5 @@
+import { isExrFileName } from '../utils/mediaTypes.js';
+import { loadExrPreview, exrClientRevision } from './exr/client';
 import { IndexedImage } from '../types';
 import { thumbnailManager } from './thumbnailManager';
 import { inferMimeTypeFromName, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
@@ -136,7 +138,10 @@ class MediaSourceCache {
 
     const loading = this.loadSource(image, directoryPath)
       .then(({ url, revoke, detail }) => {
-        this.entries.set(cacheKey, {
+        // EXR URLs refer to a bounded, shared disk cache. Keep only in-flight
+        // deduplication here so revisits validate/regenerate through the owner.
+        if (isExrFileName(image.name)) this.entries.delete(cacheKey);
+        else this.entries.set(cacheKey, {
           url,
           lastAccess: Date.now(),
           revokeOnEvict: revoke,
@@ -183,6 +188,7 @@ class MediaSourceCache {
    * the getOrLoad that follows a render promotes the entry anyway.
    */
   peek(image: IndexedImage, directoryPath?: string): string | null {
+    if (isExrFileName(image.name)) return null;
     // Entries still loading are stored with an empty url, so this also filters those out.
     const entry = this.entries.get(this.getCacheKey(image, directoryPath));
     return entry?.url ? entry.url : null;
@@ -204,13 +210,14 @@ class MediaSourceCache {
   }
 
   private getCacheKey(image: IndexedImage, directoryPath?: string): string {
-    return `${directoryPath || ''}::${image.id}::${image.lastModified}`;
+    return `${directoryPath || ''}::${image.id}::${image.lastModified}${isExrFileName(image.name) ? `::exr:${exrClientRevision()}` : ''}`;
   }
 
   private async loadRendererObjectSource(
     image: IndexedImage,
     directoryPath?: string
   ): Promise<{ url: string; revoke: boolean }> {
+    if (isExrFileName(image.name)) throw new Error('EXR original pixels are not available for image editing.');
     const electronAbsoluteMediaPath = window.electronAPI ? getElectronAbsoluteMediaPath(image) : null;
     const primaryHandle = image.handle;
     const fallbackHandle = image.thumbnailHandle;
@@ -277,6 +284,10 @@ class MediaSourceCache {
     image: IndexedImage,
     directoryPath?: string
   ): Promise<{ url: string; revoke: boolean; detail: Record<string, unknown> & { urlKind: 'stream-url' | 'object-url' } }> {
+    if (isExrFileName(image.name)) {
+      const result = await loadExrPreview(image, directoryPath);
+      return { url: result.url, revoke: false, detail: { urlKind: 'stream-url', sourceMode: 'exr-preview' } };
+    }
     const loadStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const electronAbsoluteMediaPath = window.electronAPI ? getElectronAbsoluteMediaPath(image) : null;
     const primaryHandle = image.handle;

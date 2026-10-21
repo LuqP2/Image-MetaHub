@@ -1,4 +1,5 @@
 import electron from 'electron';
+import { registerExrIpc } from './electron/exrIpc.mjs';
 import { createAtomicCacheChunkWriter } from './electron/atomicCacheChunk.mjs';
 import { attachMainWindowRecovery } from './electron/mainWindowRecovery.mjs';
 import { registerRendererRecoveryTest } from './electron/rendererRecoveryTest.mjs';
@@ -227,6 +228,7 @@ const trimJsonChunkPadding = (value) => {
 };
 
 protocol.registerSchemesAsPrivileged([
+  { scheme: 'imh-exr', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
   { scheme: MODEL_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
   {
     scheme: MEDIA_PROTOCOL_SCHEME,
@@ -437,6 +439,7 @@ const registerMediaProtocol = () => {
       }
 
       const normalizedFilePath = path.resolve(requestedPath);
+      if (path.extname(normalizedFilePath).toLowerCase() === '.exr') { callback({ error: -10 }); return; }
       safeDetails = await getSafeFileDetails(normalizedFilePath);
       if (!isPathAllowed(normalizedFilePath)) {
         console.error('SECURITY VIOLATION: Attempted to load media outside of allowed directories.');
@@ -3482,7 +3485,9 @@ async function createWindow(startupDirectory = null) {
 }
 
 // App event handlers
+let exrRuntime;
 app.whenReady().then(async () => {
+  exrRuntime = registerExrIpc({ app, ipcMain, protocol, dialog, BrowserWindow, isPathAllowed, cacheRoot: getCacheRootPath });
   registerProcessDiagnostics();
   registerMediaProtocol();
   registerThumbnailProtocol();
@@ -6438,6 +6443,7 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('clear-thumbnail-cache', async () => {
     try {
+      await exrRuntime.clearPreviews();
       const rootPath = await getCacheRootPath();
       const cacheDir = path.join(rootPath, 'thumbnails');
       if (fsSync.existsSync(cacheDir)) {
@@ -6453,6 +6459,7 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('clear-library-cache', async () => {
     try {
+      await exrRuntime.clearPreviews();
       const rootPath = await getCacheRootPath();
       const metadataCacheDir = path.join(rootPath, 'json_cache');
       const thumbnailCacheDir = path.join(rootPath, 'thumbnails');
@@ -7673,6 +7680,7 @@ function setupFileOperationHandlers() {
 
   // Handle reading file content
   ipcMain.handle('resolve-media-url', async (event, filePath) => {
+    if (typeof filePath === 'string' && path.extname(filePath).toLowerCase() === '.exr') return { success: false, error: 'EXR files require the color-managed preview service.' };
     let safeDetails = { fileName: null, extension: null, mimeType: null, fileSize: null };
     try {
       if (!filePath) {
@@ -7734,6 +7742,7 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('read-file', async (event, filePath) => {
+    if (typeof filePath === 'string' && path.extname(filePath).toLowerCase() === '.exr') return { success: false, error: 'EXR originals are not read into the renderer.' };
     try {
       if (!filePath) {
         return { success: false, error: 'No file path provided' };
@@ -7976,6 +7985,7 @@ function setupFileOperationHandlers() {
       let scheduledBytes = 0;
       let skippedByLimit = 0;
       const limitedReadPlan = await Promise.all(filePaths.map(async (filePath) => {
+        if (path.extname(filePath).toLowerCase() === '.exr') return { filePath, skip: { success: false, path: filePath, error: 'EXR requires native inspection.', errorType: 'UNSUPPORTED_FORMAT', errorCode: 'EXR_NATIVE_ONLY' } };
         try {
           const stats = await fs.stat(filePath);
           const fileSize = stats.size ?? 0;

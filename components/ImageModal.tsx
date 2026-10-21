@@ -73,6 +73,8 @@ import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal
 import AudioPlayer from './AudioPlayer';
 import ImageAdjustmentPanel from './ImageAdjustmentPanel';
 import Model3DViewer from './Model3DViewer';
+import ExrViewer from './ExrViewer';
+import { isExrFileName, canEditRasterFile } from '../utils/mediaTypes.js';
 import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
 import { getFileExtension, isAudioFileName, isModel3DFileName, isVideoFileName, SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 import { type MediaDiagnosticsContext, useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
@@ -1212,8 +1214,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
   const isModel3D = isModel3DFileName(image.name, image.fileType);
-  const isPlayableMedia = isVideo || isAudio || isModel3D;
-  const canEditImage = !isPlayableMedia && getFileExtension(liveImage.name) !== '.gif';
+  const isExr = isExrFileName(liveImage.name);
+  const isPlayableMedia = isVideo || isAudio || isModel3D || isExr;
+  const canEditImage = !isPlayableMedia && canEditRasterFile(liveImage.name);
   const canOverwriteEditedImage = canEditImage && getFileExtension(liveImage.name) === '.png';
   const showA1111Actions = !isPlayableMedia && a1111Enabled;
   const showComfyUIActions = !isPlayableMedia && comfyUIEnabled;
@@ -2779,7 +2782,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     const loadImage = async () => {
-      if (!isMounted) return;
+      if (!isMounted || isExr) return;
 
       const electronAbsoluteMediaPath = window.electronAPI ? getElectronAbsoluteMediaPath(liveImage) : null;
 
@@ -3774,7 +3777,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
           onMouseLeave={isPlayableMedia ? undefined : handleMouseUp}
           style={{ cursor: !isPlayableMedia && zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
         >
-          {isModel3D ? (
+          {isExr ? (
+            <ExrViewer key={liveImage.id} image={liveImage} directoryPath={directoryPath} />
+          ) : isModel3D ? (
             <div data-no-window-drag="true" className="h-full min-h-0 w-full min-w-0">
               <Model3DViewer
                 key={liveImage.id}
