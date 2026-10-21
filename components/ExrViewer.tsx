@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import type { IndexedImage, ZoomState } from '../types';
 import type { ExrAssetInfo, ExrColorProfile, ExrConfigInfo, ExrMode, ExrPreviewResult } from '../services/exr/contracts';
-import { DEFAULT_EXR_PROFILE, EXR_CONFIGS, exrChannelGroups } from '../services/exr/model';
+import { DEFAULT_EXR_PROFILE, EXR_CONFIGS, exrChannelGroups, exrDefaultSelection } from '../services/exr/model';
 import { loadExrPreview, resolveExrPath, subscribeExrChanged, unwrapExr } from '../services/exr/client';
 import SettingsModal from './SettingsModal';
 import { ExrPreviewLayers } from './ExrPreviewLayers';
@@ -56,8 +56,9 @@ export default function ExrViewer({ image, directoryPath, externalZoom, onZoomCh
       if (!status.installed || !status.enabled) throw new Error('EXR support not installed or disabled. Open EXR / OpenColorIO settings to enable it.');
       const info = unwrapExr(await api.inspect(await resolveExrPath(image, directoryPath)));
       if (!current) return;
-      const part = info.parts.find(p => !p.deep && exrChannelGroups(p).some(g => g.channels.length >= 3)) ?? info.parts.find(p => !p.deep) ?? info.parts[0];
-      setAsset(info); setPartIndex(part.index); setChannels(exrChannelGroups(part)[0]?.channels ?? []);
+      const selected = exrDefaultSelection(info.parts);
+      const part = selected?.part ?? info.parts[0];
+      setAsset(info); setPartIndex(part.index); setChannels(selected?.channels ?? []);
       setProfile(info.profile ?? DEFAULT_EXR_PROFILE);
     })().catch(e => { if (current) setError(e.message); });
     return () => { current = false; };

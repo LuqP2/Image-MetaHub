@@ -7,6 +7,28 @@ export const EXR_CONFIGS = [
 export const DEFAULT_EXR_PROFILE: ExrColorProfile = {
   config: EXR_CONFIGS[0].id, input: 'auto', display: '', view: '',
 };
+// Match native select(): beauty/combined RGB, unprefixed RGB, layered RGB,
+// then the first raw channel. Strictly greater scores preserve native tie order.
+export function exrDefaultSelection(parts: ExrPart[]): { part: ExrPart; channels: string[] } | undefined {
+  let selected: { part: ExrPart; channels: string[] } | undefined;
+  let best = -1;
+  for (const part of parts) {
+    if (part.deep) continue;
+    const names = [...new Set(part.channels.map(c => c.name))].sort();
+    const available = new Set(names);
+    for (const name of names) {
+      const prefix = name.slice(0, name.lastIndexOf('.') + 1);
+      if (name.slice(prefix.length) !== 'R' || !available.has(`${prefix}G`) || !available.has(`${prefix}B`)) continue;
+      const score = /beauty|combined/i.test(prefix + part.name) ? 3 : prefix === '' ? 2 : 1;
+      if (score > best) {
+        best = score;
+        selected = { part, channels: ['R', 'G', 'B', ...(available.has(`${prefix}A`) ? ['A'] : [])].map(c => prefix + c) };
+      }
+    }
+    if (best < 0 && names.length) { selected = { part, channels: [names[0]] }; best = 0; }
+  }
+  return selected;
+}
 export function exrChannelGroups(part: ExrPart): Array<{ name: string; channels: string[] }> {
   const groups = new Map<string, string[]>();
   for (const { name } of part.channels) {

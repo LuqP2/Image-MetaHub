@@ -32,13 +32,14 @@ describe('EXR comparison zoom', () => {
     const preview = vi.fn(() => new Promise(resolve => { complete = resolve; }));
     Object.defineProperty(window, 'electronAPI', { configurable: true, value: { exr: {
       status: vi.fn(async () => ({ success: true, value: { installed: true, enabled: true } })),
-      inspect: vi.fn(async () => ({ success: true, value: { parts: [{ index: 0, width: 100, height: 100, pixelAspectRatio: 1, deep: false, channels: ['R', 'G', 'B'].map(name => ({ name, type: 'float' })) }] } })),
+      inspect: vi.fn(async () => ({ success: true, value: { parts: ['specular', 'beauty'].map((name, index) => ({ index, name, width: 100, height: 100, pixelAspectRatio: 1, deep: false, channels: ['R', 'G', 'B'].map(name => ({ name, type: 'float' })) })) } })),
       config: vi.fn(async () => ({ success: true, value: { spaces: [], displays: [] } })),
       preview, cancel: vi.fn(), onChanged: vi.fn(() => () => {}),
     } } });
     const image = { id: 'renders::synthetic.exr', name: 'synthetic.exr', handle: { _filePath: 'D:\\renders\\synthetic.exr' } } as unknown as IndexedImage;
     render(<ExrViewer image={image} externalZoom={{ zoom: 3, x: -100, y: -80 }} />);
     await waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ part: 1, channels: ['R', 'G', 'B'] }));
     expect(zoom.setTransform).not.toHaveBeenCalled();
     await act(async () => complete({ success: true, value: { url: 'imh-exr://local/synthetic', width: 100, height: 100, mode: 'color' } }));
     await waitFor(() => expect(zoom.setTransform).toHaveBeenCalledWith(-100, -80, 3, 0));
