@@ -61,6 +61,14 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
     if (!policy) return false;
     try { return (await fs.readFile(path.join(versionRoot, 'verified.json'), 'utf8')) === JSON.stringify(policy); } catch { return false; }
   }
+  function terminate(process) {
+    if (!process || process.exitCode !== null || process.signalCode !== null) return Promise.resolve();
+    return new Promise(resolve => {
+      const timer = setTimeout(resolve, 3000); timer.unref?.();
+      process.once('exit', () => { clearTimeout(timer); resolve(); });
+      process.kill();
+    });
+  }
   async function status() {
     const saved = await getSettings();
     return { installed: await installed(), enabled: saved.enabled, available: Boolean(policy), version: EXR_RUNTIME_VERSION, platform, downloadBytes: policy?.files.reduce((sum, f) => sum + f.downloadSize, 0) ?? 0, ...progress };
@@ -69,9 +77,10 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
     generation++;
     clearTimeout(idleTimer);
     const process = child; child = null;
-    process?.kill();
+    const closing = terminate(process);
     for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(fail(reason, 'CANCELLED')); }
     pending.clear();
+    return closing;
   }
   function clearDependencyWatches() {
     for (const file of dependencyWatches) fsSync.unwatchFile(file);
@@ -112,7 +121,8 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
         const entry = pending.get(response.id);
         if (!entry) return;
         pending.delete(response.id); clearTimeout(entry.timer);
-        response.success ? entry.resolve(response.value) : entry.reject(fail(response.error || 'EXR processing failed', response.code));
+        if (response.success) entry.resolve(response.value);
+        else entry.reject(fail(response.error || 'EXR processing failed', response.code));
       } catch { process.kill(); }
     });
     process.stderr.on('data', () => {});
@@ -121,6 +131,7 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
       for (const [id, entry] of pending) if (entry.process === process) { clearTimeout(entry.timer); entry.reject(fail(errorText(error || 'EXR helper exited'), 'RUNTIME_EXIT')); pending.delete(id); }
     };
     process.on('error', closed); process.on('exit', () => closed());
+    process.stdin.on('error', closed);
     return process;
   }
   async function start() {
@@ -163,6 +174,7 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
   }
   async function assertFile(filePath) {
     if (typeof filePath !== 'string' || path.extname(filePath).toLowerCase() !== '.exr') throw fail('Invalid EXR path');
+    if (!isPathAllowed(path.resolve(filePath))) throw fail('EXR path is outside authorized directories', 'ACCESS_DENIED');
     const real = await fs.realpath(filePath);
     if (!isPathAllowed(real)) throw fail('EXR path is outside authorized directories', 'ACCESS_DENIED');
     return real;
@@ -200,7 +212,7 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
       await fs.mkdir(userDataPath, { recursive: true });
       await fs.writeFile(`${settingsPath}.part`, JSON.stringify(settings)); await fs.rename(`${settingsPath}.part`, settingsPath);
     } catch (error) { settings = saved; throw error; }
-    stop('EXR settings changed');
+    await stop('EXR settings changed');
     clearDependencyWatches();
     for (const entry of queue.splice(0)) entry.reject(fail('EXR settings changed', 'CANCELLED'));
     previewFiles.clear(); changed();
@@ -237,12 +249,12 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
         await fs.writeFile(path.join(staging, file.name), bytes, { mode: file.name === policy.executable ? 0o755 : 0o644 });
       }
       signal.throwIfAborted(); progress = { phase: 'installing', receivedBytes }; changed(await status());
-      stop();
+      await stop();
       const test = launch(staging);
       try {
         const result = await call(test, { op: 'self-test' }, 30000);
         if (result.protocol !== EXR_PROTOCOL_VERSION || result.ok !== true) throw fail('EXR runtime self-test failed');
-      } finally { test.kill(); }
+      } finally { await terminate(test); }
       signal.throwIfAborted();
       await fs.writeFile(path.join(staging, 'verified.json'), JSON.stringify(policy));
       const backup = `${versionRoot}.previous`;
@@ -306,7 +318,7 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
       const entries = await fs.readdir(cache, { withFileTypes: true });
       const files = await Promise.all(entries.filter(e => e.name.endsWith('.png')).map(async e => ({ file: path.join(cache, e.name), stat: await fs.stat(path.join(cache, e.name)).catch(() => null) })));
       files.sort((a,b) => (b.stat?.mtimeMs ?? 0) - (a.stat?.mtimeMs ?? 0));
-      for (const old of files.slice(24)) { if (old.file !== output) { await fs.rm(old.file, { force: true }); await fs.rm(`${old.file}.info`, { force: true }); } }
+      for (const old of files.slice(24)) { if (old.file !== output) { previewFiles.delete(path.basename(old.file, '.png')); await fs.rm(old.file, { force: true }); await fs.rm(`${old.file}.info`, { force: true }); } }
     }
     return { ...result, url: `imh-exr://local/${key}` };
   }
@@ -329,6 +341,14 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
       await saveSettings({ ...await getSettings(), enabled: false });
       await fs.rm(versionRoot, { recursive: true, force: true }); progress = undefined; changed(); return null;
     },
-    dispose: () => { installController?.abort(); clearDependencyWatches(); stop(); for (const entry of queue.splice(0)) entry.reject(fail('Cancelled', 'CANCELLED')); },
+    async clearPreviews() {
+      await stop('EXR preview cache cleared');
+      for (const entry of queue.splice(0)) entry.reject(fail('Cancelled', 'CANCELLED'));
+      previewFiles.clear();
+      const cache = await cacheRoot();
+      for (const name of ['exr-thumbnails', 'exr-previews']) await fs.rm(path.join(cache, name), { recursive: true, force: true });
+      changed();
+    },
+    dispose: () => { installController?.abort(); clearDependencyWatches(); const closing = stop(); for (const entry of queue.splice(0)) entry.reject(fail('Cancelled', 'CANCELLED')); return closing; },
   };
 }

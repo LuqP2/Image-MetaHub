@@ -1,6 +1,9 @@
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/imagecache.h>
 #include <OpenColorIO/OpenColorIO.h>
+#include <OpenEXR/ImfMultiPartInputFile.h>
+#include <OpenEXR/ImfHeader.h>
+#include <OpenEXR/ImfStringAttribute.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <array>
@@ -190,12 +193,22 @@ static json render(const json& request) {
   if(mode=="color") {
     const auto profile=request.at("profile"); auto cfg=loadConfig(text(profile,"config")); inputName=text(profile,"input","auto");
     if(inputName=="auto") {
-      inputName=spec.get_string_attribute("colorInteropID");
-      if(inputName.empty()) inputName=spec.get_string_attribute("oiio:ColorSpace");
-      assumed=spec.find_attribute("chromaticities")==nullptr && spec.get_string_attribute("colorInteropID").empty();
+      inputName.clear();
+      // OIIO may synthesize a default oiio:ColorSpace. Read actual header
+      // declarations first so that synthesized values never suppress file rules.
+      Imf::MultiPartInputFile headers(filename.c_str(),2);
+      const auto& header=headers.header(selected.part);
+      for(const auto* key:{"colorInteropID","ocio:colorspace","oiio:ColorSpace","colorspace"}) {
+        const auto* attribute=header.findTypedAttribute<Imf::StringAttribute>(key);
+        if(attribute && cfg->getColorSpace(attribute->value().c_str())) { inputName=attribute->value(); break; }
+      }
       if(inputName.empty() || !cfg->getColorSpace(inputName.c_str())) {
         size_t rule=0; const auto match=cfg->getColorSpaceFromFilepath(filename.c_str(),rule);
         inputName=match && rule+1<cfg->getFileRules()->getNumEntries() ? match : "";
+      }
+      if(inputName.empty() && spec.find_attribute("chromaticities")) {
+        const auto inferred=spec.get_string_attribute("oiio:ColorSpace");
+        if(cfg->getColorSpace(inferred.c_str())) inputName=inferred;
       }
       if(inputName.empty() || !cfg->getColorSpace(inputName.c_str())) {
         for(const auto& name:{"Linear Rec.709 (sRGB)","Linear Rec.709 (sRGB) - Scene-referred","lin_rec709_scene"}) if(cfg->getColorSpace(name)) { inputName=name;break; }

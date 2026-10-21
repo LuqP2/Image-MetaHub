@@ -64,8 +64,14 @@ jobs:
         run: node scripts/packageExrRuntime.mjs --platform ${{ matrix.platform }} --input .tmp/exr-install --out .tmp/exr-assets --licenses .tmp/exr-build/vcpkg_installed/${{ matrix.triplet }}/share
       - uses: actions/upload-artifact@v4
         with:
-          name: exr-${{ matrix.platform }}
+          name: exr-package-${{ matrix.platform }}
           path: .tmp/exr-assets/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exr-fixtures-${{ matrix.platform }}
+          path: |
+            .tmp/exr-fixtures/*.exr
+            .tmp/exr-fixtures/numerical-results.json
   assemble:
     if: github.event_name == 'workflow_dispatch' && inputs.platform == 'all'
     needs: native
@@ -77,7 +83,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       - uses: actions/download-artifact@v4
-        with: { pattern: 'exr-*', path: .tmp/exr-assets, merge-multiple: true }
+        with: { pattern: 'exr-package-*', path: .tmp/exr-assets, merge-multiple: true }
       - run: node scripts/assembleExrRuntimePolicy.mjs .tmp/exr-assets .tmp/exr-assets/exrRuntimePolicy.generated.mjs
       - uses: actions/upload-artifact@v4
         with: { name: exr-release, path: '.tmp/exr-assets/*' }

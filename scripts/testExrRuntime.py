@@ -70,6 +70,36 @@ try:
         assert pixels[0,0,3] in (127,128)
         assert info['mode'] == 'color'
     assert hashlib.sha256(file.read_bytes()).hexdigest() == original
+    auto_profile = dict(profile, input='auto')
+    declared = write('declared-acescg.exr', {c:np.full((4,4),.18,dtype=np.float16) for c in 'RGB'}, **{'oiio:ColorSpace':'ACEScg'})
+    auto_result, _ = render(declared,profile=auto_profile)
+    assert auto_result['input'] == 'ACEScg' and not auto_result['assumedInput'], auto_result
+    unknown = write('unknown-input.exr', {c:np.full((4,4),.18,dtype=np.float16) for c in 'RGB'})
+    auto_result, _ = render(unknown,profile=auto_profile)
+    assert auto_result['assumedInput'], auto_result
+
+    custom = ocio.Config.CreateFromStream(cfg.serialize())
+    rules = ocio.FileRules()
+    rules.setColorSpace(0,'ACEScg')
+    rules.insertRule(0,'Explicit EXR input','ACEScg','*','exr')
+    custom.setFileRules(rules)
+    custom_path = work / 'custom.ocio'
+    custom_path.write_text(custom.serialize(),encoding='utf-8')
+    auto_result, _ = render(unknown,profile=dict(auto_profile,config=str(custom_path)))
+    assert auto_result['input'] == 'ACEScg' and not auto_result['assumedInput'], auto_result
+    lut = work / 'test.spi1d'
+    lut.write_text('Version 1\nFrom 0.0 1.0\nLength 2\nComponents 1\n{\n0.0\n1.0\n}\n',encoding='utf-8')
+    lut_space = ocio.ColorSpace(ocio.REFERENCE_SPACE_SCENE)
+    lut_space.setName('Test LUT')
+    lut_space.setTransform(ocio.FileTransform(src='test.spi1d'),ocio.COLORSPACE_DIR_TO_REFERENCE)
+    custom.addColorSpace(lut_space)
+    custom.setSearchPath('.')
+    custom_path.write_text(custom.serialize(),encoding='utf-8')
+    before = call('config',config=str(custom_path))
+    lut.write_text('Version 1\nFrom 0.0 1.0\nLength 2\nComponents 1\n{\n0.0\n0.5\n}\n',encoding='utf-8')
+    after = call('config',config=str(custom_path))
+    assert before['fingerprint'] != after['fingerprint']
+    assert str(lut) in after['dependencies']
     _, crop = render(file, profile=profile, region=dict(x=2,y=3,width=3,height=2))
     assert crop.shape == (2,3,4)
 
@@ -117,6 +147,9 @@ try:
     tiles = OpenEXR.TileDescription()
     tiled = write('tiled.exr',{c:np.full((64,64),.2,dtype=np.float16) for c in 'RGB'},type=OpenEXR.tiledimage,tiles=tiles)
     assert render(tiled,profile=profile)[0]['width'] == 64
+    tiled_ids = write('tiled-ids.exr',{'ObjectID':np.tile(ids,(64,16)), 'depth.Z':np.zeros((64,64),dtype=np.float32)},type=OpenEXR.tiledimage,tiles=tiles)
+    _, pixels = render(tiled_ids,channels=['ObjectID'],mode='id')
+    for i,value in enumerate(ids[0]): assert tuple(pixels[0,i,:3]) == id_color(int(value))
     for size in [4096,8192]:
         gray = np.full((size,size),.18,dtype=np.float16)
         large = write(f'synthetic-{size}.exr',{c:gray for c in 'RGB'})
@@ -124,10 +157,19 @@ try:
         assert result['width'] == 2048
         assert render(large,profile=profile,region=dict(x=200,y=300,width=256,height=256))[0]['width'] == 256
         del gray
-    print(json.dumps({'ok':True,'measurements':measurements},indent=2))
+    summary = {'ok':True,'measurements':measurements}
+    (work / 'numerical-results.json').write_text(json.dumps(summary,indent=2),encoding='utf-8')
+    print(json.dumps(summary,indent=2))
 finally:
     helper.stdin.close()
     try: helper.wait(timeout=5)
     except subprocess.TimeoutExpired: helper.kill()
     stderr = helper.stderr.read()
     if stderr: print(stderr)
+    try:
+        import resource
+        import sys
+        rss = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+        print(json.dumps({'helperPeakRssBytes':rss if sys.platform == 'darwin' else rss*1024}))
+    except ImportError:
+        pass
