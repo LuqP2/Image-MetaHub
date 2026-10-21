@@ -62,6 +62,9 @@ jobs:
       - name: Package verified runtime
         shell: bash
         run: node scripts/packageExrRuntime.mjs --platform ${{ matrix.platform }} --input .tmp/exr-install --out .tmp/exr-assets --licenses .tmp/exr-build/vcpkg_installed/${{ matrix.triplet }}/share
+      - name: Install, offline preview and removal smoke test
+        shell: bash
+        run: node scripts/smokeExrInstall.mjs .tmp/exr-assets .tmp/exr-fixtures/rgba-float.exr
       - uses: actions/upload-artifact@v4
         with:
           name: exr-package-${{ matrix.platform }}
