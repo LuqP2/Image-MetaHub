@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -18,6 +19,7 @@ import {
   ImageIcon,
   Info,
   Loader2,
+  ListChecks,
   Package,
   Play,
   RefreshCw,
@@ -51,6 +53,8 @@ import { buildSavedPromptSource } from '../hooks/useSavePrompt';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 
 interface ComfyUIWorkspaceProps {
+  toolbarHost?: HTMLDivElement | null;
+  queueCount?: number;
   onOpenPromptLibrary?: () => void;
   onViewPromptSource?: (path: string) => void | Promise<void>;
   image: IndexedImage | null;
@@ -283,6 +287,8 @@ const getSameOriginUrl = (candidateUrl: string, configuredUrl: string): string =
 };
 
 const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
+  toolbarHost,
+  queueCount = 0,
   image,
   directoryPath,
   navigationImages = [],
@@ -1124,46 +1130,32 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-950">
       {extraction.dialog}
       {saveSelectionStatus && <p role="status" className="shrink-0 border-b border-gray-800 px-3 py-2 text-xs text-accent">{saveSelectionStatus}</p>}
-      <div className="shrink-0 border-b border-gray-800 px-3 py-2">
-          <div className="space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <div
-                    className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs ${connectionClasses}`}
-                    title={`${comfyUILastConnectionStatus === 'connected' ? 'Connected' : loadFailure ? 'Load failed' : 'ComfyUI'} - ${viewState.url || targetUrl}`}
-                  >
-                    {viewState.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
-                  </div>
-                  <h2 className="truncate text-sm font-semibold text-gray-100">ComfyUI Workspace</h2>
-                </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  {connectionMessage || comfyUILastConnectionStatus}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <button onClick={() => window.electronAPI?.comfyUIViewGoBack?.()} disabled={!viewState.canGoBack} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Back" aria-label="Back">
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-                <button onClick={() => window.electronAPI?.comfyUIViewGoForward?.()} disabled={!viewState.canGoForward} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Forward" aria-label="Forward">
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-                <button onClick={openExternally} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open externally" aria-label="Open externally">
-                  <ExternalLink className="h-4 w-4" />
-                </button>
-                <button onClick={reloadEmbeddedView} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Refresh ComfyUI" aria-label="Refresh ComfyUI">
-                  <RefreshCw className="h-4 w-4" />
-                </button>
-                <button onClick={togglePanelCollapsed} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Hide context panel" aria-label="Hide context panel">
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <button onClick={onOpenSettings} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open integration settings" aria-label="Open integration settings">
-                  <SlidersHorizontal className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-      </div>
+      {toolbarHost && createPortal(
+        <div className="flex items-center gap-1" role="toolbar" aria-label="ComfyUI navigation">
+          <span className={`inline-flex h-5 w-5 items-center justify-center rounded border ${connectionClasses}`} title={connectionMessage || `ComfyUI: ${comfyUILastConnectionStatus}`}>
+            {viewState.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : loadFailure || comfyUILastConnectionStatus === 'error' ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
+          </span>
+          <button onClick={() => window.electronAPI?.comfyUIViewGoBack?.()} disabled={!viewState.canGoBack} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Back" aria-label="Back">
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <button onClick={() => window.electronAPI?.comfyUIViewGoForward?.()} disabled={!viewState.canGoForward} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Forward" aria-label="Forward">
+            <ArrowRight className="h-4 w-4" />
+          </button>
+          <button onClick={openExternally} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open externally" aria-label="Open externally">
+            <ExternalLink className="h-4 w-4" />
+          </button>
+          <button onClick={reloadEmbeddedView} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Refresh ComfyUI" aria-label="Refresh ComfyUI">
+            <RefreshCw className="h-4 w-4" />
+          </button>
+          <button onClick={onOpenSettings} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open integration settings" aria-label="Open integration settings">
+            <SlidersHorizontal className="h-4 w-4" />
+          </button>
+          <button onClick={onOpenQueue} className="relative rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open generation queue" aria-label="Open generation queue">
+            <ListChecks className="h-4 w-4" />
+            {queueCount > 0 && <span className="absolute -right-1 -top-1 rounded-full bg-blue-500 px-1 text-[10px] font-bold text-gray-950">{queueCount}</span>}
+          </button>
+        </div>, toolbarHost
+      )}
       <div className="flex min-h-0 flex-1">
         <aside
           className="flex min-h-0 shrink-0 flex-col border-r border-gray-800 bg-gray-900/95"

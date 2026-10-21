@@ -16,6 +16,7 @@ import BrandLogo from './BrandLogo';
 type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor';
 
 interface HeaderProps {
+    workspaceToolbarRef?: React.Ref<HTMLDivElement>;
     onOpenSettings: () => void;
     onOpenLicense: () => void;
     onOpenTrialExtension?: () => void;
@@ -27,6 +28,7 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({
+    workspaceToolbarRef,
     onOpenSettings,
     onOpenLicense,
     onOpenTrialExtension,
@@ -428,6 +430,14 @@ const Header: React.FC<HeaderProps> = ({
                       title={isComfyUITab ? 'Open ComfyUI, or drop an image here to load its workflow' : undefined}
                     >
                       <span>{tab.label}</span>
+                      {isComfyUITab && libraryView === 'comfyui' && (
+                        <span
+                          role="status"
+                          aria-label={`ComfyUI: ${comfyUILastConnectionStatus}`}
+                          title={`ComfyUI: ${comfyUILastConnectionStatus}`}
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${comfyUILastConnectionStatus === 'connected' ? 'bg-green-400' : comfyUILastConnectionStatus === 'error' ? 'bg-red-400' : 'bg-gray-500'}`}
+                        />
+                      )}
                     </button>
                     </React.Fragment>
                   );
@@ -456,6 +466,7 @@ const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          {libraryView === 'comfyui' && <div ref={workspaceToolbarRef} className="flex items-center gap-1" />}
           <span className="app-top-divider" />
 
           <button
