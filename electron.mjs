@@ -721,6 +721,7 @@ function buildUpdateNotificationPayload(info = {}) {
     releaseName: info.releaseName,
     releaseNotes,
     releaseDate: info.releaseDate,
+    manualDownload: process.platform === 'darwin',
     changelogUrl: `https://github.com/LuqP2/Image-MetaHub/releases/tag/v${version}`,
   };
 }
@@ -7379,6 +7380,14 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('download-update', async () => {
+    if (process.platform === 'darwin') {
+      try {
+        await shell.openExternal(LATEST_RELEASE_URL);
+        return { success: true, openedExternal: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
     if (!desktopRuntime.autoUpdateSupported) {
       return {
         success: false,
@@ -7403,6 +7412,9 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('install-update', async () => {
+    if (process.platform === 'darwin') {
+      return { success: false, error: 'macOS updates must be installed manually from GitHub Releases.' };
+    }
     if (!desktopRuntime.autoUpdateSupported) {
       return {
         success: false,

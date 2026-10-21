@@ -325,6 +325,7 @@ export interface UpdateReleaseNote {
 
 export interface UpdateNotificationPayload {
   version: string;
+  manualDownload?: boolean;
   releaseName?: string;
   releaseNotes?: string | UpdateReleaseNote[];
   releaseDate?: string;
@@ -648,7 +649,7 @@ export interface ElectronAPI {
   refreshLicense: () => Promise<LicenseClientStatus>;
   deactivateLicense: () => Promise<LicenseClientStatus>;
   markChangelogViewed: (version: string) => Promise<{ success: boolean; error?: string }>;
-  downloadUpdate: () => Promise<{ success: boolean; error?: string; errorCode?: string }>;
+  downloadUpdate: () => Promise<{ success: boolean; openedExternal?: boolean; error?: string; errorCode?: string }>;
   installUpdate: () => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   skipUpdateVersion: (version: string) => Promise<{ success: boolean; error?: string }>;
   launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
