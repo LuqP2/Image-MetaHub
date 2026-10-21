@@ -27,7 +27,7 @@ import {
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { getFileExtension, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { canEditRasterFile, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import { SmartCollection, type IndexedImage } from '../types';
 
 import ActiveFilters from './ActiveFilters';
@@ -45,7 +45,7 @@ const canOpenImageEditorForImage = (image?: IndexedImage): boolean => (
   Boolean(image)
   && !isVideoFileName(image!.name, image!.fileType)
   && !isAudioFileName(image!.name, image!.fileType)
-  && getFileExtension(image!.name) !== '.gif'
+  && canEditRasterFile(image!.name)
 );
 
 interface GridToolbarProps {

@@ -1,6 +1,8 @@
+import { GeneralSettingsPanel } from './settings/GeneralSettingsPanel';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
+  Settings,
   Eye,
   Keyboard,
   Link2,
@@ -49,6 +51,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const navigationItems = useMemo(
     () => [
+      { id: 'general' as const, label: 'General', icon: Settings },
       { id: 'library' as const, label: 'Library', icon: BookOpen },
       { id: 'viewer' as const, label: 'Viewer', icon: Eye },
       { id: 'integrations' as const, label: 'Integrations', icon: Link2 },
@@ -62,6 +65,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const activePanel = (() => {
     switch (activeTab) {
+      case 'general': return <GeneralSettingsPanel focusSection={focusSection} />;
       case 'library':
         return <LibrarySettingsPanel onClose={onClose} />;
       case 'viewer':

@@ -93,7 +93,7 @@ import {
   normalizeFilesystemPath,
 } from './utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from './utils/directoryActivity';
-import { resolveMediaType } from './utils/mediaTypes.js';
+import { resolveMediaType, canEditRasterFile } from './utils/mediaTypes.js';
 import { resolveNavigationAfterDeletion } from './utils/viewerNavigation';
 import { FileOperations } from './services/fileOperations';
 import { renameIndexedImage } from './services/imageRenameService';
@@ -884,6 +884,12 @@ export default function App() {
     setSettingsSection(section);
     setIsSettingsModalOpen(true);
   };
+
+  useEffect(() => {
+    const open = () => { setSettingsTab('general'); setSettingsSection('exr'); setIsSettingsModalOpen(true); };
+    window.addEventListener('imh-open-exr-settings', open);
+    return () => window.removeEventListener('imh-open-exr-settings', open);
+  }, []);
 
   const handleOpenHotkeySettings = () => {
     setIsHotkeyHelpOpen(false);
@@ -2638,6 +2644,7 @@ export default function App() {
   }, []);
 
   const handleOpenImageEditor = useCallback((image: IndexedImage, navigationImages?: IndexedImage[]) => {
+    if (!canEditRasterFile(image.name)) return;
     if (!canUseImageEditor) {
       showProModal('image_editor');
       return;

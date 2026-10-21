@@ -475,6 +475,7 @@ export interface TrialExtensionActivationResult {
 }
 
 export interface ElectronAPI {
+  exr: import('./services/exr/contracts').ExrAPI;
   enrichmentMemoryDiagnosticsEnabled?: boolean;
   reportEnrichmentMemory?: (sample: {
     event: 'start' | 'checkpoint' | 'complete' | 'cancelled';

@@ -1,4 +1,5 @@
 import type { EmbeddingModelProgress, IndexedImage } from '../../types';
+import { isExrFileName } from '../../utils/mediaTypes.js';
 import { getThumbnailCacheCandidate } from '../thumbnailCache';
 import {
   DEFAULT_EMBEDDING_MODEL_KEY,
@@ -282,6 +283,7 @@ const getFilePath = (image: IndexedImage): string | undefined =>
  * so the backfill doubles as a thumbnail warm-up.
  */
 export const buildEmbedItems = async (images: IndexedImage[]): Promise<EmbedItem[]> => {
+  images = images.filter(image => !isExrFileName(image.name));
   const api = getElectronAPI();
   const candidates = images.map((image) => getThumbnailCacheCandidate(image));
   const resolved = await api.resolveThumbnailCacheBatch({ candidates });

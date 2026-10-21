@@ -3,7 +3,7 @@ import path from 'node:path';
 import { PROVENANCE_DIRECTORY_NAME } from './provenancePaths.mjs';
 
 export async function resetUserDataContents({ userDataDir, preservedFileNames = new Set() }) {
-  const protectedEntries = new Set([PROVENANCE_DIRECTORY_NAME, 'model-manager-user-data', ...preservedFileNames]);
+  const protectedEntries = new Set([PROVENANCE_DIRECTORY_NAME, 'model-manager-user-data', 'components', 'exr-settings.json', ...preservedFileNames]);
   try {
     const files = await fs.readdir(userDataDir);
     for (const file of files) {

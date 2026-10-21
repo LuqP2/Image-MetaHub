@@ -14,6 +14,8 @@ import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { traceCacheDebug } from '../utils/cacheDebugTrace';
 import { buildSupportedMediaRegex, getFileExtension, inferMimeTypeFromName, isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import { isExrFileName } from '../utils/mediaTypes.js';
+import { indexExrEntry } from './exr/indexing';
 import { normalizeBirthtimeMs, resolveFileSortDate } from '../utils/fileTimestamps.js';
 import { getAvifDimensions, isAvifBuffer, parseAvifMetadata } from '../utils/avifMetadata.mjs';
 import { applyImageMetaHubAvifExtension } from '../utils/imageMetaHubAvifExtension.mjs';
@@ -1600,6 +1602,7 @@ async function processSingleFileOptimized(
   options: { compactRawMetadata?: boolean } = {}
 ): Promise<IndexedImage | null> {
   try {
+    if (isExrFileName(fileEntry.handle.name)) return indexExrEntry(fileEntry, directoryId);
     const totalStart = profile ? performance.now() : 0;
     const parseStart = profile ? performance.now() : 0;
     let rawMetadata: ImageMetadata | null;
@@ -2099,7 +2102,7 @@ export async function reparseIndexedImage(
 
   const absolutePath = joined.path;
   let fileData: ArrayBuffer | undefined;
-  if (!isModel3D) {
+  if (!isModel3D && !isExrFileName(image.name)) {
     const readResult = await window.electronAPI.readFile(absolutePath);
     if (!readResult.success || !readResult.data) {
       throw new Error(readResult.error || 'Failed to read the image file.');
@@ -3346,8 +3349,12 @@ export async function processFiles(
 
     if (useOptimizedPath) {
       const batches = chunkArray(queue, FILE_READ_BATCH_SIZE);
-      for (const batch of batches) {
+      for (const pendingBatch of batches) {
         if (abortSignal?.aborted) break;
+        const exrEntries = pendingBatch.filter(entry => isExrFileName(entry.source?.handle.name));
+        await asyncPool(concurrencyLimit, exrEntries, iterator);
+        const batch = pendingBatch.filter(entry => !isExrFileName(entry.source?.handle.name));
+        if (batch.length === 0) continue;
         const filePaths = batch
           .map(entry => (entry.source?.handle as ElectronFileHandle)?._filePath)
           .filter((path): path is string => typeof path === 'string' && path.length > 0);

@@ -1,3 +1,4 @@
+import { isExrFileName } from '../utils/mediaTypes.js';
 import { create } from 'zustand';
 import type {
   EmbeddingModelProgress,
@@ -177,6 +178,16 @@ const releasePause = (): void => {
   for (const resolve of resolvers) resolve();
 };
 
+const semanticCounts = new WeakMap<object, number>();
+const semanticImageCount = (): number => {
+  const images = useImageStore.getState().images;
+  const cached = semanticCounts.get(images);
+  if (cached !== undefined) return cached;
+  const total = images.reduce((count, image) => count + Number(!isExrFileName(image.name)), 0);
+  semanticCounts.set(images, total);
+  return total;
+};
+
 const buildCoverage = (cap: number | null, total: number): SemanticIndexCoverage => {
   const index = getIndex();
   return {
@@ -311,7 +322,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
     // that already has the authoritative, fully-loaded image array.
     try {
       await openLibrary(getEmbeddingModel(get().modelKey));
-      const total = useImageStore.getState().images.length;
+      const total = semanticImageCount();
       set({ coverage: buildCoverage(get().coverage?.cap ?? null, total) });
     } catch (error) {
       set({ lastError: error instanceof Error ? error.message : String(error) });
@@ -337,7 +348,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
           signal: backfillController!.signal,
           waitWhilePaused,
           onProgress: (progress) => {
-            const total = useImageStore.getState().images.length;
+            const total = semanticImageCount();
             set({ indexProgress: progress, coverage: buildCoverage(cap, total) });
           },
         });
@@ -355,7 +366,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
       } finally {
         backfillController = null;
         releasePause();
-        const total = useImageStore.getState().images.length;
+        const total = semanticImageCount();
         set({ isBackfilling: false, isPaused: false, coverage: buildCoverage(cap, total) });
       }
     })();
@@ -614,6 +625,7 @@ export const useSemanticStore = create<SemanticStoreState>((set, get) => ({
   },
 
   runVisualSimilar: async (image) => {
+    if (isExrFileName(image.name)) { set({ lastError: 'Find Similar is not available for EXR files in this version.' }); return; }
     const generation = ++queryGeneration;
     const scope = useImageStore.getState().getSemanticSearchScopeSnapshot();
     const queryStartedAt = performance.now();

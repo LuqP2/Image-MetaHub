@@ -1,4 +1,5 @@
 export type SettingsTab =
+  | 'general'
   | 'library'
   | 'viewer'
   | 'integrations'
@@ -8,16 +9,14 @@ export type SettingsTab =
   | 'shortcuts'
   | 'license';
 
-export type LegacySettingsTab = 'general' | 'themes' | 'hotkeys' | 'privacy';
+export type LegacySettingsTab = 'themes' | 'hotkeys' | 'privacy';
 
 export type SettingsTabInput = SettingsTab | LegacySettingsTab;
 
-export type SettingsFocusSection = 'license' | null;
+export type SettingsFocusSection = 'license' | 'exr' | null;
 
 export const resolveSettingsTab = (tab: SettingsTabInput | undefined): SettingsTab => {
   switch (tab) {
-    case 'general':
-      return 'library';
     case 'themes':
       return 'appearance';
     case 'hotkeys':
@@ -27,6 +26,7 @@ export const resolveSettingsTab = (tab: SettingsTabInput | undefined): SettingsT
     case 'viewer':
     case 'integrations':
     case 'visual-search':
+    case 'general':
     case 'appearance':
     case 'library':
     case 'shortcuts':

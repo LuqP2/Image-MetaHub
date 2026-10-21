@@ -1,4 +1,4 @@
-export const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif'];
+export const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif', '.exr'];
 export const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
 export const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.flac', '.ogg', '.oga', '.m4a', '.aac', '.opus', '.aiff', '.aif', '.wma'];
 export const MODEL_3D_EXTENSIONS = ['.glb', '.gltf', '.obj', '.fbx', '.stl'];
@@ -12,6 +12,7 @@ export const SUPPORTED_MEDIA_EXTENSIONS = [
 ];
 
 const MEDIA_MIME_TYPES = {
+  '.exr': 'image/x-exr',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -56,6 +57,8 @@ export const hasExtension = (name, extensions) => {
 };
 
 export const isImageFileName = (name) => hasExtension(name, IMAGE_EXTENSIONS);
+export const isExrFileName = (name) => getFileExtension(name) === '.exr';
+export const canEditRasterFile = (name) => isImageFileName(name) && !isExrFileName(name) && getFileExtension(name) !== '.gif';
 export const isVideoFileName = (name, fileType) =>
   Boolean(fileType?.startsWith?.('video/')) || hasExtension(name, VIDEO_EXTENSIONS);
 export const isAudioFileName = (name, fileType) =>

@@ -1,3 +1,4 @@
+import { isExrFileName } from '../../utils/mediaTypes.js';
 import type { IndexedImage, SemanticIndexProgress } from '../../types';
 import type { EmbeddingModelDescriptor } from './embeddingModel';
 import { buildEmbedItems, embedImages, unloadVisionTower } from './embeddingService';
@@ -72,6 +73,7 @@ export const selectPendingImages = (
 ): IndexedImage[] => {
   const pending: IndexedImage[] = [];
   for (const image of images) {
+    if (isExrFileName(image.name)) continue;
     const storedKey = embedded.get(image.id);
     if (storedKey !== undefined && storedKey === contentKeyForImage(image)) continue;
     pending.push(image);
@@ -130,9 +132,9 @@ export const runBackfill = async (options: BackfillOptions): Promise<BackfillRes
   // image array, unlike the mount-time open — the only safe place to sweep
   // vectors for images that have left the library.
   await reconcileWithImages(new Set(images.map((image) => image.id)));
-  let candidates = images;
+  let candidates = images.filter(image => !isExrFileName(image.name));
   if (cap !== null && images.length > 0) {
-    const window = selectCappedIndexWindow(images, index.liveEntries(), cap);
+    const window = selectCappedIndexWindow(candidates, index.liveEntries(), cap);
     candidates = window.images;
     if (window.evictImageIds.length > 0) {
       index.tombstone(window.evictImageIds);

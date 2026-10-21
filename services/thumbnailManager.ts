@@ -1,3 +1,6 @@
+import { isExrFileName } from '../utils/mediaTypes.js';
+import { loadExrPreview, subscribeExrChanged } from './exr/client';
+import { watchExrLibrary } from './exr/indexing';
 import { IndexedImage, ThumbnailStatus } from '../types';
 import cacheManager from './cacheManager';
 import { getFileExtension, isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
@@ -209,6 +212,44 @@ class ThumbnailManager {
       thumbnailError: string | null;
     };
   }>();
+  private exrImages = new Map<string, IndexedImage>();
+  private exrPending = new Map<string, Promise<void>>();
+  private exrListening = false;
+  private exrEpoch = 0;
+  private exrRequests = new Map<string, string>();
+  private async ensureExrThumbnail(image: IndexedImage): Promise<void> {
+    watchExrLibrary();
+    if (!this.exrListening) {
+      this.exrListening = true;
+      subscribeExrChanged(() => {
+        this.exrEpoch++;
+        this.exrPending.clear();
+        for (const requestId of this.exrRequests.values()) window.electronAPI?.exr?.cancel(requestId);
+        this.exrRequests.clear();
+        for (const current of this.exrImages.values()) {
+          this.runtimeState.delete(current.id);
+          this.resolvedStateCache.delete(current.id);
+          this.emit(current.id);
+          if (this.listeners.has(current.id)) void this.ensureExrThumbnail(current);
+        }
+      });
+    }
+    const previous = this.exrImages.get(image.id);
+    if (previous?.lastModified === image.lastModified && previous?.contentModifiedMs === image.contentModifiedMs && previous?.fileSize === image.fileSize && this.runtimeState.has(image.id)) return;
+    if (this.exrPending.has(image.id)) return this.exrPending.get(image.id);
+    this.exrImages.set(image.id, image);
+    const epoch = this.exrEpoch;
+    const requestId = crypto.randomUUID();
+    this.exrRequests.set(image.id, requestId);
+    const isCurrent = () => epoch === this.exrEpoch && this.exrRequests.get(image.id) === requestId;
+    const work = loadExrPreview(image, undefined, { purpose: 'thumbnail', requestId }).then(result => {
+      if (isCurrent()) this.setRuntimeState(image, { thumbnailStatus: 'ready', thumbnailUrl: result.url, thumbnailError: null });
+    }).catch(error => {
+      if (isCurrent()) this.setRuntimeState(image, { thumbnailStatus: 'error', thumbnailUrl: null, thumbnailError: error.message });
+    }).finally(() => { if (isCurrent()) { this.exrPending.delete(image.id); this.exrRequests.delete(image.id); } });
+    this.exrPending.set(image.id, work);
+    return work;
+  }
   private listeners = new Map<string, Set<() => void>>();
   private highPriorityQueue: ThumbnailJob[] = [];
   private backgroundQueue: ThumbnailJob[] = [];
@@ -246,6 +287,7 @@ class ThumbnailManager {
   }
 
   async loadIndexedThumbnail(image: IndexedImage): Promise<void> {
+    if (isExrFileName(image.name)) return this.ensureExrThumbnail(image);
     if (this.hasReadyThumbnail(image)) return;
     if (typeof window !== 'undefined' && window.electronAPI?.resolveThumbnailCacheBatch) {
       await this.resolveCachedThumbnailBatch([image], { priority: 'single' });
@@ -406,6 +448,9 @@ class ThumbnailManager {
   cancelQueuedJobs(options: { queue?: 'high' | 'low' | 'all'; keepImageIds?: Set<string> } = {}): void {
     const queue = options.queue ?? 'all';
     const keepImageIds = options.keepImageIds;
+    if (queue === 'all') for (const [imageId, requestId] of this.exrRequests) if (!keepImageIds?.has(imageId)) {
+      window.electronAPI?.exr?.cancel(requestId); this.exrRequests.delete(imageId); this.exrPending.delete(imageId);
+    }
 
     const shouldKeep = (job: ThumbnailJob) => keepImageIds?.has(job.image.id) ?? false;
     const releaseJob = (job: ThumbnailJob) => {
@@ -526,6 +571,7 @@ class ThumbnailManager {
     if (!image?.id) {
       return;
     }
+    if (isExrFileName(image.name)) return this.ensureExrThumbnail(image);
 
     // 3D previews are rendered lazily by Model3DThumbnail so the raster thumbnail
     // pipeline never attempts to decode model bytes as an image.
@@ -612,7 +658,8 @@ class ThumbnailManager {
     images: IndexedImage[],
     detail: { priority: 'visible' | 'overscan' | 'single' }
   ): Promise<IndexedImage[]> {
-    const candidates = this.dedupeImages(images)
+    for (const image of images) if (isExrFileName(image.name)) void this.ensureExrThumbnail(image);
+    const candidates = this.dedupeImages(images).filter(image => !isExrFileName(image.name))
       .filter((image) => {
         const retryDelayMs = this.getFailureRetryDelay(image);
         if (retryDelayMs !== null) {
@@ -834,9 +881,9 @@ class ThumbnailManager {
     const currentState = this.getActiveRuntimeState(image);
     const nextState: RuntimeThumbnailState = {
       lastModified: image.lastModified,
-      thumbnailUrl: payload.thumbnailUrl ?? currentState?.thumbnailUrl ?? image.thumbnailUrl ?? null,
+      thumbnailUrl: payload.thumbnailUrl !== undefined ? payload.thumbnailUrl : currentState?.thumbnailUrl ?? image.thumbnailUrl ?? null,
       thumbnailStatus: payload.thumbnailStatus,
-      thumbnailError: payload.thumbnailError ?? (payload.thumbnailStatus === 'error'
+      thumbnailError: payload.thumbnailError !== undefined ? payload.thumbnailError : (payload.thumbnailStatus === 'error'
         ? 'Failed to load thumbnail'
         : currentState?.thumbnailError ?? image.thumbnailError ?? null),
     };
