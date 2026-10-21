@@ -12,6 +12,16 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const errorText = error => error instanceof Error ? error.message : String(error);
 const fail = (message, code = 'EXR_ERROR') => Object.assign(new Error(message), { code });
 const inside = (root, target) => { const rel = path.relative(root, target); return rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel); };
+// Windows security scanners may briefly retain a freshly executed helper.
+async function renameComponent(source, destination) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fs.rename(source, destination); }
+    catch (error) {
+      if (process.platform !== 'win32' || !['EPERM', 'EBUSY', 'EACCES'].includes(error.code) || attempt >= 10) throw error;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+}
 
 // These files are a tiny, explicitly described package, not an arbitrary archive.
 // Each release asset is gzip-compressed separately; no extractor/dependency is
@@ -260,8 +270,8 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
       const backup = `${versionRoot}.previous`;
       await fs.rm(backup, { recursive: true, force: true });
       let moved = false;
-      try { await fs.rename(versionRoot, backup); moved = true; } catch (error) { if (error.code !== 'ENOENT') throw error; }
-      try { await fs.rename(staging, versionRoot); } catch (error) { if (moved) await fs.rename(backup, versionRoot); throw error; }
+      try { await renameComponent(versionRoot, backup); moved = true; } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      try { await renameComponent(staging, versionRoot); } catch (error) { if (moved) await renameComponent(backup, versionRoot); throw error; }
       await fs.rm(backup, { recursive: true, force: true });
       progress = { phase: 'ready', receivedBytes };
       await saveSettings({ ...await getSettings(), enabled: true });
