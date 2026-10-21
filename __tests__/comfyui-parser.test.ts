@@ -282,6 +282,70 @@ describe('ComfyUI Parser - Basic Workflows', () => {
   });
 });
 
+describe.each([
+  ['app', resolvePromptFromGraph],
+  ['metadata-engine', resolveEnginePromptFromGraph],
+] as const)('ClownsharKSampler prompt extraction (%s)', (_parser, resolveGraph) => {
+  describe.each(['ClownsharKSampler', 'ClownsharKSampler_Beta'])('%s', (classType) => {
+    // Synthetic execution graph based on RES4LYF's explicit conditioning inputs.
+    const makeGraph = () => ({
+      '1': { class_type: 'UNETLoader', inputs: { unet_name: 'synthetic-krea2.safetensors' } },
+      '2': { class_type: 'CLIPTextEncode', inputs: { text: 'A paper boat on a quiet pond' } },
+      '3': { class_type: 'CLIPTextEncode', inputs: { text: 'blurry, artifacts' } },
+      '4': { class_type: classType, inputs: {
+        model: ['1', 0], positive: ['2', 0], negative: ['3', 0],
+      } },
+      '5': { class_type: 'CLIPTextEncode', inputs: {
+        text: 'An unrelated disconnected prompt that must never replace the connected prompt',
+      } },
+    });
+
+    const expectPrompts = (result: Record<string, unknown>) => {
+      expect(result.prompt).toBe('A paper boat on a quiet pond');
+      expect(result.negativePrompt).toBe('blurry, artifacts');
+      expect(result.model).toBe('synthetic-krea2.safetensors');
+    };
+
+    it('traces separate positive/negative channels and ignores disconnected text', () => {
+      const result = resolveGraph({}, makeGraph());
+      expectPrompts(result);
+      expect(result._telemetry.unknown_nodes_count).toBe(0);
+    });
+
+    it('follows a STRING input into the positive encoder', () => {
+      const graph = makeGraph();
+      expectPrompts(resolveGraph({}, {
+        ...graph,
+        '2': { class_type: 'CLIPTextEncode', inputs: { text: ['6', 0] } },
+        '6': { class_type: 'PrimitiveStringMultiline', inputs: { value: graph['2'].inputs.text } },
+      }));
+    });
+
+    it('traces Krea2 grounded encode conditioning', () => {
+      const graph = makeGraph();
+      expectPrompts(resolveGraph({}, {
+        ...graph,
+        '2': { class_type: 'Krea2EditGroundedEncode', inputs: { prompt: graph['2'].inputs.text } },
+        '3': { class_type: 'Krea2EditGroundedEncode', inputs: { prompt: graph['3'].inputs.text } },
+      }));
+    });
+
+    it.each([2, 4])('ignores a connected sampler copy with mode %s', (mode) => {
+      const graph = makeGraph();
+      expectPrompts(resolveGraph({ nodes: [{ id: 7, type: classType, mode }] }, {
+        ...graph,
+        '7': { class_type: classType, inputs: { positive: ['5', 0] } },
+      }));
+    });
+
+    it('does not let a disconnected canvas sampler replace the connected one', () => {
+      expectPrompts(resolveGraph({ nodes: [{
+        id: 7, type: classType, mode: 0, widgets_values: ['unrelated canvas values'],
+      }] }, makeGraph()));
+    });
+  });
+});
+
 describe('ComfyUI Parser - Prompt Sources', () => {
   it('should follow PrimitiveStringMultiline into CLIPTextEncode prompts', () => {
     const fixture = loadFixture('primitive-string-multiline.json');
