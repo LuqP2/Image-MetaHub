@@ -67,6 +67,7 @@ export function useImageSelection() {
         }
 
         if (event.ctrlKey || event.metaKey) {
+            useImageStore.getState().setPreviewImage(image);
             if (selectedImages.size === 0 && selectionAnchor && selectionAnchor.id !== image.id) {
                 useImageStore.setState({ selectedImages: new Set([selectionAnchor.id, image.id]) });
                 return;
