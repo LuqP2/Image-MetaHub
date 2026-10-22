@@ -26,7 +26,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clearDraft(); vi.restoreAllMocks(); });
 async function editItem(name: string) {
   fireEvent.click(await screen.findByRole('button', { name: `Open ${name}` }));
-  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit content' }));
 }
 function fieldBlock(): PromptBlock {
   return { id: 'fields', text: 'She has {{color}} hair and is wearing {{clothes}}', createdAt: 1, revision: 1, editor: { ...emptyEditor(), title: 'Hair and clothes', tags: ['portrait'], variables: [
@@ -47,11 +47,12 @@ describe('integrated Prompt Library', () => {
       else { render(<PromptLibrary onViewSource={vi.fn()} />); fireEvent.click(await screen.findByRole('button', { name: 'Open Studio portrait' })); }
       let finish: () => void = () => {};
       mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
-      fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'new-tag' } });
-      fireEvent.blur(screen.getByLabelText('Tags'));
+      fireEvent.click(screen.getByRole('button', { name: '+ Tag' }));
+      fireEvent.change(screen.getByLabelText('Search or create tag'), { target: { value: 'new-tag' } });
+      fireEvent.keyDown(screen.getByLabelText('Search or create tag'), { key: 'Enter' });
       await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
       const title = kind === 'block' ? 'Hair and clothes' : 'Studio portrait';
-      if (action === 'Edit') fireEvent.click(screen.getByRole('button', { name: 'Edit', exact: true }));
+      if (action === 'Edit') fireEvent.click(screen.getByRole('button', { name: 'Edit content', exact: true }));
       else if (action === 'favorite') fireEvent.click(screen.getByRole('button', { name: 'Toggle favorite' }));
       else if (action === 'card favorite') fireEvent.click(screen.getByRole('button', { name: `Favorite ${title}` }));
       else { fireEvent.contextMenu(screen.getByRole('button', { name: `Open ${title}` }).closest('article')!); fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' })); }
@@ -193,7 +194,7 @@ describe('integrated Prompt Library', () => {
     navigate();
     expect(useSavedPromptStore.getState().selectedPromptId).toBe(action === 'card' ? 'other' : null);
     if (action === 'new') expect(screen.getByRole('region', { name: 'Prompt editor' })).toBeTruthy();
-    else if (action === 'card') expect(screen.getByRole('heading', { name: 'Other block' })).toBeTruthy();
+    else if (action === 'card') expect(within(screen.getByRole('button', { name: 'Edit title' })).getByText('Other block')).toBeTruthy();
     else expect(screen.queryByRole('region', { name: 'Prompt details' })).toBeNull();
   });
   it('executes only the last navigation request after chained field saves succeed', async () => {
@@ -243,8 +244,9 @@ describe('integrated Prompt Library', () => {
     data.blocks = [fieldBlock()]; await openFieldBlock();
     let finish: () => void = () => {};
     mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
-    fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'new-tag' } });
-    fireEvent.blur(screen.getByLabelText('Tags'));
+    fireEvent.click(screen.getByRole('button', { name: '+ Tag' }));
+      fireEvent.change(screen.getByLabelText('Search or create tag'), { target: { value: 'new-tag' } });
+    fireEvent.keyDown(screen.getByLabelText('Search or create tag'), { key: 'Enter' });
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
     const color = screen.getByLabelText('Suggested values for color');
     fireEvent.change(color, { target: { value: 'green' } }); fireEvent.blur(color);
@@ -260,10 +262,11 @@ describe('integrated Prompt Library', () => {
     data.blocks = [fieldBlock()]; await openFieldBlock();
     let fail: () => void = () => {};
     mocks.mutate.mockImplementationOnce(() => new Promise((_, reject) => { fail = () => reject(new Error('Disk full')); }));
-    fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'new-tag' } });
-    fireEvent.blur(screen.getByLabelText('Tags'));
+    fireEvent.click(screen.getByRole('button', { name: '+ Tag' }));
+      fireEvent.change(screen.getByLabelText('Search or create tag'), { target: { value: 'new-tag' } });
+    fireEvent.keyDown(screen.getByLabelText('Search or create tag'), { key: 'Enter' });
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: action, exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: action === 'Edit' ? 'Edit content' : action, exact: true }));
     await act(async () => { fail(); });
     expect(await screen.findByText('Disk full')).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
@@ -303,8 +306,9 @@ describe('integrated Prompt Library', () => {
     if (action === 'favorite') fireEvent.click(screen.getByRole('button', { name: 'Toggle favorite' }));
     else if (action === 'card favorite') fireEvent.click(screen.getByRole('button', { name: 'Favorite Hair and clothes' }));
     else {
-      fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'new-tag' } });
-      fireEvent.keyDown(screen.getByLabelText('Tags'), { key: 'Enter' });
+      fireEvent.click(screen.getByRole('button', { name: '+ Tag' }));
+      fireEvent.change(screen.getByLabelText('Search or create tag'), { target: { value: 'new-tag' } });
+      fireEvent.keyDown(screen.getByLabelText('Search or create tag'), { key: 'Enter' });
     }
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
     await act(async () => { finish(); });
@@ -316,7 +320,7 @@ describe('integrated Prompt Library', () => {
   });
   it.each(['prompt', 'block'] as const)('recovers an edited %s as a copy after its card is deleted', async kind => {
     data.blocks = [fieldBlock()];
-    if (kind === 'block') { await openFieldBlock(); fireEvent.click(screen.getByRole('button', { name: 'Edit' })); }
+    if (kind === 'block') { await openFieldBlock(); fireEvent.click(screen.getByRole('button', { name: 'Edit content' })); }
     else { render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Studio portrait'); }
     fireEvent.change(screen.getByLabelText(kind === 'block' ? 'Block text' : 'Prompt'), { target: { value: 'Draft to keep' } });
     const oldId = kind === 'block' ? 'fields' : 'one';
@@ -340,7 +344,7 @@ describe('integrated Prompt Library', () => {
     else { render(<PromptLibrary onViewSource={vi.fn()} />); fireEvent.click(await screen.findByRole('button', { name: 'Open Studio portrait' })); }
     const panel = screen.getByLabelText('Selected library item');
     const panelClass = panel.className;
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit content' }));
     expect(screen.getByRole('region', { name: 'Prompt editor' }).parentElement).toBe(panel);
     expect(panel.className).toBe(panelClass);
     expect(screen.getByRole('button', { name: kind === 'block' ? 'Open Hair and clothes' : 'Open Studio portrait' })).toBeTruthy();
@@ -399,7 +403,7 @@ describe('integrated Prompt Library', () => {
     mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
     const color = screen.getByLabelText('Suggested values for color');
     fireEvent.change(color, { target: { value: 'green' } }); fireEvent.blur(color);
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit content' }));
     expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
     await act(async () => { finish(); });
@@ -505,7 +509,7 @@ describe('integrated Prompt Library', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Studio portrait' }));
     expect(screen.getByRole('region', { name: 'Prompt details' })).toBeTruthy();
   });
-  it('opens read-only details and keeps favorite changes independent of editing', async () => {
+  it('opens details without the content editor and keeps favorite changes independent of editing', async () => {
     render(<PromptLibrary onViewSource={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Studio portrait' }));
     expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
@@ -531,7 +535,7 @@ describe('integrated Prompt Library', () => {
     expect(screen.getAllByRole('button', { name: 'Open Golden landscape' })).toHaveLength(1);
     expect(screen.queryByText(/Untitled prompt/i)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Open Studio portrait' }));
-    expect(screen.queryByText(/Untitled prompt/i)).toBeNull();
+    expect(within(screen.getByRole('button', { name: 'Edit title' })).getByText('Untitled prompt')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Add a title/ })).toBeNull();
   });
   it('discards only the draft when cancelling an edit', async () => {
@@ -551,8 +555,9 @@ describe('integrated Prompt Library', () => {
     expect(screen.queryByText('0 selected')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Select' }));
     fireEvent.click(screen.getByLabelText('Select Studio portrait'));
-    fireEvent.change(screen.getByLabelText('Bulk tags'), { target: { value: ' Lighting ' } });
-    fireEvent.keyDown(screen.getByLabelText('Bulk tags'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: '+ Tag' }));
+    fireEvent.change(screen.getByLabelText('Search or create tag'), { target: { value: ' Lighting ' } });
+    fireEvent.keyDown(screen.getByLabelText('Search or create tag'), { key: 'Enter' });
     fireEvent.click(screen.getByRole('button', { name: 'Add tags' }));
     await waitFor(() => expect(data.prompts.find(p => p.id === 'one')?.editor?.tags).toEqual(['lighting']));
     expect(data.prompts.find(p => p.id === 'two')?.editor?.tags).toEqual([]);
@@ -710,7 +715,7 @@ describe('integrated Prompt Library', () => {
     expect(within(screen.getByRole('region', { name: 'Prompt details' })).getByText('bad hands')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Copy both' }));
     await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('Studio portrait\nNegative prompt: bad hands'));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit content' }));
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'My portrait' } }); fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await screen.findByRole('button', { name: 'Open My portrait' }); expect(data.prompts.find((p) => p.id === 'one')?.revision).toBe(2);
   });
@@ -728,7 +733,7 @@ describe('integrated Prompt Library', () => {
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Changed'); fireEvent.click(screen.getByRole('button', { name: 'Open Golden landscape' }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save' }));
     await screen.findByRole('region', { name: 'Prompt details' });
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit content' }));
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Golden landscape');
     expect(data.prompts.find((p) => p.id === 'one')?.editor?.title).toBe('Changed');
   });
@@ -751,7 +756,7 @@ describe('integrated Prompt Library', () => {
     mocks.advanced = false; const editor = emptyEditor(); editor.title = 'Template'; editor.document = { ...makeDocument('Hello {{subject}}'), mode: 'template', variables: [{ name: 'subject', label: 'Subject', type: 'text', required: true, defaultValue: '', options: [] }] };
     data.prompts[0].editor = editor; data.prompts[0].positivePrompt = 'Hello {{subject}}'; render(<PromptLibrary onViewSource={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Template' })); fireEvent.change(screen.getByLabelText('Subject *'), { target: { value: 'world' } }); fireEvent.click(screen.getByRole('button', { name: 'Copy prompt' }));
-    await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('Hello world')); fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('Hello world')); fireEvent.click(screen.getByRole('button', { name: 'Edit content' }));
     expect(screen.getAllByRole('button', { name: /Add (prompt|negative) text/ }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Select', hidden: true })); fireEvent.click(screen.getByLabelText('Select Template')); fireEvent.click(screen.getByRole('button', { name: 'Add tags' })); expect(mocks.gate).toHaveBeenCalled(); expect(mocks.mutate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Done selecting', hidden: true }));

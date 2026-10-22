@@ -47,10 +47,11 @@ it('opens the Workspace editor with the latest item after a pending tag save', a
   fireEvent.click(await screen.findByRole('button', { name: 'Open Portrait' }));
   let finish: () => void = () => {};
   mocks.mutate.mockImplementationOnce(command => new Promise(resolve => { finish = () => { data = applyMutation(data, command); resolve(data); }; }));
-  fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'new-tag' } });
-  fireEvent.blur(screen.getByLabelText('Tags'));
+  fireEvent.click(screen.getByRole('button', { name: '+ Tag' }));
+  fireEvent.change(screen.getByLabelText('Search or create tag'), { target: { value: 'new-tag' } });
+  fireEvent.keyDown(screen.getByLabelText('Search or create tag'), { key: 'Enter' });
   await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
-  fireEvent.click(screen.getByRole('button', { name: 'Edit saved prompt' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit content' }));
   expect(screen.queryByText('Edit saved prompt', { selector: 'h3' })).toBeNull();
   await act(async () => { finish(); });
   expect(await screen.findByText('Edit saved prompt', { selector: 'h3' })).toBeTruthy();
@@ -289,7 +290,7 @@ it('navigates saved items without collapsing the image preview', async () => {
   const preview = screen.getByText('Preview image').closest('details')!;
   preview.open = true; fireEvent(preview, new Event('toggle'));
   fireEvent.click(screen.getByRole('button', { name: 'Next item' }));
-  expect(screen.getByRole('button', { name: 'Edit saved prompt' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Edit content' })).toBeTruthy();
   expect(screen.getByText('Preview image').closest('details')!.open).toBe(true);
   expect((screen.getByRole('button', { name: 'Next item' }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Previous item' }));
@@ -325,8 +326,8 @@ it('restores composition, block details and block editing after the Workspace re
   fireEvent.click(await screen.findByRole('button', { name: 'Open Lighting' }));
   view.unmount(); view = render(<WorkspacePrompts {...props} />);
   expect(screen.getByRole('region', { name: 'Prompt details' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Edit saved block' })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Edit saved block' }));
+  expect(screen.getByRole('button', { name: 'Edit content' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit content' }));
   fireEvent.change(screen.getByLabelText('Block text'), { target: { value: 'block draft survives remount' } });
   view.unmount(); render(<WorkspacePrompts {...props} />);
   expect((screen.getByLabelText('Block text') as HTMLTextAreaElement).value).toBe('block draft survives remount');
@@ -341,7 +342,7 @@ it.each(['existing', 'new'] as const)('restores a clean %s block editor and clea
   fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
   if (kind === 'existing') {
     fireEvent.click(await screen.findByRole('button', { name: 'Open Lighting' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit saved block' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit content' }));
   } else fireEvent.click(screen.getByRole('button', { name: 'New block' }));
   expect(getDraft('comfyui-block')).toBeNull();
   for (let repeat = 0; repeat < 2; repeat++) {
