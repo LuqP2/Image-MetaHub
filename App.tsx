@@ -302,6 +302,7 @@ export default function App() {
   const selectedImages = useImageStore((state) => state.selectedImages);
   const selectedImage = useImageStore((state) => state.selectedImage);
   const previewImage = useImageStore((state) => state.previewImage);
+  const semanticResultGeneration = useImageStore((state) => state.semanticResult?.generation ?? null);
   const clustersCount = useImageStore((state) => state.clusters.length);
   const clusters = useImageStore((state) => state.clusters);
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
@@ -2825,6 +2826,7 @@ export default function App() {
       JSON.stringify(activeImageScope),
       selectedNodes.join('\u001f'),
       findSimilarGridFilter?.imageIds.join('\u001f') ?? '',
+      semanticResultGeneration,
       searchQuery,
       selectedModels.join('\u001f'),
       excludedModels.join('\u001f'),
@@ -2869,6 +2871,7 @@ export default function App() {
     randomSeed,
     safeDirectories,
     searchQuery,
+    semanticResultGeneration,
     selectedFolders,
     selectedNodes,
     selectedAutoTags,
