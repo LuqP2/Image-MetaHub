@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.1] - [2026-10-22]
+
+### Added
+
+- **OpenEXR / OpenColorIO Support**: Added support for browsing, organizing, and previewing `.exr` files throughout the Library, image viewer, detached viewer, and comparison tools. Includes color-managed previews with ACES 1.3, ACES 2.0, and custom OCIO configurations; global and per-folder color profiles; non-destructive exposure adjustments; multipart EXR inspection; render passes and individual channels; and high-resolution region previews when zooming. The optional component can be installed from Settings → General → Optional components and works offline after installation.
+
+### Improved
+
+- **ComfyUI Workspace Layout**: Moved navigation and connection controls into the main application header, removed redundant workspace footer content, and added direct access to the generation queue with a pending-job indicator. The streamlined layout provides more vertical space for ComfyUI workflows.
+- **Prompt Library Preview Images**: Added the ability to attach, replace, and remove preview images directly from saved prompt and block details. Choose images from the Library using a searchable picker with filename, prompt, and model matching.
+- **Prompt Library Inline Editing**: Titles, categories, tags, and notes can now be edited directly from the details panel without opening the full editor. Added searchable category and tag selectors with inline creation, streamlined preview controls, and a dedicated content editing action.
+- **macOS Update Notifications**: Updated the macOS update flow to open GitHub Releases directly, allowing users to download and install the latest DMG manually. Update notifications now clearly indicate when manual installation is required.
+
+### Fixed
+
+- **Library Scroll Position**: Fixed unwanted scroll resets when new files are detected by folder monitoring. Background additions no longer interrupt browsing or return the Library to the beginning. Navigation and filter changes, including new visual searches, continue to reset the position appropriately.
+- **Library Multi-Selection Preview**: Fixed the preview sidebar not following the most recently Ctrl-clicked or Cmd-clicked image when selecting multiple items.
+- **ComfyUI ClownsharKSampler Metadata**: Fixed positive prompt, negative prompt, and model extraction from RES4LYF `ClownsharKSampler` and `ClownsharKSampler_Beta` workflows. Improved tracing through linked text inputs and Krea2 conditioning nodes while preventing unrelated or disabled samplers from overriding the correct metadata.
+- **Prompt Preview Picker**: Fixed missing thumbnails when choosing preview images and ensured Safe Mode filtering and sensitive-image blurring are respected.
+
 ## [0.22.0] - [2026-10-17]
 
 ### Added

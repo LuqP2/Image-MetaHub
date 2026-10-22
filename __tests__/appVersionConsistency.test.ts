@@ -5,7 +5,7 @@ import { verifyAppVersionConsistency } from '../scripts/checkAppVersionConsisten
 describe('application version consistency', () => {
   it('keeps package metadata and release-facing labels aligned', () => {
     expect(verifyAppVersionConsistency()).toEqual({
-      version: '0.22.0',
+      version: '0.22.1',
       checkedMarkers: 6,
     });
   });
