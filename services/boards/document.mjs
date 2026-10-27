@@ -56,10 +56,12 @@ function normalizeStable(value) {
 
 function normalizeReference(value) {
   if (!record(value) || !['stable', 'path'].includes(value.kind)) fail('Invalid asset reference.');
+  if (value.appliedRemapIds !== undefined && (!Array.isArray(value.appliedRemapIds) || value.appliedRemapIds.some(id => typeof id !== 'string' || !id.trim()))) fail('Invalid applied remap IDs.');
   return {
     kind: value.kind,
     ...(value.kind === 'stable' ? normalizeStable(value) : {}),
     locator: normalizeBoardLocator(value.locator),
+    appliedRemapIds: [...new Set(value.appliedRemapIds ?? [])],
   };
 }
 
@@ -145,8 +147,11 @@ export function applyBoardReferenceRemaps(document, remaps) {
   return normalizeBoardDocument({ ...document, objects: document.objects.map(object => {
     if (object.type !== 'asset') return object;
     let reference = object.reference;
-    // The journal is chronological. A later move may intentionally return to an earlier path.
+    const observed = new Set(reference.appliedRemapIds ?? []);
+    // Track operations per reference, including non-matches: reused filenames must
+    // not make an old operation match a reference that has already observed it.
     for (const remap of normalized) {
+      if (observed.has(remap.operationId)) continue;
       const stableMatch = reference.kind === 'stable' && remap.stableReference
         && reference.assetId === remap.stableReference.assetId
         && reference.locationId === remap.stableReference.locationId;
@@ -155,8 +160,9 @@ export function applyBoardReferenceRemaps(document, remaps) {
       if (stableMatch || locatorMatch) {
         reference = { ...reference, ...(remap.stableReference && reference.kind === 'stable' ? remap.stableReference : {}), locator: remap.newLocator };
       }
+      observed.add(remap.operationId);
     }
-    return { ...object, reference };
+    return { ...object, reference: { ...reference, appliedRemapIds: [...observed] } };
   }) });
 }
 

@@ -3,6 +3,9 @@ import path from 'node:path';
 import { BoardRepository } from './boardRepository.mjs';
 import { BoardError, duplicateBoardDocument, normalizeBoardDocument } from '../services/boards/document.mjs';
 
+export const boardExportFilename = name => `${Array.from(name, character =>
+  character.charCodeAt(0) < 32 || /[<>:"/\\|?*]/.test(character) ? '_' : character).join('')}.imhboard.json`;
+
 /** Register once; getMainWindow is evaluated per request, including after window recreation. */
 export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow }) {
   let repository;
@@ -41,7 +44,7 @@ export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow }) {
   });
   register('boards:export', async (_repository, window, input) => {
     const document = normalizeBoardDocument(input);
-    const result = await dialog.showSaveDialog(window, { title: 'Export board', defaultPath: `${document.name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')}.imhboard.json`, filters: [{ name: 'Image MetaHub board', extensions: ['imhboard.json'] }] });
+    const result = await dialog.showSaveDialog(window, { title: 'Export board', defaultPath: boardExportFilename(document.name), filters: [{ name: 'Image MetaHub board', extensions: ['imhboard.json'] }] });
     if (result.canceled || !result.filePath) return null;
     await fs.writeFile(result.filePath, JSON.stringify({ format: 'image-metahub-board', version: 1, document }, null, 2), 'utf8');
     return { exported: true };

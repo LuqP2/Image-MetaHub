@@ -5,6 +5,16 @@ import { getBoardBounds, findContainingFrame, toBoardAbsolute, toFrameRelative }
 import { boardLocator, boardWithTexts } from './helpers/boardFixtures';
 
 describe('board composition operations', () => {
+  it('inherits frame displacement per coordinate while applying member property changes', () => {
+    const original = boardWithTexts();
+    const board = createFrame(original, [original.objects[0].id]);
+    const frame = board.objects[0];
+    const child = board.objects[1];
+    const updated = updateObjects(board, [{ id: frame.id, x: frame.x + 100, y: frame.y + 50 }, { id: child.id, text: 'changed', width: 500 }]);
+    expect(updated.objects[1]).toMatchObject({ x: child.x + 100, y: child.y + 50, text: 'changed', width: 500 });
+    const explicitX = updateObjects(board, [{ id: frame.id, x: frame.x + 100, y: frame.y + 50 }, { id: child.id, x: 999 }]);
+    expect(explicitX.objects[1]).toMatchObject({ x: 999, y: child.y + 50 });
+  });
   it('adds a batch in stable order without overlap, respecting the anchor', () => {
     const assets = Array.from({ length: 6 }, (_, index) => ({ name: `${index}.png`, reference: { kind: 'path' as const, locator: boardLocator(`${index}.png`) }, mediaType: 'image' as const, width: 512, height: index % 2 ? 1024 : 512 }));
     const board = addAssets(createBoardDocument(), assets, { x: -100, y: 200 });

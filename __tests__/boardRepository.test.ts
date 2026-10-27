@@ -49,6 +49,23 @@ describe('desktop board repository', () => {
     await expect(repo.remapReferences([boardRemap('a.png', 'b.png')])).rejects.toThrow();
     await expect(repo.load(board.id)).rejects.toThrow();
   });
+  it('does not replay a filename swap across repeated load/save and repository restarts', async () => {
+    const { repo, directory } = await repository();
+    const input = boardWithAsset();
+    input.objects[0].reference.locator = boardRemap('b.png', 'a.png').oldLocator;
+    let saved = await repo.save(input, 0);
+    await repo.remapReferences([boardRemap('a.png', 'temp.png'), boardRemap('b.png', 'a.png'), boardRemap('temp.png', 'b.png')]);
+    for (let index = 0; index < 3; index++) {
+      const restarted = new BoardRepository({ directory });
+      const loaded = await restarted.load(saved.id);
+      expect(loaded.objects[0].reference.locator.relativePath).toBe('a.png');
+      saved = await restarted.save(loaded, loaded.revision);
+      expect(saved.objects[0].reference.locator.relativePath).toBe('a.png');
+      expect(saved.objects[0].reference.appliedRemapIds).toHaveLength(3);
+    }
+    await repo.remapReferences([boardRemap('a.png', 'final.png', 'fourth')]);
+    expect((await repo.load(saved.id)).objects[0].reference.locator.relativePath).toBe('final.png');
+  });
   it('keeps the previous file when atomic replacement fails and cleans the temporary file', async () => {
     const { repo, directory } = await repository();
     const saved = await repo.save(boardWithAsset(), 0);

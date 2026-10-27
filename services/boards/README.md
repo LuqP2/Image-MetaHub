@@ -14,6 +14,8 @@ Desktop documents live in `<userData>/boards/<uuid>.json`. Writes are serialized
 
 `reference-remaps.json` is an append-ordered, idempotent operation journal, written atomically before a remap is acknowledged. Load and save apply the journal, including to stale snapshots. The editor integration must update in-memory history and await remap writes after successful file operations. An unreadable journal blocks resolution/writes instead of silently resetting references.
 
+Each asset reference persists `appliedRemapIds`. Every observed operation, including a non-match, is recorded so load/save and undo cannot replay historical moves after filenames are reused. Newly captured references must be initialized with the current journal operation IDs; imported references retain their existing operation IDs.
+
 The service requires the Electron bridge. Missing desktop APIs produce an explicit error; there is no browser storage implementation.
 
 Boards are user documents. Desktop cache reset preserves their storage. `.imhboard.json` export contains a versioned document without media, transient URLs or history; import validates and creates an independent document.

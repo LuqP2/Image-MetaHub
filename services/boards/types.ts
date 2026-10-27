@@ -17,8 +17,8 @@ export interface BoardStableReference {
 }
 
 export type BoardAssetReference =
-  | ({ kind: 'stable'; locator: BoardAssetLocator } & BoardStableReference)
-  | { kind: 'path'; locator: BoardAssetLocator };
+  | ({ kind: 'stable'; locator: BoardAssetLocator; appliedRemapIds?: string[] } & BoardStableReference)
+  | { kind: 'path'; locator: BoardAssetLocator; appliedRemapIds?: string[] };
 
 export interface BoardObjectBase {
   id: string;

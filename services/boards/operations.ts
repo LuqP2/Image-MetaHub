@@ -43,7 +43,11 @@ export function updateObjects(document: BoardDocument, updates: BoardObjectUpdat
     // A frame drag moves members once; explicit member positions win for multi-selection.
     const parentUpdate = object.frameId ? byId.get(object.frameId) : null;
     const parent = parentUpdate ? document.objects.find(candidate => candidate.id === object.frameId) : null;
-    if (parent && parentUpdate && !update) next = { ...next, x: object.x + (parentUpdate.x ?? parent.x) - parent.x, y: object.y + (parentUpdate.y ?? parent.y) - parent.y };
+    if (parent && parentUpdate) next = {
+      ...next,
+      x: update?.x ?? object.x + (parentUpdate.x ?? parent.x) - parent.x,
+      y: update?.y ?? object.y + (parentUpdate.y ?? parent.y) - parent.y,
+    };
     return next;
   });
   const frames = new Map(objects.filter(object => object.type === 'frame').map(object => [object.id, object]));
