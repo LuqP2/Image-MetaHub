@@ -323,6 +323,14 @@ const electronAPI = {
     ipcRenderer.on('stable-user-data-changed', handler);
     return () => ipcRenderer.removeListener('stable-user-data-changed', handler);
   },
+  boardsList: () => ipcRenderer.invoke('boards:list'),
+  boardsLoad: (id) => ipcRenderer.invoke('boards:load', id),
+  boardsSave: (input) => ipcRenderer.invoke('boards:save', input),
+  boardsRemove: (input) => ipcRenderer.invoke('boards:remove', input),
+  boardsRemapReferences: (remaps) => ipcRenderer.invoke('boards:remap-references', remaps),
+  boardsFlush: () => ipcRenderer.invoke('boards:flush'),
+  boardsImport: () => ipcRenderer.invoke('boards:import'),
+  boardsExport: (document) => ipcRenderer.invoke('boards:export', document),
   savedPromptsList: () => ipcRenderer.invoke('saved-prompts:list'),
   promptLibraryList: () => ipcRenderer.invoke('prompt-library:list'),
   promptLibraryMutate: (input) => ipcRenderer.invoke('prompt-library:mutate', input),

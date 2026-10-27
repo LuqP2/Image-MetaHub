@@ -476,6 +476,14 @@ export interface TrialExtensionActivationResult {
 }
 
 export interface ElectronAPI {
+  boardsList?: () => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardSummary[]>>;
+  boardsLoad?: (id: string) => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument>>;
+  boardsSave?: (input: { document: import('./services/boards/types').BoardDocument; expectedRevision: number }) => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument>>;
+  boardsRemove?: (input: { id: string; expectedRevision: number }) => Promise<import('./services/boards/types').BoardApiResult<null>>;
+  boardsRemapReferences?: (remaps: import('./services/boards/types').BoardReferenceRemap[]) => Promise<import('./services/boards/types').BoardApiResult<null>>;
+  boardsFlush?: () => Promise<import('./services/boards/types').BoardApiResult<null>>;
+  boardsImport?: () => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument | null>>;
+  boardsExport?: (document: import('./services/boards/types').BoardDocument) => Promise<import('./services/boards/types').BoardApiResult<{ exported: true } | null>>;
   exr: import('./services/exr/contracts').ExrAPI;
   enrichmentMemoryDiagnosticsEnabled?: boolean;
   reportEnrichmentMemory?: (sample: {

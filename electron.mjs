@@ -1,5 +1,6 @@
 import electron from 'electron';
 import { registerExrIpc } from './electron/exrIpc.mjs';
+import { registerBoardIpc } from './electron/boardIpc.mjs';
 import { createAtomicCacheChunkWriter } from './electron/atomicCacheChunk.mjs';
 import { attachMainWindowRecovery } from './electron/mainWindowRecovery.mjs';
 import { registerRendererRecoveryTest } from './electron/rendererRecoveryTest.mjs';
@@ -7598,6 +7599,8 @@ function setupFileOperationHandlers() {
       if (!window.isDestroyed()) window.webContents.send('saved-prompts:changed');
     }
   };
+
+  registerBoardIpc({ ipcMain, app, dialog, getMainWindow: () => mainWindow });
 
   ipcMain.handle('saved-prompts:list', () => (
     handleSavedPromptRequest((repository) => repository.listSavedPrompts())
