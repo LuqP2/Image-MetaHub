@@ -1,0 +1,31 @@
+import React from 'react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import BoardAssetBrowser from '../components/boards/BoardAssetBrowser';
+import { useImageStore } from '../store/useImageStore';
+import { boardDirectory, boardImage } from './helpers/boardIntegrationFixtures';
+import { clearInternalImageDragData, getInternalImageDragIds } from '../utils/internalImageDrag';
+vi.mock('react-virtualized-auto-sizer', () => ({ default: ({ children }) => children({ width: 270, height: 500 }) }));
+vi.mock('../hooks/useThumbnail', () => ({ useThumbnail: () => {} }));
+vi.mock('../hooks/useResolvedThumbnail', () => ({ useResolvedThumbnail: () => null }));
+afterEach(() => { cleanup(); clearInternalImageDragData(); });
+describe('Canvas asset panel', () => {
+  it('selects and drags multiple assets without modifying library selection/search', () => {
+    const images = [boardImage('a.png', { models: ['Flux'] }), boardImage('b.png')];
+    useImageStore.setState({ images, selectedImages: new Set(['unrelated']), searchQuery: 'global query' });
+    const add = vi.fn();
+    render(<BoardAssetBrowser images={images} directories={[boardDirectory]} editable onAdd={add} />);
+    fireEvent.click(screen.getByTitle('a.png'));
+    fireEvent.click(screen.getByTitle('b.png'), { ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Add selection' }));
+    expect(add).toHaveBeenCalledWith(images);
+    const payload = new Map<string, string>();
+    const data = { setData: (key: string, value: string) => payload.set(key, value), getData: (key: string) => payload.get(key) ?? '' } as DataTransfer;
+    fireEvent.dragStart(screen.getByTitle('a.png'), { dataTransfer: data });
+    expect(getInternalImageDragIds(data)).toEqual(images.map(image => image.id));
+    fireEvent.change(screen.getByLabelText('Search canvas library'), { target: { value: 'Flux' } });
+    expect(screen.queryByTitle('b.png')).toBeNull();
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['unrelated']));
+    expect(useImageStore.getState().searchQuery).toBe('global query');
+  });
+});

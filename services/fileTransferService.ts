@@ -1,5 +1,7 @@
 import { processFiles } from './fileIndexer';
 import { bulkTransferImagePersistence } from './imageAnnotationsStorage';
+import { createBoardReferenceRemap } from './boards/assetResolver';
+import { queueBoardReferenceRemaps, flushReferenceRemaps } from './boards/referenceSync';
 import {
   getUserDataPersistenceStatus,
   prepareUserDataForImages,
@@ -217,6 +219,20 @@ export async function transferIndexedImages({
     sourceByPath.set(sourceKey, image);
   }
   const annotationsMap = new Map(useImageStore.getState().annotations);
+
+  if (mode === 'move') {
+    const remaps = transferredItems.flatMap(item => {
+      const source = sourceByPath.get(`${item.sourceDirectoryPath}::${item.sourceRelativePath}`);
+      if (!source) return [];
+      const mapping = item.provenance?.operation?.result?.mapping;
+      return [createBoardReferenceRemap(source, {
+        imageId: `${destinationDirectory.id}::${item.destinationRelativePath}`,
+        directoryPath: item.destinationDirectoryPath, relativePath: item.destinationRelativePath,
+      }, useImageStore.getState().directories, mapping ? { assetId: mapping.assetId, revisionId: mapping.revisionId, locationId: mapping.locationId, rootId: mapping.rootId } : undefined)];
+    });
+    queueBoardReferenceRemaps(remaps);
+    await flushReferenceRemaps().catch(() => {});
+  }
 
   const persistenceTransfers: Array<{ sourceImageId: string; targetImageId: string }> = [];
   const uiTransfers: Array<{ sourceImageId: string; targetImageId: string }> = [];

@@ -16,6 +16,7 @@ const packagedProvenanceSmokeEnabled = app.isPackaged
   && process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE === '1';
 const packagedSavedPromptSmokeEnabled = app.isPackaged
   && process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE === '1';
+const packagedCanvasSmokeEnabled = app.isPackaged && process.env.IMH_PACKAGED_CANVAS_SMOKE === '1';
 let portableStartupError = null;
 
 try {
@@ -147,7 +148,7 @@ function registerProtocol() {
 }
 
 if (!portableStartupError) {
-  const lock = packagedProvenanceSmokeEnabled || packagedSavedPromptSmokeEnabled || app.requestSingleInstanceLock();
+  const lock = packagedProvenanceSmokeEnabled || packagedSavedPromptSmokeEnabled || packagedCanvasSmokeEnabled || app.requestSingleInstanceLock();
 
   if (!lock) {
     app.quit();
@@ -181,10 +182,11 @@ if (!portableStartupError) {
       await import('./electron.mjs');
     } catch (error) {
       console.error('[Electron bootstrap] Failed to import the main process:', error);
-      if (packagedProvenanceSmokeEnabled || packagedSavedPromptSmokeEnabled) {
+      if (packagedProvenanceSmokeEnabled || packagedSavedPromptSmokeEnabled || packagedCanvasSmokeEnabled) {
         const resultPath = (
           process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE_RESULT
           || process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE_RESULT
+          || process.env.IMH_PACKAGED_CANVAS_SMOKE_RESULT
         )?.trim();
         if (resultPath) {
           try {

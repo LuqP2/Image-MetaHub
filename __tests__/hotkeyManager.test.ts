@@ -43,6 +43,19 @@ describe('hotkeyManager pause state', () => {
 
     expect(hotkeyManager.areHotkeysPaused()).toBe(false);
   });
+  it('keeps settings available in Canvas scope while disabling hidden library actions', () => {
+    const settings = vi.fn(); const select = vi.fn();
+    hotkeyManager.registerAction('openQuickSettings', settings);
+    hotkeyManager.registerAction('selectAll', select);
+    hotkeyManager.bindAllActions(); hotkeyManager.setScope('canvas');
+    const key = (value: string, code: number) => {
+      const event = new KeyboardEvent('keydown', { key: value, ctrlKey: true, bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'keyCode', { value: code }); Object.defineProperty(event, 'which', { value: code });
+      document.body.dispatchEvent(event);
+    };
+    key('.', 190); expect(settings).toHaveBeenCalledOnce();
+    key('a', 65); expect(select).not.toHaveBeenCalled();
+  });
   it('leaves Space available to Canvas without opening the hidden library preview', () => {
     const preview = vi.fn();
     hotkeyManager.registerAction('toggleQuickPreview', preview);

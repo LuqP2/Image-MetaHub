@@ -6,6 +6,7 @@ import { useBoardEditor } from './BoardEditorContext';
 import { useThumbnail } from '../../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { getImageGenerator } from '../../utils/analyticsUtils';
 
 export default memo(function BoardAssetNode({ data, selected }: NodeProps<BoardFlowNode>) {
   const editor = useBoardEditor();
@@ -20,7 +21,7 @@ export default memo(function BoardAssetNode({ data, selected }: NodeProps<BoardF
   if (object.type !== 'asset') return null;
   const blurred = enableSafeMode && blurSensitive && image?.tags?.some(tag => sensitiveTags.some(sensitive => sensitive.toLowerCase() === tag.toLowerCase()));
   const source = thumbnail?.thumbnailUrl;
-  const fields = image ? { model: image.models?.join(', '), loras: image.loras?.map(lora => typeof lora === 'string' ? lora : lora.name).join(', '), seed: image.seed, dimensions: image.dimensions, generator: image.metadata?.generator, rating: image.rating, prompt: image.prompt } : null;
+  const fields = image ? { model: image.models?.join(', '), loras: image.loras?.map(lora => typeof lora === 'string' ? lora : lora.name).join(', '), seed: image.seed, dimensions: image.dimensions, generator: getImageGenerator(image), rating: image.rating, prompt: image.prompt } : null;
   return <div className="board-asset" onDoubleClick={() => editor.openAsset?.(object)}>
     <BoardNodeControls selected={!!selected} keepAspectRatio />
     <div className="board-asset-picture">

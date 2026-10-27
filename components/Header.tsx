@@ -8,12 +8,11 @@ import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
 import { ProPlanSelectorModal } from './ProPlanSelector';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
-import type { ExploreDimension } from '../types';
+import type { ExploreDimension, LibraryView } from '../types';
 import { TRIAL_EXTENSION_DAYS, useLicenseStore } from '../store/useLicenseStore';
 import { formatLicenseValidity } from '../utils/licenseDisplay';
 import BrandLogo from './BrandLogo';
 
-type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor';
 
 interface HeaderProps {
     workspaceToolbarRef?: React.Ref<HTMLDivElement>;
@@ -315,6 +314,7 @@ const Header: React.FC<HeaderProps> = ({
       { id: 'prompts' as const, label: 'Prompts' },
       { id: 'explore' as const, label: 'Explore' },
       { id: 'models' as const, label: 'Models' },
+      ...(window.electronAPI ? [{ id: 'canvas' as const, label: 'Canvas' }] : []),
       { id: 'editor' as const, label: 'Image Editor' },
       { id: 'comfyui' as const, label: 'ComfyUI' },
     ],

@@ -4,7 +4,7 @@ Canvas v1 is split into three dependent PRs. The complete user workflow ships af
 
 1. **Foundation (#607):** persistent document schema, pure layout/composition operations, desktop repository and IPC, import/export, reference-remap journal and cache-reset preservation.
 2. **Editor (implemented):** React Flow v12, board sessions/store, history, autosave and safe application close, asset/text/frame nodes, connections, inspector shell and toolbar. `BoardWorkspace` receives explicit `editable`, asset resolution/open callbacks and panel slots; navigation and license wiring are supplied by PR 3.
-3. **IMH integration:** asset browser/shared search, Add to Board, navigation, metadata/viewer/comparison, Pro/trial, keyboard scope, asset resolution and rename/move synchronization, packaged smoke and user documentation.
+3. **IMH integration (implemented):** asset browser/shared search, Add to Board, navigation, metadata/viewer/comparison, Pro/trial, keyboard scope, asset resolution and rename/move synchronization, packaged smoke and user documentation.
 
 ## Persistence contract
 
@@ -24,4 +24,10 @@ Boards are user documents. Desktop cache reset preserves their storage. `.imhboa
 
 PR 2 coordinates the Electron quit/close lifecycle, and an edit made during an in-flight save remains dirty until its own acknowledgement. A close handshake freezes document edits until the application closes or the user cancels. Errors retain the local document with retry/export and revision-conflict recovery. History is per session, groups gestures and text edits, and excludes viewport/name changes. Editor keyboard events isolate destructive commands; the hotkey manager leaves Space/modifiers available to React Flow while skipping library actions inside the editor.
 
-PR 3 must add navigation and licensing, asset resolution/browser, viewer/comparison wiring and file-operation synchronization. It must also restore the correct keyboard scope when leaving an IMH modal and initialize newly captured asset references with the current remap baseline. Journal storage alone does not perform file-operation synchronization.
+PR 3 provides navigation and licensing, asset resolution/browser, viewer/comparison wiring and file-operation synchronization. The application restores the Canvas keyboard scope after an IMH modal closes. Fresh references capture the current persisted baseline before insertion; assets that leave the library during that operation must be selected again. Pending remaps are flushed before close, and newly adopted clean sessions are reconciled with observed operations.
+
+## Acceptance
+
+Run the focused board tests, existing search/filter/rename/menu tests, TypeScript, lint and production build. Build a desktop directory and run `node scripts/runPackagedCanvasSmoke.mjs <packaged executable>` against a synthetic profile. This smoke is functional, not visual acceptance.
+
+Manual acceptance covers empty-library board creation; adding multiple assets from grid, table and the Canvas panel; resize/frame/connection gestures and undo; inline/detached viewer return; comparison; rename/move with open and closed boards; unavailable references and relink; import/export/restart; Pro expiry; macOS internal drag; and a 300-card board with mouse and touchpad.

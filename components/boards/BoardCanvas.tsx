@@ -1,4 +1,5 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
+import { clearInternalImageDragData, getInternalImageDragIds, hasInternalImageDragType } from '../../utils/internalImageDrag';
 import { applyNodeChanges, Background, ConnectionMode, ReactFlow, useReactFlow, type Connection, type NodeChange } from '@xyflow/react';
 import { useBoardStore } from '../../store/useBoardStore';
 import { boardToFlow, flowGeometryUpdates, type BoardFlowNode } from '../../services/boards/reactFlowAdapter';
@@ -18,6 +19,11 @@ export default function BoardCanvas({ boardId }: { boardId: string }) {
   const session = useBoardStore(state => state.sessions[boardId]);
   const editor = useBoardEditor();
   const flow = useReactFlow<BoardFlowNode>();
+  useEffect(() => {
+    if (!session.fitSelectionRequest || !session.selectedObjectIds.length) return;
+    const frame = requestAnimationFrame(() => { void flow.fitView({ nodes: session.selectedObjectIds.map(id => ({ id })), padding: 0.2 }); });
+    return () => cancelAnimationFrame(frame);
+  }, [boardId, session.fitSelectionRequest, flow]);
   const { nodes, edges } = useMemo(() => boardToFlow(session.document, session.selectedObjectIds, session.selectedConnectionIds, editor.editable), [session.document, session.selectedObjectIds, session.selectedConnectionIds, editor.editable]);
   const onNodesChange = useCallback((changes: NodeChange<BoardFlowNode>[]) => {
     const state = useBoardStore.getState();
@@ -49,7 +55,15 @@ export default function BoardCanvas({ boardId }: { boardId: string }) {
       color: '#94a3b8', label: '',
     }));
   }, [boardId, editor.editable]);
-  return <div className="board-stage" onDoubleClick={event => event.stopPropagation()}>
+  return <div className="board-stage" onDoubleClick={event => event.stopPropagation()}
+    onDragOver={event => { if (editor.editable && hasInternalImageDragType(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
+    onDrop={event => {
+      if (!editor.editable || !hasInternalImageDragType(event.dataTransfer)) return;
+      event.preventDefault();
+      const ids = getInternalImageDragIds(event.dataTransfer);
+      clearInternalImageDragData();
+      if (ids.length) editor.dropAssets?.(ids, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+    }}>
     <ReactFlow<BoardFlowNode> key={boardId} nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       onNodesChange={onNodesChange} onEdgesChange={changes => {
         const selected = new Set(useBoardStore.getState().sessions[boardId].selectedConnectionIds);

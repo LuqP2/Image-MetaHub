@@ -49,3 +49,16 @@
 .board-workspace .react-flow__handle { width:9px; height:9px; background:#818cf8; border:1px solid #171c26; }
 .board-workspace .react-flow__attribution { font-size:9px; }
 @media(max-width:1000px) { .board-inspector { width:220px; } .board-toolbar-group { flex-wrap:wrap; } }
+.board-browser { width:270px; display:flex; flex-direction:column; flex-shrink:0; gap:8px; padding:10px; border-right:1px solid #64748b44; min-height:0; }
+.board-browser-heading { display:flex; align-items:center; justify-content:space-between; font-size:13px; }
+.board-browser select { color:inherit; background:#1e293b; border:1px solid #64748b66; padding:5px; border-radius:5px; font-size:12px; }
+.board-browser p { font-size:11px; color:#94a3b8; }
+.board-browser-results { flex:1; min-height:120px; }
+.board-browser .board-browser-tile { display:flex; flex-direction:column; min-width:0; gap:4px; overflow:hidden; padding:4px; }
+.board-browser-tile img { width:100%; height:92px; object-fit:contain; }
+.board-browser-tile span { max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:10px; }
+.board-browser-tile.selected { outline:2px solid #818cf8; }
+.board-browser-collapsed { width:42px; border-right:1px solid #64748b44; padding:4px; }
+.board-browser-collapsed button { writing-mode:vertical-rl; }
+.board-compare-bar { display:flex; align-items:center; gap:12px; padding:6px 12px; border-bottom:1px solid #64748b44; }
+.board-compare-bar span { font-size:11px; color:#94a3b8; }

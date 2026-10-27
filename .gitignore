@@ -21,6 +21,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-electron
+/build/canvas-smoke/
+/build/canvas-smoke-local/
+/build/canvas-smoke-final/
 dist-ssr
 *.local
 

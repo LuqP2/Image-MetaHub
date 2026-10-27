@@ -111,5 +111,6 @@ export class BoardRepository {
   }
 
   flush() { return this.queue; }
+  referenceBaseline() { return this.#enqueue(async () => (await this.#remaps()).map(remap => remap.operationId)); }
   isBusy() { return this.pendingOperations > 0; }
 }

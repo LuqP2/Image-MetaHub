@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import type { IndexedImage } from '../../types';
 import type { BoardAssetObject } from '../../services/boards/types';
 import type { BoardObjectUpdate } from '../../services/boards/operations';
+import type { BoardPoint } from '../../services/boards/layout';
 
 export interface BoardEditorActions {
   editable: boolean;
@@ -12,6 +13,7 @@ export interface BoardEditorActions {
   cancel(): void;
   openAsset?(object: BoardAssetObject): void;
   resolveAsset?(object: BoardAssetObject): { status: 'resolved' | 'loading' | 'missing' | 'ambiguous'; image?: IndexedImage };
+  dropAssets?(ids: string[], anchor: BoardPoint): void;
 }
 export const BoardEditorContext = createContext<BoardEditorActions | null>(null);
 export function useBoardEditor() {

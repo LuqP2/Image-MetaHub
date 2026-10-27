@@ -113,6 +113,17 @@ const SelectionHarness = ({ images }: { images: IndexedImage[] }) => {
 };
 
 describe('ImageTable context menu', () => {
+  it('adds the current multi-selection to a board from its context menu', () => {
+    const first = createImage({ id: 'first', name: 'first.png' });
+    const second = createImage({ id: 'second', name: 'second.png' });
+    const selected = new Set([first.id, second.id]);
+    contextMenuStateMock.visible = true; contextMenuStateMock.image = first;
+    useImageStore.setState({ images: [first, second], selectedImages: selected });
+    const add = vi.fn();
+    render(<ImageTable images={[first, second]} selectedImages={selected} onImageClick={vi.fn()} onBatchExport={vi.fn()} onAddToBoard={add} />);
+    fireEvent.click(screen.getByText('Add to Board'));
+    expect(add).toHaveBeenCalledWith([first, second]);
+  });
   beforeEach(() => {
     showContextMenuMock.mockReset();
     hideContextMenuMock.mockReset();

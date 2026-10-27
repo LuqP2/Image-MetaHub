@@ -2,6 +2,7 @@ import electron from 'electron';
 import { registerExrIpc } from './electron/exrIpc.mjs';
 import { registerBoardIpc } from './electron/boardIpc.mjs';
 import { createBoardCloseCoordinator } from './electron/boardCloseCoordinator.mjs';
+import { runBoardPackagedSmoke } from './electron/boardPackagedSmoke.mjs';
 import { createAtomicCacheChunkWriter } from './electron/atomicCacheChunk.mjs';
 import { attachMainWindowRecovery } from './electron/mainWindowRecovery.mjs';
 import { registerRendererRecoveryTest } from './electron/rendererRecoveryTest.mjs';
@@ -139,6 +140,7 @@ const packagedProvenanceFileOperationsSmokeEnabled = app.isPackaged
   && process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE === '1';
 const packagedSavedPromptSmokeEnabled = app.isPackaged
   && process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE === '1';
+const packagedCanvasSmokeEnabled = app.isPackaged && process.env.IMH_PACKAGED_CANVAS_SMOKE === '1';
 const enabledMediaCommandLineSwitches = [];
 const disabledChromiumFeatures = new Set();
 
@@ -3562,6 +3564,21 @@ app.whenReady().then(async () => {
     },
   });
   await stableIdentityFileOperationCoordinator.initializeRecovery();
+
+  if (packagedCanvasSmokeEnabled) {
+    const resultPath = process.env.IMH_PACKAGED_CANVAS_SMOKE_RESULT?.trim();
+    try {
+      const root = process.env.IMH_PACKAGED_CANVAS_SMOKE_ROOT?.trim();
+      if (!root || !resultPath) throw new Error('Synthetic Canvas smoke paths are required.');
+      const result = await runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root });
+      await fs.writeFile(resultPath, JSON.stringify(result), 'utf8');
+      app.exit(0);
+    } catch (error) {
+      console.error('[packaged-canvas-smoke]', error);
+      app.exit(1);
+    }
+    return;
+  }
 
   if (packagedSavedPromptSmokeEnabled) {
     const resultPath = process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE_RESULT?.trim();

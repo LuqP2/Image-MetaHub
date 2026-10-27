@@ -475,8 +475,11 @@ export interface TrialExtensionActivationResult {
   error?: string;
 }
 
+export type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor' | 'canvas';
+
 export interface ElectronAPI {
   boardsList?: () => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardSummary[]>>;
+  boardsReferenceBaseline?: () => Promise<import('./services/boards/types').BoardApiResult<string[]>>;
   boardsLoad?: (id: string) => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument>>;
   boardsSave?: (input: { document: import('./services/boards/types').BoardDocument; expectedRevision: number }) => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument>>;
   boardsRemove?: (input: { id: string; expectedRevision: number }) => Promise<import('./services/boards/types').BoardApiResult<null>>;

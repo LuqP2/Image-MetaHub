@@ -324,6 +324,7 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('stable-user-data-changed', handler);
   },
   boardsList: () => ipcRenderer.invoke('boards:list'),
+  boardsReferenceBaseline: () => ipcRenderer.invoke('boards:reference-baseline'),
   boardsLoad: (id) => ipcRenderer.invoke('boards:load', id),
   boardsSave: (input) => ipcRenderer.invoke('boards:save', input),
   boardsRemove: (input) => ipcRenderer.invoke('boards:remove', input),

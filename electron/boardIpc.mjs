@@ -22,6 +22,7 @@ export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow }) {
     }
   });
   register('boards:list', repository => repository.list());
+  register('boards:reference-baseline', repository => repository.referenceBaseline());
   register('boards:load', (repository, _window, id) => repository.load(id));
   register('boards:save', (repository, _window, input) => repository.save(input?.document, input?.expectedRevision));
   register('boards:remove', async (repository, _window, input) => {
