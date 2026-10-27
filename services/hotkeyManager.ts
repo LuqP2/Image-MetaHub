@@ -69,6 +69,9 @@ const bindAllActions = () => {
 
       // Don't block keys in text inputs for typing operations
       const target = event.target as HTMLElement;
+      // React Flow must receive Space/modifier keys, while hidden library actions
+      // (delete, ratings, preview, file copy) must not act on Canvas selections.
+      if (target.closest?.('[data-board-editor="true"]') && !hotkeysAllowedInTypingContext.has(action.id)) return;
       const isTypingContext = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
 
       if (isTypingContext && !hotkeysAllowedInTypingContext.has(action.id)) {

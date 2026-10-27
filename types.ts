@@ -482,6 +482,10 @@ export interface ElectronAPI {
   boardsRemove?: (input: { id: string; expectedRevision: number }) => Promise<import('./services/boards/types').BoardApiResult<null>>;
   boardsRemapReferences?: (remaps: import('./services/boards/types').BoardReferenceRemap[]) => Promise<import('./services/boards/types').BoardApiResult<null>>;
   boardsFlush?: () => Promise<import('./services/boards/types').BoardApiResult<null>>;
+  boardsSetDirty?: (dirty: boolean) => void;
+  boardsFlushAcknowledged?: (requestId: string, result: { success: boolean; error?: string }) => void;
+  onBoardsFlushRequested?: (callback: (requestId: string) => void) => () => void;
+  onBoardsCloseCancelled?: (callback: () => void) => () => void;
   boardsImport?: () => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument | null>>;
   boardsExport?: (document: import('./services/boards/types').BoardDocument) => Promise<import('./services/boards/types').BoardApiResult<{ exported: true } | null>>;
   exr: import('./services/exr/contracts').ExrAPI;

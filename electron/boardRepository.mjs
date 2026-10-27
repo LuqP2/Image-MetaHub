@@ -10,10 +10,12 @@ export class BoardRepository {
     this.fs = fileSystem;
     this.now = now;
     this.queue = Promise.resolve();
+    this.pendingOperations = 0;
   }
 
   #enqueue(operation) {
-    const next = this.queue.then(operation);
+    this.pendingOperations += 1;
+    const next = this.queue.then(operation).finally(() => { this.pendingOperations -= 1; });
     this.queue = next.catch(() => {});
     return next;
   }
@@ -109,4 +111,5 @@ export class BoardRepository {
   }
 
   flush() { return this.queue; }
+  isBusy() { return this.pendingOperations > 0; }
 }

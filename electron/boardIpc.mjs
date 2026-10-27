@@ -49,5 +49,5 @@ export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow }) {
     await fs.writeFile(result.filePath, JSON.stringify({ format: 'image-metahub-board', version: 1, document }, null, 2), 'utf8');
     return { exported: true };
   });
-  return { flush: () => repository?.flush() ?? Promise.resolve() };
+  return { flush: () => repository?.flush() ?? Promise.resolve(), isBusy: () => repository?.isBusy() ?? false };
 }

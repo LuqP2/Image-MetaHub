@@ -43,6 +43,21 @@ describe('hotkeyManager pause state', () => {
 
     expect(hotkeyManager.areHotkeysPaused()).toBe(false);
   });
+  it('leaves Space available to Canvas without opening the hidden library preview', () => {
+    const preview = vi.fn();
+    hotkeyManager.registerAction('toggleQuickPreview', preview);
+    hotkeyManager.bindAllActions();
+    hotkeyManager.setScope('global');
+    const canvas = document.createElement('section');
+    canvas.dataset.boardEditor = 'true';
+    document.body.appendChild(canvas);
+    const event = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'keyCode', { value: 32 });
+    Object.defineProperty(event, 'which', { value: 32 });
+    canvas.dispatchEvent(event);
+    expect(preview).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
 
   it('does not run app hotkeys while typing in an input', () => {
     const quickSearch = vi.fn();

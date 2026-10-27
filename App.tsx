@@ -13,6 +13,7 @@ import { useReusableImageViewer } from './hooks/useReusableImageViewer';
 import { viewerLibrarySelection } from './utils/viewerLibrarySelection';
 import { useClusterCacheRestore } from './hooks/useClusterCacheRestore';
 import { useHotkeys } from './hooks/useHotkeys';
+import { useBoardPersistenceLifecycle } from './hooks/useBoardPersistenceLifecycle';
 import { useFeatureAccess } from './hooks/useFeatureAccess';
 import { useTrialExpiryWatcher } from './hooks/useTrialExpiryWatcher';
 import { Directory } from './types';
@@ -277,6 +278,7 @@ const resolveSidebarWidths = ({
 };
 
 export default function App() {
+  useBoardPersistenceLifecycle();
   const { progressState: a1111Progress } = useA1111ProgressContext();
   useGenerationQueueSync();
   useComfyUIQueueMonitor();

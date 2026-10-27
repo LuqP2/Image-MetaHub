@@ -19,6 +19,7 @@ describe('desktop board repository', () => {
     const { repo } = await repository();
     const board = boardWithAsset();
     const outcomes = await Promise.allSettled([repo.save(board, 0), repo.save({ ...board, name: 'stale' }, 0)]);
+    expect(repo.isBusy()).toBe(false);
     expect(outcomes[0].status).toBe('fulfilled');
     expect(outcomes[1].status).toBe('rejected');
     expect(await repo.load(board.id)).toMatchObject({ revision: 1, name: board.name });
