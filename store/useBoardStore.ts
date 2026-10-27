@@ -20,6 +20,7 @@ export interface BoardSession {
   saveErrorCode: string | null;
   recovering: boolean;
   fitSelectionRequest: number;
+  handledFitSelectionRequest: number;
 }
 type Operation = (document: BoardDocument) => BoardDocument;
 interface BoardStore {
@@ -48,6 +49,7 @@ interface BoardStore {
   setViewport(id: string, viewport: BoardDocument['viewport']): void;
   setSelection(id: string, objectIds: string[], connectionIds?: string[]): void;
   requestFitSelection(id: string): void;
+  consumeFitSelection(id: string, request: number): boolean;
   flushBoard(id: string): Promise<void>;
   flushAll(): Promise<void>;
   applyReferenceRemaps(remaps: BoardReferenceRemap[]): void;
@@ -58,7 +60,7 @@ const sameContent = (a: BoardContentSnapshot, b: BoardContentSnapshot) => JSON.s
 const newSession = (document: BoardDocument): BoardSession => ({
   document, savedRevision: document.revision, changeSequence: 0, savedSequence: 0,
   selectedObjectIds: [], selectedConnectionIds: [], past: [], future: [], interaction: null,
-  saveStatus: 'saved', saveError: null, saveErrorCode: null, recovering: false, fitSelectionRequest: 0,
+  saveStatus: 'saved', saveError: null, saveErrorCode: null, recovering: false, fitSelectionRequest: 0, handledFitSelectionRequest: 0,
 });
 
 export function createBoardStore(repository: BoardRepository = boardService, delay = 500) {
@@ -225,6 +227,12 @@ export function createBoardStore(repository: BoardRepository = boardService, del
         updateSession(id, session => JSON.stringify([session.selectedObjectIds, session.selectedConnectionIds]) === JSON.stringify([objectIds, connectionIds]) ? session : { ...session, selectedObjectIds: objectIds, selectedConnectionIds: connectionIds });
       },
       requestFitSelection(id) { updateSession(id, session => ({ ...session, fitSelectionRequest: session.fitSelectionRequest + 1 })); },
+      consumeFitSelection(id, request) {
+        const session = get().sessions[id];
+        if (!session || request !== session.fitSelectionRequest || request <= session.handledFitSelectionRequest) return false;
+        updateSession(id, current => ({ ...current, handledFitSelectionRequest: request }));
+        return true;
+      },
       async flushBoard(id) { const recovery = recoveries.get(id); if (recovery) await recovery; get().commitInteraction(id); await autosave.flush(id); },
       async flushAll() {
         await Promise.all(recoveries.values());

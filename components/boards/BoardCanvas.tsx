@@ -20,10 +20,16 @@ export default function BoardCanvas({ boardId }: { boardId: string }) {
   const editor = useBoardEditor();
   const flow = useReactFlow<BoardFlowNode>();
   useEffect(() => {
-    if (!session.fitSelectionRequest || !session.selectedObjectIds.length) return;
-    const frame = requestAnimationFrame(() => { void flow.fitView({ nodes: session.selectedObjectIds.map(id => ({ id })), padding: 0.2 }); });
+    if (session.fitSelectionRequest <= session.handledFitSelectionRequest) return;
+    const frame = requestAnimationFrame(() => {
+      const state = useBoardStore.getState();
+      const ids = state.sessions[boardId]?.selectedObjectIds ?? [];
+      if (state.consumeFitSelection(boardId, session.fitSelectionRequest) && ids.length) {
+        void flow.fitView({ nodes: ids.map(id => ({ id })), padding: 0.2 });
+      }
+    });
     return () => cancelAnimationFrame(frame);
-  }, [boardId, session.fitSelectionRequest, flow]);
+  }, [boardId, session.fitSelectionRequest, session.handledFitSelectionRequest, flow]);
   const { nodes, edges } = useMemo(() => boardToFlow(session.document, session.selectedObjectIds, session.selectedConnectionIds, editor.editable), [session.document, session.selectedObjectIds, session.selectedConnectionIds, editor.editable]);
   const onNodesChange = useCallback((changes: NodeChange<BoardFlowNode>[]) => {
     const state = useBoardStore.getState();
