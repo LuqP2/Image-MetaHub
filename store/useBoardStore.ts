@@ -18,6 +18,7 @@ export interface BoardSession {
   saveStatus: 'saved' | 'pending' | 'saving' | 'error';
   saveError: string | null;
   saveErrorCode: string | null;
+  recovering: boolean;
 }
 type Operation = (document: BoardDocument) => BoardDocument;
 interface BoardStore {
@@ -55,11 +56,12 @@ const sameContent = (a: BoardContentSnapshot, b: BoardContentSnapshot) => JSON.s
 const newSession = (document: BoardDocument): BoardSession => ({
   document, savedRevision: document.revision, changeSequence: 0, savedSequence: 0,
   selectedObjectIds: [], selectedConnectionIds: [], past: [], future: [], interaction: null,
-  saveStatus: 'saved', saveError: null, saveErrorCode: null,
+  saveStatus: 'saved', saveError: null, saveErrorCode: null, recovering: false,
 });
 
 export function createBoardStore(repository: BoardRepository = boardService, delay = 500) {
   const pendingLoads = new Map<string, Promise<void>>();
+  const recoveries = new Map<string, Promise<string>>();
   const store = create<BoardStore>((set, get) => {
     const updateSession = (id: string, update: (session: BoardSession) => BoardSession) => set(state => {
       const session = state.sessions[id];
@@ -105,7 +107,7 @@ export function createBoardStore(repository: BoardRepository = boardService, del
         }
       },
       renameBoard(id, name) {
-        if (get().closing) return;
+        if (get().closing || get().sessions[id]?.recovering) return;
         updateSession(id, session => session.document.name === name ? session : edited(session, normalizeBoardDocument({ ...session.document, name })));
         autosave.schedule(id);
       },
@@ -118,19 +120,30 @@ export function createBoardStore(repository: BoardRepository = boardService, del
       },
       async saveAsNewBoard(id) {
         if (get().closing) throw new Error('The application is closing.');
+        const existing = recoveries.get(id);
+        if (existing) return existing;
+        if (!get().sessions[id]) throw new Error('Board session is not open.');
         autosave.cancel(id);
-        await autosave.settle(id);
-        const source = get().sessions[id];
-        if (!source) throw new Error('Board session is not open.');
-        const saved = await repository.save(duplicateBoardDocument(source.document), 0);
-        autosave.cancel(id);
-        // Keep the original persisted document available; the local content now belongs to the new board.
-        set(state => { const sessions = { ...state.sessions }; delete sessions[id]; return { sessions }; });
-        setDocument(saved.id, saved);
-        await get().loadBoardList();
-        return saved.id;
+        get().commitInteraction(id);
+        updateSession(id, session => ({ ...session, recovering: true }));
+        const recovery = (async () => {
+          await autosave.settle(id);
+          const source = get().sessions[id];
+          const saved = await repository.save(duplicateBoardDocument(source.document), 0);
+          autosave.cancel(id);
+          set(state => { const sessions = { ...state.sessions }; delete sessions[id]; return { sessions }; });
+          setDocument(saved.id, saved);
+          await get().loadBoardList();
+          return saved.id;
+        })().finally(() => {
+          recoveries.delete(id);
+          updateSession(id, session => ({ ...session, recovering: false }));
+        });
+        recoveries.set(id, recovery);
+        return recovery;
       },
       async reloadBoard(id) {
+        if (recoveries.has(id)) await recoveries.get(id);
         autosave.cancel(id);
         // Wait for an already-running save to settle before replacing its session.
         await autosave.settle(id);
@@ -154,7 +167,7 @@ export function createBoardStore(repository: BoardRepository = boardService, del
       },
       adoptBoard(document) { setDocument(document.id, document); },
       executeOperation(id, operation) {
-        if (get().closing) return;
+        if (get().closing || get().sessions[id]?.recovering) return;
         get().commitInteraction(id);
         updateSession(id, session => {
           const document = normalizeBoardDocument(operation(session.document));
@@ -165,7 +178,7 @@ export function createBoardStore(repository: BoardRepository = boardService, del
       },
       beginInteraction(id) { updateSession(id, session => session.interaction ? session : { ...session, interaction: content(session.document) }); },
       updateInteraction(id, operation) {
-        if (get().closing) return;
+        if (get().closing || get().sessions[id]?.recovering) return;
         get().beginInteraction(id);
         updateSession(id, session => {
           const document = normalizeBoardDocument(operation(session.document));
@@ -180,12 +193,12 @@ export function createBoardStore(repository: BoardRepository = boardService, del
         }));
       },
       cancelInteraction(id) {
-        if (get().closing) return;
+        if (get().closing || get().sessions[id]?.recovering) return;
         updateSession(id, session => !session.interaction ? session : { ...edited(session, { ...session.document, ...session.interaction }), interaction: null });
         autosave.schedule(id);
       },
       undo(id) {
-        if (get().closing) return;
+        if (get().closing || get().sessions[id]?.recovering) return;
         get().commitInteraction(id);
         updateSession(id, session => {
           const previous = session.past.at(-1);
@@ -194,7 +207,7 @@ export function createBoardStore(repository: BoardRepository = boardService, del
         autosave.schedule(id);
       },
       redo(id) {
-        if (get().closing) return;
+        if (get().closing || get().sessions[id]?.recovering) return;
         updateSession(id, session => {
           const next = session.future[0];
           return !next ? session : { ...edited(session, { ...session.document, ...next }), past: [...session.past, content(session.document)].slice(-100), future: session.future.slice(1) };
@@ -202,15 +215,16 @@ export function createBoardStore(repository: BoardRepository = boardService, del
         autosave.schedule(id);
       },
       setViewport(id, viewport) {
-        if (get().closing) return;
+        if (get().closing || get().sessions[id]?.recovering) return;
         updateSession(id, session => JSON.stringify(session.document.viewport) === JSON.stringify(viewport) ? session : edited(session, normalizeBoardDocument({ ...session.document, viewport })));
         autosave.schedule(id);
       },
       setSelection(id, objectIds, connectionIds = []) {
         updateSession(id, session => JSON.stringify([session.selectedObjectIds, session.selectedConnectionIds]) === JSON.stringify([objectIds, connectionIds]) ? session : { ...session, selectedObjectIds: objectIds, selectedConnectionIds: connectionIds });
       },
-      async flushBoard(id) { get().commitInteraction(id); await autosave.flush(id); },
+      async flushBoard(id) { const recovery = recoveries.get(id); if (recovery) await recovery; get().commitInteraction(id); await autosave.flush(id); },
       async flushAll() {
+        await Promise.all(recoveries.values());
         const ids = Object.keys(get().sessions);
         ids.forEach(id => get().commitInteraction(id));
         await autosave.flushAll(ids);

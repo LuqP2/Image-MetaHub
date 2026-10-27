@@ -27,10 +27,10 @@ export default function BoardWorkspace(props: BoardWorkspaceProps) {
 
 function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAsset, assetPanel, assetInspector }: BoardWorkspaceProps) {
   const closing = useBoardStore(state => state.closing);
-  const editable = hasEditAccess && !closing;
   const boardId = useBoardStore(state => state.activeBoardId);
   const summaries = useBoardStore(state => state.summaries);
   const session = useBoardStore(state => boardId ? state.sessions[boardId] : undefined);
+  const editable = hasEditAccess && !closing && !session?.recovering;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [connecting, setConnecting] = useState(false);

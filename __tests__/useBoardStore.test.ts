@@ -19,6 +19,37 @@ function fixture() {
 }
 
 describe('board sessions and history', () => {
+  it('freezes a recovering session until its replacement is saved and makes close wait', async () => {
+    const { store, repository } = fixture();
+    const id = await store.getState().createBoard('Recovery');
+    store.getState().executeOperation(id, document => addText(document, { x: 0, y: 0 }));
+    let release: () => void;
+    (repository.save as ReturnType<typeof vi.fn>).mockImplementationOnce(document => new Promise(resolve => { release = () => resolve({ ...document, revision: 1 }); }));
+    const recovery = store.getState().saveAsNewBoard(id);
+    await Promise.resolve(); await Promise.resolve();
+    expect(store.getState().sessions[id].recovering).toBe(true);
+    store.getState().executeOperation(id, document => addText(document, { x: 300, y: 0 }));
+    expect(store.getState().sessions[id].document.objects).toHaveLength(1);
+    let closed = false;
+    const close = store.getState().flushAll().then(() => { closed = true; });
+    await Promise.resolve(); expect(closed).toBe(false);
+    release!();
+    const newId = await recovery;
+    await close;
+    expect(store.getState().sessions[newId].document.objects).toHaveLength(1);
+    expect(store.getState().sessions[newId].recovering).toBe(false);
+    expect(store.getState().sessions[id]).toBeUndefined();
+  });
+  it('unlocks a failed recovery and retains the original local document', async () => {
+    const { store, repository } = fixture();
+    const id = await store.getState().createBoard();
+    store.getState().executeOperation(id, document => addText(document, { x: 0, y: 0 }));
+    (repository.save as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('disk full'));
+    await expect(store.getState().saveAsNewBoard(id)).rejects.toThrow('disk full');
+    expect(store.getState().sessions[id].recovering).toBe(false);
+    expect(store.getState().sessions[id].document.objects).toHaveLength(1);
+    await store.getState().flushAll();
+  });
   it('freezes document edits during the final close flush and unlocks on cancellation', async () => {
     const { store } = fixture();
     const id = await store.getState().createBoard();
