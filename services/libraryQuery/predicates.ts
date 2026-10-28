@@ -1,7 +1,8 @@
 import type { AdvancedFilters } from '../../types';
 import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../../utils/dateFilterUtils';
 import type { LibraryQueryImage, LibraryWorkerCriteria } from './types';
-const normalizePath = (path: string): string => path.replace(/\\/g, '/');
+// Match folder selections captured by the store, including drive roots (C:\ -> C:).
+const normalizePath = (path: string): string => path.replace(/\\/g, '/').replace(/\/+$/, '');
 
 const joinPath = (base: string, relative: string) => {
   if (!relative) {

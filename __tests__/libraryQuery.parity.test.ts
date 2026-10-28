@@ -29,6 +29,28 @@ const images = [image('a', { tags: ['forest', 'private'], rating: 5, isFavorite:
   image('b', { models: ['SDXL'], tags: ['forest'], rating: 4 }), image('c', { tags: ['portrait'] })];
 const ids = (overrides: Partial<LibraryWorkerCriteria>) => executeWorkerQuery(images, criteria(overrides)).filteredIds;
 
+describe('folder path normalization', () => {
+  it.each([
+    ['C:\\', 'C:'],
+    ['C:/', 'C:'],
+    ['D:\\images\\', 'D:/images'],
+    ['/images/', '/images'],
+    ['\\\\server\\share\\', '//server/share'],
+  ])('preserves flat folder selection for directory %s', (directoryPath, selectedPath) => {
+    const source = (relativePath: string) => ({ id: `root::${relativePath}`, name: relativePath.split('/').pop()!,
+      directoryId: 'root', lastModified: 1, models: [], loras: [], tags: [], autoTags: [] } as IndexedImage);
+    const entries = [source('direct.png'), source('child/nested.png')];
+    const query = criteria({ visibleDirectories: [{ id: 'root', path: directoryPath }], selectedFolders: [selectedPath], includeSubfolders: false });
+    const filtered = (value: LibraryWorkerCriteria) => executeWorkerQuery(entries.map(toLibraryQueryImage), value).filteredIds;
+    expect(filtered(query)).toEqual(['root::direct.png']);
+    const accepts = compileWorkerPredicate(query);
+    expect(entries.filter(entry => accepts(toLazyLibraryQueryImage(entry))).map(entry => entry.id)).toEqual(['root::direct.png']);
+    expect(filtered({ ...query, includeSubfolders: true }).sort()).toEqual(entries.map(entry => entry.id).sort());
+    expect(filtered({ ...query, selectedFolders: [directoryPath] })).toEqual(['root::direct.png']);
+    expect(filtered({ ...query, selectedFolders: [], excludedFolders: [selectedPath] })).toEqual([]);
+  });
+});
+
 describe('shared library query execution', () => {
   it('keeps independent criteria and never changes the dataset', () => {
     const before = JSON.stringify(images);
