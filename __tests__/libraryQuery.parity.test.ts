@@ -1,3 +1,6 @@
+import { vi } from 'vitest';
+import * as searchText from '../utils/imageSearchText';
+import { toLazyLibraryQueryImage } from '../services/libraryQuery/dataset';
 import { compileWorkerPredicate } from '../services/libraryQuery/predicates';
 import { createLibraryQueryKey, normalizeLibraryQueryCriteria } from '../services/libraryQuery/criteria';
 import { describe, expect, it } from 'vitest';
@@ -73,5 +76,32 @@ describe('execution path equivalence', () => {
     copy.selectedModels.push('SDXL');
     expect(original.selectedModels).toEqual(['Flux']);
     expect(createLibraryQueryKey(original)).toBe(createLibraryQueryKey({ ...original, advancedFilters: {} }));
+  });
+});
+
+describe('lazy synchronous adaptation', () => {
+  it('does not build text, metadata or resource arrays without matching predicates', () => {
+    const catalog = vi.spyOn(searchText, 'buildCatalogSearchText');
+    const compact = vi.spyOn(searchText, 'buildCompactSearchText');
+    try {
+      const source = { id: 'lazy', name: 'lazy.png', directoryId: 'root', lastModified: 1,
+        get metadata() { throw new Error('metadata must remain lazy'); },
+        get models() { throw new Error('models must remain lazy'); },
+      } as unknown as IndexedImage;
+      expect(compileWorkerPredicate(criteria())(toLazyLibraryQueryImage(source))).toBe(true);
+      expect(compileWorkerPredicate(criteria({ visibleDirectories: [] }))(toLazyLibraryQueryImage(source))).toBe(false);
+      expect(compileWorkerPredicate(criteria({ favoriteFilterMode: 'include' }))(toLazyLibraryQueryImage(source))).toBe(false);
+      expect(catalog).not.toHaveBeenCalled();
+      expect(compact).not.toHaveBeenCalled();
+    } finally { vi.restoreAllMocks(); }
+  });
+  it('evaluates text only when reached and memoizes each field', () => {
+    const catalog = vi.spyOn(searchText, 'buildCatalogSearchText');
+    try {
+      const record = toLazyLibraryQueryImage({ id: 'lazy', name: 'forest.png', directoryId: 'root' } as IndexedImage);
+      expect(compileWorkerPredicate(criteria({ searchQuery: 'forest' }))(record)).toBe(true);
+      expect(record.catalogText).toContain('forest');
+      expect(catalog).toHaveBeenCalledTimes(1);
+    } finally { vi.restoreAllMocks(); }
   });
 });

@@ -83,3 +83,197 @@ export const toLibraryQueryImage = (image: IndexedImage): LibraryQueryImage => {
     };
 };
 
+
+/** Renderer-only view: expensive fields are evaluated only after cheaper predicates pass. */
+export function toLazyLibraryQueryImage(image: IndexedImage): LibraryQueryImage {
+return {
+get id() {
+
+const value = image.id;
+Object.defineProperty(this, 'id', { value, enumerable: true });
+return value;
+},
+get name() {
+
+const value = image.name || '';
+Object.defineProperty(this, 'name', { value, enumerable: true });
+return value;
+},
+get catalogText() {
+
+const value = buildCatalogSearchText(image);
+Object.defineProperty(this, 'catalogText', { value, enumerable: true });
+return value;
+},
+get searchText() {
+
+const value = buildCompactSearchText(image);
+Object.defineProperty(this, 'searchText', { value, enumerable: true });
+return value;
+},
+get relativePath() {
+const relativePath = getRelativeImagePath(image);
+const value = relativePath;
+Object.defineProperty(this, 'relativePath', { value, enumerable: true });
+return value;
+},
+get directoryId() {
+
+const value = image.directoryId || '';
+Object.defineProperty(this, 'directoryId', { value, enumerable: true });
+return value;
+},
+get directoryName() {
+
+const value = image.directoryName || '';
+Object.defineProperty(this, 'directoryName', { value, enumerable: true });
+return value;
+},
+get models() {
+
+const value = (image.models || [])
+            .map(model => normalizeFacetValue(model))
+            .filter((model): model is string => Boolean(model));
+Object.defineProperty(this, 'models', { value, enumerable: true });
+return value;
+},
+get loraNames() {
+
+const value = (image.loras || [])
+            .map(lora => normalizeFacetValue(typeof lora === 'string' ? lora : lora))
+            .filter((lora): lora is string => Boolean(lora));
+Object.defineProperty(this, 'loraNames', { value, enumerable: true });
+return value;
+},
+get sampler() {
+
+const value = normalizeFacetValue(image.sampler) ?? '';
+Object.defineProperty(this, 'sampler', { value, enumerable: true });
+return value;
+},
+get scheduler() {
+
+const value = normalizeFacetValue(image.scheduler) ?? '';
+Object.defineProperty(this, 'scheduler', { value, enumerable: true });
+return value;
+},
+get board() {
+
+const value = image.board ? String(image.board) : '';
+Object.defineProperty(this, 'board', { value, enumerable: true });
+return value;
+},
+get dimensions() {
+
+const value = normalizeFacetValue(image.dimensions) ?? '';
+Object.defineProperty(this, 'dimensions', { value, enumerable: true });
+return value;
+},
+get lastModified() {
+
+const value = image.lastModified;
+Object.defineProperty(this, 'lastModified', { value, enumerable: true });
+return value;
+},
+get steps() {
+
+const value = typeof image.steps === 'number' ? image.steps : null;
+Object.defineProperty(this, 'steps', { value, enumerable: true });
+return value;
+},
+get cfgScale() {
+
+const value = typeof image.cfgScale === 'number' ? image.cfgScale : null;
+Object.defineProperty(this, 'cfgScale', { value, enumerable: true });
+return value;
+},
+get generationType() {
+
+const value = getImageGenerationType(image);
+Object.defineProperty(this, 'generationType', { value, enumerable: true });
+return value;
+},
+get mediaType() {
+const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
+const inferredMediaType = resolveMediaType(image.name, image.fileType);
+const mediaType =
+        metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'model3d' || metadataMediaType === 'image'
+            ? metadataMediaType
+            : inferredMediaType === 'video' || inferredMediaType === 'audio' || inferredMediaType === 'model3d'
+                ? inferredMediaType
+                : 'image';
+const value = mediaType;
+Object.defineProperty(this, 'mediaType', { value, enumerable: true });
+return value;
+},
+get generator() {
+
+const value = getImageGenerator(image);
+Object.defineProperty(this, 'generator', { value, enumerable: true });
+return value;
+},
+get gpuDevice() {
+
+const value = getImageGpuDevice(image);
+Object.defineProperty(this, 'gpuDevice', { value, enumerable: true });
+return value;
+},
+get hasTelemetry() {
+
+const value = hasTelemetryData(image);
+Object.defineProperty(this, 'hasTelemetry', { value, enumerable: true });
+return value;
+},
+get hasVerifiedTelemetry() {
+
+const value = hasVerifiedTelemetry(image);
+Object.defineProperty(this, 'hasVerifiedTelemetry', { value, enumerable: true });
+return value;
+},
+get generationTimeMs() {
+const analytics = getImageAnalyticsSnapshot(image);
+const generationTimeMs = typeof analytics?.generation_time_ms === 'number' ? analytics.generation_time_ms : null;
+const value = generationTimeMs;
+Object.defineProperty(this, 'generationTimeMs', { value, enumerable: true });
+return value;
+},
+get stepsPerSecond() {
+const analytics = getImageAnalyticsSnapshot(image);
+const stepsPerSecond = typeof analytics?.steps_per_second === 'number' ? analytics.steps_per_second : null;
+const value = stepsPerSecond;
+Object.defineProperty(this, 'stepsPerSecond', { value, enumerable: true });
+return value;
+},
+get vramPeakMb() {
+const analytics = getImageAnalyticsSnapshot(image);
+const vramPeakMb = typeof analytics?.vram_peak_mb === 'number' ? analytics.vram_peak_mb : null;
+const value = vramPeakMb;
+Object.defineProperty(this, 'vramPeakMb', { value, enumerable: true });
+return value;
+},
+get isFavorite() {
+
+const value = image.isFavorite === true;
+Object.defineProperty(this, 'isFavorite', { value, enumerable: true });
+return value;
+},
+get rating() {
+
+const value = image.rating ?? null;
+Object.defineProperty(this, 'rating', { value, enumerable: true });
+return value;
+},
+get tags() {
+
+const value = (image.tags || []).map(tag => String(tag).toLowerCase());
+Object.defineProperty(this, 'tags', { value, enumerable: true });
+return value;
+},
+get autoTags() {
+
+const value = (image.autoTags || []).map(tag => String(tag).toLowerCase());
+Object.defineProperty(this, 'autoTags', { value, enumerable: true });
+return value;
+}
+};
+}

@@ -1,3 +1,4 @@
+import { toLazyLibraryQueryImage } from '../services/libraryQuery/dataset';
 import { createLibraryComparator } from '../services/libraryQuery/execute';
 import { captureWorkerCriteria } from '../services/libraryQuery/storeAdapter';
 import { compileWorkerPredicate } from '../services/libraryQuery/predicates';
@@ -1873,7 +1874,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             sortOrder: captured.sortOrder === 'relevance' ? 'date-desc' : captured.sortOrder,
             searchQuery: semanticScores ? '' : captured.searchQuery,
         });
-        return image => (!semanticScores || semanticScores.has(image.id)) && accepts(toSearchWorkerImage(image));
+        return image => (!semanticScores || semanticScores.has(image.id)) && accepts(toLazyLibraryQueryImage(image));
     };
 
     // --- Sort comparator factory ---
