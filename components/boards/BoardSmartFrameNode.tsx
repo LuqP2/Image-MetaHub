@@ -1,3 +1,5 @@
+import BoardSmartFrameGroups from './BoardSmartFrameGroups';
+import BoardSmartFrameMatrix from './BoardSmartFrameMatrix';
 import { memo, useState } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import type { BoardFlowNode } from '../../services/boards/reactFlowAdapter';
@@ -18,11 +20,13 @@ export default memo(function BoardSmartFrameNode({ data, selected }: NodeProps<B
   return <div className="board-smart-frame" style={{ borderColor: frame.color }}>
     <BoardNodeControls selected={!!selected} />
     <header><strong>{frame.title}</strong><span>{result?.status === 'ready' ? `${result.totalCount.toLocaleString()} matches` : result?.status === 'error' || result?.status === 'source-missing' ? 'Unavailable' : 'Loading…'}</span>
-      <button className="board-button nodrag nopan" onClick={() => setExpanded(!expanded)}>{expanded ? 'Preview' : 'Browse'}</button></header>
+      {frame.layout.kind === 'grid' && <button className="board-button nodrag nopan" onClick={() => setExpanded(!expanded)}>{expanded ? 'Preview' : 'Browse'}</button>}</header>
     <small>{frame.source.kind === 'collection' ? 'Live collection' : frame.source.kind === 'snapshot' ? 'Snapshot' : frame.source.kind}</small>
     {result?.error && <div role="alert">{result.error}<button className="board-button nodrag" onClick={() => actions?.retry()}>Retry</button></div>}
     {!!result?.unavailableReferences && <small>{result.unavailableReferences} references unavailable</small>}
-    {result?.status === 'ready' && (expanded ? <BoardSmartFrameResults imageIds={result.imageIds} frameId={frame.id} /> :
+    {result?.status === 'ready' && result.grouped?.kind === 'groups' && <BoardSmartFrameGroups key={JSON.stringify(frame.layout)} frameId={frame.id} groups={result.grouped.groups} />}
+    {result?.status === 'ready' && result.grouped?.kind === 'matrix' && <BoardSmartFrameMatrix key={JSON.stringify(frame.layout)} frameId={frame.id} matrix={result.grouped} />}
+    {result?.status === 'ready' && !result.grouped && (expanded ? <BoardSmartFrameResults imageIds={result.imageIds} frameId={frame.id} /> :
       <div className="board-smart-preview">{result.imageIds.slice(0, 12).map(id => { const image = actions?.images.get(id); return image ? <BoardResultThumbnail key={id} image={image} open={() => actions?.open(id, frame.id)} /> : null; })}</div>)}
   </div>;
 });

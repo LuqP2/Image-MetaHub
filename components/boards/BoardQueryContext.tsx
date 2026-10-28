@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 import type { IndexedImage } from '../../types';
 export interface BoardQueryActions {
   images: Map<string, IndexedImage>;
-  open(imageId: string, frameId: string): void;
+  open(imageId: string, frameId: string, navigationIds?: string[]): void;
   create(): void;
   retry(): void;
   snapshot(frameId: string): void;

@@ -165,7 +165,10 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
   }
 
   const seedMatch = parameters.match(/Seed: (\d+)/);
-  if (seedMatch) result.seed = parseInt(seedMatch[1], 10);
+  if (seedMatch) {
+    result.seedExact = seedMatch[1];
+    result.seed = parseInt(seedMatch[1], 10);
+  }
 
   const denoiseMatch = parameters.match(/Denoising strength:\s*([\d.]+)/i);
   if (denoiseMatch) {

@@ -74,3 +74,16 @@ describe('visual filter branching', () => {
     expect((screen.getByRole('button', { name: 'Duplicate query independently' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+it('removes a local group constraint without changing the parent query', () => {
+  let document = createSmartFrame(createBoardDocument(), { id: 'parent' });
+  document = branchSmartFrame(document, 'parent', [{ kind: 'exact', dimension: 'lora', value: 'A' }]);
+  const child = document.objects[1];
+  useBoardStore.getState().adoptBoard(document);
+  useBoardStore.getState().setSelection(document.id, [child.id]);
+  render(<BoardInspector boardId={document.id} editable />);
+  fireEvent.click(screen.getByRole('button', { name: 'Remove group filter' }));
+  const updated = useBoardStore.getState().sessions[document.id].document;
+  expect((updated.objects[1] as BoardSmartFrameObject).groupConstraints).toEqual([]);
+  expect(updated.objects[0]).toEqual(document.objects[0]);
+});

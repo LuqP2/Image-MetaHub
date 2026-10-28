@@ -1,3 +1,5 @@
+import { groupingLabels } from '../../services/boards/grouping';
+import BoardSmartFrameLayoutEditor from './BoardSmartFrameLayoutEditor';
 import { useState } from 'react';
 import { reconnectableFrames } from '../../services/boards/queryGraph';
 import BoardInheritedQuerySummary from './BoardInheritedQuerySummary';
@@ -5,7 +7,7 @@ import type { BoardDocument } from '../../services/boards/types';
 import type { BoardSmartFrameObject } from '../../services/boards/queryTypes';
 import { useBoardStore } from '../../store/useBoardStore';
 import { useBoardQueryStore } from '../../store/useBoardQueryStore';
-import { reconnectSmartFrameSource, updateSmartFrameQuery, branchSmartFrame, duplicateSmartFrameQuery } from '../../services/boards/smartFrameOperations';
+import { reconnectSmartFrameSource, updateSmartFrameQuery, branchSmartFrame, duplicateSmartFrameQuery, updateSmartFrameLayout } from '../../services/boards/smartFrameOperations';
 import { updateObjects } from '../../services/boards/operations';
 import BoardQueryFilterEditor from './BoardQueryFilterEditor';
 import { useBoardQueryActions } from './BoardQueryContext';
@@ -49,6 +51,13 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
     <button className="board-button" disabled={!editable || result?.status !== 'ready'} onClick={() => actions?.snapshot(frame.id)}>Freeze as Snapshot</button>
     <button className="board-button" disabled={!editable} onClick={() => actions?.useCurrentFilters(frame.id)}>Use current library view</button>
     <BoardInheritedQuerySummary source={frame.source} frames={frames} />
+    <BoardSmartFrameLayoutEditor layout={frame.layout} disabled={!editable} change={layout => run(document => updateSmartFrameLayout(document, frame.id, layout))} />
+    {frame.groupConstraints.length > 0 && <section aria-label="Local group filters"><h3>Group filters</h3>
+      {frame.groupConstraints.map((constraint, index) => <div key={index}>
+        <span>{groupingLabels[constraint.dimension]}: {constraint.kind === 'missing' ? 'No value' : constraint.kind === 'session' ? `${new Date(constraint.start).toLocaleString()} – ${new Date(constraint.endExclusive - 1).toLocaleString()}` : constraint.value}</span>
+        <button className="board-button" disabled={!editable} onClick={() => run(document => updateObjects(document, [{ id: frame.id, groupConstraints: frame.groupConstraints.filter((_, position) => position !== index) }]))}>Remove group filter</button>
+      </div>)}
+    </section>}
     <h3>Local filters</h3>
     <BoardQueryFilterEditor value={frame.criteria} facets={result?.facets} disabled={!editable}
       onChange={criteria => useBoardStore.getState().updateInteraction(boardId, document => updateSmartFrameQuery(document, frame.id, criteria))} />
