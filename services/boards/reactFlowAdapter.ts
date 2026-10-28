@@ -1,3 +1,4 @@
+import { frameDependencies } from './queryGraph';
 import type { Edge, Node, NodeChange } from '@xyflow/react';
 import type { BoardDocument, BoardObject } from './types';
 import type { BoardObjectUpdate } from './operations';
@@ -20,6 +21,19 @@ export function boardToFlow(document: BoardDocument, selectedObjectIds: string[]
     label: connection.label, data: { color: connection.color }, selected: selectedConnectionIds.includes(connection.id),
     zIndex: 1000,
   }));
+  const usedIds = new Set(document.connections.map(connection => connection.id));
+  const byId = new Map(document.objects.map(object => [object.id, object]));
+  for (const frame of document.objects) if (frame.type === 'smart-frame') {
+    for (const parentId of frameDependencies(frame.source)) {
+      if (byId.get(parentId)?.type !== 'smart-frame') continue;
+      let id = `query:${JSON.stringify([parentId, frame.id])}`;
+      while (usedIds.has(id)) id += ':';
+      usedIds.add(id);
+      edges.push({ id, type: 'query', source: parentId, target: frame.id, sourceHandle: 'right', targetHandle: 'left',
+        label: frame.source.kind === 'difference' ? 'difference' : frame.source.kind === 'intersection' ? 'intersection' : 'refines',
+        data: { color: frame.color }, selectable: false, deletable: false, reconnectable: false, focusable: false, zIndex: 999 });
+    }
+  }
   return { nodes, edges };
 }
 

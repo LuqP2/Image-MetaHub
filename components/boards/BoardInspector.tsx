@@ -1,3 +1,5 @@
+import BoardSmartFrameSelectionActions from './BoardSmartFrameSelectionActions';
+import type { BoardSmartFrameObject } from '../../services/boards/queryTypes';
 import BoardSmartFrameInspector from './BoardSmartFrameInspector';
 import { PanelRightClose } from 'lucide-react';
 import { useBoardUIStore } from '../../store/useBoardUIStore';
@@ -21,6 +23,7 @@ export default function BoardInspector({ boardId, editable, assetActions, assetM
   const commit = () => useBoardStore.getState().commitInteraction(boardId);
   return <aside className="board-inspector" aria-label="Board inspector">
     <header className="board-inspector-header"><div><small>{object?.type ?? "Properties"}</small><h2 title={object?.type === 'asset' ? getBoardDisplayName(object.name) : undefined}>{object?.type === 'asset' ? getBoardDisplayName(object.name) : object?.type === 'frame' ? 'Frame' : object?.type === 'text' ? 'Text' : connection ? 'Connection' : selected.length ? `${selected.length} objects` : 'Board'}</h2></div><button className="board-icon-button" aria-label="Hide inspector" onClick={() => useBoardUIStore.getState().setInspectorOpen(false)}><PanelRightClose size={16}/></button></header><div className="board-inspector-content scrollbar-sidebar">{assetStatus}{assetActions}{selectionActions}{assetMetadata && <Section title="Metadata" defaultOpen>{assetMetadata}</Section>}
+    {selected.length > 1 && selected.every(item => item.type === 'smart-frame') && <BoardSmartFrameSelectionActions key={selected.map(item => item.id).join('|')} boardId={boardId} frames={selected as BoardSmartFrameObject[]} editable={editable} />}
     {object?.type === 'smart-frame' && <BoardSmartFrameInspector boardId={boardId} frame={object} editable={editable} />}
     {object?.type === 'text' && <>
       <label>Text<textarea className="board-textarea" disabled={!editable} value={object.text} onChange={event => edit('text', event.target.value)} onBlur={commit} /></label>

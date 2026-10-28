@@ -1,3 +1,4 @@
+import BoardQueryConnection from './BoardQueryConnection';
 import BoardSmartFrameNode from './BoardSmartFrameNode';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clearInternalImageDragData, getInternalImageDragIds, hasInternalImageDragType } from '../../utils/internalImageDrag';
@@ -16,7 +17,7 @@ import { useBoardEditor } from './BoardEditorContext';
 import type { BoardSide } from '../../services/boards/types';
 
 const nodeTypes = { 'smart-frame': BoardSmartFrameNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode };
-const edgeTypes = { manual: BoardConnection };
+const edgeTypes = { manual: BoardConnection, query: BoardQueryConnection };
 
 export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId: string; onFitAll?: () => void }) {
   const session = useBoardStore(state => state.sessions[boardId]);
@@ -81,7 +82,7 @@ export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId:
     <ReactFlow<BoardFlowNode> key={boardId} nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       onNodesChange={onNodesChange} onEdgesChange={changes => {
         const selected = new Set(useBoardStore.getState().sessions[boardId].selectedConnectionIds);
-        changes.forEach(change => { if (change.type === 'select') { if (change.selected) selected.add(change.id); else selected.delete(change.id); } });
+        changes.forEach(change => { if (change.type === 'select' && session.document.connections.some(connection => connection.id === change.id)) { if (change.selected) selected.add(change.id); else selected.delete(change.id); } });
         useBoardStore.getState().setSelection(boardId, useBoardStore.getState().sessions[boardId].selectedObjectIds, [...selected]);
       }}
       onNodeDragStart={editor.begin} onNodeDragStop={finishDrag} onConnect={connect}

@@ -79,3 +79,28 @@ it('reuses equivalent query results and invalidates cache on a dataset change', 
   expect(third.all.imageIds).not.toBe(first.all.imageIds);
   expect(third.all.imageIds).toEqual([b.id]);
 });
+
+it('explores Flux through LoRA A, LoRA B and neither without changing sibling queries', () => {
+  const source = dataset();
+  const first = source.images[0];
+  source.images = [
+    { ...first, id: 'a', models: ['Flux'], loraNames: ['A'], tags: [] },
+    { ...first, id: 'b', models: ['Flux'], loraNames: ['B'], tags: [] },
+    { ...first, id: 'both', models: ['Flux'], loraNames: ['A', 'B'], tags: [] },
+    { ...first, id: 'neither', models: ['Flux'], loraNames: [], tags: [] },
+    { ...first, id: 'sdxl', models: ['SDXL'], loraNames: ['A'], tags: [] },
+  ];
+  let document = createSmartFrame(createBoardDocument(), { id: 'flux', criteria: normalizeLibraryQueryCriteria({ selectedModels: ['Flux'] }) });
+  for (const [id, criteria] of [['a-set', { selectedLoras: ['A'] }], ['b-set', { selectedLoras: ['B'] }], ['neither-set', { excludedLoras: ['A', 'B'] }]] as const) {
+    document = createSmartFrame(document, { id, source: { kind: 'frame', frameId: 'flux' }, criteria: normalizeLibraryQueryCriteria(JSON.parse(JSON.stringify(criteria))) });
+  }
+  document = intersectSmartFrames(document, ['a-set', 'b-set']);
+  document = subtractSmartFrames(document, 'a-set', 'b-set');
+  const output = evaluateBoardQueries(source, document.objects as BoardSmartFrameObject[], 1, 1);
+  expect(output.flux.totalCount).toBe(4);
+  expect(output['a-set'].imageIds.slice().sort()).toEqual(['a', 'both']);
+  expect(output['b-set'].imageIds.slice().sort()).toEqual(['b', 'both']);
+  expect(output['neither-set'].imageIds).toEqual(['neither']);
+  expect(output[document.objects[4].id].imageIds).toEqual(['both']);
+  expect(output[document.objects[5].id].imageIds).toEqual(['a']);
+});

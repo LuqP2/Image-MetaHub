@@ -120,3 +120,5 @@
 .board-result-thumb{width:100%;height:108px;padding:3px;border:0;overflow:hidden;background:transparent;color:inherit}.board-result-thumb img{width:100%;height:100%;object-fit:contain}
 .board-query-filters{display:flex;flex-direction:column;gap:12px;min-width:0;border:0;padding:0}.board-query-filters label{display:block}
 .board-dialog-backdrop{position:absolute;inset:0;z-index:2000;background:#0009;display:flex;align-items:center;justify-content:center}.board-query-dialog{background:rgb(var(--gray-900));padding:24px;max-width:480px;border:1px solid #64748b;border-radius:12px}
+
+.board-query-edge-label{color:#c7d2fe;border:1px dashed #818cf8;font-size:11px}.board-smart-selection-actions{display:flex;flex-wrap:wrap;gap:8px}

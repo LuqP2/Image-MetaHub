@@ -48,4 +48,10 @@ Manual acceptance covers empty-library board creation; adding multiple assets fr
 
 The Smart Frame tool creates a library query, a Live collection source or a Snapshot of selected library images. Its inspector edits independent criteria and supports explicit copying from the current library view. Scoped, workflow-node-filtered and visual-search views are currently captured as Snapshots. Preview is capped at 12 thumbnails; expanded browsing uses `react-window`. Viewer navigation follows the frame's ordered results, and thumbnails can be dragged out as free cards. Snapshot capture checks query and dataset freshness across the asynchronous reference-baseline operation.
 
-Grouping constraints and layouts are persisted but their execution/rendering belongs to the grouping stage. Until that engine is integrated, queries containing group constraints report an explicit error. Spatial branching controls and dependency edges belong to stage 4.
+Grouping constraints and layouts are persisted but their execution/rendering belongs to the grouping stage. Until that engine is integrated, queries containing group constraints report an explicit error. Spatial branching controls and dependency edges are implemented in stage 4 below.
+
+### Visual branching and set operations (stage 4)
+
+The Smart Frame inspector creates linked branches or independent query copies. Parent criteria are displayed as a read-only inherited summary; local filters refine the computed source set. Selecting two or more Smart Frames enables intersection; exactly two enables an explicit A-minus-B dialog defaulting to spatial left-to-right order with a swap action. New result frames are selected and fitted to the viewport. Read-only/closing/recovering sessions disable these edits.
+
+Dependency edges are derived from query expressions and never serialized as manual connections. They are dashed, directional, non-selectable and non-reconnectable. Missing parents leave their dependent frames reconnectable; restoring a removed parent through undo restores the dependency. The Source picker allows library, collection and eligible frame sources, excluding descendants and self references. Normalization still enforces depth and cycle limits if a reconnection exceeds them.

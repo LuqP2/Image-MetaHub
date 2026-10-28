@@ -1,3 +1,6 @@
+import { createBoardDocument } from '../services/boards/document.mjs';
+import { createSmartFrame, branchSmartFrame, duplicateSmartFrameQuery } from '../services/boards/smartFrameOperations';
+import { addConnection } from '../services/boards/operations';
 import { describe, expect, it } from 'vitest';
 import { boardToFlow, flowGeometryUpdates } from '../services/boards/reactFlowAdapter';
 import { createFrame } from '../services/boards/operations';
@@ -17,4 +20,21 @@ describe('board React Flow boundary', () => {
     expect(updates[0]).toMatchObject({ x: document.objects[1].x + 100, y: document.objects[1].y + 50 });
     expect(flowGeometryUpdates(nodes, [{ type: 'dimensions', id: child.id, dimensions: { width: 300, height: 300 } }])).toEqual([]);
   });
+});
+
+it('derives immutable dependency edges without persisting them or changing manual connections', () => {
+  let document = createSmartFrame(createBoardDocument(), { id: 'parent' });
+  document = branchSmartFrame(document, 'parent');
+  const childId = document.objects[1].id;
+  document = addConnection(document, { sourceObjectId: 'parent', targetObjectId: childId, sourceSide: 'bottom', targetSide: 'top', label: 'manual', color: '#ffffff' });
+  const before = JSON.stringify(document);
+  const { edges } = boardToFlow(document, [], [], false);
+  expect(edges.filter(edge => edge.type === 'manual')).toHaveLength(1);
+  const dependency = edges.find(edge => edge.type === 'query')!;
+  expect(dependency).toMatchObject({ source: 'parent', target: childId, selectable: false, deletable: false, reconnectable: false });
+  expect(boardToFlow(document, [], [], true).edges.find(edge => edge.type === 'query')?.id).toBe(dependency.id);
+  expect(JSON.stringify(document)).toBe(before);
+  expect(document.connections).toHaveLength(1);
+  const duplicate = duplicateSmartFrameQuery(document, childId);
+  expect(boardToFlow(duplicate, [], [], true).edges.filter(edge => edge.type === 'query')).toHaveLength(1);
 });
