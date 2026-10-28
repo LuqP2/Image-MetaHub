@@ -1,3 +1,5 @@
+import { parseA1111Metadata } from '../services/parsers/automatic1111Parser';
+import { compactRawMetadataForRuntime } from '../services/fileIndexer';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useBoardQueries } from '../hooks/useBoardQueries';
@@ -6,7 +8,7 @@ import { useBoardQueryStore } from '../store/useBoardQueryStore';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { createBoardDocument } from '../services/boards/document.mjs';
-import { createSmartFrame, updateSmartFrameQuery, updateSmartFrameLayout } from '../services/boards/smartFrameOperations';
+import { createSmartFrame, updateSmartFrameQuery, updateSmartFrameLayout, branchSmartFrameGroup } from '../services/boards/smartFrameOperations';
 import { updateObjects } from '../services/boards/operations';
 import { normalizeLibraryQueryCriteria } from '../services/libraryQuery/criteria';
 import { evaluateBoardQueries } from '../services/boards/queryEvaluator';
@@ -33,6 +35,32 @@ class WorkerMock {
 afterEach(async () => { cleanup(); await useBoardStore.getState().flushAll(); vi.unstubAllGlobals(); });
 
 describe('Canvas query lifecycle', () => {
+  it('preserves distinct uint64 seeds from parsing through compacted metadata, worker groups and branches', async () => {
+    vi.stubGlobal('Worker', WorkerMock); WorkerMock.messages = [];
+    const seeds = ['18446744073709551614', '18446744073709551615'];
+    const images = seeds.map((seed, index) => {
+      const parameters = `${'prompt '.repeat(100000)}\nSteps: 20, Seed: ${seed}, Size: 512x512`;
+      const normalizedMetadata = parseA1111Metadata(parameters);
+      const runtime = compactRawMetadataForRuntime({ parameters }, normalizedMetadata);
+      expect(runtime.metadata).toHaveProperty('_rawMetadataCompacted', true);
+      return boardImage(`${index}.png`, { seed: normalizedMetadata.seed, ...runtime });
+    });
+    expect(images[0].seed).toBe(images[1].seed); // The legacy numeric API has already rounded both.
+    useImageStore.setState({ images, directories: [boardDirectory], collections: [] });
+    useSettingsStore.setState({ enableSafeMode: false });
+    const document = updateSmartFrameLayout(createSmartFrame(createBoardDocument(), { id: 'seeds' }), 'seeds', { kind: 'groups', groupBy: 'seed', subgroupBy: null });
+    useBoardStore.getState().adoptBoard(document);
+    renderHook(() => useBoardQueries(document.id, false));
+    await waitFor(() => expect(useBoardQueryStore.getState().results[document.id]?.seeds.grouped?.kind).toBe('groups'));
+    const grouped = useBoardQueryStore.getState().results[document.id].seeds.grouped;
+    if (grouped?.kind !== 'groups') throw new Error('Expected seed groups');
+    expect(grouped.groups.map(group => group.label).sort()).toEqual(seeds);
+    for (const group of grouped.groups) expect(group.imageIds).toEqual([images[seeds.indexOf(group.label)].id]);
+    act(() => useBoardStore.getState().executeOperation(document.id, doc => branchSmartFrameGroup(doc, 'seeds', [grouped.groups[0].constraint])));
+    const child = useBoardStore.getState().sessions[document.id].document.objects.find(object => object.id !== 'seeds')!;
+    await waitFor(() => expect(useBoardQueryStore.getState().results[document.id]?.[child.id]?.imageIds).toEqual(grouped.groups[0].imageIds));
+  });
+
   it('keeps results transient, reuses the dataset for criteria edits, and ignores geometry', async () => {
     vi.stubGlobal('Worker', WorkerMock); WorkerMock.messages = [];
     const first = { ...boardImage('a.png'), models: ['Flux'] };

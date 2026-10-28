@@ -1,3 +1,4 @@
+import { getImageSeedExact } from '../utils/losslessSeed';
 import { useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { useBoardStore } from '../store/useBoardStore';
 import { useImageStore } from '../store/useImageStore';
@@ -44,7 +45,7 @@ export function useBoardQueries(boardId: string | null, loading: boolean) {
       const relative = records[index].relativePath.replace(/\\/g, '/');
       const slash = relative.lastIndexOf('/');
       const root = directoryPaths.get(image.directoryId ?? '');
-      return [image.id, { seed: image.seed == null ? null : String(image.seed).trim(), folder: root === undefined ? null : `${root}${slash < 0 ? '' : `/${relative.slice(0, slash)}`}` || '/' }];
+      return [image.id, { seed: getImageSeedExact(image), folder: root === undefined ? null : `${root}${slash < 0 ? '' : `/${relative.slice(0, slash)}`}` || '/' }];
     }));
     return { images: records, references, grouping,
       collectionLabels: Object.fromEntries(collections.map(collection => [collection.id, collection.name])),

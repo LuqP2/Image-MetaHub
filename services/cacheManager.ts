@@ -1,3 +1,4 @@
+import { readLosslessSeed } from '../utils/losslessSeed';
 import {
   type IndexedImage,
   type ThumbnailCacheBatchStats,
@@ -185,7 +186,9 @@ export function compactCacheMetadataEntry(rawEntry: CacheImageMetadata): CacheIm
   const metadata = entry.metadata && typeof entry.metadata === 'object'
     ? entry.metadata as Record<string, any>
     : {};
-  const normalizedMetadata = metadata.normalizedMetadata;
+  const seedExact = readLosslessSeed(metadata, entry.seed);
+  const normalizedMetadata = seedExact && metadata.normalizedMetadata
+    ? { ...metadata.normalizedMetadata, seedExact } : metadata.normalizedMetadata;
   const compactedMetadata: Record<string, unknown> = {
     _rawMetadataCompacted: true,
     _rawMetadataSizeBytes: metadataString.length,
