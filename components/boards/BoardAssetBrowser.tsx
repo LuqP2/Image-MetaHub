@@ -1,3 +1,5 @@
+import { useBoardUIStore } from '../../store/useBoardUIStore';
+import { getBoardDisplayName } from './boardPresentation';
 import { useMemo } from 'react';
 import { create } from 'zustand';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -10,7 +12,7 @@ import { searchBoardAssets } from '../../services/boards/assetSearch';
 import { clearInternalImageDragData, setInternalImageDragData } from '../../utils/internalImageDrag';
 import { getHiddenSensitiveTagSet, isVisibleWithSafeMode } from '../../utils/safeModeVisibility';
 
-const useBrowserState = create<{ query: string; directoryId: string; mediaType: string; selectedIds: string[]; collapsed: boolean }>(() => ({ query: '', directoryId: '', mediaType: '', selectedIds: [], collapsed: false }));
+const useBrowserState = create<{ query: string; directoryId: string; mediaType: string; selectedIds: string[] }>(() => ({ query: '', directoryId: '', mediaType: '', selectedIds: [] }));
 function AssetTile({ image, selected, onSelect, editable, draggingIds }: { image: IndexedImage; selected: boolean; onSelect(multiple: boolean): void; editable: boolean; draggingIds: string[] }) {
   useThumbnail(image);
   const thumbnail = useResolvedThumbnail(image);
@@ -23,7 +25,7 @@ function AssetTile({ image, selected, onSelect, editable, draggingIds }: { image
     onDragStart={event => { event.dataTransfer.effectAllowed = 'copy'; setInternalImageDragData(event.dataTransfer, image.id, draggingIds.includes(image.id) ? draggingIds : [image.id]); }}
     onDragEnd={clearInternalImageDragData}>
     {thumbnail?.thumbnailUrl ? <img src={thumbnail.thumbnailUrl} alt="" draggable={false} style={{ filter: blurred ? 'blur(16px)' : undefined }} /> : <span>Preview</span>}
-    <span>{image.name}</span>
+    <span>{getBoardDisplayName(image.name)}</span>
   </button>;
 }
 interface RowData { images: IndexedImage[]; selectedIds: string[]; editable: boolean; onPick?: (image: IndexedImage) => void }
@@ -39,8 +41,9 @@ function BrowserRow({ index, style, data }: ListChildComponentProps<RowData>) {
   </div>;
 }
 
-export default function BoardAssetBrowser({ images, directories, editable, onAdd, onPick, onCancelPick }: {
+export default function BoardAssetBrowser({ images, directories, editable, onAdd, onPick, onCancelPick, open = true, onOpenChange }: {
   images: IndexedImage[]; directories: Directory[]; editable: boolean; onAdd(images: IndexedImage[]): void;
+  open?: boolean; onOpenChange?: (open: boolean) => void;
   onPick?: (image: IndexedImage) => void; onCancelPick?: () => void;
 }) {
   const state = useBrowserState();
@@ -57,14 +60,14 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
   }, [visibleImages, state.selectedIds]);
   const results = useMemo(() => searchBoardAssets(visibleImages, state.query, state.directoryId, state.mediaType), [visibleImages, state.query, state.directoryId, state.mediaType]);
   const data = useMemo(() => ({ images: results, selectedIds, editable, onPick }), [results, selectedIds, editable, onPick]);
-  if (state.collapsed && !onPick) return <aside className="board-browser-collapsed"><button onClick={() => useBrowserState.setState({ collapsed: false })}>Library →</button></aside>;
+  if (!open && !onPick) return null;
   return <aside className="board-browser" aria-label="Canvas library">
-    <div className="board-browser-heading"><strong>{onPick ? 'Choose a replacement' : 'Library'}</strong><button onClick={() => onPick ? onCancelPick?.() : useBrowserState.setState({ collapsed: true })}>{onPick ? 'Cancel' : 'Hide'}</button></div>
-    <input aria-label="Search canvas library" placeholder="Search library…" value={state.query} onChange={event => useBrowserState.setState({ query: event.target.value })} />
-    <select aria-label="Canvas library folder" value={state.directoryId} onChange={event => useBrowserState.setState({ directoryId: event.target.value })}><option value="">All folders</option>{directories.map(directory => <option key={directory.id} value={directory.id}>{directory.name}</option>)}</select>
-    <select aria-label="Canvas library media type" value={state.mediaType} onChange={event => useBrowserState.setState({ mediaType: event.target.value })}><option value="">All media</option>{['image', 'video', 'audio', 'model3d'].map(type => <option value={type} key={type}>{type}</option>)}</select>
+    <div className="board-browser-heading"><strong>{onPick ? 'Choose a replacement' : 'Library'}</strong><button className="board-button" onClick={() => onPick ? onCancelPick?.() : (onOpenChange ?? useBoardUIStore.getState().setLibraryOpen)(false)}>{onPick ? 'Cancel' : 'Hide'}</button></div>
+    <input className="board-input" aria-label="Search canvas library" placeholder="Search library…" value={state.query} onChange={event => useBrowserState.setState({ query: event.target.value })} />
+    <select className="board-select" aria-label="Canvas library folder" value={state.directoryId} onChange={event => useBrowserState.setState({ directoryId: event.target.value })}><option value="">All folders</option>{directories.map(directory => <option key={directory.id} value={directory.id}>{directory.name}</option>)}</select>
+    <select className="board-select" aria-label="Canvas library media type" value={state.mediaType} onChange={event => useBrowserState.setState({ mediaType: event.target.value })}><option value="">All media</option>{['image', 'video', 'audio', 'model3d'].map(type => <option value={type} key={type}>{type}</option>)}</select>
     <p>{results.length} assets</p>
-    <div className="board-browser-results"><AutoSizer>{({ width, height }) => <FixedSizeList<RowData> width={width} height={height} itemCount={Math.ceil(results.length / 2)} itemSize={130} itemData={data}>{BrowserRow}</FixedSizeList>}</AutoSizer></div>
-    {!onPick && <button disabled={!editable || !selectedIds.length} onClick={() => onAdd(visibleImages.filter(image => selectedIds.includes(image.id)))}>Add selection</button>}
+    <div className="board-browser-results"><AutoSizer>{({ width, height }) => <FixedSizeList<RowData> className="scrollbar-thin" width={width} height={height} itemCount={Math.ceil(results.length / 2)} itemSize={140} itemData={data}>{BrowserRow}</FixedSizeList>}</AutoSizer></div>
+    {!onPick && <button className="board-button board-button--primary" disabled={!editable || !selectedIds.length} onClick={() => onAdd(visibleImages.filter(image => selectedIds.includes(image.id)))}>{selectedIds.length ? `Add to canvas (${selectedIds.length})` : 'Add to canvas'}</button>}
   </aside>;
 }

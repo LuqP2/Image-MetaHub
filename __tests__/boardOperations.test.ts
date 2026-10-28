@@ -1,10 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { addAssets, addConnection, createFrame, duplicateObjects, removeObjects, setObjectFrame, updateObjects, arrangeObjectsInGrid } from '../services/boards/operations';
+import { addAssets, addConnection, drawBoardObject, createFrame, duplicateObjects, removeObjects, setObjectFrame, updateObjects, arrangeObjectsInGrid } from '../services/boards/operations';
 import { createBoardDocument } from '../services/boards/document.mjs';
 import { getBoardBounds, findContainingFrame, toBoardAbsolute, toFrameRelative } from '../services/boards/layout';
 import { boardLocator, boardWithTexts } from './helpers/boardFixtures';
 
 describe('board composition operations', () => {
+  it('draws exact bounds and groups enclosed objects without moving them', () => {
+    const original = boardWithTexts();
+    const bounds = { x: -40, y: -40, width: 400, height: 250 };
+    const result = drawBoardObject(original, 'frame', bounds);
+    const frame = result.objects.find(object => object.type === 'frame')!;
+    expect(frame).toMatchObject(bounds);
+    expect(result.objects.find(object => object.id === original.objects[0].id)).toMatchObject({ x: 0, y: 0, frameId: frame.id });
+    const textBounds = { x: 20, y: 30, width: 160, height: 90 };
+    const withText = drawBoardObject(result, 'text', textBounds);
+    expect(withText.objects.at(-1)).toMatchObject({ ...textBounds, frameId: frame.id });
+    expect(withText.objects.slice(0, -1)).toEqual(result.objects);
+  });
+
   it('inherits frame displacement per coordinate while applying member property changes', () => {
     const original = boardWithTexts();
     const board = createFrame(original, [original.objects[0].id]);

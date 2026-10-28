@@ -1,19 +1,20 @@
 import React from 'react';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BoardCanvas from '../components/boards/BoardCanvas';
+vi.mock('../components/boards/BoardMiniMap', () => ({ default: () => null }));
 import { BoardEditorContext } from '../components/boards/BoardEditorContext';
 import { useBoardStore } from '../store/useBoardStore';
 import { createBoardDocument } from '../services/boards/document.mjs';
 import { addText } from '../services/boards/operations';
 
 const flow = vi.hoisted(() => ({ fitView: vi.fn(), getViewport: vi.fn(), screenToFlowPosition: vi.fn() }));
-const rendered = vi.hoisted(() => ({ viewport: null as unknown }));
+const rendered = vi.hoisted(() => ({ viewport: null as unknown, props: {} as Record<string, unknown> }));
 vi.mock('@xyflow/react', async importOriginal => ({
   ...await importOriginal<typeof import('@xyflow/react')>(),
-  ReactFlow: ({ children, defaultViewport }) => { rendered.viewport = defaultViewport; return <div>{children}</div>; },
-  Background: () => null,
-  useReactFlow: () => flow,
+  ReactFlow: ({ children, defaultViewport, ...props }) => { rendered.viewport = defaultViewport; rendered.props = props; return <div>{children}</div>; },
+  Background: () => null, MiniMap: () => null, Panel: ({ children }) => <div>{children}</div>,
+  useReactFlow: () => flow, useViewport: () => ({ x: 0, y: 0, zoom: 1 }),
 }));
 vi.mock('../services/boards/boardService', () => ({ boardService: {
   save: async (document, revision) => ({ ...document, revision: revision + 1 }), flush: async () => {},
@@ -42,6 +43,18 @@ function setup() {
 }
 
 describe('Canvas fit-selection request lifecycle', () => {
+  it('zooms with the wheel, selects intersecting objects, supports modifiers and collapses the map', () => {
+    const { mount } = setup(); mount();
+    expect(rendered.props.zoomOnScroll).toBe(true);
+    expect(rendered.props.panOnScroll).toBe(false);
+    expect(rendered.props.selectionMode).toBe('partial');
+    expect(rendered.props.multiSelectionKeyCode).toEqual(['Control', 'Meta', 'Shift']);
+    fireEvent.click(screen.getByRole('button', { name: 'Viewport options' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide minimap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Viewport options' }));
+    expect(screen.getByRole('button', { name: 'Show minimap' })).toBeTruthy();
+  });
+
   it('preserves a saved viewport on remount and still handles a later insertion', async () => {
     const { id, mount } = setup();
     const view = mount(); runFrames();

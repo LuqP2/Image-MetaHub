@@ -7,6 +7,8 @@ import type { BoardPoint } from '../../services/boards/layout';
 export interface BoardEditorActions {
   editable: boolean;
   connecting: boolean;
+  tool?: 'select' | 'text' | 'frame' | 'connect';
+  setTool?(tool: 'select' | 'text' | 'frame' | 'connect'): void;
   begin(): void;
   change(update: BoardObjectUpdate): void;
   commit(): void;
