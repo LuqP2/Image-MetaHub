@@ -8,6 +8,7 @@ import { useResolvedThumbnail } from '../../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { searchBoardAssets } from '../../services/boards/assetSearch';
 import { clearInternalImageDragData, setInternalImageDragData } from '../../utils/internalImageDrag';
+import { getHiddenSensitiveTagSet, isVisibleWithSafeMode } from '../../utils/safeModeVisibility';
 
 const useBrowserState = create<{ query: string; directoryId: string; mediaType: string; selectedIds: string[]; collapsed: boolean }>(() => ({ query: '', directoryId: '', mediaType: '', selectedIds: [], collapsed: false }));
 function AssetTile({ image, selected, onSelect, editable, draggingIds }: { image: IndexedImage; selected: boolean; onSelect(multiple: boolean): void; editable: boolean; draggingIds: string[] }) {
@@ -43,8 +44,19 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
   onPick?: (image: IndexedImage) => void; onCancelPick?: () => void;
 }) {
   const state = useBrowserState();
-  const results = useMemo(() => searchBoardAssets(images, state.query, state.directoryId, state.mediaType), [images, state.query, state.directoryId, state.mediaType]);
-  const data = useMemo(() => ({ images: results, selectedIds: state.selectedIds, editable, onPick }), [results, state.selectedIds, editable, onPick]);
+  const enableSafeMode = useSettingsStore(settings => settings.enableSafeMode);
+  const blurSensitiveImages = useSettingsStore(settings => settings.blurSensitiveImages);
+  const sensitiveTags = useSettingsStore(settings => settings.sensitiveTags);
+  const visibleImages = useMemo(() => {
+    const hiddenTags = getHiddenSensitiveTagSet({ enableSafeMode, blurSensitiveImages, sensitiveTags });
+    return hiddenTags ? images.filter(image => isVisibleWithSafeMode(image, hiddenTags)) : images;
+  }, [images, enableSafeMode, blurSensitiveImages, sensitiveTags]);
+  const selectedIds = useMemo(() => {
+    const visibleIds = new Set(visibleImages.map(image => image.id));
+    return state.selectedIds.filter(id => visibleIds.has(id));
+  }, [visibleImages, state.selectedIds]);
+  const results = useMemo(() => searchBoardAssets(visibleImages, state.query, state.directoryId, state.mediaType), [visibleImages, state.query, state.directoryId, state.mediaType]);
+  const data = useMemo(() => ({ images: results, selectedIds, editable, onPick }), [results, selectedIds, editable, onPick]);
   if (state.collapsed && !onPick) return <aside className="board-browser-collapsed"><button onClick={() => useBrowserState.setState({ collapsed: false })}>Library →</button></aside>;
   return <aside className="board-browser" aria-label="Canvas library">
     <div className="board-browser-heading"><strong>{onPick ? 'Choose a replacement' : 'Library'}</strong><button onClick={() => onPick ? onCancelPick?.() : useBrowserState.setState({ collapsed: true })}>{onPick ? 'Cancel' : 'Hide'}</button></div>
@@ -53,6 +65,6 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
     <select aria-label="Canvas library media type" value={state.mediaType} onChange={event => useBrowserState.setState({ mediaType: event.target.value })}><option value="">All media</option>{['image', 'video', 'audio', 'model3d'].map(type => <option value={type} key={type}>{type}</option>)}</select>
     <p>{results.length} assets</p>
     <div className="board-browser-results"><AutoSizer>{({ width, height }) => <FixedSizeList<RowData> width={width} height={height} itemCount={Math.ceil(results.length / 2)} itemSize={130} itemData={data}>{BrowserRow}</FixedSizeList>}</AutoSizer></div>
-    {!onPick && <button disabled={!editable || !state.selectedIds.some(id => images.some(image => image.id === id))} onClick={() => onAdd(images.filter(image => state.selectedIds.includes(image.id)))}>Add selection</button>}
+    {!onPick && <button disabled={!editable || !selectedIds.length} onClick={() => onAdd(visibleImages.filter(image => selectedIds.includes(image.id)))}>Add selection</button>}
   </aside>;
 }

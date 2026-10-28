@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { buildCatalogSearchText, buildCompactSearchText } from '../utils/imageSearchText';
+import { getHiddenSensitiveTagSet as getHiddenSensitiveTags, isVisibleWithSafeMode } from '../utils/safeModeVisibility';
 import { createBoardReferenceRemap } from '../services/boards/assetResolver';
 import { queueBoardReferenceRemaps } from '../services/boards/referenceSync';
 import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode, type ImageScope, type ExploreDimension, type SortOrder, type SemanticSearchResult, type UserDataSemanticPatch } from '../types';
@@ -1910,26 +1911,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         };
     };
 
-    const getHiddenSensitiveTagSet = () => {
-        const { sensitiveTags, blurSensitiveImages, enableSafeMode } = useSettingsStore.getState();
-        const normalizedSensitiveTags = (sensitiveTags ?? [])
-            .map(tag => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
-            .filter(Boolean);
-
-        if (!enableSafeMode || blurSensitiveImages || normalizedSensitiveTags.length === 0) {
-            return null;
-        }
-
-        return new Set(normalizedSensitiveTags);
-    };
-
-    const isVisibleWithSafeMode = (image: IndexedImage, sensitiveTagSet: Set<string> | null) => {
-        if (!sensitiveTagSet || !image.tags || image.tags.length === 0) {
-            return true;
-        }
-
-        return !image.tags.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
-    };
+    const getHiddenSensitiveTagSet = () => getHiddenSensitiveTags(useSettingsStore.getState());
 
     const getLibraryScopedImages = (state: ImageState) => {
         const {
