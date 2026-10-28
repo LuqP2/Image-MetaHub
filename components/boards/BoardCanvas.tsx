@@ -1,3 +1,4 @@
+import BoardSmartFrameNode from './BoardSmartFrameNode';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clearInternalImageDragData, getInternalImageDragIds, hasInternalImageDragType } from '../../utils/internalImageDrag';
 import { applyNodeChanges, Background, ConnectionMode, Panel, ReactFlow, SelectionMode, useReactFlow, useViewport, type Connection, type NodeChange } from '@xyflow/react';
@@ -14,7 +15,7 @@ import BoardCanvasHelp from './BoardCanvasHelp';
 import { useBoardEditor } from './BoardEditorContext';
 import type { BoardSide } from '../../services/boards/types';
 
-const nodeTypes = { asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode };
+const nodeTypes = { 'smart-frame': BoardSmartFrameNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode };
 const edgeTypes = { manual: BoardConnection };
 
 export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId: string; onFitAll?: () => void }) {
@@ -55,7 +56,7 @@ export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId:
   const finishDrag = useCallback(() => {
     const state = useBoardStore.getState();
     const current = state.sessions[boardId];
-    const updates = current.document.objects.filter(object => current.selectedObjectIds.includes(object.id) && object.type !== 'frame')
+    const updates = current.document.objects.filter(object => current.selectedObjectIds.includes(object.id) && object.type !== 'frame' && object.type !== 'smart-frame')
       .map(object => ({ id: object.id, frameId: findContainingFrame(object, current.document.objects)?.id ?? null }));
     if (updates.length) state.updateInteraction(boardId, document => updateObjects(document, updates));
     state.commitInteraction(boardId);

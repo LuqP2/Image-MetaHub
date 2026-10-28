@@ -12,6 +12,10 @@ export function useBoardHotkeys(boardId: string | null, editable: boolean, openS
     const key = event.key.toLowerCase();
     if ((key === 'enter' || key === ' ') && target.closest('button, a')) return;
     const command = event.ctrlKey || event.metaKey;
+    if (target.closest('[data-board-results]')) {
+      if (key === 'delete' || key === 'backspace' || (command && ['a', 'd', 'z', 'y'].includes(key))) { event.preventDefault(); event.stopPropagation(); }
+      return;
+    }
     const state = useBoardStore.getState();
     const session = state.sessions[boardId];
     if (!session) return;
