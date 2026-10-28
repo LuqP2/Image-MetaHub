@@ -16,12 +16,13 @@ export function useBoardQueries(boardId: string | null, loading: boolean) {
   const images = useImageStore(state => state.images);
   const directories = useImageStore(state => state.directories);
   const collections = useImageStore(state => state.collections);
+  const clusters = useImageStore(state => state.clusters);
   const enableSafeMode = useSettingsStore(state => state.enableSafeMode);
   const blurSensitiveImages = useSettingsStore(state => state.blurSensitiveImages);
   const sensitiveTags = useSettingsStore(state => state.sensitiveTags);
   const runtime = useRef<ReturnType<typeof createBoardQueryRuntime> | null>(null);
   const signature = JSON.stringify(objects?.filter((object): object is BoardSmartFrameObject => object.type === 'smart-frame')
-    .map(({ id, type, source, criteria, groupConstraints }) => ({ id, type, source, criteria, groupConstraints })) ?? []);
+    .map(({ id, type, source, criteria, groupConstraints, layout }) => ({ id, type, source, criteria, groupConstraints, layout })) ?? []);
   // Geometry, selection, title and color never invalidate queries.
   const frames = useMemo(() => JSON.parse(signature) as BoardQueryFrame[], [signature]);
   const referenceSignature = JSON.stringify(frames.map(frame => {
@@ -37,12 +38,22 @@ export function useBoardQueries(boardId: string | null, loading: boolean) {
       const resolved = resolveBoardAsset(reference, lookup);
       if (resolved.status === 'resolved') references[JSON.stringify(reference)] = resolved.image.id;
     }
-    return { images: images.map(toLibraryQueryImage), references,
+    const records = images.map(toLibraryQueryImage);
+    const directoryPaths = new Map(directories.map(directory => [directory.id, directory.path.replace(/\\/g, '/').replace(/\/+$/, '')]));
+    const grouping = Object.fromEntries(images.map((image, index) => {
+      const relative = records[index].relativePath.replace(/\\/g, '/');
+      const slash = relative.lastIndexOf('/');
+      const root = directoryPaths.get(image.directoryId ?? '');
+      return [image.id, { seed: image.seed == null ? null : String(image.seed).trim(), folder: root === undefined ? null : `${root}${slash < 0 ? '' : `/${relative.slice(0, slash)}`}` || '/' }];
+    }));
+    return { images: records, references, grouping,
+      collectionLabels: Object.fromEntries(collections.map(collection => [collection.id, collection.name])),
+      clusters: Object.fromEntries((clusters ?? []).map(cluster => [cluster.id, { label: cluster.basePrompt || cluster.id, imageIds: cluster.imageIds }])) ,
       collections: Object.fromEntries(collections.map(collection => [collection.id, [...resolveSmartCollectionImageIds(collection, images)]])),
       context: { visibleDirectories: directories.filter(directory => directory.visible ?? true).map(({ id, path }) => ({ id, path })),
         safeMode: { enableSafeMode, blurSensitiveImages, sensitiveTags: (sensitiveTags ?? []).map(tag => tag.trim().toLowerCase()).filter(Boolean) } } };
   // Frame criteria do not change the dataset; only Snapshot references can do so.
-  }, [images, directories, collections, enableSafeMode, blurSensitiveImages, sensitiveTags, referenceSignature, loading, frames.length > 0]);
+  }, [images, directories, collections, clusters, enableSafeMode, blurSensitiveImages, sensitiveTags, referenceSignature, loading, frames.length > 0]);
   useLayoutEffect(() => {
     if (!boardId) return;
     const instance = createBoardQueryRuntime(boardId,

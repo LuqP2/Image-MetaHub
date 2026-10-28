@@ -145,11 +145,15 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
   const queryActions = { images: imagesById, collections, retry: retryQueries,
     create: () => setCreatingFrame(true), snapshot: (id: string) => runQueryAction(() => snapshotQuery(id)),
     useCurrentFilters: (id: string) => runQueryAction(() => applyCurrentView(id)),
-    open: (imageId: string, frameId: string) => {
+    open: (imageId: string, frameId: string, navigationIds?: string[]) => {
       const result = useBoardQueryStore.getState().results[boardId!]?.[frameId];
       const image = imagesById.get(imageId);
       const hidden = getHiddenSensitiveTagSet(useSettingsStore.getState());
-      if (image && isVisibleWithSafeMode(image, hidden) && result?.status === 'ready' && result.imageIds.includes(imageId)) onOpenImage(image, result.imageIds.map(id => imagesById.get(id)).filter((entry): entry is IndexedImage => !!entry && isVisibleWithSafeMode(entry, hidden)));
+      if (image && isVisibleWithSafeMode(image, hidden) && result?.status === 'ready' && result.imageIds.includes(imageId)) {
+        const allowed = new Set(result.imageIds);
+        const navigation = (navigationIds ?? result.imageIds).filter(id => allowed.has(id)).map(id => imagesById.get(id)).filter((entry): entry is IndexedImage => !!entry && isVisibleWithSafeMode(entry, hidden));
+        if (navigation.some(entry => entry.id === imageId)) onOpenImage(image, navigation);
+      }
     },
   };
   return <BoardQueryContext.Provider value={queryActions}><div className="flex h-full min-h-0 flex-col">

@@ -1,10 +1,13 @@
 import type { LibraryQueryImage, LibraryQueryExecutionContext, LibraryQueryFacets } from '../libraryQuery/types';
 import type { BoardSmartFrameObject } from './queryTypes';
 
-export type BoardQueryFrame = Pick<BoardSmartFrameObject, 'id' | 'type' | 'source' | 'criteria' | 'groupConstraints'>;
+export type BoardQueryFrame = Pick<BoardSmartFrameObject, 'id' | 'type' | 'source' | 'criteria' | 'groupConstraints'> & { layout?: BoardSmartFrameObject['layout'] };
 
 export interface BoardQueryDataset {
   images: LibraryQueryImage[];
+  grouping?: Record<string, { seed: string | null; folder: string | null }>;
+  collectionLabels?: Record<string, string>;
+  clusters?: Record<string, { label: string; imageIds: string[] }>;
   context: LibraryQueryExecutionContext;
   collections: Record<string, string[]>;
   /** Reference JSON key -> resolved current image ID. Missing entries remain unavailable. */
@@ -20,6 +23,7 @@ export interface BoardQueryResult {
   totalCount: number;
   unavailableReferences: number;
   facets?: LibraryQueryFacets;
+  grouped?: import('./grouping').BoardGroupedLayout;
   error?: string;
 }
 export type BoardQueryRequest =

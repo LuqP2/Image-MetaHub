@@ -6,7 +6,7 @@ import { useBoardQueryStore } from '../store/useBoardQueryStore';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { createBoardDocument } from '../services/boards/document.mjs';
-import { createSmartFrame, updateSmartFrameQuery } from '../services/boards/smartFrameOperations';
+import { createSmartFrame, updateSmartFrameQuery, updateSmartFrameLayout } from '../services/boards/smartFrameOperations';
 import { updateObjects } from '../services/boards/operations';
 import { normalizeLibraryQueryCriteria } from '../services/libraryQuery/criteria';
 import { evaluateBoardQueries } from '../services/boards/queryEvaluator';
@@ -46,6 +46,9 @@ describe('Canvas query lifecycle', () => {
     expect(useBoardStore.getState().sessions[document.id].changeSequence).toBe(0);
     act(() => useBoardStore.getState().executeOperation(document.id, doc => updateSmartFrameQuery(doc, 'frame', normalizeLibraryQueryCriteria({ selectedModels: ['Flux'] }))));
     await waitFor(() => expect(useBoardQueryStore.getState().results[document.id]?.frame.imageIds).toEqual([first.id]));
+    expect(WorkerMock.messages.filter(message => message.type === 'syncDataset')).toHaveLength(1);
+    act(() => useBoardStore.getState().executeOperation(document.id, doc => updateSmartFrameLayout(doc, 'frame', { kind: 'matrix', rows: 'lora', columns: 'model' })));
+    await waitFor(() => expect(useBoardQueryStore.getState().results[document.id]?.frame.grouped?.kind).toBe('matrix'));
     expect(WorkerMock.messages.filter(message => message.type === 'syncDataset')).toHaveLength(1);
     const count = WorkerMock.messages.length;
     act(() => useBoardStore.getState().executeOperation(document.id, doc => updateObjects(doc, [{ id: 'frame', x: 500, title: 'Moved' }])));
