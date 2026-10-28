@@ -1,3 +1,5 @@
+import { createSmartFrame, branchSmartFrame } from '../services/boards/smartFrameOperations';
+import type { BoardSmartFrameObject } from '../services/boards/queryTypes';
 import { describe, expect, it, vi } from 'vitest';
 import { createBoardStore } from '../store/useBoardStore';
 import { BoardError, applyBoardReferenceRemaps, normalizeBoardDocument } from '../services/boards/document.mjs';
@@ -136,4 +138,21 @@ describe('board sessions and history', () => {
     expect(applyBoardReferenceRemaps(after.document, [boardRemap('a.png', 'b.png')])).toEqual(after.document);
     await store.getState().flushAll();
   });
+});
+
+it('preserves Snapshot remaps through undo and redo of Smart Frame operations', async () => {
+  const { store } = fixture();
+  const id = await store.getState().createBoard();
+  const asset = boardWithAsset().objects[0];
+  if (asset.type !== 'asset') throw new Error('fixture');
+  store.getState().executeOperation(id, doc => createSmartFrame(doc, { id: 'parent', source: { kind: 'snapshot', references: [asset.reference] } }));
+  store.getState().executeOperation(id, doc => branchSmartFrame(doc, 'parent'));
+  store.getState().applyReferenceRemaps([boardRemap('a.png', 'b.png')]);
+  store.getState().undo(id);
+  const parent = store.getState().sessions[id].document.objects[0] as BoardSmartFrameObject;
+  expect(parent.source.kind).toBe('snapshot');
+  if (parent.source.kind === 'snapshot') expect(parent.source.references[0].locator.relativePath).toBe('b.png');
+  store.getState().redo(id);
+  expect(store.getState().sessions[id].document.objects).toHaveLength(2);
+  await store.getState().flushAll();
 });

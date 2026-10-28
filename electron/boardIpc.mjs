@@ -1,3 +1,4 @@
+import { parseBoardFile, serializeBoardFile } from '../services/boards/fileFormat.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { BoardRepository } from './boardRepository.mjs';
@@ -37,17 +38,14 @@ export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow }) {
   register('boards:import', async (repository, window) => {
     const result = await dialog.showOpenDialog(window, { title: 'Import board', properties: ['openFile'], filters: [{ name: 'Image MetaHub board', extensions: ['imhboard.json'] }] });
     if (result.canceled || !result.filePaths[0]) return null;
-    const envelope = JSON.parse(await fs.readFile(result.filePaths[0], 'utf8'));
-    if (envelope?.format !== 'image-metahub-board') throw new BoardError('BOARD_INVALID_IMPORT', 'This file is not an Image MetaHub board.');
-    if (envelope.version !== 1) throw new BoardError('BOARD_UNSUPPORTED_VERSION', 'Unsupported board file version.');
-    const document = normalizeBoardDocument(envelope.document);
+    const document = parseBoardFile(await fs.readFile(result.filePaths[0], 'utf8'));
     return repository.save(duplicateBoardDocument(document, document.name), 0);
   });
   register('boards:export', async (_repository, window, input) => {
     const document = normalizeBoardDocument(input);
     const result = await dialog.showSaveDialog(window, { title: 'Export board', defaultPath: boardExportFilename(document.name), filters: [{ name: 'Image MetaHub board', extensions: ['imhboard.json'] }] });
     if (result.canceled || !result.filePath) return null;
-    await fs.writeFile(result.filePath, JSON.stringify({ format: 'image-metahub-board', version: 1, document }, null, 2), 'utf8');
+    await fs.writeFile(result.filePath, serializeBoardFile(document), 'utf8');
     return { exported: true };
   });
   return { flush: () => repository?.flush() ?? Promise.resolve(), isBusy: () => repository?.isBusy() ?? false };

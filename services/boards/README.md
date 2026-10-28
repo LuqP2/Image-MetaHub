@@ -8,6 +8,16 @@ Canvas v1 is split into three dependent PRs. The complete user workflow ships af
 
 ## Persistence contract
 
+### Explorer document foundation (schema v2)
+
+The shared document boundary reads schemas v1 and v2 and returns v2 in memory. Loading a v1 file preserves its revision and does not write it back; the next explicit save writes v2 using the existing expected-revision contract. File envelopes are exported as version 2, with both envelope versions accepted by the shared renderer/Electron parser.
+
+Smart Frames persist their source expression, independent query criteria, group constraints and layout. Results and visibility settings are runtime concerns. Missing frame/collection sources remain reconnectable; cycles, incompatible existing frame targets, invalid layouts and excessive expression depth/size are rejected. Smart Frames are top-level objects and do not adopt manual cards as children.
+
+`smartFrameOperations.ts` provides pure creation, query/layout changes, branching, detached duplication, intersection, directional difference, Snapshot conversion and reconnection. Detached duplicates inline frame dependencies while retaining live library/collection sources. Snapshot conversion retains ordering/layout and clears incorporated local predicates. Reference remaps traverse snapshots inside nested source expressions and the existing session/history remapping path.
+
+This schema foundation does not introduce Smart Frame rendering or query execution in the editor; those are the following Explorer stages.
+
 Canvas is an Electron-only workspace. `document.mjs` is the shared serialization boundary for the renderer and main process. It reconstructs a document using only supported persistent fields. Coordinates are absolute; React Flow state is an editor concern. Documents store asset references rather than media or metadata copies.
 
 Desktop documents live in `<userData>/boards/<uuid>.json`. Writes are serialized and atomically replaced. An expected revision is required for save/delete; creation uses revision zero and the first committed document receives revision one. Revision conflicts preserve both the committed file and the caller's unsaved document.

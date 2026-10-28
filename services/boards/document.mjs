@@ -1,3 +1,4 @@
+import { normalizeSetExpression, normalizeQueryCriteria, normalizeGroupConstraints, normalizeQueryLayout, validateQueryGraph, mapSetExpression } from './queryDocument.mjs';
 export class BoardError extends Error {
   constructor(code, message) {
     super(message);
@@ -68,7 +69,7 @@ function normalizeReference(value) {
 // Reconstruct explicitly: imported runtime data, handles and unknown fields never reach disk.
 export function normalizeBoardDocument(input) {
   if (!record(input)) fail('Board document is required.');
-  if (input.schemaVersion !== 1) throw new BoardError('BOARD_UNSUPPORTED_VERSION', 'Unsupported board version.');
+  if (![1, 2].includes(input.schemaVersion)) throw new BoardError('BOARD_UNSUPPORTED_VERSION', 'Unsupported board version.');
   if (!Array.isArray(input.objects) || !Array.isArray(input.connections)) fail('Objects and connections must be arrays.');
   if (!record(input.viewport)) fail('Viewport is required.');
   const ids = new Set();
@@ -78,8 +79,9 @@ export function normalizeBoardDocument(input) {
     ids.add(id);
     return id;
   };
+  const queryBudget = { count: 0 };
   const objects = input.objects.map(value => {
-    if (!record(value) || !['asset', 'text', 'frame'].includes(value.type)) fail('Invalid board object.');
+    if (!record(value) || !['asset', 'text', 'frame', 'smart-frame'].includes(value.type)) fail('Invalid board object.');
     const base = {
       id: claim(value.id), type: value.type,
       x: number(value.x, 'X'), y: number(value.y, 'Y'),
@@ -88,6 +90,13 @@ export function normalizeBoardDocument(input) {
       zIndex: number(value.zIndex, 'Z index'),
       frameId: value.frameId === null ? null : string(value.frameId, 'Frame ID', true),
     };
+    if (value.type === 'smart-frame') {
+      if (input.schemaVersion === 1 || base.frameId !== null) fail('Smart Frames require schema v2 and cannot be nested.');
+      return { ...base, title: string(value.title, 'Smart Frame title'), color: color(value.color),
+        source: normalizeSetExpression(value.source, normalizeReference, queryBudget),
+        criteria: normalizeQueryCriteria(value.criteria), groupConstraints: normalizeGroupConstraints(value.groupConstraints),
+        layout: normalizeQueryLayout(value.layout) };
+    }
     if (value.type === 'frame') {
       if (base.frameId !== null) fail('Nested frames are not supported.');
       return { ...base, title: string(value.title, 'Frame title'), color: color(value.color) };
@@ -101,6 +110,7 @@ export function normalizeBoardDocument(input) {
   for (const object of objects) {
     if (object.frameId !== null && byId.get(object.frameId)?.type !== 'frame') fail('Frame reference does not point to a frame.');
   }
+  validateQueryGraph(objects);
   const connections = input.connections.map(value => {
     if (!record(value) || value.type !== 'manual') fail('Invalid connection.');
     if (!byId.has(value.sourceObjectId) || !byId.has(value.targetObjectId)) fail('Connection endpoint is missing.');
@@ -112,14 +122,14 @@ export function normalizeBoardDocument(input) {
   const zoom = number(input.viewport.zoom, 'Zoom', 0.1);
   if (zoom > 4) fail('Zoom cannot exceed 4.');
   return {
-    schemaVersion: 1, id: validateBoardId(input.id), revision: integer(input.revision, 'Revision'), name: string(input.name, 'Board name', true),
+    schemaVersion: 2, id: validateBoardId(input.id), revision: integer(input.revision, 'Revision'), name: string(input.name, 'Board name', true),
     createdAt: integer(input.createdAt, 'Creation time'), updatedAt: integer(input.updatedAt, 'Update time'),
     viewport: { x: number(input.viewport.x, 'Viewport X'), y: number(input.viewport.y, 'Viewport Y'), zoom }, objects, connections,
   };
 }
 
 export function createBoardDocument(name = 'Untitled board', id = crypto.randomUUID(), now = Date.now()) {
-  return normalizeBoardDocument({ schemaVersion: 1, id, revision: 0, name, createdAt: now, updatedAt: now, viewport: { x: 0, y: 0, zoom: 1 }, objects: [], connections: [] });
+  return normalizeBoardDocument({ schemaVersion: 2, id, revision: 0, name, createdAt: now, updatedAt: now, viewport: { x: 0, y: 0, zoom: 1 }, objects: [], connections: [] });
 }
 
 export function duplicateBoardDocument(document, name = `${document.name} (copy)`, id = crypto.randomUUID(), now = Date.now()) {
@@ -145,8 +155,8 @@ const sameLocator = (a, b) => a.imageId === b.imageId && a.directoryPath === b.d
 export function applyBoardReferenceRemaps(document, remaps) {
   const normalized = remaps.map(normalizeReferenceRemap);
   return normalizeBoardDocument({ ...document, objects: document.objects.map(object => {
-    if (object.type !== 'asset') return object;
-    let reference = object.reference;
+    const remapReference = input => {
+    let reference = input;
     const observed = new Set(reference.appliedRemapIds ?? []);
     // Track operations per reference, including non-matches: reused filenames must
     // not make an old operation match a reference that has already observed it.
@@ -162,7 +172,12 @@ export function applyBoardReferenceRemaps(document, remaps) {
       }
       observed.add(remap.operationId);
     }
-    return { ...object, reference: { ...reference, appliedRemapIds: [...observed] } };
+      return { ...reference, appliedRemapIds: [...observed] };
+    };
+    if (object.type === 'asset') return { ...object, reference: remapReference(object.reference) };
+    if (object.type === 'smart-frame') return { ...object, source: mapSetExpression(object.source, source => source.kind === 'snapshot'
+      ? { ...source, references: source.references.map(remapReference) } : source) };
+    return object;
   }) });
 }
 
