@@ -57,3 +57,19 @@ describe('Smart Frame document boundary', () => {
     if (copy.source.kind === 'query' && copy.source.source.kind === 'snapshot') expect(copy.source.source.references[0].locator.relativePath).toBe('b.png');
   });
 });
+
+it('validates dependency depth identically in root-first and leaf-first order', () => {
+  const base = createBoardDocument();
+  const template = createSmartFrame(base).objects[0] as BoardSmartFrameObject;
+  const chain = (edges: number) => Array.from({ length: edges + 1 }, (_, index) => ({ ...template, id: String(index),
+    source: index === 0 ? { kind: 'library' as const } : { kind: 'frame' as const, frameId: String(index - 1) },
+  }));
+  for (const reversed of [false, true]) {
+    const valid = chain(64); if (reversed) valid.reverse();
+    expect(() => normalizeBoardDocument({ ...base, objects: valid })).not.toThrow();
+    for (const edges of [65, 69]) {
+      const invalid = chain(edges); if (reversed) invalid.reverse();
+      expect(() => normalizeBoardDocument({ ...base, objects: invalid })).toThrow('deep frame dependency');
+    }
+  }
+});

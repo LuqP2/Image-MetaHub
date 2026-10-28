@@ -1,5 +1,5 @@
 import { addText, drawBoardObject } from '../services/boards/operations';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createBoardDocument } from '../services/boards/document.mjs';
 import { createSmartFrame, branchSmartFrame, duplicateSmartFrameQuery, intersectSmartFrames, subtractSmartFrames, replaceSmartFrameWithSnapshot, reconnectSmartFrameSource } from '../services/boards/smartFrameOperations';
 import { removeObjects, duplicateObjects, createFrame } from '../services/boards/operations';
@@ -68,4 +68,35 @@ it('detaches available ancestors while preserving missing nested dependencies', 
   const source = (copy.objects[2] as BoardSmartFrameObject).source;
   expect(source.kind).toBe('query');
   if (source.kind === 'query') expect(source.source).toEqual({ kind: 'frame', frameId: 'root' });
+});
+
+it('rejects exponential expansion before cloning, in both duplication paths', () => {
+  let document = createSmartFrame(createBoardDocument(), { id: '0' });
+  for (let index = 1; index < 17; index++) document = createSmartFrame(document, { id: String(index), source: {
+    kind: 'intersection', inputs: [{ kind: 'frame', frameId: String(index - 1) }, { kind: 'frame', frameId: String(index - 1) }],
+  } });
+  let reads = 0;
+  for (const object of document.objects) if (object.type === 'smart-frame') {
+    const source = object.source;
+    Object.defineProperty(object, 'source', { get() { reads++; return source; } });
+  }
+  const clone = vi.spyOn(globalThis, 'structuredClone');
+  try {
+    expect(() => duplicateSmartFrameQuery(document, '16')).toThrow('Query expression limit exceeded');
+    expect(() => duplicateObjects(document, ['16'])).toThrow('Query expression limit exceeded');
+    expect(clone).not.toHaveBeenCalled();
+    expect(reads).toBeLessThan(200);
+  } finally { clone.mockRestore(); }
+});
+
+it('counts retained document expressions and shares the budget across a duplication batch', () => {
+  let document = createSmartFrame(createBoardDocument(), { id: 'parent', source: { kind: 'intersection',
+    inputs: Array.from({ length: 3500 }, () => ({ kind: 'library' as const })),
+  } });
+  document = createSmartFrame(document, { id: 'a', source: { kind: 'frame', frameId: 'parent' } });
+  document = createSmartFrame(document, { id: 'b', source: { kind: 'frame', frameId: 'parent' } });
+  expect(() => duplicateObjects(document, ['a'])).not.toThrow();
+  expect(() => duplicateObjects(document, ['b'])).not.toThrow();
+  expect(() => duplicateObjects(document, ['a', 'b'])).toThrow('Query expression limit exceeded');
+  expect(document.objects).toHaveLength(3);
 });

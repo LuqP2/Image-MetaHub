@@ -12,17 +12,70 @@ function getFrame(document: BoardDocument, id: string): BoardSmartFrameObject {
 }
 const changed = (document: BoardDocument, objects: BoardDocument['objects']) => normalizeBoardDocument({ ...document, objects, updatedAt: Date.now() });
 
-/** Freeze frame dependencies as inline queries while retaining live library/collection sources. */
-export function detachFrameSource(document: BoardDocument, source: BoardSetExpression, depth = 0): BoardSetExpression {
-  if (depth > 64) throw new Error('Frame dependency depth exceeded.');
-  return mapSetExpression(structuredClone(source), expression => {
-    if (expression.kind !== 'frame') return expression;
-    // Missing sources are valid reconnectable state, including inside detached copies.
-    if (!document.objects.some(object => object.id === expression.frameId)) return expression;
-    const frame = getFrame(document, expression.frameId);
-    return { kind: 'query', source: detachFrameSource(document, frame.source, depth + 1),
-      criteria: structuredClone(frame.criteria), groupConstraints: structuredClone(frame.groupConstraints) };
-  });
+/** Preflight expanded size/depth before cloning; share one document budget across a duplication batch. */
+export function createFrameDetacher(document: BoardDocument) {
+  const byId = new Map(document.objects.map(object => [object.id, object]));
+  const frameSizes = new Map<string, { nodes: number; height: number }>();
+  const active = new Set<string>();
+  let remaining = 10000;
+  for (const object of document.objects) if (object.type === 'smart-frame') {
+    mapSetExpression(object.source, source => { remaining--; return source; });
+  }
+  const measure = (source: BoardSetExpression, depth: number): { nodes: number; height: number } => {
+    if (depth > 64) throw new Error('Frame dependency depth exceeded.');
+    let children: BoardSetExpression[] = [];
+    if (source.kind === 'frame') {
+      const frame = byId.get(source.frameId);
+      if (!frame) return { nodes: 1, height: 0 };
+      if (frame.type !== 'smart-frame') throw new Error('Query source must point to a Smart Frame.');
+      const cached = frameSizes.get(frame.id);
+      if (cached) {
+        if (depth + 1 + cached.height > 64) throw new Error('Frame dependency depth exceeded.');
+        return { nodes: 1 + cached.nodes, height: 1 + cached.height };
+      }
+      if (active.has(frame.id)) throw new Error('Cyclic frame dependency.');
+      active.add(frame.id);
+      const size = measure(frame.source, depth + 1);
+      active.delete(frame.id);
+      frameSizes.set(frame.id, size);
+      return { nodes: 1 + size.nodes, height: 1 + size.height };
+    }
+    if (source.kind === 'query') children = [source.source];
+    if (source.kind === 'intersection') children = source.inputs;
+    if (source.kind === 'difference') children = [source.left, source.right];
+    let nodes = 1, height = 0;
+    for (const child of children) {
+      const size = measure(child, depth + 1);
+      nodes += size.nodes; height = Math.max(height, 1 + size.height);
+      if (nodes > 10000) throw new Error('Query expression limit exceeded.');
+    }
+    return { nodes, height };
+  };
+  const build = (source: BoardSetExpression): BoardSetExpression => {
+    switch (source.kind) {
+      case 'frame': {
+        const frame = byId.get(source.frameId);
+        if (!frame) return { ...source };
+        if (frame.type !== 'smart-frame') throw new Error('Query source must point to a Smart Frame.');
+        return { kind: 'query', source: build(frame.source), criteria: structuredClone(frame.criteria), groupConstraints: structuredClone(frame.groupConstraints) };
+      }
+      case 'query': return { ...source, source: build(source.source), criteria: structuredClone(source.criteria), groupConstraints: structuredClone(source.groupConstraints) };
+      case 'intersection': return { kind: 'intersection', inputs: source.inputs.map(build) };
+      case 'difference': return { kind: 'difference', left: build(source.left), right: build(source.right) };
+      default: return structuredClone(source);
+    }
+  };
+  return (source: BoardSetExpression): BoardSetExpression => {
+    const size = measure(source, 0);
+    if (size.nodes > remaining) throw new Error('Query expression limit exceeded.');
+    remaining -= size.nodes;
+    return build(source);
+  };
+}
+
+/** Freeze available frame dependencies while retaining missing, live library and collection sources. */
+export function detachFrameSource(document: BoardDocument, source: BoardSetExpression): BoardSetExpression {
+  return createFrameDetacher(document)(source);
 }
 
 export function createSmartFrame(document: BoardDocument, input: Partial<BoardSmartFrameObject> = {}): BoardDocument {
@@ -56,8 +109,9 @@ export function branchSmartFrame(document: BoardDocument, id: string, constraint
 export const branchSmartFrameGroup = branchSmartFrame;
 export function duplicateSmartFrameQuery(document: BoardDocument, id: string) {
   const parent = getFrame(document, id);
-  return createSmartFrame(document, { ...structuredClone(parent), id: crypto.randomUUID(),
-    ...positionBeside(document, parent), title: `${parent.title} (copy)`, source: detachFrameSource(document, parent.source) });
+  const source = detachFrameSource(document, parent.source);
+  return createSmartFrame(document, { ...parent, id: crypto.randomUUID(),
+    ...positionBeside(document, parent), title: `${parent.title} (copy)`, source });
 }
 export function intersectSmartFrames(document: BoardDocument, ids: string[]) {
   const unique = [...new Set(ids)];

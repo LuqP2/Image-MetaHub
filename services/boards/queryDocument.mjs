@@ -106,16 +106,25 @@ export function mapSetExpression(source, transform) {
 
 export function validateQueryGraph(objects) {
   const byId = new Map(objects.map(object => [object.id, object]));
-  const complete = new Set(), active = new Set();
+  const heights = new Map(), active = new Set();
   const visit = (id, depth = 0) => {
     if (depth > 64 || active.has(id)) fail('Cyclic or excessively deep frame dependency.');
-    if (complete.has(id)) return;
+    if (heights.has(id)) {
+      if (depth + heights.get(id) > 64) fail('Cyclic or excessively deep frame dependency.');
+      return heights.get(id);
+    }
     const object = byId.get(id);
-    if (!object) return; // Missing sources remain reconnectable user documents.
+    if (!object) return 0; // Missing sources remain reconnectable user documents.
     if (object.type !== 'smart-frame') fail('Query source must point to a Smart Frame.');
     active.add(id);
-    mapSetExpression(object.source, source => { if (source.kind === 'frame') visit(source.frameId, depth + 1); return source; });
-    active.delete(id); complete.add(id);
+    let height = 0;
+    mapSetExpression(object.source, source => {
+      if (source.kind === 'frame') height = Math.max(height, 1 + visit(source.frameId, depth + 1));
+      return source;
+    });
+    active.delete(id); heights.set(id, height);
+    if (depth + height > 64) fail('Cyclic or excessively deep frame dependency.');
+    return height;
   };
   for (const object of objects) if (object.type === 'smart-frame') visit(object.id);
 }

@@ -1,4 +1,4 @@
-import { detachFrameSource } from './smartFrameOperations';
+import { createFrameDetacher } from './smartFrameOperations';
 import type { BoardAssetInput, BoardAssetObject, BoardConnection, BoardDocument, BoardObject, BoardTextObject } from './types';
 import { normalizeBoardDocument } from './document.mjs';
 import { findContainingFrame, getBoardBounds, gridPositions, type BoardPoint, type BoardBounds } from './layout';
@@ -85,8 +85,9 @@ export function duplicateObjects(document: BoardDocument, objectIds: string[], o
   const selected = new Set(objectIds);
   for (const object of document.objects) if (object.frameId && selected.has(object.frameId)) selected.add(object.id);
   const ids = new Map(document.objects.filter(object => selected.has(object.id)).map(object => [object.id, id()]));
+  const detach = createFrameDetacher(document);
   const copies = document.objects.filter(object => selected.has(object.id)).map(object => ({
-    ...object, ...(object.type === 'smart-frame' ? { source: detachFrameSource(document, object.source) } : {}), id: ids.get(object.id)!, x: object.x + offset.x, y: object.y + offset.y,
+    ...object, ...(object.type === 'smart-frame' ? { source: detach(object.source) } : {}), id: ids.get(object.id)!, x: object.x + offset.x, y: object.y + offset.y,
     frameId: object.frameId ? ids.get(object.frameId) ?? object.frameId : null,
     zIndex: object.zIndex + top(document) + 2,
   } as BoardObject));
