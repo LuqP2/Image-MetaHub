@@ -85,115 +85,133 @@ export const toLibraryQueryImage = (image: IndexedImage): LibraryQueryImage => {
 
 
 /** Renderer-only view: expensive fields are evaluated only after cheaper predicates pass. */
-export function toLazyLibraryQueryImage(image: IndexedImage): LibraryQueryImage {
-return {
+class LazyLibraryQueryImage implements LibraryQueryImage {
+constructor(private readonly image: IndexedImage) {}
 get id() {
+const image = this.image;
 
 const value = image.id;
 Object.defineProperty(this, 'id', { value, enumerable: true });
 return value;
-},
+}
 get name() {
+const image = this.image;
 
 const value = image.name || '';
 Object.defineProperty(this, 'name', { value, enumerable: true });
 return value;
-},
+}
 get catalogText() {
+const image = this.image;
 
 const value = buildCatalogSearchText(image);
 Object.defineProperty(this, 'catalogText', { value, enumerable: true });
 return value;
-},
+}
 get searchText() {
+const image = this.image;
 
 const value = buildCompactSearchText(image);
 Object.defineProperty(this, 'searchText', { value, enumerable: true });
 return value;
-},
+}
 get relativePath() {
+const image = this.image;
 const relativePath = getRelativeImagePath(image);
 const value = relativePath;
 Object.defineProperty(this, 'relativePath', { value, enumerable: true });
 return value;
-},
+}
 get directoryId() {
+const image = this.image;
 
 const value = image.directoryId || '';
 Object.defineProperty(this, 'directoryId', { value, enumerable: true });
 return value;
-},
+}
 get directoryName() {
+const image = this.image;
 
 const value = image.directoryName || '';
 Object.defineProperty(this, 'directoryName', { value, enumerable: true });
 return value;
-},
+}
 get models() {
+const image = this.image;
 
 const value = (image.models || [])
             .map(model => normalizeFacetValue(model))
             .filter((model): model is string => Boolean(model));
 Object.defineProperty(this, 'models', { value, enumerable: true });
 return value;
-},
+}
 get loraNames() {
+const image = this.image;
 
 const value = (image.loras || [])
             .map(lora => normalizeFacetValue(typeof lora === 'string' ? lora : lora))
             .filter((lora): lora is string => Boolean(lora));
 Object.defineProperty(this, 'loraNames', { value, enumerable: true });
 return value;
-},
+}
 get sampler() {
+const image = this.image;
 
 const value = normalizeFacetValue(image.sampler) ?? '';
 Object.defineProperty(this, 'sampler', { value, enumerable: true });
 return value;
-},
+}
 get scheduler() {
+const image = this.image;
 
 const value = normalizeFacetValue(image.scheduler) ?? '';
 Object.defineProperty(this, 'scheduler', { value, enumerable: true });
 return value;
-},
+}
 get board() {
+const image = this.image;
 
 const value = image.board ? String(image.board) : '';
 Object.defineProperty(this, 'board', { value, enumerable: true });
 return value;
-},
+}
 get dimensions() {
+const image = this.image;
 
 const value = normalizeFacetValue(image.dimensions) ?? '';
 Object.defineProperty(this, 'dimensions', { value, enumerable: true });
 return value;
-},
+}
 get lastModified() {
+const image = this.image;
 
 const value = image.lastModified;
 Object.defineProperty(this, 'lastModified', { value, enumerable: true });
 return value;
-},
+}
 get steps() {
+const image = this.image;
 
 const value = typeof image.steps === 'number' ? image.steps : null;
 Object.defineProperty(this, 'steps', { value, enumerable: true });
 return value;
-},
+}
 get cfgScale() {
+const image = this.image;
 
 const value = typeof image.cfgScale === 'number' ? image.cfgScale : null;
 Object.defineProperty(this, 'cfgScale', { value, enumerable: true });
 return value;
-},
+}
 get generationType() {
+const image = this.image;
 
 const value = getImageGenerationType(image);
 Object.defineProperty(this, 'generationType', { value, enumerable: true });
 return value;
-},
+}
 get mediaType() {
+const image = this.image;
 const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
 const inferredMediaType = resolveMediaType(image.name, image.fileType);
 const mediaType =
@@ -205,75 +223,89 @@ const mediaType =
 const value = mediaType;
 Object.defineProperty(this, 'mediaType', { value, enumerable: true });
 return value;
-},
+}
 get generator() {
+const image = this.image;
 
 const value = getImageGenerator(image);
 Object.defineProperty(this, 'generator', { value, enumerable: true });
 return value;
-},
+}
 get gpuDevice() {
+const image = this.image;
 
 const value = getImageGpuDevice(image);
 Object.defineProperty(this, 'gpuDevice', { value, enumerable: true });
 return value;
-},
+}
 get hasTelemetry() {
+const image = this.image;
 
 const value = hasTelemetryData(image);
 Object.defineProperty(this, 'hasTelemetry', { value, enumerable: true });
 return value;
-},
+}
 get hasVerifiedTelemetry() {
+const image = this.image;
 
 const value = hasVerifiedTelemetry(image);
 Object.defineProperty(this, 'hasVerifiedTelemetry', { value, enumerable: true });
 return value;
-},
+}
 get generationTimeMs() {
+const image = this.image;
 const analytics = getImageAnalyticsSnapshot(image);
 const generationTimeMs = typeof analytics?.generation_time_ms === 'number' ? analytics.generation_time_ms : null;
 const value = generationTimeMs;
 Object.defineProperty(this, 'generationTimeMs', { value, enumerable: true });
 return value;
-},
+}
 get stepsPerSecond() {
+const image = this.image;
 const analytics = getImageAnalyticsSnapshot(image);
 const stepsPerSecond = typeof analytics?.steps_per_second === 'number' ? analytics.steps_per_second : null;
 const value = stepsPerSecond;
 Object.defineProperty(this, 'stepsPerSecond', { value, enumerable: true });
 return value;
-},
+}
 get vramPeakMb() {
+const image = this.image;
 const analytics = getImageAnalyticsSnapshot(image);
 const vramPeakMb = typeof analytics?.vram_peak_mb === 'number' ? analytics.vram_peak_mb : null;
 const value = vramPeakMb;
 Object.defineProperty(this, 'vramPeakMb', { value, enumerable: true });
 return value;
-},
+}
 get isFavorite() {
+const image = this.image;
 
 const value = image.isFavorite === true;
 Object.defineProperty(this, 'isFavorite', { value, enumerable: true });
 return value;
-},
+}
 get rating() {
+const image = this.image;
 
 const value = image.rating ?? null;
 Object.defineProperty(this, 'rating', { value, enumerable: true });
 return value;
-},
+}
 get tags() {
+const image = this.image;
 
 const value = (image.tags || []).map(tag => String(tag).toLowerCase());
 Object.defineProperty(this, 'tags', { value, enumerable: true });
 return value;
-},
+}
 get autoTags() {
+const image = this.image;
 
 const value = (image.autoTags || []).map(tag => String(tag).toLowerCase());
 Object.defineProperty(this, 'autoTags', { value, enumerable: true });
 return value;
 }
-};
+}
+
+export function toLazyLibraryQueryImage(image: IndexedImage): LibraryQueryImage {
+return new LazyLibraryQueryImage(image);
 }

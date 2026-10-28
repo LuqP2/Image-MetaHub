@@ -105,3 +105,38 @@ describe('lazy synchronous adaptation', () => {
     } finally { vi.restoreAllMocks(); }
   });
 });
+
+describe('shared lazy accessors', () => {
+  it('allocates one lightweight view per entry and shares every accessor on its prototype', () => {
+    const source = { id: 'first', name: 'forest.png', directoryId: 'root' } as IndexedImage;
+    const first = toLazyLibraryQueryImage(source);
+    const second = toLazyLibraryQueryImage({ ...source, id: 'second' });
+    const prototype = Object.getPrototypeOf(first);
+    expect(Object.getPrototypeOf(second)).toBe(prototype);
+    expect(Object.keys(first)).toEqual(['image']);
+    const descriptors = Object.getOwnPropertyDescriptors(prototype);
+    for (const [key, descriptor] of Object.entries(descriptors)) {
+      if (!descriptor.get) continue;
+      expect(Object.getOwnPropertyDescriptor(first, key)).toBeUndefined();
+      expect(Object.getOwnPropertyDescriptor(Object.getPrototypeOf(second), key)?.get).toBe(descriptor.get);
+    }
+    expect(first.id).toBe('first');
+    expect(second.id).toBe('second');
+    expect(Object.getOwnPropertyDescriptor(first, 'id')?.value).toBe('first');
+    expect(Object.getOwnPropertyDescriptor(second, 'id')?.value).toBe('second');
+    expect(Object.getOwnPropertyDescriptor(prototype, 'id')?.get).toBe(descriptors.id.get);
+  });
+  it('filters 18000 entries without touching expensive data for an empty query', () => {
+    let expensiveReads = 0;
+    const entries = Array.from({ length: 18000 }, (_, index) => ({
+      id: `image-${index}`, name: `${index}.png`, directoryId: 'root',
+      get metadata() { expensiveReads++; throw new Error('Unexpected metadata access'); },
+      get models() { expensiveReads++; throw new Error('Unexpected model normalization'); },
+    } as unknown as IndexedImage));
+    const accepts = compileWorkerPredicate(criteria());
+    let count = 0;
+    for (const entry of entries) if (accepts(toLazyLibraryQueryImage(entry))) count++;
+    expect(count).toBe(18000);
+    expect(expensiveReads).toBe(0);
+  });
+});
