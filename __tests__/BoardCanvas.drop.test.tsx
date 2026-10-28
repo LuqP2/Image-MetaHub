@@ -2,14 +2,42 @@ import React from 'react';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import BoardCanvas from '../components/boards/BoardCanvas';
+vi.mock('../components/boards/BoardMiniMap', () => ({ default: () => null }));
 import { BoardEditorContext } from '../components/boards/BoardEditorContext';
 import { useBoardStore } from '../store/useBoardStore';
 import { createBoardDocument } from '../services/boards/document.mjs';
 import { clearInternalImageDragData, INTERNAL_IMAGE_DRAG_TYPE } from '../utils/internalImageDrag';
 const flow = vi.hoisted(() => ({ screenToFlowPosition: vi.fn().mockReturnValue({ x: 75, y: -20 }), getViewport: vi.fn(), fitView: vi.fn() }));
-vi.mock('@xyflow/react', async importOriginal => ({ ...await importOriginal<typeof import('@xyflow/react')>(), ReactFlow: ({ children }) => <div>{children}</div>, Background: () => null, useReactFlow: () => flow }));
-afterEach(() => { cleanup(); clearInternalImageDragData(); });
+vi.mock('@xyflow/react', async importOriginal => ({ ...await importOriginal<typeof import('@xyflow/react')>(), ReactFlow: ({ children }) => <div>{children}</div>, Background: () => null, MiniMap: () => null, Panel: ({ children }) => <div>{children}</div>, useReactFlow: () => flow, useViewport: () => ({ x: 0, y: 0, zoom: 1 }) }));
+afterEach(() => { vi.unstubAllGlobals(); cleanup(); clearInternalImageDragData(); });
 describe('Canvas asset drop', () => {
+  it('draws a frame in either direction at converted coordinates and selects it', () => {
+    vi.stubGlobal('PointerEvent', MouseEvent);
+    flow.screenToFlowPosition.mockImplementation(point => ({ x: (point.x - 100) / 2, y: (point.y - 50) / 2 }));
+    const document = createBoardDocument(); useBoardStore.getState().adoptBoard(document);
+    const setTool = vi.fn();
+    const view = render(<BoardEditorContext.Provider value={{ editable: true, connecting: false, tool: 'frame', setTool, begin: vi.fn(), change: vi.fn(), commit: vi.fn(), cancel: vi.fn() }}><BoardCanvas boardId={document.id} /></BoardEditorContext.Provider>);
+    const overlay = view.getByLabelText('Draw frame');
+    Object.defineProperty(overlay, 'setPointerCapture', { value: vi.fn() });
+    Object.defineProperty(overlay, 'getBoundingClientRect', { value: () => ({ left: 200, top: 100 }) });
+    fireEvent.pointerDown(overlay, { button: 0, clientX: 700, clientY: 450 });
+    fireEvent.pointerMove(overlay, { clientX: 300, clientY: 150 });
+    const preview = view.container.querySelector<HTMLElement>('.board-draw-preview')!;
+    expect(preview.style.position).toBe('absolute');
+    expect(preview.style.left).toBe('100px');
+    expect(preview.style.top).toBe('50px');
+    expect(preview.style.width).toBe('400px');
+    expect(preview.style.height).toBe('300px');
+    fireEvent.pointerUp(overlay, { clientX: 300, clientY: 150 });
+    const session = useBoardStore.getState().sessions[document.id];
+    expect(session.document.objects).toHaveLength(1);
+    expect(session.document.objects[0]).toMatchObject({ type: 'frame', x: 100, y: 50, width: 200, height: 150 });
+    expect(session.selectedObjectIds).toEqual([session.document.objects[0].id]);
+    expect(session.past).toHaveLength(1);
+    expect(setTool).toHaveBeenCalledWith('select');
+    flow.screenToFlowPosition.mockReset().mockReturnValue({ x: 75, y: -20 });
+  });
+
   it('places all dragged references at converted board coordinates', () => {
     const document = createBoardDocument(); useBoardStore.getState().adoptBoard(document);
     const drop = vi.fn();

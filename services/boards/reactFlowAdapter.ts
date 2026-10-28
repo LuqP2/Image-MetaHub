@@ -12,7 +12,6 @@ export function boardToFlow(document: BoardDocument, selectedObjectIds: string[]
       parentId: parent?.id, position: { x: object.x - (parent?.x ?? 0), y: object.y - (parent?.y ?? 0) },
       style: { width: object.width, height: object.height }, width: object.width, height: object.height,
       zIndex: object.zIndex, selected: selectedObjectIds.includes(object.id), draggable: editable, connectable: editable,
-      dragHandle: object.type === 'frame' ? '.board-frame-title' : undefined,
     };
   });
   const edges: Edge[] = document.connections.map(connection => ({

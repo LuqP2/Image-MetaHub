@@ -1,3 +1,5 @@
+import { ExternalLink, Star } from 'lucide-react';
+import { useBoardUIStore } from '../store/useBoardUIStore';
 import { useCallback, useMemo, useState } from 'react';
 import type { IndexedImage } from '../types';
 import BoardWorkspace from './BoardWorkspace';
@@ -24,7 +26,6 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
   const editable = canUseCanvas && !closing && !session?.recovering;
   const [error, setError] = useState<string | null>(null);
   const [relinkId, setRelinkId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(true);
   const navigation = useMemo(() => {
     const byId = new Map<string, IndexedImage>();
     session?.document.objects.forEach(object => { if (object.type === 'asset') { const result = resolve(object); if (result.status === 'resolved') byId.set(result.image.id, result.image); } });
@@ -58,11 +59,13 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
     } catch (cause) { setError(String(cause)); }
   };
   const inspector = resolution?.status === 'resolved' ? <>
-    <button onClick={() => selectedAsset && open(selectedAsset)}>Open viewer</button>
-    <button onClick={() => { void useImageStore.getState().toggleFavorite(resolution.image.id).catch(cause => setError(String(cause))); }}>{resolution.image.isFavorite ? '★ Favorite' : '☆ Favorite'}</button>
-    <RatingStars rating={resolution.image.rating} onChange={rating => { void useImageStore.getState().setImageRating(resolution.image.id, rating).catch(cause => setError(String(cause))); }} />
-    <ComparisonMetadataPanel image={resolution.image} isExpanded={expanded} onToggleExpanded={() => setExpanded(!expanded)} viewMode="standard" />
-  </> : selectedAsset ? <p>{resolution?.status === 'loading' ? 'Library is loading…' : resolution?.status === 'ambiguous' ? 'Multiple files match this reference.' : 'This file is not available in the current library.'}</p> : null;
+    <div className="board-asset-actions"><button className="board-button" onClick={() => selectedAsset && open(selectedAsset)}><ExternalLink size={14}/>Open viewer</button>
+    <button className="board-button" aria-pressed={Boolean(resolution.image.isFavorite)} onClick={() => { void useImageStore.getState().toggleFavorite(resolution.image.id).catch(cause => setError(String(cause))); }}><Star size={14} fill={resolution.image.isFavorite ? "currentColor" : "none"}/>Favorite</button></div>
+    <RatingStars size={16} className="board-rating" rating={resolution.image.rating} onChange={rating => { void useImageStore.getState().setImageRating(resolution.image.id, rating).catch(cause => setError(String(cause))); }} />
+  </> : null;
+  const metadata = resolution?.status === 'resolved' ? <ComparisonMetadataPanel image={resolution.image} isExpanded onToggleExpanded={() => {}} presentation="embedded" /> : null;
+  const status = selectedAsset && resolution?.status !== 'resolved' ? <div className="board-asset-status"><p>{resolution?.status === 'loading' ? 'Library is loading…' : resolution?.status === 'ambiguous' ? 'Multiple files match this reference.' : 'This file is not available in the current library.'}</p>{(resolution?.status === 'missing' || resolution?.status === 'ambiguous') && <><p>Choose the library file for this board item to restore its reference.</p><button className="board-button" disabled={!editable} onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); setRelinkId(selectedAsset.id); }}>Locate missing file</button></>}</div> : null;
+
   return <div className="flex h-full min-h-0 flex-col">
     {!canUseCanvas && <div className="border-b border-gray-700 p-2 text-sm"><button onClick={() => showProModal('canvas')}>Enable Canvas editing with Pro or trial</button></div>}
     {error && <div role="alert" className="border-b border-red-500/40 p-2 text-sm text-red-300">{error}<button className="ml-3 underline" onClick={() => setError(null)}>Dismiss</button></div>}
@@ -72,7 +75,7 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
         void add(ids.map(id => byId.get(id)).filter((image): image is IndexedImage => Boolean(image)), anchor);
       }}
       assetPanel={<BoardAssetBrowser images={images} directories={directories} editable={editable} onAdd={selected => { void add(selected); }} onPick={relinkId ? image => { void relink(image); } : undefined} onCancelPick={() => setRelinkId(null)} />}
-      assetInspector={<>{inspector}{selectedAsset && <button disabled={!editable} onClick={() => setRelinkId(selectedAsset.id)}>Relink to library asset</button>}</>}
-      extraToolbar={<div className="board-compare-bar"><button disabled={!compareEnabled} title="Select 2–4 distinct images to compare" onClick={() => canUseComparison ? onCompareImages([...selectedImages.values()]) : showProModal('comparison')}>Compare selected images</button><span>Select 2–4 distinct images</span></div>} />
+      libraryLocked={Boolean(relinkId)} assetActions={inspector} assetMetadata={metadata} assetStatus={status}
+      selectionActions={selected.length > 0 && selected.every(item => item.type === 'asset' && item.mediaType === 'image') ? <div className="board-selection-actions"><button className="board-button" disabled={!compareEnabled} onClick={() => canUseComparison ? onCompareImages([...selectedImages.values()]) : showProModal('comparison')}>Compare selected images</button></div> : null} />
   </div>;
 }

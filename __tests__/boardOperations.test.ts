@@ -1,10 +1,50 @@
 import { describe, expect, it } from 'vitest';
-import { addAssets, addConnection, createFrame, duplicateObjects, removeObjects, setObjectFrame, updateObjects, arrangeObjectsInGrid } from '../services/boards/operations';
+import { addAssets, addConnection, drawBoardObject, createFrame, duplicateObjects, removeObjects, setObjectFrame, updateObjects, arrangeObjectsInGrid } from '../services/boards/operations';
 import { createBoardDocument } from '../services/boards/document.mjs';
 import { getBoardBounds, findContainingFrame, toBoardAbsolute, toFrameRelative } from '../services/boards/layout';
 import { boardLocator, boardWithTexts } from './helpers/boardFixtures';
 
 describe('board composition operations', () => {
+  it('draws exact bounds and groups enclosed objects without moving them', () => {
+    const original = boardWithTexts();
+    const bounds = { x: -40, y: -40, width: 400, height: 250 };
+    const result = drawBoardObject(original, 'frame', bounds);
+    const frame = result.objects.find(object => object.type === 'frame')!;
+    expect(frame).toMatchObject(bounds);
+    expect(result.objects.find(object => object.id === original.objects[0].id)).toMatchObject({ x: 0, y: 0, frameId: frame.id });
+    const textBounds = { x: 20, y: 30, width: 160, height: 90 };
+    const withText = drawBoardObject(result, 'text', textBounds);
+    expect(withText.objects.at(-1)).toMatchObject({ ...textBounds, frameId: frame.id });
+    expect(withText.objects.slice(0, -1)).toEqual(result.objects);
+  });
+
+  it('preserves unrelated memberships when drawing a frame after resizing another frame', () => {
+    const original = boardWithTexts();
+    const framed = createFrame(original, [original.objects[0].id]);
+    const frame = framed.objects[0];
+    const resized = updateObjects(framed, [{ id: frame.id, width: 1, height: 1 }]);
+    const child = resized.objects.find(object => object.id === original.objects[0].id)!;
+    expect(findContainingFrame(child, resized.objects)).toBeNull();
+    expect(child.frameId).toBe(frame.id);
+
+    const drawn = drawBoardObject(resized, 'frame', { x: 2000, y: 2000, width: 400, height: 300 });
+    for (const object of resized.objects) {
+      expect(drawn.objects.find(item => item.id === object.id)).toEqual(object);
+    }
+    const moved = updateObjects(drawn, [{ id: frame.id, x: frame.x + 100, y: frame.y + 50 }]);
+    expect(moved.objects.find(object => object.id === child.id)).toMatchObject({
+      frameId: frame.id, x: child.x + 100, y: child.y + 50,
+    });
+  });
+
+  it('adopts enclosed objects into the newly drawn frame even when another frame overlaps', () => {
+    const original = boardWithTexts();
+    const framed = createFrame(original, [original.objects[0].id]);
+    const drawn = drawBoardObject(framed, 'frame', { x: -40, y: -40, width: 400, height: 250 });
+    const newFrame = drawn.objects.find(object => !framed.objects.some(item => item.id === object.id))!;
+    expect(drawn.objects.find(object => object.id === original.objects[0].id)?.frameId).toBe(newFrame.id);
+  });
+
   it('inherits frame displacement per coordinate while applying member property changes', () => {
     const original = boardWithTexts();
     const board = createFrame(original, [original.objects[0].id]);

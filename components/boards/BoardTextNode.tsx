@@ -9,9 +9,9 @@ export default memo(function BoardTextNode({ data, selected }: NodeProps<BoardFl
   const [editing, setEditing] = useState(false);
   const object = data.object;
   if (object.type !== 'text') return null;
-  return <div className="board-text" style={{ color: object.color, fontSize: object.fontSize }} onDoubleClick={() => { if (editor.editable) { editor.begin(); setEditing(true); } }}>
+  return <div className="board-text" style={{ color: object.color === '#e5e7eb' ? 'rgb(var(--gray-100))' : object.color, fontSize: object.fontSize }} onDoubleClick={() => { if (editor.editable) { editor.begin(); setEditing(true); } }}>
     <BoardNodeControls selected={!!selected} />
-    {editing && editor.editable ? <textarea className="nodrag nowheel" autoFocus value={object.text} aria-label="Board text"
+    {editing && editor.editable ? <textarea className="board-textarea nodrag nowheel" autoFocus value={object.text} aria-label="Board text"
       onChange={event => editor.change({ id: object.id, text: event.target.value })}
       onBlur={() => { editor.commit(); setEditing(false); }}
       onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') { editor.cancel(); setEditing(false); } }} />

@@ -119,6 +119,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   isExpanded,
   onToggleExpanded,
   viewMode = 'standard',
+  presentation = 'panel',
   otherImageMetadata,
   className,
   compareLabel,
@@ -126,6 +127,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   registerScrollRef,
   onContentScroll,
 }) => {
+  const embedded = presentation === 'embedded';
   const metadata = image.metadata?.normalizedMetadata;
   const isDiffMode = viewMode === 'diff';
 
@@ -174,6 +176,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
     }
   };
 
+  if (!metadata && embedded) return <p className="text-sm text-gray-400">No metadata available</p>;
   if (!metadata) {
     return (
       <div className={`p-4 bg-gray-800/50 rounded-lg border ${isHighlighted ? 'border-cyan-500/70 shadow-[0_0_0_1px_rgba(34,211,238,0.25)] bg-cyan-500/5' : 'border-gray-700/50'} ${className ?? ''}`}>
@@ -197,9 +200,9 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   }
 
   return (
-    <div className={`bg-gray-800/50 rounded-lg border overflow-hidden transition-colors ${isHighlighted ? 'border-cyan-500/70 shadow-[0_0_0_1px_rgba(34,211,238,0.25)] bg-cyan-500/5' : 'border-gray-700/50'} ${className ?? ''}`}>
+    <div className={embedded ? "board-embedded-metadata" : `bg-gray-800/50 rounded-lg border overflow-hidden transition-colors ${isHighlighted ? 'border-cyan-500/70 shadow-[0_0_0_1px_rgba(34,211,238,0.25)] bg-cyan-500/5' : 'border-gray-700/50'} ${className ?? ''}`}>
       {/* Toggle Button */}
-      <button
+      {!embedded && <button
         onClick={onToggleExpanded}
         className={`w-full p-3 flex items-center justify-between text-left transition-colors ${isHighlighted ? 'bg-cyan-500/10 hover:bg-cyan-500/15' : 'hover:bg-gray-700/30'}`}
       >
@@ -208,14 +211,14 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
         </span>
         {compareLabel ? <span className="mr-2 text-[11px] uppercase tracking-[0.14em] text-gray-500">{compareLabel}</span> : null}
         {isExpanded ? <ChevronDown className="w-5 h-5 text-gray-400 flex-shrink-0" /> : <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
-      </button>
+      </button>}
 
       {/* Metadata Content */}
-      {isExpanded && (
+      {(embedded || isExpanded) && (
         <div
           ref={registerScrollRef}
           onScroll={onContentScroll ? (event) => onContentScroll(event.currentTarget.scrollTop) : undefined}
-          className="p-3 space-y-3 max-h-[300px] overflow-y-auto border-t border-gray-700/50">
+          className={embedded ? "space-y-3" : "p-3 space-y-3 max-h-[300px] overflow-y-auto border-t border-gray-700/50"}>
           {/* Prompt */}
           {(metadata.prompt || (isDiffMode && otherImageMetadata?.prompt)) && (
             <MetadataField
@@ -243,7 +246,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
           )}
 
           {/* Grid of smaller fields */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className={embedded ? "grid grid-cols-1 gap-2" : "grid grid-cols-2 gap-2"}>
             {(metadata.model || (isDiffMode && otherImageMetadata?.model)) && (
               <MetadataField
                 label="Model"

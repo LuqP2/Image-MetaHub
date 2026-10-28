@@ -21,7 +21,7 @@ describe('Canvas asset panel', () => {
     clearPanelSearch();
     fireEvent.click(screen.getByTitle('a.png'));
     fireEvent.click(screen.getByTitle('b.png'), { ctrlKey: true });
-    fireEvent.click(screen.getByRole('button', { name: 'Add selection' }));
+    fireEvent.click(screen.getByRole('button', { name: /Add to canvas/ }));
     expect(add).toHaveBeenCalledWith(images);
     const payload = new Map<string, string>();
     const data = { setData: (key: string, value: string) => payload.set(key, value), getData: (key: string) => payload.get(key) ?? '' } as DataTransfer;
@@ -66,13 +66,13 @@ describe('Canvas asset panel', () => {
     fireEvent.click(screen.getByTitle('safe.png'));
     fireEvent.click(screen.getByTitle('sensitive.png'), { ctrlKey: true });
     act(() => useSettingsStore.setState({ enableSafeMode: true, blurSensitiveImages: false }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add selection' }));
+    fireEvent.click(screen.getByRole('button', { name: /Add to canvas/ }));
     expect(add).toHaveBeenCalledWith([images[0]]);
     const payload = new Map<string, string>();
     const data = { setData: (key: string, value: string) => payload.set(key, value), getData: (key: string) => payload.get(key) ?? '' } as DataTransfer;
     fireEvent.dragStart(screen.getByTitle('safe.png'), { dataTransfer: data });
     expect(getInternalImageDragIds(data)).toEqual([images[0].id]);
     fireEvent.click(screen.getByTitle('safe.png'), { ctrlKey: true });
-    expect((screen.getByRole('button', { name: 'Add selection' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: /Add to canvas/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

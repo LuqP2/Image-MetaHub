@@ -1670,6 +1670,7 @@ export interface ComparisonModalProps {
 }
 
 export interface ComparisonMetadataPanelProps {
+  presentation?: 'panel' | 'embedded';
   image: IndexedImage;
   isExpanded: boolean;
   onToggleExpanded: () => void;
