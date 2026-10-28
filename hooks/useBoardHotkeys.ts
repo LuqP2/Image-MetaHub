@@ -8,6 +8,7 @@ export function useBoardHotkeys(boardId: string | null, editable: boolean, openS
   return useCallback((event: KeyboardEvent<HTMLElement>) => {
     if (!boardId || event.defaultPrevented || event.nativeEvent.isComposing) return;
     const target = event.target as HTMLElement;
+    if (target.closest('[role="dialog"]')) return;
     if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
     const key = event.key.toLowerCase();
     if ((key === 'enter' || key === ' ') && target.closest('button, a')) return;

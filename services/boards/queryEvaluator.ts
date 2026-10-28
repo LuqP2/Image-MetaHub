@@ -1,3 +1,5 @@
+import { buildBoardGroupedLayout, createGroupingContext } from './grouping';
+import { compileGroupConstraints, BoardGroupingSourceMissing } from './groupConstraints';
 import type { BoardQueryFrame } from './queryProtocol';
 import { executeLibraryQuery } from '../libraryQuery/execute';
 import type { LibraryQueryImage } from '../libraryQuery/types';
@@ -13,14 +15,15 @@ export const createBoardEvaluationCache = (): BoardEvaluationCache => ({ dataset
 export function evaluateBoardQueries(dataset: BoardQueryDataset, frames: BoardQueryFrame[], datasetRevision: number, queryRevision: number, cache = createBoardEvaluationCache()): Record<string, BoardQueryResult> {
   if (cache.dataset !== dataset) { cache.dataset = dataset; cache.entries.clear(); }
   const nextEntries: BoardEvaluationCache['entries'] = new Map();
+  const groupingContext = createGroupingContext(dataset);
   const images = new Map(dataset.images.map(image => [image.id, image]));
   const results: Record<string, BoardQueryResult> = Object.create(null);
   const evaluateQuery = (source: ResolvedSet, criteria: BoardSmartFrameObject['criteria'], constraints: BoardSmartFrameObject['groupConstraints']) => {
-    if (constraints.length) throw new Error('Grouped query constraints require the grouping engine.');
+    const acceptsGroup = compileGroupConstraints(constraints, groupingContext);
     const key = JSON.stringify([[...source.ids], criteria, constraints]);
     const cached = nextEntries.get(key) ?? cache.entries.get(key);
     if (cached) { nextEntries.set(key, cached); return cached; }
-    const candidates = [...source.ids].map(id => images.get(id)).filter((image): image is LibraryQueryImage => !!image);
+    const candidates = [...source.ids].map(id => images.get(id)).filter((image): image is LibraryQueryImage => !!image && acceptsGroup(image));
     const computed = executeLibraryQuery(candidates, criteria, dataset.context);
     nextEntries.set(key, computed);
     return computed;
@@ -67,9 +70,10 @@ export function evaluateBoardQueries(dataset: BoardQueryDataset, frames: BoardQu
       const result = evaluateQuery(source, frame.criteria, frame.groupConstraints);
       const sourceFacets = evaluateQuery(source, { ...frame.criteria,
         searchQuery: '', selectedModels: [], excludedModels: [], selectedLoras: [], excludedLoras: [], selectedSamplers: [], excludedSamplers: [], selectedSchedulers: [], excludedSchedulers: [], selectedGenerators: [], excludedGenerators: [], selectedGpuDevices: [], excludedGpuDevices: [], selectedTags: [], excludedTags: [], selectedAutoTags: [], excludedAutoTags: [], favoriteFilterMode: 'neutral', selectedRatings: [], advancedFilters: {}, selectedFolders: [], excludedFolders: [] }, []).facets;
-      results[frame.id] = { ...base, ...result, status: 'ready', unavailableReferences: source.unavailable, facets: sourceFacets };
+      const grouped = buildBoardGroupedLayout(result.imageIds.map(id => images.get(id)!), frame.layout ?? { kind: 'grid' }, groupingContext);
+      results[frame.id] = { ...base, ...result, grouped, status: 'ready', unavailableReferences: source.unavailable, facets: sourceFacets };
     } catch (error) {
-      results[frame.id] = { ...base, status: error instanceof MissingSource ? 'source-missing' : 'error', error: error instanceof Error ? error.message : String(error) };
+      results[frame.id] = { ...base, status: error instanceof MissingSource || error instanceof BoardGroupingSourceMissing ? 'source-missing' : 'error', error: error instanceof Error ? error.message : String(error) };
     }
   }
   cache.entries = nextEntries;

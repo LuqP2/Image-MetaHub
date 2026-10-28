@@ -1214,6 +1214,8 @@ export interface MetaHubAttribution {
 }
 
 export interface BaseMetadata extends SharedBaseMetadata {
+  /** Original integer text, preserved before numeric seed conversion. */
+  seedExact?: string;
   clip_skip?: number;
   media_type?: 'image' | 'video' | 'audio' | 'model3d';
   model_3d?: Model3DMetadata | null;

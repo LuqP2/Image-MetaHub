@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
+import { readLosslessSeed } from '../utils/losslessSeed';
 import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager';
 import { createEnrichmentCheckpoints } from './enrichmentCheckpoints';
 
@@ -2306,6 +2307,9 @@ export function compactRawMetadataForRuntime(
       metadataString: '',
     };
   }
+
+  const seedExact = readLosslessSeed({ ...rawMetadata, normalizedMetadata });
+  if (seedExact && normalizedMetadata) normalizedMetadata = { ...normalizedMetadata, seedExact };
 
   const rawMetadataString = JSON.stringify(rawMetadata);
   if (rawMetadataString.length <= MAX_INLINE_RAW_METADATA_BYTES) {

@@ -48,4 +48,18 @@ Manual acceptance covers empty-library board creation; adding multiple assets fr
 
 The Smart Frame tool creates a library query, a Live collection source or a Snapshot of selected library images. Its inspector edits independent criteria and supports explicit copying from the current library view. Scoped, workflow-node-filtered and visual-search views are currently captured as Snapshots. Preview is capped at 12 thumbnails; expanded browsing uses `react-window`. Viewer navigation follows the frame's ordered results, and thumbnails can be dragged out as free cards. Snapshot capture checks query and dataset freshness across the asynchronous reference-baseline operation.
 
-Grouping constraints and layouts are persisted but their execution/rendering belongs to the grouping stage. Until that engine is integrated, queries containing group constraints report an explicit error. Spatial branching controls and dependency edges belong to stage 4.
+Grouping constraints and layouts are persisted; their execution and rendering are supplied by the stage 5 grouping engine below. Spatial branching controls and dependency edges are implemented in stage 4 below.
+
+### Visual branching and set operations (stage 4)
+
+The Smart Frame inspector creates linked branches or independent query copies. Parent criteria are displayed as a read-only inherited summary; local filters refine the computed source set. Selecting two or more Smart Frames enables intersection; exactly two enables an explicit A-minus-B dialog defaulting to spatial left-to-right order with a swap action. New result frames are selected and fitted to the viewport. Read-only/closing/recovering sessions disable these edits.
+
+Dependency edges are derived from query expressions and never serialized as manual connections. They are dashed, directional, non-selectable and non-reconnectable. Missing parents leave their dependent frames reconnectable; restoring a removed parent through undo restores the dependency. The Source picker allows library, collection and eligible frame sources, excluding descendants and self references. Normalization still enforces depth and cycle limits if a reconnection exceeds them.
+
+### Metadata groups and matrix (stage 5)
+
+Smart Frames support a grid, a two-level grouping layout and a two-axis matrix. Grouping dimensions cover checkpoint, LoRA, sampler, scheduler, exact seed strings, file resolution, generator, rating, favorites, tags, auto-tags, local date, sessions, folders, collections and existing clusters. Sessions reuse the library's 45-minute gap. Group branches persist a fixed inclusive-start/exclusive-end interval rather than a regenerated session ID.
+
+The worker computes deduplicated buckets and sparse populated cells. Multivalued fields participate in every applicable group; the frame total remains unique images. Missing values have their own constraint discriminant, separate from actual labels. Matrices virtualize both axes and derive empty cells at render time rather than allocating the axis Cartesian product. Group/subgroup rows and opened result grids are virtualized as well.
+
+A group or cell can become a linked branch. Its constraints remain independent of future parent layout changes and can be removed individually in the inspector. Removed collection/cluster targets produce an explicit missing-source state. Layout changes reuse the query-result cache without resynchronizing the dataset. Browsing a group/cell is transient UI state; its full membership is used for navigation and branching.
