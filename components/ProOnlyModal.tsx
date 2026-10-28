@@ -29,6 +29,13 @@ type FeatureCopy = {
 };
 
 const featureInfo: Record<ProFeature, FeatureCopy> = {
+  canvas: {
+    contextLine: 'Develop visual ideas with your generations.',
+    headline: 'Arrange references on a creative canvas',
+    featureName: 'Canvas', icon: Sparkles,
+    bullets: ['Organize media, text and frames on saved boards', 'Inspect generation details and compare alternatives', 'Keep references connected to your local library'],
+    alsoUnlocks: 'Existing boards remain viewable and exportable after your trial.',
+  },
   prompt_library_advanced: {
     contextLine: 'Reuse the parts of your prompts that work.',
     headline: 'Build prompts from reusable blocks and templates',
@@ -183,6 +190,7 @@ const featureInfo: Record<ProFeature, FeatureCopy> = {
 };
 
 const blockedAttemptsCopy: Record<ProFeature, (count: number) => string> = {
+  canvas: (n) => `You've tried to edit Canvas boards ${n} times.`,
   prompt_library_advanced: (n) => `You've tried advanced prompt creation ${n} times.`,
   model_manager: (n) => `You've tried to open Model Manager ${n} times.`,
   comparison: (n) => `You've tried to compare images ${n} times.`,

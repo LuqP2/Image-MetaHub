@@ -475,7 +475,22 @@ export interface TrialExtensionActivationResult {
   error?: string;
 }
 
+export type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor' | 'canvas';
+
 export interface ElectronAPI {
+  boardsList?: () => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardSummary[]>>;
+  boardsReferenceBaseline?: () => Promise<import('./services/boards/types').BoardApiResult<string[]>>;
+  boardsLoad?: (id: string) => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument>>;
+  boardsSave?: (input: { document: import('./services/boards/types').BoardDocument; expectedRevision: number }) => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument>>;
+  boardsRemove?: (input: { id: string; expectedRevision: number }) => Promise<import('./services/boards/types').BoardApiResult<null>>;
+  boardsRemapReferences?: (remaps: import('./services/boards/types').BoardReferenceRemap[]) => Promise<import('./services/boards/types').BoardApiResult<null>>;
+  boardsFlush?: () => Promise<import('./services/boards/types').BoardApiResult<null>>;
+  boardsSetDirty?: (dirty: boolean) => void;
+  boardsFlushAcknowledged?: (requestId: string, result: { success: boolean; error?: string }) => void;
+  onBoardsFlushRequested?: (callback: (requestId: string) => void) => () => void;
+  onBoardsCloseCancelled?: (callback: () => void) => () => void;
+  boardsImport?: () => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument | null>>;
+  boardsExport?: (document: import('./services/boards/types').BoardDocument) => Promise<import('./services/boards/types').BoardApiResult<{ exported: true } | null>>;
   exr: import('./services/exr/contracts').ExrAPI;
   enrichmentMemoryDiagnosticsEnabled?: boolean;
   reportEnrichmentMemory?: (sample: {

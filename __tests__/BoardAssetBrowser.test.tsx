@@ -1,0 +1,78 @@
+import React from 'react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import BoardAssetBrowser from '../components/boards/BoardAssetBrowser';
+import { useImageStore } from '../store/useImageStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { boardDirectory, boardImage } from './helpers/boardIntegrationFixtures';
+import { clearInternalImageDragData, getInternalImageDragIds } from '../utils/internalImageDrag';
+vi.mock('react-virtualized-auto-sizer', () => ({ default: ({ children }) => children({ width: 270, height: 500 }) }));
+vi.mock('../hooks/useThumbnail', () => ({ useThumbnail: () => {} }));
+vi.mock('../hooks/useResolvedThumbnail', () => ({ useResolvedThumbnail: () => ({ thumbnailUrl: 'synthetic-thumbnail.png' }) }));
+beforeEach(() => useSettingsStore.setState({ enableSafeMode: false, blurSensitiveImages: true, sensitiveTags: ['private'] }));
+afterEach(() => { cleanup(); clearInternalImageDragData(); });
+function clearPanelSearch() { fireEvent.change(screen.getByLabelText('Search canvas library'), { target: { value: '' } }); }
+describe('Canvas asset panel', () => {
+  it('selects and drags multiple assets without modifying library selection/search', () => {
+    const images = [boardImage('a.png', { models: ['Flux'] }), boardImage('b.png')];
+    useImageStore.setState({ images, selectedImages: new Set(['unrelated']), searchQuery: 'global query' });
+    const add = vi.fn();
+    render(<BoardAssetBrowser images={images} directories={[boardDirectory]} editable onAdd={add} />);
+    clearPanelSearch();
+    fireEvent.click(screen.getByTitle('a.png'));
+    fireEvent.click(screen.getByTitle('b.png'), { ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Add selection' }));
+    expect(add).toHaveBeenCalledWith(images);
+    const payload = new Map<string, string>();
+    const data = { setData: (key: string, value: string) => payload.set(key, value), getData: (key: string) => payload.get(key) ?? '' } as DataTransfer;
+    fireEvent.dragStart(screen.getByTitle('a.png'), { dataTransfer: data });
+    expect(getInternalImageDragIds(data)).toEqual(images.map(image => image.id));
+    fireEvent.change(screen.getByLabelText('Search canvas library'), { target: { value: 'Flux' } });
+    expect(screen.queryByTitle('b.png')).toBeNull();
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['unrelated']));
+    expect(useImageStore.getState().searchQuery).toBe('global query');
+  });
+  it('hides sensitive assets using the main library rules, including in the relink picker', () => {
+    const images = [boardImage('safe.png'), boardImage('sensitive.png', { tags: ['PrIvAtE'] }), boardImage('untagged.png', { tags: [] })];
+    useSettingsStore.setState({ enableSafeMode: true, blurSensitiveImages: false, sensitiveTags: ['  PRIVATE  ', ''] });
+    const pick = vi.fn();
+    render(<BoardAssetBrowser images={images} directories={[boardDirectory]} editable onAdd={vi.fn()} onPick={pick} />);
+    clearPanelSearch();
+    expect(screen.queryByTitle('sensitive.png')).toBeNull();
+    expect(screen.getByText('2 assets')).toBeTruthy();
+    fireEvent.click(screen.getByTitle('untagged.png'));
+    expect(pick).toHaveBeenCalledWith(images[2]);
+    act(() => useSettingsStore.setState({ enableSafeMode: false }));
+    expect(screen.getByTitle('sensitive.png')).toBeTruthy();
+  });
+  it('keeps sensitive thumbnails blurred in blur mode and updates when hide mode changes', () => {
+    const images = [boardImage('sensitive.png', { tags: ['PrIvAtE'] })];
+    useSettingsStore.setState({ enableSafeMode: true, blurSensitiveImages: true });
+    render(<BoardAssetBrowser images={images} directories={[boardDirectory]} editable onAdd={vi.fn()} />);
+    clearPanelSearch();
+    expect(screen.getByTitle('sensitive.png').querySelector('img')?.style.filter).toBe('blur(16px)');
+    act(() => useSettingsStore.setState({ blurSensitiveImages: false }));
+    expect(screen.queryByTitle('sensitive.png')).toBeNull();
+    act(() => useSettingsStore.setState({ blurSensitiveImages: true }));
+    expect(screen.getByTitle('sensitive.png').querySelector('img')?.style.filter).toBe('blur(16px)');
+    act(() => useSettingsStore.setState({ enableSafeMode: false }));
+    expect(screen.getByTitle('sensitive.png').querySelector('img')?.style.filter).toBe('');
+  });
+  it('excludes previously selected hidden assets from add and drag batches', () => {
+    const images = [boardImage('safe.png'), boardImage('sensitive.png', { tags: ['private'] })];
+    const add = vi.fn();
+    render(<BoardAssetBrowser images={images} directories={[boardDirectory]} editable onAdd={add} />);
+    clearPanelSearch();
+    fireEvent.click(screen.getByTitle('safe.png'));
+    fireEvent.click(screen.getByTitle('sensitive.png'), { ctrlKey: true });
+    act(() => useSettingsStore.setState({ enableSafeMode: true, blurSensitiveImages: false }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add selection' }));
+    expect(add).toHaveBeenCalledWith([images[0]]);
+    const payload = new Map<string, string>();
+    const data = { setData: (key: string, value: string) => payload.set(key, value), getData: (key: string) => payload.get(key) ?? '' } as DataTransfer;
+    fireEvent.dragStart(screen.getByTitle('safe.png'), { dataTransfer: data });
+    expect(getInternalImageDragIds(data)).toEqual([images[0].id]);
+    fireEvent.click(screen.getByTitle('safe.png'), { ctrlKey: true });
+    expect((screen.getByRole('button', { name: 'Add selection' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});

@@ -244,6 +244,17 @@ const SelectionHarness = ({ images }: { images: IndexedImage[] }) => {
 };
 
 describe('ImageGrid context menu', () => {
+  it('adds the current multi-selection to a board from its context menu', () => {
+    const first = createImage({ id: 'first', name: 'first.png' });
+    const second = createImage({ id: 'second', name: 'second.png' });
+    const selected = new Set([first.id, second.id]);
+    contextMenuStateMock.visible = true; contextMenuStateMock.image = first;
+    useImageStore.setState({ images: [first, second], selectedImages: selected });
+    const add = vi.fn();
+    render(<ImageGrid images={[first, second]} selectedImages={selected} onImageClick={vi.fn()} onBatchExport={vi.fn()} onPageChange={vi.fn()} currentPage={1} totalPages={1} onAddToBoard={add} />);
+    fireEvent.click(screen.getByText('Add to Board'));
+    expect(add).toHaveBeenCalledWith([first, second]);
+  });
   beforeEach(() => {
     featureAccessMock.canUseBulkTagging = true;
     featureAccessMock.showProModal.mockReset();

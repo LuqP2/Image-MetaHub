@@ -323,6 +323,27 @@ const electronAPI = {
     ipcRenderer.on('stable-user-data-changed', handler);
     return () => ipcRenderer.removeListener('stable-user-data-changed', handler);
   },
+  boardsList: () => ipcRenderer.invoke('boards:list'),
+  boardsReferenceBaseline: () => ipcRenderer.invoke('boards:reference-baseline'),
+  boardsLoad: (id) => ipcRenderer.invoke('boards:load', id),
+  boardsSave: (input) => ipcRenderer.invoke('boards:save', input),
+  boardsRemove: (input) => ipcRenderer.invoke('boards:remove', input),
+  boardsRemapReferences: (remaps) => ipcRenderer.invoke('boards:remap-references', remaps),
+  boardsFlush: () => ipcRenderer.invoke('boards:flush'),
+  boardsSetDirty: (dirty) => ipcRenderer.send('boards:dirty', dirty),
+  boardsFlushAcknowledged: (requestId, result) => ipcRenderer.send('boards:flush-acknowledged', requestId, result),
+  onBoardsFlushRequested: (callback) => {
+    const handler = (_event, requestId) => callback(requestId);
+    ipcRenderer.on('boards:flush-requested', handler);
+    return () => ipcRenderer.removeListener('boards:flush-requested', handler);
+  },
+  onBoardsCloseCancelled: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('boards:close-cancelled', handler);
+    return () => ipcRenderer.removeListener('boards:close-cancelled', handler);
+  },
+  boardsImport: () => ipcRenderer.invoke('boards:import'),
+  boardsExport: (document) => ipcRenderer.invoke('boards:export', document),
   savedPromptsList: () => ipcRenderer.invoke('saved-prompts:list'),
   promptLibraryList: () => ipcRenderer.invoke('prompt-library:list'),
   promptLibraryMutate: (input) => ipcRenderer.invoke('prompt-library:mutate', input),

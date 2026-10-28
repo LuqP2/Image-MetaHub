@@ -13,9 +13,15 @@ import { useReusableImageViewer } from './hooks/useReusableImageViewer';
 import { viewerLibrarySelection } from './utils/viewerLibrarySelection';
 import { useClusterCacheRestore } from './hooks/useClusterCacheRestore';
 import { useHotkeys } from './hooks/useHotkeys';
+import { useBoardPersistenceLifecycle } from './hooks/useBoardPersistenceLifecycle';
 import { useFeatureAccess } from './hooks/useFeatureAccess';
 import { useTrialExpiryWatcher } from './hooks/useTrialExpiryWatcher';
-import { Directory } from './types';
+import { Directory, type LibraryView } from './types';
+import BoardReferenceSyncNotice from './components/boards/BoardReferenceSyncNotice';
+import { flushReferenceRemaps } from './services/boards/referenceSync';
+
+const CanvasWorkspace = React.lazy(() => import('./components/CanvasWorkspace'));
+const AddToBoardDialog = React.lazy(() => import('./components/boards/AddToBoardDialog'));
 import { Image as ImageIcon, X, Search } from 'lucide-react';
 
 import FolderSelector from './components/FolderSelector';
@@ -277,6 +283,7 @@ const resolveSidebarWidths = ({
 };
 
 export default function App() {
+  useBoardPersistenceLifecycle();
   const { progressState: a1111Progress } = useA1111ProgressContext();
   useGenerationQueueSync();
   useComfyUIQueueMonitor();
@@ -564,7 +571,7 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor'>('library');
+  const [libraryView, setLibraryView] = useState<LibraryView>('library');
   const modelManager = useModelManager();
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
@@ -770,7 +777,7 @@ export default function App() {
   }, []);
 
   const hasLeftSidebar = hasDirectories && ['library', 'explore'].includes(libraryView);
-  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && !['prompts', 'models', 'comfyui', 'editor'].includes(libraryView)));
+  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && !['prompts', 'models', 'comfyui', 'editor', 'canvas'].includes(libraryView)));
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
       resolveSidebarWidths({
@@ -821,6 +828,7 @@ export default function App() {
 
   // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
+    isCanvasActive: libraryView === 'canvas',
     isCommandPaletteOpen,
     setIsCommandPaletteOpen,
     isHotkeyHelpOpen,
@@ -847,6 +855,7 @@ export default function App() {
     canUseAnalytics,
     canUseBatchExport,
     canUseImageEditor,
+    canUseCanvas,
     canUseModelManager,
     canUseFullClustering,
     showProModal,
@@ -854,6 +863,13 @@ export default function App() {
     canExtendTrial,
     initialized: licenseInitialized,
   } = useFeatureAccess();
+
+  const [boardAddImages, setBoardAddImages] = useState<IndexedImage[] | null>(null);
+  const handleAddToBoard = useCallback((selected: IndexedImage[]) => {
+    if (!window.electronAPI || !selected.length) return;
+    if (!canUseCanvas) { showProModal('canvas'); return; }
+    setBoardAddImages(selected);
+  }, [canUseCanvas, showProModal]);
 
   // Closing the update changelog may precede license hydration. Wait for it before
   // consuming the offer, and never trigger it when reopening changelog from Help.
@@ -2068,7 +2084,7 @@ export default function App() {
       return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
     }
 
-    if (modal.navigationSource === 'find-similar') {
+    if (modal.navigationSource === 'find-similar' || modal.navigationSource === 'canvas') {
       return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
     }
 
@@ -3072,11 +3088,11 @@ export default function App() {
     setFindSimilarState(null);
   }, [openComparisonModal, setComparisonImages]);
 
-  const handleOpenFindSimilarImage = useCallback((image: IndexedImage, navigationImages: IndexedImage[]) => {
+  const handleOpenFindSimilarImage = useCallback((image: IndexedImage, navigationImages: IndexedImage[], navigationSource: 'find-similar' | 'canvas' = 'find-similar') => {
     const navigationImageIds = navigationImages.length > 0
       ? navigationImages.map((entry) => entry.id)
       : [image.id];
-    if (reuseImageViewer({ imageId: image.id, navigationImageIds, navigationSource: 'find-similar' })) return;
+    if (reuseImageViewer({ imageId: image.id, navigationImageIds, navigationSource })) return;
     const existingModalForImage = openImageModals.find((modal) => modal.imageId === image.id);
     const modalId = existingModalForImage?.modalId ?? `image-modal-${Date.now()}-${image.id}`;
 
@@ -3091,7 +3107,7 @@ export default function App() {
             ? {
                 ...modal,
                 navigationImageIds,
-                navigationSource: 'find-similar',
+                navigationSource,
                 zIndex: nextZIndex,
                 isMinimized: false,
               }
@@ -3106,13 +3122,13 @@ export default function App() {
           modalId,
           imageId: image.id,
           navigationImageIds,
-          navigationSource: 'find-similar',
+          navigationSource,
           host: resolveViewerHost(),
           nativeStatus: resolveViewerHost() === 'detached' ? 'pending' : undefined,
           zIndex: nextZIndex,
           initialWindowOffset: current.length * 28,
           isMinimized: false,
-          diagnosticsFlowId: beginModalOpenFlow(image.id, 'find-similar'),
+          diagnosticsFlowId: beginModalOpenFlow(image.id, navigationSource),
         },
       ];
     });
@@ -3122,6 +3138,9 @@ export default function App() {
     setSelectedImage(image);
   }, [beginModalOpenFlow, openImageModals, resolveViewerHost, reuseImageViewer, setSelectedImage]);
 
+  const handleOpenBoardImage = useCallback((image: IndexedImage, navigationImages: IndexedImage[]) => {
+    handleOpenFindSimilarImage(image, navigationImages, 'canvas');
+  }, [handleOpenFindSimilarImage]);
   const openModelPromptPicker = useCallback((modelName: string) => {
     setModelPromptPickerState({
       modelName,
@@ -3730,6 +3749,7 @@ export default function App() {
           case 'image-renamed':
             requireImage(viewerCommand.oldImageId);
             state.renameImageRecord(viewerCommand.oldImageId, viewerCommand.newRelativePath);
+            await flushReferenceRemaps().catch(() => {});
             handleImageRenamed(viewerCommand.oldImageId, viewerCommand.newImageId);
             break;
           case 'delete-image': {
@@ -4056,6 +4076,8 @@ export default function App() {
   return (
     <React.Profiler id="App" onRender={appProfilerOnRender}>
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
+      <BoardReferenceSyncNotice />
+      {boardAddImages && <React.Suspense fallback={null}><AddToBoardDialog images={boardAddImages} onClose={() => setBoardAddImages(null)} onAdded={() => { setBoardAddImages(null); setLibraryView('canvas'); }} /></React.Suspense>}
       {canUseModelManager && <ModelLibraryPicker />}
       {canUseModelManager && <ModelRemovalDialog />}
       {canUseModelManager && modelManager.notification && <div role="status" className="fixed bottom-5 right-5 z-[80] flex max-w-sm items-center gap-3 rounded-lg border border-cyan-500/40 bg-gray-900 p-4 text-sm text-gray-100 shadow-xl"><button className="text-left" onClick={() => { setLibraryView('models'); showModelUpdates(true); dismissModelNotification(); }}>{modelManager.notification} <span className="text-cyan-300">View updates</span></button><button aria-label="Dismiss model notification" onClick={dismissModelNotification}>×</button></div>}
@@ -4251,7 +4273,7 @@ export default function App() {
           onSubmit={handleSaveCurrentFilteredAsCollection}
         />
 
-        <main className={`flex-1 flex flex-col min-h-0 w-full ${libraryView === 'comfyui' || libraryView === 'editor' ? 'p-0' : 'mx-auto p-4'}`}>
+        <main className={`flex-1 flex flex-col min-h-0 w-full ${libraryView === 'comfyui' || libraryView === 'editor' || libraryView === 'canvas' ? 'p-0' : 'mx-auto p-4'}`}>
           {showGeneratorSetupNotice && (
             <div className="my-4 flex items-center justify-between gap-3 rounded-lg border border-blue-700/40 bg-blue-900/30 p-3 text-blue-100">
               <div className="flex-1 text-sm">
@@ -4321,9 +4343,9 @@ export default function App() {
             </div>
           )}
 
-          {!isStartupHydrating && !isLoading && !hasDirectories && !['prompts', 'models'].includes(libraryView) && <FolderSelector onSelectFolder={handleSelectFolder} />}
+          {!isStartupHydrating && !isLoading && !hasDirectories && !['prompts', 'models', 'canvas'].includes(libraryView) && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
-          {(hasDirectories || ['prompts', 'models'].includes(libraryView)) && (
+          {(hasDirectories || ['prompts', 'models', 'canvas'].includes(libraryView)) && (
             <>
                 {libraryView === 'library' && (
                   <AnalyticsSummaryStrip
@@ -4344,6 +4366,7 @@ export default function App() {
                 {(libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                   <GridToolbar
                     isLibraryView={libraryView === 'library'}
+                    onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
                     selectedImages={safeSelectedImages}
                     images={imagesForGrid}
                     directories={safeDirectories}
@@ -4512,7 +4535,7 @@ export default function App() {
                           onPageChange={setCurrentPage}
                           onBatchExport={handleOpenBatchExport}
                           onDeleteSelected={handleDeleteSelectedImages}
-                          onImageRenamed={handleImageRenamed}
+                          onImageRenamed={handleImageRenamed} onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                           onFindVisuallySimilar={runVisualSimilar}
                           canFindVisuallySimilar={canFindVisuallySimilar}
@@ -4534,7 +4557,7 @@ export default function App() {
                           onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           onBatchExport={handleOpenBatchExport}
-                          onImageRenamed={handleImageRenamed}
+                          onImageRenamed={handleImageRenamed} onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                           onFindVisuallySimilar={runVisualSimilar}
                           canFindVisuallySimilar={canFindVisuallySimilar}
@@ -4584,7 +4607,7 @@ export default function App() {
                         onDeleteSelected={handleDeleteSelectedImages}
                         activeCollection={activeCollection}
                         isCollectionsView
-                        onImageRenamed={handleImageRenamed}
+                        onImageRenamed={handleImageRenamed} onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         onFindVisuallySimilar={runVisualSimilar}
                         canFindVisuallySimilar={canFindVisuallySimilar}
@@ -4607,7 +4630,7 @@ export default function App() {
                         onBatchExport={handleOpenBatchExport}
                         activeCollection={activeCollection}
                         isCollectionsView
-                        onImageRenamed={handleImageRenamed}
+                        onImageRenamed={handleImageRenamed} onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         onFindVisuallySimilar={runVisualSimilar}
                         canFindVisuallySimilar={canFindVisuallySimilar}
@@ -4653,6 +4676,8 @@ export default function App() {
                       );
                     }}
                   />
+                ) : libraryView === 'canvas' ? (
+                  <React.Suspense fallback={<div className="p-6">Loading Canvas…</div>}><CanvasWorkspace loading={isStartupHydrating || isLoading} onOpenImage={handleOpenBoardImage} onCompareImages={handleOpenFindSimilarCompare} /></React.Suspense>
                 ) : libraryView === 'editor' ? (
                   editorImage ? (
                     <ImageEditorWorkspace
@@ -4695,9 +4720,9 @@ export default function App() {
                 ) : null}
               </div>
 
-              {(libraryView === 'library' || libraryView === 'comfyui' || libraryView === 'editor' || (libraryView === 'collections' && Boolean(activeCollection))) && (
+              {(libraryView === 'library' || libraryView === 'comfyui' || libraryView === 'editor' || libraryView === 'canvas' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                 <Footer
-                  windowsOnly={libraryView === 'comfyui'}
+                  windowsOnly={libraryView === 'comfyui' || libraryView === 'canvas'}
                   currentPage={currentPage}
                   totalPages={totalPages}
                   onPageChange={setCurrentPage}
@@ -4720,7 +4745,7 @@ export default function App() {
                   queueCount={queueCount}
                   isQueueOpen={isQueueOpen}
                   onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
-                  customText={libraryView === 'comfyui' ? 'ComfyUI Workspace' : libraryView === 'editor' ? 'Image Editor' : undefined}
+                  customText={libraryView === 'comfyui' ? 'ComfyUI Workspace' : libraryView === 'editor' ? 'Image Editor' : libraryView === 'canvas' ? 'Canvas' : undefined}
                   windowItems={footerWindowItems}
                   onWindowSelect={(modalId) => {
                     const targetModal = openImageModals.find((modal) => modal.modalId === modalId);

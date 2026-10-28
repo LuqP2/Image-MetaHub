@@ -44,6 +44,7 @@ interface ImageTableProps {
   canFindVisuallySimilar?: boolean;
   onOpenImageEditor?: (image: IndexedImage) => void;
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
+  onAddToBoard?: (images: IndexedImage[]) => void;
   groupBy?: ImageGroupByMode;
   groupSortOrder?: ImageGroupingSortOrder;
   clusterByImageId?: Map<string, { id: string; label: string }>;
@@ -96,6 +97,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   canFindVisuallySimilar = false,
   onOpenImageEditor,
   onOpenComfyUIWorkspace,
+  onAddToBoard,
   groupBy = 'none',
   groupSortOrder = 'date-desc',
   clusterByImageId,
@@ -675,6 +677,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
           <div className="border-t border-gray-600 my-1"></div>
 
+          {onAddToBoard && <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700" onClick={() => { onAddToBoard(getContextTargetImages()); hideContextMenu(); }}>Add to Board</button>}
           <div
             className="relative"
             onMouseEnter={() => setIsCollectionSubmenuOpen(true)}

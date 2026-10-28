@@ -68,6 +68,12 @@ Generate from a compatible original workflow or rebuild a simpler workflow from 
 
 Connect your running generator in Settings. For richer ComfyUI outputs, the companion [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) preserves workflow metadata, tags, notes, and available performance metrics. Generation requires the appropriate models and nodes in your generator.
 
+## Arrange references on Canvas · Pro
+
+Open **Canvas** to create a saved board, or select library assets and choose **Add to Board**. Drag references from its Library panel, arrange them with text, frames and arrows, and double-click an asset to open its viewer. Select two to four images to compare them with the existing Compare View.
+
+Boards save automatically and keep references to your original files. Export or import an `.imhboard.json` document to back up a layout; media files remain in your library. Existing boards stay viewable and exportable after your trial ends.
+
 ## Compare, edit, and understand your results · Pro
 
 Compare up to **four images**, with synchronized zoom and metadata differences. Two-image modes include a slider, flicker, loupe, difference map, and edge comparison.

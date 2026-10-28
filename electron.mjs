@@ -1,5 +1,8 @@
 import electron from 'electron';
 import { registerExrIpc } from './electron/exrIpc.mjs';
+import { registerBoardIpc } from './electron/boardIpc.mjs';
+import { createBoardCloseCoordinator } from './electron/boardCloseCoordinator.mjs';
+import { runBoardPackagedSmoke } from './electron/boardPackagedSmoke.mjs';
 import { createAtomicCacheChunkWriter } from './electron/atomicCacheChunk.mjs';
 import { attachMainWindowRecovery } from './electron/mainWindowRecovery.mjs';
 import { registerRendererRecoveryTest } from './electron/rendererRecoveryTest.mjs';
@@ -137,6 +140,7 @@ const packagedProvenanceFileOperationsSmokeEnabled = app.isPackaged
   && process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE === '1';
 const packagedSavedPromptSmokeEnabled = app.isPackaged
   && process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE === '1';
+const packagedCanvasSmokeEnabled = app.isPackaged && process.env.IMH_PACKAGED_CANVAS_SMOKE === '1';
 const enabledMediaCommandLineSwitches = [];
 const disabledChromiumFeatures = new Set();
 
@@ -649,6 +653,20 @@ async function readMediaMetadataWithFfprobe(filePath) {
 
 let mainWindow;
 let appIsQuitting = false;
+let boardPersistence = null;
+const boardCloseCoordinator = createBoardCloseCoordinator({
+  requestFlush: requestId => mainWindow?.webContents.send('boards:flush-requested', requestId),
+  flushRepository: () => boardPersistence?.flush() ?? Promise.resolve(),
+  confirmFailure: async error => {
+    if (!mainWindow || mainWindow.isDestroyed()) return 'cancel';
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'warning', title: 'Canvas changes could not be saved', message: error.message,
+      buttons: ['Try again', 'Cancel close', 'Exit and discard unsaved changes'], defaultId: 0, cancelId: 1,
+    });
+    if (result.response === 1) mainWindow?.webContents.send('boards:close-cancelled');
+    return ['retry', 'cancel', 'discard'][result.response];
+  },
+});
 let disposeMainWindowRecovery = null;
 let rendererRecoveryState = null;
 let licenseManager;
@@ -3294,6 +3312,7 @@ async function persistWindowState() {
 }
 
 async function createWindow(startupDirectory = null) {
+  boardCloseCoordinator.reset();
   const settings = await readSettings();
   const initialWindowState = resolveInitialWindowState(settings);
 
@@ -3413,6 +3432,7 @@ async function createWindow(startupDirectory = null) {
   });
 
   mainWindow.on('closed', () => {
+    boardCloseCoordinator.dispose();
     closeAllDetachedImageViewers();
     closeModelInspector();
     disposeComfyUIView('main-window-closed');
@@ -3434,7 +3454,9 @@ async function createWindow(startupDirectory = null) {
 
   mainWindow.on('move', queueWindowStatePersist);
   mainWindow.on('resize', queueWindowStatePersist);
-  mainWindow.on('close', () => {
+  mainWindow.on('close', event => {
+    if (boardPersistence?.isBusy()) boardCloseCoordinator.markDirty(true);
+    if (boardCloseCoordinator.beforeClose(event, () => mainWindow?.close())) return;
     if (persistWindowStateTimer) {
       clearTimeout(persistWindowStateTimer);
       persistWindowStateTimer = null;
@@ -3542,6 +3564,21 @@ app.whenReady().then(async () => {
     },
   });
   await stableIdentityFileOperationCoordinator.initializeRecovery();
+
+  if (packagedCanvasSmokeEnabled) {
+    const resultPath = process.env.IMH_PACKAGED_CANVAS_SMOKE_RESULT?.trim();
+    try {
+      const root = process.env.IMH_PACKAGED_CANVAS_SMOKE_ROOT?.trim();
+      if (!root || !resultPath) throw new Error('Synthetic Canvas smoke paths are required.');
+      const result = await runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root });
+      await fs.writeFile(resultPath, JSON.stringify(result), 'utf8');
+      app.exit(0);
+    } catch (error) {
+      console.error('[packaged-canvas-smoke]', error);
+      app.exit(1);
+    }
+    return;
+  }
 
   if (packagedSavedPromptSmokeEnabled) {
     const resultPath = process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE_RESULT?.trim();
@@ -7599,6 +7636,16 @@ function setupFileOperationHandlers() {
     }
   };
 
+  boardPersistence = registerBoardIpc({ ipcMain, app, dialog, getMainWindow: () => mainWindow });
+  const isBoardMainSender = event => mainWindow && !mainWindow.isDestroyed()
+    && event.sender === mainWindow.webContents && event.senderFrame === mainWindow.webContents.mainFrame;
+  ipcMain.on('boards:dirty', (event, dirty) => {
+    if (isBoardMainSender(event)) boardCloseCoordinator.markDirty(dirty);
+  });
+  ipcMain.on('boards:flush-acknowledged', (event, requestId, result) => {
+    if (isBoardMainSender(event)) boardCloseCoordinator.acknowledge(requestId, result);
+  });
+
   ipcMain.handle('saved-prompts:list', () => (
     handleSavedPromptRequest((repository) => repository.listSavedPrompts())
   ));
@@ -8984,7 +9031,9 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', event => {
+  if (boardPersistence?.isBusy()) boardCloseCoordinator.markDirty(true);
+  if (boardCloseCoordinator.beforeClose(event, () => app.quit())) return;
   appIsQuitting = true;
   disposeMainWindowRecovery?.();
   // Stop all file watchers before quitting

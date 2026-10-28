@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { useLicenseStore, TRIAL_DURATION_DAYS, getTrialPeriod } from '../store/useLicenseStore';
 
-export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging' | 'file_management' | 'image_editor' | 'semantic_search' | 'model_manager' | 'prompt_library_advanced';
+export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging' | 'file_management' | 'image_editor' | 'semantic_search' | 'model_manager' | 'prompt_library_advanced' | 'canvas';
 
 
 export const CLUSTERING_FREE_TIER_LIMIT = 300;
@@ -31,6 +31,7 @@ export const isDevProLicenseOverride = (): boolean =>
 export type ProModalBlockedAttempts = Record<ProFeature, number>;
 
 const EMPTY_BLOCKED_ATTEMPTS: ProModalBlockedAttempts = {
+  canvas: 0,
   prompt_library_advanced: 0,
   a1111: 0,
   comfyui: 0,
@@ -106,6 +107,7 @@ export const useProModalStore = create<ProModalState>()(
       name: 'image-metahub-pro-modal',
       storage: createJSONStorage(() => (isElectron ? electronProModalStorage : localStorage)),
       partialize: (state) => ({ blockedAttempts: state.blockedAttempts }),
+      merge: (persisted, current) => ({ ...current, blockedAttempts: { ...EMPTY_BLOCKED_ATTEMPTS, ...(persisted as Partial<ProModalState>)?.blockedAttempts } }),
     }
   )
 );
@@ -214,6 +216,7 @@ export const useFeatureAccess = () => {
 
   return {
     canUseAdvancedPromptLibrary: allowDuringInit || canUseDuringTrialOrPro,
+    canUseCanvas: allowDuringInit || canUseDuringTrialOrPro,
     // Feature flags
     canUseA1111,
     canUseComfyUI,

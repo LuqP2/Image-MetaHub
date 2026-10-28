@@ -1084,6 +1084,7 @@ interface ImageGridProps {
   canFindVisuallySimilar?: boolean;
   onOpenImageEditor?: (image: IndexedImage) => void;
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
+  onAddToBoard?: (images: IndexedImage[]) => void;
   groupBy?: ImageGroupByMode;
   groupSortOrder?: ImageGroupingSortOrder;
   clusterByImageId?: Map<string, { id: string; label: string }>;
@@ -1118,6 +1119,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   canFindVisuallySimilar = false,
   onOpenImageEditor,
   onOpenComfyUIWorkspace,
+  onAddToBoard,
   groupBy = 'none',
   groupSortOrder = 'date-desc',
   clusterByImageId,
@@ -2563,6 +2565,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             {!canUseBulkTagging && selectedCount > 1 && initialized && <ProBadge size="sm" variant="subtle" tooltip="Pro feature" />}
           </button>
 
+          {onAddToBoard && <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700" onClick={() => { onAddToBoard(getContextTargetImages()); hideContextMenu(); }}>Add to Board</button>}
           <div
             className="relative"
             onMouseEnter={() => setIsCollectionSubmenuOpen(true)}

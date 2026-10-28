@@ -15,6 +15,20 @@
 
 ## Application Shape
 
+### Canvas workspace
+
+Canvas is an Electron-only view loaded on demand. `components/CanvasWorkspace.tsx` connects the editor to the full local library, existing viewer sessions and Compare View. Its Library panel owns its search, folder/media filters and selection independently of the main library. Search text helpers are shared through `utils/imageSearchText.ts`, preserving the deterministic metadata search semantics.
+
+`store/useBoardStore.ts` holds per-board sessions and a bounded content history; viewport, selection and global ratings/favorites are outside content undo. Autosave is debounced and single-flight, and acknowledges the captured change sequence so newer edits remain dirty. Conflict recovery freezes its source session until the replacement is committed. Electron close/quit flushes pending references and documents before allowing shutdown, with retry/cancel/explicit discard on failure.
+
+Boards are user-created documents in `<userData>/boards/`, protected from cache reset. The shared versioned serializer accepts asset/text/frame objects and manual connections, keeping coordinates absolute and excluding media, metadata copies, handles and transient URLs. Asset references use a complete stable identity when available, with a locator fallback and explicit missing/loading/ambiguous states.
+
+Successful file renames/moves queue a persistent operation journal even while Canvas is closed. Each reference records observed operation IDs so filename reuse cannot replay old moves. Fresh references capture the current baseline; pending remaps update current/history snapshots and retain failed writes for retry. Copies retain references to the source, and failed transfers are excluded. A manual relink handles unresolved external changes.
+
+Canvas editing follows Pro/trial access; existing documents remain readable and exportable. Import/export uses native dialogs and versioned `.imhboard.json` documents without embedding the media. Canvas key handling and its hotkey scope isolate library deletion/selection while retaining application settings/help and viewer/modal controls.
+
+`scripts/runPackagedCanvasSmoke.mjs <packaged-executable>` exercises the packaged main process, real preload IPC, native-dialog import/export handlers, repository reopen, remap idempotence, revision conflicts, cache preservation and caller authorization using a fresh synthetic profile and hidden test windows. Visual layout, touchpad gestures, macOS drag and the 300-card interaction scenario require manual acceptance.
+
 The renderer is centered around `App.tsx`, which coordinates four primary
 navigation contexts — **Library**, **Explore**, **Image Editor**, and
 **ComfyUI** — plus:

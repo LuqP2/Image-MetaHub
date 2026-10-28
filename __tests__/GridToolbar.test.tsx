@@ -30,6 +30,16 @@ vi.mock('../components/TagManagerModal', () => ({
 }));
 
 describe('GridToolbar', () => {
+  it('sends selected assets from all pages to a board', () => {
+    const first = { id: 'first', name: 'first.png', models: [], loras: [], metadata: {} };
+    const second = { id: 'second', name: 'second.png', models: [], loras: [], metadata: {} };
+    useImageStore.setState({ images: [first, second] } as unknown as Partial<ReturnType<typeof useImageStore.getState>>);
+    const add = vi.fn();
+    render(<GridToolbar selectedImages={new Set(['first', 'second'])} images={[first] as unknown as ReturnType<typeof useImageStore.getState>['images']} directories={[]} onAddToBoard={add}
+      onDeleteSelected={vi.fn()} onGenerateA1111={vi.fn()} onGenerateComfyUI={vi.fn()} onCompare={vi.fn()} onBatchExport={vi.fn()} onStartSlideshow={vi.fn()} slideshowImageCount={0} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Board' }));
+    expect(add).toHaveBeenCalledWith([first, second]);
+  });
   beforeEach(() => {
     useImageStore.getState().resetState();
     useImageStore.setState({
@@ -272,13 +282,13 @@ describe('GridToolbar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Jump to group' }));
 
     // Opens snapped to the active date's month.
-    expect(await screen.findByText('December 2025')).toBeTruthy();
+    expect(await screen.findByText(new Date(2025, 11, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))).toBeTruthy();
 
     // Manual navigation must persist (previously an effect reverted it every render).
     fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
-    await waitFor(() => expect(screen.getByText('January 2026')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(new Date(2026, 0, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))).toBeTruthy());
 
     fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
-    await waitFor(() => expect(screen.getByText('February 2026')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(new Date(2026, 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))).toBeTruthy());
   });
 });

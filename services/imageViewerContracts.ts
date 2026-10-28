@@ -12,7 +12,9 @@ export type ImageViewerNavigationSource =
   | 'scope'
   | 'slideshow'
   | 'comfyui'
-  | 'find-similar';
+  | 'find-similar'
+  | 'canvas';
+// Canvas navigation is an explicit board snapshot, independent of library filters.
 
 export type ImageModalImageDTO = Omit<
   IndexedImage,

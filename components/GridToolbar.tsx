@@ -63,6 +63,7 @@ interface GridToolbarProps {
   onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   onOpenImageEditor?: (image: IndexedImage) => void;
   onCompare: (images: IndexedImage[]) => void;
+  onAddToBoard?: (images: IndexedImage[]) => void;
   onBatchExport: () => void;
   onStartSlideshow: () => void;
   slideshowImageCount: number;
@@ -221,6 +222,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onOpenComfyUIWorkspace,
   onOpenImageEditor,
   onCompare,
+  onAddToBoard,
   onBatchExport,
   onStartSlideshow,
   slideshowImageCount,
@@ -623,6 +625,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       <div className="flex items-center justify-between gap-2 px-5 min-h-[32px]">
         {/* Selection Context Toolbar - Centered or justified as needed */}
         <div className="flex flex-wrap items-center gap-x-1 gap-y-1 flex-1 min-w-0">
+            {onAddToBoard && <button disabled={!selectedImagesList.length} className="rounded border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-40" onClick={() => onAddToBoard(selectedImagesList)}>Add to Board</button>}
             {onExitScope && (
               <>
                 <Tooltip label={scopeReturnLabel ? `Back to ${scopeReturnLabel}` : 'Back'}>

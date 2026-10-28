@@ -46,6 +46,20 @@ export const getInternalImageDragId = (dataTransfer: DataTransfer): string | nul
   }
 };
 
+export const getInternalImageDragIds = (dataTransfer: DataTransfer): string[] => {
+  const clean = (ids: unknown) => Array.isArray(ids) ? [...new Set(ids.filter((id): id is string => typeof id === 'string' && !!id.trim()))] : [];
+  try {
+    const raw = dataTransfer.getData(INTERNAL_IMAGE_DRAG_TYPE);
+    if (raw) {
+      const payload = JSON.parse(raw) as Partial<InternalImageDragPayload>;
+      const ids = clean(payload.imageIds);
+      if (ids.length) return ids;
+      return typeof payload.primaryImageId === 'string' && payload.primaryImageId.trim() ? [payload.primaryImageId] : [];
+    }
+  } catch { /* Native drag can deny reading custom MIME. */ }
+  return clean(activeInternalImageDrag?.imageIds);
+};
+
 export const hasInternalImageDragType = (dataTransfer: DataTransfer): boolean =>
   activeInternalImageDrag !== null || Array.from(dataTransfer.types).includes(INTERNAL_IMAGE_DRAG_TYPE);
 

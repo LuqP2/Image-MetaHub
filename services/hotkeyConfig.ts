@@ -4,16 +4,16 @@ export interface HotkeyDefinition {
   id: string;
   name: string;
   scope: 'global' | 'preview';
-  activeScopes?: ('global' | 'preview')[];
+  activeScopes?: ('global' | 'preview' | 'canvas')[];
   numpadEquivalent?: boolean;
   defaultKey: string;
 }
 
 export const hotkeyConfig: HotkeyDefinition[] = [
   // Global Scope
-  { id: 'openCommandPalette', name: 'Open Command Palette', scope: 'global', defaultKey: 'ctrl+k, cmd+k' },
-  { id: 'openQuickSettings', name: 'Open Quick Settings', scope: 'global', defaultKey: 'ctrl+., cmd+.' },
-  { id: 'openKeyboardShortcuts', name: 'Open Keyboard Shortcuts', scope: 'global', defaultKey: 'f1' },
+  { id: 'openCommandPalette', name: 'Open Command Palette', scope: 'global', activeScopes: ['global', 'canvas'], defaultKey: 'ctrl+k, cmd+k' },
+  { id: 'openQuickSettings', name: 'Open Quick Settings', scope: 'global', activeScopes: ['global', 'canvas'], defaultKey: 'ctrl+., cmd+.' },
+  { id: 'openKeyboardShortcuts', name: 'Open Keyboard Shortcuts', scope: 'global', activeScopes: ['global', 'canvas'], defaultKey: 'f1' },
   { id: 'focusSidebar', name: 'Focus Sidebar', scope: 'global', defaultKey: 'ctrl+1, cmd+1' },
   { id: 'focusImageGrid', name: 'Focus Image Grid', scope: 'global', defaultKey: 'ctrl+2, cmd+2' },
   { id: 'focusPreviewPane', name: 'Focus Preview Pane', scope: 'global', defaultKey: 'ctrl+3, cmd+3' },

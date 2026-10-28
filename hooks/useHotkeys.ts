@@ -10,6 +10,7 @@ import { toggleRejectedCandidates, REJECTED_TAG } from '../services/candidateAct
 import type { Directory, ExploreDimension, ImageRating } from '../types';
 
 interface HotkeyProps {
+  isCanvasActive?: boolean;
   isCommandPaletteOpen: boolean;
   setIsCommandPaletteOpen: (isOpen: boolean) => void;
   isHotkeyHelpOpen: boolean;
@@ -54,6 +55,7 @@ const createTransferDestination = (directories: Directory[], destinationPath: st
 };
 
 export const useHotkeys = ({
+  isCanvasActive = false,
   isCommandPaletteOpen,
   setIsCommandPaletteOpen,
   isHotkeyHelpOpen,
@@ -64,6 +66,7 @@ export const useHotkeys = ({
 }: HotkeyProps) => {
   const {
     selectedImage,
+    isComparisonModalOpen,
     setSelectedImage,
     selectedImages,
     clearImageSelection,
@@ -272,7 +275,9 @@ export const useHotkeys = ({
       const activeElement = document.activeElement;
       if (activeElement) {
         const previewPane = document.querySelector('[data-area="preview"]');
-        if (previewPane && previewPane.contains(activeElement)) {
+        if (isCanvasActive && !isCommandPaletteOpen && !isHotkeyHelpOpen && !isSettingsModalOpen && !isComparisonModalOpen && !activeElement.closest('[role="dialog"]')) {
+          hotkeyManager.setScope('canvas');
+        } else if (previewPane && previewPane.contains(activeElement)) {
           hotkeyManager.setScope('preview');
         } else {
           hotkeyManager.setScope('global');
@@ -296,6 +301,8 @@ export const useHotkeys = ({
       unsubscribe();
     };
   }, [
+    isCanvasActive,
+    isComparisonModalOpen,
     handleSelectFolder,
     handleLoadFromStorage,
     selectAllImages,

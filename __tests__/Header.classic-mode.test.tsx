@@ -52,6 +52,17 @@ const renderHeader = (overrides: Partial<React.ComponentProps<typeof Header>> = 
   );
 
 describe('Header classic mode', () => {
+  it('opens Canvas on desktop even when editing needs a Pro upgrade', () => {
+    const original = window.electronAPI;
+    Object.defineProperty(window, 'electronAPI', { configurable: true, value: {} });
+    try {
+      const onLibraryViewChange = vi.fn();
+      renderHeader({ onLibraryViewChange });
+      fireEvent.click(screen.getByRole('button', { name: 'Canvas' }));
+      expect(onLibraryViewChange).toHaveBeenCalledWith('canvas');
+      expect(modelAccess.showProModal).not.toHaveBeenCalled();
+    } finally { Object.defineProperty(window, 'electronAPI', { configurable: true, value: original }); }
+  });
   beforeEach(() => {
     modelAccess.allowed = true;
     modelAccess.showProModal.mockClear();

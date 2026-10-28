@@ -1,4 +1,5 @@
 import type { IndexedImage } from '../types';
+import { flushReferenceRemaps } from './boards/referenceSync';
 import cacheManager from './cacheManager';
 import { transferImagePersistence } from './imageAnnotationsStorage';
 import {
@@ -91,6 +92,7 @@ export async function renameIndexedImage(
   }
 
   const renamedImage = useImageStore.getState().renameImageRecord(oldImageId, newRelativePath);
+  await flushReferenceRemaps().catch(() => {}); // A failed board sync is retained for explicit retry, not reported as a failed physical rename.
   if (!renamedImage) {
     return { success: false, error: 'Renamed file, but failed to update the library record.' };
   }
