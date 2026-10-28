@@ -1,3 +1,4 @@
+import { numericRangeMatch } from './libraryQuery/predicates';
 import type {
   AutomationRule,
   AutomationConditionRow,
@@ -142,23 +143,7 @@ const excludesAll = (imageValues: Set<string>, excludedValues: string[] | undefi
 const matchesRange = (
   value: number | null | undefined,
   range: { min?: number | null; max?: number | null; maxExclusive?: boolean } | undefined,
-): boolean => {
-  if (!range) {
-    return true;
-  }
-  if (value === null || value === undefined || Number.isNaN(value)) {
-    return false;
-  }
-
-  if (range.min !== null && range.min !== undefined && value < range.min) {
-    return false;
-  }
-  if (range.max !== null && range.max !== undefined) {
-    return range.maxExclusive === true ? value < range.max : value <= range.max;
-  }
-
-  return true;
-};
+): boolean => !range || numericRangeMatch(value ?? null, range);
 
 const matchesAdvancedFilters = (image: IndexedImage, filters: AutomationRuleFilterCriteria): boolean => {
   const advanced = filters.advancedFilters;
