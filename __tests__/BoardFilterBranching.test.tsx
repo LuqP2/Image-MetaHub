@@ -1,3 +1,4 @@
+import { useBoardHotkeys } from '../hooks/useBoardHotkeys';
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -56,6 +57,34 @@ describe('visual filter branching', () => {
     expect(screen.getByRole('dialog').textContent).toContain('Right minus Flux');
     fireEvent.click(screen.getByRole('button', { name: 'Create difference' }));
     expect((f.current().objects[2] as BoardSmartFrameObject).source).toEqual({ kind: 'difference', left: { kind: 'frame', frameId: 'right' }, right: { kind: 'frame', frameId: 'flux' } });
+  });
+  it('contains difference dialog focus and protects selected frames from destructive board hotkeys', () => {
+    const f = fixture();
+    act(() => useBoardStore.getState().executeOperation(f.id, document => createSmartFrame(document, { id: 'right', title: 'Right', x: 900 })));
+    act(() => useBoardStore.getState().setSelection(f.id, ['flux', 'right']));
+    function Workspace() {
+      const onKeyDownCapture = useBoardHotkeys(f.id, true);
+      return <div onKeyDownCapture={onKeyDownCapture}><button>Outside</button><BoardInspector boardId={f.id} editable /></div>;
+    }
+    render(<Workspace />);
+    const trigger = screen.getByRole('button', { name: /Difference/ });
+    act(() => trigger.focus());
+    fireEvent.click(trigger);
+    const first = screen.getByRole('button', { name: 'Swap A and B' });
+    const last = screen.getByRole('button', { name: 'Cancel' });
+    expect(document.activeElement).toBe(first);
+    for (const key of ['Delete', 'Backspace']) fireEvent.keyDown(document.activeElement!, { key });
+    expect(f.current().objects.map(object => object.id)).toEqual(['flux', 'right']);
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(last, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+    act(() => screen.getByRole('button', { name: 'Outside' }).focus());
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(f.current().objects.map(object => object.id)).toEqual(['flux', 'right']);
   });
   it('restores missing parent dependencies on undo and blocks cyclic reconnections in the picker', () => {
     const f = fixture();
