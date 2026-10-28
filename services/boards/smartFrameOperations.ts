@@ -17,6 +17,8 @@ export function detachFrameSource(document: BoardDocument, source: BoardSetExpre
   if (depth > 64) throw new Error('Frame dependency depth exceeded.');
   return mapSetExpression(structuredClone(source), expression => {
     if (expression.kind !== 'frame') return expression;
+    // Missing sources are valid reconnectable state, including inside detached copies.
+    if (!document.objects.some(object => object.id === expression.frameId)) return expression;
     const frame = getFrame(document, expression.frameId);
     return { kind: 'query', source: detachFrameSource(document, frame.source, depth + 1),
       criteria: structuredClone(frame.criteria), groupConstraints: structuredClone(frame.groupConstraints) };

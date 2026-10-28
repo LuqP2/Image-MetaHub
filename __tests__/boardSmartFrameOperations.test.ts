@@ -1,3 +1,4 @@
+import { addText, drawBoardObject } from '../services/boards/operations';
 import { describe, expect, it } from 'vitest';
 import { createBoardDocument } from '../services/boards/document.mjs';
 import { createSmartFrame, branchSmartFrame, duplicateSmartFrameQuery, intersectSmartFrames, subtractSmartFrames, replaceSmartFrameWithSnapshot, reconnectSmartFrameSource } from '../services/boards/smartFrameOperations';
@@ -34,4 +35,37 @@ describe('Smart Frame pure operations', () => {
     expect(frame.layout.kind).toBe('matrix');
     expect(createFrame(document, ['a']).objects.find(object => object.id === 'a')?.frameId).toBeNull();
   });
+});
+
+it('does not adopt a Smart Frame when drawing a manual frame around it', () => {
+  const document = createSmartFrame(addText(createBoardDocument(), { x: 200, y: 200 }), { id: 'smart', x: 100, y: 100 });
+  const next = drawBoardObject(document, 'frame', { x: 0, y: 0, width: 1000, height: 1000 });
+  const manual = next.objects.find(object => object.type === 'frame')!;
+  expect(next.objects.find(object => object.id === 'smart')?.frameId).toBeNull();
+  expect(next.objects.find(object => object.type === 'text')?.frameId).toBe(manual.id);
+});
+
+it('duplicates branches with deleted parents through both duplication commands', () => {
+  let document = createSmartFrame(createBoardDocument(), { id: 'parent' });
+  document = branchSmartFrame(document, 'parent');
+  const childId = document.objects[1].id;
+  document = removeObjects(document, ['parent']);
+  for (const copy of [duplicateSmartFrameQuery(document, childId), duplicateObjects(document, [childId])]) {
+    expect(copy.objects).toHaveLength(2);
+    expect((copy.objects[1] as BoardSmartFrameObject).source).toEqual({ kind: 'frame', frameId: 'parent' });
+    expect((copy.objects[1] as BoardSmartFrameObject).criteria).toEqual((document.objects[0] as BoardSmartFrameObject).criteria);
+  }
+});
+
+it('detaches available ancestors while preserving missing nested dependencies', () => {
+  let document = createSmartFrame(createBoardDocument(), { id: 'root' });
+  document = branchSmartFrame(document, 'root');
+  const parentId = document.objects[1].id;
+  document = branchSmartFrame(document, parentId);
+  const childId = document.objects[2].id;
+  document = removeObjects(document, ['root']);
+  const copy = duplicateSmartFrameQuery(document, childId);
+  const source = (copy.objects[2] as BoardSmartFrameObject).source;
+  expect(source.kind).toBe('query');
+  if (source.kind === 'query') expect(source.source).toEqual({ kind: 'frame', frameId: 'root' });
 });
