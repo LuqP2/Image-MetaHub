@@ -1,3 +1,4 @@
+import { createSmartFrame } from '../services/boards/smartFrameOperations';
 // @vitest-environment node
 import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs/promises';
@@ -79,4 +80,21 @@ describe('desktop board repository', () => {
     const { repo } = await repository();
     await expect(repo.load('../outside')).rejects.toThrow('UUID');
   });
+});
+
+it('migrates a v1 file in memory and writes v2 only on an explicit save', async () => {
+  const { repo, directory } = await repository();
+  const board = boardWithAsset();
+  const file = path.join(directory, `${board.id}.json`);
+  const legacy = { ...board, schemaVersion: 1, revision: 4 };
+  await fs.writeFile(file, JSON.stringify(legacy));
+  const loaded = await repo.load(board.id);
+  expect(loaded.schemaVersion).toBe(2);
+  expect(loaded.revision).toBe(4);
+  expect(JSON.parse(await fs.readFile(file, 'utf8')).schemaVersion).toBe(1);
+  const saved = await repo.save(createSmartFrame(loaded), 4);
+  expect(saved.revision).toBe(5);
+  expect(JSON.parse(await fs.readFile(file, 'utf8')).schemaVersion).toBe(2);
+  expect((await repo.load(board.id)).objects).toEqual(saved.objects);
+  await expect(repo.save(loaded, 4)).rejects.toMatchObject({ code: 'BOARD_REVISION_CONFLICT' });
 });

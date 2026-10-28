@@ -1,3 +1,4 @@
+import { createFrameDetacher } from './smartFrameOperations';
 import type { BoardAssetInput, BoardAssetObject, BoardConnection, BoardDocument, BoardObject, BoardTextObject } from './types';
 import { normalizeBoardDocument } from './document.mjs';
 import { findContainingFrame, getBoardBounds, gridPositions, type BoardPoint, type BoardBounds } from './layout';
@@ -27,11 +28,11 @@ export function addText(document: BoardDocument, position: BoardPoint): BoardDoc
 }
 
 export function createFrame(document: BoardDocument, selectedObjectIds: string[], position: BoardPoint = { x: 0, y: 0 }): BoardDocument {
-  const selected = document.objects.filter(object => selectedObjectIds.includes(object.id) && object.type !== 'frame');
+  const selected = document.objects.filter(object => selectedObjectIds.includes(object.id) && object.type !== 'frame' && object.type !== 'smart-frame');
   const bounds = selected.length ? getBoardBounds(selected) : { ...position, width: 560, height: 360 };
   const frameId = id();
   const frame: BoardObject = { id: frameId, type: 'frame', x: bounds.x - 24, y: bounds.y - 48, width: bounds.width + 48, height: bounds.height + 72, zIndex: Math.min(0, ...document.objects.map(object => object.zIndex)) - 1, frameId: null, title: 'Frame', color: '#6366f1' };
-  return changed(document, { objects: [frame, ...document.objects.map(object => object.type !== 'frame' && selected.includes(object) ? { ...object, frameId } : object)] });
+  return changed(document, { objects: [frame, ...document.objects.map(object => object.type !== 'frame' && object.type !== 'smart-frame' && selected.includes(object) ? { ...object, frameId } : object)] });
 }
 
 /** Draw at exact board coordinates; adopt objects whose centers lie inside a new frame. */
@@ -41,7 +42,7 @@ export function drawBoardObject(document: BoardDocument, type: 'text' | 'frame',
   const positioned = { ...object, ...bounds } as BoardObject;
   const objects = next.objects.map(item => item.id === object.id ? positioned : item);
   return changed(next, { objects: objects.map(item => {
-    if (item.type === 'frame' || (type === 'text' && item.id !== object.id)) return item;
+    if (item.type === 'frame' || item.type === 'smart-frame' || (type === 'text' && item.id !== object.id)) return item;
     // Drawing a frame only adopts its own enclosed objects. Resizing an existing
     // frame can leave members outside its bounds without breaking their membership.
     const frame = findContainingFrame(item, type === 'frame' ? [positioned] : objects);
@@ -84,8 +85,9 @@ export function duplicateObjects(document: BoardDocument, objectIds: string[], o
   const selected = new Set(objectIds);
   for (const object of document.objects) if (object.frameId && selected.has(object.frameId)) selected.add(object.id);
   const ids = new Map(document.objects.filter(object => selected.has(object.id)).map(object => [object.id, id()]));
+  const detach = createFrameDetacher(document);
   const copies = document.objects.filter(object => selected.has(object.id)).map(object => ({
-    ...object, id: ids.get(object.id)!, x: object.x + offset.x, y: object.y + offset.y,
+    ...object, ...(object.type === 'smart-frame' ? { source: detach(object.source) } : {}), id: ids.get(object.id)!, x: object.x + offset.x, y: object.y + offset.y,
     frameId: object.frameId ? ids.get(object.frameId) ?? object.frameId : null,
     zIndex: object.zIndex + top(document) + 2,
   } as BoardObject));

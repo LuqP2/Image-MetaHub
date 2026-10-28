@@ -1,4 +1,6 @@
-export type BoardObjectType = 'asset' | 'text' | 'frame';
+import type { BoardSmartFrameObject } from './queryTypes';
+export type { BoardSmartFrameObject } from './queryTypes';
+export type BoardObjectType = 'asset' | 'text' | 'frame' | 'smart-frame';
 export type BoardSide = 'top' | 'right' | 'bottom' | 'left';
 export type BoardMediaType = 'image' | 'video' | 'audio' | 'model3d';
 export type BoardMetadataField = 'model' | 'loras' | 'seed' | 'dimensions' | 'generator' | 'rating' | 'prompt';
@@ -53,7 +55,7 @@ export interface BoardFrameObject extends BoardObjectBase {
   color: string;
 }
 
-export type BoardObject = BoardAssetObject | BoardTextObject | BoardFrameObject;
+export type BoardObject = BoardAssetObject | BoardTextObject | BoardFrameObject | BoardSmartFrameObject;
 
 export interface BoardConnection {
   id: string;
@@ -67,7 +69,7 @@ export interface BoardConnection {
 }
 
 export interface BoardDocument {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   revision: number;
   name: string;

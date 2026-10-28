@@ -1,0 +1,10 @@
+import type { BoardObject, BoardAssetReference } from './types';
+import type { BoardSetExpression, BoardGroupConstraint, BoardSmartFrameLayout } from './queryTypes';
+import type { LibraryQueryCriteria } from '../libraryQuery/types';
+export const groupingDimensions: string[];
+export function normalizeQueryCriteria(input: unknown): LibraryQueryCriteria;
+export function normalizeGroupConstraints(input: unknown): BoardGroupConstraint[];
+export function normalizeQueryLayout(input: unknown): BoardSmartFrameLayout;
+export function normalizeSetExpression(input: unknown, normalizeReference: (input: unknown) => BoardAssetReference, budget?: { count: number }, depth?: number): BoardSetExpression;
+export function mapSetExpression(source: BoardSetExpression, transform: (source: BoardSetExpression) => BoardSetExpression): BoardSetExpression;
+export function validateQueryGraph(objects: BoardObject[]): void;
