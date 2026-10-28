@@ -1,3 +1,13 @@
+import { normalizeQueryCriteria } from '../services/boards/queryDocument.mjs';
+import { getHiddenSensitiveTagSet, isVisibleWithSafeMode } from '../utils/safeModeVisibility';
+import { useBoardQueries } from '../hooks/useBoardQueries';
+import { useBoardQueryStore } from '../store/useBoardQueryStore';
+import { BoardQueryContext } from './boards/BoardQueryContext';
+import BoardCreateSmartFrameDialog from './boards/BoardCreateSmartFrameDialog';
+import { createSmartFrame, replaceSmartFrameWithSnapshot, updateSmartFrameQuery, reconnectSmartFrameSource } from '../services/boards/smartFrameOperations';
+import { captureWorkerCriteria } from '../services/libraryQuery/storeAdapter';
+import { useSettingsStore } from '../store/useSettingsStore';
+import type { BoardAssetReference } from '../services/boards/types';
 import { ExternalLink, Star } from 'lucide-react';
 import { useBoardUIStore } from '../store/useBoardUIStore';
 import { useCallback, useMemo, useState } from 'react';
@@ -22,6 +32,10 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
   const boardId = useBoardStore(state => state.activeBoardId);
   const session = useBoardStore(state => boardId ? state.sessions[boardId] : undefined);
   const closing = useBoardStore(state => state.closing);
+  const retryQueries = useBoardQueries(boardId, loading);
+  const collections = useImageStore(state => state.collections);
+  const [creatingFrame, setCreatingFrame] = useState(false);
+  const imagesById = useMemo(() => new Map(images.map(image => [image.id, image])), [images]);
   const { canUseCanvas, canUseComparison, showProModal } = useFeatureAccess();
   const editable = canUseCanvas && !closing && !session?.recovering;
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +80,81 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
   const metadata = resolution?.status === 'resolved' ? <ComparisonMetadataPanel image={resolution.image} isExpanded onToggleExpanded={() => {}} presentation="embedded" /> : null;
   const status = selectedAsset && resolution?.status !== 'resolved' ? <div className="board-asset-status"><p>{resolution?.status === 'loading' ? 'Library is loading…' : resolution?.status === 'ambiguous' ? 'Multiple files match this reference.' : 'This file is not available in the current library.'}</p>{(resolution?.status === 'missing' || resolution?.status === 'ambiguous') && <><p>Choose the library file for this board item to restore its reference.</p><button className="board-button" disabled={!editable} onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); setRelinkId(selectedAsset.id); }}>Locate missing file</button></>}</div> : null;
 
-  return <div className="flex h-full min-h-0 flex-col">
+  const captureReferences = async (selected: IndexedImage[]): Promise<BoardAssetReference[]> => {
+    const baseline = await getBoardReferenceBaseline();
+    const state = useImageStore.getState();
+    return selected.map(image => createBoardAssetReference(resolveLiveBoardImage(image, state.images), state.directories, baseline));
+  };
+  const runQueryAction = (action: () => Promise<void>) => { void action().catch(cause => setError(cause instanceof Error ? cause.message : String(cause))); };
+  const ensureEditable = () => {
+    const state = useBoardStore.getState();
+    if (!editable || !boardId || state.activeBoardId !== boardId || state.closing || state.sessions[boardId]?.recovering) throw new Error('This board is not available for editing.');
+  };
+  const snapshotQuery = async (frameId: string) => {
+    ensureEditable();
+    const result = useBoardQueryStore.getState().results[boardId!]?.[frameId];
+    if (result?.status !== 'ready') throw new Error('Wait for the query to finish before capturing a Snapshot.');
+    const definition = useBoardStore.getState().sessions[boardId!].document.objects.find(object => object.id === frameId);
+    if (definition?.type !== 'smart-frame' || result.definitionKey !== JSON.stringify({ source: definition.source, criteria: definition.criteria, groupConstraints: definition.groupConstraints })) throw new Error('The query changed. Wait for fresh results.');
+    const imageSet = useImageStore.getState().images;
+    const selected = result.imageIds.map(id => imagesById.get(id)).filter((image): image is IndexedImage => !!image);
+    const references = await captureReferences(selected);
+    ensureEditable();
+    const latest = useBoardStore.getState().sessions[boardId!].document.objects.find(object => object.id === frameId);
+    if (latest?.type !== 'smart-frame' || result.definitionKey !== JSON.stringify({ source: latest.source, criteria: latest.criteria, groupConstraints: latest.groupConstraints })) throw new Error('The query changed. Try capturing the Snapshot again.');
+    if (useBoardQueryStore.getState().results[boardId!]?.[frameId] !== result || useImageStore.getState().images !== imageSet) throw new Error('The results changed. Try capturing the Snapshot again.');
+    useBoardStore.getState().executeOperation(boardId!, document => replaceSmartFrameWithSnapshot(document, frameId, references));
+  };
+  const applyCurrentView = async (frameId: string) => {
+    ensureEditable();
+    const state = useImageStore.getState();
+    if (state.semanticResult || state.activeImageScope || state.selectedNodes.length) {
+      const captured = state.getScopedFilteredImages();
+      const references = await captureReferences(captured);
+      ensureEditable();
+      if (useImageStore.getState().images !== state.images) throw new Error('The library changed. Try again.');
+      useBoardStore.getState().executeOperation(boardId!, document => replaceSmartFrameWithSnapshot(document, frameId, references));
+    } else {
+      const captured = captureWorkerCriteria(state, useSettingsStore.getState());
+      const criteria = normalizeQueryCriteria({ ...captured, sortOrder: captured.sortOrder === 'relevance' ? 'date-desc' : captured.sortOrder });
+      useBoardStore.getState().executeOperation(boardId!, document => updateSmartFrameQuery(reconnectSmartFrameSource(document, frameId, { kind: 'library' }), frameId, criteria));
+    }
+  };
+  const createQuery = async (source: string) => {
+    ensureEditable();
+    let references: BoardAssetReference[] | null = null;
+    if (source === 'selection') {
+      const selected = useImageStore.getState().selectedImages;
+      const candidates = images.filter(image => selected.has(image.id));
+      if (!candidates.length) throw new Error('Select library images before creating a Snapshot.');
+      references = await captureReferences(candidates);
+    }
+    ensureEditable();
+    let createdId = '';
+    useBoardStore.getState().executeOperation(boardId!, document => {
+      const next = createSmartFrame(document, { title: source.startsWith('collection:') ? collections.find(collection => collection.id === source.slice(11))?.name ?? 'Collection' : 'Library explorer',
+        source: references ? { kind: 'snapshot', references } : source.startsWith('collection:') ? { kind: 'collection', collectionId: source.slice(11) } : { kind: 'library' },
+        x: (320 - document.viewport.x) / document.viewport.zoom, y: (180 - document.viewport.y) / document.viewport.zoom });
+      createdId = next.objects[next.objects.length - 1].id;
+      return next;
+    });
+    useBoardStore.getState().setSelection(boardId!, [createdId]);
+    if (source === 'current') await applyCurrentView(createdId);
+    setCreatingFrame(false);
+  };
+  const queryActions = { images: imagesById, collections, retry: retryQueries,
+    create: () => setCreatingFrame(true), snapshot: (id: string) => runQueryAction(() => snapshotQuery(id)),
+    useCurrentFilters: (id: string) => runQueryAction(() => applyCurrentView(id)),
+    open: (imageId: string, frameId: string) => {
+      const result = useBoardQueryStore.getState().results[boardId!]?.[frameId];
+      const image = imagesById.get(imageId);
+      const hidden = getHiddenSensitiveTagSet(useSettingsStore.getState());
+      if (image && isVisibleWithSafeMode(image, hidden) && result?.status === 'ready' && result.imageIds.includes(imageId)) onOpenImage(image, result.imageIds.map(id => imagesById.get(id)).filter((entry): entry is IndexedImage => !!entry && isVisibleWithSafeMode(entry, hidden)));
+    },
+  };
+  return <BoardQueryContext.Provider value={queryActions}><div className="flex h-full min-h-0 flex-col">
+    {creatingFrame && <BoardCreateSmartFrameDialog collections={collections} close={() => setCreatingFrame(false)} create={source => runQueryAction(() => createQuery(source))} />}
+
     {!canUseCanvas && <div className="border-b border-gray-700 p-2 text-sm"><button onClick={() => showProModal('canvas')}>Enable Canvas editing with Pro or trial</button></div>}
     {error && <div role="alert" className="border-b border-red-500/40 p-2 text-sm text-red-300">{error}<button className="ml-3 underline" onClick={() => setError(null)}>Dismiss</button></div>}
     <BoardWorkspace editable={canUseCanvas} resolveAsset={resolve} onOpenAsset={open}
@@ -77,5 +165,5 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
       assetPanel={<BoardAssetBrowser images={images} directories={directories} editable={editable} onAdd={selected => { void add(selected); }} onPick={relinkId ? image => { void relink(image); } : undefined} onCancelPick={() => setRelinkId(null)} />}
       libraryLocked={Boolean(relinkId)} assetActions={inspector} assetMetadata={metadata} assetStatus={status}
       selectionActions={selected.length > 0 && selected.every(item => item.type === 'asset' && item.mediaType === 'image') ? <div className="board-selection-actions"><button className="board-button" disabled={!compareEnabled} onClick={() => canUseComparison ? onCompareImages([...selectedImages.values()]) : showProModal('comparison')}>Compare selected images</button></div> : null} />
-  </div>;
+  </div></BoardQueryContext.Provider>;
 }

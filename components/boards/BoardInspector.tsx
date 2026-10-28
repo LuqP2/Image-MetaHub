@@ -1,3 +1,4 @@
+import BoardSmartFrameInspector from './BoardSmartFrameInspector';
 import { PanelRightClose } from 'lucide-react';
 import { useBoardUIStore } from '../../store/useBoardUIStore';
 import Section from './BoardInspectorSection';
@@ -20,6 +21,7 @@ export default function BoardInspector({ boardId, editable, assetActions, assetM
   const commit = () => useBoardStore.getState().commitInteraction(boardId);
   return <aside className="board-inspector" aria-label="Board inspector">
     <header className="board-inspector-header"><div><small>{object?.type ?? "Properties"}</small><h2 title={object?.type === 'asset' ? getBoardDisplayName(object.name) : undefined}>{object?.type === 'asset' ? getBoardDisplayName(object.name) : object?.type === 'frame' ? 'Frame' : object?.type === 'text' ? 'Text' : connection ? 'Connection' : selected.length ? `${selected.length} objects` : 'Board'}</h2></div><button className="board-icon-button" aria-label="Hide inspector" onClick={() => useBoardUIStore.getState().setInspectorOpen(false)}><PanelRightClose size={16}/></button></header><div className="board-inspector-content scrollbar-sidebar">{assetStatus}{assetActions}{selectionActions}{assetMetadata && <Section title="Metadata" defaultOpen>{assetMetadata}</Section>}
+    {object?.type === 'smart-frame' && <BoardSmartFrameInspector boardId={boardId} frame={object} editable={editable} />}
     {object?.type === 'text' && <>
       <label>Text<textarea className="board-textarea" disabled={!editable} value={object.text} onChange={event => edit('text', event.target.value)} onBlur={commit} /></label>
       <label>Font size<input className="board-input" type="number" min="1" max="300" disabled={!editable} value={object.fontSize} onChange={event => { const size = Number(event.target.value); if (size >= 1) edit('fontSize', size); }} onBlur={commit} /></label>

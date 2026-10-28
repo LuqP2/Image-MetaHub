@@ -41,3 +41,11 @@ PR 3 provides navigation and licensing, asset resolution/browser, viewer/compari
 Run the focused board tests, existing search/filter/rename/menu tests, TypeScript, lint and production build. Build a desktop directory and run `node scripts/runPackagedCanvasSmoke.mjs <packaged executable>` against a synthetic profile. This smoke is functional, not visual acceptance.
 
 Manual acceptance covers empty-library board creation; adding multiple assets from grid, table and the Canvas panel; resize/frame/connection gestures and undo; inline/detached viewer return; comparison; rename/move with open and closed boards; unavailable references and relink; import/export/restart; Pro expiry; macOS internal drag; and a 300-card board with mouse and touchpad.
+
+### Explorer runtime and basic UI (stage 3, local implementation)
+
+`boardQueryWorker.ts` evaluates the active board from one versioned dataset. `queryRuntime.ts` debounces edits, drops outdated replies, supports worker recreation and releases resources when the board closes. The worker retains only query cache entries used by the latest evaluation; dataset replacement invalidates that cache. Geometry, title, color and selection do not invalidate query definitions. Results live exclusively in `useBoardQueryStore`, outside persistence and history.
+
+The Smart Frame tool creates a library query, a Live collection source or a Snapshot of selected library images. Its inspector edits independent criteria and supports explicit copying from the current library view. Scoped, workflow-node-filtered and visual-search views are currently captured as Snapshots. Preview is capped at 12 thumbnails; expanded browsing uses `react-window`. Viewer navigation follows the frame's ordered results, and thumbnails can be dragged out as free cards. Snapshot capture checks query and dataset freshness across the asynchronous reference-baseline operation.
+
+Grouping constraints and layouts are persisted but their execution/rendering belongs to the grouping stage. Until that engine is integrated, queries containing group constraints report an explicit error. Spatial branching controls and dependency edges belong to stage 4.

@@ -7,4 +7,4 @@ export function normalizeGroupConstraints(input: unknown): BoardGroupConstraint[
 export function normalizeQueryLayout(input: unknown): BoardSmartFrameLayout;
 export function normalizeSetExpression(input: unknown, normalizeReference: (input: unknown) => BoardAssetReference, budget?: { count: number }, depth?: number): BoardSetExpression;
 export function mapSetExpression(source: BoardSetExpression, transform: (source: BoardSetExpression) => BoardSetExpression): BoardSetExpression;
-export function validateQueryGraph(objects: BoardObject[]): void;
+export function validateQueryGraph(objects: Array<BoardObject | import('./queryProtocol').BoardQueryFrame>): void;
