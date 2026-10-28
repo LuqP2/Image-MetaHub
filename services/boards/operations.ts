@@ -42,7 +42,10 @@ export function drawBoardObject(document: BoardDocument, type: 'text' | 'frame',
   const objects = next.objects.map(item => item.id === object.id ? positioned : item);
   return changed(next, { objects: objects.map(item => {
     if (item.type === 'frame' || (type === 'text' && item.id !== object.id)) return item;
-    const frame = findContainingFrame(item, objects);
+    // Drawing a frame only adopts its own enclosed objects. Resizing an existing
+    // frame can leave members outside its bounds without breaking their membership.
+    const frame = findContainingFrame(item, type === 'frame' ? [positioned] : objects);
+    if (type === 'frame' && !frame) return item;
     return { ...item, frameId: frame?.id ?? null };
   }) });
 }
