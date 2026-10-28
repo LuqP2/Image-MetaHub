@@ -35,6 +35,34 @@ class WorkerMock {
 afterEach(async () => { cleanup(); await useBoardStore.getState().flushAll(); vi.unstubAllGlobals(); });
 
 describe('Canvas query lifecycle', () => {
+  it.each([false, true])('distinguishes normalized seed zero from missing seeds (compacted: %s)', async compacted => {
+    vi.stubGlobal('Worker', WorkerMock); WorkerMock.messages = [];
+    const normalizedMetadata = { seed: 0 };
+    const runtime = compactRawMetadataForRuntime({ workflow: compacted ? 'x'.repeat(700000) : {} }, normalizedMetadata);
+    if (compacted) {
+      expect(runtime.metadata).toHaveProperty('_rawMetadataCompacted', true);
+      expect(runtime.metadata.normalizedMetadata).toHaveProperty('seedExact', '0');
+    }
+    // Mirror fileIndexer's numeric projection: zero becomes null, but normalized metadata keeps it.
+    const zero = boardImage('zero.png', { seed: normalizedMetadata.seed || null, ...runtime });
+    const missing = boardImage('missing.png', { seed: null });
+    useImageStore.setState({ images: [zero, missing], directories: [boardDirectory], collections: [] });
+    useSettingsStore.setState({ enableSafeMode: false });
+    const document = updateSmartFrameLayout(createSmartFrame(createBoardDocument(), { id: 'seeds' }), 'seeds', { kind: 'groups', groupBy: 'seed', subgroupBy: null });
+    useBoardStore.getState().adoptBoard(document);
+    renderHook(() => useBoardQueries(document.id, false));
+    await waitFor(() => expect(useBoardQueryStore.getState().results[document.id]?.seeds.grouped?.kind).toBe('groups'));
+    const grouped = useBoardQueryStore.getState().results[document.id].seeds.grouped;
+    if (grouped?.kind !== 'groups') throw new Error('Expected seed groups');
+    expect(grouped.groups).toHaveLength(2);
+    const group = grouped.groups.find(bucket => bucket.label === '0')!;
+    expect(group.imageIds).toEqual([zero.id]);
+    expect(grouped.groups.find(bucket => bucket.constraint.kind === 'missing')?.imageIds).toEqual([missing.id]);
+    act(() => useBoardStore.getState().executeOperation(document.id, doc => branchSmartFrameGroup(doc, 'seeds', [group.constraint])));
+    const child = useBoardStore.getState().sessions[document.id].document.objects.find(object => object.id !== 'seeds')!;
+    await waitFor(() => expect(useBoardQueryStore.getState().results[document.id]?.[child.id]?.imageIds).toEqual([zero.id]));
+  });
+
   it('preserves distinct uint64 seeds from parsing through compacted metadata, worker groups and branches', async () => {
     vi.stubGlobal('Worker', WorkerMock); WorkerMock.messages = [];
     const seeds = ['18446744073709551614', '18446744073709551615'];

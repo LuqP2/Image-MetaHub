@@ -13,7 +13,8 @@ export function readLosslessSeed(metadata: unknown, numericSeed?: number | null)
     // Canonicalize integer text without passing through Number (including leading zeros).
     return BigInt(original.trim()).toString();
   }
-  return typeof numericSeed === 'number' && Number.isSafeInteger(numericSeed) ? String(numericSeed) : null;
+  const fallbackSeed = numericSeed ?? normalized.seed;
+  return typeof fallbackSeed === 'number' && Number.isSafeInteger(fallbackSeed) ? String(fallbackSeed) : null;
 }
 
 export function getImageSeedExact(image: IndexedImage): string | null {

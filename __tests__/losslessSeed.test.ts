@@ -19,6 +19,15 @@ describe('lossless seed projection', () => {
     expect(readLosslessSeed({ normalizedMetadata: { seed: '0018446744073709551615' } })).toBe('18446744073709551615');
     expect(readLosslessSeed({}, Number('18446744073709551615'))).toBeNull();
   });
+  it('recovers safe normalized numbers only when the indexed seed is absent', () => {
+    expect(readLosslessSeed({ normalizedMetadata: { seed: 0 } }, null)).toBe('0');
+    expect(readLosslessSeed({ normalizedMetadata: { seed: 123 } })).toBe('123');
+    expect(readLosslessSeed({ normalizedMetadata: { seed: 0 } }, 42)).toBe('42');
+    for (const seed of [Number.MAX_SAFE_INTEGER + 1, NaN, Infinity, 1.5]) {
+      expect(readLosslessSeed({ normalizedMetadata: { seed } }, null)).toBeNull();
+    }
+    expect(readLosslessSeed({ normalizedMetadata: {} }, null)).toBeNull();
+  });
   it('does not use stale seed text after editing the numeric seed', () => {
     expect(readLosslessSeed({ normalizedMetadata: { seedExact: '18446744073709551615' } }, 42)).toBe('42');
   });
