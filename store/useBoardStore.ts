@@ -19,6 +19,7 @@ export interface BoardSession {
   saveError: string | null;
   saveErrorCode: string | null;
   recovering: boolean;
+  revealRequest: { sequence: number; ids: string[]; shrink: boolean } | null;
   fitSelectionRequest: number;
   handledFitSelectionRequest: number;
 }
@@ -48,6 +49,8 @@ interface BoardStore {
   redo(id: string): void;
   setViewport(id: string, viewport: BoardDocument['viewport']): void;
   setSelection(id: string, objectIds: string[], connectionIds?: string[]): void;
+  requestReveal(id: string, ids: string[], shrink?: boolean): void;
+  consumeReveal(id: string, sequence: number): void;
   requestFitSelection(id: string): void;
   consumeFitSelection(id: string, request: number): boolean;
   flushBoard(id: string): Promise<void>;
@@ -60,7 +63,7 @@ const sameContent = (a: BoardContentSnapshot, b: BoardContentSnapshot) => JSON.s
 const newSession = (document: BoardDocument): BoardSession => ({
   document, savedRevision: document.revision, changeSequence: 0, savedSequence: 0,
   selectedObjectIds: [], selectedConnectionIds: [], past: [], future: [], interaction: null,
-  saveStatus: 'saved', saveError: null, saveErrorCode: null, recovering: false, fitSelectionRequest: 0, handledFitSelectionRequest: 0,
+  saveStatus: 'saved', saveError: null, saveErrorCode: null, recovering: false, revealRequest: null, fitSelectionRequest: 0, handledFitSelectionRequest: 0,
 });
 
 export function createBoardStore(repository: BoardRepository = boardService, delay = 500) {
@@ -226,6 +229,8 @@ export function createBoardStore(repository: BoardRepository = boardService, del
       setSelection(id, objectIds, connectionIds = []) {
         updateSession(id, session => JSON.stringify([session.selectedObjectIds, session.selectedConnectionIds]) === JSON.stringify([objectIds, connectionIds]) ? session : { ...session, selectedObjectIds: objectIds, selectedConnectionIds: connectionIds });
       },
+      requestReveal(id, ids, shrink = false) { updateSession(id, session => ({ ...session, revealRequest: { sequence: (session.revealRequest?.sequence ?? 0) + 1, ids, shrink } })); },
+      consumeReveal(id, sequence) { updateSession(id, session => session.revealRequest?.sequence === sequence ? { ...session, revealRequest: null } : session); },
       requestFitSelection(id) { updateSession(id, session => ({ ...session, fitSelectionRequest: session.fitSelectionRequest + 1 })); },
       consumeFitSelection(id, request) {
         const session = get().sessions[id];

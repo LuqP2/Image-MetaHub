@@ -16,7 +16,7 @@ import type { BoardSmartFrameObject } from '../services/boards/queryTypes';
 
 vi.mock('../hooks/useThumbnail', () => ({ useThumbnail: () => {} }));
 vi.mock('../hooks/useResolvedThumbnail', () => ({ useResolvedThumbnail: () => ({ thumbnailUrl: 'blob:test' }) }));
-vi.mock('react-virtualized-auto-sizer', () => ({ default: ({ children }) => children({ width: 600, height: 350 }) }));
+vi.mock('../components/boards/BoardLocalSizer', () => ({ default: ({ children }) => children({ width: 600, height: 350 }) }));
 vi.mock('../services/boards/boardService', () => ({ boardService: { save: async (document, revision) => ({ ...document, revision: revision + 1 }), flush: async () => {} } }));
 afterEach(async () => { cleanup(); await useBoardStore.getState().flushAll(); });
 function fixture(size = 2) {
