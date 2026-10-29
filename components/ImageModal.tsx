@@ -466,19 +466,23 @@ type ContextMenuState =
       selectionText: string;
     };
 
-const formatLoRA = (lora: string | LoRAInfo): string => {
+const getLoRADisplay = (lora: string | LoRAInfo): { name: string; weight?: string } => {
   if (typeof lora === 'string') {
-    return lora;
+    // Some parsers include the weight in the label rather than a separate field.
+    const match = lora.match(/^(.*?)\s*\(([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)\)?\s*$/i);
+    if (match && match[1].trim() && Number.isFinite(Number(match[2]))) {
+      return { name: match[1].trim(), weight: String(Number(Number(match[2]).toFixed(3))) };
+    }
+    return { name: lora };
   }
 
   const name = lora.name || lora.model_name || 'Unknown LoRA';
   const weight = lora.weight ?? lora.model_weight;
 
-  if (weight !== undefined && weight !== null) {
-    return `${name} (${weight})`;
-  }
-
-  return name;
+  return {
+    name,
+    weight: weight != null && Number.isFinite(weight) ? String(Number(weight.toFixed(3))) : undefined,
+  };
 };
 
 const formatGenerationTime = (ms: number): string => {
@@ -4517,23 +4521,29 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <MetadataItem label="VAE" value={(nMeta as any).vae || (nMeta as any).vaes?.[0]?.name} />
                     )}
                     {effectiveMetadata?.loras && effectiveMetadata.loras.length > 0 && (
-                      <MetadataItem
-                        label="LoRAs"
-                        value={effectiveMetadata.loras.map(formatLoRA).join(', ')}
-                        renderValue={loraRefByName.size > 0
-                          ? () => effectiveMetadata.loras.map((lora, index) => {
-                              const display = formatLoRA(lora);
-                              const rawName = typeof lora === 'string' ? lora : (lora.name || lora.model_name || display);
-                              const ref = loraRefByName.get(normalizeResourceName(rawName));
-                              return (
-                                <React.Fragment key={index}>
-                                  {index > 0 && ', '}
-                                  {ref ? <CivitaiResourceLink resource={ref}>{display}</CivitaiResourceLink> : display}
-                                </React.Fragment>
-                              );
-                            })
-                          : undefined}
-                      />
+                      <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50">
+                        <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider">LoRAs</p>
+                        <ul aria-label="LoRAs" className="mt-2 divide-y divide-gray-700/50">
+                          {effectiveMetadata.loras.map((lora, index) => {
+                            const { name, weight } = getLoRADisplay(lora);
+                            const rawName = typeof lora === 'string' ? lora : (lora.name || lora.model_name || name);
+                            const ref = loraRefByName.get(normalizeResourceName(rawName))
+                              ?? loraRefByName.get(normalizeResourceName(name));
+                            return (
+                              <li key={index} className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                                <span className="min-w-0 text-gray-200 text-sm break-all" title={name}>
+                                  {ref ? <CivitaiResourceLink resource={ref}>{name}</CivitaiResourceLink> : name}
+                                </span>
+                                {weight !== undefined && (
+                                  <span title="LoRA weight" className="shrink-0 rounded bg-gray-800 px-2 py-0.5 text-xs font-mono tabular-nums text-gray-300 border border-gray-700/50">
+                                    {weight}
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
                     )}
                     <div className="grid grid-cols-2 gap-2">
                       <MetadataItem label="Steps" value={effectiveMetadata?.steps} onCopy={(v) => copyToClipboard(v, "Steps", true)} />
