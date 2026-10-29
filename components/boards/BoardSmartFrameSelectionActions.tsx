@@ -15,7 +15,7 @@ export default function BoardSmartFrameSelectionActions({ boardId, frames, edita
       const previous = new Set(state.sessions[boardId].document.objects.map(object => object.id));
       state.executeOperation(boardId, operation);
       const ids = useBoardStore.getState().sessions[boardId].document.objects.filter(object => !previous.has(object.id)).map(object => object.id);
-      state.setSelection(boardId, ids); state.requestFitSelection(boardId); setError(null); setDifference(false);
+      state.setSelection(boardId, ids); state.requestReveal(boardId, [...frames.map(frame => frame.id), ...ids], true); setError(null); setDifference(false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   return <div className="board-smart-selection-actions">

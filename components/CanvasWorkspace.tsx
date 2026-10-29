@@ -1,3 +1,5 @@
+import { findFreeBoardPosition } from '../services/boards/layout';
+import { boardVisibleArea, visibleBoardCenter } from '../services/boards/viewport';
 import { normalizeQueryCriteria } from '../services/boards/queryDocument.mjs';
 import { getHiddenSensitiveTagSet, isVisibleWithSafeMode } from '../utils/safeModeVisibility';
 import { useBoardQueries } from '../hooks/useBoardQueries';
@@ -132,13 +134,17 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
     ensureEditable();
     let createdId = '';
     useBoardStore.getState().executeOperation(boardId!, document => {
+      const stage = window.document.querySelector<HTMLElement>('.board-stage');
+      const center = visibleBoardCenter(document.viewport, stage ? boardVisibleArea(stage) : { x: 32, y: 32, width: 636, height: 436 });
+      const position = findFreeBoardPosition(document.objects, { width: 640, height: 420 }, { x: center.x - 320, y: center.y - 210 });
       const next = createSmartFrame(document, { title: source.startsWith('collection:') ? collections.find(collection => collection.id === source.slice(11))?.name ?? 'Collection' : 'Library explorer',
         source: references ? { kind: 'snapshot', references } : source.startsWith('collection:') ? { kind: 'collection', collectionId: source.slice(11) } : { kind: 'library' },
-        x: (320 - document.viewport.x) / document.viewport.zoom, y: (180 - document.viewport.y) / document.viewport.zoom });
+        ...position });
       createdId = next.objects[next.objects.length - 1].id;
       return next;
     });
     useBoardStore.getState().setSelection(boardId!, [createdId]);
+    useBoardStore.getState().requestReveal(boardId!, [createdId]);
     if (source === 'current') await applyCurrentView(createdId);
     setCreatingFrame(false);
   };

@@ -1,7 +1,8 @@
+import { duplicateBoardSelection } from '../services/boards/commands';
 import type { KeyboardEvent } from 'react';
 import { useCallback } from 'react';
 import { useBoardStore } from '../store/useBoardStore';
-import { duplicateObjects, removeConnections, removeObjects } from '../services/boards/operations';
+import { removeConnections, removeObjects } from '../services/boards/operations';
 
 /** Capture destructive editor keys before document-level library hotkeys see them. */
 export function useBoardHotkeys(boardId: string | null, editable: boolean, openSelection?: () => void) {
@@ -25,7 +26,7 @@ export function useBoardHotkeys(boardId: string | null, editable: boolean, openS
     else if (key === 'escape') action = () => { state.cancelInteraction(boardId); state.setSelection(boardId, []); };
     else if (key === 'enter') action = openSelection;
     else if (editable && (key === 'delete' || key === 'backspace')) action = () => state.executeOperation(boardId, document => removeConnections(removeObjects(document, session.selectedObjectIds), session.selectedConnectionIds));
-    else if (editable && command && key === 'd') action = () => state.executeOperation(boardId, document => duplicateObjects(document, session.selectedObjectIds));
+    else if (editable && command && key === 'd') action = () => duplicateBoardSelection(boardId);
     else if (editable && command && key === 'z') action = () => event.shiftKey ? state.redo(boardId) : state.undo(boardId);
     else if (editable && event.ctrlKey && key === 'y') action = () => state.redo(boardId);
     // Also block destructive keys while read-only: never forward them to library deletion.

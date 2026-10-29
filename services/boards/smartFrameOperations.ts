@@ -1,3 +1,4 @@
+import { findFreeBoardPosition } from './layout';
 import type { BoardAssetReference, BoardDocument } from './types';
 import type { BoardGroupConstraint, BoardSetExpression, BoardSmartFrameLayout, BoardSmartFrameObject } from './queryTypes';
 import type { LibraryQueryCriteria } from '../libraryQuery/types';
@@ -95,11 +96,8 @@ export function updateSmartFrameQuery(document: BoardDocument, id: string, crite
 export function updateSmartFrameLayout(document: BoardDocument, id: string, layout: BoardSmartFrameLayout) {
   return updateFrame(document, id, { layout });
 }
-function positionBeside(document: BoardDocument, parent: BoardSmartFrameObject) {
-  const x = parent.x + parent.width + 64;
-  let y = parent.y;
-  while (document.objects.some(object => x < object.x + object.width && x + 640 > object.x && y < object.y + object.height && y + 420 > object.y)) y += 484;
-  return { x, y };
+function positionBeside(document: BoardDocument, parent: BoardSmartFrameObject, size = { width: 640, height: 420 }) {
+  return findFreeBoardPosition(document.objects, size, { x: parent.x + parent.width + 64, y: parent.y });
 }
 export function branchSmartFrame(document: BoardDocument, id: string, constraints: BoardGroupConstraint[] = []) {
   const parent = getFrame(document, id);
@@ -111,7 +109,7 @@ export function duplicateSmartFrameQuery(document: BoardDocument, id: string) {
   const parent = getFrame(document, id);
   const source = detachFrameSource(document, parent.source);
   return createSmartFrame(document, { ...parent, id: crypto.randomUUID(),
-    ...positionBeside(document, parent), title: `${parent.title} (copy)`, source });
+    ...positionBeside(document, parent, parent), title: `${parent.title} (copy)`, source });
 }
 export function intersectSmartFrames(document: BoardDocument, ids: string[]) {
   const unique = [...new Set(ids)];

@@ -1,3 +1,5 @@
+import { boardVisibleArea, boardMotionDuration, revealBoardBounds } from '../../services/boards/viewport';
+import { getBoardBounds } from '../../services/boards/layout';
 import BoardQueryConnection from './BoardQueryConnection';
 import BoardSmartFrameNode from './BoardSmartFrameNode';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -24,6 +26,19 @@ export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId:
   const editor = useBoardEditor();
   const flow = useReactFlow<BoardFlowNode>();
   const { zoom } = useViewport();
+  const stageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const request = session.revealRequest;
+    if (!request) return;
+    const task = requestAnimationFrame(() => {
+      const current = useBoardStore.getState().sessions[boardId];
+      if (current?.revealRequest !== request || !stageRef.current) return;
+      const objects = current.document.objects.filter(object => request.ids.includes(object.id));
+      useBoardStore.getState().consumeReveal(boardId, request.sequence);
+      if (objects.length) void flow.setViewport(revealBoardBounds(flow.getViewport(), getBoardBounds(objects), boardVisibleArea(stageRef.current), request.shrink), { duration: boardMotionDuration() });
+    });
+    return () => cancelAnimationFrame(task);
+  }, [boardId, session.revealRequest, flow]);
   const [drawing, setDrawing] = useState<{ start: BoardPoint; end: BoardPoint } | null>(null);
   const drawingStart = useRef<BoardPoint | null>(null);
   const drawingTool = editor.editable && (editor.tool === 'text' || editor.tool === 'frame') ? editor.tool : null;
@@ -34,7 +49,7 @@ export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId:
       const state = useBoardStore.getState();
       const ids = state.sessions[boardId]?.selectedObjectIds ?? [];
       if (state.consumeFitSelection(boardId, session.fitSelectionRequest) && ids.length) {
-        void flow.fitView({ nodes: ids.map(id => ({ id })), padding: 0.2 });
+        void flow.fitView({ nodes: ids.map(id => ({ id })), padding: 0.2, maxZoom: 1, duration: boardMotionDuration() });
       }
     });
     return () => cancelAnimationFrame(frame);
@@ -70,7 +85,7 @@ export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId:
       color: '#94a3b8', label: '',
     }));
   }, [boardId, editor.editable]);
-  return <div className="board-stage" onDoubleClick={event => event.stopPropagation()}
+  return <div ref={stageRef} className="board-stage" onDoubleClick={event => event.stopPropagation()}
     onDragOver={event => { if (editor.editable && hasInternalImageDragType(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
     onDrop={event => {
       if (!editor.editable || !hasInternalImageDragType(event.dataTransfer)) return;

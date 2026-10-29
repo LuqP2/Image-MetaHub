@@ -15,7 +15,7 @@ import { normalizeLibraryQueryCriteria } from '../services/libraryQuery/criteria
 vi.mock('../components/boards/BoardNodeControls', () => ({ default: () => null }));
 vi.mock('../hooks/useThumbnail', () => ({ useThumbnail: () => {} }));
 vi.mock('../hooks/useResolvedThumbnail', () => ({ useResolvedThumbnail: () => ({ thumbnailUrl: 'blob:test' }) }));
-vi.mock('react-virtualized-auto-sizer', () => ({ default: ({ children }) => children({ width: 600, height: 300 }) }));
+vi.mock('../components/boards/BoardLocalSizer', () => ({ default: ({ children }) => children({ width: 600, height: 300 }) }));
 afterEach(() => { cleanup(); useBoardQueryStore.setState({ results: {} }); });
 
 describe('Smart Frame rendering', () => {

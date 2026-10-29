@@ -24,7 +24,7 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
       const previous = new Set(state.sessions[boardId].document.objects.map(object => object.id));
       state.executeOperation(boardId, operation);
       const added = useBoardStore.getState().sessions[boardId].document.objects.filter(object => !previous.has(object.id)).map(object => object.id);
-      if (added.length) { state.setSelection(boardId, added); state.requestFitSelection(boardId); }
+      if (added.length) { state.setSelection(boardId, added); state.requestReveal(boardId, [frame.id, ...added], true); }
       setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };

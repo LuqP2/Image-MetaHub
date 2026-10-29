@@ -1,20 +1,23 @@
 import { createFrameDetacher } from './smartFrameOperations';
 import type { BoardAssetInput, BoardAssetObject, BoardConnection, BoardDocument, BoardObject, BoardTextObject } from './types';
 import { normalizeBoardDocument } from './document.mjs';
-import { findContainingFrame, getBoardBounds, gridPositions, type BoardPoint, type BoardBounds } from './layout';
+import { findFreeBoardPosition, findContainingFrame, getBoardBounds, gridPositions, type BoardPoint, type BoardBounds } from './layout';
 
 const id = () => crypto.randomUUID();
 const changed = (document: BoardDocument, patch: Partial<BoardDocument>) => normalizeBoardDocument({ ...document, ...patch, updatedAt: Date.now() });
 const top = (document: BoardDocument) => Math.max(0, ...document.objects.map(object => object.zIndex));
 
-export function addAssets(document: BoardDocument, assets: BoardAssetInput[], anchor: BoardPoint): BoardDocument {
+export function addAssets(document: BoardDocument, assets: BoardAssetInput[], anchor: BoardPoint, automatic = false): BoardDocument {
   const objects: BoardAssetObject[] = assets.map((asset, index) => ({
     id: id(), type: 'asset', x: 0, y: 0, width: 280,
     height: Math.max(100, Math.min(420, asset.width && asset.height ? 280 * asset.height / asset.width : 210)) + 32,
     zIndex: top(document) + index + 1, frameId: null, reference: asset.reference,
     name: asset.name, mediaType: asset.mediaType, visibleFields: [],
   }));
-  const positions = gridPositions(objects, anchor);
+  const initial = gridPositions(objects, { x: 0, y: 0 });
+  const size = getBoardBounds(objects.map((object, index) => ({ ...object, ...initial[index] })));
+  const point = automatic ? findFreeBoardPosition(document.objects, size, { x: anchor.x - size.width / 2, y: anchor.y - size.height / 2 }) : anchor;
+  const positions = gridPositions(objects, point);
   return changed(document, { objects: [...document.objects, ...objects.map((object, index) => {
     const positioned = { ...object, ...positions[index] };
     return { ...positioned, frameId: findContainingFrame(positioned, document.objects)?.id ?? null };
@@ -81,13 +84,16 @@ export function removeObjects(document: BoardDocument, objectIds: string[]): Boa
   });
 }
 
-export function duplicateObjects(document: BoardDocument, objectIds: string[], offset: BoardPoint = { x: 32, y: 32 }): BoardDocument {
+export function duplicateObjects(document: BoardDocument, objectIds: string[], offset?: BoardPoint): BoardDocument {
   const selected = new Set(objectIds);
   for (const object of document.objects) if (object.frameId && selected.has(object.frameId)) selected.add(object.id);
   const ids = new Map(document.objects.filter(object => selected.has(object.id)).map(object => [object.id, id()]));
   const detach = createFrameDetacher(document);
+  const bounds = getBoardBounds(document.objects.filter(object => selected.has(object.id)));
+  const point = offset ? { x: bounds.x + offset.x, y: bounds.y + offset.y } : findFreeBoardPosition(document.objects, bounds, { x: bounds.x + bounds.width + 64, y: bounds.y });
+  const delta = { x: point.x - bounds.x, y: point.y - bounds.y };
   const copies = document.objects.filter(object => selected.has(object.id)).map(object => ({
-    ...object, ...(object.type === 'smart-frame' ? { source: detach(object.source) } : {}), id: ids.get(object.id)!, x: object.x + offset.x, y: object.y + offset.y,
+    ...object, ...(object.type === 'smart-frame' ? { source: detach(object.source) } : {}), id: ids.get(object.id)!, x: object.x + delta.x, y: object.y + delta.y,
     frameId: object.frameId ? ids.get(object.frameId) ?? object.frameId : null,
     zIndex: object.zIndex + top(document) + 2,
   } as BoardObject));

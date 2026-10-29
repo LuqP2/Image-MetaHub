@@ -1,4 +1,4 @@
-import AutoSizer from 'react-virtualized-auto-sizer';
+import BoardLocalSizer from './BoardLocalSizer';
 import { FixedSizeGrid } from 'react-window';
 import { useBoardQueryActions } from './BoardQueryContext';
 import BoardResultThumbnail from './BoardResultThumbnail';
@@ -6,7 +6,7 @@ import BoardResultThumbnail from './BoardResultThumbnail';
 export default function BoardSmartFrameResults({ imageIds, frameId }: { imageIds: string[]; frameId: string }) {
   const actions = useBoardQueryActions();
   return <div data-board-results="true" className="board-smart-results nodrag nopan nowheel" onKeyDown={event => event.stopPropagation()}>
-    <AutoSizer>{({ width, height }) => {
+    <BoardLocalSizer>{({ width, height }) => {
       if (width <= 0 || height <= 0) return null;
       const columns = Math.max(1, Math.floor(width / 120));
       return <FixedSizeGrid width={width} height={height} columnWidth={width / columns} rowHeight={116} columnCount={columns}
@@ -17,6 +17,6 @@ export default function BoardSmartFrameResults({ imageIds, frameId }: { imageIds
           return <div style={style}>{image && <BoardResultThumbnail image={image} open={() => actions?.open(id, frameId, imageIds)} />}</div>;
         }}
       </FixedSizeGrid>;
-    }}</AutoSizer>
+    }}</BoardLocalSizer>
   </div>;
 }

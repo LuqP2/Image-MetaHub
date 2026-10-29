@@ -86,7 +86,8 @@ describe('board composition operations', () => {
     expect(copy.objects).toHaveLength(5);
     expect(copy.connections).toHaveLength(1);
     const copiedFrame = copy.objects[3];
-    expect(copy.objects[4]).toMatchObject({ frameId: copiedFrame.id, x: 32, y: 32 });
+    expect(copy.objects[4]).toMatchObject({ frameId: copiedFrame.id, x: copiedFrame.x + 24, y: copiedFrame.y + 48 });
+    expect(copiedFrame.x >= framed.objects[0].x + framed.objects[0].width + 24 || copiedFrame.y + copiedFrame.height + 24 <= framed.objects[0].y).toBe(true);
     const all = duplicateObjects(board, board.objects.map(object => object.id));
     expect(all.connections).toHaveLength(2);
     expect(all.connections[1].sourceObjectId).not.toBe(board.connections[0].sourceObjectId);

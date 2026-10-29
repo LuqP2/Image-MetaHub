@@ -1,3 +1,4 @@
+import { duplicateBoardSelection } from '../../services/boards/commands';
 import BoardSmartFrameSelectionActions from './BoardSmartFrameSelectionActions';
 import type { BoardSmartFrameObject } from '../../services/boards/queryTypes';
 import BoardSmartFrameInspector from './BoardSmartFrameInspector';
@@ -7,7 +8,7 @@ import Section from './BoardInspectorSection';
 import { getBoardDisplayName } from './boardPresentation';
 import { type ReactNode } from 'react';
 import { useBoardStore } from '../../store/useBoardStore';
-import { arrangeObjectsInGrid, duplicateObjects, removeConnections, removeObjects, updateConnection, updateObjects } from '../../services/boards/operations';
+import { arrangeObjectsInGrid, removeConnections, removeObjects, updateConnection, updateObjects } from '../../services/boards/operations';
 import type { BoardMetadataField } from '../../services/boards/types';
 
 const fields: BoardMetadataField[] = ['model', 'loras', 'seed', 'dimensions', 'generator', 'rating', 'prompt'];
@@ -41,7 +42,7 @@ export default function BoardInspector({ boardId, editable, assetActions, assetM
       return <label className="board-checkbox" key={field}><input type="checkbox" checked={checked} ref={element => { if(element) element.indeterminate = !checked && assets.some(asset => asset.visibleFields.includes(field)); }} onChange={() => useBoardStore.getState().executeOperation(boardId, document => updateObjects(document, assets.map(asset => ({ id: asset.id, visibleFields: checked ? asset.visibleFields.filter(item => item !== field) : [...new Set([...asset.visibleFields, field])] }))))} />{{model:'Model',loras:'LoRAs',seed:'Seed',dimensions:'Dimensions',generator:'Generator',rating:'Rating',prompt:'Prompt'}[field]}</label>;
     })}</fieldset></Section>}
     {selected.length > 0 && <Section title="Arrange"><div className="board-arrange-grid">
-      <button className="board-button" disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, doc => duplicateObjects(doc, session.selectedObjectIds))}>Duplicate</button>
+      <button className="board-button" disabled={!editable} onClick={() => duplicateBoardSelection(boardId)}>Duplicate</button>
       <button className="board-button" disabled={!editable || selected.length < 2} onClick={() => useBoardStore.getState().executeOperation(boardId, doc => arrangeObjectsInGrid(doc, session.selectedObjectIds))}>Arrange in grid</button>
       <button className="board-button" disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, doc => updateObjects(doc, selected.map(item => ({id:item.id,zIndex:Math.max(0,...doc.objects.map(o=>o.zIndex))+1}))))}>Bring to front</button>
       <button className="board-button" disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, doc => updateObjects(doc, selected.map(item => ({id:item.id,zIndex:Math.min(0,...doc.objects.map(o=>o.zIndex))-1}))))}>Send to back</button>

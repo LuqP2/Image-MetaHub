@@ -124,3 +124,5 @@
 .board-query-edge-label{color:#c7d2fe;border:1px dashed #818cf8;font-size:11px}.board-smart-selection-actions{display:flex;flex-wrap:wrap;gap:8px}
 
 .board-group-layout{display:flex;flex-direction:column;flex:1;min-height:0;gap:6px}.board-group-scroll{flex:1;min-height:0}.board-group-preview{height:184px;padding:8px;border:1px solid #475569;border-radius:8px;overflow:hidden}.board-group-preview>strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.board-group-preview>span{font-size:12px}.board-group-thumbnails{display:flex;height:92px}.board-group-thumbnails .board-result-thumb{height:88px;min-width:0;flex:1}.board-matrix-heading{padding:12px;font-weight:600;overflow:hidden;background:rgb(var(--gray-800))}
+
+.board-local-sizer{position:relative;flex:1;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden}

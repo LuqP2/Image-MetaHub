@@ -19,7 +19,7 @@ export default function BoardGroupPreview({ frameId, label, ids, constraints, op
       const previous = new Set(state.sessions[boardId].document.objects.map(object => object.id));
       state.executeOperation(boardId, document => branchSmartFrameGroup(document, frameId, constraints));
       const added = useBoardStore.getState().sessions[boardId].document.objects.filter(object => !previous.has(object.id));
-      state.setSelection(boardId, added.map(object => object.id)); state.requestFitSelection(boardId); setError(null);
+      state.setSelection(boardId, added.map(object => object.id)); state.requestReveal(boardId, [frameId, ...added.map(object => object.id)], true); setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   return <div className="board-group-preview"><strong title={label}>{label}</strong><span>{ids.length.toLocaleString()} images</span>
