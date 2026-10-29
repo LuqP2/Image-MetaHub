@@ -29,7 +29,7 @@ describe('Smart Frame rendering', () => {
     render(<BoardQueryContext.Provider value={{ images: new Map(images.map(image => [image.id, image])), open, create: vi.fn(), retry: vi.fn(), snapshot: vi.fn(), useCurrentFilters: vi.fn(), collections: [] }}>
       <BoardSmartFrameNode {...({ data: { object: frame }, selected: false } as any)} />
     </BoardQueryContext.Provider>);
-    expect(screen.getByText(`${(1000).toLocaleString()} matches`)).toBeTruthy();
+    expect(screen.getByText(`${(1000).toLocaleString()} images in frame`)).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /^Open / })).toHaveLength(12);
     fireEvent.doubleClick(screen.getAllByRole('button', { name: /^Open / })[0]);
     expect(open).toHaveBeenCalledWith(images[0].id, frame.id);
@@ -41,12 +41,12 @@ describe('Smart Frame rendering', () => {
   it('emits controlled local criteria without changing library filters', () => {
     const before = useImageStore.getState().searchQuery;
     const onChange = vi.fn();
-    render(<BoardQueryFilterEditor value={normalizeLibraryQueryCriteria()} disabled={false} onChange={onChange} />);
+    render(<BoardQueryFilterEditor value={normalizeLibraryQueryCriteria()} disabled={false} facets={{ availableLoras: ['A, B'] } as any} onChange={onChange} />);
     fireEvent.change(screen.getByLabelText('Query search'), { target: { value: 'forest' } });
     expect(onChange.mock.lastCall![0].searchQuery).toBe('forest');
-    fireEvent.change(screen.getByLabelText('LoRAs'), { target: { value: 'A, B' } });
-    fireEvent.blur(screen.getByLabelText('LoRAs'));
-    expect(onChange.mock.lastCall![0].selectedLoras).toEqual(['A', 'B']);
+    fireEvent.click(screen.getByRole('button', { name: /^LoRAs/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Include LoRAs: A, B' }));
+    expect(onChange.mock.lastCall![0].selectedLoras).toEqual(['A, B']);
     expect(useImageStore.getState().searchQuery).toBe(before);
   });
 });

@@ -6,6 +6,7 @@ import BoardResultThumbnail from './BoardResultThumbnail';
 export default function BoardSmartFrameResults({ imageIds, frameId }: { imageIds: string[]; frameId: string }) {
   const actions = useBoardQueryActions();
   return <div data-board-results="true" className="board-smart-results nodrag nopan nowheel" onKeyDown={event => event.stopPropagation()}>
+    {!imageIds.length && <p className="board-empty-results">No images in this group.</p>}
     <BoardLocalSizer>{({ width, height }) => {
       if (width <= 0 || height <= 0) return null;
       const columns = Math.max(1, Math.floor(width / 120));
@@ -14,7 +15,7 @@ export default function BoardSmartFrameResults({ imageIds, frameId }: { imageIds
         {({ columnIndex, rowIndex, style }) => {
           const id = imageIds[rowIndex * columns + columnIndex];
           const image = id ? actions?.images.get(id) : null;
-          return <div style={style}>{image && <BoardResultThumbnail image={image} open={() => actions?.open(id, frameId, imageIds)} />}</div>;
+          return <div style={{ ...style, overflow: 'hidden' }}>{image && <BoardResultThumbnail image={image} open={() => actions?.open(id, frameId, imageIds)} />}</div>;
         }}
       </FixedSizeGrid>;
     }}</BoardLocalSizer>

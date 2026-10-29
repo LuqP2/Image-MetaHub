@@ -1,3 +1,5 @@
+import { useBoardUIStore } from '../../store/useBoardUIStore';
+import { useBoardQueryActions } from './BoardQueryContext';
 import { boardVisibleArea, boardMotionDuration, revealBoardBounds } from '../../services/boards/viewport';
 import { getBoardBounds } from '../../services/boards/layout';
 import BoardQueryConnection from './BoardQueryConnection';
@@ -23,6 +25,7 @@ const edgeTypes = { manual: BoardConnection, query: BoardQueryConnection };
 
 export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId: string; onFitAll?: () => void }) {
   const session = useBoardStore(state => state.sessions[boardId]);
+  const queryActions = useBoardQueryActions();
   const editor = useBoardEditor();
   const flow = useReactFlow<BoardFlowNode>();
   const { zoom } = useViewport();
@@ -113,6 +116,11 @@ export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId:
       <Panel position="bottom-left"><BoardCanvasHelp/></Panel>
       <Background color="rgb(var(--gray-700) / .55)" gap={24} size={1} />
     </ReactFlow>
+    {!session.document.objects.length && editor.editable && <div className="board-empty-start nodrag nopan">
+      <h2>Start your board</h2><p>Collect references or explore your library with a live query.</p>
+      <div><button className="board-button" onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="Search canvas library"]')?.focus()); }}>Add references</button><small>Choose files from the side library and arrange them freely.</small></div>
+      <div><button className="board-button" onClick={() => queryActions?.create()}>Explore library</button><small>Create a Smart Frame to filter, group and branch results.</small></div>
+    </div>}
     {drawingTool && <div className="board-drawing-hint">Drag to draw {drawingTool === 'text' ? 'a text box' : 'a frame'} · Esc to cancel</div>}
     {drawingTool && <div className="board-draw-overlay" aria-label={`Draw ${drawingTool}`}
       onPointerDown={event => {

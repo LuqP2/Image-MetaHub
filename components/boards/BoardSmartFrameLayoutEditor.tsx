@@ -4,7 +4,7 @@ import { groupingLabels } from '../../services/boards/grouping';
 export default function BoardSmartFrameLayoutEditor({ layout, disabled, change }: { layout: BoardSmartFrameLayout; disabled: boolean; change(layout: BoardSmartFrameLayout): void }) {
   const options = Object.entries(groupingLabels);
   return <fieldset disabled={disabled}><legend>Layout</legend>
-    <label>Layout mode<select className="board-input" value={layout.kind} onChange={event => change(event.target.value === 'grid' ? { kind: 'grid' } : event.target.value === 'groups' ? { kind: 'groups', groupBy: 'model', subgroupBy: null } : { kind: 'matrix', rows: 'lora', columns: 'model' })}>
+    <label>Layout mode<select className="board-input" value={layout.kind} onChange={event => change(event.target.value === 'grid' ? { kind: 'grid' } : event.target.value === 'groups' ? { kind: 'groups', groupBy: 'model', subgroupBy: null } : { kind: 'matrix', rows: 'generator', columns: 'rating' })}>
       <option value="grid">Grid</option><option value="groups">Groups</option><option value="matrix">Metadata matrix</option>
     </select></label>
     {layout.kind === 'groups' && <>

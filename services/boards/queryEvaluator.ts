@@ -9,12 +9,13 @@ import { orderQueryFrames } from './queryGraph';
 
 class MissingSource extends Error {}
 interface ResolvedSet { ids: Set<string>; unavailable: number }
-export interface BoardEvaluationCache { dataset: BoardQueryDataset | null; entries: Map<string, ReturnType<typeof executeLibraryQuery>> }
+export interface BoardEvaluationCache { dataset: BoardQueryDataset | null; entries: Map<string, ReturnType<typeof executeLibraryQuery>>; sourceFacets?: Map<string, import('./queryProtocol').BoardQueryFacets> }
 export const createBoardEvaluationCache = (): BoardEvaluationCache => ({ dataset: null, entries: new Map() });
 
 export function evaluateBoardQueries(dataset: BoardQueryDataset, frames: BoardQueryFrame[], datasetRevision: number, queryRevision: number, cache = createBoardEvaluationCache()): Record<string, BoardQueryResult> {
-  if (cache.dataset !== dataset) { cache.dataset = dataset; cache.entries.clear(); }
+  if (cache.dataset !== dataset) { cache.dataset = dataset; cache.entries.clear(); cache.sourceFacets = new Map(); }
   const nextEntries: BoardEvaluationCache['entries'] = new Map();
+  const nextFacets = new Map<string, import('./queryProtocol').BoardQueryFacets>();
   const groupingContext = createGroupingContext(dataset);
   const images = new Map(dataset.images.map(image => [image.id, image]));
   const results: Record<string, BoardQueryResult> = Object.create(null);
@@ -68,8 +69,20 @@ export function evaluateBoardQueries(dataset: BoardQueryDataset, frames: BoardQu
     try {
       const source = resolve(frame.source);
       const result = evaluateQuery(source, frame.criteria, frame.groupConstraints);
-      const sourceFacets = evaluateQuery(source, { ...frame.criteria,
-        searchQuery: '', selectedModels: [], excludedModels: [], selectedLoras: [], excludedLoras: [], selectedSamplers: [], excludedSamplers: [], selectedSchedulers: [], excludedSchedulers: [], selectedGenerators: [], excludedGenerators: [], selectedGpuDevices: [], excludedGpuDevices: [], selectedTags: [], excludedTags: [], selectedAutoTags: [], excludedAutoTags: [], favoriteFilterMode: 'neutral', selectedRatings: [], advancedFilters: {}, selectedFolders: [], excludedFolders: [] }, []).facets;
+      const sourceResult = evaluateQuery(source, { ...frame.criteria,
+        searchQuery: '', selectedModels: [], excludedModels: [], selectedLoras: [], excludedLoras: [], selectedSamplers: [], excludedSamplers: [], selectedSchedulers: [], excludedSchedulers: [], selectedGenerators: [], excludedGenerators: [], selectedGpuDevices: [], excludedGpuDevices: [], selectedTags: [], excludedTags: [], selectedAutoTags: [], excludedAutoTags: [], favoriteFilterMode: 'neutral', selectedRatings: [], advancedFilters: {}, selectedFolders: [], excludedFolders: [] }, []);
+      const sourceKey = JSON.stringify(sourceResult.imageIds);
+      let sourceFacets = nextFacets.get(sourceKey) ?? cache.sourceFacets?.get(sourceKey);
+      if (!sourceFacets) {
+        const counts: Record<string, Map<string, number>> = Object.fromEntries(['Models', 'Loras', 'Samplers', 'Schedulers', 'Generators', 'GpuDevices', 'Tags', 'AutoTags', 'Folders'].map(key => [key, new Map<string, number>()]));
+        for (const id of sourceResult.imageIds) {
+          const image = images.get(id)!;
+          const values: Record<string, string[]> = { Models: image.models, Loras: image.loraNames, Samplers: [image.sampler], Schedulers: [image.scheduler], Generators: [image.generator], GpuDevices: [image.gpuDevice ?? ''], Tags: image.tags, AutoTags: image.autoTags, Folders: [dataset.grouping?.[id]?.folder ?? ''] };
+          for (const [dimension, entries] of Object.entries(values)) for (const value of new Set(entries)) if (value) counts[dimension].set(value, (counts[dimension].get(value) ?? 0) + 1);
+        }
+        sourceFacets = { ...sourceResult.facets, sourceCounts: Object.fromEntries(Object.entries(counts).map(([key, counts]) => [key, [...counts]])) };
+      }
+      nextFacets.set(sourceKey, sourceFacets);
       const grouped = buildBoardGroupedLayout(result.imageIds.map(id => images.get(id)!), frame.layout ?? { kind: 'grid' }, groupingContext);
       results[frame.id] = { ...base, ...result, grouped, status: 'ready', unavailableReferences: source.unavailable, facets: sourceFacets };
     } catch (error) {
@@ -77,5 +90,6 @@ export function evaluateBoardQueries(dataset: BoardQueryDataset, frames: BoardQu
     }
   }
   cache.entries = nextEntries;
+  cache.sourceFacets = nextFacets;
   return results;
 }

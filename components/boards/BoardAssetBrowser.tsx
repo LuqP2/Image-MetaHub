@@ -66,7 +66,7 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
     <input className="board-input" aria-label="Search canvas library" placeholder="Search library…" value={state.query} onChange={event => useBrowserState.setState({ query: event.target.value })} />
     <select className="board-select" aria-label="Canvas library folder" value={state.directoryId} onChange={event => useBrowserState.setState({ directoryId: event.target.value })}><option value="">All folders</option>{directories.map(directory => <option key={directory.id} value={directory.id}>{directory.name}</option>)}</select>
     <select className="board-select" aria-label="Canvas library media type" value={state.mediaType} onChange={event => useBrowserState.setState({ mediaType: event.target.value })}><option value="">All media</option>{['image', 'video', 'audio', 'model3d'].map(type => <option value={type} key={type}>{type}</option>)}</select>
-    <p>{results.length} assets</p>
+    <p>{results.length} {results.length === 1 ? 'asset' : 'assets'}</p>
     <div className="board-browser-results"><AutoSizer>{({ width, height }) => <FixedSizeList<RowData> className="scrollbar-thin" width={width} height={height} itemCount={Math.ceil(results.length / 2)} itemSize={140} itemData={data}>{BrowserRow}</FixedSizeList>}</AutoSizer></div>
     {!onPick && <button className="board-button board-button--primary" disabled={!editable || !selectedIds.length} onClick={() => onAdd(visibleImages.filter(image => selectedIds.includes(image.id)))}>{selectedIds.length ? `Add to canvas (${selectedIds.length})` : 'Add to canvas'}</button>}
   </aside>;

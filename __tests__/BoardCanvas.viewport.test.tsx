@@ -1,3 +1,5 @@
+import { BoardQueryContext } from '../components/boards/BoardQueryContext';
+import { useBoardUIStore } from '../store/useBoardUIStore';
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -87,4 +89,16 @@ describe('Canvas fit-selection request lifecycle', () => {
     const session = useBoardStore.getState().sessions[id];
     expect(session.handledFitSelectionRequest).toBe(session.fitSelectionRequest);
   });
+});
+
+it('offers the two empty-board paths and focuses the reference library', () => {
+  const board = createBoardDocument(); useBoardStore.getState().adoptBoard(board);
+  const create = vi.fn();
+  render(<><input aria-label="Search canvas library" /><BoardQueryContext.Provider value={{ images: new Map(), collections: [], open: vi.fn(), create, retry: vi.fn(), snapshot: vi.fn(), useCurrentFilters: vi.fn() }}>
+    <BoardEditorContext.Provider value={{ editable: true, connecting: false, begin: vi.fn(), change: vi.fn(), commit: vi.fn(), cancel: vi.fn() }}><BoardCanvas boardId={board.id} /></BoardEditorContext.Provider>
+  </BoardQueryContext.Provider></>);
+  fireEvent.click(screen.getByRole('button', { name: 'Add references' })); runFrames();
+  expect(useBoardUIStore.getState().libraryOpen).toBe(true);
+  expect(document.activeElement).toBe(screen.getByLabelText('Search canvas library'));
+  fireEvent.click(screen.getByRole('button', { name: 'Explore library' })); expect(create).toHaveBeenCalledOnce();
 });
