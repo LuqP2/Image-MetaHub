@@ -1,3 +1,4 @@
+import Section from './BoardInspectorSection';
 import { groupingLabels } from '../../services/boards/grouping';
 import BoardSmartFrameLayoutEditor from './BoardSmartFrameLayoutEditor';
 import { useState } from 'react';
@@ -35,8 +36,7 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
   return <div onBlur={() => useBoardStore.getState().commitInteraction(boardId)}>
     <label>Title<input className="board-input" value={frame.title} disabled={!editable} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateObjects(document, [{ id: frame.id, title: event.target.value }]))} /></label>
     {error && <p role="alert">{error}</p>}
-    <button className="board-button" disabled={!editable} onClick={() => run(document => branchSmartFrame(document, frame.id))}>Branch from results</button>
-    <button className="board-button" disabled={!editable} onClick={() => run(document => duplicateSmartFrameQuery(document, frame.id))}>Duplicate query independently</button>
+    <Section title="Source" defaultOpen stateKey={`${boardId}:source`}>
     <label>Source<select className="board-input" disabled={!editable} value={sourceValue} onChange={event => {
       const value = event.target.value;
       run(document => reconnectSmartFrameSource(document, frame.id, value === 'library' ? { kind: 'library' } : value.startsWith('frame:') ? { kind: 'frame', frameId: value.slice(6) } : { kind: 'collection', collectionId: value.slice(11) }));
@@ -50,16 +50,26 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
     </select></label>
     <button className="board-button" disabled={!editable || result?.status !== 'ready'} onClick={() => actions?.snapshot(frame.id)}>Freeze as Snapshot</button>
     <button className="board-button" disabled={!editable} onClick={() => actions?.useCurrentFilters(frame.id)}>Use current library view</button>
-    <BoardInheritedQuerySummary source={frame.source} frames={frames} />
-    <BoardSmartFrameLayoutEditor layout={frame.layout} disabled={!editable} change={layout => run(document => updateSmartFrameLayout(document, frame.id, layout))} />
+    </Section>
+    <Section title="Filters" defaultOpen stateKey={`${boardId}:filters`}>
     {frame.groupConstraints.length > 0 && <section aria-label="Local group filters"><h3>Group filters</h3>
       {frame.groupConstraints.map((constraint, index) => <div key={index}>
-        <span>{groupingLabels[constraint.dimension]}: {constraint.kind === 'missing' ? 'No value' : constraint.kind === 'session' ? `${new Date(constraint.start).toLocaleString()} – ${new Date(constraint.endExclusive - 1).toLocaleString()}` : constraint.value}</span>
+        <span>{groupingLabels[constraint.dimension]}: {constraint.kind === 'missing' ? 'No value' : constraint.kind === 'session' ? `${new Date(constraint.start).toLocaleString()} â€“ ${new Date(constraint.endExclusive - 1).toLocaleString()}` : constraint.value}</span>
         <button className="board-button" disabled={!editable} onClick={() => run(document => updateObjects(document, [{ id: frame.id, groupConstraints: frame.groupConstraints.filter((_, position) => position !== index) }]))}>Remove group filter</button>
       </div>)}
     </section>}
     <h3>Local filters</h3>
     <BoardQueryFilterEditor value={frame.criteria} facets={result?.facets} disabled={!editable}
       onChange={criteria => useBoardStore.getState().updateInteraction(boardId, document => updateSmartFrameQuery(document, frame.id, criteria))} />
+    </Section>
+    <Section title="Layout" stateKey={`${boardId}:layout`}>
+    <BoardSmartFrameLayoutEditor layout={frame.layout} disabled={!editable} change={layout => run(document => updateSmartFrameLayout(document, frame.id, layout))} />
+    </Section>
+    <Section title="Relationships" defaultOpen stateKey={`${boardId}:relations`}>
+    <button className="board-button" disabled={!editable} onClick={() => run(document => branchSmartFrame(document, frame.id))}>Branch from results</button>
+    <button className="board-button" disabled={!editable} onClick={() => run(document => duplicateSmartFrameQuery(document, frame.id))}>Duplicate query independently</button>
+    <BoardInheritedQuerySummary source={frame.source} frames={frames} />
+    </Section>
+
   </div>;
 }

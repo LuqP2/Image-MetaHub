@@ -1,3 +1,4 @@
+import { useBoardQueryStore } from '../store/useBoardQueryStore';
 import { useBoardHotkeys } from '../hooks/useBoardHotkeys';
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -33,8 +34,9 @@ describe('visual filter branching', () => {
     const child = f.current().objects[1] as BoardSmartFrameObject;
     expect(child.source).toEqual({ kind: 'frame', frameId: 'flux' });
     expect(screen.getByRole('region', { name: 'Inherited filters' }).textContent).toContain('Checkpoints: Flux');
-    fireEvent.change(screen.getByLabelText('LoRAs'), { target: { value: 'A' } });
-    fireEvent.blur(screen.getByLabelText('LoRAs'));
+    act(() => useBoardQueryStore.setState({ results: { [f.id]: evaluateBoardQueries(dataset, f.current().objects as BoardSmartFrameObject[], 1, 1) } }));
+    fireEvent.click(screen.getByRole('button', { name: /^LoRAs/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Include LoRAs: A' }));
     expect((f.current().objects[0] as BoardSmartFrameObject).criteria.selectedLoras).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate query independently' }));
     const duplicate = f.current().objects[2] as BoardSmartFrameObject;
@@ -51,7 +53,7 @@ describe('visual filter branching', () => {
     act(() => useBoardStore.getState().executeOperation(f.id, document => createSmartFrame(document, { id: 'right', title: 'Right', x: 900 })));
     act(() => useBoardStore.getState().setSelection(f.id, ['right', 'flux']));
     render(<BoardInspector boardId={f.id} editable />);
-    fireEvent.click(screen.getByRole('button', { name: 'Difference…' }));
+    fireEvent.click(screen.getByRole('button', { name: /Difference/ }));
     expect(screen.getByRole('dialog').textContent).toContain('Flux minus Right');
     fireEvent.click(screen.getByRole('button', { name: 'Swap A and B' }));
     expect(screen.getByRole('dialog').textContent).toContain('Right minus Flux');

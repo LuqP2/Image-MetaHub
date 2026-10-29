@@ -1,7 +1,7 @@
 import type { BoardSetExpression, BoardSmartFrameObject } from '../../services/boards/queryTypes';
 import type { LibraryQueryCriteria } from '../../services/libraryQuery/types';
 
-function summary(criteria: LibraryQueryCriteria): string[] {
+export function summarizeBoardCriteria(criteria: LibraryQueryCriteria): string[] {
   const items: string[] = [];
   if (criteria.searchQuery.trim()) items.push(`Search: ${criteria.searchQuery}`);
   const fields = { selectedModels: 'Checkpoints', excludedModels: 'Exclude checkpoints', selectedLoras: 'LoRAs', excludedLoras: 'Exclude LoRAs',
@@ -17,10 +17,10 @@ function summary(criteria: LibraryQueryCriteria): string[] {
   if (criteria.selectedFolders.length && !criteria.includeSubfolders) items.push('Direct folders only');
   const advanced = criteria.advancedFilters;
   if (advanced.dimension) items.push(`Resolution: ${advanced.dimension}`);
-  if (advanced.date?.from || advanced.date?.to) items.push(`Date: ${advanced.date.from || 'any'} – ${advanced.date.to || 'any'}`);
+  if (advanced.date?.from || advanced.date?.to) items.push(`Date: ${advanced.date.from || 'any'} â€“ ${advanced.date.to || 'any'}`);
   for (const [key, label] of [['steps', 'Steps'], ['cfg', 'CFG'], ['generationTimeMs', 'Generation time (ms)'], ['stepsPerSecond', 'Steps per second'], ['vramPeakMb', 'VRAM (MB)']] as const) {
     const range = advanced[key];
-    if (range) items.push(`${label}: ${range.min ?? 'any'} – ${range.maxExclusive ? '< ' : ''}${range.max ?? 'any'}`);
+    if (range) items.push(`${label}: ${range.min ?? 'any'} â€“ ${range.maxExclusive ? '< ' : ''}${range.max ?? 'any'}`);
   }
   if (advanced.mediaTypes?.length) items.push(`Media: ${advanced.mediaTypes.join(', ')}`);
   if (advanced.generationModes?.length) items.push(`Generation mode: ${advanced.generationModes.join(', ')}`);
@@ -37,7 +37,7 @@ export default function BoardInheritedQuerySummary({ source, frames }: { source:
       if (visited.has(key)) return;
       visited.add(key);
       const parent = frames.find(frame => frame.id === expression.frameId);
-      if (!parent) { entries.push({ title: 'Unavailable source frame — reconnect Source above' }); return; }
+      if (!parent) { entries.push({ title: 'Unavailable source frame â€” reconnect Source above' }); return; }
       entries.push({ title: `${role}: ${parent.title}`, criteria: parent.criteria, constraints: parent.groupConstraints.length });
       visit(parent.source, role);
     } else if (expression.kind === 'query') {
@@ -48,6 +48,6 @@ export default function BoardInheritedQuerySummary({ source, frames }: { source:
   visit(source);
   if (!entries.length) return null;
   return <section aria-label="Inherited filters"><h3>Inherited filters</h3><p>Local filters refine these source results. Edit a source frame or duplicate independently to change inherited criteria.</p>
-    {entries.map((entry, index) => <div key={index}><strong>{entry.title}</strong>{entry.criteria && <ul>{(summary(entry.criteria).length ? summary(entry.criteria) : ['No additional filters']).map(text => <li key={text}>{text}</li>)}</ul>}{!!entry.constraints && <p>{entry.constraints} inherited group constraints</p>}</div>)}
+    {entries.map((entry, index) => <div key={index}><strong>{entry.title}</strong>{entry.criteria && <ul>{(summarizeBoardCriteria(entry.criteria).length ? summarizeBoardCriteria(entry.criteria) : ['No additional filters']).map(text => <li key={text}>{text}</li>)}</ul>}{!!entry.constraints && <p>{entry.constraints} inherited group constraints</p>}</div>)}
   </section>;
 }

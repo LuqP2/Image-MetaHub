@@ -22,9 +22,9 @@ export default function BoardGroupPreview({ frameId, label, ids, constraints, op
       state.setSelection(boardId, added.map(object => object.id)); state.requestReveal(boardId, [frameId, ...added.map(object => object.id)], true); setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
-  return <div className="board-group-preview"><strong title={label}>{label}</strong><span>{ids.length.toLocaleString()} images</span>
+  return <div className={`board-group-preview${ids.length ? '' : ' board-group-preview--empty'}`}><strong tabIndex={0} title={label}>{label}</strong><span>{ids.length.toLocaleString()} {ids.length === 1 ? 'image' : 'images'}</span>
     <div className="board-group-thumbnails">{ids.slice(0, 4).map(id => { const image = actions?.images.get(id); return image ? <BoardResultThumbnail key={id} image={image} open={() => actions?.open(id, frameId, ids)} /> : null; })}</div>
-    <button className="board-button" onClick={open}>Browse group</button><button className="board-button" disabled={!editor.editable} onClick={branch}>Branch group</button>
+    <div className="board-group-actions"><button className="board-button" onClick={open}>Browse group</button><button className="board-button" disabled={!editor.editable} onClick={branch}>Branch group</button></div>
     {error && <span role="alert">{error}</span>}
   </div>;
 }

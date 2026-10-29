@@ -32,6 +32,19 @@ function fixture(size = 2) {
 }
 
 describe('metadata layouts', () => {
+  it('keeps an opened empty cell and returns to overview when its axis disappears', () => {
+    const f = fixture();
+    const matrix = buildBoardGroupedLayout(f.dataset.images, { kind: 'matrix', rows: 'lora', columns: 'model' }, f.context);
+    if (matrix?.kind !== 'matrix') throw new Error('matrix');
+    const view = render(<BoardSmartFrameMatrix frameId="parent" matrix={matrix} />, { wrapper: f.wrapper });
+    const empty = screen.getAllByText('0 images')[0].closest('.board-group-preview') as HTMLElement;
+    fireEvent.click(within(empty).getByRole('button', { name: 'Browse group' }));
+    expect(screen.getByText('No images in this group.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back to overview' })).toBeTruthy();
+    view.rerender(<BoardSmartFrameMatrix frameId="parent" matrix={{ ...matrix, rows: [] }} />);
+    expect(screen.queryByRole('button', { name: 'Back to overview' })).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('no longer available');
+  });
   it('branches a subgroup with both constraints and browses its complete image set', () => {
     const f = fixture();
     const layout = buildBoardGroupedLayout(f.dataset.images, { kind: 'groups', groupBy: 'model', subgroupBy: 'lora' }, f.context);
@@ -42,7 +55,7 @@ describe('metadata layouts', () => {
     const child = useBoardStore.getState().sessions[f.document.id].document.objects[1] as BoardSmartFrameObject;
     expect(child.groupConstraints).toEqual([{ kind: 'exact', dimension: 'model', value: 'Flux' }, { kind: 'exact', dimension: 'lora', value: 'A' }]);
     fireEvent.click(within(preview).getByRole('button', { name: 'Browse group' }));
-    expect(screen.getByRole('button', { name: 'Back to groups' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back to overview' })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /^Open / })).toHaveLength(1);
     fireEvent.doubleClick(screen.getAllByRole('button', { name: /^Open / })[0]);
     expect(f.open).toHaveBeenCalledWith(f.images[0].id, 'parent', [f.images[0].id]);

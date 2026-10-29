@@ -21,7 +21,7 @@ export default function BoardSmartFrameSelectionActions({ boardId, frames, edita
   return <div className="board-smart-selection-actions">
     {error && <p role="alert">{error}</p>}
     <button className="board-button" disabled={!editable || frames.length < 2} onClick={() => run(document => intersectSmartFrames(document, frames.map(frame => frame.id)))}>Intersect frames</button>
-    <button className="board-button" disabled={!editable || frames.length !== 2} onClick={() => setDifference(true)}>Difference…</button>
+    <button className="board-button" disabled={!editable || frames.length !== 2} onClick={() => setDifference(true)}>Differenceâ€¦</button>
     {difference && <BoardSetOperationDialog frames={frames} disabled={!editable} close={() => setDifference(false)} confirm={(left, right) => run(document => subtractSmartFrames(document, left, right))} />}
   </div>;
 }
