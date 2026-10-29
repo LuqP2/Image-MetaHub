@@ -1,14 +1,14 @@
 import { create } from 'zustand';
 import { boardService } from './boardService';
-import { normalizeReferenceRemap } from './document.mjs';
+import { applyBoardReferenceRemaps, normalizeReferenceRemap } from './document.mjs';
 import { useBoardStore } from '../../store/useBoardStore';
-import type { BoardReferenceRemap } from './types';
+import type { BoardDocument, BoardReferenceRemap } from './types';
 
 const pending = new Map<string, BoardReferenceRemap>();
 const observed = new Map<string, BoardReferenceRemap>();
 let running: Promise<void> | null = null;
 let reconciling = false;
-export const useBoardReferenceSync = create<{ pendingCount: number; error: string | null }>(() => ({ pendingCount: 0, error: null }));
+export const useBoardReferenceSync = create<{ pendingCount: number; error: string | null; previewRevision: number }>(() => ({ pendingCount: 0, error: null, previewRevision: 0 }));
 
 /** Enqueue only after the physical file operation has succeeded. Retry keeps operation IDs. */
 export function queueBoardReferenceRemaps(remaps: BoardReferenceRemap[]): void {
@@ -16,8 +16,13 @@ export function queueBoardReferenceRemaps(remaps: BoardReferenceRemap[]): void {
   const valid = remaps.map(normalizeReferenceRemap);
   for (const remap of valid) { pending.set(remap.operationId, remap); observed.set(remap.operationId, remap); }
   applyRemapsToSessions(valid);
-  useBoardReferenceSync.setState({ pendingCount: pending.size });
+  useBoardReferenceSync.setState(state => ({ pendingCount: pending.size, previewRevision: state.previewRevision + 1 }));
   void flushReferenceRemaps().catch(() => {});
+}
+
+/** Include successful physical moves even while their journal write is pending or retrying. */
+export function reconcileBoardPreviewReferences(document: BoardDocument): BoardDocument {
+  return observed.size ? applyBoardReferenceRemaps(document, [...observed.values()]) : document;
 }
 
 // A recovery/import may adopt a snapshot that was saved just before a file move.

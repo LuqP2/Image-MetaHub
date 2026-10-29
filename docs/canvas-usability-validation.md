@@ -10,12 +10,16 @@ Schema v2, query identities, raw group constraints and import/export formats rem
 
 ## Automated verification
 
-- Final Canvas regression on 2026-10-29: 173 tests passed across 44 files, covering documents, persistence, undo/redo, import/export, query lifecycle, geometry, filters and result layouts.
+- Final Canvas regression on 2026-10-29: 176 tests passed across 44 files, covering documents, persistence, undo/redo, import/export, query lifecycle, geometry, filters and result layouts.
 - First-use coverage checks source explanations, selection availability, initial focus, Tab containment, focus restoration, reference-library focus and query creation entry points.
 - Presentation coverage checks distinct Python object representations sharing the same display label without merging groups or changing exported constraints, optional branch titles and preservation of existing titles.
-- Preview coverage checks visibility-triggered document reads, manual reference resolution, release of thumbnail subscriptions offscreen and sensitive-file hiding. Previews subscribe to already-resolved thumbnails; they do not execute Smart Frame queries or generate preview files.
+- Preview coverage checks visibility-triggered document reads, manual reference resolution, release of thumbnail subscriptions offscreen, sensitive-file hiding, rename/move invalidation without board revision changes, reused old paths and stale in-flight reads. Previews subscribe to already-resolved thumbnails; they do not execute Smart Frame queries or generate preview files.
 - Source-facet coverage checks counts before local predicates, visibility rules and reuse across layout changes.
 - TypeScript, scoped ESLint and the production build were checked. Build warnings about browser data age, existing zlib externalization and chunk sizes remain informational.
+
+## PR #620 review follow-up
+
+Reference remaps now advance a session-only preview revision. Visible saved previews discard older revisions immediately and reload, while hidden cards remain unloaded. Preview cache keys include that revision; a read that began before a remap cannot populate the current cache. Loaded documents are reconciled with observed successful file moves before references are resolved, including while the remap journal write is pending or retrying. The board document revision and timestamp are not changed by this invalidation.
 
 ## Supplemental measurement
 

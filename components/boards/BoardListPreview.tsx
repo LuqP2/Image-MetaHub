@@ -1,3 +1,4 @@
+import { useBoardReferenceSync } from '../../services/boards/referenceSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { IndexedImage } from '../../types';
 import type { BoardDocument, BoardSummary } from '../../services/boards/types';
@@ -16,7 +17,8 @@ function PreviewImage({ image, blurred }: { image: IndexedImage; blurred: boolea
 export default function BoardListPreview({ summary, resolveAsset }: { summary: BoardSummary; resolveAsset?: BoardEditorActions['resolveAsset'] }) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
-  const [saved, setSaved] = useState<BoardDocument | null>(null);
+  const [saved, setSaved] = useState<{ document: BoardDocument; revision: number } | null>(null);
+  const previewRevision = useBoardReferenceSync(state => state.previewRevision);
   const sessionDocument = useBoardStore(state => state.sessions[summary.id]?.document);
   const enabled = useSettingsStore(state => state.enableSafeMode);
   const blur = useSettingsStore(state => state.blurSensitiveImages);
@@ -31,10 +33,10 @@ export default function BoardListPreview({ summary, resolveAsset }: { summary: B
     setSaved(null);
     if (!visible || !canResolve || summary.error || sessionDocument) return;
     let current = true;
-    void loadBoardPreview(summary, () => current).then(document => { if (current) setSaved(document); }).catch(() => {});
+    void loadBoardPreview(summary, () => current).then(document => { if (current && document) setSaved({ document, revision: previewRevision }); }).catch(() => {});
     return () => { current = false; };
-  }, [visible, summary.id, summary.revision, summary.updatedAt, summary.error, sessionDocument, canResolve]);
-  const document = sessionDocument ?? saved;
+  }, [visible, summary.id, summary.revision, summary.updatedAt, summary.error, sessionDocument, canResolve, previewRevision]);
+  const document = sessionDocument ?? (saved?.revision === previewRevision ? saved.document : null);
   const preview = useMemo(() => {
     const images: IndexedImage[] = [], types = new Map<string, number>(), ids = new Set<string>();
     if (!visible || !document) return { images, types };

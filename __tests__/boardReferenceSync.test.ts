@@ -20,7 +20,7 @@ describe('board reference synchronization', () => {
     expect(useBoardReferenceSync.getState()).toMatchObject({ pendingCount: 1, error: expect.stringContaining('file operation completed') });
     await flushReferenceRemaps();
     expect(mocks.persist.mock.calls[0][0]).toEqual(mocks.persist.mock.calls[1][0]);
-    expect(useBoardReferenceSync.getState()).toEqual({ pendingCount: 0, error: null });
+    expect(useBoardReferenceSync.getState()).toMatchObject({ pendingCount: 0, error: null });
     expect(await getBoardReferenceBaseline()).toEqual(['past']);
   });
 });

@@ -1,3 +1,7 @@
+import { queueBoardReferenceRemaps, flushReferenceRemaps } from '../services/boards/referenceSync';
+import { loadBoardPreview } from '../services/boards/preview';
+import { boardWithAsset, boardLocator } from './helpers/boardFixtures';
+import { applyBoardReferenceRemaps } from '../services/boards/document.mjs';
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,14 +12,16 @@ import { createBoardDocument, normalizeBoardDocument } from '../services/boards/
 import { branchSmartFrame, createSmartFrame } from '../services/boards/smartFrameOperations';
 import { buildBoardGroupedLayout, createGroupingContext } from '../services/boards/grouping';
 import { toLibraryQueryImage } from '../services/libraryQuery/dataset';
+import type { IndexedImage } from '../types';
 import type { BoardAssetObject, BoardSummary } from '../services/boards/types';
 import { boardImage, boardDirectory } from './helpers/boardIntegrationFixtures';
 import { useBoardStore } from '../store/useBoardStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-const { load, thumbnail } = vi.hoisted(() => ({ load: vi.fn(), thumbnail: vi.fn(() => ({ thumbnailUrl: 'blob:existing' })) }));
-vi.mock('../services/boards/boardService', () => ({ boardService: { load } }));
+const { load, persist, thumbnail } = vi.hoisted(() => ({ load: vi.fn(), persist: vi.fn(), thumbnail: vi.fn((image: IndexedImage | null) => ({ thumbnailUrl: image ? 'blob:existing' : null })) }));
+vi.mock('../services/boards/boardService', () => ({ boardService: { load, remapReferences: persist } }));
 vi.mock('../hooks/useResolvedThumbnail', () => ({ useResolvedThumbnail: thumbnail }));
 vi.mock('../hooks/useThumbnail', () => ({ useThumbnail: () => { throw new Error('Preview must not generate thumbnails'); } }));
+const originalApi = window.electronAPI;
 let intersect: IntersectionObserverCallback;
 const observers: IntersectionObserver[] = [];
 beforeEach(() => {
@@ -23,11 +29,12 @@ beforeEach(() => {
     constructor(callback: IntersectionObserverCallback) { intersect = callback; observers.push(this as unknown as IntersectionObserver); }
     observe() {} disconnect() {} unobserve() {} takeRecords() { return []; }
   });
-  load.mockReset(); thumbnail.mockClear();
+  load.mockReset(); persist.mockReset().mockResolvedValue(undefined); thumbnail.mockClear();
+  Object.defineProperty(window, 'electronAPI', { configurable: true, value: { boardsRemapReferences: vi.fn() } });
   useBoardStore.setState({ sessions: {}, activeBoardId: null });
   useSettingsStore.setState({ enableSafeMode: false, blurSensitiveImages: false, sensitiveTags: [] });
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(async () => { cleanup(); persist.mockResolvedValue(undefined); await flushReferenceRemaps(); Object.defineProperty(window, 'electronAPI', { configurable: true, value: originalApi }); vi.unstubAllGlobals(); });
 const visible = (isIntersecting = true) => act(() => intersect([{ isIntersecting } as IntersectionObserverEntry], observers[observers.length - 1]));
 
 describe('Canvas identification and first use', () => {
@@ -99,5 +106,53 @@ describe('Canvas identification and first use', () => {
     visible();
     await screen.findByText('1 Reference');
     expect(view.container.querySelector('img')).toBeNull(); expect(thumbnail).not.toHaveBeenCalled();
+  });
+});
+
+describe('board preview reference remaps', () => {
+  it.each(['rename', 'move'])('refreshes an unopened visible preview after a %s with unchanged board revision', async operation => {
+    const doc = boardWithAsset();
+    const object = doc.objects[0] as BoardAssetObject;
+    const oldLocator = boardLocator(`${operation}-old.png`), newLocator = { ...boardLocator(`${operation}-new.png`), directoryPath: operation === 'move' ? 'C:/moved-library' : oldLocator.directoryPath };
+    object.reference = { kind: 'path', locator: oldLocator };
+    const original = boardImage(`${operation}-old.png`), moved = boardImage(`${operation}-new.png`), reused = boardImage('unrelated-reused-path.png');
+    let renamed = false;
+    const journal: import('../services/boards/types').BoardReferenceRemap[] = [];
+    persist.mockImplementation(async remaps => { journal.push(...remaps); });
+    load.mockImplementation(async () => applyBoardReferenceRemaps(doc, journal));
+    const resolve = vi.fn((asset: BoardAssetObject) => ({ status: 'resolved' as const, image: asset.reference.locator.relativePath === newLocator.relativePath ? moved : renamed ? reused : original }));
+    const summary = { ...doc, objectCount: 1 };
+    const view = render(<BoardListPreview summary={summary} resolveAsset={resolve} />);
+    visible(); await waitFor(() => expect(thumbnail).toHaveBeenLastCalledWith(original));
+    visible(false); visible();
+    await waitFor(() => expect(view.container.querySelector('img')).toBeTruthy());
+    expect(load).toHaveBeenCalledTimes(1);
+    renamed = true;
+    await act(async () => { queueBoardReferenceRemaps([{ operationId: `${doc.id}:remap`, oldLocator, newLocator }]); await flushReferenceRemaps(); });
+    await waitFor(() => expect(thumbnail).toHaveBeenLastCalledWith(moved));
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(resolve.mock.lastCall![0].reference.locator).toEqual(newLocator);
+    expect(doc.revision).toBe(summary.revision); expect(doc.updatedAt).toBe(summary.updatedAt);
+    expect(useBoardStore.getState().sessions[doc.id]).toBeUndefined();
+    expect(thumbnail.mock.calls.some(([image]) => image === reused)).toBe(false);
+  });
+  it('reconciles a stale in-flight read and prevents it from repopulating the current cache', async () => {
+    const doc = boardWithAsset();
+    const asset = doc.objects[0] as BoardAssetObject;
+    const oldLocator = boardLocator('inflight-old.png'), newLocator = boardLocator('inflight-new.png');
+    asset.reference = { kind: 'path', locator: oldLocator };
+    let finish!: (document: typeof doc) => void;
+    load.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockResolvedValue(doc);
+    const summary = { ...doc, objectCount: 1 };
+    const pending = loadBoardPreview(summary, () => true);
+    queueBoardReferenceRemaps([{ operationId: `${doc.id}:inflight`, oldLocator, newLocator }]);
+    await flushReferenceRemaps(); finish(doc);
+    const result = await pending;
+    expect((result!.objects[0] as BoardAssetObject).reference.locator).toEqual(newLocator);
+    const fresh = await loadBoardPreview(summary, () => true);
+    expect((fresh!.objects[0] as BoardAssetObject).reference.locator).toEqual(newLocator);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(await loadBoardPreview(summary, () => true)).toBe(fresh);
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });
