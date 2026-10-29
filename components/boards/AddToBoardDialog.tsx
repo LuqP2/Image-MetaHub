@@ -43,7 +43,7 @@ export default function AddToBoardDialog({ images, onClose, onAdded }: { images:
     }
   }}>
     <section ref={dialog} role="dialog" aria-modal="true" aria-label="Add to Board" className="max-h-[80vh] w-full max-w-md overflow-auto rounded-xl border border-gray-700 bg-gray-900 p-5 text-gray-100 shadow-xl">
-      <div className="mb-4 flex justify-between"><h2 className="font-semibold">Add {images.length} assets to a board</h2><button disabled={busy} onClick={onClose} aria-label="Close Add to Board">×</button></div>
+      <div className="mb-4 flex justify-between"><h2 className="font-semibold">Add {images.length} {images.length === 1 ? 'asset' : 'assets'} to a board</h2><button disabled={busy} onClick={onClose} aria-label="Close Add to Board">×</button></div>
       {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
       <fieldset disabled={busy} className="flex flex-col gap-2"><input className="rounded border border-gray-700 bg-gray-800 p-2" aria-label="New board name" value={name} onChange={event => setName(event.target.value)} />
         <button className="rounded bg-indigo-600 p-2" onClick={() => { void add(); }}>Create board and add</button>

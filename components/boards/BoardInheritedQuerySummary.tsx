@@ -1,3 +1,4 @@
+import { boardValueLabel } from '../../services/boards/presentation';
 import type { BoardSetExpression, BoardSmartFrameObject } from '../../services/boards/queryTypes';
 import type { LibraryQueryCriteria } from '../../services/libraryQuery/types';
 
@@ -11,7 +12,7 @@ export function summarizeBoardCriteria(criteria: LibraryQueryCriteria): string[]
     selectedFolders: 'Folders', excludedFolders: 'Exclude folders', selectedRatings: 'Ratings' } as const;
   for (const [key, label] of Object.entries(fields)) {
     const values = criteria[key as keyof typeof fields];
-    if (values.length) items.push(`${label}: ${values.join(', ')}`);
+    if (values.length) items.push(`${label}: ${values.map(value => boardValueLabel(String(value))).join(', ')}`);
   }
   if (criteria.favoriteFilterMode !== 'neutral') items.push(criteria.favoriteFilterMode === 'include' ? 'Favorites only' : 'Exclude favorites');
   if (criteria.selectedFolders.length && !criteria.includeSubfolders) items.push('Direct folders only');

@@ -50,9 +50,10 @@ describe('metadata layouts', () => {
     const layout = buildBoardGroupedLayout(f.dataset.images, { kind: 'groups', groupBy: 'model', subgroupBy: 'lora' }, f.context);
     if (layout?.kind !== 'groups') throw new Error('groups');
     render(<BoardSmartFrameGroups frameId="parent" groups={layout.groups} />, { wrapper: f.wrapper });
-    const preview = screen.getByText('Flux / A').closest('.board-group-preview') as HTMLElement;
+    const preview = screen.getByText('Flux › A').closest('.board-group-preview') as HTMLElement;
     fireEvent.click(within(preview).getByRole('button', { name: 'Branch group' }));
     const child = useBoardStore.getState().sessions[f.document.id].document.objects[1] as BoardSmartFrameObject;
+    expect(child.title).toBe('Flux › A');
     expect(child.groupConstraints).toEqual([{ kind: 'exact', dimension: 'model', value: 'Flux' }, { kind: 'exact', dimension: 'lora', value: 'A' }]);
     fireEvent.click(within(preview).getByRole('button', { name: 'Browse group' }));
     expect(screen.getByRole('button', { name: 'Back to overview' })).toBeTruthy();

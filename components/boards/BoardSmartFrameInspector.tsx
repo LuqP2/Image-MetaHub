@@ -1,3 +1,4 @@
+import { boardSourceLabel, boardConstraintLabel } from '../../services/boards/presentation';
 import Section from './BoardInspectorSection';
 import { groupingLabels } from '../../services/boards/grouping';
 import BoardSmartFrameLayoutEditor from './BoardSmartFrameLayoutEditor';
@@ -42,7 +43,7 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
       run(document => reconnectSmartFrameSource(document, frame.id, value === 'library' ? { kind: 'library' } : value.startsWith('frame:') ? { kind: 'frame', frameId: value.slice(6) } : { kind: 'collection', collectionId: value.slice(11) }));
     }}>
       <option value="library">Entire library</option>
-      {frame.source.kind !== 'library' && frame.source.kind !== 'collection' && frame.source.kind !== 'frame' && <option value={sourceValue} disabled>{frame.source.kind === 'query' ? 'Independent query' : frame.source.kind}</option>}
+      {frame.source.kind !== 'library' && frame.source.kind !== 'collection' && frame.source.kind !== 'frame' && <option value={sourceValue} disabled>{boardSourceLabel(frame.source, frames)}</option>}
       {frame.source.kind === 'frame' && !candidates.some(candidate => candidate.id === (frame.source.kind === 'frame' ? frame.source.frameId : '')) && <option value={sourceValue} disabled>Unavailable source frame</option>}
       {frame.source.kind === 'collection' && !actions?.collections.some(collection => collection.id === collectionId) && <option value={sourceValue} disabled>Missing collection</option>}
       {actions?.collections.map(collection => <option key={collection.id} value={`collection:${collection.id}`}>Collection: {collection.name}</option>)}
@@ -54,7 +55,7 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
     <Section title="Filters" defaultOpen stateKey={`${boardId}:filters`}>
     {frame.groupConstraints.length > 0 && <section aria-label="Local group filters"><h3>Group filters</h3>
       {frame.groupConstraints.map((constraint, index) => <div key={index}>
-        <span>{groupingLabels[constraint.dimension]}: {constraint.kind === 'missing' ? 'No value' : constraint.kind === 'session' ? `${new Date(constraint.start).toLocaleString()} – ${new Date(constraint.endExclusive - 1).toLocaleString()}` : constraint.value}</span>
+        <span title={constraint.kind === 'exact' ? constraint.value : undefined}>{groupingLabels[constraint.dimension]}: {boardConstraintLabel(constraint)}</span>
         <button className="board-button" disabled={!editable} onClick={() => run(document => updateObjects(document, [{ id: frame.id, groupConstraints: frame.groupConstraints.filter((_, position) => position !== index) }]))}>Remove group filter</button>
       </div>)}
     </section>}

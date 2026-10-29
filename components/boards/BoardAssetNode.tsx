@@ -1,3 +1,4 @@
+import { boardValueLabel } from '../../services/boards/presentation';
 import { getBoardDisplayName } from './boardPresentation';
 import { memo } from 'react';
 import type { NodeProps } from '@xyflow/react';
@@ -30,6 +31,6 @@ export default memo(function BoardAssetNode({ data, selected }: NodeProps<BoardF
         : <span>{resolution?.status === 'loading' ? 'Loading…' : resolution?.status === 'ambiguous' ? 'Choose a reference' : `${object.mediaType} · Unavailable`}</span>}
     </div>
     <div className="board-asset-caption" title={object.name}>{getBoardDisplayName(object.name)}{object.mediaType !== 'image' && <span>{object.mediaType}</span>}</div>
-    {fields && object.visibleFields.length > 0 && <div className="board-asset-fields">{object.visibleFields.map(field => <div key={field} title={String(fields[field] ?? '')}><strong>{field}</strong> {String(fields[field] ?? '—')}</div>)}</div>}
+    {fields && object.visibleFields.length > 0 && <div className="board-asset-fields">{object.visibleFields.map(field => <div key={field} title={String(fields[field] ?? '')}><strong>{field}</strong> {field === 'model' ? image?.models?.map(boardValueLabel).join(', ') || '—' : String(fields[field] ?? '—')}</div>)}</div>}
   </div>;
 });

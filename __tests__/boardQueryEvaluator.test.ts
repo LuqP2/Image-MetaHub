@@ -104,3 +104,18 @@ it('explores Flux through LoRA A, LoRA B and neither without changing sibling qu
   expect(output[document.objects[4].id].imageIds).toEqual(['both']);
   expect(output[document.objects[5].id].imageIds).toEqual(['a']);
 });
+
+it('counts facets in the visible source before local filtering and shares them between layouts', () => {
+  const source = dataset(); const definitions = frames();
+  definitions[0].criteria.selectedModels = ['Flux'];
+  const cache = createBoardEvaluationCache();
+  const result = evaluateBoardQueries(source, definitions, 1, 1, cache);
+  expect(result.all.imageIds).toEqual([a.id]);
+  expect(result.all.facets?.sourceCounts?.Models).toEqual(expect.arrayContaining([['SDXL', 1], ['Flux', 1]]));
+  definitions[0].layout = { kind: 'matrix', rows: 'generator', columns: 'rating' };
+  const next = evaluateBoardQueries(source, definitions, 1, 2, cache);
+  expect(next.all.facets).toBe(result.all.facets);
+  source.context.safeMode.enableSafeMode = true;
+  const hidden = evaluateBoardQueries({ ...source }, definitions, 2, 3, cache);
+  expect(hidden.all.facets?.sourceCounts?.Models).toEqual([['SDXL', 1]]);
+});

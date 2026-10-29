@@ -35,6 +35,15 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
   const session = useBoardStore(state => boardId ? state.sessions[boardId] : undefined);
   const closing = useBoardStore(state => state.closing);
   const retryQueries = useBoardQueries(boardId, loading);
+  const librarySelection = useImageStore(state => state.selectedImages);
+  const currentViewSnapshot = useImageStore(state => Boolean(state.semanticResult || state.activeImageScope || state.selectedNodes.length));
+  const safeMode = useSettingsStore(state => state.enableSafeMode);
+  const blurSensitive = useSettingsStore(state => state.blurSensitiveImages);
+  const sensitiveTags = useSettingsStore(state => state.sensitiveTags);
+  const selectionCount = useMemo(() => {
+    const hidden = getHiddenSensitiveTagSet({ enableSafeMode: safeMode, blurSensitiveImages: blurSensitive, sensitiveTags });
+    return images.filter(image => librarySelection.has(image.id) && isVisibleWithSafeMode(image, hidden)).length;
+  }, [images, librarySelection, safeMode, blurSensitive, sensitiveTags]);
   const collections = useImageStore(state => state.collections);
   const [creatingFrame, setCreatingFrame] = useState(false);
   const imagesById = useMemo(() => new Map(images.map(image => [image.id, image])), [images]);
@@ -127,7 +136,8 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
     let references: BoardAssetReference[] | null = null;
     if (source === 'selection') {
       const selected = useImageStore.getState().selectedImages;
-      const candidates = images.filter(image => selected.has(image.id));
+      const hidden = getHiddenSensitiveTagSet(useSettingsStore.getState());
+      const candidates = images.filter(image => selected.has(image.id) && isVisibleWithSafeMode(image, hidden));
       if (!candidates.length) throw new Error('Select library images before creating a Snapshot.');
       references = await captureReferences(candidates);
     }
@@ -163,7 +173,7 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
     },
   };
   return <BoardQueryContext.Provider value={queryActions}><div className="flex h-full min-h-0 flex-col">
-    {creatingFrame && <BoardCreateSmartFrameDialog collections={collections} close={() => setCreatingFrame(false)} create={source => runQueryAction(() => createQuery(source))} />}
+    {creatingFrame && <BoardCreateSmartFrameDialog selectionCount={selectionCount} currentViewSnapshot={currentViewSnapshot} collections={collections} close={() => setCreatingFrame(false)} create={source => runQueryAction(() => createQuery(source))} />}
 
     {!canUseCanvas && <div className="border-b border-gray-700 p-2 text-sm"><button onClick={() => showProModal('canvas')}>Enable Canvas editing with Pro or trial</button></div>}
     {error && <div role="alert" className="border-b border-red-500/40 p-2 text-sm text-red-300">{error}<button className="ml-3 underline" onClick={() => setError(null)}>Dismiss</button></div>}

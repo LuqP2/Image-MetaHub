@@ -89,7 +89,7 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
         <button className="board-button" onClick={() => run(() => useBoardStore.getState().saveAsNewBoard(boardId!))}>Save as new board</button>
       </>}
     </div>}
-    {!session || !boardId ? <BoardList summaries={summaries} editable={editable}
+    {!session || !boardId ? <BoardList resolveAsset={resolveAsset} summaries={summaries} editable={editable}
       onOpen={id => run(() => useBoardStore.getState().openBoard(id))} onCreate={name => run(() => useBoardStore.getState().createBoard(name))}
       onDuplicate={id => run(() => useBoardStore.getState().duplicateBoard(id))} onDelete={id => run(() => useBoardStore.getState().deleteBoard(id))}
       onRename={(id, name) => run(async () => { await useBoardStore.getState().openBoard(id); useBoardStore.getState().renameBoard(id, name); await useBoardStore.getState().closeBoard(); })}

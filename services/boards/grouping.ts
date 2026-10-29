@@ -75,7 +75,7 @@ export function groupBoardImages(images: LibraryQueryImage[], dimension: BoardGr
       while (end + 1 < sorted.length && sorted[end + 1].lastModified - sorted[end].lastModified <= SESSION_GAP_MS) end++;
       const from = sorted[start].lastModified, to = sorted[end].lastModified + 1;
       const constraint: BoardGroupConstraint = { kind: 'session', dimension: 'session', start: from, endExclusive: to };
-      const label = `${formatLocalDateKey(from)} ${new Date(from).toLocaleTimeString()} – ${new Date(to - 1).toLocaleTimeString()}`;
+      const label = `${formatLocalDateKey(from)} ${new Date(from).toLocaleTimeString()} â€“ ${new Date(to - 1).toLocaleTimeString()}`;
       for (let i = start; i <= end; i++) add(sorted[i], constraint, label);
       start = end + 1;
     }

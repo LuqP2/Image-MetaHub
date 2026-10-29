@@ -99,9 +99,9 @@ export function updateSmartFrameLayout(document: BoardDocument, id: string, layo
 function positionBeside(document: BoardDocument, parent: BoardSmartFrameObject, size = { width: 640, height: 420 }) {
   return findFreeBoardPosition(document.objects, size, { x: parent.x + parent.width + 64, y: parent.y });
 }
-export function branchSmartFrame(document: BoardDocument, id: string, constraints: BoardGroupConstraint[] = []) {
+export function branchSmartFrame(document: BoardDocument, id: string, constraints: BoardGroupConstraint[] = [], title?: string) {
   const parent = getFrame(document, id);
-  return createSmartFrame(document, { ...positionBeside(document, parent), title: `${parent.title} branch`,
+  return createSmartFrame(document, { ...positionBeside(document, parent), title: title?.trim() || `${parent.title} branch`,
     source: { kind: 'frame', frameId: id }, groupConstraints: constraints });
 }
 export const branchSmartFrameGroup = branchSmartFrame;
