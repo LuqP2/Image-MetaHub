@@ -15,7 +15,7 @@ export default function BoardSmartFrameResults({ imageIds, frameId }: { imageIds
         {({ columnIndex, rowIndex, style }) => {
           const id = imageIds[rowIndex * columns + columnIndex];
           const image = id ? actions?.images.get(id) : null;
-          return <div style={style}>{image && <BoardResultThumbnail image={image} open={() => actions?.open(id, frameId, imageIds)} />}</div>;
+          return <div style={{ ...style, overflow: 'hidden' }}>{image && <BoardResultThumbnail image={image} open={() => actions?.open(id, frameId, imageIds)} />}</div>;
         }}
       </FixedSizeGrid>;
     }}</BoardLocalSizer>

@@ -152,3 +152,5 @@
 .board-filter-chips{display:flex;flex-wrap:wrap;gap:4px}.board-filter-chip{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;border:1px solid rgb(var(--gray-700));border-radius:6px;padding:3px 6px;background:rgb(var(--gray-800))}.board-filter-summary{display:flex;flex-direction:column;gap:3px;overflow-wrap:anywhere}
 
 .board-smart-frame[aria-busy=true] .board-group-layout,.board-smart-frame[aria-busy=true] .board-smart-results,.board-smart-frame[aria-busy=true] .board-smart-preview{opacity:.6;pointer-events:none}
+
+.board-smart-results{min-width:0;overflow:hidden}.board-result-thumb{display:block;max-width:100%}.board-result-thumb>span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
