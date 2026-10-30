@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import electron from 'electron';
 import path from 'node:path';
+import { broadcastSettingsToWindows } from './settingsBroadcast.mjs';
 import { registerComparisonIpc } from './comparisonIpc.mjs';
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, root }) {
@@ -24,7 +25,8 @@ export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, 
   ipcMain.handle('save-settings', () => ({ success: true }));
   ipcMain.handle('get-runtime-info', () => ({ isPortable: true, userDataPath: app.getPath('userData'), autoUpdateSupported: false }));
   ipcMain.handle('get-theme', () => ({ shouldUseDarkColors: true }));
-  registerComparisonIpc({ ipcMain, BrowserWindow, getMainWindow: () => main, preloadPath: path.join(app.getAppPath(), 'preload.js'), indexPath: path.join(app.getAppPath(), 'dist', 'index.html'), isDev: false, configureNavigation: window => { window.webContents.setWindowOpenHandler(() => ({ action: 'deny' })); }, presentWindow: () => {} });
+  const settingsWindows = new Set();
+  registerComparisonIpc({ settingsWindows, ipcMain, BrowserWindow, getMainWindow: () => main, preloadPath: path.join(app.getAppPath(), 'preload.js'), indexPath: path.join(app.getAppPath(), 'dist', 'index.html'), isDev: false, configureNavigation: window => { window.webContents.setWindowOpenHandler(() => ({ action: 'deny' })); }, presentWindow: () => {} });
   const ui = { sync3DEnabled: true, cameras3D: {}, last3DImageId: null, syncEnabled: true, sharedZoom: { zoom: 1, x: 0, y: 0 }, paneZooms: {}, isMetadataExpanded: true, viewMode: 'side-by-side', layoutMode: 'grid', metadataViewMode: 'standard', activeMetadataIndex: null, advancedSettings: { threshold: 18, opacity: 65, baseMode: 'left', flickerSpeedMs: 700, loupeSize: 220, loupeZoom: 2, showLabels: true } };
   const image = name => ({ id: `smoke::${name}`, name, directoryId: 'smoke', fileType: name.endsWith('.png') ? 'image/png' : 'model/stl', metadata: { normalizedMetadata: { prompt: 'Synthetic comparison fixture' } } });
   try {
@@ -44,6 +46,9 @@ export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, 
       assert(result.success, `Comparison did not open: ${result.error}`);
       const viewer = BrowserWindow.getAllWindows().find(window => window !== main);
       assert(viewer, 'Comparison native window missing.');
+      await viewer.webContents.executeJavaScript('window.settingsNotifications = 0; window.electronAPI.onSettingsUpdated(() => { window.settingsNotifications++; }); true;');
+      broadcastSettingsToWindows([main, ...settingsWindows], main.webContents);
+      await viewer.webContents.executeJavaScript("new Promise((resolve, reject) => { const started = Date.now(); const poll = () => { if (window.settingsNotifications) resolve(true); else if (Date.now()-started>3000) reject(new Error('Settings notification missing')); else setTimeout(poll,20); }; poll(); })");
       await viewer.webContents.executeJavaScript(`new Promise((resolve, reject) => { const start = Date.now(); const tick = () => { const canvases = [...document.querySelectorAll('canvas')]; const images = [...document.querySelectorAll('img')]; if (canvases.length === ${names.filter(name => name.endsWith('.stl')).length} && images.filter(image => image.complete && image.naturalWidth > 0).length >= ${names.filter(name => name.endsWith('.png')).length} && !document.body.innerText.includes('Loading 3D model')) { resolve(true); return; } if (Date.now()-start > 25000) { reject(new Error(document.body.innerText)); return; } setTimeout(tick, 100); }; tick(); })`);
       const controls = await viewer.webContents.executeJavaScript(`(() => { const error = document.querySelector('[data-model3d-error]'); if (error) throw new Error(error.textContent); const sync = document.querySelector('[aria-label="Sync 3D cameras"]'); if (sync) { if (!sync.checked) throw new Error('3D sync did not default on'); sync.click(); if (sync.checked) throw new Error('3D sync did not toggle off'); const diff = [...document.querySelectorAll('button')].find(button => button.textContent === 'Diff Map'); if (!diff?.disabled) throw new Error('3D pixel differences enabled'); } const metadata = document.querySelector('[role="switch"]'); if (metadata?.getAttribute('aria-checked') !== 'false') throw new Error('Metadata mode was lost'); return true; })()`);
       assert(controls, 'Comparison controls failed.');
@@ -60,6 +65,7 @@ export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, 
       await viewer.webContents.executeJavaScript(`window.electronAPI.comparison.close(${JSON.stringify(snapshot.sessionId)}, true)`);
       await main.webContents.executeJavaScript(`new Promise((resolve, reject) => { const start=Date.now(); const tick=()=>{ if(window.smokeEvents.some(event=>event.type==='returned' && event.sessionId === ${JSON.stringify(snapshot.sessionId)})) resolve(true); else if(Date.now()-start>3000) reject(new Error('Return event missing')); else setTimeout(tick,25); }; tick(); })`);
     }
-    return { success: true, coverage: 'packaged-main-preload-ipc-renderer-and-webgl', canceledOpening: true, images: 2, mixedPanels: 4, models3D: 2, syncToggle: true, metadataStatePreserved: true, returnedToApp: true, screenshots: [path.join(root, 'compare-2.png'), path.join(root, 'compare-4.png'), path.join(root, 'compare-models.png')] };
+    assert(settingsWindows.size === 0, 'Settings registry retained a closed comparison.');
+    return { success: true, settingsBroadcast: true, coverage: 'packaged-main-preload-ipc-renderer-and-webgl', canceledOpening: true, images: 2, mixedPanels: 4, models3D: 2, syncToggle: true, metadataStatePreserved: true, returnedToApp: true, screenshots: [path.join(root, 'compare-2.png'), path.join(root, 'compare-4.png'), path.join(root, 'compare-models.png')] };
   } finally { for (const window of BrowserWindow.getAllWindows()) window.destroy(); for (const name of handlers) ipcMain.removeHandler(name); }
 }
