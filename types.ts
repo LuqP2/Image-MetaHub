@@ -478,6 +478,7 @@ export interface TrialExtensionActivationResult {
 export type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor' | 'canvas';
 
 export interface ElectronAPI {
+  comparison?: import('./services/comparisonContracts').ComparisonBridge;
   boardsList?: () => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardSummary[]>>;
   boardsReferenceBaseline?: () => Promise<import('./services/boards/types').BoardApiResult<string[]>>;
   boardsLoad?: (id: string) => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument>>;
@@ -894,7 +895,9 @@ export interface PromptDocument {
   negativeSeparator: string;
   variables: PromptVariable[];
 }
+export interface PromptFolder { id: string; name: string }
 export interface PromptEditorData {
+  folderId?: string;
   version: 1;
   title: string;
   notes: string;
@@ -918,9 +921,12 @@ export type PromptLibraryItem = SavedPrompt | PromptBlock;
 export type PromptLibraryMutation =
   | { action: 'create' | 'update'; kind: 'prompt' | 'block'; item: Partial<SavedPrompt & PromptBlock>; expectedRevision?: number }
   | { action: 'duplicate' | 'remove'; kind: 'prompt' | 'block'; id: string }
-  | { action: 'bulk'; kind: 'prompt' | 'block'; ids: string[]; addTags?: string[]; removeTags?: string[]; favorite?: boolean; category?: string }
-  | { action: 'import'; prompts: Partial<SavedPrompt>[]; blocks: Partial<PromptBlock>[]; keepDuplicates: boolean };
-export interface PromptLibrarySnapshot { prompts: SavedPrompt[]; blocks: PromptBlock[] }
+  | { action: 'bulk'; kind: 'prompt' | 'block'; ids: string[]; addTags?: string[]; removeTags?: string[]; favorite?: boolean; category?: string; folderId?: string }
+  | { action: 'folder-create'; name: string }
+  | { action: 'folder-rename'; id: string; name: string }
+  | { action: 'folder-remove'; id: string }
+  | { action: 'import'; folders?: PromptFolder[]; prompts: Partial<SavedPrompt>[]; blocks: Partial<PromptBlock>[]; keepDuplicates: boolean };
+export interface PromptLibrarySnapshot { folders?: PromptFolder[]; prompts: SavedPrompt[]; blocks: PromptBlock[] }
 
 export interface SavePromptInput {
   positivePrompt: string;
@@ -1655,6 +1661,9 @@ export interface ComparisonAdvancedSettings {
 }
 
 export interface ComparisonPaneProps {
+  externalCamera?: import('./services/model3DCamera').Model3DCameraState;
+  onCameraChange?: (state: import('./services/model3DCamera').Model3DCameraState, interacted: boolean) => void;
+  onGenerate?: (request: import('./services/comparisonContracts').ComparisonGenerateRequest) => Promise<void>;
   image: IndexedImage;
   directoryPath: string;
   syncEnabled: boolean;

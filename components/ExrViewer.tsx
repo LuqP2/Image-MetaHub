@@ -8,7 +8,7 @@ import SettingsModal from './SettingsModal';
 import { ExrPreviewLayers } from './ExrPreviewLayers';
 
 const control = 'max-w-48 rounded border border-gray-600 bg-gray-900 px-2 py-1 text-xs text-gray-200';
-export default function ExrViewer({ image, directoryPath, externalZoom, onZoomChange }: { image: IndexedImage; directoryPath?: string; externalZoom?: ZoomState; onZoomChange?: (zoom: number, x: number, y: number) => void }) {
+export default function ExrViewer({ image, directoryPath, externalZoom, onZoomChange, navigation }: { image: IndexedImage; directoryPath?: string; externalZoom?: ZoomState; onZoomChange?: (zoom: number, x: number, y: number) => void; navigation?: React.ReactNode }) {
   const api = window.electronAPI?.exr;
   const [asset, setAsset] = useState<ExrAssetInfo | null>(null);
   const [profile, setProfile] = useState<ExrColorProfile>(DEFAULT_EXR_PROFILE);
@@ -104,7 +104,7 @@ export default function ExrViewer({ image, directoryPath, externalZoom, onZoomCh
   }, [api, overview, overviewKey, selectionKey, asset, view, viewport, fitWidth, fitHeight, sourceWidth, sourceHeight, profile, partIndex, channels, mode, exposure, range, image, directoryPath]);
   const dataView = mode === 'auto' ? channels.length < 3 || /normal|position/i.test(channels[0] ?? '') : mode !== 'color';
   return <div data-no-window-drag="true" className="flex h-full min-h-0 w-full flex-col bg-black" onMouseDown={e => e.stopPropagation()}>
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-gray-800 bg-gray-950 p-2">
+    <div role="toolbar" aria-label="EXR controls" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} className="flex max-h-[40%] shrink-0 flex-wrap items-center gap-2 overflow-y-auto border-b border-gray-800 bg-gray-950 p-2">
       <span className="text-xs font-medium text-gray-300">EXR</span>
       {asset && <>
         <select aria-label="EXR part" className={control} value={partIndex} onChange={e => { const p = asset.parts.find(p => p.index === Number(e.target.value))!; setOverview(null); setDetail(null); setPartIndex(p.index); setChannels(exrChannelGroups(p)[0]?.channels ?? []); setRange(undefined); }}>{asset.parts.map(p => <option key={p.index} value={p.index}>{p.name}{p.deep ? ' (deep: unsupported)' : ''}</option>)}</select>
@@ -117,7 +117,7 @@ export default function ExrViewer({ image, directoryPath, externalZoom, onZoomCh
         <label className="flex items-center gap-1 text-xs text-gray-300">EV<input aria-label="Exposure slider" type="range" min={-10} max={10} step={0.1} value={exposure} disabled={Boolean(dataView)} onChange={e => setExposure(Number(e.target.value))} className="w-24" /><input aria-label="Exposure stops" type="number" min={-10} max={10} step={0.1} value={exposure} disabled={Boolean(dataView)} onChange={e => { const n = Number(e.target.value); if (Number.isFinite(n)) setExposure(Math.max(-10, Math.min(10, n))); }} className={`${control} w-16`} /></label>
         {overview?.mode === 'scalar' && <label className="flex items-center gap-1 text-xs text-gray-300">Range{[0,1].map(i => <input key={i} aria-label={i ? 'Scalar maximum' : 'Scalar minimum'} type="number" step="any" value={(range ?? overview.range ?? [0,1])[i]} className={`${control} w-20`} onChange={e => { const next: [number,number] = [...(range ?? overview.range ?? [0,1])]; next[i] = Number(e.target.value); if (Number.isFinite(next[i]) && next[1] > next[0]) setRange(next); }} />)}<button className={control} onClick={() => setRange(undefined)}>Auto</button></label>}
       </>}
-      <button className={`${control} ml-auto`} onClick={() => setSettingsOpen(true)}>EXR settings</button>
+      <button type="button" aria-label="EXR settings" className={`${control} ml-auto shrink-0`} onClick={() => setSettingsOpen(true)}>EXR settings</button>
     </div>
     <div className="relative min-h-0 flex-1 overflow-hidden" ref={viewportRef}>
       {overview && <TransformWrapper ref={transformRef} key={`${image.id}:${partIndex}`} minScale={1} maxScale={64} centerOnInit={!externalZoom} onInit={syncExternalZoom} onTransformed={(_, state) => { setView({ scale: state.scale, x: state.positionX, y: state.positionY }); onZoomChange?.(state.scale, state.positionX, state.positionY); }}>
@@ -130,6 +130,7 @@ export default function ExrViewer({ image, directoryPath, externalZoom, onZoomCh
           <div className="absolute bottom-2 left-2 flex gap-2"><button className={control} onClick={() => zoomOut()}>−</button><button className={control} onClick={() => zoomIn()}>+</button><button className={control} onClick={() => resetTransform()}>Fit</button></div>
         </>}
       </TransformWrapper>}
+      {navigation}
       {!overview && !error && !part?.deep && <div role="status" className="flex h-full items-center justify-center text-sm text-gray-400">Loading EXR…</div>}
       {part?.deep && <p className="absolute inset-x-0 top-3 text-center text-sm text-amber-300">Deep EXR parts are not supported.</p>}
       {error && <p role="alert" className="absolute inset-x-0 top-3 mx-3 rounded bg-gray-950/95 p-3 text-center text-sm text-amber-200">{error}</p>}

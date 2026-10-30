@@ -3,7 +3,7 @@ import { applyMutation } from './promptLibrary/core.mjs';
 
 export const SAVED_PROMPTS_DATABASE_NAME = 'image-metahub-saved-prompts';
 const STORE_NAME = 'saved_prompts';
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 
 type StoredPrompt = Omit<SavedPrompt, 'sourceCreatedAt'> & { sourceCreatedAt?: number | null; promptDigest: string };
 
@@ -27,6 +27,7 @@ const openDatabase = (): Promise<IDBDatabase> => new Promise((resolve, reject) =
       store.createIndex('promptDigest', 'promptDigest', { unique: false });
       store.createIndex('createdAt', 'createdAt', { unique: false });
     }
+    if (!database.objectStoreNames.contains('prompt_folders')) database.createObjectStore('prompt_folders', { keyPath: 'id' });
     if (!database.objectStoreNames.contains('prompt_blocks')) database.createObjectStore('prompt_blocks', { keyPath: 'id' });
   };
   request.onsuccess = () => resolve(request.result);
@@ -122,23 +123,26 @@ export async function removeBrowserSavedPrompt(id: string): Promise<{ id: string
 export async function browserPromptLibrary(command?: PromptLibraryMutation): Promise<PromptLibrarySnapshot & { selectedId?: string }> {
   const database = await openDatabase();
   try {
-    const transaction = database.transaction([STORE_NAME, 'prompt_blocks'], command ? 'readwrite' : 'readonly');
+    const transaction = database.transaction([STORE_NAME, 'prompt_blocks', 'prompt_folders'], command ? 'readwrite' : 'readonly');
     const done = transactionComplete(transaction);
     const promptsStore = transaction.objectStore(STORE_NAME);
     const blocksStore = transaction.objectStore('prompt_blocks');
+    const foldersStore = transaction.objectStore('prompt_folders');
     try {
       // Resolve directly from the last IDB request, while this transaction is active.
-      const requests = [promptsStore.getAll(), blocksStore.getAll()];
-      const [records, blocks] = await new Promise<unknown[]>((resolve, reject) => {
+      const requests = [promptsStore.getAll(), blocksStore.getAll(), foldersStore.getAll()];
+      const [records, blocks, folders] = await new Promise<unknown[]>((resolve, reject) => {
         let pending = requests.length;
         for (const request of requests) {
           request.onsuccess = () => { if (--pending === 0) resolve(requests.map((entry) => entry.result)); };
           request.onerror = () => reject(request.error || new Error('Could not read prompt library.'));
         }
       });
-      const before = { prompts: (records as StoredPrompt[]).map(withoutDigest), blocks } as PromptLibrarySnapshot;
+      const before = { prompts: (records as StoredPrompt[]).map(withoutDigest), blocks, folders } as PromptLibrarySnapshot;
       if (!command) { await done; return before; }
       const after = applyMutation(before, command) as PromptLibrarySnapshot & { selectedId?: string };
+      foldersStore.clear();
+      for (const folder of after.folders ?? []) foldersStore.put(folder);
       const previous = new Map([...before.prompts, ...before.blocks].map((item) => [item.id, item]));
       for (const prompt of after.prompts) {
         prompt.source = null;

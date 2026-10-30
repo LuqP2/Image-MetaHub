@@ -3782,7 +3782,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
           style={{ cursor: !isPlayableMedia && zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
         >
           {isExr ? (
-            <ExrViewer key={liveImage.id} image={liveImage} directoryPath={directoryPath} />
+            <div className="absolute inset-x-0 bottom-0 top-20"><ExrViewer key={liveImage.id} image={liveImage} directoryPath={directoryPath} navigation={<>
+              {onNavigatePrevious && <button type="button" aria-label="Previous image" title="Previous image" disabled={currentIndex <= 0 || totalImages <= 1} onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); navigateManually('previous'); }} className="absolute inset-y-0 left-0 z-20 flex w-12 items-center justify-start text-white disabled:opacity-25"><ChevronLeft className="h-9 w-9 rounded-full bg-black/50" /></button>}
+              {onNavigateNext && <button type="button" aria-label="Next image" title="Next image" disabled={currentIndex < 0 || currentIndex >= totalImages - 1 || totalImages <= 1} onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); navigateManually('next'); }} className="absolute inset-y-0 right-0 z-20 flex w-12 items-center justify-end text-white disabled:opacity-25"><ChevronRight className="h-9 w-9 rounded-full bg-black/50" /></button>}
+            </>} /></div>
           ) : isModel3D ? (
             <div data-no-window-drag="true" className="h-full min-h-0 w-full min-w-0">
               <Model3DViewer
@@ -3925,7 +3928,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>
           )}
 
-          {onNavigatePrevious && (
+          {onNavigatePrevious && !isExr && (
             <button
               data-no-window-drag="true"
               type="button"
@@ -3942,7 +3945,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <ChevronLeft className="h-9 w-9 rounded-full border border-white/20 bg-black/50 p-1" aria-hidden="true" />
             </button>
           )}
-          {onNavigateNext && (
+          {onNavigateNext && !isExr && (
             <button
               data-no-window-drag="true"
               type="button"

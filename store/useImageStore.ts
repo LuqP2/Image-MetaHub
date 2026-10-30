@@ -638,6 +638,7 @@ interface ImageState {
   // Comparison State
   comparisonImages: IndexedImage[];
   isComparisonModalOpen: boolean;
+  isComparisonDetached: boolean;
 
   // Filter & Sort State
   searchQuery: string;
@@ -846,6 +847,7 @@ interface ImageState {
   clearComparison: () => void;
   openComparisonModal: () => void;
   closeComparisonModal: () => void;
+  setComparisonDetached: (detached: boolean) => void;
 
   // Annotations Actions
   loadAnnotations: () => Promise<void>;
@@ -2443,6 +2445,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         isFullscreenMode: false,
         comparisonImages: [],
         isComparisonModalOpen: false,
+        isComparisonDetached: false,
 
         // Annotations initial values
         annotations: new Map(),
@@ -4066,12 +4069,15 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         clearComparison: () => set({
             comparisonImages: [],
-            isComparisonModalOpen: false
+            isComparisonModalOpen: false,
+            isComparisonDetached: false
         }),
 
         openComparisonModal: () => set({ isComparisonModalOpen: true }),
 
-        closeComparisonModal: () => set({ isComparisonModalOpen: false }),
+        closeComparisonModal: () => set({ isComparisonModalOpen: false, isComparisonDetached: false }),
+
+        setComparisonDetached: (detached) => set({ isComparisonDetached: detached }),
 
         // Annotations Actions
         loadAnnotations: async () => {
@@ -4907,6 +4913,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             isFullscreenMode: false,
             comparisonImages: [],
             isComparisonModalOpen: false,
+            isComparisonDetached: false,
             annotations: new Map(),
             availableTags: [],
             availableAutoTags: [],

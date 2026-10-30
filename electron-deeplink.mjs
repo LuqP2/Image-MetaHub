@@ -16,7 +16,7 @@ const packagedProvenanceSmokeEnabled = app.isPackaged
   && process.env.IMH_PACKAGED_PROVENANCE_FILE_OPERATIONS_SMOKE === '1';
 const packagedSavedPromptSmokeEnabled = app.isPackaged
   && process.env.IMH_PACKAGED_SAVED_PROMPT_SMOKE === '1';
-const packagedCanvasSmokeEnabled = app.isPackaged && process.env.IMH_PACKAGED_CANVAS_SMOKE === '1';
+const packagedCanvasSmokeEnabled = app.isPackaged && (process.env.IMH_PACKAGED_CANVAS_SMOKE === '1' || process.env.IMH_PACKAGED_COMPARE_SMOKE === '1');
 let portableStartupError = null;
 
 try {

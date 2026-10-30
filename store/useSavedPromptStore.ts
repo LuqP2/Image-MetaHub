@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { duplicateSessionPreview, removeSessionPreview } from '../services/promptLibrary/sessionPreviews';
-import type { SavedPrompt, SavedPromptSaveResult, SavePromptInput, PromptBlock, PromptLibraryMutation } from '../types';
+import type { SavedPrompt, SavedPromptSaveResult, SavePromptInput, PromptBlock, PromptLibraryMutation, PromptFolder } from '../types';
 import {
   listSavedPrompts,
   removeSavedPrompt,
@@ -12,6 +12,7 @@ import {
 interface SavedPromptState {
   prompts: SavedPrompt[];
   blocks: PromptBlock[];
+  folders: PromptFolder[];
   loadLibrary: () => Promise<void>;
   mutate: (command: PromptLibraryMutation) => Promise<string | undefined>;
   isLoading: boolean;
@@ -34,6 +35,7 @@ const sortPrompts = (prompts: SavedPrompt[]) => [...prompts].sort(
 export const useSavedPromptStore = create<SavedPromptState>((set, get) => ({
   prompts: [],
   blocks: [],
+  folders: [],
   isLoading: false,
   error: null,
   loadLibrary: async () => {
@@ -42,7 +44,7 @@ export const useSavedPromptStore = create<SavedPromptState>((set, get) => ({
     try {
       const snapshot = await listPromptLibrary();
       if (generation !== readGeneration) return;
-      set({ prompts: sortPrompts(snapshot.prompts), blocks: snapshot.blocks, isLoading: false });
+      set({ prompts: sortPrompts(snapshot.prompts), blocks: snapshot.blocks, folders: snapshot.folders ?? [], isLoading: false });
     } catch (error) {
       if (generation !== readGeneration) return;
       set({ isLoading: false, error: error instanceof Error ? error.message : 'Could not load prompt library.' });
@@ -56,7 +58,7 @@ export const useSavedPromptStore = create<SavedPromptState>((set, get) => ({
         if (!window.electronAPI && command.action === 'duplicate' && result.selectedId) duplicateSessionPreview(command.id, result.selectedId);
         if (command.action === 'remove') removeSessionPreview(command.id);
         ++readGeneration;
-        set({ prompts: sortPrompts(result.prompts), blocks: result.blocks, isLoading: false, error: null });
+        set({ prompts: sortPrompts(result.prompts), blocks: result.blocks, folders: result.folders ?? [], isLoading: false, error: null });
         return result.selectedId;
       } catch (error) {
         set({ isLoading: false });

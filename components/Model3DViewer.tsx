@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Camera, Download, Grid3X3, Image as ImageIcon, Maximize2, Palette, RotateCcw, Sun } from 'lucide-react';
+import { captureModel3DCamera, applyModel3DCamera, sameModel3DCamera, type Model3DCameraState } from '../services/model3DCamera';
 import type { IndexedImage } from '../types';
 import { getRelativeImagePath, mediaSourceCache } from '../services/mediaSourceCache';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
@@ -19,6 +20,8 @@ interface ViewerPreferences {
 }
 
 interface Model3DViewerProps {
+  externalCamera?: Model3DCameraState;
+  onCameraChange?: (state: Model3DCameraState, interacted: boolean) => void;
   image: IndexedImage;
   directoryPath?: string;
   compact?: boolean;
@@ -316,6 +319,8 @@ const modelBaseName = (name: string) => name.replace(/\.[^.]+$/, '') || 'model';
 
 const Model3DViewer: React.FC<Model3DViewerProps> = ({
   image,
+  externalCamera,
+  onCameraChange,
   directoryPath,
   compact = false,
   showControls = true,
@@ -325,6 +330,27 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
   onSnapshot,
   onError,
 }) => {
+  const externalCameraRef = useRef(externalCamera);
+  externalCameraRef.current = externalCamera;
+  const onCameraChangeRef = useRef(onCameraChange);
+  onCameraChangeRef.current = onCameraChange;
+  const applyingCameraRef = useRef(false);
+  const lastCameraRef = useRef<Model3DCameraState>();
+  const publishCamera = useCallback((interacted = true) => {
+    const runtime = runtimeRef.current;
+    if (!runtime || applyingCameraRef.current || !onCameraChangeRef.current) return;
+    const state = captureModel3DCamera(runtime);
+    if (!sameModel3DCamera(lastCameraRef.current, state)) { lastCameraRef.current = state; onCameraChangeRef.current(state, interacted); }
+  }, []);
+  const restoreCamera = useCallback((state: Model3DCameraState) => {
+    const runtime = runtimeRef.current; if (!runtime) return;
+    applyingCameraRef.current = true;
+    try { applyModel3DCamera(runtime, state); lastCameraRef.current = state; }
+    finally { applyingCameraRef.current = false; }
+  }, []);
+  useEffect(() => {
+    if (externalCamera) { restoreCamera(externalCamera); setPreferences(current => current.cameraType === externalCamera.projection && current.fov === externalCamera.fov ? current : { ...current, cameraType: externalCamera.projection, fov: externalCamera.fov }); }
+  }, [externalCamera, restoreCamera]);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runtimeRef = useRef<RuntimeState | null>(null);
@@ -444,14 +470,16 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
       runtime.activeCamera = nextCamera;
       runtime.controls = runtime.createControls(nextCamera);
       runtime.controls.target.copy(target);
-      runtime.controls.enableDamping = true;
+      runtime.controls.enableDamping = !onCameraChangeRef.current;
       runtime.controls.update();
     }
-  }, [applyMaterialMode, preferences]);
+    publishCamera();
+  }, [applyMaterialMode, preferences, publishCamera]);
 
   useEffect(() => {
     let disposed = false;
     let ownedRuntime: RuntimeState | null = null;
+    lastCameraRef.current = undefined;
     setLoading(true);
     setError(null);
 
@@ -617,6 +645,17 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         runtime.resizeObserver.observe(container);
         resize();
         fitCamera();
+        const changed = () => publishCamera();
+        runtime.createControls = camera => {
+          const next = new OrbitControls(camera, renderer.domElement);
+          next.enableDamping = !onCameraChangeRef.current;
+          next.addEventListener('change', changed);
+          return next;
+        };
+        runtime.controls.enableDamping = !onCameraChangeRef.current;
+        runtime.controls.addEventListener('change', changed);
+        if (externalCameraRef.current) restoreCamera(externalCameraRef.current);
+        else publishCamera(false);
 
         let snapshotTaken = false;
         const render = () => {
@@ -824,7 +863,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
       <div ref={containerRef} className="relative min-h-0 flex-1 overflow-hidden bg-black">
       <canvas ref={canvasRef} className="block h-full w-full" />
       {loading && <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-sm text-gray-300">Loading 3D model…</div>}
-      {error && <div className="absolute inset-x-4 top-4 z-30 max-h-[calc(100%-2rem)] overflow-auto rounded-lg border border-red-500/40 bg-red-950/90 p-3 text-sm text-red-100">{error}</div>}
+      {error && <div role="alert" data-model3d-error="true" className="absolute inset-x-4 top-4 z-30 max-h-[calc(100%-2rem)] overflow-auto rounded-lg border border-red-500/40 bg-red-950/90 p-3 text-sm text-red-100">{error}</div>}
       {!loading && (sourceImage || sourceReferenceName) && (
         sourceImage && onOpenSourceImage ? (
           <button

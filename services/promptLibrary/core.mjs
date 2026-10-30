@@ -67,7 +67,7 @@ export function normalizeEditor(value) {
   const e = value || {};
   const m = e.metadata || {};
   return {
-    ...emptyEditor(), title: string(e.title), notes: string(e.notes), tags: normalizeTags(e.tags), favorite: e.favorite === true, category: string(e.category).trim(),
+    ...emptyEditor(), ...(string(e.folderId) ? { folderId: e.folderId } : {}), title: string(e.title), notes: string(e.notes), tags: normalizeTags(e.tags), favorite: e.favorite === true, category: string(e.category).trim(),
     metadata: { model: string(m.model), generator: string(m.generator), loras: Array.isArray(m.loras) ? m.loras.map(string).filter(Boolean) : [], sampler: string(m.sampler), scheduler: string(m.scheduler) },
     preview: e.preview === 'hidden' ? 'hidden' : e.preview && typeof e.preview === 'object' ? e.preview : null,
     document: normalizeDocument(e.document), variables: normalizeVariables(e.variables)
@@ -155,6 +155,7 @@ export const portableItem = (item) => {
 export function equivalentItem(kind, item) {
   const prepared = prepareItem(kind, item);
   prepared.editor.preview = null;
+  delete prepared.editor.folderId;
   const doc = prepared.editor.document;
   if(doc)
     for(const part of [...doc.positive, ...doc.negative]) {
@@ -167,9 +168,20 @@ export function equivalentItem(kind, item) {
 /** Produce a whole new snapshot before persistence; a failure never partially applies a batch. */
 export function applyMutation(snapshot, command, uuid = () => crypto.randomUUID(), now = () => Date.now()) {
   const next = structuredClone(snapshot);
+  next.folders ??= [];
   let selectedId;
+  const folderName = value => {
+    const name = string(value).trim();
+    if (!name || name.length > 100) throw new Error('Folder names must contain 1–100 characters.');
+    if (next.folders.some(folder => folder.id !== command.id && folder.name.toLocaleLowerCase() === name.toLocaleLowerCase())) throw new Error('A folder with this name already exists.');
+    return name;
+  };
+  const checkFolder = id => {
+    if (id && !next.folders.some(folder => folder.id === id)) throw new Error('This folder no longer exists.');
+  };
   const create = (kind, input) => {
     const fields = prepareItem(kind, input);
+    checkFolder(fields.editor.folderId);
     const timestamp = now();
     const base = { id: uuid(), createdAt: timestamp, updatedAt: timestamp, revision: 1, ...fields };
     const item = kind === 'block' ? base : { ...base, sourceCreatedAt: input.sourceCreatedAt || null, source: input.source || null, textBasis: input.textBasis || 'authored' };
@@ -177,15 +189,36 @@ export function applyMutation(snapshot, command, uuid = () => crypto.randomUUID(
     selectedId = item.id;
     return item;
   };
-  if(command.action === 'import') {
+  if (command.action === 'folder-create') {
+    const name = folderName(command.name); selectedId = uuid(); next.folders.push({ id: selectedId, name });
+  } else if (command.action === 'folder-rename' || command.action === 'folder-remove') {
+    const index = next.folders.findIndex(folder => folder.id === command.id);
+    if (index < 0) throw new Error('This folder no longer exists.');
+    if (command.action === 'folder-rename') next.folders[index].name = folderName(command.name);
+    else {
+      next.folders.splice(index, 1);
+      for (const item of [...next.prompts, ...next.blocks]) if (item.editor?.folderId === command.id) {
+        delete item.editor.folderId; item.revision = (item.revision || 1) + 1; item.updatedAt = now();
+      }
+    }
+  } else if(command.action === 'import') {
     if(!Array.isArray(command.prompts) || !Array.isArray(command.blocks))
       throw new Error('Invalid import.');
+    const folderMapping = new Map();
+    for (const folder of command.folders || []) {
+      const name = string(folder.name).trim();
+      if (!folder.id || !name || name.length > 100 || folderMapping.has(folder.id)) throw new Error('Invalid imported folder.');
+      let existing = next.folders.find(entry => entry.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+      if (!existing) { existing = { id: uuid(), name }; next.folders.push(existing); }
+      folderMapping.set(folder.id, existing.id);
+    }
+    const remapFolder = editor => ({ ...editor, folderId: folderMapping.get(editor?.folderId) || '' });
     const mapping = new Map();
     const knownBlocks = new Map(next.blocks.map((block) => [equivalentItem('block', block), block]));
     const knownPrompts = new Set(next.prompts.map((prompt) => equivalentItem('prompt', prompt)));
     for(const block of command.blocks) {
       const key = equivalentItem('block', block);
-      const imported = (!command.keepDuplicates && knownBlocks.get(key)) || create('block', { ...block, editor: { ...block.editor, preview: null } });
+      const imported = (!command.keepDuplicates && knownBlocks.get(key)) || create('block', { ...block, editor: { ...remapFolder(block.editor), preview: null } });
       knownBlocks.set(key, imported);
       mapping.set(block.id, imported.id);
     }
@@ -194,6 +227,7 @@ export function applyMutation(snapshot, command, uuid = () => crypto.randomUUID(
       item.source = null;
       item.textBasis = 'authored';
       if(item.editor) {
+        item.editor = remapFolder(item.editor);
         item.editor.preview = null;
         if(item.editor.document)
           for(const part of [...item.editor.document.positive, ...item.editor.document.negative])
@@ -224,6 +258,7 @@ export function applyMutation(snapshot, command, uuid = () => crypto.randomUUID(
       for(const item of list.filter((p) => selected.has(p.id))) {
         const editor = normalizeEditor(item.editor);
         editor.tags = normalizeTags([...editor.tags, ...(command.addTags || [])]).filter((tag) => !removedTags.has(tag));
+        if (command.folderId !== undefined) { checkFolder(command.folderId); if (command.folderId) editor.folderId = command.folderId; else delete editor.folderId; }
         if(typeof command.favorite === 'boolean')
           editor.favorite = command.favorite;
         if(command.category !== undefined && command.kind === 'block')
@@ -246,6 +281,7 @@ export function applyMutation(snapshot, command, uuid = () => crypto.randomUUID(
       else if(command.action === 'update') {
         if(command.expectedRevision !== (current.revision || 1))
           throw new Error('This item changed in another window. Reload or save as a copy.');
+        checkFolder(command.item.editor?.folderId);
         list[index] = { ...current, ...prepareItem(command.kind, command.item), revision: (current.revision || 1) + 1, updatedAt: now() };
         selectedId = current.id;
       }
