@@ -30,6 +30,14 @@ export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, 
   try {
     await main.loadURL('data:text/html,<html><body>Comparison functional smoke</body></html>');
     await main.webContents.executeJavaScript("window.smokeEvents = []; window.electronAPI.comparison.onEvent(event => window.smokeEvents.push(event)); true;");
+    const canceledSnapshot = { sessionId: 'smoke-canceled-opening', images: ['one.png', 'two.png'].map(image), directories: [{ id: 'smoke', name: 'Library', path: library }], ui };
+    const canceled = await main.webContents.executeJavaScript(`(async () => {
+      const opening = window.electronAPI.comparison.open(${JSON.stringify(canceledSnapshot)});
+      const closing = window.electronAPI.comparison.close('smoke-canceled-opening');
+      return { opened: await opening, closed: await closing };
+    })()`);
+    assert(canceled.closed.success && canceled.opened.cancelled && !canceled.opened.success, 'Pending opening was not canceled.');
+    assert(BrowserWindow.getAllWindows().length === 1, 'Canceled comparison left a native window behind.');
     for (const names of [['one.png', 'two.png'], ['one.png', 'two.png', 'small.stl', 'large.stl'], ['small.stl', 'large.stl']]) {
       const snapshot = { sessionId: `smoke-${names.length}-${names[0]}`, images: names.map(image), directories: [{ id: 'smoke', name: 'Library', path: library }], ui };
       const result = await main.webContents.executeJavaScript(`window.electronAPI.comparison.open(${JSON.stringify(snapshot)})`);
@@ -50,8 +58,8 @@ export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, 
         for (const [index, model] of models.entries()) await fs.writeFile(path.join(root, `model-${index}.png`), Buffer.from(model.split(',')[1], 'base64'));
       }
       await viewer.webContents.executeJavaScript(`window.electronAPI.comparison.close(${JSON.stringify(snapshot.sessionId)}, true)`);
-      await main.webContents.executeJavaScript("new Promise((resolve, reject) => { const start=Date.now(); const tick=()=>{ if(window.smokeEvents.some(event=>event.type==='returned')) resolve(true); else if(Date.now()-start>3000) reject(new Error('Return event missing')); else setTimeout(tick,25); }; tick(); })");
+      await main.webContents.executeJavaScript(`new Promise((resolve, reject) => { const start=Date.now(); const tick=()=>{ if(window.smokeEvents.some(event=>event.type==='returned' && event.sessionId === ${JSON.stringify(snapshot.sessionId)})) resolve(true); else if(Date.now()-start>3000) reject(new Error('Return event missing')); else setTimeout(tick,25); }; tick(); })`);
     }
-    return { success: true, coverage: 'packaged-main-preload-ipc-renderer-and-webgl', images: 2, mixedPanels: 4, models3D: 2, syncToggle: true, metadataStatePreserved: true, returnedToApp: true, screenshots: [path.join(root, 'compare-2.png'), path.join(root, 'compare-4.png'), path.join(root, 'compare-models.png')] };
+    return { success: true, coverage: 'packaged-main-preload-ipc-renderer-and-webgl', canceledOpening: true, images: 2, mixedPanels: 4, models3D: 2, syncToggle: true, metadataStatePreserved: true, returnedToApp: true, screenshots: [path.join(root, 'compare-2.png'), path.join(root, 'compare-4.png'), path.join(root, 'compare-models.png')] };
   } finally { for (const window of BrowserWindow.getAllWindows()) window.destroy(); for (const name of handlers) ipcMain.removeHandler(name); }
 }
