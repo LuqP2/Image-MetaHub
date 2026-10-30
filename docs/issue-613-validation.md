@@ -14,6 +14,7 @@ Issue: https://github.com/LuqP2/Image-MetaHub/issues/613
 - Production build (`npm run build`) and TypeScript passed.
 - 176 tests passed across 24 affected Vitest suites. Coverage includes legacy prompt migration, browser and Electron persistence, portable import/deduplication, folder UI, transfer state across remounts, EXR click/keyboard isolation, comparison host state transfer/fallback, IPC sender checks/lifecycle, camera normalization and 3D toggle behavior.
 - Windows unpacked distribution built with electron-builder using the installed Electron runtime and `npmRebuild=false`.
+- Packaged comparison smoke passed on Windows. The completed two-model screenshot and a captured WebGL buffer were visually inspected.
 - Run packaged comparison verification with `node scripts/runPackagedComparisonSmoke.mjs "<absolute path to Image MetaHub.exe>"`.
 - The smoke uses a temporary portable profile, synthetic image/model files, hidden native windows, the packaged production renderer/preload/comparison IPC and WebGL loaders. Settings and synthetic-file URL handlers are provided by the harness; this does not exercise a real user library, licensing, or the standard main-window UI.
 - Main-window comparison handoff and restoration of mode, zoom and metadata state are covered by `ComparisonHost.test.tsx`; the packaged smoke checks renderer startup, two images, four mixed panels, two STL viewers, the sync toggle, metadata mode, return events, and captures.

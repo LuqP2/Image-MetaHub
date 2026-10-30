@@ -39,8 +39,16 @@ export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, 
       await viewer.webContents.executeJavaScript(`new Promise((resolve, reject) => { const start = Date.now(); const tick = () => { const canvases = [...document.querySelectorAll('canvas')]; const images = [...document.querySelectorAll('img')]; if (canvases.length === ${names.filter(name => name.endsWith('.stl')).length} && images.filter(image => image.complete && image.naturalWidth > 0).length >= ${names.filter(name => name.endsWith('.png')).length} && !document.body.innerText.includes('Loading 3D model')) { resolve(true); return; } if (Date.now()-start > 25000) { reject(new Error(document.body.innerText)); return; } setTimeout(tick, 100); }; tick(); })`);
       const controls = await viewer.webContents.executeJavaScript(`(() => { const error = document.querySelector('[data-model3d-error]'); if (error) throw new Error(error.textContent); const sync = document.querySelector('[aria-label="Sync 3D cameras"]'); if (sync) { if (!sync.checked) throw new Error('3D sync did not default on'); sync.click(); if (sync.checked) throw new Error('3D sync did not toggle off'); const diff = [...document.querySelectorAll('button')].find(button => button.textContent === 'Diff Map'); if (!diff?.disabled) throw new Error('3D pixel differences enabled'); } const metadata = document.querySelector('[role="switch"]'); if (metadata?.getAttribute('aria-checked') !== 'false') throw new Error('Metadata mode was lost'); return true; })()`);
       assert(controls, 'Comparison controls failed.');
+      // Wake hidden-page capture before taking the evidence frame.
+      await viewer.webContents.capturePage();
+      await viewer.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
       viewer.webContents.invalidate(); await new Promise(resolve => setTimeout(resolve, 250));
       await fs.writeFile(path.join(root, `compare-${names[0].endsWith('.stl') ? 'models' : names.length}.png`), (await viewer.webContents.capturePage()).toPNG());
+      if (names[0].endsWith('.stl')) {
+        const models = await viewer.webContents.executeJavaScript("new Promise(resolve => requestAnimationFrame(() => resolve([...document.querySelectorAll('canvas')].map(canvas => canvas.toDataURL('image/png')))))");
+        assert(models.length === 2, 'Expected two rendered WebGL canvases.');
+        for (const [index, model] of models.entries()) await fs.writeFile(path.join(root, `model-${index}.png`), Buffer.from(model.split(',')[1], 'base64'));
+      }
       await viewer.webContents.executeJavaScript(`window.electronAPI.comparison.close(${JSON.stringify(snapshot.sessionId)}, true)`);
       await main.webContents.executeJavaScript("new Promise((resolve, reject) => { const start=Date.now(); const tick=()=>{ if(window.smokeEvents.some(event=>event.type==='returned')) resolve(true); else if(Date.now()-start>3000) reject(new Error('Return event missing')); else setTimeout(tick,25); }; tick(); })");
     }
