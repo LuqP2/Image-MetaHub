@@ -175,6 +175,10 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
     } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not save favorite.'); }
   };
   const resetKind = (next: 'prompt' | 'block') => change(() => { setComposeAppend(undefined); setKind(next); setEditing(null); select(null); setSelected(new Set()); setSelectionMode(false); setFilters(emptyFilters); setShowDuplicates(false); dirty.current = false; });
+  const browseFolder = (id: string) => change(() => {
+    setFolderId(id); setSelected(new Set()); setEditing(null); select(null);
+    setShowDuplicates(false); dirty.current = false;
+  });
   const setBrowseFilters = (next: PromptLibraryFilters) => { setFilters(next); setSelected(new Set()); };
   const exportSnapshot = useMemo(() => {
     if (kind === 'block') return { prompts: [], blocks: selected.size ? blocks.filter(item => selected.has(item.id)) : visible as PromptBlock[] };
@@ -194,7 +198,7 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
       <button className={buttonClass + ' !border-accent/40 !bg-accent/15 !text-gray-100'} onClick={create}><Plus size={15} />New {kind}</button>
       <div className="relative"><button className="app-top-icon-button" aria-label="Library tools" aria-expanded={toolsMenu} onClick={() => setToolsMenu(!toolsMenu)}><MoreHorizontal size={18} /></button>{toolsMenu && <><button tabIndex={-1} className="fixed inset-0 z-20 cursor-default" aria-label="Close library tools" onClick={() => setToolsMenu(false)} /><div className="absolute right-0 top-11 z-30 w-48 rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl"><button className="block w-full rounded p-2 text-left text-xs hover:bg-gray-800 disabled:opacity-40" disabled={kind !== 'prompt' || !visible.length} onClick={() => { setToolsMenu(false); const candidates = visible.length > 1 ? visible.filter(p => p.id !== active?.id) : visible; open(candidates[Math.floor(Math.random() * candidates.length)]); }}>Random</button><button className="block w-full rounded p-2 text-left text-xs hover:bg-gray-800" onClick={() => { setToolsMenu(false); setShowTransfer(true); }}>Import / Export</button></div></>}</div>
     </header>
-    <PromptFolders onRemove={removeFolder} removing={removingFolder} folders={folders} value={folderId} onChange={id => change(() => { setFolderId(id); setSelected(new Set()); })} onMutate={async command => { if (!gate()) return; const result = await run(command); if (!result.success) throw new Error('Could not update folder.'); }} />
+    <PromptFolders onRemove={removeFolder} removing={removingFolder} folders={folders} value={folderId} onChange={browseFolder} onMutate={async command => { if (!gate()) return; const result = await run(command); if (!result.success) throw new Error('Could not update folder.'); }} />
     {copyStatus && <p role="status" className="text-xs text-accent">{copyStatus}</p>}
     {(error || actionError) && <div role="alert" className="shrink-0 rounded border border-red-500/40 p-2 text-sm text-red-400">{actionError || error}<button className={buttonClass + ' ml-2'} onClick={() => void loadLibrary()}>Retry</button></div>}
     {selectionMode && <div className="shrink-0 space-y-2 rounded-xl border border-accent/25 bg-accent/5 p-3 text-xs">
