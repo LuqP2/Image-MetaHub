@@ -1661,6 +1661,8 @@ export interface ComparisonAdvancedSettings {
 }
 
 export interface ComparisonPaneProps {
+  externalCamera?: import('./services/model3DCamera').Model3DCameraState;
+  onCameraChange?: (state: import('./services/model3DCamera').Model3DCameraState, interacted: boolean) => void;
   onGenerate?: (request: import('./services/comparisonContracts').ComparisonGenerateRequest) => Promise<void>;
   image: IndexedImage;
   directoryPath: string;

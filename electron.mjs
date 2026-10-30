@@ -1,4 +1,5 @@
 import electron from 'electron';
+import { runComparisonPackagedSmoke } from './electron/comparisonPackagedSmoke.mjs';
 import { registerComparisonIpc } from './electron/comparisonIpc.mjs';
 import { registerExrIpc } from './electron/exrIpc.mjs';
 import { registerBoardIpc } from './electron/boardIpc.mjs';
@@ -3566,6 +3567,14 @@ app.whenReady().then(async () => {
   });
   await stableIdentityFileOperationCoordinator.initializeRecovery();
 
+  if (app.isPackaged && process.env.IMH_PACKAGED_COMPARE_SMOKE === '1') {
+    try {
+      const root = process.env.IMH_PACKAGED_COMPARE_SMOKE_ROOT;
+      const result = await runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, root });
+      await fs.writeFile(path.join(root, 'result.json'), JSON.stringify(result), 'utf8'); app.exit(0);
+    } catch (error) { console.error('[comparison-smoke]', error); app.exit(1); }
+    return;
+  }
   if (packagedCanvasSmokeEnabled) {
     const resultPath = process.env.IMH_PACKAGED_CANVAS_SMOKE_RESULT?.trim();
     try {

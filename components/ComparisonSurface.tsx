@@ -7,6 +7,8 @@ import ComparisonPane from './ComparisonPane';
 import ComparisonMetadataPanel from './ComparisonMetadataPanel';
 import ComparisonOverlayView from './ComparisonOverlayView';
 import { getFieldLabel, getMetadataDifferences } from '../utils/metadataComparison';
+import { isModel3DFileName } from '../utils/mediaTypes.js';
+import { sameModel3DCamera, type Model3DCameraState } from '../services/model3DCamera';
 import { VisualComparisonMetrics } from '../utils/visualComparison';
 
 export const getComparisonMetadataReference = (
@@ -42,8 +44,20 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
   const metadataScrollRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const isSyncingMetadataScroll = useRef(false);
 
+  const [sync3DEnabled, setSync3DEnabled] = useComparisonField('sync3DEnabled');
+  const [cameras3D] = useComparisonField('cameras3D');
+  const [last3DImageId] = useComparisonField('last3DImageId');
+  const models = comparisonImages.filter(image => isModel3DFileName(image.name));
+  const leader = models.find(image => image.id === last3DImageId && cameras3D[image.id]) ?? models.find(image => cameras3D[image.id]);
+  const shared3DCamera = leader ? cameras3D[leader.id] : undefined;
+  const update3DCamera = (id: string, camera: Model3DCameraState, interacted: boolean) => {
+    useComparisonUIStore.setState(state => {
+      if (sameModel3DCamera(state.ui.cameras3D[id], camera) && (!interacted || state.ui.last3DImageId === id)) return state;
+      return { ui: { ...state.ui, cameras3D: { ...state.ui.cameras3D, [id]: camera }, last3DImageId: interacted ? id : state.ui.last3DImageId } };
+    });
+  };
   const imageCount = comparisonImages.length;
-  const supportsOverlayModes = imageCount === 2;
+  const supportsOverlayModes = imageCount === 2 && models.length === 0;
   const advancedModes = useMemo(
     () => new Set<ComparisonViewMode>(['difference-map', 'flicker', 'loupe', 'edge-difference']),
     []
@@ -206,6 +220,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
           <div className="flex items-center gap-3">
             {onDetach && <button className="rounded border border-gray-600 px-3 py-1 text-sm text-gray-200" onClick={onDetach}>Open in separate window</button>}
             {onReturn && <button className="rounded border border-gray-600 px-3 py-1 text-sm text-gray-200" onClick={onReturn}>Return to app</button>}
+            {models.length >= 2 && <label className="flex items-center gap-2 text-sm text-gray-200"><input type="checkbox" aria-label="Sync 3D cameras" checked={sync3DEnabled} onChange={event => { const enabled = event.target.checked; if (!enabled && shared3DCamera) useComparisonUIStore.setState(state => ({ ui: { ...state.ui, cameras3D: { ...state.ui.cameras3D, ...Object.fromEntries(models.map(image => [image.id, shared3DCamera])) } } })); setSync3DEnabled(enabled); }} />Sync 3D cameras</label>}
             <h2 className="text-lg font-semibold text-gray-200">Comparison View</h2>
             <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-xs font-medium text-purple-200">
               {imageCount} image{imageCount === 1 ? '' : 's'}
@@ -316,6 +331,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
           </button>
         </div>
 
+        {models.length > 0 && <p className="text-xs text-gray-400">3D files use side-by-side comparison. Pixel overlay and difference modes are available for images only.</p>}
         {isAdvancedMode && supportsOverlayModes && (
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-700/60 bg-gray-950/45 px-3 py-2">
             {(viewMode === 'difference-map' || viewMode === 'edge-difference' || viewMode === 'loupe') && (
@@ -455,6 +471,8 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
                     key={image.id}
                     image={image}
                     onGenerate={onGenerate}
+                    externalCamera={sync3DEnabled ? shared3DCamera : cameras3D[image.id]}
+                    onCameraChange={(camera, interacted) => update3DCamera(image.id, camera, interacted)}
                     directoryPath={directoryPathById.get(image.directoryId) || ''}
                   syncEnabled={syncEnabled}
                   externalZoom={syncEnabled ? sharedZoom : useComparisonUIStore.getState().ui.paneZooms[image.id]}

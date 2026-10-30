@@ -1,6 +1,6 @@
 import { buildDetachedViewerLoadTarget, buildDetachedViewerUrl } from '../utils/detachedViewerUrl.mjs';
 import { createViewerReadiness, presentViewerWindow } from '../utils/viewerWindowLifecycle.mjs';
-export function registerComparisonIpc({ ipcMain, BrowserWindow, getMainWindow, preloadPath, indexPath, isDev, configureNavigation }) {
+export function registerComparisonIpc({ ipcMain, BrowserWindow, getMainWindow, preloadPath, indexPath, isDev, configureNavigation, presentWindow = window => presentViewerWindow(window, { activate: true }) }) {
   let session = null;
   const isMain = event => event.sender === getMainWindow()?.webContents;
   const isViewer = (event, id) => session && session.snapshot.sessionId === id && event.sender === session.window.webContents;
@@ -13,7 +13,7 @@ export function registerComparisonIpc({ ipcMain, BrowserWindow, getMainWindow, p
     const current = { window, snapshot, returning: false, ready: null };
     session = current;
     const deliver = () => { if (!window.isDestroyed()) window.webContents.send('comparison-snapshot', current.snapshot); };
-    current.ready = createViewerReadiness({ onReady: () => presentViewerWindow(window, { activate: true }), onFailure: () => { if (!window.isDestroyed()) window.destroy(); }, onRequestSnapshot: deliver, onNeedsNativeShow: () => { if (!window.isDestroyed()) { window.show(); current.ready.markNativeReady(); } } });
+    current.ready = createViewerReadiness({ onReady: () => presentWindow(window), onFailure: () => { if (!window.isDestroyed()) window.destroy(); }, onRequestSnapshot: deliver, onNeedsNativeShow: () => { if (!window.isDestroyed()) { presentWindow(window); current.ready.markNativeReady(); } } });
     window.setMenu(null);
     configureNavigation(window, buildDetachedViewerUrl(indexPath, snapshot.sessionId, isDev, 'comparison'));
     window.once('ready-to-show', () => current.ready.markNativeReady());
