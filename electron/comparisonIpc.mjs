@@ -1,6 +1,6 @@
 import { buildDetachedViewerLoadTarget, buildDetachedViewerUrl } from '../utils/detachedViewerUrl.mjs';
 import { createViewerReadiness, presentViewerWindow } from '../utils/viewerWindowLifecycle.mjs';
-export function registerComparisonIpc({ ipcMain, BrowserWindow, getMainWindow, preloadPath, indexPath, isDev, configureNavigation }) {
+export function registerComparisonIpc({ ipcMain, BrowserWindow, getMainWindow, preloadPath, indexPath, isDev, configureNavigation, settingsWindows = new Set() }) {
   let session = null;
   const isMain = event => event.sender === getMainWindow()?.webContents;
   const isViewer = (event, id) => session && session.snapshot.sessionId === id && event.sender === session.window.webContents;
@@ -10,6 +10,8 @@ export function registerComparisonIpc({ ipcMain, BrowserWindow, getMainWindow, p
     if (!isMain(event) || !validSnapshot(snapshot)) return { success: false, error: 'Invalid comparison session.' };
     if (session) { if (session.ready.ready) session.window.focus(); return { success: false, error: 'A comparison window is already open.' }; }
     const window = new BrowserWindow({ width: 1280, height: 850, minWidth: 640, minHeight: 480, show: false, title: 'Image MetaHub — Compare', webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false } });
+    settingsWindows.add(window);
+    window.once('closed', () => settingsWindows.delete(window));
     const current = { window, snapshot, returning: false, ready: null };
     session = current;
     const deliver = () => { if (!window.isDestroyed()) window.webContents.send('comparison-snapshot', current.snapshot); };
