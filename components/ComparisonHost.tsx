@@ -54,8 +54,10 @@ export default function ComparisonHost({ isOpen, onClose }: ComparisonModalProps
     }
   }), [close, generateWithA1111, setDetached]);
   useEffect(() => {
-    if ((!isOpen || images.length < 2) && session.current) cancelSession();
-  }, [isOpen, images, cancelSession]);
+    if (!session.current) return;
+    if (isOpen && images.length < 2) close();
+    else if (!isOpen) cancelSession();
+  }, [isOpen, images, cancelSession, close]);
   useEffect(() => {
     const current = session.current;
     if (!detached || current?.phase !== 'detached' || !isOpen || images.length < 2) return;
