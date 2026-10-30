@@ -1,4 +1,5 @@
 import electron from 'electron';
+import { registerComparisonIpc } from './electron/comparisonIpc.mjs';
 import { registerExrIpc } from './electron/exrIpc.mjs';
 import { registerBoardIpc } from './electron/boardIpc.mjs';
 import { createBoardCloseCoordinator } from './electron/boardCloseCoordinator.mjs';
@@ -7636,6 +7637,7 @@ function setupFileOperationHandlers() {
     }
   };
 
+  registerComparisonIpc({ ipcMain, BrowserWindow, getMainWindow: () => mainWindow, preloadPath: path.join(__dirname, 'preload.js'), indexPath: path.join(__dirname, 'dist', 'index.html'), isDev, configureNavigation: configureDetachedViewerNavigationHandlers });
   boardPersistence = registerBoardIpc({ ipcMain, app, dialog, getMainWindow: () => mainWindow });
   const isBoardMainSender = event => mainWindow && !mainWindow.isDestroyed()
     && event.sender === mainWindow.webContents && event.senderFrame === mainWindow.webContents.mainFrame;

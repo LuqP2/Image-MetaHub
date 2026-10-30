@@ -10,6 +10,7 @@ import { useLicenseStore } from './store/useLicenseStore';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { initializePerformanceDiagnostics } from './utils/performanceDiagnostics';
+import DetachedComparisonApp from './components/DetachedComparisonApp';
 import DetachedImageModalApp from './components/DetachedImageModalApp';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import ModelInspectorApp from './components/ModelInspectorApp';
@@ -34,13 +35,14 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 const windowKind = new URLSearchParams(window.location.search).get('window');
 const isDetachedImageViewer = windowKind === 'image-modal';
+const isDetachedComparison = windowKind === 'comparison';
 const isModelInspector = windowKind === 'model-inspector';
 root.render(
   <React.StrictMode>
-    <AppErrorBoundary variant={isDetachedImageViewer ? 'detached-viewer' : 'app'}>
+    <AppErrorBoundary variant={isDetachedImageViewer || isDetachedComparison ? 'detached-viewer' : 'app'}>
       <A1111ProgressProvider>
         <ComfyUIProgressProvider>
-          {isDetachedImageViewer ? <DetachedImageModalApp /> : isModelInspector ? <ModelInspectorApp /> : <App />}
+          {isDetachedComparison ? <DetachedComparisonApp /> : isDetachedImageViewer ? <DetachedImageModalApp /> : isModelInspector ? <ModelInspectorApp /> : <App />}
         </ComfyUIProgressProvider>
       </A1111ProgressProvider>
     </AppErrorBoundary>

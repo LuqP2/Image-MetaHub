@@ -478,6 +478,7 @@ export interface TrialExtensionActivationResult {
 export type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collections' | 'comfyui' | 'editor' | 'canvas';
 
 export interface ElectronAPI {
+  comparison?: import('./services/comparisonContracts').ComparisonBridge;
   boardsList?: () => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardSummary[]>>;
   boardsReferenceBaseline?: () => Promise<import('./services/boards/types').BoardApiResult<string[]>>;
   boardsLoad?: (id: string) => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument>>;
@@ -1660,6 +1661,7 @@ export interface ComparisonAdvancedSettings {
 }
 
 export interface ComparisonPaneProps {
+  onGenerate?: (request: import('./services/comparisonContracts').ComparisonGenerateRequest) => Promise<void>;
   image: IndexedImage;
   directoryPath: string;
   syncEnabled: boolean;
