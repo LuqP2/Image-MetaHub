@@ -846,4 +846,70 @@ describe('integrated Prompt Library', () => {
     expect(data.prompts[0].editor?.folderId).toBeUndefined();
   });
 
+  it.each((['prompt', 'block'] as const).flatMap(kind => (['Save', 'Discard', 'Cancel'] as const).map(decision => ({ kind, decision }))))('guards deleting a folder before mutating a dirty $kind: $decision', async ({ kind, decision }) => {
+    data.folders = [{ id: 'work', name: 'Work' }];
+    data.prompts[0].editor!.folderId = 'work';
+    data.blocks = [{ ...fieldBlock(), editor: { ...fieldBlock().editor, folderId: 'work' } }];
+    const saved = () => kind === 'prompt' ? data.prompts[0] : data.blocks[0];
+    const originalText = kind === 'prompt' ? data.prompts[0].positivePrompt : data.blocks[0].text;
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Open Studio portrait' });
+    if (kind === 'block') fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    fireEvent.change(screen.getByLabelText('Browse prompt folder'), { target: { value: 'work' } });
+    await editItem(kind === 'prompt' ? 'Studio portrait' : 'Hair and clothes');
+    fireEvent.change(screen.getByLabelText(kind === 'prompt' ? 'Prompt' : 'Block text'), { target: { value: 'Draft before deletion' } });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete folder' }));
+    const dialog = screen.getByRole('dialog', { name: 'Unsaved changes' });
+    expect(data.folders).toHaveLength(1);
+    expect(saved().editor?.folderId).toBe('work');
+    expect(mocks.mutate).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: decision, exact: true }));
+    if (decision === 'Cancel') {
+      expect(data.folders).toHaveLength(1); expect(mocks.mutate).not.toHaveBeenCalled();
+      expect((screen.getByLabelText(kind === 'prompt' ? 'Prompt' : 'Block text') as HTMLTextAreaElement).value).toBe('Draft before deletion');
+      fireEvent.click(within(screen.getByRole('region', { name: 'Prompt editor' })).getByRole('button', { name: kind === 'block' ? 'Save block' : 'Save', exact: true }));
+      await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+      expect(saved().editor?.folderId).toBe('work');
+    } else {
+      await waitFor(() => expect(data.folders).toEqual([]));
+      expect(saved().editor?.folderId).toBeUndefined();
+      expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
+      expect(mocks.mutate.mock.calls.map(([command]) => command.action)).toEqual(decision === 'Save' ? ['update', 'folder-remove'] : ['folder-remove']);
+    }
+    expect(kind === 'prompt' ? data.prompts[0].positivePrompt : data.blocks[0].text).toBe(decision === 'Discard' ? originalText : 'Draft before deletion');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it('retains the folder and saveable draft when saving before folder deletion fails', async () => {
+    data.folders = [{ id: 'work', name: 'Work' }]; data.prompts[0].editor!.folderId = 'work';
+    render(<PromptLibrary onViewSource={vi.fn()} />); await screen.findByRole('button', { name: 'Open Studio portrait' });
+    fireEvent.change(screen.getByLabelText('Browse prompt folder'), { target: { value: 'work' } });
+    await editItem('Studio portrait'); fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Keep my draft' } });
+    vi.spyOn(window, 'confirm').mockReturnValue(true); mocks.mutate.mockRejectedValueOnce(new Error('Save unavailable'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete folder' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Unsaved changes' })).getByRole('button', { name: 'Save', exact: true }));
+    await screen.findByText('Save unavailable');
+    expect(data.folders).toHaveLength(1); expect(data.prompts[0].editor?.folderId).toBe('work');
+    expect(mocks.mutate.mock.calls.map(([command]) => command.action)).toEqual(['update']);
+    expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe('Keep my draft');
+    fireEvent.click(within(screen.getByRole('region', { name: 'Prompt editor' })).getByRole('button', { name: 'Save', exact: true }));
+    await waitFor(() => expect(data.prompts[0].positivePrompt).toBe('Keep my draft'));
+    expect(data.folders).toHaveLength(1);
+  });
+  it('saves a new draft before removing its selected folder', async () => {
+    data.folders = [{ id: 'work', name: 'Work' }];
+    render(<PromptLibrary onViewSource={vi.fn()} />); await screen.findByRole('button', { name: 'Open Studio portrait' });
+    fireEvent.change(screen.getByLabelText('Browse prompt folder'), { target: { value: 'work' } });
+    fireEvent.click(screen.getByRole('button', { name: 'New prompt' }));
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'New draft before deletion' } });
+    vi.spyOn(window, 'confirm').mockReturnValue(true); fireEvent.click(screen.getByRole('button', { name: 'Delete folder' }));
+    expect(mocks.mutate).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Unsaved changes' })).getByRole('button', { name: 'Save', exact: true }));
+    await waitFor(() => expect(data.folders).toEqual([]));
+    expect(data.prompts.find(item => item.positivePrompt === 'New draft before deletion')?.editor?.folderId).toBeUndefined();
+    expect(data.prompts).toHaveLength(3);
+    expect(mocks.mutate.mock.calls.map(([command]) => command.action)).toEqual(['create', 'folder-remove']);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
 });
