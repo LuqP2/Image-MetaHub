@@ -1,12 +1,12 @@
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, waitFor, fireEvent, screen } from '@testing-library/react';
 import type { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import type { IndexedImage } from '../types';
 import ExrViewer from '../components/ExrViewer';
 
 const zoom = vi.hoisted(() => ({ setTransform: vi.fn(), centerOnInit: true }));
-vi.mock('../components/SettingsModal', () => ({ default: () => null }));
+vi.mock('../components/SettingsModal', () => ({ default: ({ isOpen, focusSection }: any) => isOpen ? <div role="dialog" data-section={focusSection}>Settings</div> : null }));
 vi.mock('react-zoom-pan-pinch', async () => {
   const React = await import('react');
   return {
@@ -37,12 +37,18 @@ describe('EXR comparison zoom', () => {
       preview, cancel: vi.fn(), onChanged: vi.fn(() => () => {}),
     } } });
     const image = { id: 'renders::synthetic.exr', name: 'synthetic.exr', handle: { _filePath: 'D:\\renders\\synthetic.exr' } } as unknown as IndexedImage;
-    render(<ExrViewer image={image} externalZoom={{ zoom: 3, x: -100, y: -80 }} />);
+    const click = vi.fn(), key = vi.fn();
+    render(<div onClick={click} onKeyDown={key}><ExrViewer image={image} externalZoom={{ zoom: 3, x: -100, y: -80 }} navigation={<button>Viewport navigation</button>} /></div>);
     await waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ part: 1, channels: ['R', 'G', 'B'] }));
     expect(zoom.setTransform).not.toHaveBeenCalled();
     await act(async () => complete({ success: true, value: { url: 'imh-exr://local/synthetic', width: 100, height: 100, mode: 'color' } }));
     await waitFor(() => expect(zoom.setTransform).toHaveBeenCalledWith(-100, -80, 3, 0));
     expect(zoom.centerOnInit).toBe(false);
+    expect(screen.getByRole('toolbar').contains(screen.getByText('Viewport navigation'))).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'EXR settings' }));
+    expect(screen.getByRole('dialog').getAttribute('data-section')).toBe('exr');
+    fireEvent.keyDown(screen.getByLabelText('EXR part'), { key: 'ArrowRight' });
+    expect(click).not.toHaveBeenCalled(); expect(key).not.toHaveBeenCalled();
   });
 });
