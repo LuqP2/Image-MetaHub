@@ -13,7 +13,7 @@ function harness() {
     loadFile = vi.fn(async () => { this.webContents.emit('did-finish-load'); this.emit('ready-to-show'); });
     loadURL = vi.fn(async () => {});
     constructor() { super(); viewer = this; }
-    setMenu() {} show() {} focus() {} isDestroyed() { return this.destroyed; }
+    setMenu() {} show = vi.fn(); focus = vi.fn(); isDestroyed() { return this.destroyed; }
     destroy() { this.destroyed = true; this.emit('closed'); }
     close() { this.destroy(); }
   }
@@ -36,9 +36,9 @@ describe('comparison native session', () => {
     expect(await opening).toEqual({ success: true });
     expect(await h.call('comparison-command', {}, 'session', { type: 'swap' })).toEqual({ success: false });
     await h.call('comparison-command', h.viewer.webContents, 'session', { type: 'swap' });
-    expect(h.main.webContents.send).toHaveBeenCalledWith('comparison-event', { type: 'command', command: { type: 'swap' } });
+    expect(h.main.webContents.send).toHaveBeenCalledWith('comparison-event', { sessionId: 'session', type: 'command', command: { type: 'swap' } });
     await h.call('comparison-close', h.viewer.webContents, 'session', true);
-    expect(h.main.webContents.send).toHaveBeenCalledWith('comparison-event', { type: 'returned' });
+    expect(h.main.webContents.send).toHaveBeenCalledWith('comparison-event', { sessionId: 'session', type: 'returned' });
   });
   it('falls back on load failure and releases the failed native session', async () => {
     const h = harness();
@@ -46,7 +46,7 @@ describe('comparison native session', () => {
     h.viewer.webContents.emit('did-fail-load', {}, -2, 'ERR_FAILED', '', true);
     expect(await opening).toMatchObject({ success: false });
     expect(h.viewer.destroyed).toBe(true);
-    expect(h.main.webContents.send).not.toHaveBeenCalledWith('comparison-event', { type: 'closed' });
+    expect(h.main.webContents.send).not.toHaveBeenCalledWith('comparison-event', { sessionId: 'session', type: 'closed' });
   });
   it('native close ends the session and closing main releases the child', async () => {
     const h = harness();
@@ -54,6 +54,26 @@ describe('comparison native session', () => {
     await h.call('comparison-ready', h.viewer.webContents, 'session', true); await opening;
     h.main.emit('closed');
     expect(h.viewer.destroyed).toBe(true);
-    expect(h.main.webContents.send).toHaveBeenCalledWith('comparison-event', { type: 'closed' });
+    expect(h.main.webContents.send).toHaveBeenCalledWith('comparison-event', { sessionId: 'session', type: 'closed' });
   });
+  it('cancels readiness before closing and never presents a canceled opening', async () => {
+    const h = harness();
+    const opening = h.call('comparison-open', h.main.webContents, h.snapshot);
+    const canceled = h.viewer;
+    expect(await h.call('comparison-close', h.main.webContents, 'session')).toEqual({ success: true });
+    expect(await opening).toEqual({ success: false, cancelled: true });
+    expect(canceled.destroyed).toBe(true);
+    expect(await h.call('comparison-ready', canceled.webContents, 'session', true)).toBeNull();
+    canceled.emit('ready-to-show');
+    expect(canceled.show).not.toHaveBeenCalled(); expect(canceled.focus).not.toHaveBeenCalled();
+    const replacement = h.call('comparison-open', h.main.webContents, { ...h.snapshot, sessionId: 'replacement' });
+    const active = h.viewer;
+    expect(await h.call('comparison-ready', canceled.webContents, 'replacement', true)).toBeNull();
+    await h.call('comparison-ready', active.webContents, 'replacement', true);
+    expect(await replacement).toEqual({ success: true });
+    expect(active.show).toHaveBeenCalledOnce(); expect(canceled.show).not.toHaveBeenCalled();
+    await h.call('comparison-close', h.main.webContents, 'replacement');
+    expect(h.main.webContents.send).toHaveBeenCalledWith('comparison-event', { sessionId: 'replacement', type: 'closed' });
+  });
+
 });

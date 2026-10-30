@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useImageStore } from '../store/useImageStore';
+import { selectInlineComparisonOpen } from '../services/comparisonContracts';
 import { IndexedImage } from '../types';
 
 const createImage = (id: string): IndexedImage => ({
@@ -65,4 +66,16 @@ describe('useImageStore comparison actions', () => {
       'img-3',
     ]);
   });
+  it('tracks inline visibility separately and resets the detached host on close, clear and reset', () => {
+    const store = useImageStore.getState(); store.openComparisonModal();
+    expect(selectInlineComparisonOpen(useImageStore.getState())).toBe(true);
+    store.setComparisonDetached(true); expect(selectInlineComparisonOpen(useImageStore.getState())).toBe(false);
+    store.setComparisonDetached(false); expect(selectInlineComparisonOpen(useImageStore.getState())).toBe(true);
+    for (const close of [store.closeComparisonModal, store.clearComparison, store.resetState]) {
+      store.openComparisonModal(); store.setComparisonDetached(true); close();
+      expect(useImageStore.getState().isComparisonDetached).toBe(false);
+      expect(selectInlineComparisonOpen(useImageStore.getState())).toBe(false);
+    }
+  });
+
 });
