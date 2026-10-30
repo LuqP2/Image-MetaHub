@@ -51,9 +51,18 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
   const leader = models.find(image => image.id === last3DImageId && cameras3D[image.id]) ?? models.find(image => cameras3D[image.id]);
   const shared3DCamera = leader ? cameras3D[leader.id] : undefined;
   const update3DCamera = (id: string, camera: Model3DCameraState, interacted: boolean) => {
+    const activeModels = useImageStore.getState().comparisonImages.filter(image => isModel3DFileName(image.name));
+    if (!activeModels.some(image => image.id === id)) return;
     useComparisonUIStore.setState(state => {
-      if (sameModel3DCamera(state.ui.cameras3D[id], camera) && (!interacted || state.ui.last3DImageId === id)) return state;
-      return { ui: { ...state.ui, cameras3D: { ...state.ui.cameras3D, [id]: camera }, last3DImageId: interacted ? id : state.ui.last3DImageId } };
+      const ui = state.ui;
+      const ids = ui.sync3DEnabled ? activeModels.map(image => image.id) : [id];
+      // Initializing a follower must preserve the pose already displayed by the group.
+      const currentLeader = activeModels.find(image => image.id === ui.last3DImageId);
+      const existing = (currentLeader ? ui.cameras3D[currentLeader.id] : undefined) ?? activeModels.map(image => ui.cameras3D[image.id]).find(Boolean);
+      const pose = ui.sync3DEnabled && !interacted ? existing ?? camera : camera;
+      const lastId = interacted ? id : ui.last3DImageId;
+      if (ids.every(target => sameModel3DCamera(ui.cameras3D[target], pose)) && ui.last3DImageId === lastId) return state;
+      return { ui: { ...ui, cameras3D: { ...ui.cameras3D, ...Object.fromEntries(ids.map(target => [target, pose])) }, last3DImageId: lastId } };
     });
   };
   const imageCount = comparisonImages.length;
@@ -220,7 +229,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
           <div className="flex items-center gap-3">
             {onDetach && <button className="rounded border border-gray-600 px-3 py-1 text-sm text-gray-200" onClick={onDetach}>Open in separate window</button>}
             {onReturn && <button className="rounded border border-gray-600 px-3 py-1 text-sm text-gray-200" onClick={onReturn}>Return to app</button>}
-            {models.length >= 2 && <label className="flex items-center gap-2 text-sm text-gray-200"><input type="checkbox" aria-label="Sync 3D cameras" checked={sync3DEnabled} onChange={event => { const enabled = event.target.checked; if (!enabled && shared3DCamera) useComparisonUIStore.setState(state => ({ ui: { ...state.ui, cameras3D: { ...state.ui.cameras3D, ...Object.fromEntries(models.map(image => [image.id, shared3DCamera])) } } })); setSync3DEnabled(enabled); }} />Sync 3D cameras</label>}
+            {models.length >= 2 && <label className="flex items-center gap-2 text-sm text-gray-200"><input type="checkbox" aria-label="Sync 3D cameras" checked={sync3DEnabled} onChange={event => { const enabled = event.target.checked; if (shared3DCamera) useComparisonUIStore.setState(state => ({ ui: { ...state.ui, cameras3D: { ...state.ui.cameras3D, ...Object.fromEntries(models.map(image => [image.id, shared3DCamera])) } } })); setSync3DEnabled(enabled); }} />Sync 3D cameras</label>}
             <h2 className="text-lg font-semibold text-gray-200">Comparison View</h2>
             <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-xs font-medium text-purple-200">
               {imageCount} image{imageCount === 1 ? '' : 's'}
