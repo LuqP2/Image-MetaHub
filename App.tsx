@@ -38,6 +38,7 @@ import ChangelogModal from './components/ChangelogModal';
 import TrialExtensionModal from './components/TrialExtensionModal';
 import UpdateNotificationModal, { type UpdateNotificationStatus } from './components/UpdateNotificationModal';
 import ComparisonModal from './components/ComparisonModal';
+import { selectInlineComparisonOpen } from './services/comparisonContracts';
 import Footer from './components/Footer';
 import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
@@ -378,6 +379,7 @@ export default function App() {
   const includeSubfolders = useImageStore((state) => state.includeSubfolders);
 
   // Modal state selectors
+  const isInlineComparisonOpen = useImageStore(selectInlineComparisonOpen);
   const isComparisonModalOpen = useImageStore((state) => state.isComparisonModalOpen);
   const isAnnotationsLoaded = useImageStore((state) => state.isAnnotationsLoaded);
   const refreshingDirectories = useImageStore((state) => state.refreshingDirectories);
@@ -3989,7 +3991,7 @@ export default function App() {
     !isTrialExtensionModalOpen &&
     !updateModalState.isOpen &&
     !isAnalyticsOpen &&
-    !isComparisonModalOpen &&
+    !isInlineComparisonOpen &&
     !isBatchExportModalOpen &&
     !isSaveFilteredCollectionModalOpen &&
     !isA1111GenerateModalOpen &&
