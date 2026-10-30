@@ -27,6 +27,7 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
   const { prompts, blocks, folders = [], loadLibrary, mutate, error, isLoading, selectedPromptId, select } = useSavedPromptStore();
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
   const [kind, setKind] = useState<'prompt' | 'block'>(sessionDraft?.kind || 'prompt');
+  const [removingFolder, setRemovingFolder] = useState(false);
   const [folderId, setFolderId] = useState('all');
   const [filters, setFilters] = useState<PromptLibraryFilters>(emptyFilters);
   const [selected, setSelected] = useState(new Set<string>());
@@ -139,6 +140,17 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
     setComposeAppend(undefined); setRequestSave(0); setEditing(null); select(id || null); setEditorKey(key => key + 1); dirty.current = false;
     if (saveIntent.current) { const action = saveIntent.current; saveIntent.current = null; setPending(null); action(); }
   };
+  const removeFolder = (id: string) => {
+    if (removingFolder || !gate()) return;
+    // Saving/discarding must finish before folder-remove changes item revisions.
+    change(() => {
+      clearDraft(); setEditing(null); dirty.current = false;
+      setRemovingFolder(true);
+      void run({ action: 'folder-remove', id }).then(result => {
+        if (result.success) { setFolderId('none'); setSelected(new Set()); }
+      }).finally(() => setRemovingFolder(false));
+    });
+  };
   const duplicate = () => change(() => { if (active) void run({ action: 'duplicate', kind, id: active.id }).then(result => { if (result.success) afterSaved(result.id); }); });
   const remove = () => { if (active && window.confirm('Remove this saved item?')) void run({ action: 'remove', kind, id: active.id }).then(result => { if (result.success) { setEditing(null); select(null); } }); };
   const trackPendingSave = (id: string, operation: Promise<void>) => {
@@ -182,7 +194,7 @@ export default function PromptLibrary({ onViewSource, onFindImages }: { onViewSo
       <button className={buttonClass + ' !border-accent/40 !bg-accent/15 !text-gray-100'} onClick={create}><Plus size={15} />New {kind}</button>
       <div className="relative"><button className="app-top-icon-button" aria-label="Library tools" aria-expanded={toolsMenu} onClick={() => setToolsMenu(!toolsMenu)}><MoreHorizontal size={18} /></button>{toolsMenu && <><button tabIndex={-1} className="fixed inset-0 z-20 cursor-default" aria-label="Close library tools" onClick={() => setToolsMenu(false)} /><div className="absolute right-0 top-11 z-30 w-48 rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl"><button className="block w-full rounded p-2 text-left text-xs hover:bg-gray-800 disabled:opacity-40" disabled={kind !== 'prompt' || !visible.length} onClick={() => { setToolsMenu(false); const candidates = visible.length > 1 ? visible.filter(p => p.id !== active?.id) : visible; open(candidates[Math.floor(Math.random() * candidates.length)]); }}>Random</button><button className="block w-full rounded p-2 text-left text-xs hover:bg-gray-800" onClick={() => { setToolsMenu(false); setShowTransfer(true); }}>Import / Export</button></div></>}</div>
     </header>
-    <PromptFolders folders={folders} value={folderId} onChange={id => change(() => { setFolderId(id); setSelected(new Set()); })} onMutate={async command => { if (!gate()) return; const result = await run(command); if (!result.success) throw new Error('Could not update folder.'); }} />
+    <PromptFolders onRemove={removeFolder} removing={removingFolder} folders={folders} value={folderId} onChange={id => change(() => { setFolderId(id); setSelected(new Set()); })} onMutate={async command => { if (!gate()) return; const result = await run(command); if (!result.success) throw new Error('Could not update folder.'); }} />
     {copyStatus && <p role="status" className="text-xs text-accent">{copyStatus}</p>}
     {(error || actionError) && <div role="alert" className="shrink-0 rounded border border-red-500/40 p-2 text-sm text-red-400">{actionError || error}<button className={buttonClass + ' ml-2'} onClick={() => void loadLibrary()}>Retry</button></div>}
     {selectionMode && <div className="shrink-0 space-y-2 rounded-xl border border-accent/25 bg-accent/5 p-3 text-xs">
