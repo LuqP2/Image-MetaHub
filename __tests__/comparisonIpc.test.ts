@@ -5,24 +5,25 @@ import { registerComparisonIpc } from '../electron/comparisonIpc.mjs';
 import { buildDetachedViewerLoadTarget } from '../utils/detachedViewerUrl.mjs';
 import { defaultComparisonUI } from '../store/useComparisonUIStore';
 function harness() {
-  const handlers = new Map<string, Function>();
+  type IpcHandler = (...args: any[]) => unknown;
+  const handlers = new Map<string, IpcHandler>();
   const main = Object.assign(new EventEmitter(), { isDestroyed: () => false, webContents: { send: vi.fn() } });
   const settingsWindows = new Set<any>();
-  let viewer: any;
+  const viewers: Window[] = [];
   class Window extends EventEmitter {
     destroyed = false;
     webContents = Object.assign(new EventEmitter(), { send: vi.fn() });
     loadFile = vi.fn(async () => { this.webContents.emit('did-finish-load'); this.emit('ready-to-show'); });
     loadURL = vi.fn(async () => {});
-    constructor() { super(); viewer = this; }
+    constructor() { super(); viewers.push(this); }
     setMenu() {} show = vi.fn(); focus = vi.fn(); isDestroyed() { return this.destroyed; }
     destroy() { this.destroyed = true; this.emit('closed'); }
     close() { this.destroy(); }
   }
-  registerComparisonIpc({ settingsWindows, ipcMain: { handle: (name: string, handler: Function) => handlers.set(name, handler) }, BrowserWindow: Window, getMainWindow: () => main, preloadPath: 'preload.js', indexPath: '/Applications/Image MetaHub ç/app.asar/dist/index.html', isDev: false, configureNavigation: vi.fn() });
+  registerComparisonIpc({ settingsWindows, ipcMain: { handle: (name: string, handler: IpcHandler) => handlers.set(name, handler) }, BrowserWindow: Window, getMainWindow: () => main, preloadPath: 'preload.js', indexPath: '/Applications/Image MetaHub ç/app.asar/dist/index.html', isDev: false, configureNavigation: vi.fn() });
   const call = (name: string, sender: any, ...args: any[]) => handlers.get(name)!({ sender }, ...args);
   const snapshot = { sessionId: 'session', images: [{ id: 'a', name: 'a.png' }, { id: 'b', name: 'b.png' }], directories: [], ui: defaultComparisonUI() };
-  return { call, main, snapshot, settingsWindows, get viewer() { return viewer; } };
+  return { call, main, snapshot, settingsWindows, get viewer() { return viewers[viewers.length - 1]; } };
 }
 describe('comparison native session', () => {
   it('uses loadFile query parameters for packaged paths with spaces and accents', () => {
