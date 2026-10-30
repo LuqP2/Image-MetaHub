@@ -894,7 +894,9 @@ export interface PromptDocument {
   negativeSeparator: string;
   variables: PromptVariable[];
 }
+export interface PromptFolder { id: string; name: string }
 export interface PromptEditorData {
+  folderId?: string;
   version: 1;
   title: string;
   notes: string;
@@ -918,9 +920,12 @@ export type PromptLibraryItem = SavedPrompt | PromptBlock;
 export type PromptLibraryMutation =
   | { action: 'create' | 'update'; kind: 'prompt' | 'block'; item: Partial<SavedPrompt & PromptBlock>; expectedRevision?: number }
   | { action: 'duplicate' | 'remove'; kind: 'prompt' | 'block'; id: string }
-  | { action: 'bulk'; kind: 'prompt' | 'block'; ids: string[]; addTags?: string[]; removeTags?: string[]; favorite?: boolean; category?: string }
-  | { action: 'import'; prompts: Partial<SavedPrompt>[]; blocks: Partial<PromptBlock>[]; keepDuplicates: boolean };
-export interface PromptLibrarySnapshot { prompts: SavedPrompt[]; blocks: PromptBlock[] }
+  | { action: 'bulk'; kind: 'prompt' | 'block'; ids: string[]; addTags?: string[]; removeTags?: string[]; favorite?: boolean; category?: string; folderId?: string }
+  | { action: 'folder-create'; name: string }
+  | { action: 'folder-rename'; id: string; name: string }
+  | { action: 'folder-remove'; id: string }
+  | { action: 'import'; folders?: PromptFolder[]; prompts: Partial<SavedPrompt>[]; blocks: Partial<PromptBlock>[]; keepDuplicates: boolean };
+export interface PromptLibrarySnapshot { folders?: PromptFolder[]; prompts: SavedPrompt[]; blocks: PromptBlock[] }
 
 export interface SavePromptInput {
   positivePrompt: string;

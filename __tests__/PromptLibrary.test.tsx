@@ -823,4 +823,27 @@ describe('integrated Prompt Library', () => {
     await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('Studio portrait'));
   });
 
+  it('organizes prompts with persistent empty folders, single-item moves and safe folder deletion', async () => {
+    render(<PromptLibrary onViewSource={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Open Studio portrait' });
+    fireEvent.click(screen.getByRole('button', { name: 'New folder' }));
+    fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'Portraits' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save folder' }));
+    await screen.findByRole('option', { name: 'Portraits' });
+    const id = data.folders![0].id;
+    fireEvent.click(screen.getByRole('button', { name: 'Open Studio portrait' }));
+    fireEvent.change(screen.getByLabelText('Move item to folder'), { target: { value: id } });
+    await waitFor(() => expect(data.prompts[0].editor?.folderId).toBe(id));
+    fireEvent.change(screen.getByLabelText('Browse prompt folder'), { target: { value: id } });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename folder' }));
+    fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'Favorites' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save folder' }));
+    await waitFor(() => expect(data.folders![0].name).toBe('Favorites')); 
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete folder' }));
+    await waitFor(() => expect(data.folders).toEqual([]));
+    expect(data.prompts).toHaveLength(2);
+    expect(data.prompts[0].editor?.folderId).toBeUndefined();
+  });
+
 });
