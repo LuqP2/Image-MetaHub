@@ -1,11 +1,13 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
+import { broadcastSettingsToWindows } from '../electron/settingsBroadcast.mjs';
 import { registerComparisonIpc } from '../electron/comparisonIpc.mjs';
 import { buildDetachedViewerLoadTarget } from '../utils/detachedViewerUrl.mjs';
 import { defaultComparisonUI } from '../store/useComparisonUIStore';
 function harness() {
   const handlers = new Map<string, Function>();
   const main = Object.assign(new EventEmitter(), { isDestroyed: () => false, webContents: { send: vi.fn() } });
+  const settingsWindows = new Set<any>();
   let viewer: any;
   class Window extends EventEmitter {
     destroyed = false;
@@ -17,10 +19,10 @@ function harness() {
     destroy() { this.destroyed = true; this.emit('closed'); }
     close() { this.destroy(); }
   }
-  registerComparisonIpc({ ipcMain: { handle: (name: string, handler: Function) => handlers.set(name, handler) }, BrowserWindow: Window, getMainWindow: () => main, preloadPath: 'preload.js', indexPath: '/Applications/Image MetaHub ç/app.asar/dist/index.html', isDev: false, configureNavigation: vi.fn() });
+  registerComparisonIpc({ settingsWindows, ipcMain: { handle: (name: string, handler: Function) => handlers.set(name, handler) }, BrowserWindow: Window, getMainWindow: () => main, preloadPath: 'preload.js', indexPath: '/Applications/Image MetaHub ç/app.asar/dist/index.html', isDev: false, configureNavigation: vi.fn() });
   const call = (name: string, sender: any, ...args: any[]) => handlers.get(name)!({ sender }, ...args);
   const snapshot = { sessionId: 'session', images: [{ id: 'a', name: 'a.png' }, { id: 'b', name: 'b.png' }], directories: [], ui: defaultComparisonUI() };
-  return { call, main, snapshot, get viewer() { return viewer; } };
+  return { call, main, snapshot, settingsWindows, get viewer() { return viewer; } };
 }
 describe('comparison native session', () => {
   it('uses loadFile query parameters for packaged paths with spaces and accents', () => {
@@ -74,6 +76,32 @@ describe('comparison native session', () => {
     expect(active.show).toHaveBeenCalledOnce(); expect(canceled.show).not.toHaveBeenCalled();
     await h.call('comparison-close', h.main.webContents, 'replacement');
     expect(h.main.webContents.send).toHaveBeenCalledWith('comparison-event', { sessionId: 'replacement', type: 'closed' });
+  });
+
+  it('registers comparison windows for settings updates in both directions and unregisters on return', async () => {
+    const h = harness(); const opening = h.call('comparison-open', h.main.webContents, h.snapshot);
+    const viewer = h.viewer;
+    expect(h.settingsWindows.has(viewer)).toBe(true);
+    await h.call('comparison-ready', viewer.webContents, 'session', true); await opening;
+    broadcastSettingsToWindows([h.main, ...h.settingsWindows], h.main.webContents);
+    expect(viewer.webContents.send).toHaveBeenCalledWith('settings-updated');
+    expect(h.main.webContents.send).not.toHaveBeenCalledWith('settings-updated');
+    viewer.webContents.send.mockClear();
+    broadcastSettingsToWindows([h.main, ...h.settingsWindows], viewer.webContents);
+    expect(h.main.webContents.send).toHaveBeenCalledWith('settings-updated');
+    expect(viewer.webContents.send).not.toHaveBeenCalledWith('settings-updated');
+    await h.call('comparison-close', viewer.webContents, 'session', true);
+    expect(h.settingsWindows.size).toBe(0);
+    broadcastSettingsToWindows([h.main, ...h.settingsWindows], h.main.webContents);
+    expect(viewer.webContents.send).not.toHaveBeenCalledWith('settings-updated');
+  });
+  it.each(['cancel', 'failure', 'main-close'])('unregisters settings recipients on %s during opening', async mode => {
+    const h = harness(); const opening = h.call('comparison-open', h.main.webContents, h.snapshot);
+    expect(h.settingsWindows.size).toBe(1);
+    if (mode === 'cancel') await h.call('comparison-close', h.main.webContents, 'session');
+    else if (mode === 'failure') h.viewer.webContents.emit('did-fail-load', {}, -2, 'ERR_FAILED', '', true);
+    else h.main.emit('closed');
+    expect((await opening).success).toBe(false); expect(h.settingsWindows.size).toBe(0);
   });
 
 });
