@@ -124,4 +124,21 @@ describe('comparison host transfer', () => {
     expect(useImageStore.getState().isComparisonDetached).toBe(false); expect(mocks.update).not.toHaveBeenCalled();
   });
 
+  it.each(['opening', 'detached'] as const)('ends the logical session when a %s comparison loses its second image', async phase => {
+    let finish!: (result: { success: boolean }) => void;
+    if (phase === 'opening') mocks.open.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    render(<StoreHost />); fireEvent.click(screen.getByText('Detach'));
+    const id = mocks.open.mock.calls[0][0].sessionId;
+    if (phase === 'detached') await waitFor(() => expect(useImageStore.getState().isComparisonDetached).toBe(true));
+    const updates = mocks.update.mock.calls.length;
+    act(() => useImageStore.setState({ comparisonImages: useImageStore.getState().comparisonImages.slice(0, 1) }));
+    expect(mocks.close).toHaveBeenCalledWith(id);
+    if (phase === 'opening') await act(async () => finish({ success: true }));
+    expect(useImageStore.getState().isComparisonModalOpen).toBe(false);
+    expect(useImageStore.getState().isComparisonDetached).toBe(false);
+    expect(useImageStore.getState().comparisonImages).toEqual([]);
+    expect(mocks.update).toHaveBeenCalledTimes(updates);
+    expect(screen.getByTestId('workspace').getAttribute('data-visible')).toBe('true');
+  });
+
 });
