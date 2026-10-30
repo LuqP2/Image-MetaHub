@@ -912,4 +912,56 @@ describe('integrated Prompt Library', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it.each((['prompt', 'block'] as const).flatMap(kind => (['Discard', 'Save', 'Cancel'] as const).map(decision => ({ kind, decision }))))('finishes folder navigation from a dirty $kind with $decision', async ({ kind, decision }) => {
+    data.folders = [{ id: 'work', name: 'Work' }, { id: 'other', name: 'Other' }];
+    data.prompts[0].editor!.folderId = 'work';
+    data.blocks = [{ ...fieldBlock(), editor: { ...fieldBlock().editor, folderId: 'work' } }];
+    const savedText = () => kind === 'prompt' ? data.prompts[0].positivePrompt : data.blocks[0].text;
+    const original = savedText();
+    const title = kind === 'prompt' ? 'Studio portrait' : 'Hair and clothes';
+    const field = kind === 'prompt' ? 'Prompt' : 'Block text';
+    render(<PromptLibrary onViewSource={vi.fn()} />); await screen.findByRole('button', { name: 'Open Studio portrait' });
+    if (kind === 'block') fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    fireEvent.change(screen.getByLabelText('Browse prompt folder'), { target: { value: 'work' } });
+    await editItem(title);
+    fireEvent.change(screen.getByLabelText(field), { target: { value: 'Folder navigation draft' } });
+    fireEvent.change(screen.getByLabelText('Browse prompt folder'), { target: { value: 'other' } });
+    const dialog = screen.getByRole('dialog', { name: 'Unsaved changes' });
+    fireEvent.click(within(dialog).getByRole('button', { name: decision, exact: true }));
+    if (decision === 'Cancel') {
+      expect((screen.getByLabelText('Browse prompt folder') as HTMLSelectElement).value).toBe('work');
+      expect((screen.getByLabelText(field) as HTMLTextAreaElement).value).toBe('Folder navigation draft');
+      expect(getDraft()?.draft).toBeTruthy();
+    } else {
+      await waitFor(() => expect((screen.getByLabelText('Browse prompt folder') as HTMLSelectElement).value).toBe('other'));
+      expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull();
+      expect(useSavedPromptStore.getState().selectedPromptId).toBeNull();
+      expect(getDraft()).toBeNull();
+      expect(savedText()).toBe(decision === 'Save' ? 'Folder navigation draft' : original);
+      fireEvent.change(screen.getByLabelText('Browse prompt folder'), { target: { value: 'work' } });
+      expect(screen.queryByRole('dialog', { name: 'Unsaved changes' })).toBeNull();
+      await editItem(title);
+      expect((screen.getByLabelText(field) as HTMLTextAreaElement).value).toBe(decision === 'Save' ? 'Folder navigation draft' : original);
+      fireEvent.change(screen.getByLabelText(field), { target: { value: 'Fresh edits after navigation' } });
+    }
+    fireEvent.change(screen.getByLabelText('Browse prompt folder'), { target: { value: 'other' } });
+    expect(screen.getByRole('dialog', { name: 'Unsaved changes' })).toBeTruthy();
+    expect(mocks.mutate.mock.calls.map(([command]) => command.action)).toEqual(decision === 'Save' ? ['update'] : []);
+  });
+  it.each(['prompt', 'block'] as const)('discards an unsaved new %s when navigating folders without recovering it on remount', async kind => {
+    data.folders = [{ id: 'work', name: 'Work' }, { id: 'other', name: 'Other' }];
+    const first = render(<PromptLibrary onViewSource={vi.fn()} />); await screen.findByRole('button', { name: 'Open Studio portrait' });
+    if (kind === 'block') fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    fireEvent.change(screen.getByLabelText('Browse prompt folder'), { target: { value: 'work' } });
+    fireEvent.click(screen.getByRole('button', { name: `New ${kind}` }));
+    fireEvent.change(screen.getByLabelText(kind === 'prompt' ? 'Prompt' : 'Block text'), { target: { value: 'Unsaved item to discard' } });
+    fireEvent.change(screen.getByLabelText('Browse prompt folder'), { target: { value: 'other' } });
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Unsaved changes' })).getByRole('button', { name: 'Discard', exact: true }));
+    expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull(); expect(getDraft()).toBeNull();
+    expect(mocks.mutate).not.toHaveBeenCalled();
+    first.unmount(); render(<PromptLibrary onViewSource={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Open Studio portrait' });
+    expect(screen.queryByRole('region', { name: 'Prompt editor' })).toBeNull(); expect(getDraft()).toBeNull();
+  });
+
 });
