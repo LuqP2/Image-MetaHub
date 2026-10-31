@@ -22,6 +22,7 @@ export default function PromptBlockEditor({ initial, onClose, onSaved }: {
   const [fieldStatus, setFieldStatus] = useState('');
   const selection = usePromptSelectionMenu();
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
+  const folders = useSavedPromptStore(s => s.folders) ?? [];
   const mutate = useSavedPromptStore((s) => s.mutate);
   const dialogRef = usePromptDialogFocus(onClose, busy);
   const variables = activeBlockFields(text, editor.variables);
@@ -85,7 +86,7 @@ export default function PromptBlockEditor({ initial, onClose, onSaved }: {
       </label>
 
 
-      <PromptTagsInput tags={editor.tags} onChange={tags => setEditor({ ...editor, tags })} />
+      <label className="block text-xs">Folder<select aria-label="Block folder" className={fieldClass} value={editor.folderId || ''} onChange={event => setEditor({ ...editor, folderId: event.target.value })}><option value="">Unfiled</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label><PromptTagsInput tags={editor.tags} onChange={tags => setEditor({ ...editor, tags })} />
 
 
       <label className="block text-xs">{"Notes"}<textarea

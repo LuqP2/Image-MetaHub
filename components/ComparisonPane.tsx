@@ -1,5 +1,6 @@
+import Model3DViewer from './Model3DViewer';
 import ExrViewer from './ExrViewer';
-import { isExrFileName } from '../utils/mediaTypes.js';
+import { isExrFileName, isModel3DFileName } from '../utils/mediaTypes.js';
 import React, { useState, useEffect, useRef, FC } from 'react';
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Sparkles, X } from 'lucide-react';
@@ -10,6 +11,9 @@ import useComparisonImageSource from '../hooks/useComparisonImageSource';
 
 const ComparisonPane: FC<ComparisonPaneProps> = ({
   image,
+  onGenerate,
+  externalCamera,
+  onCameraChange,
   directoryPath,
   syncEnabled,
   externalZoom,
@@ -22,18 +26,20 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
+  const isModel3D = isModel3DFileName(image.name);
   const isExr = isExrFileName(image.name);
-  const { imageUrl, loadError } = useComparisonImageSource(image, directoryPath, isExr);
+  const { imageUrl, loadError } = useComparisonImageSource(image, directoryPath, isExr || isModel3D);
 
   // Apply external zoom when sync enabled
   useEffect(() => {
-    if (syncEnabled && externalZoom && transformRef.current) {
+    if (externalZoom && transformRef.current) {
       const { setTransform } = transformRef.current;
       setTransform(externalZoom.x, externalZoom.y, externalZoom.zoom, 0);
     }
   }, [syncEnabled, externalZoom]);
 
-  if (isExr) return <div className={`relative min-h-0 ${className ?? ''}`} onMouseEnter={() => onHoverChange?.(true)} onMouseLeave={() => onHoverChange?.(false)}><ExrViewer image={image} directoryPath={directoryPath} externalZoom={syncEnabled ? externalZoom : undefined} onZoomChange={onZoomChange} />{onRemove && <button className="absolute bottom-8 right-2 rounded bg-black/75 px-2 py-1 text-xs text-white" onClick={onRemove}>Remove</button>}</div>;
+  if (isModel3D) return <div className={`relative min-h-0 ${className ?? ''}`} onMouseEnter={() => onHoverChange?.(true)} onMouseLeave={() => onHoverChange?.(false)}><Model3DViewer image={image} directoryPath={directoryPath} externalCamera={externalCamera} onCameraChange={onCameraChange} className="h-full" />{onRemove && <button aria-label={`Remove ${image.name}`} className="absolute bottom-2 right-2 rounded bg-black/75 px-2 py-1 text-xs text-white" onClick={onRemove}>Remove</button>}</div>;
+  if (isExr) return <div className={`relative min-h-0 ${className ?? ''}`} onMouseEnter={() => onHoverChange?.(true)} onMouseLeave={() => onHoverChange?.(false)}><ExrViewer image={image} directoryPath={directoryPath} externalZoom={externalZoom} onZoomChange={onZoomChange} />{onRemove && <button className="absolute bottom-8 right-2 rounded bg-black/75 px-2 py-1 text-xs text-white" onClick={onRemove}>Remove</button>}</div>;
   if (loadError) {
     return (
       <div className={`flex items-center justify-center bg-gray-900/50 ${className ?? ''}`}>
@@ -55,10 +61,12 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
     >
       <TransformWrapper
         ref={transformRef}
-        initialScale={1}
+        initialScale={externalZoom?.zoom ?? 1}
+        initialPositionX={externalZoom?.x}
+        initialPositionY={externalZoom?.y}
         minScale={0.5}
         maxScale={5}
-        centerOnInit
+        centerOnInit={!externalZoom || (externalZoom.zoom === 1 && externalZoom.x === 0 && externalZoom.y === 0)}
         wheel={{ step: 0.1 }}
         onTransformed={(ref) => {
           if (onZoomChange) {
@@ -175,7 +183,8 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
                 model: params.model || image.metadata?.normalizedMetadata?.model,
                 ...(params.sampler ? { sampler: params.sampler } : {}),
               };
-            await generateWithA1111(image, customMetadata, params.numberOfImages);
+            if (onGenerate) await onGenerate({ imageId: image.id, metadata: customMetadata, numberOfImages: params.numberOfImages });
+            else await generateWithA1111(image, customMetadata, params.numberOfImages);
             setIsGenerateModalOpen(false);
           }}
           isGenerating={isGenerating}
@@ -193,6 +202,9 @@ export default React.memo(ComparisonPane, (prev, next) => {
     prev.className === next.className &&
     prev.imageLabel === next.imageLabel &&
     prev.onRemove === next.onRemove &&
+    prev.onGenerate === next.onGenerate &&
+    prev.externalCamera === next.externalCamera &&
+    prev.onCameraChange === next.onCameraChange &&
     prev.externalZoom?.zoom === next.externalZoom?.zoom &&
     prev.externalZoom?.x === next.externalZoom?.x &&
     prev.externalZoom?.y === next.externalZoom?.y

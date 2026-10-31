@@ -153,7 +153,7 @@ export class SavedPromptRepository {
   }
 
   snapshot() {
-    return { prompts: this.list(), blocks: this.database.prepare('SELECT * FROM prompt_blocks ORDER BY created_at DESC, id DESC').all().map((row) => ({
+    return { folders: this.database.prepare('SELECT id, name FROM prompt_folders ORDER BY name, id').all(), prompts: this.list(), blocks: this.database.prepare('SELECT * FROM prompt_blocks ORDER BY created_at DESC, id DESC').all().map((row) => ({
       id: row.id, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at), revision: Number(row.revision), text: row.text, editor: normalizeEditor(JSON.parse(row.editor_json)),
     })) };
   }
@@ -162,6 +162,8 @@ export class SavedPromptRepository {
     return runTransaction(this.database, () => {
       const before = this.snapshot();
       const after = applyMutation(before, command, this.randomUUID, this.now);
+      this.database.prepare('DELETE FROM prompt_folders').run();
+      for (const folder of after.folders) this.database.prepare('INSERT INTO prompt_folders (id, name) VALUES (?, ?)').run(folder.id, folder.name);
       const old = new Map([...before.prompts, ...before.blocks].map((p) => [p.id, p]));
       for (const item of [...after.prompts, ...after.blocks]) {
         if (!isUuid(item.id)) throw new SavedPromptRepositoryError('SAVED_PROMPT_INVALID_ID', 'Item id must be a UUID.');

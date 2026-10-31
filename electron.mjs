@@ -1,4 +1,7 @@
 import electron from 'electron';
+import { runComparisonPackagedSmoke } from './electron/comparisonPackagedSmoke.mjs';
+import { broadcastSettingsToWindows } from './electron/settingsBroadcast.mjs';
+import { registerComparisonIpc } from './electron/comparisonIpc.mjs';
 import { registerExrIpc } from './electron/exrIpc.mjs';
 import { registerBoardIpc } from './electron/boardIpc.mjs';
 import { createBoardCloseCoordinator } from './electron/boardCloseCoordinator.mjs';
@@ -675,6 +678,7 @@ let stableIdentityIndexer;
 let stableIdentityFileOperationCoordinator;
 let stableIdentityUserDataService;
 const detachedImageViewerWindows = new Map();
+const comparisonSettingsWindows = new Set();
 const coordinateViewerOpen = createViewerOpenCoordinator();
 const viewerFocusTracker = createViewerFocusTracker();
 let viewerDiagnosticSequence = 0;
@@ -2612,12 +2616,7 @@ function pickDetachedViewerCascadeSlot() {
 
 /** Notify every renderer except the one that just wrote settings. */
 function broadcastSettingsUpdated(senderWebContents) {
-  const targets = [mainWindow, modelInspectorWindow, ...detachedImageViewerWindows.values()];
-  for (const targetWindow of targets) {
-    if (!targetWindow || targetWindow.isDestroyed()) continue;
-    if (targetWindow.webContents === senderWebContents) continue;
-    targetWindow.webContents.send('settings-updated');
-  }
+  broadcastSettingsToWindows([mainWindow, modelInspectorWindow, ...detachedImageViewerWindows.values(), ...comparisonSettingsWindows], senderWebContents);
 }
 
 function sendDetachedViewerEvent(sessionId, type, details = {}) {
@@ -3565,6 +3564,14 @@ app.whenReady().then(async () => {
   });
   await stableIdentityFileOperationCoordinator.initializeRecovery();
 
+  if (app.isPackaged && process.env.IMH_PACKAGED_COMPARE_SMOKE === '1') {
+    try {
+      const root = process.env.IMH_PACKAGED_COMPARE_SMOKE_ROOT;
+      const result = await runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, root });
+      await fs.writeFile(path.join(root, 'result.json'), JSON.stringify(result), 'utf8'); app.exit(0);
+    } catch (error) { console.error('[comparison-smoke]', error); app.exit(1); }
+    return;
+  }
   if (packagedCanvasSmokeEnabled) {
     const resultPath = process.env.IMH_PACKAGED_CANVAS_SMOKE_RESULT?.trim();
     try {
@@ -7636,6 +7643,7 @@ function setupFileOperationHandlers() {
     }
   };
 
+  registerComparisonIpc({ ipcMain, BrowserWindow, settingsWindows: comparisonSettingsWindows, getMainWindow: () => mainWindow, preloadPath: path.join(__dirname, 'preload.js'), indexPath: path.join(__dirname, 'dist', 'index.html'), isDev, configureNavigation: configureDetachedViewerNavigationHandlers });
   boardPersistence = registerBoardIpc({ ipcMain, app, dialog, BrowserWindow, clipboard: electron.clipboard, getMainWindow: () => mainWindow });
   const isBoardMainSender = event => mainWindow && !mainWindow.isDestroyed()
     && event.sender === mainWindow.webContents && event.senderFrame === mainWindow.webContents.mainFrame;

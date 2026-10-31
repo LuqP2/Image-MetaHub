@@ -51,14 +51,17 @@ export function parseCsv(text: string): string[][] {
 export function parseImport(text: string, format: 'json' | 'csv'): PromptLibrarySnapshot {
   if(format === 'json') {
     const envelope = JSON.parse(text);
-    if(envelope.format !== 'image-metahub-prompt-library' || envelope.schemaVersion !== 1 || !Array.isArray(envelope.prompts) || !Array.isArray(envelope.blocks))
+    if(envelope.format !== 'image-metahub-prompt-library' || ![1, 2].includes(envelope.schemaVersion) || !Array.isArray(envelope.prompts) || !Array.isArray(envelope.blocks))
       throw new Error('Unsupported Prompt Library JSON.');
     const clean = (kind: 'prompt' | 'block', item: SavedPrompt | PromptBlock) => {
       const value = { ...portableItem(item), ...prepareItem(kind, item) };
       value.editor.preview = null;
       return value;
     };
-    return { prompts: envelope.prompts.map((p: SavedPrompt) => clean('prompt', p)), blocks: envelope.blocks.map((b: PromptBlock) => clean('block', b)) };
+    const folders = envelope.schemaVersion === 2 ? envelope.folders : [];
+    if (!Array.isArray(folders) || folders.some(folder => !folder || typeof folder.id !== 'string' || !folder.id || typeof folder.name !== 'string' || !folder.name.trim() || folder.name.trim().length > 100) || new Set(folders.map(folder => folder.id)).size !== folders.length) throw new Error('Invalid folders in Prompt Library JSON.');
+    if ([...envelope.prompts, ...envelope.blocks].some(item => item.editor?.folderId && !folders.some(folder => folder.id === item.editor.folderId))) throw new Error('An imported item refers to an unknown folder.');
+    return { folders, prompts: envelope.prompts.map((p: SavedPrompt) => clean('prompt', p)), blocks: envelope.blocks.map((b: PromptBlock) => clean('block', b)) };
   }
   const rows = parseCsv(text);
   const header = rows.shift()?.map((s) => s.trim().toLowerCase()) || [];
@@ -81,7 +84,7 @@ export function parseImport(text: string, format: 'json' | 'csv'): PromptLibrary
   });
   return { prompts, blocks: [] };
 }
-export function exportJson(snapshot: PromptLibrarySnapshot) { return JSON.stringify({ format: 'image-metahub-prompt-library', schemaVersion: 1, prompts: snapshot.prompts.map(portableItem), blocks: snapshot.blocks.map(portableItem) }, null, 2); }
+export function exportJson(snapshot: PromptLibrarySnapshot) { return JSON.stringify({ format: 'image-metahub-prompt-library', schemaVersion: 2, folders: snapshot.folders ?? [], prompts: snapshot.prompts.map(portableItem), blocks: snapshot.blocks.map(portableItem) }, null, 2); }
 export function exportCsv(prompts: SavedPrompt[], resolved: Map<string, {
   positivePrompt: string;
   negativePrompt: string;

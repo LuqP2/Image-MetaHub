@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
 import { ArrowRightLeft, ChevronDown, ChevronRight, Copy, Folder, FolderOpen, FolderPlus, MoveRight, X } from 'lucide-react';
 import type { Directory, IndexedImage, IndexedImageTransferMode, IndexedImageTransferProgress } from '../types';
 import { validateFolderName } from '../utils/folderName';
@@ -33,6 +33,12 @@ interface DestinationOption {
 
 // Sentinel key used to group root directories in the children map. Real ids
 // always contain "::", so this can never collide with an option id.
+// Shared by Move/Copy and component remounts; intentionally never persisted to disk.
+const destinationSession = { initialized: false, selectedId: '', expandedIds: new Set<string>(), scrollTop: 0 };
+export const resetTransferDestinationSession = () => {
+  destinationSession.initialized = false; destinationSession.selectedId = '';
+  destinationSession.expandedIds = new Set(); destinationSession.scrollTop = 0;
+};
 const ROOT_PARENT_KEY = '__root__';
 
 // Derive the id of an option's parent from its relative path so the flat option
@@ -74,13 +80,13 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   onClose,
   onConfirm,
 }) => {
-  const [selectedDirectoryId, setSelectedDirectoryId] = useState<string>('');
+  const [selectedDirectoryId, setSelectedDirectoryId] = useState<string>(destinationSession.selectedId);
   const [subfolderOptions, setSubfolderOptions] = useState<DestinationOption[]>([]);
   // Folders created via "New folder" during this session. Kept separate from the
   // scanned subfolderOptions so an in-flight loadSubfolders() cannot overwrite
   // and lose a just-created destination.
   const [createdFolderOptions, setCreatedFolderOptions] = useState<DestinationOption[]>([]);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(destinationSession.expandedIds));
   const [isLoadingSubfolders, setIsLoadingSubfolders] = useState(false);
   const [subfolderLoadError, setSubfolderLoadError] = useState<string | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -88,6 +94,12 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   const [createFolderError, setCreateFolderError] = useState<string | null>(null);
   const [isSubmittingNewFolder, setIsSubmittingNewFolder] = useState(false);
 
+  const [destinationsLoaded, setDestinationsLoaded] = useState(false);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const selectDestination = (id: string) => { destinationSession.selectedId = id; setSelectedDirectoryId(id); };
+  useLayoutEffect(() => {
+    if (isOpen && destinationsLoaded && treeRef.current) treeRef.current.scrollTop = destinationSession.scrollTop;
+  }, [isOpen, destinationsLoaded]);
   const imageCount = images.length;
   const title = mode === 'move' ? 'Move To' : 'Copy To';
 
@@ -150,6 +162,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
       } else {
         next.add(id);
       }
+      destinationSession.expandedIds = next;
       return next;
     });
   };
@@ -158,18 +171,19 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
     if (!isOpen) {
       return;
     }
-    setSelectedDirectoryId((current) => (
-      current && destinationOptions.some((option) => option.id === current)
-        ? current
-        : destinationOptions[0]?.id ?? ''
-    ));
-  }, [isOpen, destinationOptions]);
+    if (!destinationsLoaded) return;
+    const current = destinationSession.selectedId;
+    const fallbackRoot = current.split('::')[0];
+    selectDestination(destinationOptions.some(option => option.id === current) ? current
+      : destinationOptions.find(option => option.rootDirectory.id === fallbackRoot && option.depth === 0)?.id
+        ?? destinationOptions[0]?.id ?? '');
+  }, [isOpen, destinationOptions, destinationsLoaded]);
 
   useEffect(() => {
     if (!isOpen) {
       setSubfolderOptions([]);
       setCreatedFolderOptions([]);
-      setExpandedIds(new Set());
+      setDestinationsLoaded(false);
       setIsLoadingSubfolders(false);
       setSubfolderLoadError(null);
       setIsCreatingFolder(false);
@@ -181,7 +195,11 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
 
     // Start with root directories expanded so their immediate subfolders are
     // visible right away; deeper levels stay collapsed until the user drills in.
-    setExpandedIds(new Set(sortedDirectories.map((directory) => `${directory.id}::.`)));
+    if (!destinationSession.initialized) {
+      destinationSession.expandedIds = new Set(sortedDirectories.map(directory => `${directory.id}::.`));
+      destinationSession.initialized = true;
+    }
+    setExpandedIds(new Set(destinationSession.expandedIds));
 
     let cancelled = false;
 
@@ -189,6 +207,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
       const canListSubfolders = typeof window !== 'undefined' && window.electronAPI?.listSubfolders;
       if (!canListSubfolders || sortedDirectories.length === 0) {
         setSubfolderOptions([]);
+        setDestinationsLoaded(true);
         setSubfolderLoadError(null);
         return;
       }
@@ -244,11 +263,12 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
         if (!cancelled) {
           setSubfolderOptions(loadedOptions);
           setIsLoadingSubfolders(false);
+          setDestinationsLoaded(true);
         }
       }
     };
 
-    void loadSubfolders();
+    void loadSubfolders().catch(() => { if (!cancelled) setSubfolderLoadError('Some subfolders could not be loaded.'); });
 
     return () => {
       cancelled = true;
@@ -322,9 +342,9 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
       setCreatedFolderOptions((prev) => (
         prev.some((option) => option.id === newOption.id) ? prev : [...prev, newOption]
       ));
-      setSelectedDirectoryId(newOption.id);
+      selectDestination(newOption.id);
       // Expand the parent so the freshly created folder is visible in the tree.
-      setExpandedIds((prev) => new Set(prev).add(parentOption.id));
+      setExpandedIds((prev) => { const next = new Set(prev).add(parentOption.id); destinationSession.expandedIds = next; return next; });
       setNewFolderName('');
       setIsCreatingFolder(false);
     } finally {
@@ -371,7 +391,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
           )}
           <button
             type="button"
-            onClick={() => setSelectedDirectoryId(option.id)}
+            onClick={() => selectDestination(option.id)}
             title={option.path}
             className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2 text-left"
           >
@@ -495,7 +515,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
               </div>
             )}
 
-            <div className="rounded-lg border border-gray-700 bg-gray-800/40 max-h-72 overflow-y-auto py-1 pr-1">
+            <div ref={treeRef} aria-label="Destination folders" onScroll={event => { destinationSession.scrollTop = event.currentTarget.scrollTop; }} className="rounded-lg border border-gray-700 bg-gray-800/40 max-h-72 overflow-y-auto py-1 pr-1">
               {rootOptions.map((option) => renderTreeNode(option))}
               {isLoadingSubfolders && (
                 <div className="px-3 py-2 text-sm text-gray-400">

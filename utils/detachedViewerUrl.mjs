@@ -1,24 +1,24 @@
 import { pathToFileURL } from 'url';
 
-export function buildDetachedViewerUrl(indexPath, sessionId, isDev = false) {
+export function buildDetachedViewerUrl(indexPath, sessionId, isDev = false, windowKind = 'image-modal') {
   const url = isDev
     ? new URL('http://localhost:5173')
     : pathToFileURL(indexPath);
-  url.searchParams.set('window', 'image-modal');
+  url.searchParams.set('window', windowKind);
   url.searchParams.set('sessionId', sessionId);
   return url;
 }
 
-export function buildDetachedViewerLoadTarget(indexPath, sessionId, isDev = false) {
+export function buildDetachedViewerLoadTarget(indexPath, sessionId, isDev = false, windowKind = 'image-modal') {
   const query = {
-    window: 'image-modal',
+    window: windowKind,
     sessionId,
   };
 
   if (isDev) {
     return {
       method: 'url',
-      url: buildDetachedViewerUrl(indexPath, sessionId, true).toString(),
+      url: buildDetachedViewerUrl(indexPath, sessionId, true, windowKind).toString(),
     };
   }
 

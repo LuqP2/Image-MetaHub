@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, 'feat/canvas-*']
+    branches: [main, 'feat/canvas-*', 'feat/613-detached-compare']
   push:
     branches: [main]
 
