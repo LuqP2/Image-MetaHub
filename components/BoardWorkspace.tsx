@@ -1,3 +1,8 @@
+import BoardExportDialog from './boards/BoardExportDialog';
+import BoardPanelResizeHandle from './boards/BoardPanelResizeHandle';
+import BoardPngExport from './boards/BoardPngExport';
+import BoardTabs from './boards/BoardTabs';
+import type { BoardTool } from '../services/boards/types';
 import { useBoardUIStore } from '../store/useBoardUIStore';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { getViewportForBounds, ReactFlowProvider, useReactFlow } from '@xyflow/react';
@@ -24,7 +29,9 @@ export interface BoardWorkspaceProps {
   onDropAssets?: BoardEditorActions['dropAssets'];
 
 }
+let tabsRestored = false;
 export default function BoardWorkspace(props: BoardWorkspaceProps) {
+  useEffect(() => { if (!tabsRestored) { tabsRestored = true; if (!useBoardStore.getState().activeBoardId) void useBoardStore.getState().restoreTabs(); } }, []);
   const boardId = useBoardStore(state => state.activeBoardId);
   return <ReactFlowProvider key={boardId ?? 'list'}><BoardWorkspaceContent {...props} /></ReactFlowProvider>;
 }
@@ -37,7 +44,10 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
   const editable = hasEditAccess && !closing && !session?.recovering;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [tool, setTool] = useState<'select' | 'text' | 'frame' | 'connect'>('select');
+  const [tool, setTool] = useState<BoardTool>('select');
+  const [pngScope, setPngScope] = useState<boolean | null>(null);
+  const [exportMenu, setExportMenu] = useState(false);
+  const [editingObjectId, editObject] = useState<string | null>(null);
   const connecting = tool === 'connect';
   const stage = useRef<HTMLDivElement>(null);
   const flow = useReactFlow();
@@ -61,26 +71,27 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
     void action().catch(cause => setError(cause instanceof Error ? cause.message : String(cause))).finally(() => setBusy(false));
   }, []);
   useEffect(() => { run(() => useBoardStore.getState().loadBoardList()); }, [run]);
-  const actions = useMemo<BoardEditorActions>(() => ({ editable, connecting, tool, setTool, resolveAsset, openAsset: onOpenAsset, dropAssets: onDropAssets,
+  const actions = useMemo<BoardEditorActions>(() => ({ editable, connecting, tool, setTool, editingObjectId, editObject, reportError: setError, exportPng: setPngScope, resolveAsset, openAsset: onOpenAsset, dropAssets: onDropAssets,
     begin: () => { if (boardId && editable) useBoardStore.getState().beginInteraction(boardId); },
     change: update => { if (boardId && editable) useBoardStore.getState().updateInteraction(boardId, document => updateObjects(document, [update])); },
     commit: () => { if (boardId) useBoardStore.getState().commitInteraction(boardId); },
     cancel: () => { if (boardId) useBoardStore.getState().cancelInteraction(boardId); },
-  }), [boardId, editable, connecting, tool, resolveAsset, onOpenAsset, onDropAssets]);
+  }), [boardId, editable, connecting, tool, editingObjectId, resolveAsset, onOpenAsset, onDropAssets]);
   const openSelection = useCallback(() => {
     if (!boardId) return;
     const current = useBoardStore.getState().sessions[boardId];
     const selected = current.document.objects.filter(object => current.selectedObjectIds.includes(object.id));
     if (selected.length === 1 && selected[0].type === 'asset') onOpenAsset?.(selected[0]);
   }, [boardId, onOpenAsset]);
-  const onKeyDownCapture = useBoardHotkeys(boardId, editable, openSelection);
+  const onKeyDownCapture = useBoardHotkeys(boardId, editable, openSelection, setError);
   const exportCurrent = () => run(async () => {
     if (!boardId) return;
     // Export remains available when saving fails, including the current local content.
     await useBoardStore.getState().flushBoard(boardId).catch(() => {});
     await exportBoardFile(useBoardStore.getState().sessions[boardId].document);
   });
-  return <section ref={root} data-compact={width < 1280} data-editable={editable} className="board-workspace" data-board-editor="true" tabIndex={0} aria-label="Canvas workspace" onKeyDownCapture={event => { if (event.key === 'Escape') setTool('select'); onKeyDownCapture(event); }} aria-busy={busy}>
+  return <section ref={root} data-compact={width < 1500} data-editable={editable} className="board-workspace" data-board-editor="true" tabIndex={0} aria-label="Canvas workspace" onKeyDownCapture={event => { if (event.key === 'Escape') setTool('select'); onKeyDownCapture(event); }} aria-busy={busy}>
+    {(!session || !boardId) && <BoardTabs onError={setError} editable={editable} />}
     {error && <div role="alert" className="board-error">{error}<button className="board-button" onClick={() => setError(null)}>Dismiss</button></div>}
     {session?.saveStatus === 'error' && <div role="alert" className="board-error">{session.saveError}
       <button className="board-button" onClick={() => run(() => useBoardStore.getState().flushBoard(boardId!))}>Retry</button><button className="board-button" onClick={exportCurrent}>Export</button>
@@ -92,13 +103,15 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
     {!session || !boardId ? <BoardList resolveAsset={resolveAsset} summaries={summaries} editable={editable}
       onOpen={id => run(() => useBoardStore.getState().openBoard(id))} onCreate={name => run(() => useBoardStore.getState().createBoard(name))}
       onDuplicate={id => run(() => useBoardStore.getState().duplicateBoard(id))} onDelete={id => run(() => useBoardStore.getState().deleteBoard(id))}
-      onRename={(id, name) => run(async () => { await useBoardStore.getState().openBoard(id); useBoardStore.getState().renameBoard(id, name); await useBoardStore.getState().closeBoard(); })}
+      onRename={(id, name) => run(async () => { await useBoardStore.getState().openBoard(id); useBoardStore.getState().renameBoard(id, name); useBoardStore.getState().showBoardList(); })}
       onImport={() => run(async () => { const document = await importBoardFile(); if (document) useBoardStore.getState().adoptBoard(document); })} />
       : <BoardEditorContext.Provider value={actions}>
+        {exportMenu && <BoardExportDialog close={() => setExportMenu(false)} exportDocument={() => { setExportMenu(false); exportCurrent(); }} exportPng={() => { setExportMenu(false); useBoardStore.getState().commitInteraction(boardId); setPngScope(false); }} />}
+        {pngScope !== null && <BoardPngExport boardId={boardId} selection={pngScope} close={() => setPngScope(null)} />}
         <BoardToolbar boardId={boardId} editable={editable} tool={tool} setTool={setTool}
           libraryOpen={Boolean(libraryOpen)} inspectorOpen={ui.inspectorOpen} libraryLocked={libraryLocked} onToggleLibrary={() => ui.setLibraryOpen(!libraryOpen)} onToggleInspector={() => ui.setInspectorOpen(!ui.inspectorOpen)}
-          onBack={() => run(() => useBoardStore.getState().closeBoard())} onExport={exportCurrent} />
-        <div className="board-editor-layout">{libraryOpen && assetPanel}<div className="board-stage-container" ref={stage}><BoardCanvas boardId={boardId} onFitAll={fitAll} /></div>{ui.inspectorOpen && <BoardInspector boardId={boardId} editable={editable} assetActions={assetActions} assetMetadata={assetMetadata} assetStatus={assetStatus} selectionActions={selectionActions} />}</div>
+          tabs={<BoardTabs onError={setError} editable={editable} />} onExport={() => setExportMenu(!exportMenu)} />
+        <div className="board-editor-layout">{libraryOpen && assetPanel && <div className="board-library-panel" style={{ width: ui.libraryWidth }}><div className="board-panel-content">{assetPanel}</div><BoardPanelResizeHandle side="library" /></div>}<div className="board-stage-container" ref={stage}><BoardCanvas boardId={boardId} onFitAll={fitAll} /></div>{ui.inspectorOpen && <div className="board-inspector-panel" style={{ width: ui.inspectorWidth }}><BoardPanelResizeHandle side="inspector" /><BoardInspector boardId={boardId} editable={editable} assetActions={assetActions} assetMetadata={assetMetadata} assetStatus={assetStatus} selectionActions={selectionActions} /></div>}</div>
       </BoardEditorContext.Provider>}
   </section>;
 }

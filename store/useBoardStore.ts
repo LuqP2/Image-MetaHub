@@ -30,6 +30,9 @@ interface BoardStore {
   summaries: BoardSummary[];
   sessions: Record<string, BoardSession>;
   activeBoardId: string | null;
+  openBoardIds: string[];
+  restoreTabs(): Promise<void>;
+  showBoardList(): void;
   loadBoardList(): Promise<void>;
   createBoard(name?: string): Promise<string>;
   openBoard(id: string): Promise<void>;
@@ -38,7 +41,7 @@ interface BoardStore {
   saveAsNewBoard(id: string): Promise<string>;
   reloadBoard(id: string): Promise<void>;
   deleteBoard(id: string): Promise<void>;
-  closeBoard(): Promise<void>;
+  closeBoard(id?: string): Promise<void>;
   adoptBoard(document: BoardDocument): void;
   executeOperation(id: string, operation: Operation): void;
   beginInteraction(id: string): void;
@@ -67,6 +70,7 @@ const newSession = (document: BoardDocument): BoardSession => ({
 });
 
 export function createBoardStore(repository: BoardRepository = boardService, delay = 500) {
+  let activationRequest = 0;
   const pendingLoads = new Map<string, Promise<void>>();
   const recoveries = new Map<string, Promise<string>>();
   const store = create<BoardStore>((set, get) => {
@@ -81,12 +85,32 @@ export function createBoardStore(repository: BoardRepository = boardService, del
       ...session, document, changeSequence: session.changeSequence + 1, saveStatus: 'pending', saveError: null, saveErrorCode: null,
     });
     const setDocument = (id: string, document: BoardDocument) => {
+      activationRequest++;
+      const previous = get().activeBoardId;
+      if (previous && previous !== id) { get().commitInteraction(previous); void get().flushBoard(previous).catch(() => {}); }
       const normalized = normalizeBoardDocument(document);
       set(state => ({ sessions: { ...state.sessions, [id]: newSession(normalized) }, activeBoardId: id,
+        openBoardIds: state.openBoardIds.includes(id) ? state.openBoardIds : [...state.openBoardIds, id],
         summaries: [summarizeBoard(normalized), ...state.summaries.filter(summary => summary.id !== id)] }));
     };
     return {
-      summaries: [], sessions: {}, activeBoardId: null, closing: false,
+      summaries: [], sessions: {}, activeBoardId: null, openBoardIds: [], closing: false,
+      showBoardList() {
+        activationRequest++;
+        const id = get().activeBoardId;
+        if (id) { get().commitInteraction(id); void get().flushBoard(id).catch(() => {}); }
+        set({ activeBoardId: null });
+      },
+      async restoreTabs() {
+        let saved: { ids?: string[]; active?: string | null };
+        try { saved = JSON.parse(localStorage.getItem('imh-board-tabs-v1') ?? '{}'); } catch { return; }
+        if (!Array.isArray(saved.ids)) return;
+        for (const id of [...new Set(saved.ids)].filter(id => typeof id === 'string')) {
+          try { await get().openBoard(id); } catch { /* Missing boards must not block the rest. */ }
+        }
+        if (saved.active === null) set({ activeBoardId: null });
+        else if (saved.active && get().sessions[saved.active]) set({ activeBoardId: saved.active });
+      },
       setClosing(closing) { set({ closing }); },
       async loadBoardList() { set({ summaries: await repository.list() }); },
       async createBoard(name) {
@@ -96,8 +120,9 @@ export function createBoardStore(repository: BoardRepository = boardService, del
         return saved.id;
       },
       async openBoard(id) {
+        const request = ++activationRequest;
         const previous = get().activeBoardId;
-        if (previous && previous !== id) await get().flushBoard(previous);
+        if (previous && previous !== id) { get().commitInteraction(previous); void get().flushBoard(previous).catch(() => {}); }
         if (!get().sessions[id]) {
           let pending = pendingLoads.get(id);
           if (!pending) {
@@ -108,7 +133,7 @@ export function createBoardStore(repository: BoardRepository = boardService, del
           }
           await pending;
         }
-        set({ activeBoardId: id });
+        set(state => ({ activeBoardId: request === activationRequest ? id : state.activeBoardId, openBoardIds: state.openBoardIds.includes(id) ? state.openBoardIds : [...state.openBoardIds, id] }));
         function updateOrAdopt(document: BoardDocument) {
           set(state => ({ sessions: { ...state.sessions, [id]: newSession(document) } }));
         }
@@ -138,7 +163,7 @@ export function createBoardStore(repository: BoardRepository = boardService, del
           const source = get().sessions[id];
           const saved = await repository.save(duplicateBoardDocument(source.document), 0);
           autosave.cancel(id);
-          set(state => { const sessions = { ...state.sessions }; delete sessions[id]; return { sessions }; });
+          set(state => { const sessions = { ...state.sessions }; delete sessions[id]; return { sessions, openBoardIds: state.openBoardIds.filter(item => item !== id) }; });
           setDocument(saved.id, saved);
           await get().loadBoardList();
           return saved.id;
@@ -164,13 +189,19 @@ export function createBoardStore(repository: BoardRepository = boardService, del
         await repository.remove(id, session?.savedRevision ?? summary?.revision ?? 0);
         autosave.cancel(id);
         set(state => { const sessions = { ...state.sessions }; delete sessions[id]; return {
-          sessions, summaries: state.summaries.filter(summary => summary.id !== id), activeBoardId: state.activeBoardId === id ? null : state.activeBoardId,
+          sessions, openBoardIds: state.openBoardIds.filter(item => item !== id), summaries: state.summaries.filter(summary => summary.id !== id), activeBoardId: state.activeBoardId === id ? state.openBoardIds[state.openBoardIds.indexOf(id) + 1] ?? state.openBoardIds[state.openBoardIds.indexOf(id) - 1] ?? null : state.activeBoardId,
         }; });
       },
-      async closeBoard() {
-        const id = get().activeBoardId;
+      async closeBoard(boardId) {
+        const id = boardId ?? get().activeBoardId;
         if (id) await get().flushBoard(id);
-        set({ activeBoardId: null });
+        if (!id) return;
+        autosave.cancel(id);
+        set(state => {
+          const index = state.openBoardIds.indexOf(id);
+          const sessions = { ...state.sessions }; delete sessions[id];
+          return { sessions, openBoardIds: state.openBoardIds.filter(item => item !== id), activeBoardId: state.activeBoardId === id ? state.openBoardIds[index + 1] ?? state.openBoardIds[index - 1] ?? null : state.activeBoardId };
+        });
       },
       adoptBoard(document) { setDocument(document.id, document); },
       executeOperation(id, operation) {
@@ -283,4 +314,8 @@ export function createBoardStore(repository: BoardRepository = boardService, del
 }
 
 export const useBoardStore = createBoardStore();
+useBoardStore.subscribe((state, previous) => {
+  if (state.openBoardIds === previous.openBoardIds && state.activeBoardId === previous.activeBoardId) return;
+  try { localStorage.setItem('imh-board-tabs-v1', JSON.stringify({ ids: state.openBoardIds, active: state.activeBoardId })); } catch { /* Preferences are best effort. */ }
+});
 export const hasPendingBoardChanges = () => Object.values(useBoardStore.getState().sessions).some(session => session.changeSequence !== session.savedSequence);

@@ -8,9 +8,15 @@ Canvas v1 is split into three dependent PRs. The complete user workflow ships af
 
 ## Persistence contract
 
-### Explorer document foundation (schema v2)
+### Creative tools and Explorer document foundation (schema v3)
 
-The shared document boundary reads schemas v1 and v2 and returns v2 in memory. Loading a v1 file preserves its revision and does not write it back; the next explicit save writes v2 using the existing expected-revision contract. File envelopes are exported as version 2, with both envelope versions accepted by the shared renderer/Electron parser.
+The shared document boundary reads schemas v1, v2 and v3 and returns v3 in memory. Loading an older file preserves its revision and does not write it back; the next explicit save writes v3 using the existing expected-revision contract. File envelopes are exported as version 3. Sticky notes and shapes require v3. URLs are plain editable text with clickable HTTP/HTTPS links in display mode; the editor has no Link creation tool. Existing v3 link cards remain readable.
+
+Clipboard fragments use a separate versioned envelope and carry frame members, internal connectors and transitive Smart Frame dependencies. Paste remaps IDs and missing dependency IDs; cut deletes only after a successful system clipboard write. All editor shortcuts defer to text inputs, composition and dialogs.
+
+Open-tab IDs, order and active ID are local preferences (`imh-board-tabs-v1`). Documents remain in the desktop repository. Closing a tab flushes before releasing its session; visiting the list leaves tabs open. Restored sessions start with empty selection/history.
+
+PNG export materializes an unvirtualized React Flow scene, freezes computed styles/images and current visible Smart Frame presentation, and captures it in an isolated Electron surface. Native capture uses 2048-pixel tiles, preserves alpha and supports 1×/2×/4× within 64 megapixels and 16,384 pixels per side. Run `node scripts/runCanvasV1UiSmoke.mjs` for the real editor/clipboard/restart/export smoke; artifacts are written under `build/canvas-smoke-local/canvas-v1-ui`.
 
 Smart Frames persist their source expression, independent query criteria, group constraints and layout. Results and visibility settings are runtime concerns. Missing frame/collection sources remain reconnectable; cycles, incompatible existing frame targets, invalid layouts and excessive expression depth/size are rejected. Smart Frames are top-level objects and do not adopt manual cards as children.
 
@@ -63,3 +69,9 @@ Smart Frames support a grid, a two-level grouping layout and a two-axis matrix. 
 The worker computes deduplicated buckets and sparse populated cells. Multivalued fields participate in every applicable group; the frame total remains unique images. Missing values have their own constraint discriminant, separate from actual labels. Matrices virtualize both axes and derive empty cells at render time rather than allocating the axis Cartesian product. Group/subgroup rows and opened result grids are virtualized as well.
 
 A group or cell can become a linked branch. Its constraints remain independent of future parent layout changes and can be removed individually in the inspector. Removed collection/cluster targets produce an explicit missing-source state. Layout changes reuse the query-result cache without resynchronizing the dataset. Browsing a group/cell is transient UI state; its full membership is used for navigation and branching.
+
+## Canvas interaction controls
+
+The compact header combines board tabs, tools and export actions. Export opens a focused format-selection modal. Both library and inspector panels have 12-pixel resize targets and persisted width preferences; object edge targets also remain 12 screen pixels wide across zoom levels.
+
+The library supports marquee selection across virtual rows, modifier-based additive selection and edge autoscroll. Start on empty space or an unselected item; drag selected items to transfer them to the board. Connect mode supports card-body drags with facing endpoints, and manual connections persist an optional width (0.5–12, default 1.5). The inspector provides one numeric font-size input and one color section combining presets and a custom picker.

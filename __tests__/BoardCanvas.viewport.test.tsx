@@ -63,7 +63,7 @@ describe('Canvas fit-selection request lifecycle', () => {
     expect(flow.fitView).toHaveBeenCalledOnce();
     const viewport = { x: 900, y: -450, zoom: 0.65 };
     act(() => useBoardStore.getState().setViewport(id, viewport));
-    await act(async () => useBoardStore.getState().closeBoard());
+    act(() => useBoardStore.getState().showBoardList());
     view.unmount();
     await act(async () => useBoardStore.getState().openBoard(id));
     mount(); runFrames();

@@ -1,3 +1,5 @@
+import BoardSelectionStyles from './BoardSelectionStyles';
+import { deleteBoardSelection } from '../../services/boards/commands';
 import { duplicateBoardSelection } from '../../services/boards/commands';
 import BoardSmartFrameSelectionActions from './BoardSmartFrameSelectionActions';
 import type { BoardSmartFrameObject } from '../../services/boards/queryTypes';
@@ -8,7 +10,7 @@ import Section from './BoardInspectorSection';
 import { getBoardDisplayName } from './boardPresentation';
 import { type ReactNode } from 'react';
 import { useBoardStore } from '../../store/useBoardStore';
-import { arrangeObjectsInGrid, removeConnections, removeObjects, updateConnection, updateObjects } from '../../services/boards/operations';
+import { arrangeObjectsInGrid, updateConnection, updateObjects } from '../../services/boards/operations';
 import type { BoardMetadataField } from '../../services/boards/types';
 
 const fields: BoardMetadataField[] = ['model', 'loras', 'seed', 'dimensions', 'generator', 'rating', 'prompt'];
@@ -26,13 +28,14 @@ export default function BoardInspector({ boardId, editable, assetActions, assetM
     <header className="board-inspector-header"><div><small>{object?.type === 'smart-frame' ? 'Smart Frame' : object?.type ?? 'Properties'}</small><h2 title={object?.type === 'asset' ? getBoardDisplayName(object.name) : undefined}>{object?.type === 'asset' ? getBoardDisplayName(object.name) : object?.type === 'smart-frame' ? object.title : object?.type === 'frame' ? 'Frame' : object?.type === 'text' ? 'Text' : connection ? 'Connection' : selected.length ? `${selected.length} ${selected.length === 1 ? 'object' : 'objects'}` : 'Board'}</h2></div><button className="board-icon-button" aria-label="Hide inspector" onClick={() => useBoardUIStore.getState().setInspectorOpen(false)}><PanelRightClose size={16}/></button></header><div className="board-inspector-content scrollbar-sidebar">{assetStatus}{assetActions}{selectionActions}{assetMetadata && <Section title="Metadata" defaultOpen>{assetMetadata}</Section>}
     {selected.length > 1 && selected.every(item => item.type === 'smart-frame') && <BoardSmartFrameSelectionActions key={selected.map(item => item.id).join('|')} boardId={boardId} frames={selected as BoardSmartFrameObject[]} editable={editable} />}
     {object?.type === 'smart-frame' && <BoardSmartFrameInspector boardId={boardId} frame={object} editable={editable} />}
+    <BoardSelectionStyles boardId={boardId} editable={editable} />
+    {object?.type === 'link' && <><label>Title<input className="board-input" disabled={!editable} value={object.title} onChange={event => edit('title', event.target.value)} onBlur={commit} /></label><label>URL<input className="board-input" disabled={!editable} defaultValue={object.url} key={object.url} onBlur={event => { try { const url = new URL(event.target.value); if (['http:', 'https:'].includes(url.protocol)) { edit('url', url.href); commit(); } else event.target.value = object.url; } catch { event.target.value = object.url; } }} /></label></>}
     {object?.type === 'text' && <>
       <label>Text<textarea className="board-textarea" disabled={!editable} value={object.text} onChange={event => edit('text', event.target.value)} onBlur={commit} /></label>
-      <label>Font size<input className="board-input" type="number" min="1" max="300" disabled={!editable} value={object.fontSize} onChange={event => { const size = Number(event.target.value); if (size >= 1) edit('fontSize', size); }} onBlur={commit} /></label>
     </>}
     {object?.type === 'frame' && <label>Title<input className="board-input" disabled={!editable} value={object.title} onChange={event => edit('title', event.target.value)} onBlur={commit} /></label>}
-    {object && object.type !== 'asset' && <label>Color<input type="color" disabled={!editable} value={object.color} onChange={event => edit('color', event.target.value)} onBlur={commit} /></label>}
     {connection && <>
+      <label>Line thickness<input className="board-input" aria-label="Connection thickness" type="number" min="0.5" max="12" step="0.5" disabled={!editable} value={connection.width ?? 1.5} onChange={event => { const width = Number(event.target.value); if (width >= 0.5 && width <= 12) useBoardStore.getState().updateInteraction(boardId, document => updateConnection(document, connection.id, { width })); }} onBlur={commit} /></label>
       <label>Label<input className="board-input" disabled={!editable} value={connection.label} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateConnection(document, connection.id, { label: event.target.value }))} onBlur={commit} /></label>
       <label>Color<input type="color" disabled={!editable} value={connection.color} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateConnection(document, connection.id, { color: event.target.value }))} onBlur={commit} /></label>
     </>}
@@ -48,7 +51,7 @@ export default function BoardInspector({ boardId, editable, assetActions, assetM
       <button className="board-button" disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, doc => updateObjects(doc, selected.map(item => ({id:item.id,zIndex:Math.min(0,...doc.objects.map(o=>o.zIndex))-1}))))}>Send to back</button>
     </div></Section>}
     {object?.type === 'asset' && <Section title="File"><p>{object.reference.locator.relativePath}</p></Section>}
-    {(selected.length > 0 || session.selectedConnectionIds.length > 0) && <button className="board-button board-button--danger" disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, doc => removeConnections(removeObjects(doc,session.selectedObjectIds),session.selectedConnectionIds))}>Remove</button>}
+    {(selected.length > 0 || session.selectedConnectionIds.length > 0) && <button className="board-button board-button--danger" disabled={!editable} onClick={() => deleteBoardSelection(boardId)}>Remove</button>}
     {!object && !connection && !selected.length && <p>Select an object to inspect it. Double-click text to edit.</p>}
   </div></aside>;
 }

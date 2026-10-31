@@ -18,7 +18,7 @@ export default function BoardSmartFrameGroups({ frameId, groups }: { frameId: st
     {browse.selected ? <><BoardBrowseHeader frameId={frameId} entry={browse.selected} back={browse.back} /><BoardSmartFrameResults frameId={frameId} imageIds={browse.selected.ids} /></> : <>
       <BoardGroupSort value={order} change={setOrder} />
       <small>Images can appear in multiple groups. Frame totals count unique images.</small>
-      <div className="board-group-scroll"><BoardLocalSizer>{({ width, height }) => <FixedSizeList width={width} height={height} itemCount={entries.length} itemSize={160} itemKey={index => entries[index].key} overscanCount={1}
+      <div className="board-group-scroll"><BoardLocalSizer>{({ width, height }) => <FixedSizeList className="scrollbar-thin" width={width} height={height} itemCount={entries.length} itemSize={160} itemKey={index => entries[index].key} overscanCount={1}
         initialScrollOffset={browse.scroll.current.top} onScroll={({ scrollOffset }) => { browse.scroll.current.top = scrollOffset; }}>
         {({ index, style }) => { const entry = entries[index]; return <div style={style}><BoardGroupPreview frameId={frameId} label={entry.label} rawLabel={entry.rawLabel} ids={entry.ids} constraints={entry.constraints} open={() => browse.open(entry.key)} /></div>; }}
       </FixedSizeList>}</BoardLocalSizer></div>

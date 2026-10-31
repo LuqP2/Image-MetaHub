@@ -1,3 +1,4 @@
+import { addText } from '../services/boards/operations';
 import React from 'react';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -36,6 +37,37 @@ describe('Canvas asset drop', () => {
     expect(session.past).toHaveLength(1);
     expect(setTool).toHaveBeenCalledWith('select');
     flow.screenToFlowPosition.mockReset().mockReturnValue({ x: 75, y: -20 });
+  });
+
+  it.each(['ellipse', 'diamond'] as const)('previews %s geometry while drawing', tool => {
+    vi.stubGlobal('PointerEvent', MouseEvent);
+    const doc = createBoardDocument(); useBoardStore.getState().adoptBoard(doc);
+    const view = render(<BoardEditorContext.Provider value={{ editable: true, connecting: false, tool, begin: vi.fn(), change: vi.fn(), commit: vi.fn(), cancel: vi.fn() }}><BoardCanvas boardId={doc.id} /></BoardEditorContext.Provider>);
+    const overlay = view.getByLabelText(`Draw ${tool}`);
+    Object.defineProperty(overlay, 'setPointerCapture', { value: vi.fn() });
+    fireEvent.pointerDown(overlay, { button: 0, clientX: 20, clientY: 20 });
+    fireEvent.pointerMove(overlay, { clientX: 200, clientY: 100 });
+    expect(view.container.querySelector(`.board-draw-preview ${tool === 'ellipse' ? 'ellipse' : 'polygon'}`)).toBeTruthy();
+    expect(view.container.querySelector('.board-draw-preview rect')).toBeNull();
+  });
+  it('connects by dragging between card bodies without moving either card', () => {
+    vi.stubGlobal('PointerEvent', MouseEvent);
+    const doc = addText(addText(createBoardDocument(), { x: 0, y: 0 }), { x: 400, y: 0 });
+    useBoardStore.getState().adoptBoard(doc);
+    const view = render(<BoardEditorContext.Provider value={{ editable: true, connecting: true, tool: 'connect', begin: vi.fn(), change: vi.fn(), commit: vi.fn(), cancel: vi.fn() }}><BoardCanvas boardId={doc.id} /></BoardEditorContext.Provider>);
+    const stage = view.container.querySelector<HTMLElement>('.board-stage')!;
+    Object.defineProperty(stage, 'setPointerCapture', { value: vi.fn() });
+    const source = document.createElement('div'), target = document.createElement('div');
+    for (const [element, object] of [[source, doc.objects[0]], [target, doc.objects[1]]] as const) { element.className = 'react-flow__node'; element.dataset.id = object.id; stage.append(element); }
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target });
+    fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 60 });
+    fireEvent.pointerMove(stage, { clientX: 500, clientY: 60 });
+    expect(view.getByLabelText('Connection preview')).toBeTruthy();
+    fireEvent.pointerUp(stage, { clientX: 500, clientY: 60 });
+    const current = useBoardStore.getState().sessions[doc.id];
+    expect(current.document.connections).toHaveLength(1);
+    expect(current.document.objects).toEqual(doc.objects);
+    expect(current.past).toHaveLength(1);
   });
 
   it('places all dragged references at converted board coordinates', () => {

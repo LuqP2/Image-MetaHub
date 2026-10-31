@@ -491,6 +491,8 @@ export interface ElectronAPI {
   onBoardsCloseCancelled?: (callback: () => void) => () => void;
   boardsImport?: () => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument | null>>;
   boardsExport?: (document: import('./services/boards/types').BoardDocument) => Promise<import('./services/boards/types').BoardApiResult<{ exported: true } | null>>;
+  boardsExportPng?: (input: { html: string; width: number; height: number; scale: number; name: string }) => Promise<import('./services/boards/types').BoardApiResult<{ exported: true } | null>>;
+  boardsReadClipboard?: () => Promise<import('./services/boards/types').BoardApiResult<string>>;
   exr: import('./services/exr/contracts').ExrAPI;
   enrichmentMemoryDiagnosticsEnabled?: boolean;
   reportEnrichmentMemory?: (sample: {

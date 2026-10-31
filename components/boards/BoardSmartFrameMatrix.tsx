@@ -33,7 +33,7 @@ export default function BoardSmartFrameMatrix({ frameId, matrix }: { frameId: st
           <div className="board-matrix-row-headings" style={{ top: HH, width: HW, height: gh }}>
             {rows.slice(rs, rs + Math.ceil(gh / CH) + 1).map((row, index) => <div tabIndex={0} title={row.label} className="board-matrix-heading" key={row.key} style={{ top: (rs + index) * CH - offset.top, width: HW, height: CH }}>{boardGroupLabel(row)}</div>)}
           </div>
-          <div style={{ position: 'absolute', left: HW, top: HH }}><FixedSizeGrid width={gw} height={gh} columnWidth={CW} rowHeight={CH}
+          <div style={{ position: 'absolute', left: HW, top: HH }}><FixedSizeGrid className="scrollbar-thin" width={gw} height={gh} columnWidth={CW} rowHeight={CH}
             columnCount={columns.length} rowCount={rows.length} overscanColumnCount={1} overscanRowCount={1}
             initialScrollLeft={browse.scroll.current.left} initialScrollTop={browse.scroll.current.top}
             onScroll={({ scrollLeft, scrollTop }) => { browse.scroll.current = { left: scrollLeft, top: scrollTop }; setOffset({ left: scrollLeft, top: scrollTop }); }}

@@ -49,6 +49,7 @@ const canOpenImageEditorForImage = (image?: IndexedImage): boolean => (
 );
 
 interface GridToolbarProps {
+  canvasAction?: React.ReactNode;
   isLibraryView?: boolean;
 
   selectedImages: Set<string>;
@@ -209,6 +210,7 @@ const showNotification = (message: string, type: 'success' | 'error' = 'success'
 };
 
 const GridToolbar: React.FC<GridToolbarProps> = ({
+  canvasAction,
   isLibraryView = false,
   selectedImages,
   images,
@@ -1148,6 +1150,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
             <div className={`flex-1 overflow-hidden ${hasActiveFilters ? 'min-w-[min(100%,12rem)]' : 'min-w-0'}`}>
                <ActiveFilters onClearAll={onClearAllFilters} />
             </div>
+            {canvasAction}
         </div>
 
 

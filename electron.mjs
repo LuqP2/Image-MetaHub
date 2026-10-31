@@ -7636,7 +7636,7 @@ function setupFileOperationHandlers() {
     }
   };
 
-  boardPersistence = registerBoardIpc({ ipcMain, app, dialog, getMainWindow: () => mainWindow });
+  boardPersistence = registerBoardIpc({ ipcMain, app, dialog, BrowserWindow, clipboard: electron.clipboard, getMainWindow: () => mainWindow });
   const isBoardMainSender = event => mainWindow && !mainWindow.isDestroyed()
     && event.sender === mainWindow.webContents && event.senderFrame === mainWindow.webContents.mainFrame;
   ipcMain.on('boards:dirty', (event, dirty) => {

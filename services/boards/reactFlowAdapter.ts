@@ -18,7 +18,7 @@ export function boardToFlow(document: BoardDocument, selectedObjectIds: string[]
   const edges: Edge[] = document.connections.map(connection => ({
     id: connection.id, type: 'manual', source: connection.sourceObjectId, target: connection.targetObjectId,
     sourceHandle: connection.sourceSide, targetHandle: connection.targetSide,
-    label: connection.label, data: { color: connection.color }, selected: selectedConnectionIds.includes(connection.id),
+    label: connection.label, data: { color: connection.color, width: connection.width }, selected: selectedConnectionIds.includes(connection.id),
     zIndex: 1000,
   }));
   const usedIds = new Set(document.connections.map(connection => connection.id));

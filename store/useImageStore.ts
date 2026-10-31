@@ -611,6 +611,7 @@ interface ImageState {
 
   // UI State
   isLoading: boolean;
+  isLibraryQueryPending: boolean;
   progress: { current: number; total: number } | null;
   directoryProgress: Record<string, DirectoryProgressState>;
   enrichmentProgress: { processed: number; total: number } | null;
@@ -1208,6 +1209,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return {
                     ...state,
                     filteredImages,
+                    isLibraryQueryPending: false,
                     selectionTotalImages: state.images.length,
                     selectionDirectoryCount: state.directories.length,
                     ...derivedFacets,
@@ -1236,6 +1238,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         });
 
         latestSearchCriteriaKey = criteriaKey;
+        set({ isLibraryQueryPending: true });
         if (searchWorkerSyncedDatasetVersion !== datasetVersion) {
             worker.postMessage({
                 type: 'syncDataset',
@@ -2181,7 +2184,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             query: state.searchQuery, imageCount: state.images.length, resultCount: filteredImages.length,
             sortOrder: state.sortOrder,
         });
-        return { filteredImages, selectionTotalImages: state.images.length,
+        return { filteredImages, isLibraryQueryPending: false, selectionTotalImages: state.images.length,
             selectionDirectoryCount: state.directories.length,
             ...recalculateAvailableFilters(getLibraryScopedImages(state)) };
     };
@@ -2399,6 +2402,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         isFolderSelectionLoaded: false,
         includeSubfolders: localStorage.getItem('image-metahub-include-subfolders') !== 'false', // Default to true
         isLoading: false,
+        isLibraryQueryPending: false,
         progress: null,
         directoryProgress: {},
         enrichmentProgress: null,
@@ -2817,14 +2821,14 @@ export const useImageStore = create<ImageState>((set, get) => {
             return matches.sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0));
         },
 
-        filterAndSortImages: () => set(state => {
+        filterAndSortImages: () => {
+            const state = get();
             if (state.searchQuery) {
                 runAsyncSearchRecompute(state);
-                return state;
+                return;
             }
-
-            return filterAndSort(state);
-        }),
+            set(filterAndSort(state));
+        },
         recomputeDerivedState: () => set(state => _updateState(state, state.images)),
 
         setImages: (images) => {
@@ -3276,19 +3280,14 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
         },
 
-        setSearchQuery: (query) => set(state => {
+        setSearchQuery: (query) => {
+            const state = get();
             if (query === state.searchQuery) {
-                return state;
+                return;
             }
-
-            const nextState = {
-                ...state,
-                searchQuery: query,
-            };
-
-            runAsyncSearchRecompute(nextState);
-            return nextState;
-        }),
+            set({ searchQuery: query });
+            runAsyncSearchRecompute(get());
+        },
 
         setFilterOptions: (options) => set({
             availableModels: options.models,
@@ -4869,6 +4868,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedFolders: new Set(),
             isFolderSelectionLoaded: false,
             isLoading: false,
+            isLibraryQueryPending: false,
             progress: { current: 0, total: 0 },
             directoryProgress: {},
             enrichmentProgress: null,

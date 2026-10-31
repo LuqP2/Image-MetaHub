@@ -1,6 +1,7 @@
 import type { BoardSmartFrameObject } from './queryTypes';
 export type { BoardSmartFrameObject } from './queryTypes';
-export type BoardObjectType = 'asset' | 'text' | 'frame' | 'smart-frame';
+export type BoardObjectType = 'asset' | 'text' | 'frame' | 'smart-frame' | 'sticky' | 'shape' | 'link';
+export type BoardTool = 'select' | 'text' | 'frame' | 'connect' | 'sticky' | 'rectangle' | 'ellipse' | 'diamond';
 export type BoardSide = 'top' | 'right' | 'bottom' | 'left';
 export type BoardMediaType = 'image' | 'video' | 'audio' | 'model3d';
 export type BoardMetadataField = 'model' | 'loras' | 'seed' | 'dimensions' | 'generator' | 'rating' | 'prompt';
@@ -55,13 +56,23 @@ export interface BoardFrameObject extends BoardObjectBase {
   color: string;
 }
 
-export type BoardObject = BoardAssetObject | BoardTextObject | BoardFrameObject | BoardSmartFrameObject;
+export interface BoardStickyObject extends BoardObjectBase {
+  type: 'sticky'; text: string; fontSize: number; color: string;
+}
+export interface BoardShapeObject extends BoardObjectBase {
+  type: 'shape'; shape: 'rectangle' | 'ellipse' | 'diamond'; text: string; fontSize: number; color: string; borderColor: string; borderWidth: number;
+}
+export interface BoardLinkObject extends BoardObjectBase {
+  type: 'link'; title: string; url: string; color: string;
+}
+export type BoardObject = BoardAssetObject | BoardTextObject | BoardFrameObject | BoardSmartFrameObject | BoardStickyObject | BoardShapeObject | BoardLinkObject;
 
 export interface BoardConnection {
   id: string;
   type: 'manual';
   sourceObjectId: string;
   targetObjectId: string;
+  width?: number;
   sourceSide: BoardSide;
   targetSide: BoardSide;
   label: string;
@@ -69,7 +80,7 @@ export interface BoardConnection {
 }
 
 export interface BoardDocument {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   revision: number;
   name: string;

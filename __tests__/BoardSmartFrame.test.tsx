@@ -19,22 +19,23 @@ vi.mock('../components/boards/BoardLocalSizer', () => ({ default: ({ children })
 afterEach(() => { cleanup(); useBoardQueryStore.setState({ results: {} }); });
 
 describe('Smart Frame rendering', () => {
-  it('limits previews and virtualizes expanded results without creating board objects', () => {
+  it.each([15, 1000])('makes all %i results available immediately without creating board objects', count => {
     const document = createSmartFrame(createBoardDocument());
     const frame = document.objects[0];
     useBoardStore.getState().adoptBoard(document);
-    const images = Array.from({ length: 1000 }, (_, i) => boardImage(`${i}.png`));
-    useBoardQueryStore.getState().publish(document.id, { [frame.id]: { frameId: frame.id, status: 'ready', imageIds: images.map(image => image.id), totalCount: 1000, unavailableReferences: 0, datasetRevision: 1, queryRevision: 1 } });
+    const images = Array.from({ length: count }, (_, i) => boardImage(`${i}.png`));
+    useBoardQueryStore.getState().publish(document.id, { [frame.id]: { frameId: frame.id, status: 'ready', imageIds: images.map(image => image.id), totalCount: count, unavailableReferences: 0, datasetRevision: 1, queryRevision: 1 } });
     const open = vi.fn();
     render(<BoardQueryContext.Provider value={{ images: new Map(images.map(image => [image.id, image])), open, create: vi.fn(), retry: vi.fn(), snapshot: vi.fn(), useCurrentFilters: vi.fn(), collections: [] }}>
       <BoardSmartFrameNode {...({ data: { object: frame }, selected: false } as any)} />
     </BoardQueryContext.Provider>);
-    expect(screen.getByText(`${(1000).toLocaleString()} images in frame`)).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: /^Open / })).toHaveLength(12);
+    expect(screen.getByText(`${count.toLocaleString()} images in frame`)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Browse' })).toBeNull();
     fireEvent.doubleClick(screen.getAllByRole('button', { name: /^Open / })[0]);
-    expect(open).toHaveBeenCalledWith(images[0].id, frame.id);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
-    expect(screen.getAllByRole('button', { name: /^Open / }).length).toBeLessThan(40);
+    expect(open).toHaveBeenCalledWith(images[0].id, frame.id, images.map(image => image.id));
+    const buttons = screen.getAllByRole('button', { name: /^Open / });
+    if (count === 15) expect(buttons).toHaveLength(15);
+    else expect(buttons.length).toBeLessThan(40);
     expect(useBoardStore.getState().sessions[document.id].document.objects).toHaveLength(1);
     expect(useBoardStore.getState().sessions[document.id].changeSequence).toBe(0);
   });

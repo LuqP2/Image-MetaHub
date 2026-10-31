@@ -3,12 +3,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { BoardRepository } from './boardRepository.mjs';
 import { BoardError, duplicateBoardDocument, normalizeBoardDocument } from '../services/boards/document.mjs';
+import { exportBoardPng } from './boardPngExport.mjs';
 
 export const boardExportFilename = name => `${Array.from(name, character =>
   character.charCodeAt(0) < 32 || /[<>:"/\\|?*]/.test(character) ? '_' : character).join('')}.imhboard.json`;
 
 /** Register once; getMainWindow is evaluated per request, including after window recreation. */
-export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow }) {
+export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow, BrowserWindow, clipboard }) {
   let repository;
   const getRepository = () => repository ??= new BoardRepository({ directory: path.join(app.getPath('userData'), 'boards') });
   const register = (channel, operation) => ipcMain.handle(channel, async (event, ...args) => {
@@ -48,5 +49,7 @@ export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow }) {
     await fs.writeFile(result.filePath, serializeBoardFile(document), 'utf8');
     return { exported: true };
   });
+  register('boards:export-png', async (_repository, parent, input) => exportBoardPng({ BrowserWindow, dialog, parent, input }));
+  register('boards:clipboard-read', () => clipboard.readText());
   return { flush: () => repository?.flush() ?? Promise.resolve(), isBusy: () => repository?.isBusy() ?? false };
 }

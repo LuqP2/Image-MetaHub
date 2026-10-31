@@ -10,7 +10,7 @@ describe('Smart Frame document boundary', () => {
     const current = boardWithAsset();
     const migrated = normalizeBoardDocument({ ...current, schemaVersion: 1 });
     expect(migrated).toEqual(current);
-    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.schemaVersion).toBe(3);
     const imported = importBoard(JSON.stringify({ format: 'image-metahub-board', version: 1, document: { ...current, schemaVersion: 1 } }));
     expect(imported.id).not.toBe(current.id);
     expect(imported.objects).toEqual(current.objects);
@@ -22,7 +22,7 @@ describe('Smart Frame document boundary', () => {
     input.objects[0].criteria.safeMode = { enableSafeMode: false };
     const normalized = normalizeBoardDocument(input);
     expect(normalized).toEqual(document);
-    expect(JSON.parse(exportBoard(normalized)).version).toBe(2);
+    expect(JSON.parse(exportBoard(normalized)).version).toBe(3);
     expect(importBoard(exportBoard(normalized)).objects).toEqual(document.objects);
   });
   it('rejects invalid types, cycles, matrix axes and expression limits', () => {
@@ -36,7 +36,7 @@ describe('Smart Frame document boundary', () => {
     let source: any = { kind: 'library' };
     for (let i = 0; i < 66; i++) source = { kind: 'difference', left: source, right: { kind: 'library' } };
     expect(() => normalizeBoardDocument(invalid({ source }))).toThrow();
-    expect(() => normalizeBoardDocument({ ...document, schemaVersion: 3 })).toThrow();
+    expect(() => normalizeBoardDocument({ ...document, schemaVersion: 4 })).toThrow();
   });
   it('rejects existing non-frame sources but preserves missing source IDs', () => {
     const document = createSmartFrame(boardWithAsset(), { source: { kind: 'frame', frameId: 'missing' } });
