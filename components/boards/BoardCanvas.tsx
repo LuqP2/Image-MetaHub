@@ -1,3 +1,4 @@
+import { useBoardSnapping } from '../../hooks/useBoardSnapping';
 import { facingBoardSides } from '../../services/boards/connectionGeometry';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import BoardCreativeNode from './BoardCreativeNode';
@@ -39,7 +40,8 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
   const queryActions = useBoardQueryActions();
   const editor = useBoardEditor();
   const flow = useReactFlow<BoardFlowNode>();
-  const { zoom } = useViewport();
+  const { x: viewportX, y: viewportY, zoom } = useViewport();
+  const snapping = useBoardSnapping(boardId);
   const stageRef = useRef<HTMLDivElement>(null);
   const cardConnection = useRef<{ sourceId: string; start: BoardPoint } | null>(null);
   const [connectionPreview, setConnectionPreview] = useState<{ start: BoardPoint; end: BoardPoint } | null>(null);
@@ -93,19 +95,21 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       state.setSelection(boardId, [...ids], state.sessions[boardId].selectedConnectionIds);
     }
     if (!editor.editable) return;
-    const updatedNodes = applyNodeChanges(changes, nodes);
-    const updates = flowGeometryUpdates(updatedNodes, changes);
+    const filtered = snapping.filterChanges(changes);
+    const updatedNodes = applyNodeChanges(filtered, nodes);
+    const updates = flowGeometryUpdates(updatedNodes, filtered);
     if (updates.length) state.updateInteraction(boardId, document => updateObjects(document, updates));
     if (changes.some(change => change.type === 'dimensions' && change.resizing === false)) state.commitInteraction(boardId);
-  }, [boardId, nodes, editor.editable]);
+  }, [boardId, nodes, editor.editable, snapping.filterChanges]);
   const finishDrag = useCallback(() => {
+    if (snapping.finish()) return;
     const state = useBoardStore.getState();
     const current = state.sessions[boardId];
     const updates = current.document.objects.filter(object => current.selectedObjectIds.includes(object.id) && object.type !== 'frame' && object.type !== 'smart-frame')
       .map(object => ({ id: object.id, frameId: findContainingFrame(object, current.document.objects)?.id ?? null }));
     if (updates.length) state.updateInteraction(boardId, document => updateObjects(document, updates));
     state.commitInteraction(boardId);
-  }, [boardId]);
+  }, [boardId, snapping.finish]);
   const connect = useCallback((connection: Connection) => {
     if (!editor.editable || !connection.source || !connection.target) return;
     useBoardStore.getState().executeOperation(boardId, document => addConnection(document, {
@@ -162,7 +166,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
         changes.forEach(change => { if (change.type === 'select' && session.document.connections.some(connection => connection.id === change.id)) { if (change.selected) selected.add(change.id); else selected.delete(change.id); } });
         useBoardStore.getState().setSelection(boardId, useBoardStore.getState().sessions[boardId].selectedObjectIds, [...selected]);
       }}
-      onNodeDragStart={editor.begin} onNodeDragStop={finishDrag} onConnect={connect}
+      onNodeDragStart={(event, node, nodes) => { editor.begin(); snapping.begin(event, node, nodes); }} onNodeDragStop={finishDrag} onConnect={connect}
       connectionMode={ConnectionMode.Loose} nodesDraggable={editor.editable && !drawingTool && !editor.connecting} nodesConnectable={editor.editable && !drawingTool}
       connectionRadius={20 / zoom} connectOnClick={false}
       defaultViewport={session.document.viewport} minZoom={0.1} maxZoom={4} deleteKeyCode={null} selectionKeyCode={null}
@@ -185,6 +189,14 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       <Panel position="bottom-left"><BoardCanvasHelp/></Panel>
       <Background color="rgb(var(--gray-700) / .55)" gap={24} size={1} />
     </ReactFlow>
+    {!!snapping.guides.length && <svg aria-label="Smart Guides" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1001, overflow: 'hidden' }}>
+      <g transform={`translate(${viewportX ?? 0}, ${viewportY ?? 0}) scale(${zoom})`}>
+        {snapping.guides.map(guide => <line key={guide.axis} data-axis={guide.axis} data-reference={guide.referenceId}
+          x1={guide.axis === 'x' ? guide.coordinate : guide.start} y1={guide.axis === 'y' ? guide.coordinate : guide.start}
+          x2={guide.axis === 'x' ? guide.coordinate : guide.end} y2={guide.axis === 'y' ? guide.coordinate : guide.end}
+          stroke="#e879f9" strokeWidth={1} vectorEffect="non-scaling-stroke" />)}
+      </g>
+    </svg>}
     {connectionPreview && <svg className="board-connect-preview" aria-label="Connection preview"><path d={`M ${connectionPreview.start.x} ${connectionPreview.start.y} L ${connectionPreview.end.x} ${connectionPreview.end.y}`} /></svg>}
     {menu && <BoardContextMenu boardId={boardId} menu={menu} close={closeMenu} create={createObject} fit={onFitAll} />}
     {!session.document.objects.length && editor.editable && <div className="board-empty-start nodrag nopan">

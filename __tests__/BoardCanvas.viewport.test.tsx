@@ -1,4 +1,5 @@
 import { BoardQueryContext } from '../components/boards/BoardQueryContext';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useBoardUIStore } from '../store/useBoardUIStore';
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -101,4 +102,19 @@ it('offers the two empty-board paths and focuses the reference library', () => {
   expect(useBoardUIStore.getState().libraryOpen).toBe(true);
   expect(document.activeElement).toBe(screen.getByLabelText('Search canvas library'));
   fireEvent.click(screen.getByRole('button', { name: 'Explore library' })); expect(create).toHaveBeenCalledOnce();
+});
+
+
+it('exposes independent global snapping toggles beside zoom controls', () => {
+  useSettingsStore.setState({ canvasSmartGuides: true, canvasSnapToGrid: false });
+  setup().mount();
+  const objects = screen.getByRole('button', { name: 'Smart Guides / Snap to Objects' });
+  const grid = screen.getByRole('button', { name: 'Snap to Grid' });
+  expect(objects.getAttribute('aria-pressed')).toBe('true');
+  expect(grid.getAttribute('aria-pressed')).toBe('false');
+  fireEvent.click(grid);
+  expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: true, canvasSnapToGrid: true });
+  fireEvent.click(objects);
+  expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: false, canvasSnapToGrid: true });
+  expect(objects.closest('.board-zoom-row')?.contains(screen.getByRole('button', { name: 'Zoom in' }))).toBe(true);
 });
