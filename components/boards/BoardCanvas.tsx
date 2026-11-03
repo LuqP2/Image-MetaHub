@@ -72,7 +72,12 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     const ids = useBoardStore.getState().sessions[boardId].document.objects.filter(object => !previous.has(object.id)).map(object => object.id);
     state.setSelection(boardId, ids);
     editor.setTool?.('select');
-    if (tool !== 'frame') { state.beginInteraction(boardId); editor.editObject?.(ids[0]); }
+    if (tool === 'text' || tool === 'sticky') {
+      state.beginInteraction(boardId); editor.editObject?.(ids[0]);
+    } else {
+      editor.editObject?.(null);
+      stageRef.current?.closest<HTMLElement>('.board-workspace')?.focus({ preventScroll: true });
+    }
   }, [boardId, editor]);
   useEffect(() => { drawingStart.current = null; setDrawing(null); }, [drawingTool]);
   useEffect(() => {
@@ -175,6 +180,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       multiSelectionKeyCode={["Control", "Meta", "Shift"]} panActivationKeyCode="Space" panOnDrag={[1]} selectionOnDrag={!drawingTool && !editor.connecting} selectionMode={SelectionMode.Partial} panOnScroll={false}
       zoomOnScroll zoomOnPinch zoomActivationKeyCode={['Control', 'Meta']} zoomOnDoubleClick={false}
       onMoveEnd={() => useBoardStore.getState().setViewport(boardId, flow.getViewport())}
+      onNodeClick={() => editor.inspectSelection?.()} onEdgeClick={() => editor.inspectSelection?.()}
       onNodeContextMenu={(event, node) => {
         if ((event.target as HTMLElement).closest('input,textarea,[contenteditable="true"]')) return;
         event.preventDefault(); event.stopPropagation();

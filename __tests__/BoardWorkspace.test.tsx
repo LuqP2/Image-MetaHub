@@ -1,3 +1,5 @@
+import { useBoardUIStore } from '../store/useBoardUIStore';
+import { useBoardEditor } from '../components/boards/BoardEditorContext';
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,9 +19,12 @@ vi.mock('../services/boards/boardService', () => ({
   exportBoardFile: mock.exported, importBoardFile: async () => null,
 }));
 // Exercise the workspace/store/inspector without a browser geometry engine.
-vi.mock('../components/boards/BoardCanvas', () => ({ default: ({ onFitAll }) => <div data-testid="board-stage"><button onClick={onFitAll}>Fit all</button></div> }));
+vi.mock('../components/boards/BoardCanvas', () => ({ default: ({ boardId, onFitAll }) => {
+  const editor = useBoardEditor();
+  return <div data-testid="board-stage"><button onClick={onFitAll}>Fit all</button><button className="react-flow__node" onClick={() => { const state = useBoardStore.getState(); state.setSelection(boardId, [state.sessions[boardId].document.objects[0].id]); editor.inspectSelection?.(); }}>Select test item</button><button onClick={() => useBoardStore.getState().setSelection(boardId, [])}>Clear test selection</button></div>;
+} }));
 
-beforeEach(() => { mock.documents.clear(); mock.exported.mockClear(); useBoardStore.setState({ sessions: {}, summaries: [], openBoardIds: [], activeBoardId: null }); });
+beforeEach(() => { useBoardUIStore.setState({ inspectorOpen: true, libraryOpen: true }); mock.documents.clear(); mock.exported.mockClear(); useBoardStore.setState({ sessions: {}, summaries: [], openBoardIds: [], activeBoardId: null }); });
 afterEach(async () => { await act(async () => { await useBoardStore.getState().flushAll(); }); cleanup(); });
 describe('board workspace flow', () => {
   it('fits document geometry to the available stage and caps zoom at actual size', async () => {
@@ -73,4 +78,39 @@ describe('board workspace flow', () => {
     expect((screen.getByRole('button', { name: 'Export', exact: true }) as HTMLButtonElement).disabled).toBe(false);
     expect(useBoardStore.getState().sessions[id!].document.name).toBe('Read only');
   });
+});
+
+
+it('temporarily opens a collapsed inspector and closes it outside without changing the preference', async () => {
+  const id = await useBoardStore.getState().createBoard('Inspect');
+  useBoardStore.getState().executeOperation(id, doc => addText(doc, { x: 0, y: 0 }));
+  useBoardUIStore.getState().setInspectorOpen(false);
+  await act(async () => { render(<BoardWorkspace editable/>); });
+  expect(screen.queryByLabelText('Board inspector')).toBeNull();
+  fireEvent.click(screen.getByText('Select test item'));
+  expect(screen.getByLabelText('Board inspector')).toBeTruthy();
+  expect(useBoardUIStore.getState().inspectorOpen).toBe(false);
+  fireEvent.pointerDown(screen.getByLabelText('Board inspector'));
+  expect(screen.getByLabelText('Board inspector')).toBeTruthy();
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'Export', exact: true }));
+  expect(screen.queryByLabelText('Board inspector')).toBeNull();
+  fireEvent.click(screen.getByText('Select test item'));
+  expect(screen.getByLabelText('Board inspector')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Hide inspector' }));
+  expect(screen.queryByLabelText('Board inspector')).toBeNull();
+  fireEvent.click(screen.getByText('Select test item'));
+  expect(screen.getByLabelText('Board inspector')).toBeTruthy();
+  fireEvent.click(screen.getByText('Clear test selection'));
+  expect(screen.queryByLabelText('Board inspector')).toBeNull();
+});
+it('keeps an explicitly open inspector visible on outside clicks and places the library toggle on the left', async () => {
+  await useBoardStore.getState().createBoard('Panels');
+  await act(async () => { render(<BoardWorkspace editable/>); });
+  fireEvent.pointerDown(screen.getByText('Clear test selection'));
+  expect(screen.getByLabelText('Board inspector')).toBeTruthy();
+  const toggle = screen.getByRole('button', { name: 'Toggle library' });
+  const toolbar = screen.getByLabelText('Board tools');
+  expect(toolbar.firstElementChild).toBe(toggle);
+  expect(toggle.closest('.board-toolbar-end')).toBeNull();
+  fireEvent.click(toggle); expect(useBoardUIStore.getState().libraryOpen).toBe(false);
 });

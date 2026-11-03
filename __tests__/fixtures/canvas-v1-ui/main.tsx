@@ -41,6 +41,59 @@ function LibraryFlowSmoke({ boardId }: { boardId: string }) {
 }
 
 Object.assign(window, { canvasSmoke: {
+  async prepareInteractionPolish() {
+    const state = useBoardStore.getState();
+    await state.createBoard('Architecture');
+    const id = await state.createBoard('Furniture');
+    useBoardUIStore.setState({ libraryOpen: true, inspectorOpen: false });
+    await wait(() => !!document.querySelector('.board-stage'));
+    const toggle = button('Toggle library');
+    check(toggle === document.querySelector('[aria-label="Board tools"]')?.firstElementChild, 'Library toggle is not on the left');
+    for (const tab of document.querySelectorAll<HTMLElement>('.board-tab')) {
+      const bounds = tab.getBoundingClientRect();
+      const close = tab.querySelector<HTMLElement>('[aria-label^="Close "]')!.getBoundingClientRect();
+      check(close.left >= bounds.left && close.right <= bounds.right && close.top >= bounds.top && close.bottom <= bounds.bottom, 'Tab close is outside its border');
+      check(parseFloat(getComputedStyle(tab).borderLeftWidth) === 1, 'Tab is missing its enclosing border');
+      const label = tab.querySelector<HTMLElement>('.board-tab-name')!;
+      check(parseFloat(getComputedStyle(label).borderLeftWidth) === 0, 'Inactive tab has a second inner border');
+    }
+    button('Ellipse').click();
+    await wait(() => !!document.querySelector('[aria-label="Draw ellipse"]'));
+    const bounds = document.querySelector('[aria-label="Draw ellipse"]')!.getBoundingClientRect();
+    return { id, from: { x: Math.round(bounds.left + 70), y: Math.round(bounds.top + 90) }, to: { x: Math.round(bounds.left + 270), y: Math.round(bounds.top + 230) } };
+  },
+  async verifyShapeFocus(id: string) {
+    await wait(() => useBoardStore.getState().sessions[id].document.objects.length === 1);
+    const session = useBoardStore.getState().sessions[id];
+    check(session.selectedObjectIds[0] === session.document.objects[0].id, 'New shape is not selected');
+    check(document.activeElement?.matches('.board-workspace'), 'New shape did not focus the canvas');
+    check(!document.querySelector('.board-stage textarea'), 'New shape entered text editing');
+    return true;
+  },
+  async verifyInteractionPolish(id: string) {
+    const state = useBoardStore.getState();
+    await wait(() => state.sessions[id].document.objects.length === 0, 'Delete required another click');
+    state.executeOperation(id, doc => drawBoardObject(doc, 'ellipse', { x: 70, y: 90, width: 200, height: 140 }));
+    state.setSelection(id, []); useBoardUIStore.getState().setInspectorOpen(false);
+    await wait(() => !!document.querySelector('.board-stage .react-flow__node-shape'));
+    const node = () => document.querySelector<HTMLElement>('.board-stage .react-flow__node-shape')!;
+    node().click();
+    await wait(() => !!document.querySelector('.board-inspector-panel'), 'Collapsed inspector did not open on selection');
+    check(!useBoardUIStore.getState().inspectorOpen, 'Automatic inspector changed the manual preference');
+    document.querySelector<HTMLElement>('.board-inspector')!.click();
+    check(!!document.querySelector('.board-inspector-panel'), 'Clicking inside dismissed the inspector');
+    document.querySelector<HTMLElement>('.react-flow__pane')!.click();
+    await wait(() => !document.querySelector('.board-inspector-panel'), 'Inspector did not close outside');
+    node().click(); await wait(() => !!document.querySelector('.board-inspector-panel'));
+    button('Hide inspector').click(); await wait(() => !document.querySelector('.board-inspector-panel'));
+    node().click(); await wait(() => !!document.querySelector('.board-inspector-panel'), 'Same selection did not reopen inspector');
+    const tile = document.querySelector<HTMLButtonElement>('.board-browser-tile')!;
+    tile.click(); await wait(() => tile.getAttribute('aria-pressed') === 'true');
+    document.querySelector<HTMLElement>('.board-toolbar')!.click();
+    await wait(() => tile.getAttribute('aria-pressed') === 'false', 'Library selection survived an outside click');
+    node().click(); await wait(() => !!document.querySelector('.board-inspector-panel'));
+    return { immediateDelete: true, temporaryInspector: true, sameItemReopens: true, tabCloseContained: true, leftLibraryToggle: true, outsideLibraryDeselect: true };
+  },
   async verifyLibraryFlowAndGrid() {
     const state = useBoardStore.getState();
     const boardId = await state.createBoard('Library flow smoke');

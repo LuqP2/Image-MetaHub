@@ -54,6 +54,23 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
   const root = useRef<HTMLElement>(null);
   const [width, setWidth] = useState(1280);
   const ui = useBoardUIStore();
+  const selectionKey = JSON.stringify([session?.selectedObjectIds ?? [], session?.selectedConnectionIds ?? []]);
+  const hasSelection = !!(session?.selectedObjectIds.length || session?.selectedConnectionIds.length);
+  const [dismissedInspectorSelection, dismissInspectorSelection] = useState<string | null>(null);
+  const inspectorOpen = ui.inspectorOpen || (hasSelection && dismissedInspectorSelection !== selectionKey);
+  const inspectSelection = useCallback(() => dismissInspectorSelection(null), []);
+  const hideInspector = () => { ui.setInspectorOpen(false); dismissInspectorSelection(selectionKey); };
+  useEffect(() => {
+    if (ui.inspectorOpen || !hasSelection) return;
+    const dismiss = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || target.closest('.board-inspector-panel, .react-flow__node, .react-flow__edge, [aria-label="Toggle inspector"]')) return;
+      dismissInspectorSelection(selectionKey);
+    };
+    document.addEventListener('pointerdown', dismiss, true);
+    document.addEventListener('click', dismiss, true);
+    return () => { document.removeEventListener('pointerdown', dismiss, true); document.removeEventListener('click', dismiss, true); };
+  }, [ui.inspectorOpen, hasSelection, selectionKey]);
   const libraryOpen = libraryLocked || (ui.libraryOpen ?? width >= 1100);
   useEffect(() => {
     if (!root.current || typeof ResizeObserver === 'undefined') return;
@@ -71,12 +88,12 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
     void action().catch(cause => setError(cause instanceof Error ? cause.message : String(cause))).finally(() => setBusy(false));
   }, []);
   useEffect(() => { run(() => useBoardStore.getState().loadBoardList()); }, [run]);
-  const actions = useMemo<BoardEditorActions>(() => ({ editable, connecting, tool, setTool, editingObjectId, editObject, reportError: setError, exportPng: setPngScope, resolveAsset, openAsset: onOpenAsset, dropAssets: onDropAssets,
+  const actions = useMemo<BoardEditorActions>(() => ({ editable, connecting, tool, setTool, editingObjectId, editObject, inspectSelection, reportError: setError, exportPng: setPngScope, resolveAsset, openAsset: onOpenAsset, dropAssets: onDropAssets,
     begin: () => { if (boardId && editable) useBoardStore.getState().beginInteraction(boardId); },
     change: update => { if (boardId && editable) useBoardStore.getState().updateInteraction(boardId, document => updateObjects(document, [update])); },
     commit: () => { if (boardId) useBoardStore.getState().commitInteraction(boardId); },
     cancel: () => { if (boardId) useBoardStore.getState().cancelInteraction(boardId); },
-  }), [boardId, editable, connecting, tool, editingObjectId, resolveAsset, onOpenAsset, onDropAssets]);
+  }), [boardId, editable, connecting, tool, editingObjectId, inspectSelection, resolveAsset, onOpenAsset, onDropAssets]);
   const openSelection = useCallback(() => {
     if (!boardId) return;
     const current = useBoardStore.getState().sessions[boardId];
@@ -109,9 +126,9 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
         {exportMenu && <BoardExportDialog close={() => setExportMenu(false)} exportDocument={() => { setExportMenu(false); exportCurrent(); }} exportPng={() => { setExportMenu(false); useBoardStore.getState().commitInteraction(boardId); setPngScope(false); }} />}
         {pngScope !== null && <BoardPngExport boardId={boardId} selection={pngScope} close={() => setPngScope(null)} />}
         <BoardToolbar boardId={boardId} editable={editable} tool={tool} setTool={setTool}
-          libraryOpen={Boolean(libraryOpen)} inspectorOpen={ui.inspectorOpen} libraryLocked={libraryLocked} onToggleLibrary={() => ui.setLibraryOpen(!libraryOpen)} onToggleInspector={() => ui.setInspectorOpen(!ui.inspectorOpen)}
+          libraryOpen={Boolean(libraryOpen)} inspectorOpen={inspectorOpen} libraryLocked={libraryLocked} onToggleLibrary={() => ui.setLibraryOpen(!libraryOpen)} onToggleInspector={() => { if (inspectorOpen) hideInspector(); else { dismissInspectorSelection(null); ui.setInspectorOpen(true); } }}
           tabs={<BoardTabs onError={setError} editable={editable} />} onExport={() => setExportMenu(!exportMenu)} />
-        <div className="board-editor-layout">{libraryOpen && assetPanel && <div className="board-library-panel" style={{ width: ui.libraryWidth }}><div className="board-panel-content">{assetPanel}</div><BoardPanelResizeHandle side="library" /></div>}<div className="board-stage-container" ref={stage}><BoardCanvas boardId={boardId} onFitAll={fitAll} /></div>{ui.inspectorOpen && <div className="board-inspector-panel" style={{ width: ui.inspectorWidth }}><BoardPanelResizeHandle side="inspector" /><BoardInspector boardId={boardId} editable={editable} assetActions={assetActions} assetMetadata={assetMetadata} assetStatus={assetStatus} selectionActions={selectionActions} /></div>}</div>
+        <div className="board-editor-layout">{libraryOpen && assetPanel && <div className="board-library-panel" style={{ width: ui.libraryWidth }}><div className="board-panel-content">{assetPanel}</div><BoardPanelResizeHandle side="library" /></div>}<div className="board-stage-container" ref={stage}><BoardCanvas boardId={boardId} onFitAll={fitAll} /></div>{inspectorOpen && <div className="board-inspector-panel" style={{ width: ui.inspectorWidth }}><BoardPanelResizeHandle side="inspector" /><BoardInspector boardId={boardId} editable={editable} onHide={hideInspector} assetActions={assetActions} assetMetadata={assetMetadata} assetStatus={assetStatus} selectionActions={selectionActions} /></div>}</div>
       </BoardEditorContext.Provider>}
   </section>;
 }

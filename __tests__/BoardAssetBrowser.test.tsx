@@ -76,3 +76,32 @@ describe('Canvas asset panel', () => {
     expect((screen.getByRole('button', { name: /Add to canvas/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+
+it('clears local library selection on outside clicks while keeping Add and drag usable', () => {
+  const images = [boardImage('outside-selection.png')];
+  const add = vi.fn();
+  render(<><BoardAssetBrowser images={images} directories={[]} editable onAdd={add}/><button>Outside library</button></>);
+  clearPanelSearch();
+  const tile = screen.getByTitle('outside-selection.png');
+  fireEvent.click(tile); expect(tile.getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: /Add to canvas/ }));
+  expect(add).toHaveBeenCalledWith(images); expect(tile.getAttribute('aria-pressed')).toBe('true');
+  fireEvent.pointerDown(screen.getByText('Outside library'));
+  expect(tile.getAttribute('aria-pressed')).toBe('false');
+  fireEvent.click(tile); fireEvent.click(screen.getByText('Outside library'));
+  expect(tile.getAttribute('aria-pressed')).toBe('false');
+});
+it('clears selection when clicking blank library space and preserves modifier selection', () => {
+  vi.stubGlobal('PointerEvent', MouseEvent);
+  const images = [boardImage('blank-selection.png')];
+  const view = render(<BoardAssetBrowser images={images} directories={[]} editable onAdd={vi.fn()}/>);
+  clearPanelSearch();
+  const tile = screen.getByTitle('blank-selection.png'), results = view.container.querySelector('.board-browser-results')!;
+  fireEvent.click(tile);
+  fireEvent.pointerDown(results, { button: 0, clientX: 2, clientY: 400, ctrlKey: true });
+  fireEvent.pointerUp(results); expect(tile.getAttribute('aria-pressed')).toBe('true');
+  fireEvent.pointerDown(results, { button: 0, clientX: 2, clientY: 400 });
+  fireEvent.pointerUp(results); expect(tile.getAttribute('aria-pressed')).toBe('false');
+  vi.unstubAllGlobals();
+});
