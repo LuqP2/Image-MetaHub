@@ -63,3 +63,14 @@ Computer use was stopped with physical Esc. Subsequent implementation and verifi
 - Focused regression: 62 tests across eight files passed, covering geometry, Shift, cancellation, board switching, frame-relative coordinates, history, controls and preference hydration. TypeScript passed; scoped lint has no errors and three existing settings-store warnings.
 - `node scripts/runCanvasSnappingSmoke.mjs` builds an isolated fixture and exercises real React Flow mouse/key events in a hidden Electron window. It checks stationary Shift, continued free movement, multi-image and mixed selections, cards within frames, guide cleanup and one undo operation with redo. Screenshot and results are written beneath `build/canvas-smoke-local/snapping/`.
 - Synthetic geometry-only measurement with 10,000 references took approximately 6â€“14 ms per movement across local runs. This excludes rendering and document-update costs.
+
+
+## React Flow node initialization during dragging — 2026-11-03
+
+The Canvas projection previously discarded `dimensions` changes from React Flow. Recreating controlled nodes from the document therefore dropped `measured`, causing React Flow to invalidate initialization and emit error #015 on subsequent drag updates. This boundary issue predates Smart Guides.
+
+The Canvas now retains measurements and drag flags in board-local runtime state, processes measurement events even when read-only, and includes that state when projecting controlled nodes. Runtime data is reset on board changes and is never serialized into boards. Identical measurement events retain the same runtime map to avoid redundant updates.
+
+A component regression failed before the fix because dimensions disappeared immediately. A test using the installed React Flow system functions reproduces #015 with the old projection and verifies zero errors across 100 corrected projections. The focused Canvas regression passes 66 tests across nine files.
+
+The Electron smoke also exercises 60 continuous drag updates and checks the internal error callback, including in production mode: zero #015 errors, with snapping, mixed selections, framed cards and undo/redo still passing. The hidden-window timings are not a frame-rate benchmark.

@@ -1,8 +1,9 @@
 import { createBoardDocument } from '../services/boards/document.mjs';
 import { createSmartFrame, branchSmartFrame, duplicateSmartFrameQuery } from '../services/boards/smartFrameOperations';
 import { addConnection } from '../services/boards/operations';
-import { describe, expect, it } from 'vitest';
-import { boardToFlow, flowGeometryUpdates } from '../services/boards/reactFlowAdapter';
+import { adoptUserNodes, calculateNodePosition } from '@xyflow/system';
+import { describe, expect, it, vi } from 'vitest';
+import { applyBoardNodeRuntimeChanges, boardToFlow, flowGeometryUpdates } from '../services/boards/reactFlowAdapter';
 import { createFrame } from '../services/boards/operations';
 import { boardWithTexts } from './helpers/boardFixtures';
 
@@ -37,4 +38,28 @@ it('derives immutable dependency edges without persisting them or changing manua
   expect(document.connections).toHaveLength(1);
   const duplicate = duplicateSmartFrameQuery(document, childId);
   expect(boardToFlow(duplicate, [], [], true).edges.filter(edge => edge.type === 'query')).toHaveLength(1);
+});
+
+
+it('retains real measurements when nodes are re-adopted by React Flow during a drag', () => {
+  const document = boardWithTexts();
+  const node = document.objects[0];
+  const changes = [{ type: 'dimensions' as const, id: node.id, dimensions: { width: 280, height: 120 } }];
+  const runtime = applyBoardNodeRuntimeChanges(new Map(), changes);
+  expect(applyBoardNodeRuntimeChanges(runtime, changes)).toBe(runtime);
+  const lookup = new Map(); const parents = new Map();
+  adoptUserNodes(boardToFlow(document, [], [], true, runtime).nodes, lookup, parents);
+  const onError = vi.fn();
+  const position = () => calculateNodePosition({ nodeId: node.id, nextPosition: { x: 200, y: 200 }, nodeLookup: lookup, nodeOrigin: [0, 0], nodeExtent: [[-Infinity, -Infinity], [Infinity, Infinity]], onError });
+  position(); expect(onError).not.toHaveBeenCalled();
+  // The old projection reproduces error #015 even though the node was already measured.
+  adoptUserNodes(boardToFlow(document, [], [], true).nodes, lookup, parents);
+  position(); expect(onError).toHaveBeenCalledWith('015', expect.any(String));
+  onError.mockClear();
+  for (let step = 0; step < 100; step++) {
+    adoptUserNodes(boardToFlow({ ...document, objects: document.objects.map(object => object.id === node.id ? { ...object, x: step } : object) }, [node.id], [], true, runtime).nodes, lookup, parents);
+    position();
+  }
+  expect(onError).not.toHaveBeenCalled();
+  expect(applyBoardNodeRuntimeChanges(runtime, [{ type: 'remove', id: node.id }]).has(node.id)).toBe(false);
 });

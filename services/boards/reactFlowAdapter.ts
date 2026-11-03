@@ -4,11 +4,38 @@ import type { BoardDocument, BoardObject } from './types';
 import type { BoardObjectUpdate } from './operations';
 
 export type BoardFlowNode = Node<{ object: BoardObject }>;
-export function boardToFlow(document: BoardDocument, selectedObjectIds: string[], selectedConnectionIds: string[], editable: boolean) {
+export type BoardNodeRuntime = Pick<BoardFlowNode, 'measured' | 'dragging'>;
+
+/** React Flow's measurements/drag flags are controlled UI state, never board content. */
+export function applyBoardNodeRuntimeChanges(runtime: ReadonlyMap<string, BoardNodeRuntime>, changes: NodeChange<BoardFlowNode>[]): ReadonlyMap<string, BoardNodeRuntime> {
+  let next: Map<string, BoardNodeRuntime> | undefined;
+  for (const change of changes) {
+    if (change.type === 'remove') {
+      if ((next ?? runtime).has(change.id)) { next ??= new Map(runtime); next.delete(change.id); }
+      continue;
+    }
+    if (change.type !== 'dimensions' && change.type !== 'position') continue;
+    const current = (next ?? runtime).get(change.id) ?? {};
+    let update: BoardNodeRuntime;
+    if (change.type === 'dimensions' && change.dimensions) {
+      if (current.measured?.width === change.dimensions.width && current.measured?.height === change.dimensions.height) continue;
+      update = { ...current, measured: { ...change.dimensions } };
+    } else if (change.type === 'position' && change.dragging !== undefined) {
+      if (current.dragging === change.dragging) continue;
+      update = { ...current, dragging: change.dragging };
+    } else continue;
+    next ??= new Map(runtime);
+    next.set(change.id, update);
+  }
+  return next ?? runtime;
+}
+
+export function boardToFlow(document: BoardDocument, selectedObjectIds: string[], selectedConnectionIds: string[], editable: boolean, runtime?: ReadonlyMap<string, BoardNodeRuntime>) {
   const frames = new Map(document.objects.filter(object => object.type === 'frame').map(object => [object.id, object]));
   const nodes: BoardFlowNode[] = [...document.objects].sort((a, b) => Number(b.type === 'frame') - Number(a.type === 'frame')).map(object => {
     const parent = object.frameId ? frames.get(object.frameId) : undefined;
     return {
+      ...runtime?.get(object.id),
       id: object.id, type: object.type, data: { object },
       parentId: parent?.id, position: { x: object.x - (parent?.x ?? 0), y: object.y - (parent?.y ?? 0) },
       style: { width: object.width, height: object.height }, width: object.width, height: object.height,

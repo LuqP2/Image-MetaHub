@@ -118,3 +118,19 @@ it('exposes independent global snapping toggles beside zoom controls', () => {
   expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: false, canvasSnapToGrid: true });
   expect(objects.closest('.board-zoom-row')?.contains(screen.getByRole('button', { name: 'Zoom in' }))).toBe(true);
 });
+
+
+it('retains measured dimensions across document and selection updates without persisting them', () => {
+  const { id, mount } = setup(); mount();
+  const node = (rendered.props.nodes as { id: string; measured?: { width: number; height: number } }[])[0];
+  const change = () => rendered.props.onNodesChange as (changes: unknown[]) => void;
+  const before = useBoardStore.getState().sessions[id].changeSequence;
+  act(() => change()([{ type: 'dimensions', id: node.id, dimensions: { width: 280, height: 120 } }]));
+  expect((rendered.props.nodes as typeof node[])[0].measured).toEqual({ width: 280, height: 120 });
+  expect(useBoardStore.getState().sessions[id].changeSequence).toBe(before);
+  act(() => change()([{ type: 'position', id: node.id, position: { x: 150, y: 200 }, dragging: true }]));
+  expect((rendered.props.nodes as typeof node[])[0].measured).toEqual({ width: 280, height: 120 });
+  act(() => useBoardStore.getState().setSelection(id, []));
+  expect((rendered.props.nodes as typeof node[])[0].measured).toEqual({ width: 280, height: 120 });
+  expect(useBoardStore.getState().sessions[id].document.objects[0]).not.toHaveProperty('measured');
+});

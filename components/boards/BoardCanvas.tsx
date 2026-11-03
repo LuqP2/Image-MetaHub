@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clearInternalImageDragData, getInternalImageDragIds, hasInternalImageDragType } from '../../utils/internalImageDrag';
 import { applyNodeChanges, Background, ConnectionMode, Panel, ReactFlow, SelectionMode, useReactFlow, useViewport, type Connection, type NodeChange } from '@xyflow/react';
 import { useBoardStore } from '../../store/useBoardStore';
-import { boardToFlow, flowGeometryUpdates, type BoardFlowNode } from '../../services/boards/reactFlowAdapter';
+import { applyBoardNodeRuntimeChanges, boardToFlow, flowGeometryUpdates, type BoardFlowNode, type BoardNodeRuntime } from '../../services/boards/reactFlowAdapter';
 import { addConnection, drawBoardObject, updateObjects } from '../../services/boards/operations';
 import { findContainingFrame, type BoardPoint } from '../../services/boards/layout';
 import BoardAssetNode from './BoardAssetNode';
@@ -32,10 +32,11 @@ const edgeTypes = { manual: BoardConnection, query: BoardQueryConnection };
 
 export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId: string; onFitAll?: () => void }) {
   const exists = useBoardStore(state => !!state.sessions[boardId]);
-  return exists ? <BoardCanvasContent boardId={boardId} onFitAll={onFitAll} /> : null;
+  return exists ? <BoardCanvasContent key={boardId} boardId={boardId} onFitAll={onFitAll} /> : null;
 }
 
 function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: () => void }) {
+  const [nodeRuntime, setNodeRuntime] = useState<ReadonlyMap<string, BoardNodeRuntime>>(() => new Map());
   const session = useBoardStore(state => state.sessions[boardId]);
   const queryActions = useBoardQueryActions();
   const editor = useBoardEditor();
@@ -85,8 +86,9 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     });
     return () => cancelAnimationFrame(frame);
   }, [boardId, session.fitSelectionRequest, session.handledFitSelectionRequest, flow]);
-  const { nodes, edges } = useMemo(() => boardToFlow(session.document, session.selectedObjectIds, session.selectedConnectionIds, editor.editable), [session.document, session.selectedObjectIds, session.selectedConnectionIds, editor.editable]);
+  const { nodes, edges } = useMemo(() => boardToFlow(session.document, session.selectedObjectIds, session.selectedConnectionIds, editor.editable, nodeRuntime), [session.document, session.selectedObjectIds, session.selectedConnectionIds, editor.editable, nodeRuntime]);
   const onNodesChange = useCallback((changes: NodeChange<BoardFlowNode>[]) => {
+    setNodeRuntime(runtime => applyBoardNodeRuntimeChanges(runtime, changes));
     const state = useBoardStore.getState();
     const selected = changes.filter(change => change.type === 'select');
     if (selected.length) {
