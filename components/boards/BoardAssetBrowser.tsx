@@ -48,7 +48,18 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
   open?: boolean; onOpenChange?: (open: boolean) => void;
   onPick?: (image: IndexedImage) => void; onCancelPick?: () => void;
 }) {
+  const browserRoot = useRef<HTMLElement>(null);
   const state = useBrowserState();
+  useEffect(() => {
+    const clearOutside = (event: Event) => {
+      if (event.target instanceof Node && browserRoot.current && !browserRoot.current.contains(event.target) && useBrowserState.getState().selectedIds.length) {
+        useBrowserState.setState({ selectedIds: [] });
+      }
+    };
+    document.addEventListener('pointerdown', clearOutside, true);
+    document.addEventListener('click', clearOutside, true);
+    return () => { document.removeEventListener('pointerdown', clearOutside, true); document.removeEventListener('click', clearOutside, true); };
+  }, []);
   const enableSafeMode = useSettingsStore(settings => settings.enableSafeMode);
   const blurSensitiveImages = useSettingsStore(settings => settings.blurSensitiveImages);
   const sensitiveTags = useSettingsStore(settings => settings.sensitiveTags);
@@ -92,6 +103,7 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
     const tile = (event.target as HTMLElement).closest<HTMLElement>('[data-browser-id]');
     const additive = event.shiftKey || event.ctrlKey || event.metaKey;
     if (tile?.dataset.browserId && selectedIds.includes(tile.dataset.browserId) && !additive) return;
+    if (!tile && !additive) useBrowserState.setState({ selectedIds: [] });
     const rect = event.currentTarget.getBoundingClientRect();
     gesture.current = { startX: event.clientX - rect.left, startY: event.clientY - rect.top + (scroll.current?.scrollTop ?? 0), clientX: event.clientX, clientY: event.clientY, base: additive ? selectedIds : [], original: selectedIds, active: false };
     const tick = () => {
@@ -117,7 +129,7 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
     if (current.active) { event.preventDefault(); updateMarquee(); }
   };
   if (!open && !onPick) return null;
-  return <aside className="board-browser" aria-label="Canvas library">
+  return <aside ref={browserRoot} className="board-browser" aria-label="Canvas library">
     <div className="board-browser-heading"><strong>{onPick ? 'Choose a replacement' : 'Library'}</strong><button className="board-button" onClick={() => onPick ? onCancelPick?.() : (onOpenChange ?? useBoardUIStore.getState().setLibraryOpen)(false)}>{onPick ? 'Cancel' : 'Hide'}</button></div>
     <input className="board-input" aria-label="Search canvas library" placeholder="Search library…" value={state.query} onChange={event => useBrowserState.setState({ query: event.target.value })} />
     <select className="board-select" aria-label="Canvas library folder" value={state.directoryId} onChange={event => useBrowserState.setState({ directoryId: event.target.value })}><option value="">All folders</option>{directories.map(directory => <option key={directory.id} value={directory.id}>{directory.name}</option>)}</select>

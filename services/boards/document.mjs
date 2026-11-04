@@ -110,6 +110,14 @@ export function normalizeBoardDocument(input) {
     }
     if (['text', 'sticky', 'shape'].includes(value.type)) {
       const text = { ...base, text: string(value.text, 'Text'), fontSize: number(value.fontSize, 'Font size', 1), color: color(value.color) };
+      if (value.type === 'text') {
+        if (value.fontFamily !== undefined) {
+          const family = string(value.fontFamily, 'Font family', true);
+          if (family.length > 200 || Array.from(family).some(character => character.charCodeAt(0) < 32)) fail('Invalid font family.');
+          text.fontFamily = family;
+        }
+        if (value.backgroundColor !== undefined) text.backgroundColor = value.backgroundColor === null ? null : color(value.backgroundColor);
+      }
       if (value.type !== 'shape') return text;
       if (!['rectangle', 'ellipse', 'diamond'].includes(value.shape)) fail('Invalid shape.');
       if (![1, 2, 4].includes(value.borderWidth)) fail('Invalid border width.');
@@ -127,9 +135,10 @@ export function normalizeBoardDocument(input) {
   const connections = input.connections.map(value => {
     if (!record(value) || value.type !== 'manual') fail('Invalid connection.');
     if (value.width !== undefined && (number(value.width, 'Connection width', 0.5) > 12)) fail('Connection width is too large.');
+    if (value.lineStyle !== undefined && !['solid', 'dashed'].includes(value.lineStyle)) fail('Invalid connection line style.');
     if (!byId.has(value.sourceObjectId) || !byId.has(value.targetObjectId)) fail('Connection endpoint is missing.');
     return {
-      id: claim(value.id), type: 'manual', ...(value.width === undefined ? {} : { width: value.width }), sourceObjectId: value.sourceObjectId, targetObjectId: value.targetObjectId,
+      id: claim(value.id), type: 'manual', ...(value.lineStyle === undefined ? {} : { lineStyle: value.lineStyle }), ...(value.width === undefined ? {} : { width: value.width }), sourceObjectId: value.sourceObjectId, targetObjectId: value.targetObjectId,
       sourceSide: side(value.sourceSide), targetSide: side(value.targetSide), label: string(value.label, 'Connection label'), color: color(value.color),
     };
   });

@@ -12,6 +12,7 @@ export interface BoardEditorActions {
   setTool?(tool: BoardTool): void;
   editingObjectId?: string | null;
   editObject?(id: string | null): void;
+  inspectSelection?(): void;
   reportError?(message: string): void;
   exportPng?(selection: boolean): void;
   begin(): void;

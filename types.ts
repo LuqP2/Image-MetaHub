@@ -479,6 +479,7 @@ export type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collec
 
 export interface ElectronAPI {
   comparison?: import('./services/comparisonContracts').ComparisonBridge;
+  boardsFonts?: () => Promise<import('./services/boards/types').BoardApiResult<string[]>>;
   boardsList?: () => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardSummary[]>>;
   boardsReferenceBaseline?: () => Promise<import('./services/boards/types').BoardApiResult<string[]>>;
   boardsLoad?: (id: string) => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardDocument>>;

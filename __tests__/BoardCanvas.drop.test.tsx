@@ -1,3 +1,4 @@
+import { useBoardHotkeys } from '../hooks/useBoardHotkeys';
 import { addText } from '../services/boards/operations';
 import React from 'react';
 import { cleanup, fireEvent, render } from '@testing-library/react';
@@ -62,7 +63,7 @@ describe('Canvas asset drop', () => {
     Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target });
     fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 60 });
     fireEvent.pointerMove(stage, { clientX: 500, clientY: 60 });
-    expect(view.getByLabelText('Connection preview')).toBeTruthy();
+    expect(view.getByLabelText('Connection preview').querySelector('path')?.getAttribute('d')).toContain('C');
     fireEvent.pointerUp(stage, { clientX: 500, clientY: 60 });
     const current = useBoardStore.getState().sessions[doc.id];
     expect(current.document.connections).toHaveLength(1);
@@ -80,4 +81,30 @@ describe('Canvas asset drop', () => {
     expect(flow.screenToFlowPosition).toHaveBeenCalledWith({ x: 500, y: 340 });
     expect(drop).toHaveBeenCalledWith(['first', 'second'], { x: 75, y: -20 });
   });
+});
+
+
+function DrawingKeyboardHarness({ boardId, tool, editObject }: { boardId: string; tool: 'ellipse' | 'rectangle' | 'diamond' | 'frame'; editObject: (id: string | null) => void }) {
+  const [currentTool, setTool] = React.useState<typeof tool | 'select'>(tool);
+  const onKeyDownCapture = useBoardHotkeys(boardId, true);
+  return <section className="board-workspace" tabIndex={0} data-testid="drawing-workspace" onKeyDownCapture={onKeyDownCapture}>
+    <BoardEditorContext.Provider value={{ editable: true, connecting: false, tool: currentTool, setTool, editObject, begin() {}, change() {}, commit() {}, cancel() {} }}><BoardCanvas boardId={boardId}/></BoardEditorContext.Provider>
+  </section>;
+}
+it.each(['ellipse', 'rectangle', 'diamond', 'frame'] as const)('deletes a freshly drawn %s using the current focus without another click', tool => {
+  vi.stubGlobal('PointerEvent', MouseEvent);
+  const board = createBoardDocument(); useBoardStore.getState().adoptBoard(board);
+  const edit = vi.fn();
+  const view = render(<DrawingKeyboardHarness boardId={board.id} tool={tool} editObject={edit}/>);
+  const overlay = view.getByLabelText(`Draw ${tool}`);
+  Object.defineProperty(overlay, 'setPointerCapture', { value: vi.fn() });
+  fireEvent.pointerDown(overlay, { button: 0, clientX: 100, clientY: 100 });
+  fireEvent.pointerUp(overlay, { clientX: 250, clientY: 200 });
+  const session = useBoardStore.getState().sessions[board.id];
+  expect(session.document.objects).toHaveLength(1);
+  expect(session.selectedObjectIds).toEqual([session.document.objects[0].id]);
+  expect(edit).toHaveBeenCalledWith(null);
+  expect(document.activeElement).toBe(view.getByTestId('drawing-workspace'));
+  fireEvent.keyDown(document.activeElement!, { key: 'Delete' });
+  expect(useBoardStore.getState().sessions[board.id].document.objects).toHaveLength(0);
 });

@@ -198,9 +198,9 @@
 .board-toolbar > .board-tabs { padding:0 12px 0 0; border:0; border-right:1px solid rgb(var(--gray-700)); min-width:130px; max-width:32%; gap:6px; flex:0 1 auto; }
 .board-tabs-scroll { flex:0 1 auto; min-width:0; }
 .board-tabs > .board-button { flex-shrink:0; }
-.board-tab { padding:0 3px; border:1px solid transparent; }
-.board-tab[data-active="true"] { border-color:rgb(var(--accent) / .4); }
-.board-tab-name { padding:5px 6px; height:30px; min-width:60px; max-width:190px; background:transparent; color:inherit; font-size:12px; font-weight:600; border:0; outline:0; }
+.board-tab { padding:0 3px; border:1px solid rgb(var(--gray-700) / .6); background:rgb(var(--gray-900) / .7); overflow:hidden; }
+.board-tab[data-active="true"] { border-color:rgb(var(--accent) / .4); background:rgb(var(--accent) / .18); }
+.board-tab-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; flex:0 1 auto; padding:5px 6px; height:30px; min-width:60px; max-width:190px; background:transparent; color:inherit; font-size:12px; font-weight:600; border:0; outline:0; }
 .board-toolbar-group { flex:0 1 auto; flex-wrap:nowrap; border:0; padding-left:0; overflow-x:auto; min-width:0; scrollbar-width:thin; }
 .board-toolbar-group > button { flex-shrink:0; white-space:nowrap; }
 .board-toolbar-end { margin-left:auto; flex-shrink:0; gap:5px; }
@@ -236,3 +236,19 @@
 
 .board-inline-link { pointer-events:auto; }
 .board-workspace .react-flow__resize-control.handle { z-index:11; }
+
+.board-tab-close { flex-shrink:0; width:24px; min-height:24px; padding:0; border-color:transparent; background:transparent; }
+
+button.board-tab-name { cursor:pointer; }
+
+.board-connect-target { fill:rgb(var(--accent) / .1); stroke:rgb(var(--accent)); stroke-width:2; pointer-events:none; }
+.board-connect-hint { position:absolute; top:12px; left:50%; transform:translateX(-50%); padding:6px 12px; border-radius:8px; background:rgb(var(--gray-900)); color:rgb(var(--gray-100)); border:1px solid rgb(var(--gray-700)); font-size:12px; pointer-events:none; z-index:13; white-space:nowrap; }
+
+.board-workspace .board-connection-handle { z-index:12; cursor:crosshair; }
+
+/* Expand the pointer target without moving React Flow's measured connection anchor. */
+.board-workspace .board-connection-handle::after { content:''; position:absolute; inset:calc(-1 * var(--board-connect-hit, 9px)); border-radius:50%; }
+.board-line-options { display:flex; gap:6px; margin:6px 0 12px; }
+.board-line-options .board-button { flex:1; flex-direction:column; gap:5px; padding:8px 5px; }
+.board-line-options .board-button[aria-pressed=true] { border-color:rgb(var(--accent)); background:rgb(var(--accent) / .15); }
+.board-line-options svg { width:36px; height:10px; overflow:visible; }

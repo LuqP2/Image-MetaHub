@@ -323,6 +323,7 @@ const electronAPI = {
     ipcRenderer.on('stable-user-data-changed', handler);
     return () => ipcRenderer.removeListener('stable-user-data-changed', handler);
   },
+  boardsFonts: () => ipcRenderer.invoke('boards:fonts'),
   boardsList: () => ipcRenderer.invoke('boards:list'),
   boardsReferenceBaseline: () => ipcRenderer.invoke('boards:reference-baseline'),
   boardsLoad: (id) => ipcRenderer.invoke('boards:load', id),

@@ -1,3 +1,4 @@
+import BoardTextStyles from './BoardTextStyles';
 import BoardSelectionStyles from './BoardSelectionStyles';
 import { deleteBoardSelection } from '../../services/boards/commands';
 import { duplicateBoardSelection } from '../../services/boards/commands';
@@ -14,7 +15,7 @@ import { arrangeObjectsInGrid, updateConnection, updateObjects } from '../../ser
 import type { BoardMetadataField } from '../../services/boards/types';
 
 const fields: BoardMetadataField[] = ['model', 'loras', 'seed', 'dimensions', 'generator', 'rating', 'prompt'];
-export default function BoardInspector({ boardId, editable, assetActions, assetMetadata, assetStatus, selectionActions }: { boardId: string; editable: boolean; assetActions?: ReactNode; assetMetadata?: ReactNode; assetStatus?: ReactNode; selectionActions?: ReactNode }) {
+export default function BoardInspector({ boardId, editable, assetActions, assetMetadata, assetStatus, selectionActions, onHide }: { boardId: string; editable: boolean; assetActions?: ReactNode; assetMetadata?: ReactNode; assetStatus?: ReactNode; selectionActions?: ReactNode; onHide?: () => void }) {
   const session = useBoardStore(state => state.sessions[boardId]);
   const selected = session.document.objects.filter(object => session.selectedObjectIds.includes(object.id));
   const object = selected.length === 1 ? selected[0] : null;
@@ -25,17 +26,25 @@ export default function BoardInspector({ boardId, editable, assetActions, assetM
   };
   const commit = () => useBoardStore.getState().commitInteraction(boardId);
   return <aside className="board-inspector" aria-label="Board inspector">
-    <header className="board-inspector-header"><div><small>{object?.type === 'smart-frame' ? 'Smart Frame' : object?.type ?? 'Properties'}</small><h2 title={object?.type === 'asset' ? getBoardDisplayName(object.name) : undefined}>{object?.type === 'asset' ? getBoardDisplayName(object.name) : object?.type === 'smart-frame' ? object.title : object?.type === 'frame' ? 'Frame' : object?.type === 'text' ? 'Text' : connection ? 'Connection' : selected.length ? `${selected.length} ${selected.length === 1 ? 'object' : 'objects'}` : 'Board'}</h2></div><button className="board-icon-button" aria-label="Hide inspector" onClick={() => useBoardUIStore.getState().setInspectorOpen(false)}><PanelRightClose size={16}/></button></header><div className="board-inspector-content scrollbar-sidebar">{assetStatus}{assetActions}{selectionActions}{assetMetadata && <Section title="Metadata" defaultOpen>{assetMetadata}</Section>}
+    <header className="board-inspector-header"><div><small>{object?.type === 'smart-frame' ? 'Smart Frame' : object?.type ?? 'Properties'}</small><h2 title={object?.type === 'asset' ? getBoardDisplayName(object.name) : undefined}>{object?.type === 'asset' ? getBoardDisplayName(object.name) : object?.type === 'smart-frame' ? object.title : object?.type === 'frame' ? 'Frame' : object?.type === 'text' ? 'Text' : connection ? 'Connection' : selected.length ? `${selected.length} ${selected.length === 1 ? 'object' : 'objects'}` : 'Board'}</h2></div><button className="board-icon-button" aria-label="Hide inspector" onClick={onHide ?? (() => useBoardUIStore.getState().setInspectorOpen(false))}><PanelRightClose size={16}/></button></header><div className="board-inspector-content scrollbar-sidebar">{assetStatus}{assetActions}{selectionActions}{assetMetadata && <Section title="Metadata" defaultOpen>{assetMetadata}</Section>}
     {selected.length > 1 && selected.every(item => item.type === 'smart-frame') && <BoardSmartFrameSelectionActions key={selected.map(item => item.id).join('|')} boardId={boardId} frames={selected as BoardSmartFrameObject[]} editable={editable} />}
     {object?.type === 'smart-frame' && <BoardSmartFrameInspector boardId={boardId} frame={object} editable={editable} />}
     <BoardSelectionStyles boardId={boardId} editable={editable} />
+    {selected.some(item => item.type === 'text') && <BoardTextStyles boardId={boardId} editable={editable} />}
     {object?.type === 'link' && <><label>Title<input className="board-input" disabled={!editable} value={object.title} onChange={event => edit('title', event.target.value)} onBlur={commit} /></label><label>URL<input className="board-input" disabled={!editable} defaultValue={object.url} key={object.url} onBlur={event => { try { const url = new URL(event.target.value); if (['http:', 'https:'].includes(url.protocol)) { edit('url', url.href); commit(); } else event.target.value = object.url; } catch { event.target.value = object.url; } }} /></label></>}
     {object?.type === 'text' && <>
       <label>Text<textarea className="board-textarea" disabled={!editable} value={object.text} onChange={event => edit('text', event.target.value)} onBlur={commit} /></label>
     </>}
     {object?.type === 'frame' && <label>Title<input className="board-input" disabled={!editable} value={object.title} onChange={event => edit('title', event.target.value)} onBlur={commit} /></label>}
     {connection && <>
-      <label>Line thickness<input className="board-input" aria-label="Connection thickness" type="number" min="0.5" max="12" step="0.5" disabled={!editable} value={connection.width ?? 1.5} onChange={event => { const width = Number(event.target.value); if (width >= 0.5 && width <= 12) useBoardStore.getState().updateInteraction(boardId, document => updateConnection(document, connection.id, { width })); }} onBlur={commit} /></label>
+      <div role="group" aria-label="Line thickness">Line thickness<div className="board-line-options">{([1.5, 3, 5] as const).map((width, index) => {
+        const current = connection.width ?? 1.5;
+        const active = index === (current < 2.25 ? 0 : current < 4 ? 1 : 2);
+        return <button key={width} className="board-button" disabled={!editable} aria-pressed={active} onClick={() => useBoardStore.getState().executeOperation(boardId, document => updateConnection(document, connection.id, { width }))}>
+          <svg aria-hidden="true"><line x1="0" y1="5" x2="36" y2="5" stroke="currentColor" strokeWidth={width}/></svg>{['Thin', 'Medium', 'Thick'][index]}</button>;
+      })}</div></div>
+      <div role="group" aria-label="Line style">Line style<div className="board-line-options">{(['solid', 'dashed'] as const).map(lineStyle => <button key={lineStyle} className="board-button" disabled={!editable} aria-pressed={(connection.lineStyle ?? 'solid') === lineStyle} onClick={() => useBoardStore.getState().executeOperation(boardId, document => updateConnection(document, connection.id, { lineStyle }))}>
+        <svg aria-hidden="true"><line x1="0" y1="5" x2="36" y2="5" stroke="currentColor" strokeWidth="2" strokeDasharray={lineStyle === 'dashed' ? '6 4' : undefined}/></svg>{lineStyle === 'solid' ? 'Solid' : 'Dashed'}</button>)}</div></div>
       <label>Label<input className="board-input" disabled={!editable} value={connection.label} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateConnection(document, connection.id, { label: event.target.value }))} onBlur={commit} /></label>
       <label>Color<input type="color" disabled={!editable} value={connection.color} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateConnection(document, connection.id, { color: event.target.value }))} onBlur={commit} /></label>
     </>}

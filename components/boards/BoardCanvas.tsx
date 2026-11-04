@@ -1,5 +1,5 @@
 import { useBoardSnapping } from '../../hooks/useBoardSnapping';
-import { facingBoardSides } from '../../services/boards/connectionGeometry';
+import { useBoardConnections } from '../../hooks/useBoardConnections';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import BoardCreativeNode from './BoardCreativeNode';
 import BoardContextMenu, { type BoardMenuPosition } from './BoardContextMenu';
@@ -13,10 +13,10 @@ import BoardQueryConnection from './BoardQueryConnection';
 import BoardSmartFrameNode from './BoardSmartFrameNode';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clearInternalImageDragData, getInternalImageDragIds, hasInternalImageDragType } from '../../utils/internalImageDrag';
-import { applyNodeChanges, Background, ConnectionMode, Panel, ReactFlow, SelectionMode, useReactFlow, useViewport, type Connection, type NodeChange } from '@xyflow/react';
+import { applyNodeChanges, Background, ConnectionMode, Panel, ReactFlow, SelectionMode, useReactFlow, useViewport, type NodeChange } from '@xyflow/react';
 import { useBoardStore } from '../../store/useBoardStore';
 import { applyBoardNodeRuntimeChanges, boardToFlow, flowGeometryUpdates, type BoardFlowNode, type BoardNodeRuntime } from '../../services/boards/reactFlowAdapter';
-import { addConnection, drawBoardObject, updateObjects } from '../../services/boards/operations';
+import { drawBoardObject, updateObjects } from '../../services/boards/operations';
 import { findContainingFrame, type BoardPoint } from '../../services/boards/layout';
 import BoardAssetNode from './BoardAssetNode';
 import BoardTextNode from './BoardTextNode';
@@ -25,7 +25,6 @@ import BoardConnection from './BoardConnection';
 import BoardViewportControls from './BoardViewportControls';
 import BoardCanvasHelp from './BoardCanvasHelp';
 import { useBoardEditor } from './BoardEditorContext';
-import type { BoardSide } from '../../services/boards/types';
 
 const nodeTypes = { sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode, 'smart-frame': BoardSmartFrameNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode };
 const edgeTypes = { manual: BoardConnection, query: BoardQueryConnection };
@@ -44,9 +43,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
   const { x: viewportX, y: viewportY, zoom } = useViewport();
   const snapping = useBoardSnapping(boardId);
   const stageRef = useRef<HTMLDivElement>(null);
-  const cardConnection = useRef<{ sourceId: string; start: BoardPoint } | null>(null);
-  const [connectionPreview, setConnectionPreview] = useState<{ start: BoardPoint; end: BoardPoint } | null>(null);
-  useEffect(() => { cardConnection.current = null; setConnectionPreview(null); }, [editor.connecting, boardId]);
+  const connections = useBoardConnections(boardId, stageRef);
   useEffect(() => {
     const request = session.revealRequest;
     if (!request) return;
@@ -72,7 +69,12 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     const ids = useBoardStore.getState().sessions[boardId].document.objects.filter(object => !previous.has(object.id)).map(object => object.id);
     state.setSelection(boardId, ids);
     editor.setTool?.('select');
-    if (tool !== 'frame') { state.beginInteraction(boardId); editor.editObject?.(ids[0]); }
+    if (tool === 'text' || tool === 'sticky') {
+      state.beginInteraction(boardId); editor.editObject?.(ids[0]);
+    } else {
+      editor.editObject?.(null);
+      stageRef.current?.closest<HTMLElement>('.board-workspace')?.focus({ preventScroll: true });
+    }
   }, [boardId, editor]);
   useEffect(() => { drawingStart.current = null; setDrawing(null); }, [drawingTool]);
   useEffect(() => {
@@ -112,47 +114,16 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     if (updates.length) state.updateInteraction(boardId, document => updateObjects(document, updates));
     state.commitInteraction(boardId);
   }, [boardId, snapping.finish]);
-  const connect = useCallback((connection: Connection) => {
-    if (!editor.editable || !connection.source || !connection.target) return;
-    useBoardStore.getState().executeOperation(boardId, document => addConnection(document, {
-      sourceObjectId: connection.source, targetObjectId: connection.target,
-      sourceSide: (connection.sourceHandle || 'right') as BoardSide, targetSide: (connection.targetHandle || 'left') as BoardSide,
-      color: '#94a3b8', label: '',
-    }));
-  }, [boardId, editor.editable]);
-  const beginCardConnection = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const beginPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    connections.pointerDown(event);
     const target = event.target as HTMLElement;
-    if (editor.connecting && editor.editable && event.button === 0 && !target.closest('input,textarea,a,button,.react-flow__handle,.react-flow__resize-control')) {
-      const node = target.closest<HTMLElement>('.react-flow__node[data-id]');
-      if (node?.dataset.id) {
-        event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
-        const rect = event.currentTarget.getBoundingClientRect();
-        const start = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-        cardConnection.current = { sourceId: node.dataset.id, start };
-        setConnectionPreview({ start, end: start });
-        return;
-      }
-    }
-    if (!target.closest('input, textarea, button, a, [contenteditable="true"], [role="menu"]')) stageRef.current?.closest<HTMLElement>('.board-workspace')?.focus({ preventScroll: true });
+    if (!event.defaultPrevented && !target.closest('input, textarea, button, a, [contenteditable="true"], [role="menu"]')) stageRef.current?.closest<HTMLElement>('.board-workspace')?.focus({ preventScroll: true });
   };
-  const finishCardConnection = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const gesture = cardConnection.current;
-    if (!gesture) return;
-    event.preventDefault(); event.stopPropagation(); cardConnection.current = null; setConnectionPreview(null);
-    const id = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.react-flow__node[data-id]')?.dataset.id;
-    const current = useBoardStore.getState().sessions[boardId]?.document;
-    const source = current?.objects.find(object => object.id === gesture.sourceId);
-    const target = current?.objects.find(object => object.id === id);
-    if (editor.editable && source && target && source.id !== target.id) {
-      const sides = facingBoardSides(source, target);
-      connect({ source: source.id, target: target.id, sourceHandle: sides.sourceSide, targetHandle: sides.targetSide });
-    }
-  };
-  return <div ref={stageRef} className="board-stage" data-connecting={editor.connecting} onPointerDownCapture={beginCardConnection} onPointerUpCapture={finishCardConnection}
-    onPointerCancel={() => { cardConnection.current = null; setConnectionPreview(null); }}
+  return <div ref={stageRef} className="board-stage" data-connecting={editor.connecting || !!connections.preview} onPointerDownCapture={beginPointer} onPointerUpCapture={connections.pointerUp} onClickCapture={connections.click}
+    onPointerCancel={connections.cancel}
     onPointerMove={event => {
       setBoardPointer(boardId, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
-      if (cardConnection.current) { const rect = event.currentTarget.getBoundingClientRect(); setConnectionPreview({ start: cardConnection.current.start, end: { x: event.clientX - rect.left, y: event.clientY - rect.top } }); }
+      connections.pointerMove(event);
     }} onDoubleClick={event => { event.stopPropagation(); if (editor.editable && (event.target as HTMLElement).classList.contains('react-flow__pane')) setMenu({ x: event.clientX, y: event.clientY, point: flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }), kind: 'create' }); }}
     onDragOver={event => { if (editor.editable && hasInternalImageDragType(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
     onDrop={event => {
@@ -168,13 +139,14 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
         changes.forEach(change => { if (change.type === 'select' && session.document.connections.some(connection => connection.id === change.id)) { if (change.selected) selected.add(change.id); else selected.delete(change.id); } });
         useBoardStore.getState().setSelection(boardId, useBoardStore.getState().sessions[boardId].selectedObjectIds, [...selected]);
       }}
-      onNodeDragStart={(event, node, nodes) => { editor.begin(); snapping.begin(event, node, nodes); }} onNodeDragStop={finishDrag} onConnect={connect}
-      connectionMode={ConnectionMode.Loose} nodesDraggable={editor.editable && !drawingTool && !editor.connecting} nodesConnectable={editor.editable && !drawingTool}
+      onNodeDragStart={(event, node, nodes) => { editor.begin(); snapping.begin(event, node, nodes); }} onNodeDragStop={finishDrag} onConnect={connections.connect}
+      connectionMode={ConnectionMode.Loose} nodesDraggable={editor.editable && !drawingTool && !editor.connecting && !connections.preview} nodesConnectable={editor.editable && !drawingTool}
       connectionRadius={20 / zoom} connectOnClick={false}
       defaultViewport={session.document.viewport} minZoom={0.1} maxZoom={4} deleteKeyCode={null} selectionKeyCode={null}
-      multiSelectionKeyCode={["Control", "Meta", "Shift"]} panActivationKeyCode="Space" panOnDrag={[1]} selectionOnDrag={!drawingTool && !editor.connecting} selectionMode={SelectionMode.Partial} panOnScroll={false}
+      multiSelectionKeyCode={["Control", "Meta", "Shift"]} panActivationKeyCode="Space" panOnDrag={[1]} selectionOnDrag={!drawingTool && !editor.connecting && !connections.preview} selectionMode={SelectionMode.Partial} panOnScroll={false}
       zoomOnScroll zoomOnPinch zoomActivationKeyCode={['Control', 'Meta']} zoomOnDoubleClick={false}
       onMoveEnd={() => useBoardStore.getState().setViewport(boardId, flow.getViewport())}
+      onNodeClick={() => editor.inspectSelection?.()} onEdgeClick={() => editor.inspectSelection?.()}
       onNodeContextMenu={(event, node) => {
         if ((event.target as HTMLElement).closest('input,textarea,[contenteditable="true"]')) return;
         event.preventDefault(); event.stopPropagation();
@@ -199,7 +171,13 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
           stroke="#e879f9" strokeWidth={1} vectorEffect="non-scaling-stroke" />)}
       </g>
     </svg>}
-    {connectionPreview && <svg className="board-connect-preview" aria-label="Connection preview"><path d={`M ${connectionPreview.start.x} ${connectionPreview.start.y} L ${connectionPreview.end.x} ${connectionPreview.end.y}`} /></svg>}
+    {connections.preview && <>
+      <svg className="board-connect-preview" aria-label="Connection preview"><g transform={`translate(${viewportX ?? 0}, ${viewportY ?? 0}) scale(${zoom})`}>
+        <path d={connections.preview.path} vectorEffect="non-scaling-stroke" />
+        {connections.preview.target && <rect className="board-connect-target" x={connections.preview.target.x - 3 / zoom} y={connections.preview.target.y - 3 / zoom} width={connections.preview.target.width + 6 / zoom} height={connections.preview.target.height + 6 / zoom} rx={8 / zoom} vectorEffect="non-scaling-stroke" />}
+      </g></svg>
+      <div className="board-connect-hint">Connect: drag or click a destination · Esc to cancel</div>
+    </>}
     {menu && <BoardContextMenu boardId={boardId} menu={menu} close={closeMenu} create={createObject} fit={onFitAll} />}
     {!session.document.objects.length && editor.editable && <div className="board-empty-start nodrag nopan">
       <h2>Start your board</h2><p>Collect references or explore your library with a live query.</p>

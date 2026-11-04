@@ -30,9 +30,9 @@ export default function BoardNodeControls({ selected, keepAspectRatio = false }:
       onResizeStart={editor.begin} />
     {([['top', Position.Top], ['right', Position.Right], ['bottom', Position.Bottom], ['left', Position.Left]] as const).map(([id, position]) =>
       <Handle key={id} id={id} type="source" position={position} isConnectable={editor.editable}
-        className="board-connection-handle" data-editable={editor.editable}
+        title="Drag to connect, or click then choose a destination" className="board-connection-handle" data-editable={editor.editable}
         isConnectableStart={editor.editable} isConnectableEnd={editor.editable}
-        style={{ opacity: showHandles ? 1 : undefined, pointerEvents: editor.editable && (editor.connecting || selected || connectionState !== '') ? 'auto' : undefined,
-          ...(activeHandle === id ? { width: 14, height: 14, boxShadow: '0 0 0 4px rgb(var(--accent) / .25)' } : {}) }} />)}
+        style={{ '--board-connect-hit': `${9 / zoom}px`, opacity: showHandles ? 1 : undefined, pointerEvents: editor.editable && (editor.connecting || selected || connectionState !== '') ? 'auto' : undefined,
+          ...(activeHandle === id ? { width: 14, height: 14, boxShadow: '0 0 0 4px rgb(var(--accent) / .25)' } : {}) } as CSSProperties} />)}
   </>;
 }
