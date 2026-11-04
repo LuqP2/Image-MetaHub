@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createBoardStore } from '../store/useBoardStore';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createBoardStore, useBoardStore } from '../store/useBoardStore';
+import { boardService } from '../services/boards/boardService';
 import { createBoardDocument, normalizeBoardDocument } from '../services/boards/document.mjs';
 import { addText } from '../services/boards/operations';
 import type { BoardDocument, BoardRepository } from '../services/boards/types';
@@ -12,6 +13,49 @@ function fixture() {
   return { store: createBoardStore(repository, 60000), repository, documents };
 }
 describe('board tabs', () => {
+  beforeEach(() => { localStorage.clear(); });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    useBoardStore.setState({ tabsRestored: false, sessions: {}, openBoardIds: [], activeBoardId: null });
+    localStorage.clear();
+  });
+  it.each(['create', 'open'] as const)('restores saved tabs before a programmatic %s from the Library', async action => {
+    const { store, documents } = fixture();
+    const a = createBoardDocument('A'), b = createBoardDocument('B'), destination = createBoardDocument('Destination');
+    for (const document of [a, b, destination]) documents.set(document.id, document);
+    localStorage.setItem('imh-board-tabs-v1', JSON.stringify({ ids: [a.id, b.id], active: a.id }));
+    const id = action === 'create' ? await store.getState().createBoard('New')
+      : (await store.getState().openBoard(destination.id), destination.id);
+    expect(store.getState().openBoardIds).toEqual([a.id, b.id, id]);
+    expect(store.getState().activeBoardId).toBe(id);
+    expect(store.getState().tabsRestored).toBe(true);
+    // Mounting the workspace later must not reactivate the old saved tab.
+    await store.getState().restoreTabs();
+    expect(store.getState().activeBoardId).toBe(id);
+  });
+  it('shares in-flight restoration and preserves preferences until all saved tabs are loaded', async () => {
+    const a = createBoardDocument('A'), b = createBoardDocument('B'), destination = createBoardDocument('Destination');
+    let release!: () => void;
+    const loading = new Promise<BoardDocument>(resolve => { release = () => resolve(b); });
+    const load = vi.spyOn(boardService, 'load').mockImplementation(async id => {
+      if (id === a.id) return a;
+      if (id === b.id) return loading;
+      if (id === destination.id) return destination;
+      throw new Error('Missing');
+    });
+    const saved = JSON.stringify({ ids: [a.id, b.id], active: a.id });
+    localStorage.setItem('imh-board-tabs-v1', saved);
+    const opening = useBoardStore.getState().openBoard(destination.id);
+    const restoring = useBoardStore.getState().restoreTabs();
+    await vi.waitFor(() => expect(load).toHaveBeenCalledWith(b.id));
+    expect(useBoardStore.getState().tabsRestored).toBe(false);
+    expect(localStorage.getItem('imh-board-tabs-v1')).toBe(saved);
+    expect(load).not.toHaveBeenCalledWith(destination.id);
+    release();
+    await Promise.all([opening, restoring]);
+    expect(load).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(localStorage.getItem('imh-board-tabs-v1')!)).toEqual({ ids: [a.id, b.id, destination.id], active: destination.id });
+  });
   it('opens a board once, preserves history and selection, and lists without closing', async () => {
     const { store } = fixture();
     const a = await store.getState().createBoard('A');

@@ -29,9 +29,8 @@ export interface BoardWorkspaceProps {
   onDropAssets?: BoardEditorActions['dropAssets'];
 
 }
-let tabsRestored = false;
 export default function BoardWorkspace(props: BoardWorkspaceProps) {
-  useEffect(() => { if (!tabsRestored) { tabsRestored = true; if (!useBoardStore.getState().activeBoardId) void useBoardStore.getState().restoreTabs(); } }, []);
+  useEffect(() => { void useBoardStore.getState().restoreTabs(); }, []);
   const boardId = useBoardStore(state => state.activeBoardId);
   return <ReactFlowProvider key={boardId ?? 'list'}><BoardWorkspaceContent {...props} /></ReactFlowProvider>;
 }

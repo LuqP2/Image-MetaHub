@@ -31,6 +31,7 @@ interface BoardStore {
   sessions: Record<string, BoardSession>;
   activeBoardId: string | null;
   openBoardIds: string[];
+  tabsRestored: boolean;
   restoreTabs(): Promise<void>;
   showBoardList(): void;
   loadBoardList(): Promise<void>;
@@ -71,9 +72,21 @@ const newSession = (document: BoardDocument): BoardSession => ({
 
 export function createBoardStore(repository: BoardRepository = boardService, delay = 500) {
   let activationRequest = 0;
+  let tabsRestoration: Promise<void> | undefined;
   const pendingLoads = new Map<string, Promise<void>>();
   const recoveries = new Map<string, Promise<string>>();
   const store = create<BoardStore>((set, get) => {
+    const loadSession = async (id: string) => {
+      if (get().sessions[id]) return;
+      let pending = pendingLoads.get(id);
+      if (!pending) {
+        pending = repository.load(id).then(document => {
+          if (!get().sessions[id]) set(state => ({ sessions: { ...state.sessions, [id]: newSession(document) } }));
+        }).finally(() => pendingLoads.delete(id));
+        pendingLoads.set(id, pending);
+      }
+      await pending;
+    };
     const updateSession = (id: string, update: (session: BoardSession) => BoardSession) => set(state => {
       const session = state.sessions[id];
       if (!session) return state;
@@ -94,49 +107,53 @@ export function createBoardStore(repository: BoardRepository = boardService, del
         summaries: [summarizeBoard(normalized), ...state.summaries.filter(summary => summary.id !== id)] }));
     };
     return {
-      summaries: [], sessions: {}, activeBoardId: null, openBoardIds: [], closing: false,
+      summaries: [], sessions: {}, activeBoardId: null, openBoardIds: [], tabsRestored: false, closing: false,
       showBoardList() {
         activationRequest++;
         const id = get().activeBoardId;
         if (id) { get().commitInteraction(id); void get().flushBoard(id).catch(() => {}); }
         set({ activeBoardId: null });
       },
-      async restoreTabs() {
-        let saved: { ids?: string[]; active?: string | null };
-        try { saved = JSON.parse(localStorage.getItem('imh-board-tabs-v1') ?? '{}'); } catch { return; }
-        if (!Array.isArray(saved.ids)) return;
-        for (const id of [...new Set(saved.ids)].filter(id => typeof id === 'string')) {
-          try { await get().openBoard(id); } catch { /* Missing boards must not block the rest. */ }
-        }
-        if (saved.active === null) set({ activeBoardId: null });
-        else if (saved.active && get().sessions[saved.active]) set({ activeBoardId: saved.active });
+      restoreTabs() {
+        if (get().tabsRestored) return Promise.resolve();
+        if (tabsRestoration) return tabsRestoration;
+        const request = activationRequest;
+        tabsRestoration = (async () => {
+          try {
+            const saved: { ids?: unknown[]; active?: string | null } | null = JSON.parse(localStorage.getItem('imh-board-tabs-v1') ?? '{}');
+            if (!Array.isArray(saved?.ids)) return;
+            const ids: string[] = [];
+            for (const id of new Set(saved.ids)) {
+              if (typeof id !== 'string') continue;
+              try { await loadSession(id); ids.push(id); } catch { /* Missing boards must not block the rest. */ }
+            }
+            // Restore in one step so partially loaded tabs never replace saved preferences.
+            set(state => ({
+              openBoardIds: [...new Set([...ids, ...state.openBoardIds])],
+              activeBoardId: request !== activationRequest || state.activeBoardId ? state.activeBoardId
+                : saved.active === null ? null : ids.includes(saved.active ?? '') ? saved.active! : ids.at(-1) ?? null,
+            }));
+          } catch { /* Unavailable or invalid preferences must not block opening boards. */ }
+          finally { set({ tabsRestored: true }); }
+        })().finally(() => { tabsRestoration = undefined; });
+        return tabsRestoration;
       },
       setClosing(closing) { set({ closing }); },
       async loadBoardList() { set({ summaries: await repository.list() }); },
       async createBoard(name) {
+        if (!get().tabsRestored) await get().restoreTabs();
         if (get().closing) throw new Error('The application is closing.');
         const saved = await repository.save(createBoardDocument(name), 0);
         setDocument(saved.id, saved);
         return saved.id;
       },
       async openBoard(id) {
+        if (!get().tabsRestored) await get().restoreTabs();
         const request = ++activationRequest;
         const previous = get().activeBoardId;
         if (previous && previous !== id) { get().commitInteraction(previous); void get().flushBoard(previous).catch(() => {}); }
-        if (!get().sessions[id]) {
-          let pending = pendingLoads.get(id);
-          if (!pending) {
-            pending = repository.load(id).then(document => {
-              if (!get().sessions[id]) updateOrAdopt(document);
-            }).finally(() => pendingLoads.delete(id));
-            pendingLoads.set(id, pending);
-          }
-          await pending;
-        }
+        if (!get().sessions[id]) await loadSession(id);
         set(state => ({ activeBoardId: request === activationRequest ? id : state.activeBoardId, openBoardIds: state.openBoardIds.includes(id) ? state.openBoardIds : [...state.openBoardIds, id] }));
-        function updateOrAdopt(document: BoardDocument) {
-          set(state => ({ sessions: { ...state.sessions, [id]: newSession(document) } }));
-        }
       },
       renameBoard(id, name) {
         if (get().closing || get().sessions[id]?.recovering) return;
@@ -315,7 +332,8 @@ export function createBoardStore(repository: BoardRepository = boardService, del
 
 export const useBoardStore = createBoardStore();
 useBoardStore.subscribe((state, previous) => {
-  if (state.openBoardIds === previous.openBoardIds && state.activeBoardId === previous.activeBoardId) return;
+  if (!state.tabsRestored) return;
+  if (previous.tabsRestored && state.openBoardIds === previous.openBoardIds && state.activeBoardId === previous.activeBoardId) return;
   try { localStorage.setItem('imh-board-tabs-v1', JSON.stringify({ ids: state.openBoardIds, active: state.activeBoardId })); } catch { /* Preferences are best effort. */ }
 });
 export const hasPendingBoardChanges = () => Object.values(useBoardStore.getState().sessions).some(session => session.changeSequence !== session.savedSequence);
