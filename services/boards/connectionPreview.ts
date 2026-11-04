@@ -18,11 +18,12 @@ function measuredAnchor(node: InternalNode | undefined, side: BoardSide): BoardP
 }
 
 /** Uses the same Bezier path and edge anchors as the committed React Flow connection. */
-export function boardConnectionPreview(source: BoardBounds, pointer: BoardPoint, target?: BoardBounds, sourceSide?: BoardSide, nodes?: { source?: InternalNode; target?: InternalNode }) {
+export function boardConnectionPreview(source: BoardBounds, pointer: BoardPoint, target?: BoardBounds, sourceSide?: BoardSide, nodes?: { source?: InternalNode; target?: InternalNode }, targetSide?: BoardSide) {
   const sides = facingBoardSides(source, target ?? { ...pointer, width: 0, height: 0 });
   const fromSide = sourceSide ?? sides.sourceSide;
+  const toSide = targetSide ?? sides.targetSide;
   const from = measuredAnchor(nodes?.source, fromSide) ?? anchor(source, fromSide);
-  const to = target ? measuredAnchor(nodes?.target, sides.targetSide) ?? anchor(target, sides.targetSide) : pointer;
-  const [path] = getBezierPath({ sourceX: from.x, sourceY: from.y, sourcePosition: positions[fromSide], targetX: to.x, targetY: to.y, targetPosition: positions[sides.targetSide] });
-  return { path, sourceSide: fromSide, targetSide: sides.targetSide };
+  const to = target ? measuredAnchor(nodes?.target, toSide) ?? anchor(target, toSide) : pointer;
+  const [path] = getBezierPath({ sourceX: from.x, sourceY: from.y, sourcePosition: positions[fromSide], targetX: to.x, targetY: to.y, targetPosition: positions[toSide] });
+  return { path, sourceSide: fromSide, targetSide: toSide };
 }

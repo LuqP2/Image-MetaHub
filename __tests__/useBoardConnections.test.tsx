@@ -49,6 +49,43 @@ function setup(initialTool: BoardTool = 'connect', editable = true) {
   return { id: document.id, click, current: () => useBoardStore.getState().sessions[document.id] };
 }
 describe('curved connections and two-click creation', () => {
+  it.each(['top', 'right', 'bottom', 'left'] as const)('honors the explicit %s destination dot in preview and on drag release', side => {
+    const { current } = setup('select');
+    const source = screen.getByTestId('handle-0');
+    hit = source;
+    fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 50 });
+    const target = screen.getByTestId('handle-1');
+    target.setAttribute('data-handleid', side);
+    hit = target;
+    fireEvent.pointerMove(screen.getByTestId('stage'), { clientX: 450, clientY: 200 });
+    const anchors = {
+      top: { x: 450, y: 200, position: Position.Top }, right: { x: 500, y: 250, position: Position.Right },
+      bottom: { x: 450, y: 300, position: Position.Bottom }, left: { x: 400, y: 250, position: Position.Left },
+    };
+    const anchor = anchors[side];
+    const [expected] = getBezierPath({ sourceX: 100, sourceY: 50, sourcePosition: Position.Right, targetX: anchor.x, targetY: anchor.y, targetPosition: anchor.position });
+    expect(screen.getByLabelText('Connection preview').querySelector('path')?.getAttribute('d')).toBe(expected);
+    fireEvent.pointerUp(screen.getByTestId('stage'), { clientX: 450, clientY: 200 });
+    expect(current().document.connections[0]).toMatchObject({ sourceSide: 'right', targetSide: side });
+    expect(current().past).toHaveLength(1);
+  });
+  it('switches back to automatic sides over the body and honors a destination dot on the second click', () => {
+    const { click, current } = setup(); click(0);
+    const target = screen.getByTestId('handle-1'); target.setAttribute('data-handleid', 'top');
+    hit = target;
+    fireEvent.pointerMove(screen.getByTestId('stage'), { clientX: 450, clientY: 200 });
+    const explicit = screen.getByLabelText('Connection preview').querySelector('path')?.getAttribute('d');
+    hit = screen.getByTestId('node-1');
+    fireEvent.pointerMove(screen.getByTestId('stage'), { clientX: 450, clientY: 240 });
+    const [automatic] = getBezierPath({ sourceX: 100, sourceY: 50, sourcePosition: Position.Right, targetX: 400, targetY: 250, targetPosition: Position.Left });
+    expect(screen.getByLabelText('Connection preview').querySelector('path')?.getAttribute('d')).toBe(automatic);
+    expect(explicit).not.toBe(automatic);
+    hit = target;
+    fireEvent.pointerDown(target, { button: 0, clientX: 450, clientY: 200 });
+    expect(screen.getByLabelText('Connection preview').querySelector('path')?.getAttribute('d')).toBe(explicit);
+    fireEvent.pointerUp(target, { clientX: 450, clientY: 200 });
+    expect(current().document.connections[0].targetSide).toBe('top');
+  });
   it('previews the exact final Bezier curve, accepts the entire destination, and commits one undo operation', () => {
     const { click, current, id } = setup(); click(0);
     expect(current().document.connections).toHaveLength(0);

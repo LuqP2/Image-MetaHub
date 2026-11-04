@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useBoardStore } from '../../store/useBoardStore';
 import { updateObjects } from '../../services/boards/operations';
+import { boardFontFamily } from '../../services/boards/fontFamily';
 import type { BoardTextObject } from '../../services/boards/types';
 
 export default function BoardTextStyles({ boardId, editable }: { boardId: string; editable: boolean }) {
@@ -29,7 +30,7 @@ export default function BoardTextStyles({ boardId, editable }: { boardId: string
   return <fieldset disabled={!editable} className="board-selection-styles"><legend>Text appearance</legend>
     <label>Font<select className="board-input" aria-label="Font" value={family} onChange={event => apply({ fontFamily: event.target.value || undefined })}>
       <option value="">Default</option><option value="__mixed" disabled>Mixed</option>
-      {families.map(name => <option key={name} value={name} style={{ fontFamily: JSON.stringify(name) }}>{name}</option>)}
+      {families.map(name => <option key={name} value={name} style={{ fontFamily: boardFontFamily(name) }}>{name}</option>)}
     </select></label>
     {status && <small role="status">{status}</small>}
     <label className="board-checkbox"><input type="checkbox" aria-label="Text background" checked={texts.every(text => !!text.backgroundColor)} ref={element => { if (element) element.indeterminate = texts.some(text => !!text.backgroundColor) && !texts.every(text => !!text.backgroundColor); }} onChange={event => apply({ backgroundColor: event.target.checked ? '#1f2937' : null })}/>Background</label>

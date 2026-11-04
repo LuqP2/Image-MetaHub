@@ -26,8 +26,11 @@ export function useBoardConnections(boardId: string, stage: RefObject<HTMLDivEle
   const clear = useCallback(() => { gesture.current = null; setPreview(null); }, []);
   const cancel = useCallback(() => { clear(); editor.setTool?.('select'); }, [clear, editor.setTool]);
   const objectAt = (point: BoardPoint) => {
-    const node = document.elementFromPoint(point.x, point.y)?.closest<HTMLElement>('.react-flow__node[data-id]');
-    return useBoardStore.getState().sessions[boardId]?.document.objects.find(object => object.id === node?.dataset.id);
+    const element = document.elementFromPoint(point.x, point.y);
+    const node = element?.closest<HTMLElement>('.react-flow__node[data-id]');
+    const object = useBoardStore.getState().sessions[boardId]?.document.objects.find(object => object.id === node?.dataset.id);
+    const side = element?.closest<HTMLElement>('.react-flow__handle')?.dataset.handleid;
+    return { object, side: isSide(side) ? side : undefined };
   };
   const updatePreview = (point: BoardPoint) => {
     const active = gesture.current;
@@ -35,8 +38,8 @@ export function useBoardConnections(boardId: string, stage: RefObject<HTMLDivEle
     const source = useBoardStore.getState().sessions[boardId]?.document.objects.find(object => object.id === active.sourceId);
     if (!source) { cancel(); return; }
     const hit = objectAt(point);
-    const target = hit?.id !== source.id ? hit : undefined;
-    setPreview({ source, target, path: boardConnectionPreview(source, flow.screenToFlowPosition(point), target, active.sourceSide, { source: flow.getInternalNode?.(source.id), target: target ? flow.getInternalNode?.(target.id) : undefined }).path });
+    const target = hit.object?.id !== source.id ? hit.object : undefined;
+    setPreview({ source, target, path: boardConnectionPreview(source, flow.screenToFlowPosition(point), target, active.sourceSide, { source: flow.getInternalNode?.(source.id), target: target ? flow.getInternalNode?.(target.id) : undefined }, target ? hit.side : undefined).path });
   };
   const connect = useCallback((connection: Connection) => {
     if (!editor.editable || connection.source === connection.target) return;
@@ -104,9 +107,10 @@ export function useBoardConnections(boardId: string, stage: RefObject<HTMLDivEle
     active.pointerId = null;
     const point = { x: event.clientX, y: event.clientY };
     const source = useBoardStore.getState().sessions[boardId]?.document.objects.find(object => object.id === active.sourceId);
-    const target = objectAt(point);
+    const hit = objectAt(point);
+    const target = hit.object;
     if (source && target && source.id !== target.id) {
-      const geometry = boardConnectionPreview(source, flow.screenToFlowPosition(point), target, active.sourceSide);
+      const geometry = boardConnectionPreview(source, flow.screenToFlowPosition(point), target, active.sourceSide, undefined, hit.side);
       connect({ source: source.id, target: target.id, sourceHandle: geometry.sourceSide, targetHandle: geometry.targetSide });
     } else if (!source || !target || active.dragged) cancel();
     else { active.pointerStart = null; updatePreview(point); }
