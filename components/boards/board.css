@@ -245,3 +245,10 @@ button.board-tab-name { cursor:pointer; }
 .board-connect-hint { position:absolute; top:12px; left:50%; transform:translateX(-50%); padding:6px 12px; border-radius:8px; background:rgb(var(--gray-900)); color:rgb(var(--gray-100)); border:1px solid rgb(var(--gray-700)); font-size:12px; pointer-events:none; z-index:13; white-space:nowrap; }
 
 .board-workspace .board-connection-handle { z-index:12; cursor:crosshair; }
+
+/* Expand the pointer target without moving React Flow's measured connection anchor. */
+.board-workspace .board-connection-handle::after { content:''; position:absolute; inset:calc(-1 * var(--board-connect-hit, 9px)); border-radius:50%; }
+.board-line-options { display:flex; gap:6px; margin:6px 0 12px; }
+.board-line-options .board-button { flex:1; flex-direction:column; gap:5px; padding:8px 5px; }
+.board-line-options .board-button[aria-pressed=true] { border-color:rgb(var(--accent)); background:rgb(var(--accent) / .15); }
+.board-line-options svg { width:36px; height:10px; overflow:visible; }

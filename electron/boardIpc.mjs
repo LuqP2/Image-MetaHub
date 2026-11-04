@@ -1,4 +1,5 @@
 import { parseBoardFile, serializeBoardFile } from '../services/boards/fileFormat.mjs';
+import { listSystemFonts } from './systemFonts.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { BoardRepository } from './boardRepository.mjs';
@@ -23,6 +24,7 @@ export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow, BrowserW
       return { success: false, code: error.code || 'BOARD_OPERATION_FAILED', error: error.message || String(error) };
     }
   });
+  register('boards:fonts', () => listSystemFonts());
   register('boards:list', repository => repository.list());
   register('boards:reference-baseline', repository => repository.referenceBaseline());
   register('boards:load', (repository, _window, id) => repository.load(id));

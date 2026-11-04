@@ -46,6 +46,8 @@ export interface BoardTextObject extends BoardObjectBase {
   type: 'text';
   text: string;
   fontSize: number;
+  fontFamily?: string;
+  backgroundColor?: string | null;
   color: string;
 }
 
@@ -73,6 +75,7 @@ export interface BoardConnection {
   sourceObjectId: string;
   targetObjectId: string;
   width?: number;
+  lineStyle?: 'solid' | 'dashed';
   sourceSide: BoardSide;
   targetSide: BoardSide;
   label: string;

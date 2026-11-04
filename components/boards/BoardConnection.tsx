@@ -8,7 +8,7 @@ export default memo(function BoardConnection(props: EdgeProps) {
   const width = typeof props.data?.width === 'number' ? props.data.width : 1.5;
   return <>
     <defs><marker id={`board-arrow-${props.id}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill={color} /></marker></defs>
-    <BaseEdge id={props.id} path={path} style={{ stroke: color, strokeWidth: width }} markerEnd={`url(#board-arrow-${props.id})`} />
+    <BaseEdge id={props.id} path={path} style={{ stroke: color, strokeWidth: width, strokeDasharray: props.data?.lineStyle === 'dashed' ? `${width * 4} ${width * 3}` : undefined }} markerEnd={`url(#board-arrow-${props.id})`} />
     {props.label && <EdgeLabelRenderer><div className="board-edge-label" style={{ transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}><BoardRichText text={String(props.label)} /></div></EdgeLabelRenderer>}
   </>;
 });
