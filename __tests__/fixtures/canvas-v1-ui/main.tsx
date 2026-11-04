@@ -41,6 +41,40 @@ function LibraryFlowSmoke({ boardId }: { boardId: string }) {
 }
 
 Object.assign(window, { canvasSmoke: {
+  async prepareCurvedConnections() {
+    const state = useBoardStore.getState();
+    const id = await state.createBoard('Curved connections');
+    useBoardUIStore.setState({ libraryOpen: false, inspectorOpen: false });
+    state.executeOperation(id, doc => drawBoardObject(drawBoardObject(doc, 'rectangle', { x: 100, y: 100, width: 200, height: 140 }), 'ellipse', { x: 600, y: 350, width: 200, height: 140 }));
+    await wait(() => document.querySelectorAll('.board-stage .react-flow__node-shape').length === 2);
+    button('Connect').click();
+    await wait(() => button('Connect').getAttribute('aria-pressed') === 'true');
+    const nodes = document.querySelectorAll<HTMLElement>('.board-stage .react-flow__node-shape');
+    const from = nodes[0].getBoundingClientRect(), to = nodes[1].getBoundingClientRect();
+    const handle = nodes[0].querySelector('[data-handleid="right"]')!.getBoundingClientRect();
+    return { id, from: { x: from.x + 60, y: from.y + 60 }, to: { x: to.x + 60, y: to.y + 60 }, dot: { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 } };
+  },
+  async readCurvedPreview() {
+    await wait(() => !!document.querySelector('.board-connect-preview .board-connect-target'), 'Destination was not highlighted');
+    const path = document.querySelector('.board-connect-preview path')!.getAttribute('d')!;
+    check(path.includes('C'), 'Preview is not a Bezier curve');
+    return path;
+  },
+  async verifyCurvedConnection(id: string, expectedPath: string, expectedCount: number) {
+    await wait(() => useBoardStore.getState().sessions[id].document.connections.length === expectedCount);
+    await wait(() => !document.querySelector('.board-connect-preview'));
+    check(button('Select').getAttribute('aria-pressed') === 'true', 'Connection did not return to Select');
+    await wait(() => document.querySelectorAll('.board-stage .react-flow__edge-manual .react-flow__edge-path').length === expectedCount);
+    const paths = [...document.querySelectorAll('.board-stage .react-flow__edge-manual .react-flow__edge-path')].map(path => path.getAttribute('d'));
+    check(paths.includes(expectedPath), 'Preview does not match the committed curve');
+    return true;
+  },
+  async resetCurvedConnection(id: string) {
+    useBoardStore.getState().undo(id);
+    await wait(() => useBoardStore.getState().sessions[id].document.connections.length === 0);
+    button('Connect').click();
+    await wait(() => button('Connect').getAttribute('aria-pressed') === 'true');
+  },
   async prepareInteractionPolish() {
     const state = useBoardStore.getState();
     await state.createBoard('Architecture');

@@ -240,3 +240,8 @@
 .board-tab-close { flex-shrink:0; width:24px; min-height:24px; padding:0; border-color:transparent; background:transparent; }
 
 button.board-tab-name { cursor:pointer; }
+
+.board-connect-target { fill:rgb(var(--accent) / .1); stroke:rgb(var(--accent)); stroke-width:2; pointer-events:none; }
+.board-connect-hint { position:absolute; top:12px; left:50%; transform:translateX(-50%); padding:6px 12px; border-radius:8px; background:rgb(var(--gray-900)); color:rgb(var(--gray-100)); border:1px solid rgb(var(--gray-700)); font-size:12px; pointer-events:none; z-index:13; white-space:nowrap; }
+
+.board-workspace .board-connection-handle { z-index:12; cursor:crosshair; }

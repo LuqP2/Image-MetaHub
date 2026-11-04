@@ -63,7 +63,7 @@ describe('Canvas asset drop', () => {
     Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target });
     fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 60 });
     fireEvent.pointerMove(stage, { clientX: 500, clientY: 60 });
-    expect(view.getByLabelText('Connection preview')).toBeTruthy();
+    expect(view.getByLabelText('Connection preview').querySelector('path')?.getAttribute('d')).toContain('C');
     fireEvent.pointerUp(stage, { clientX: 500, clientY: 60 });
     const current = useBoardStore.getState().sessions[doc.id];
     expect(current.document.connections).toHaveLength(1);
