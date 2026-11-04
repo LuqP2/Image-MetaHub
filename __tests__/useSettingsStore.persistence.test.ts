@@ -186,3 +186,29 @@ describe('Library grid layout persistence', () => {
     }
   });
 });
+
+
+it('persists global Canvas snapping preferences and defaults older settings', async () => {
+  const originalStorage = useSettingsStore.persist.getOptions().storage;
+  type State = ReturnType<typeof useSettingsStore.getState>;
+  let saved = { state: {} as State, version: 0 };
+  useSettingsStore.persist.setOptions({ storage: {
+    getItem: async () => saved,
+    setItem: async (_name, value) => { saved = value as typeof saved; },
+    removeItem: async () => {},
+  } });
+  try {
+    await useSettingsStore.persist.rehydrate();
+    expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: true, canvasSnapToGrid: false });
+    useSettingsStore.getState().setCanvasSmartGuides(false);
+    useSettingsStore.getState().setCanvasSnapToGrid(true);
+    const persisted = saved;
+    useSettingsStore.getState().resetState();
+    saved = persisted;
+    await useSettingsStore.persist.rehydrate();
+    expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: false, canvasSnapToGrid: true });
+  } finally {
+    useSettingsStore.persist.setOptions({ storage: originalStorage });
+    useSettingsStore.getState().resetState();
+  }
+});

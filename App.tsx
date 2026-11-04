@@ -1,3 +1,4 @@
+import { useLibraryCanvas } from './hooks/useLibraryCanvas';
 import React, { startTransition, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { flushSync } from 'react-dom';
 import { useImageStore } from './store/useImageStore';
@@ -865,6 +866,10 @@ export default function App() {
     canExtendTrial,
     initialized: licenseInitialized,
   } = useFeatureAccess();
+
+  const libraryCanvas = useLibraryCanvas({ view: libraryView, navigate: setLibraryView,
+    blocked: isStartupHydrating || isLoading || searchInputValue !== searchQuery,
+    canEdit: canUseCanvas, upgrade: () => showProModal('canvas') });
 
   const [boardAddImages, setBoardAddImages] = useState<IndexedImage[] | null>(null);
   const handleAddToBoard = useCallback((selected: IndexedImage[]) => {
@@ -4079,6 +4084,7 @@ export default function App() {
     <React.Profiler id="App" onRender={appProfilerOnRender}>
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
       <BoardReferenceSyncNotice />
+      {libraryCanvas.dialog}
       {boardAddImages && <React.Suspense fallback={null}><AddToBoardDialog images={boardAddImages} onClose={() => setBoardAddImages(null)} onAdded={() => { setBoardAddImages(null); setLibraryView('canvas'); }} /></React.Suspense>}
       {canUseModelManager && <ModelLibraryPicker />}
       {canUseModelManager && <ModelRemovalDialog />}
@@ -4367,6 +4373,7 @@ export default function App() {
                 )}
                 {(libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                   <GridToolbar
+                    canvasAction={window.electronAPI && libraryView === 'library' ? libraryCanvas.action : undefined}
                     isLibraryView={libraryView === 'library'}
                     onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
                     selectedImages={safeSelectedImages}
@@ -4679,7 +4686,7 @@ export default function App() {
                     }}
                   />
                 ) : libraryView === 'canvas' ? (
-                  <React.Suspense fallback={<div className="p-6">Loading Canvas…</div>}><CanvasWorkspace loading={isStartupHydrating || isLoading} onOpenImage={handleOpenBoardImage} onCompareImages={handleOpenFindSimilarCompare} /></React.Suspense>
+                  <React.Suspense fallback={<div className="p-6">Loading Canvas…</div>}><CanvasWorkspace onExploreLibrary={libraryCanvas.explore} loading={isStartupHydrating || isLoading} onOpenImage={handleOpenBoardImage} onCompareImages={handleOpenFindSimilarCompare} /></React.Suspense>
                 ) : libraryView === 'editor' ? (
                   editorImage ? (
                     <ImageEditorWorkspace

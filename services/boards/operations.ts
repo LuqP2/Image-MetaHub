@@ -1,5 +1,5 @@
 import { createFrameDetacher } from './smartFrameOperations';
-import type { BoardAssetInput, BoardAssetObject, BoardConnection, BoardDocument, BoardObject, BoardTextObject } from './types';
+import type { BoardAssetInput, BoardAssetObject, BoardConnection, BoardDocument, BoardObject, BoardTextObject, BoardTool } from './types';
 import { normalizeBoardDocument } from './document.mjs';
 import { findFreeBoardPosition, findContainingFrame, getBoardBounds, gridPositions, type BoardPoint, type BoardBounds } from './layout';
 
@@ -39,7 +39,16 @@ export function createFrame(document: BoardDocument, selectedObjectIds: string[]
 }
 
 /** Draw at exact board coordinates; adopt objects whose centers lie inside a new frame. */
-export function drawBoardObject(document: BoardDocument, type: 'text' | 'frame', bounds: BoardBounds): BoardDocument {
+export function drawBoardObject(document: BoardDocument, type: Exclude<BoardTool, 'select' | 'connect'> | 'link', bounds: BoardBounds): BoardDocument {
+  if (type !== 'text' && type !== 'frame') {
+    const base = { id: id(), ...bounds, zIndex: top(document) + 1, frameId: null };
+    const object: BoardObject = type === 'link'
+      ? { ...base, type: 'link', url: 'https://example.com/', title: 'Link', color: '#93c5fd' }
+      : type === 'sticky' ? { ...base, type: 'sticky', text: '', fontSize: 24, color: '#fde68a' }
+        : { ...base, type: 'shape', shape: type, text: '', fontSize: 24, color: '#c7d2fe', borderColor: '#6366f1', borderWidth: 2 };
+    object.frameId = findContainingFrame(object, document.objects)?.id ?? null;
+    return changed(document, { objects: [...document.objects, object] });
+  }
   const next = type === 'text' ? addText(document, bounds) : createFrame(document, [], bounds);
   const object = next.objects.find(item => !document.objects.some(existing => existing.id === item.id))!;
   const positioned = { ...object, ...bounds } as BoardObject;

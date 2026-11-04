@@ -13,7 +13,9 @@ export function createBoardAutosave({
   const flush = (id: string): Promise<void> => {
     clear(id);
     const existing = running.get(id);
-    if (existing) return existing;
+    // A new edit may land after persist's loop finishes but before its promise's
+    // finally handler releases the flight. A close must still drain that edit.
+    if (existing) return existing.then(() => isDirty(id) ? flush(id) : undefined);
     const task = Promise.resolve().then(async () => {
       while (isDirty(id)) await persist(id);
     }).catch(error => { onError(id, error); throw error; }).finally(() => running.delete(id));

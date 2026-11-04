@@ -102,6 +102,16 @@ const flushWorker = async () => {
 };
 
 describe('useImageStore search worker sync', () => {
+  it('marks the latest search pending until its worker result is applied', async () => {
+    useImageStore.getState().setSearchQuery('cat');
+    expect(useImageStore.getState().isLibraryQueryPending).toBe(true);
+    useImageStore.getState().setSearchQuery('portrait');
+    expect(useImageStore.getState().isLibraryQueryPending).toBe(true);
+    await flushWorker();
+    expect(useImageStore.getState().isLibraryQueryPending).toBe(false);
+    expect(useImageStore.getState().filteredImages).toHaveLength(1);
+  });
+
   beforeEach(() => {
     vi.stubGlobal('Worker', MockSearchWorker as unknown as typeof Worker);
     mockWorkerInstances.length = 0;

@@ -1,4 +1,5 @@
 import { BoardQueryContext } from '../components/boards/BoardQueryContext';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useBoardUIStore } from '../store/useBoardUIStore';
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -63,7 +64,7 @@ describe('Canvas fit-selection request lifecycle', () => {
     expect(flow.fitView).toHaveBeenCalledOnce();
     const viewport = { x: 900, y: -450, zoom: 0.65 };
     act(() => useBoardStore.getState().setViewport(id, viewport));
-    await act(async () => useBoardStore.getState().closeBoard());
+    act(() => useBoardStore.getState().showBoardList());
     view.unmount();
     await act(async () => useBoardStore.getState().openBoard(id));
     mount(); runFrames();
@@ -101,4 +102,35 @@ it('offers the two empty-board paths and focuses the reference library', () => {
   expect(useBoardUIStore.getState().libraryOpen).toBe(true);
   expect(document.activeElement).toBe(screen.getByLabelText('Search canvas library'));
   fireEvent.click(screen.getByRole('button', { name: 'Explore library' })); expect(create).toHaveBeenCalledOnce();
+});
+
+
+it('exposes independent global snapping toggles beside zoom controls', () => {
+  useSettingsStore.setState({ canvasSmartGuides: true, canvasSnapToGrid: false });
+  setup().mount();
+  const objects = screen.getByRole('button', { name: 'Smart Guides / Snap to Objects' });
+  const grid = screen.getByRole('button', { name: 'Snap to Grid' });
+  expect(objects.getAttribute('aria-pressed')).toBe('true');
+  expect(grid.getAttribute('aria-pressed')).toBe('false');
+  fireEvent.click(grid);
+  expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: true, canvasSnapToGrid: true });
+  fireEvent.click(objects);
+  expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: false, canvasSnapToGrid: true });
+  expect(objects.closest('.board-zoom-row')?.contains(screen.getByRole('button', { name: 'Zoom in' }))).toBe(true);
+});
+
+
+it('retains measured dimensions across document and selection updates without persisting them', () => {
+  const { id, mount } = setup(); mount();
+  const node = (rendered.props.nodes as { id: string; measured?: { width: number; height: number } }[])[0];
+  const change = () => rendered.props.onNodesChange as (changes: unknown[]) => void;
+  const before = useBoardStore.getState().sessions[id].changeSequence;
+  act(() => change()([{ type: 'dimensions', id: node.id, dimensions: { width: 280, height: 120 } }]));
+  expect((rendered.props.nodes as typeof node[])[0].measured).toEqual({ width: 280, height: 120 });
+  expect(useBoardStore.getState().sessions[id].changeSequence).toBe(before);
+  act(() => change()([{ type: 'position', id: node.id, position: { x: 150, y: 200 }, dragging: true }]));
+  expect((rendered.props.nodes as typeof node[])[0].measured).toEqual({ width: 280, height: 120 });
+  act(() => useBoardStore.getState().setSelection(id, []));
+  expect((rendered.props.nodes as typeof node[])[0].measured).toEqual({ width: 280, height: 120 });
+  expect(useBoardStore.getState().sessions[id].document.objects[0]).not.toHaveProperty('measured');
 });

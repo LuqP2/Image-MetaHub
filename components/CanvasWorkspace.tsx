@@ -1,13 +1,9 @@
-import { findFreeBoardPosition } from '../services/boards/layout';
-import { boardVisibleArea, visibleBoardCenter } from '../services/boards/viewport';
-import { normalizeQueryCriteria } from '../services/boards/queryDocument.mjs';
+import { captureLibraryForCanvas } from '../services/boards/libraryCapture';
 import { getHiddenSensitiveTagSet, isVisibleWithSafeMode } from '../utils/safeModeVisibility';
 import { useBoardQueries } from '../hooks/useBoardQueries';
 import { useBoardQueryStore } from '../store/useBoardQueryStore';
 import { BoardQueryContext } from './boards/BoardQueryContext';
-import BoardCreateSmartFrameDialog from './boards/BoardCreateSmartFrameDialog';
-import { createSmartFrame, replaceSmartFrameWithSnapshot, updateSmartFrameQuery, reconnectSmartFrameSource } from '../services/boards/smartFrameOperations';
-import { captureWorkerCriteria } from '../services/libraryQuery/storeAdapter';
+import { replaceSmartFrameWithSnapshot, updateSmartFrameQuery, reconnectSmartFrameSource } from '../services/boards/smartFrameOperations';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { BoardAssetReference } from '../services/boards/types';
 import { ExternalLink, Star } from 'lucide-react';
@@ -29,23 +25,13 @@ import { updateObjects } from '../services/boards/operations';
 import type { BoardAssetObject } from '../services/boards/types';
 import type { BoardPoint } from '../services/boards/layout';
 
-export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages }: { loading: boolean; onOpenImage(image: IndexedImage, navigationImages: IndexedImage[]): void; onCompareImages(images: IndexedImage[]): void }) {
+export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages, onExploreLibrary }: { onExploreLibrary?(boardId: string): void; loading: boolean; onOpenImage(image: IndexedImage, navigationImages: IndexedImage[]): void; onCompareImages(images: IndexedImage[]): void }) {
   const { images, directories, resolve } = useBoardAssets(loading);
   const boardId = useBoardStore(state => state.activeBoardId);
   const session = useBoardStore(state => boardId ? state.sessions[boardId] : undefined);
   const closing = useBoardStore(state => state.closing);
   const retryQueries = useBoardQueries(boardId, loading);
-  const librarySelection = useImageStore(state => state.selectedImages);
-  const currentViewSnapshot = useImageStore(state => Boolean(state.semanticResult || state.activeImageScope || state.selectedNodes.length));
-  const safeMode = useSettingsStore(state => state.enableSafeMode);
-  const blurSensitive = useSettingsStore(state => state.blurSensitiveImages);
-  const sensitiveTags = useSettingsStore(state => state.sensitiveTags);
-  const selectionCount = useMemo(() => {
-    const hidden = getHiddenSensitiveTagSet({ enableSafeMode: safeMode, blurSensitiveImages: blurSensitive, sensitiveTags });
-    return images.filter(image => librarySelection.has(image.id) && isVisibleWithSafeMode(image, hidden)).length;
-  }, [images, librarySelection, safeMode, blurSensitive, sensitiveTags]);
   const collections = useImageStore(state => state.collections);
-  const [creatingFrame, setCreatingFrame] = useState(false);
   const imagesById = useMemo(() => new Map(images.map(image => [image.id, image])), [images]);
   const { canUseCanvas, canUseComparison, showProModal } = useFeatureAccess();
   const editable = canUseCanvas && !closing && !session?.recovering;
@@ -118,48 +104,14 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
   };
   const applyCurrentView = async (frameId: string) => {
     ensureEditable();
-    const state = useImageStore.getState();
-    if (state.semanticResult || state.activeImageScope || state.selectedNodes.length) {
-      const captured = state.getScopedFilteredImages();
-      const references = await captureReferences(captured);
-      ensureEditable();
-      if (useImageStore.getState().images !== state.images) throw new Error('The library changed. Try again.');
-      useBoardStore.getState().executeOperation(boardId!, document => replaceSmartFrameWithSnapshot(document, frameId, references));
-    } else {
-      const captured = captureWorkerCriteria(state, useSettingsStore.getState());
-      const criteria = normalizeQueryCriteria({ ...captured, sortOrder: captured.sortOrder === 'relevance' ? 'date-desc' : captured.sortOrder });
-      useBoardStore.getState().executeOperation(boardId!, document => updateSmartFrameQuery(reconnectSmartFrameSource(document, frameId, { kind: 'library' }), frameId, criteria));
-    }
-  };
-  const createQuery = async (source: string) => {
+    const captured = await captureLibraryForCanvas();
     ensureEditable();
-    let references: BoardAssetReference[] | null = null;
-    if (source === 'selection') {
-      const selected = useImageStore.getState().selectedImages;
-      const hidden = getHiddenSensitiveTagSet(useSettingsStore.getState());
-      const candidates = images.filter(image => selected.has(image.id) && isVisibleWithSafeMode(image, hidden));
-      if (!candidates.length) throw new Error('Select library images before creating a Snapshot.');
-      references = await captureReferences(candidates);
-    }
-    ensureEditable();
-    let createdId = '';
-    useBoardStore.getState().executeOperation(boardId!, document => {
-      const stage = window.document.querySelector<HTMLElement>('.board-stage');
-      const center = visibleBoardCenter(document.viewport, stage ? boardVisibleArea(stage) : { x: 32, y: 32, width: 636, height: 436 });
-      const position = findFreeBoardPosition(document.objects, { width: 640, height: 420 }, { x: center.x - 320, y: center.y - 210 });
-      const next = createSmartFrame(document, { title: source.startsWith('collection:') ? collections.find(collection => collection.id === source.slice(11))?.name ?? 'Collection' : 'Library explorer',
-        source: references ? { kind: 'snapshot', references } : source.startsWith('collection:') ? { kind: 'collection', collectionId: source.slice(11) } : { kind: 'library' },
-        ...position });
-      createdId = next.objects[next.objects.length - 1].id;
-      return next;
-    });
-    useBoardStore.getState().setSelection(boardId!, [createdId]);
-    useBoardStore.getState().requestReveal(boardId!, [createdId]);
-    if (source === 'current') await applyCurrentView(createdId);
-    setCreatingFrame(false);
+    useBoardStore.getState().executeOperation(boardId!, document => captured.source.kind === 'snapshot'
+      ? replaceSmartFrameWithSnapshot(document, frameId, captured.source.references)
+      : updateSmartFrameQuery(reconnectSmartFrameSource(document, frameId, captured.source), frameId, captured.criteria));
   };
   const queryActions = { images: imagesById, collections, retry: retryQueries,
-    create: () => setCreatingFrame(true), snapshot: (id: string) => runQueryAction(() => snapshotQuery(id)),
+    create: () => { if (editable && boardId) onExploreLibrary?.(boardId); }, snapshot: (id: string) => runQueryAction(() => snapshotQuery(id)),
     useCurrentFilters: (id: string) => runQueryAction(() => applyCurrentView(id)),
     open: (imageId: string, frameId: string, navigationIds?: string[]) => {
       const result = useBoardQueryStore.getState().results[boardId!]?.[frameId];
@@ -173,7 +125,6 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages 
     },
   };
   return <BoardQueryContext.Provider value={queryActions}><div className="flex h-full min-h-0 flex-col">
-    {creatingFrame && <BoardCreateSmartFrameDialog selectionCount={selectionCount} currentViewSnapshot={currentViewSnapshot} collections={collections} close={() => setCreatingFrame(false)} create={source => runQueryAction(() => createQuery(source))} />}
 
     {!canUseCanvas && <div className="border-b border-gray-700 p-2 text-sm"><button onClick={() => showProModal('canvas')}>Enable Canvas editing with Pro or trial</button></div>}
     {error && <div role="alert" className="border-b border-red-500/40 p-2 text-sm text-red-300">{error}<button className="ml-3 underline" onClick={() => setError(null)}>Dismiss</button></div>}

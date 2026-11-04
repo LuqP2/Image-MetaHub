@@ -19,7 +19,7 @@ vi.mock('../services/boards/boardService', () => ({
 // Exercise the workspace/store/inspector without a browser geometry engine.
 vi.mock('../components/boards/BoardCanvas', () => ({ default: ({ onFitAll }) => <div data-testid="board-stage"><button onClick={onFitAll}>Fit all</button></div> }));
 
-beforeEach(() => { mock.documents.clear(); mock.exported.mockClear(); useBoardStore.setState({ sessions: {}, summaries: [], activeBoardId: null }); });
+beforeEach(() => { mock.documents.clear(); mock.exported.mockClear(); useBoardStore.setState({ sessions: {}, summaries: [], openBoardIds: [], activeBoardId: null }); });
 afterEach(async () => { await act(async () => { await useBoardStore.getState().flushAll(); }); cleanup(); });
 describe('board workspace flow', () => {
   it('fits document geometry to the available stage and caps zoom at actual size', async () => {
@@ -60,6 +60,7 @@ describe('board workspace flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo', exact: true }));
     expect(useBoardStore.getState().sessions[id].document.objects[0]).toMatchObject({ text: 'Text' });
     fireEvent.click(screen.getByRole('button', { name: 'Export', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Editable board (.imhboard.json)', exact: true }));
     await waitFor(() => expect(mock.exported).toHaveBeenCalled());
   });
   it('keeps existing boards viewable/exportable while disabling editing', async () => {

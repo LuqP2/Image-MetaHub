@@ -158,6 +158,8 @@ interface SettingsState {
   indexingConcurrency: number;
   disableThumbnails: boolean;
   showFilenames: boolean;
+  canvasSmartGuides: boolean;
+  canvasSnapToGrid: boolean;
   showFullFilePath: boolean;
   globalAutoWatch: boolean;
   startupVerificationMode: StartupVerificationMode;
@@ -242,6 +244,8 @@ interface SettingsState {
   setIndexingConcurrency: (value: number) => void;
   setDisableThumbnails: (value: boolean) => void;
   setShowFilenames: (value: boolean) => void;
+  setCanvasSmartGuides: (value: boolean) => void;
+  setCanvasSnapToGrid: (value: boolean) => void;
   setShowFullFilePath: (value: boolean) => void;
   toggleGlobalAutoWatch: () => void;
   setStartupVerificationMode: (value: StartupVerificationMode) => void;
@@ -312,6 +316,8 @@ export const useSettingsStore = create<SettingsState>()(
       indexingConcurrency: defaultIndexingConcurrency,
       disableThumbnails: false,
       showFilenames: false,
+      canvasSmartGuides: true,
+      canvasSnapToGrid: false,
       showFullFilePath: false,
       globalAutoWatch: true,
       startupVerificationMode: 'off',
@@ -384,6 +390,8 @@ export const useSettingsStore = create<SettingsState>()(
         }),
       setDisableThumbnails: (value) => set({ disableThumbnails: !!value }),
       setShowFilenames: (value) => set({ showFilenames: !!value }),
+      setCanvasSmartGuides: (value) => set({ canvasSmartGuides: !!value }),
+      setCanvasSnapToGrid: (value) => set({ canvasSnapToGrid: !!value }),
       setShowFullFilePath: (value) => set({ showFullFilePath: !!value }),
       toggleGlobalAutoWatch: () => set((state) => ({ globalAutoWatch: !state.globalAutoWatch })),
       setStartupVerificationMode: (value) => set({ startupVerificationMode: value }),
@@ -481,6 +489,8 @@ export const useSettingsStore = create<SettingsState>()(
         indexingConcurrency: defaultIndexingConcurrency,
         disableThumbnails: false,
         showFilenames: false,
+        canvasSmartGuides: true,
+        canvasSnapToGrid: false,
         showFullFilePath: false,
         globalAutoWatch: true,
         startupVerificationMode: 'off',
@@ -534,6 +544,8 @@ export const useSettingsStore = create<SettingsState>()(
         return {
           ...currentState,
           ...persisted,
+          canvasSmartGuides: typeof persisted.canvasSmartGuides === 'boolean' ? persisted.canvasSmartGuides : true,
+          canvasSnapToGrid: typeof persisted.canvasSnapToGrid === 'boolean' ? persisted.canvasSnapToGrid : false,
           keymap: mergeKeymapWithDefaults(persisted.keymap),
           libraryGridLayout: persisted.libraryGridLayout === 'masonry' ? 'masonry' : 'uniform',
         };

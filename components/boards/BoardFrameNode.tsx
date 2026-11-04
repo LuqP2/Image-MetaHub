@@ -1,3 +1,4 @@
+import BoardRichText from './BoardRichText';
 import { memo } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import type { BoardFlowNode } from '../../services/boards/reactFlowAdapter';
@@ -8,6 +9,6 @@ export default memo(function BoardFrameNode({ data, selected }: NodeProps<BoardF
   if (object.type !== 'frame') return null;
   return <div className="board-frame" style={{ borderColor: object.color, backgroundColor: `${object.color}0c` }}>
     <BoardNodeControls selected={!!selected} />
-    <div className="board-frame-title" style={{ color: object.color }}>{object.title || 'Frame'}</div>
+    <div className="board-frame-title" style={{ color: object.color }}><BoardRichText text={object.title || 'Frame'} /></div>
   </div>;
 });

@@ -1,3 +1,4 @@
+import type { BoardTool } from '../../services/boards/types';
 import { createContext, useContext } from 'react';
 import type { IndexedImage } from '../../types';
 import type { BoardAssetObject } from '../../services/boards/types';
@@ -7,8 +8,12 @@ import type { BoardPoint } from '../../services/boards/layout';
 export interface BoardEditorActions {
   editable: boolean;
   connecting: boolean;
-  tool?: 'select' | 'text' | 'frame' | 'connect';
-  setTool?(tool: 'select' | 'text' | 'frame' | 'connect'): void;
+  tool?: BoardTool;
+  setTool?(tool: BoardTool): void;
+  editingObjectId?: string | null;
+  editObject?(id: string | null): void;
+  reportError?(message: string): void;
+  exportPng?(selection: boolean): void;
   begin(): void;
   change(update: BoardObjectUpdate): void;
   commit(): void;

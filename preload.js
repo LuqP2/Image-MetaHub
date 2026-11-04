@@ -344,6 +344,8 @@ const electronAPI = {
   },
   boardsImport: () => ipcRenderer.invoke('boards:import'),
   boardsExport: (document) => ipcRenderer.invoke('boards:export', document),
+  boardsExportPng: (input) => ipcRenderer.invoke('boards:export-png', input),
+  boardsReadClipboard: () => ipcRenderer.invoke('boards:clipboard-read'),
   savedPromptsList: () => ipcRenderer.invoke('saved-prompts:list'),
   promptLibraryList: () => ipcRenderer.invoke('prompt-library:list'),
   promptLibraryMutate: (input) => ipcRenderer.invoke('prompt-library:mutate', input),
