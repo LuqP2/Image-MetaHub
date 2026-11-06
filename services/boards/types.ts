@@ -1,6 +1,6 @@
 import type { BoardSmartFrameObject } from './queryTypes';
 export type { BoardSmartFrameObject } from './queryTypes';
-export type BoardObjectType = 'asset' | 'text' | 'frame' | 'smart-frame' | 'sticky' | 'shape' | 'link';
+export type BoardObjectType = 'stack' | 'asset' | 'text' | 'frame' | 'smart-frame' | 'sticky' | 'shape' | 'link';
 export type BoardTool = 'select' | 'text' | 'frame' | 'connect' | 'sticky' | 'rectangle' | 'ellipse' | 'diamond';
 export type BoardSide = 'top' | 'right' | 'bottom' | 'left';
 export type BoardMediaType = 'image' | 'video' | 'audio' | 'model3d';
@@ -67,7 +67,12 @@ export interface BoardShapeObject extends BoardObjectBase {
 export interface BoardLinkObject extends BoardObjectBase {
   type: 'link'; title: string; url: string; color: string;
 }
-export type BoardObject = BoardAssetObject | BoardTextObject | BoardFrameObject | BoardSmartFrameObject | BoardStickyObject | BoardShapeObject | BoardLinkObject;
+export interface BoardStackObject extends BoardObjectBase {
+  type: 'stack';
+  memberIds: string[];
+  coverId: string;
+}
+export type BoardObject = BoardStackObject | BoardAssetObject | BoardTextObject | BoardFrameObject | BoardSmartFrameObject | BoardStickyObject | BoardShapeObject | BoardLinkObject;
 
 export interface BoardConnection {
   id: string;
@@ -83,7 +88,7 @@ export interface BoardConnection {
 }
 
 export interface BoardDocument {
-  schemaVersion: 3;
+  schemaVersion: 4;
   id: string;
   revision: number;
   name: string;

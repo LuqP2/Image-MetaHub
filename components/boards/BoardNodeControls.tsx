@@ -2,10 +2,14 @@ import { Handle, Position, NodeResizer, useNodeId, useStore } from '@xyflow/reac
 import { useBoardEditor } from './BoardEditorContext';
 import type { CSSProperties } from 'react';
 
-export default function BoardNodeControls({ selected, keepAspectRatio = false }: { selected: boolean; keepAspectRatio?: boolean }) {
+export default function BoardNodeControls({ selected, keepAspectRatio = false, minWidth = 80, minHeight = 60 }: { selected: boolean; keepAspectRatio?: boolean; minWidth?: number; minHeight?: number }) {
   const editor = useBoardEditor();
   const nodeId = useNodeId();
   const zoom = useStore(state => state.transform?.[2] ?? 1);
+  const groupResize = useStore(state => {
+    const selectedNodes = (state.nodes ?? []).filter(node => node.selected);
+    return selectedNodes.length > 1 && selectedNodes.every(node => node.data?.object && (node.data.object as { type: string; mediaType?: string }).type === 'asset' && (node.data.object as { mediaType?: string }).mediaType === 'image');
+  });
   const connectionState = useStore(state => {
     const connection = state.connection;
     if (!connection.inProgress) return '';
@@ -25,7 +29,7 @@ export default function BoardNodeControls({ selected, keepAspectRatio = false }:
   const showHandles = editor.editable && (editor.connecting || selected || connectionState.startsWith('near:'));
   const activeHandle = connectionState.startsWith('near:') ? connectionState.slice(5) : '';
   return <>
-    <NodeResizer isVisible={selected && editor.editable} minWidth={80} minHeight={60} keepAspectRatio={keepAspectRatio}
+    <NodeResizer isVisible={selected && editor.editable && !groupResize} minWidth={minWidth} minHeight={minHeight} keepAspectRatio={keepAspectRatio}
       handleStyle={{ width: 12, height: 12 }} lineStyle={{ '--board-resize-hit': `${12 / zoom}px`, '--board-resize-stroke': `${1 / zoom}px` } as CSSProperties}
       onResizeStart={editor.begin} />
     {([['top', Position.Top], ['right', Position.Right], ['bottom', Position.Bottom], ['left', Position.Left]] as const).map(([id, position]) =>

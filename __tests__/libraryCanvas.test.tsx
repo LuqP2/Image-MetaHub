@@ -56,9 +56,15 @@ describe('Library to Canvas', () => {
     useBoardStore.getState().redo(board.id);
     expect(useBoardStore.getState().sessions[board.id].document.objects).toHaveLength(1);
   });
+  it('captures node filters as dynamic criteria instead of a frozen Snapshot', async () => {
+    useImageStore.setState({ selectedNodes: ['VAELoader'] });
+    const capture = await captureLibraryForCanvas();
+    expect(capture.mode).toBe('Dynamic');
+    expect(capture.criteria.selectedNodes).toEqual(['VAELoader']);
+  });
   it('captures all scoped results as a Snapshot, ignoring incidental selection', async () => {
     const images = Array.from({ length: 15 }, (_, i) => boardImage(`${i}.png`));
-    useImageStore.setState({ images, filteredImages: images, selectedNodes: ['VAELoader'],
+    useImageStore.setState({ images, filteredImages: images, selectedNodes: ['VAELoader'], activeImageScope: { kind: 'test' } as any,
       getScopedFilteredImages: () => images, selectedImages: new Set([images[0].id]) });
     const capture = await captureLibraryForCanvas();
     expect(capture.mode).toBe('Snapshot');

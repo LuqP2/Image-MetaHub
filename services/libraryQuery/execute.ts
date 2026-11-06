@@ -42,6 +42,7 @@ const compareByDateDesc = (a: Pick<LibraryQueryImage, 'id' | 'name' | 'lastModif
 export function executeWorkerQuery(workerImages: readonly LibraryQueryImage[], criteria: LibraryWorkerCriteria): LibraryQueryResult {
   const accepts = compileWorkerPredicate(criteria);
   const results: LibraryQueryImage[] = [];
+  const nodeFacetCounts = new Map<string, number>();
 
   // Facet collection variables
   const generatorsFacet = new Set<string>();
@@ -57,6 +58,7 @@ export function executeWorkerQuery(workerImages: readonly LibraryQueryImage[], c
     if (!accepts(image)) continue;
     // --- ALL FILTERS PASSED ---
     results.push(image);
+    for (const node of new Set(image.workflowNodes ?? [])) nodeFacetCounts.set(node, (nodeFacetCounts.get(node) ?? 0) + 1);
 
     // Update Facets
     for (let j = 0; j < image.models.length; j++) {
@@ -83,6 +85,8 @@ export function executeWorkerQuery(workerImages: readonly LibraryQueryImage[], c
   return {
     filteredIds: results.map(img => img.id),
     facets: {
+      availableNodes: [...nodeFacetCounts.keys()].sort(caseInsensitiveSort),
+      nodeFacetCounts: [...nodeFacetCounts],
       availableModels: Array.from(modelFacetCounts.keys()).sort(caseInsensitiveSort),
       availableLoras: Array.from(loraFacetCounts.keys()).sort(caseInsensitiveSort),
       availableSamplers: Array.from(samplerFacetCounts.keys()).sort(caseInsensitiveSort),

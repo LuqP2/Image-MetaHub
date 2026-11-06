@@ -1,3 +1,4 @@
+import BoardStackNode from './BoardStackNode';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ConnectionMode, ReactFlow, ReactFlowProvider } from '@xyflow/react';
@@ -14,7 +15,7 @@ import BoardCreativeNode from './BoardCreativeNode';
 import BoardConnection from './BoardConnection';
 import BoardQueryConnection from './BoardQueryConnection';
 
-const nodeTypes = { asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode, 'smart-frame': BoardSmartFrameNode, sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode };
+const nodeTypes = { stack: BoardStackNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode, 'smart-frame': BoardSmartFrameNode, sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode };
 const edgeTypes = { manual: BoardConnection, query: BoardQueryConnection };
 
 export default function BoardPngExport({ boardId, selection, close }: { boardId: string; selection: boolean; close(): void }) {
@@ -49,7 +50,7 @@ export default function BoardPngExport({ boardId, selection, close }: { boardId:
         const nodes = scene.current.querySelectorAll<HTMLElement>('.react-flow__node');
         const paths = scene.current.querySelectorAll('.react-flow__edge-path');
         if (scene.current.querySelector('[data-export-error="true"]')) throw new Error('A local thumbnail could not be loaded. Retry after the image becomes available.');
-        if (nodes.length === snapshot.objects.length && [...nodes].every(node => getComputedStyle(node).visibility !== 'hidden') && paths.length >= flow.edges.length && !scene.current.querySelector('[data-export-pending="true"]')) break;
+        if (nodes.length === flow.nodes.length && [...nodes].every(node => getComputedStyle(node).visibility !== 'hidden') && paths.length >= flow.edges.length && !scene.current.querySelector('[data-export-pending="true"]')) break;
         if (Date.now() - started > 10000) throw new Error('The board is still preparing. Try exporting again.');
       }
       const html = await serializeExportScene(scene.current);

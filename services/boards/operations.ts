@@ -1,3 +1,4 @@
+import { stackMembership, stackSelectionClosure, remapStackMembers } from './stackMembership';
 import { createFrameDetacher } from './smartFrameOperations';
 import type { BoardAssetInput, BoardAssetObject, BoardConnection, BoardDocument, BoardObject, BoardTextObject, BoardTool } from './types';
 import { normalizeBoardDocument } from './document.mjs';
@@ -31,7 +32,8 @@ export function addText(document: BoardDocument, position: BoardPoint): BoardDoc
 }
 
 export function createFrame(document: BoardDocument, selectedObjectIds: string[], position: BoardPoint = { x: 0, y: 0 }): BoardDocument {
-  const selected = document.objects.filter(object => selectedObjectIds.includes(object.id) && object.type !== 'frame' && object.type !== 'smart-frame');
+  const selectedIds = stackSelectionClosure(document, selectedObjectIds);
+  const selected = document.objects.filter(object => selectedIds.has(object.id) && object.type !== 'frame' && object.type !== 'smart-frame');
   const bounds = selected.length ? getBoardBounds(selected) : { ...position, width: 560, height: 360 };
   const frameId = id();
   const frame: BoardObject = { id: frameId, type: 'frame', x: bounds.x - 24, y: bounds.y - 48, width: bounds.width + 48, height: bounds.height + 72, zIndex: Math.min(0, ...document.objects.map(object => object.zIndex)) - 1, frameId: null, title: 'Frame', color: '#6366f1' };
@@ -53,11 +55,12 @@ export function drawBoardObject(document: BoardDocument, type: Exclude<BoardTool
   const object = next.objects.find(item => !document.objects.some(existing => existing.id === item.id))!;
   const positioned = { ...object, ...bounds } as BoardObject;
   const objects = next.objects.map(item => item.id === object.id ? positioned : item);
+  const owners = stackMembership(objects);
   return changed(next, { objects: objects.map(item => {
     if (item.type === 'frame' || item.type === 'smart-frame' || (type === 'text' && item.id !== object.id)) return item;
     // Drawing a frame only adopts its own enclosed objects. Resizing an existing
     // frame can leave members outside its bounds without breaking their membership.
-    const frame = findContainingFrame(item, type === 'frame' ? [positioned] : objects);
+    const frame = findContainingFrame(owners.get(item.id) ?? item, type === 'frame' ? [positioned] : objects);
     if (type === 'frame' && !frame) return item;
     return { ...item, frameId: frame?.id ?? null };
   }) });
@@ -79,6 +82,19 @@ export function updateObjects(document: BoardDocument, updates: BoardObjectUpdat
     };
     return next;
   });
+  const owners = stackMembership(document.objects);
+  const nextById = new Map(objects.map(object => [object.id, object]));
+  for (let index = 0; index < objects.length; index++) {
+    const object = document.objects[index], owner = owners.get(object.id);
+    if (!owner || object.type !== 'asset') continue;
+    const nextOwner = nextById.get(owner.id)!;
+    const sx = nextOwner.width / owner.width, sy = nextOwner.height / owner.height;
+    const explicit = byId.get(object.id);
+    objects[index] = { ...objects[index], frameId: nextOwner.frameId,
+      x: explicit?.x ?? nextOwner.x + (object.x - owner.x) * sx,
+      y: explicit?.y ?? nextOwner.y + (object.y - owner.y) * sy,
+      width: explicit?.width ?? object.width * sx, height: explicit?.height ?? object.height * sy } as BoardAssetObject;
+  }
   const frames = new Map(objects.filter(object => object.type === 'frame').map(object => [object.id, object]));
   // Ensure parent frames never cover members even after bring-to-front operations.
   return changed(document, { objects: objects.map(object => object.frameId && frames.has(object.frameId)
@@ -87,22 +103,28 @@ export function updateObjects(document: BoardDocument, updates: BoardObjectUpdat
 
 export function removeObjects(document: BoardDocument, objectIds: string[]): BoardDocument {
   const removed = new Set(objectIds);
+  for (const object of document.objects) if (object.type === 'stack' && removed.has(object.id)) object.memberIds.forEach(id => removed.add(id));
+  const objects = document.objects.filter(object => !removed.has(object.id)).flatMap<BoardObject>(object => {
+    if (object.type !== 'stack') return [object];
+    const memberIds = object.memberIds.filter(id => !removed.has(id));
+    if (memberIds.length < 2) { removed.add(object.id); return []; }
+    return [{ ...object, memberIds, coverId: memberIds.includes(object.coverId) ? object.coverId : memberIds[0] }];
+  });
   return changed(document, {
-    objects: document.objects.filter(object => !removed.has(object.id)).map(object => object.frameId && removed.has(object.frameId) ? { ...object, frameId: null } : object),
+    objects: objects.map(object => object.frameId && removed.has(object.frameId) ? { ...object, frameId: null } : object),
     connections: document.connections.filter(connection => !removed.has(connection.sourceObjectId) && !removed.has(connection.targetObjectId)),
   });
 }
 
 export function duplicateObjects(document: BoardDocument, objectIds: string[], offset?: BoardPoint): BoardDocument {
-  const selected = new Set(objectIds);
-  for (const object of document.objects) if (object.frameId && selected.has(object.frameId)) selected.add(object.id);
+  const selected = stackSelectionClosure(document, objectIds);
   const ids = new Map(document.objects.filter(object => selected.has(object.id)).map(object => [object.id, id()]));
   const detach = createFrameDetacher(document);
   const bounds = getBoardBounds(document.objects.filter(object => selected.has(object.id)));
   const point = offset ? { x: bounds.x + offset.x, y: bounds.y + offset.y } : findFreeBoardPosition(document.objects, bounds, { x: bounds.x + bounds.width + 64, y: bounds.y });
   const delta = { x: point.x - bounds.x, y: point.y - bounds.y };
   const copies = document.objects.filter(object => selected.has(object.id)).map(object => ({
-    ...object, ...(object.type === 'smart-frame' ? { source: detach(object.source) } : {}), id: ids.get(object.id)!, x: object.x + delta.x, y: object.y + delta.y,
+    ...object, ...remapStackMembers(object, ids), ...(object.type === 'smart-frame' ? { source: detach(object.source) } : {}), id: ids.get(object.id)!, x: object.x + delta.x, y: object.y + delta.y,
     frameId: object.frameId ? ids.get(object.frameId) ?? object.frameId : null,
     zIndex: object.zIndex + top(document) + 2,
   } as BoardObject));

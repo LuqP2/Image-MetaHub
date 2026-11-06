@@ -89,12 +89,12 @@ it('migrates a v1 file in memory and writes v3 only on an explicit save', async 
   const legacy = { ...board, schemaVersion: 1, revision: 4 };
   await fs.writeFile(file, JSON.stringify(legacy));
   const loaded = await repo.load(board.id);
-  expect(loaded.schemaVersion).toBe(3);
+  expect(loaded.schemaVersion).toBe(4);
   expect(loaded.revision).toBe(4);
   expect(JSON.parse(await fs.readFile(file, 'utf8')).schemaVersion).toBe(1);
   const saved = await repo.save(createSmartFrame(loaded), 4);
   expect(saved.revision).toBe(5);
-  expect(JSON.parse(await fs.readFile(file, 'utf8')).schemaVersion).toBe(3);
+  expect(JSON.parse(await fs.readFile(file, 'utf8')).schemaVersion).toBe(4);
   expect((await repo.load(board.id)).objects).toEqual(saved.objects);
   await expect(repo.save(loaded, 4)).rejects.toMatchObject({ code: 'BOARD_REVISION_CONFLICT' });
 });

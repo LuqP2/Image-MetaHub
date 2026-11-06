@@ -11,6 +11,10 @@ export function captureWorkerCriteria(state: State, settings: LibraryWorkerCrite
   const { sensitiveTags, blurSensitiveImages, enableSafeMode } = settings;
         return {
             searchQuery: state.searchQuery,
+            // Library node selection is a separate live scope, applied after this
+            // query. Capturing it here would leave the worker narrowed when the
+            // plain setSelectedNodes setter switches or clears that scope.
+            selectedNodes: [],
             selectedModels: [...state.selectedModels],
             excludedModels: [...state.excludedModels],
             selectedLoras: [...state.selectedLoras],

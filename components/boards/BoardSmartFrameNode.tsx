@@ -1,3 +1,5 @@
+import { useBoardUIStore } from '../../store/useBoardUIStore';
+import { useBoardEditor } from './BoardEditorContext';
 import BoardRichText from './BoardRichText';
 import { boardSourceLabel, boardSourceMode, boardConstraintLabel } from '../../services/boards/presentation';
 import { summarizeBoardCriteria } from './BoardInheritedQuerySummary';
@@ -13,6 +15,7 @@ import BoardNodeControls from './BoardNodeControls';
 import BoardSmartFrameResults from './BoardSmartFrameResults';
 
 export default memo(function BoardSmartFrameNode({ data, selected }: NodeProps<BoardFlowNode>) {
+  const editor = useBoardEditor();
   const boardId = useBoardStore(state => state.activeBoardId);
   const result = useBoardQueryStore(state => boardId ? state.results[boardId]?.[data.object.id] : undefined);
   const previous = useRef<typeof result>();
@@ -26,6 +29,10 @@ export default memo(function BoardSmartFrameNode({ data, selected }: NodeProps<B
   return <div aria-busy={result?.status === 'loading' || result?.status === 'updating'} className="board-smart-frame" style={{ borderColor: frame.color }}>
     <BoardNodeControls selected={!!selected} />
     <header><strong><BoardRichText text={frame.title} /></strong><span>{result?.status === 'ready' ? `${result.totalCount.toLocaleString()} ${result.totalCount === 1 ? 'image' : 'images'} in frame` : result?.status === 'error' || result?.status === 'source-missing' ? 'Unavailable' : 'Loading…'}</span>
+      <button className="board-button nodrag nopan" data-board-filter-trigger={frame.id} disabled={!editor.editable} aria-label={`Filters for ${frame.title}`} onClick={() => {
+        if (!boardId) return;
+        const ui = useBoardUIStore.getState(); ui.setFilterTarget(ui.filterTarget?.frameId === frame.id && ui.filterTarget.boardId === boardId ? null : { boardId, frameId: frame.id });
+      }}>Filters{criteria.length ? ` (${criteria.length})` : ''}</button>
     </header>
     <div className="board-frame-context"><span>{boardSourceLabel(frame.source, objects)}</span><small>{boardSourceMode(frame.source)}</small></div>
     {criteria.length > 0 && <small className="board-frame-criteria" title={criteria.join(' · ')}>{criteria.slice(0, 2).join(' · ')}{criteria.length > 2 ? ` · +${criteria.length - 2} filters` : ''}</small>}

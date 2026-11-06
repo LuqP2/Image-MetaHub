@@ -20,6 +20,8 @@ export function findFreeBoardPosition(objects: BoardBounds[], size: Pick<BoardBo
 }
 
 export function getBoardBounds(objects: BoardBounds[]): BoardBounds {
+  const hidden = new Set(objects.flatMap(object => 'memberIds' in object && Array.isArray(object.memberIds) ? object.memberIds as string[] : []));
+  objects = objects.filter(object => !('id' in object && hidden.has(object.id as string)));
   if (!objects.length) return { x: 0, y: 0, width: 0, height: 0 };
   const x = Math.min(...objects.map(object => object.x));
   const y = Math.min(...objects.map(object => object.y));

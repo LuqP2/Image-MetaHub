@@ -1,3 +1,4 @@
+import { stackMembership } from '../services/boards/stackMembership';
 import { create } from 'zustand';
 import { boardService } from '../services/boards/boardService';
 import { createBoardAutosave } from '../services/boards/autosave';
@@ -275,6 +276,9 @@ export function createBoardStore(repository: BoardRepository = boardService, del
         autosave.schedule(id);
       },
       setSelection(id, objectIds, connectionIds = []) {
+        const objects = get().sessions[id]?.document.objects ?? [];
+        const owners = stackMembership(objects);
+        objectIds = [...new Set(objectIds.map(id => owners.get(id)?.id ?? id))];
         updateSession(id, session => JSON.stringify([session.selectedObjectIds, session.selectedConnectionIds]) === JSON.stringify([objectIds, connectionIds]) ? session : { ...session, selectedObjectIds: objectIds, selectedConnectionIds: connectionIds });
       },
       requestReveal(id, ids, shrink = false) { updateSession(id, session => ({ ...session, revealRequest: { sequence: (session.revealRequest?.sequence ?? 0) + 1, ids, shrink } })); },

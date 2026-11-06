@@ -555,17 +555,20 @@ export const canReuseImageEmbedding = (
   image: IndexedImage
 ): boolean => index.hasVector(image.id) && index.contentKeyFor(image.id) === contentKeyForImage(image);
 
-export const ensureImageEmbedded = async (image: IndexedImage): Promise<boolean> => {
+export const ensureImageEmbedded = async (image: IndexedImage, syncSearchWorker = true, signal?: AbortSignal): Promise<boolean> => {
+  signal?.throwIfAborted();
   const activeIndex = await openLibrary();
   if (canReuseImageEmbedding(activeIndex, image)) return true;
 
   const items = await buildEmbedItems([image]);
   const [vector] = await embedImages(items);
+  signal?.throwIfAborted();
+  if (index !== activeIndex) throw new Error('The visual index changed while preparing this image.');
   if (!vector?.codes || vector.scale === 0) return false;
 
   activeIndex.append(image.id, contentKeyForImage(image), { scale: vector.scale, codes: vector.codes });
   await activeIndex.flush();
-  await syncWorker();
+  if (syncSearchWorker) await syncWorker();
   return true;
 };
 

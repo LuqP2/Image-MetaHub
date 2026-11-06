@@ -1,10 +1,11 @@
+import LibraryRatingFilter from './LibraryRatingFilter';
+import LibraryFavoriteFilter from './LibraryFavoriteFilter';
+import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, Heart, Star, Tag, X } from 'lucide-react';
+import { ChevronDown, Tag, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
 import { InclusionFilterMode, TagInfo } from '../types';
-import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
-import { getRatingChipClasses, getRatingLabel, RatingValueIcons } from './RatingStars';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import { normalizeCollectionTagNames } from '../services/imageAnnotationsStorage';
 
@@ -114,7 +115,6 @@ const TagsAndFavorites: React.FC = () => {
     () => (isIndexing ? 0 : images.filter((img) => (img.rating ?? 0) > 0).length),
     [images, isIndexing]
   );
-  const quickRatingOptions = [1, 2, 3, 4, 5] as const;
   const quickRatingCounts = useMemo(() => {
     // Optimization: Consolidate 5 Array.filter passes into a single O(N) loop and avoid new Map(arr.map()) allocation overhead
     const counts = new Map<number, number>([
@@ -130,14 +130,6 @@ const TagsAndFavorites: React.FC = () => {
     }
     return counts;
   }, [images, isIndexing]);
-
-  const toggleSelectedRating = (value: typeof quickRatingOptions[number]) => {
-    setSelectedRatings(
-      selectedRatings.includes(value)
-        ? selectedRatings.filter((rating) => rating !== value)
-        : [...selectedRatings, value],
-    );
-  };
 
   // Filter tags by search query
   const filteredTags = tagSearchQuery
@@ -426,91 +418,11 @@ const TagsAndFavorites: React.FC = () => {
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 space-y-3">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Star className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-400 font-medium">Rating</span>
-                    {selectedRatings.length > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded border border-gray-700 bg-gray-900/70 px-2 py-0.5 text-xs text-gray-200">
-                        {selectedRatings.map((rating) => (
-                          <RatingValueIcons
-                            key={`selected-rating-${rating}`}
-                            value={rating}
-                            size={10}
-                            starClassName="fill-current"
-                          />
-                        ))}
-                      </span>
-                    )}
-                  </div>
-                  {selectedRatings.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRatings([])}
-                      className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
-                      title="Clear rating filters"
-                      aria-label="Clear rating filters"
-                    >
-                      <X size={16} />
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRatings([])}
-                    className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                      selectedRatings.length === 0
-                        ? 'border-blue-600/60 bg-blue-900/40 text-blue-200'
-                        : 'border-gray-700 bg-gray-800/70 text-gray-300 hover:border-gray-600 hover:text-gray-100'
-                    }`}
-                  >
-                    All
-                  </button>
-                  {quickRatingOptions.map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => toggleSelectedRating(value)}
-                      className={`inline-flex h-7 items-center justify-center rounded-md border px-1.5 transition-colors ${getRatingChipClasses(value, selectedRatings.includes(value))}`}
-                      title={`${quickRatingCounts.get(value) ?? 0} images rated ${getRatingLabel(value)}`}
-                      aria-label={`Toggle ${getRatingLabel(value)} filter`}
-                    >
-                      <RatingValueIcons value={value} size={11} starClassName="fill-current" />
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <LibraryRatingFilter selectedRatings={selectedRatings} onChange={setSelectedRatings} counts={quickRatingCounts} />
 
               {/* Favorites Toggle */}
               {totalFavoriteCount > 0 && (
-                <div className="flex items-center space-x-2 group py-1 px-2 rounded hover:bg-gray-700/50">
-                  <TriStateToggle
-                    mode={favoriteFilterMode}
-                    onClick={() => setFavoriteFilterMode(getNextFilterMode(favoriteFilterMode))}
-                    title={`Favorites filter: ${getFilterModeLabel(favoriteFilterMode)}. Click to cycle.`}
-                  />
-                  <Heart
-                    className={`w-4 h-4 ${
-                      favoriteFilterMode === 'include'
-                        ? 'text-rose-400 fill-rose-400'
-                        : favoriteFilterMode === 'exclude'
-                          ? 'text-red-300'
-                          : 'text-gray-400 group-hover:text-rose-400'
-                    }`}
-                  />
-                  <span className="text-sm text-gray-300 group-hover:text-gray-50 flex-1">
-                    {favoriteFilterMode === 'include'
-                      ? 'Show Favorites Only'
-                      : favoriteFilterMode === 'exclude'
-                        ? 'Exclude Favorites'
-                        : 'Favorites'}
-                  </span>
-                  <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
-                    {favoriteBadgeCount}
-                  </span>
-                </div>
+                <LibraryFavoriteFilter favoriteFilterMode={favoriteFilterMode} onChange={setFavoriteFilterMode} count={favoriteBadgeCount} />
               )}
 
               {/* Tags Section */}

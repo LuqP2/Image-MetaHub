@@ -1,3 +1,4 @@
+import { stackSelectionClosure, remapStackMembers } from './stackMembership';
 import { normalizeBoardDocument } from './document.mjs';
 import { frameDependencies } from './queryGraph';
 import { mapSetExpression } from './queryDocument.mjs';
@@ -6,7 +7,7 @@ import type { BoardDocument, BoardObject } from './types';
 
 export const BOARD_CLIPBOARD_FORMAT = 'image-metahub-board-fragment';
 export function selectionClosure(document: BoardDocument, ids: string[], dependencies = false): Set<string> {
-  const selected = new Set(ids);
+  const selected = stackSelectionClosure(document, ids);
   let changed = true;
   while (changed) {
     changed = false;
@@ -39,7 +40,7 @@ export function pasteBoardFragment(destination: BoardDocument, fragment: BoardDo
   const bounds = getBoardBounds(fragment.objects);
   const top = Math.max(0, ...destination.objects.map(object => object.zIndex));
   const bottom = Math.min(0, ...fragment.objects.map(object => object.zIndex));
-  const copies: BoardObject[] = fragment.objects.map(object => ({ ...structuredClone(object), id: remap.get(object.id)!,
+  const copies: BoardObject[] = fragment.objects.map(object => ({ ...structuredClone(object), ...remapStackMembers(object, remap), id: remap.get(object.id)!,
     x: object.x - bounds.x + anchor.x, y: object.y - bounds.y + anchor.y, zIndex: top + 1 + object.zIndex - bottom,
     frameId: object.frameId ? remap.get(object.frameId) ?? null : null,
     ...(object.type === 'smart-frame' ? { source: mapSetExpression(object.source, source => source.kind === 'frame' ? { ...source, frameId: remap.get(source.frameId)! } : source) } : {}),

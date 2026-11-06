@@ -1,3 +1,4 @@
+import { stackMembership, visibleBoardObjects } from './stackMembership';
 import { frameDependencies } from './queryGraph';
 import type { Edge, Node, NodeChange } from '@xyflow/react';
 import type { BoardDocument, BoardObject } from './types';
@@ -31,8 +32,9 @@ export function applyBoardNodeRuntimeChanges(runtime: ReadonlyMap<string, BoardN
 }
 
 export function boardToFlow(document: BoardDocument, selectedObjectIds: string[], selectedConnectionIds: string[], editable: boolean, runtime?: ReadonlyMap<string, BoardNodeRuntime>) {
+  const owners = stackMembership(document.objects);
   const frames = new Map(document.objects.filter(object => object.type === 'frame').map(object => [object.id, object]));
-  const nodes: BoardFlowNode[] = [...document.objects].sort((a, b) => Number(b.type === 'frame') - Number(a.type === 'frame')).map(object => {
+  const nodes: BoardFlowNode[] = visibleBoardObjects(document.objects).sort((a, b) => Number(b.type === 'frame') - Number(a.type === 'frame')).map(object => {
     const parent = object.frameId ? frames.get(object.frameId) : undefined;
     return {
       ...runtime?.get(object.id),
@@ -40,14 +42,16 @@ export function boardToFlow(document: BoardDocument, selectedObjectIds: string[]
       parentId: parent?.id, position: { x: object.x - (parent?.x ?? 0), y: object.y - (parent?.y ?? 0) },
       style: { width: object.width, height: object.height }, width: object.width, height: object.height,
       zIndex: object.zIndex, selected: selectedObjectIds.includes(object.id), draggable: editable, connectable: editable,
+      dragHandle: object.type === 'stack' ? '.board-stack-drag-handle' : undefined,
     };
   });
   const edges: Edge[] = document.connections.map(connection => ({
-    id: connection.id, type: 'manual', source: connection.sourceObjectId, target: connection.targetObjectId,
+    id: connection.id, type: 'manual', source: owners.get(connection.sourceObjectId)?.id ?? connection.sourceObjectId, target: owners.get(connection.targetObjectId)?.id ?? connection.targetObjectId,
     sourceHandle: connection.sourceSide, targetHandle: connection.targetSide,
     label: connection.label, data: { color: connection.color, width: connection.width, lineStyle: connection.lineStyle }, selected: selectedConnectionIds.includes(connection.id),
     zIndex: 1000,
   }));
+  for (let i = edges.length - 1; i >= 0; i--) if (edges[i].source === edges[i].target) edges.splice(i, 1);
   const usedIds = new Set(document.connections.map(connection => connection.id));
   const byId = new Map(document.objects.map(object => [object.id, object]));
   for (const frame of document.objects) if (frame.type === 'smart-frame') {

@@ -1,3 +1,4 @@
+import { FixedSizeList } from 'react-window';
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, Minus, Plus, Search, X } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -65,6 +66,101 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
 
   const showSearch = mergedItems.length > 6 || query.length > 0;
   const activeCount = selectedValues.length + excludedValues.length;
+
+  const renderItem = (item: string) => {
+    const isIncluded = selectedValues.includes(item);
+    const isExcluded = excludedValues.includes(item);
+
+    const handleRowClick = () => {
+      onIncludeToggle(item);
+    };
+
+    return (
+      <div
+        key={item}
+        className={`group flex items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors ${
+          isIncluded
+            ? 'bg-emerald-500/10'
+            : isExcluded
+              ? 'bg-rose-500/8'
+              : 'hover:bg-gray-800/40'
+        }`}
+      >
+        <motion.button
+          type="button"
+          aria-pressed={isIncluded}
+          aria-label={`${isIncluded ? 'Remove' : 'Include'} ${item} (${counts?.get(item) ?? 0} items)`}
+          whileTap={{ scale: 0.98 }}
+          onClick={handleRowClick}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.stopPropagation();
+            }
+          }}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+        >
+          <div
+            className={`text-sm leading-tight truncate ${
+              isIncluded ? 'text-emerald-300' : isExcluded ? 'text-rose-300 line-through opacity-70' : 'text-gray-300'
+            }`}
+            title={item}
+          >
+            {item}
+          </div>
+          <div className="text-[10px] text-gray-500 whitespace-nowrap">
+            {counts?.get(item) ?? 0}
+          </div>
+        </motion.button>
+
+        <div className={`flex items-center gap-0.5 ${isIncluded || isExcluded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'} transition-opacity`}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onIncludeToggle(item);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.stopPropagation();
+              }
+            }}
+            className={`flex items-center justify-center p-1 rounded transition-colors ${
+              isIncluded
+                ? 'bg-emerald-500/20 text-emerald-400'
+                : 'text-gray-500 hover:bg-emerald-500/15 hover:text-emerald-400'
+            }`}
+            title={isIncluded ? `Remove ${item} from included filters` : `Include ${item}`}
+            aria-label={isIncluded ? `Remove ${item} from included filters` : `Include ${item}`}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          {!hideExclude && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onExcludeToggle(item);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.stopPropagation();
+              }
+            }}
+            className={`flex items-center justify-center p-1 rounded transition-colors ${
+              isExcluded
+                ? 'bg-rose-500/20 text-rose-400'
+                : 'text-gray-500 hover:bg-rose-500/15 hover:text-rose-400'
+            }`}
+            title={isExcluded ? `Remove ${item} from excluded filters` : `Exclude ${item}`}
+            aria-label={isExcluded ? `Remove ${item} from excluded filters` : `Exclude ${item}`}
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="rounded-xl border border-gray-800/80 bg-gray-900/40">
@@ -149,105 +245,9 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 {emptyLabel}
               </div>
             ) : (
-              filteredItems.map((item) => {
-                const isIncluded = selectedValues.includes(item);
-                const isExcluded = excludedValues.includes(item);
-
-                const handleRowClick = () => {
-                  if (isExcluded) {
-                    onExcludeToggle(item);
-                    onIncludeToggle(item);
-                  } else {
-                    onIncludeToggle(item);
-                  }
-                };
-
-                return (
-                  <div
-                    key={item}
-                    className={`group flex items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors ${
-                      isIncluded
-                        ? 'bg-emerald-500/10'
-                        : isExcluded
-                          ? 'bg-rose-500/8'
-                          : 'hover:bg-gray-800/40'
-                    }`}
-                  >
-                    <motion.button
-                      type="button"
-                      aria-pressed={isIncluded}
-                      aria-label={`${isIncluded ? 'Remove' : 'Include'} ${item} (${counts?.get(item) ?? 0} items)`}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={handleRowClick}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.stopPropagation();
-                        }
-                      }}
-                      className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
-                    >
-                      <div
-                        className={`text-sm leading-tight truncate ${
-                          isIncluded ? 'text-emerald-300' : isExcluded ? 'text-rose-300 line-through opacity-70' : 'text-gray-300'
-                        }`}
-                        title={item}
-                      >
-                        {item}
-                      </div>
-                      <div className="text-[10px] text-gray-500 whitespace-nowrap">
-                        {counts?.get(item) ?? 0}
-                      </div>
-                    </motion.button>
-
-                    <div className={`flex items-center gap-0.5 ${isIncluded || isExcluded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'} transition-opacity`}>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onIncludeToggle(item);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.stopPropagation();
-                          }
-                        }}
-                        className={`flex items-center justify-center p-1 rounded transition-colors ${
-                          isIncluded
-                            ? 'bg-emerald-500/20 text-emerald-400'
-                            : 'text-gray-500 hover:bg-emerald-500/15 hover:text-emerald-400'
-                        }`}
-                        title={isIncluded ? `Remove ${item} from included filters` : `Include ${item}`}
-                        aria-label={isIncluded ? `Remove ${item} from included filters` : `Include ${item}`}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
-                      {!hideExclude && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onExcludeToggle(item);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.stopPropagation();
-                          }
-                        }}
-                        className={`flex items-center justify-center p-1 rounded transition-colors ${
-                          isExcluded
-                            ? 'bg-rose-500/20 text-rose-400'
-                            : 'text-gray-500 hover:bg-rose-500/15 hover:text-rose-400'
-                        }`}
-                        title={isExcluded ? `Remove ${item} from excluded filters` : `Exclude ${item}`}
-                        aria-label={isExcluded ? `Remove ${item} from excluded filters` : `Exclude ${item}`}
-                      >
-                        <Minus className="h-3.5 w-3.5" />
-                      </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
+              filteredItems.length > 60 ? <FixedSizeList height={256} width="100%" itemCount={filteredItems.length} itemSize={36} itemKey={index => filteredItems[index]}>
+                {({ index, style }) => <div style={style}>{renderItem(filteredItems[index])}</div>}
+              </FixedSizeList> : filteredItems.map(renderItem)
             )}
           </div>
 

@@ -8,9 +8,9 @@ Canvas v1 is split into three dependent PRs. The complete user workflow ships af
 
 ## Persistence contract
 
-### Creative tools and Explorer document foundation (schema v3)
+### Creative tools, Explorer and stacks (schema v4)
 
-The shared document boundary reads schemas v1, v2 and v3 and returns v3 in memory. Loading an older file preserves its revision and does not write it back; the next explicit save writes v3 using the existing expected-revision contract. File envelopes are exported as version 3. Sticky notes and shapes require v3. URLs are plain editable text with clickable HTTP/HTTPS links in display mode; the editor has no Link creation tool. Existing v3 link cards remain readable.
+The shared document boundary reads schemas v1 through v4 and returns v4 in memory. Loading an older file preserves its revision and does not write it back; the next explicit save writes v4 using the existing expected-revision contract. File envelopes are exported as version 4. Sticky notes and shapes require v3. URLs are plain editable text with clickable HTTP/HTTPS links in display mode; the editor has no Link creation tool. Existing v3 link cards remain readable.
 
 Clipboard fragments use a separate versioned envelope and carry frame members, internal connectors and transitive Smart Frame dependencies. Paste remaps IDs and missing dependency IDs; cut deletes only after a successful system clipboard write. All editor shortcuts defer to text inputs, composition and dialogs.
 
@@ -54,7 +54,7 @@ Manual acceptance covers empty-library board creation; adding multiple assets fr
 
 `boardQueryWorker.ts` evaluates the active board from one versioned dataset. `queryRuntime.ts` debounces edits, drops outdated replies, supports worker recreation and releases resources when the board closes. The worker retains only query cache entries used by the latest evaluation; dataset replacement invalidates that cache. Geometry, title, color and selection do not invalidate query definitions. Results live exclusively in `useBoardQueryStore`, outside persistence and history.
 
-The Smart Frame tool creates a library query, a Live collection source or a Snapshot of selected library images. Its inspector edits independent criteria and supports explicit copying from the current library view. Scoped, workflow-node-filtered and visual-search views are currently captured as Snapshots. Preview is capped at 12 thumbnails; expanded browsing uses `react-window`. Viewer navigation follows the frame's ordered results, and thumbnails can be dragged out as free cards. Snapshot capture checks query and dataset freshness across the asynchronous reference-baseline operation.
+The Smart Frame tool creates a library query, a Live collection source or a Snapshot of selected library images. Its inspector edits independent criteria and supports explicit copying from the current library view. Scoped and visual-search views are captured as Snapshots; workflow-node filters are now part of dynamic criteria. Results use a complete virtualized grid with `react-window`. Viewer navigation follows the frame's ordered results, and thumbnails can be dragged out as free cards. Snapshot capture checks query and dataset freshness across the asynchronous reference-baseline operation.
 
 Grouping constraints and layouts are persisted; their execution and rendering are supplied by the stage 5 grouping engine below. Spatial branching controls and dependency edges are implemented in stage 4 below.
 
@@ -77,3 +77,24 @@ A group or cell can become a linked branch. Its constraints remain independent o
 The compact header combines board tabs, tools and export actions. Export opens a focused format-selection modal. Both library and inspector panels have 12-pixel resize targets and persisted width preferences; object edge targets also remain 12 screen pixels wide across zoom levels.
 
 The library supports marquee selection across virtual rows, modifier-based additive selection and edge autoscroll. Start on empty space or an unselected item; drag selected items to transfer them to the board. Connect mode supports card-body drags with facing endpoints, and manual connections persist an optional width (0.5–12, default 1.5). The inspector provides one numeric font-size input and one color section combining presets and a custom picker.
+
+
+## Selection tools, frame filters and visual groups
+
+- Multiple selected image cards have individual outlines and corner handles that proportionally resize the selected composition together. The opposite corner stays fixed; the transform uses the initial gesture snapshot and clamps every member to 80×60 minimum. Escape, pointer cancellation, loss of focus or selection change cancels the gesture. Completing the gesture updates frame containment and produces one history entry.
+- Smart Frame **Filters** opens a screen-sized popover beside the frame, left by default with right-side fallback. Facets, ratings, favorites and advanced filters share Library controls. Queries include case-insensitive OR matching for ComfyUI node types. Counts come from filtered frame results, including source constraints and Safe Mode. Results and open-panel state are transient; criteria persist.
+- **Stack** accepts at least two image assets with the same parent frame. The stack stores ordered member IDs and a cover ID; members remain ordinary assets with their original composition. Movement and proportional resizing transform that composition. Unstack reveals it; deleting a stack removes its members from the Canvas. Copy, paste, duplicate, frame containment and selection export include members. External connections render through the stack, while their saved endpoints remain the assets. Internal connections reappear on Unstack.
+- **Auto-group by visual similarity** in an empty area uses loose image cards. Selection and frame context menus restrict candidates. Stacked images and dynamic Smart Frame results are excluded. The dialog prepares missing/stale vectors only after a click, respects the model download action and index cap, and leaves failed or unavailable images in place. It does not change Library visual-search results.
+- Grouping uses agglomerative complete linkage with reciprocal nearest-neighbor chains and stable image-ID tie breaks. Similarity between groups is the minimum pair cosine; merges below the chosen threshold are rejected. Pair comparisons run in blocks in a cancellable worker. Only one nearest-neighbor record per cluster is cached, without a quadratic distance matrix. Default threshold is 0.75. Repeated appearances of one image map back to distinct Canvas object IDs. Applying the preview creates ordinary frames in free space as one undoable operation; changed candidate objects, content or model invalidate the preview.
+
+### Manual acceptance for this delivery
+
+Use synthetic images in a test library; visual acceptance belongs to the user.
+
+1. Select three images with different aspect ratios; enlarge from each corner at zoom 0.5 and 2. Verify proportions, spacing, frame containment, one undo/redo and Escape cancellation.
+2. Open Smart Frame Filters near the left and right viewport edges. Pan/zoom, filter by checkpoint, LoRA, node and rating, check dynamic counts and zero-count selected values, and verify Library filters stay unchanged. Close with Escape and verify focus returns to Filters.
+3. Stack several images; navigate, choose a cover, expand, open the viewer, move/resize, save/reopen and paste into another Canvas. Unstack and undo. Check connections and PNG export. Repeat with a missing reference and Safe Mode enabled.
+4. In the packaged app, with Local Visual Search off, open Auto-group and verify it offers explicit enable/download actions. With an installed model, prepare missing vectors and cancel mid-preparation. Reopen, calculate, tune the threshold, preview, apply and undo. Confirm images that failed preparation stay in place.
+5. Repeat grouping with a CPU-only configuration and a failed WebGPU adapter to verify the existing WASM fallback. Change a candidate or model after preview and verify Apply requires recalculation. Confirm Library Find Similar results are preserved.
+
+Production bundling and automated tests do not establish this packaged-app/manual acceptance.

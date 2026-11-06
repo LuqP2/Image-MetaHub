@@ -5,14 +5,14 @@ import type { LibraryQueryCriteria } from '../../services/libraryQuery/types';
 export function summarizeBoardCriteria(criteria: LibraryQueryCriteria): string[] {
   const items: string[] = [];
   if (criteria.searchQuery.trim()) items.push(`Search: ${criteria.searchQuery}`);
-  const fields = { selectedModels: 'Checkpoints', excludedModels: 'Exclude checkpoints', selectedLoras: 'LoRAs', excludedLoras: 'Exclude LoRAs',
+  const fields = { selectedNodes: 'ComfyUI nodes', selectedModels: 'Checkpoints', excludedModels: 'Exclude checkpoints', selectedLoras: 'LoRAs', excludedLoras: 'Exclude LoRAs',
     selectedSamplers: 'Samplers', excludedSamplers: 'Exclude samplers', selectedSchedulers: 'Schedulers', excludedSchedulers: 'Exclude schedulers',
     selectedGenerators: 'Generators', excludedGenerators: 'Exclude generators', selectedGpuDevices: 'GPUs', excludedGpuDevices: 'Exclude GPUs',
     selectedTags: `Tags (${criteria.selectedTagsMatchMode})`, excludedTags: 'Exclude tags', selectedAutoTags: 'Auto-tags', excludedAutoTags: 'Exclude auto-tags',
     selectedFolders: 'Folders', excludedFolders: 'Exclude folders', selectedRatings: 'Ratings' } as const;
   for (const [key, label] of Object.entries(fields)) {
     const values = criteria[key as keyof typeof fields];
-    if (values.length) items.push(`${label}: ${values.map(value => boardValueLabel(String(value))).join(', ')}`);
+    if (values?.length) items.push(`${label}: ${values.map(value => boardValueLabel(String(value))).join(', ')}`);
   }
   if (criteria.favoriteFilterMode !== 'neutral') items.push(criteria.favoriteFilterMode === 'include' ? 'Favorites only' : 'Exclude favorites');
   if (criteria.selectedFolders.length && !criteria.includeSubfolders) items.push('Direct folders only');
