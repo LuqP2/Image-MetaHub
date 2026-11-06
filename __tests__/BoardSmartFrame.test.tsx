@@ -1,3 +1,4 @@
+import { BoardEditorContext } from '../components/boards/BoardEditorContext';
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -27,7 +28,7 @@ describe('Smart Frame rendering', () => {
     useBoardQueryStore.getState().publish(document.id, { [frame.id]: { frameId: frame.id, status: 'ready', imageIds: images.map(image => image.id), totalCount: count, unavailableReferences: 0, datasetRevision: 1, queryRevision: 1 } });
     const open = vi.fn();
     render(<BoardQueryContext.Provider value={{ images: new Map(images.map(image => [image.id, image])), open, create: vi.fn(), retry: vi.fn(), snapshot: vi.fn(), useCurrentFilters: vi.fn(), collections: [] }}>
-      <BoardSmartFrameNode {...({ data: { object: frame }, selected: false } as any)} />
+      <BoardEditorContext.Provider value={{ editable: true, connecting: false, begin() {}, change() {}, commit() {}, cancel() {} }}><BoardSmartFrameNode {...({ data: { object: frame }, selected: false } as any)} /></BoardEditorContext.Provider>
     </BoardQueryContext.Provider>);
     expect(screen.getByText(`${count.toLocaleString()} images in frame`)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Browse' })).toBeNull();
@@ -39,14 +40,14 @@ describe('Smart Frame rendering', () => {
     expect(useBoardStore.getState().sessions[document.id].document.objects).toHaveLength(1);
     expect(useBoardStore.getState().sessions[document.id].changeSequence).toBe(0);
   });
-  it('emits controlled local criteria without changing library filters', () => {
+  it('emits controlled local criteria without changing library filters', async () => {
     const before = useImageStore.getState().searchQuery;
     const onChange = vi.fn();
     render(<BoardQueryFilterEditor value={normalizeLibraryQueryCriteria()} disabled={false} facets={{ availableLoras: ['A, B'] } as any} onChange={onChange} />);
     fireEvent.change(screen.getByLabelText('Query search'), { target: { value: 'forest' } });
+    await new Promise(resolve => setTimeout(resolve, 250));
     expect(onChange.mock.lastCall![0].searchQuery).toBe('forest');
-    fireEvent.click(screen.getByRole('button', { name: /^LoRAs/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Include LoRAs: A, B' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Include A, B' }));
     expect(onChange.mock.lastCall![0].selectedLoras).toEqual(['A, B']);
     expect(useImageStore.getState().searchQuery).toBe(before);
   });

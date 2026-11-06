@@ -1,3 +1,4 @@
+import { visibleBoardObjects } from '../../services/boards/stackMembership';
 import { useBoardReferenceSync } from '../../services/boards/referenceSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { IndexedImage } from '../../types';
@@ -41,8 +42,9 @@ export default function BoardListPreview({ summary, resolveAsset }: { summary: B
     const images: IndexedImage[] = [], types = new Map<string, number>(), ids = new Set<string>();
     if (!visible || !document) return { images, types };
     const hidden = getHiddenSensitiveTagSet({ enableSafeMode: enabled, blurSensitiveImages: blur, sensitiveTags: tags });
-    for (const object of document.objects) {
-      const type = object.type === 'smart-frame' ? 'Smart Frame' : object.type === 'asset' ? 'Reference' : object.type === 'text' ? 'Text' : 'Frame';
+    for (const original of visibleBoardObjects(document.objects)) {
+      const object = original.type === 'stack' ? document.objects.find(object => object.id === original.coverId) ?? original : original;
+      const type = original.type === 'stack' ? 'Stack' : object.type === 'smart-frame' ? 'Smart Frame' : object.type === 'asset' ? 'Reference' : object.type === 'text' ? 'Text' : 'Frame';
       types.set(type, (types.get(type) ?? 0) + 1);
       if (object.type !== 'asset' || images.length >= 4) continue;
       const result = resolveAsset?.(object), image = result?.status === 'resolved' ? result.image : undefined;

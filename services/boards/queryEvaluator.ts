@@ -69,15 +69,14 @@ export function evaluateBoardQueries(dataset: BoardQueryDataset, frames: BoardQu
     try {
       const source = resolve(frame.source);
       const result = evaluateQuery(source, frame.criteria, frame.groupConstraints);
-      const sourceResult = evaluateQuery(source, { ...frame.criteria,
-        searchQuery: '', selectedModels: [], excludedModels: [], selectedLoras: [], excludedLoras: [], selectedSamplers: [], excludedSamplers: [], selectedSchedulers: [], excludedSchedulers: [], selectedGenerators: [], excludedGenerators: [], selectedGpuDevices: [], excludedGpuDevices: [], selectedTags: [], excludedTags: [], selectedAutoTags: [], excludedAutoTags: [], favoriteFilterMode: 'neutral', selectedRatings: [], advancedFilters: {}, selectedFolders: [], excludedFolders: [] }, []);
+      const sourceResult = result;
       const sourceKey = JSON.stringify(sourceResult.imageIds);
       let sourceFacets = nextFacets.get(sourceKey) ?? cache.sourceFacets?.get(sourceKey);
       if (!sourceFacets) {
-        const counts: Record<string, Map<string, number>> = Object.fromEntries(['Models', 'Loras', 'Samplers', 'Schedulers', 'Generators', 'GpuDevices', 'Tags', 'AutoTags', 'Folders'].map(key => [key, new Map<string, number>()]));
+        const counts: Record<string, Map<string, number>> = Object.fromEntries(['Models', 'Loras', 'Samplers', 'Schedulers', 'Generators', 'GpuDevices', 'Tags', 'AutoTags', 'Folders', 'Nodes', 'Ratings', 'Favorites'].map(key => [key, new Map<string, number>()]));
         for (const id of sourceResult.imageIds) {
           const image = images.get(id)!;
-          const values: Record<string, string[]> = { Models: image.models, Loras: image.loraNames, Samplers: [image.sampler], Schedulers: [image.scheduler], Generators: [image.generator], GpuDevices: [image.gpuDevice ?? ''], Tags: image.tags, AutoTags: image.autoTags, Folders: [dataset.grouping?.[id]?.folder ?? ''] };
+          const values: Record<string, string[]> = { Ratings: image.rating == null ? [] : [String(image.rating)], Favorites: image.isFavorite ? ['true'] : [], Nodes: image.workflowNodes ?? [], Models: image.models, Loras: image.loraNames, Samplers: [image.sampler], Schedulers: [image.scheduler], Generators: [image.generator], GpuDevices: [image.gpuDevice ?? ''], Tags: image.tags, AutoTags: image.autoTags, Folders: [dataset.grouping?.[id]?.folder ?? ''] };
           for (const [dimension, entries] of Object.entries(values)) for (const value of new Set(entries)) if (value) counts[dimension].set(value, (counts[dimension].get(value) ?? 0) + 1);
         }
         sourceFacets = { ...sourceResult.facets, sourceCounts: Object.fromEntries(Object.entries(counts).map(([key, counts]) => [key, [...counts]])) };

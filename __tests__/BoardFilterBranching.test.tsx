@@ -35,8 +35,7 @@ describe('visual filter branching', () => {
     expect(child.source).toEqual({ kind: 'frame', frameId: 'flux' });
     expect(screen.getByRole('region', { name: 'Inherited filters' }).textContent).toContain('Checkpoints: Flux');
     act(() => useBoardQueryStore.setState({ results: { [f.id]: evaluateBoardQueries(dataset, f.current().objects as BoardSmartFrameObject[], 1, 1) } }));
-    fireEvent.click(screen.getByRole('button', { name: /^LoRAs/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Include LoRAs: A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Include A' }));
     expect((f.current().objects[0] as BoardSmartFrameObject).criteria.selectedLoras).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate query independently' }));
     const duplicate = f.current().objects[2] as BoardSmartFrameObject;

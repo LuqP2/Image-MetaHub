@@ -3,7 +3,7 @@ import type { LibraryQueryCriteria } from './types';
 /** Return detached criteria so editing a frame cannot change another query. */
 export function normalizeLibraryQueryCriteria(input: Partial<LibraryQueryCriteria> = {}): LibraryQueryCriteria {
   return structuredClone({
-    searchQuery: '', selectedModels: [], excludedModels: [], selectedLoras: [], excludedLoras: [],
+    searchQuery: '', selectedNodes: [], selectedModels: [], excludedModels: [], selectedLoras: [], excludedLoras: [],
     selectedSamplers: [], excludedSamplers: [], selectedSchedulers: [], excludedSchedulers: [],
     selectedGenerators: [], excludedGenerators: [], selectedGpuDevices: [], excludedGpuDevices: [],
     selectedTags: [], excludedTags: [], selectedAutoTags: [], excludedAutoTags: [], selectedTagsMatchMode: 'any',

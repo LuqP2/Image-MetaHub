@@ -9,9 +9,9 @@ import type { BoardDocument } from '../../services/boards/types';
 import type { BoardSmartFrameObject } from '../../services/boards/queryTypes';
 import { useBoardStore } from '../../store/useBoardStore';
 import { useBoardQueryStore } from '../../store/useBoardQueryStore';
-import { reconnectSmartFrameSource, updateSmartFrameQuery, branchSmartFrame, duplicateSmartFrameQuery, updateSmartFrameLayout } from '../../services/boards/smartFrameOperations';
+import { reconnectSmartFrameSource, branchSmartFrame, duplicateSmartFrameQuery, updateSmartFrameLayout } from '../../services/boards/smartFrameOperations';
 import { updateObjects } from '../../services/boards/operations';
-import BoardQueryFilterEditor from './BoardQueryFilterEditor';
+import BoardSmartFrameFilters from './BoardSmartFrameFilters';
 import { useBoardQueryActions } from './BoardQueryContext';
 
 export default function BoardSmartFrameInspector({ boardId, frame, editable }: { boardId: string; frame: BoardSmartFrameObject; editable: boolean }) {
@@ -60,8 +60,7 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
       </div>)}
     </section>}
     <h3>Local filters</h3>
-    <BoardQueryFilterEditor value={frame.criteria} facets={result?.facets} disabled={!editable}
-      onChange={criteria => useBoardStore.getState().updateInteraction(boardId, document => updateSmartFrameQuery(document, frame.id, criteria))} />
+    <BoardSmartFrameFilters boardId={boardId} frame={frame} editable={editable} />
     </Section>
     <Section title="Layout" stateKey={`${boardId}:layout`}>
     <BoardSmartFrameLayoutEditor layout={frame.layout} disabled={!editable} change={layout => run(document => updateSmartFrameLayout(document, frame.id, layout))} />

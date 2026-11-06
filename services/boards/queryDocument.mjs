@@ -12,7 +12,7 @@ const dimension = value => choice(value, groupingDimensions);
 export function normalizeQueryCriteria(input) {
   if (!record(input)) fail('Query criteria are required.');
   const result = {};
-  for (const key of ['selectedModels', 'excludedModels', 'selectedLoras', 'excludedLoras', 'selectedSamplers', 'excludedSamplers', 'selectedSchedulers', 'excludedSchedulers', 'selectedGenerators', 'excludedGenerators', 'selectedGpuDevices', 'excludedGpuDevices', 'selectedTags', 'excludedTags', 'selectedAutoTags', 'excludedAutoTags', 'selectedFolders', 'excludedFolders']) result[key] = [...new Set(list(input[key] ?? []).map(text))];
+  for (const key of ['selectedNodes', 'selectedModels', 'excludedModels', 'selectedLoras', 'excludedLoras', 'selectedSamplers', 'excludedSamplers', 'selectedSchedulers', 'excludedSchedulers', 'selectedGenerators', 'excludedGenerators', 'selectedGpuDevices', 'excludedGpuDevices', 'selectedTags', 'excludedTags', 'selectedAutoTags', 'excludedAutoTags', 'selectedFolders', 'excludedFolders']) result[key] = [...new Set(list(input[key] ?? []).map(text))];
   result.searchQuery = text(input.searchQuery ?? '');
   result.selectedTagsMatchMode = choice(input.selectedTagsMatchMode ?? 'any', ['any', 'all']);
   result.favoriteFilterMode = choice(input.favoriteFilterMode ?? 'neutral', ['neutral', 'include', 'exclude']);

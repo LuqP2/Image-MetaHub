@@ -14,15 +14,14 @@ describe('Canvas assisted filtering and local sizing', () => {
       return <><BoardQueryFilterEditor value={value} onChange={setValue} disabled={false} facets={{ availableModels: ['Model, with comma'], availableLoras: [], availableSamplers: [], availableSchedulers: [], availableGenerators: [], availableGpuDevices: [], availableDimensions: [], modelFacetCounts: [], loraFacetCounts: [], samplerFacetCounts: [], schedulerFacetCounts: [], sourceCounts: { Models: [['Model, with comma', 7]] } }} /><output>{JSON.stringify(value)}</output></>;
     }
     render(<Fixture />);
-    fireEvent.click(screen.getByRole('button', { name: /^Checkpoints/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Include Checkpoints: Model, with comma' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Include Model, with comma' }));
     expect(screen.getByRole('status').textContent).toContain('"selectedModels":["Missing","Model, with comma"]');
-    fireEvent.click(screen.getByRole('button', { name: 'Exclude Checkpoints: Model, with comma' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Exclude Model, with comma' }));
     expect(screen.getByRole('status').textContent).toContain('"selectedModels":["Missing"]');
     expect(screen.getByRole('status').textContent).toContain('"excludedModels":["Model, with comma"]');
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Checkpoints: Missing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Missing from included filters' }));
     expect(screen.getByRole('status').textContent).toContain('"selectedModels":[]');
-    expect(screen.getByText('7 in source')).toBeTruthy();
+    expect(screen.getByText('7')).toBeTruthy();
   });
   it.each([0.5, 0.7, 1, 1.5])('measures local dimensions independently of transform %s and observes resize', zoom => {
     let width = 640, height = 320, notify: (() => void) | undefined;

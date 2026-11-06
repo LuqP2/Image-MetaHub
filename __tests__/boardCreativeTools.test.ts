@@ -13,7 +13,7 @@ describe('Canvas creative objects and fragment transport', () => {
   it.each(['sticky', 'rectangle', 'ellipse', 'diamond', 'link'] as BoardTool[])('round-trips %s through disk and clipboard', tool => {
     const original = drawBoardObject(createBoardDocument(), tool as Exclude<BoardTool, 'select' | 'connect'>, bounds);
     const imported = importBoard(exportBoard(original));
-    expect(imported.schemaVersion).toBe(3);
+    expect(imported.schemaVersion).toBe(4);
     expect(imported.objects).toEqual(original.objects);
     const fragment = parseBoardFragment(copyBoardFragment(original, [original.objects[0].id]))!;
     const pasted = pasteBoardFragment(createBoardDocument(), fragment, { x: 10, y: 20 });
@@ -78,7 +78,7 @@ describe('Canvas creative objects and fragment transport', () => {
   });
   it.each([1, 2])('migrates schema %i only in memory', schemaVersion => {
     const old = { ...createBoardDocument(), schemaVersion };
-    expect(normalizeBoardDocument(old).schemaVersion).toBe(3);
+    expect(normalizeBoardDocument(old).schemaVersion).toBe(4);
     expect(old.schemaVersion).toBe(schemaVersion);
   });
   it('exports the complete selected frame and enforces pixel budgets', () => {

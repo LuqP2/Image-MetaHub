@@ -1,3 +1,4 @@
+import { visibleBoardObjects } from '../../services/boards/stackMembership';
 import type { PointerEvent } from 'react';
 import { useReactFlow, useStore, useViewport } from '@xyflow/react';
 import type { BoardObject } from '../../services/boards/types';
@@ -21,7 +22,7 @@ export default function BoardMiniMap({ objects }: { objects: BoardObject[] }) {
     onPointerDown={event => { if (event.button !== 0) return; event.currentTarget.setPointerCapture(event.pointerId); navigate(event); }}
     onPointerMove={event => { if (event.buttons === 1) navigate(event); }}
     onWheel={event => { event.preventDefault(); event.stopPropagation(); void flow.zoomTo(Math.max(0.1, Math.min(4, viewport.zoom * Math.exp(-event.deltaY * 0.002)))); }}>
-    {objects.map(object => <rect key={object.id} className="board-minimap-node" data-type={object.type} x={object.x} y={object.y} width={object.width} height={object.height} vectorEffect="non-scaling-stroke" />)}
+    {visibleBoardObjects(objects).map(object => <rect key={object.id} className="board-minimap-node" data-type={object.type} x={object.x} y={object.y} width={object.width} height={object.height} vectorEffect="non-scaling-stroke" />)}
     <rect className="board-minimap-viewport" x={-viewport.x / viewport.zoom} y={-viewport.y / viewport.zoom} width={width / viewport.zoom} height={height / viewport.zoom} vectorEffect="non-scaling-stroke" />
   </svg>;
 }

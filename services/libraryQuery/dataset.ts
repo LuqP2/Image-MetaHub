@@ -48,6 +48,7 @@ export const toLibraryQueryImage = (image: IndexedImage): LibraryQueryImage => {
 
     return {
         id: image.id,
+        workflowNodes: image.workflowNodes ?? [],
         name: image.name || '',
         catalogText: buildCatalogSearchText(image),
         searchText: buildCompactSearchText(image),
@@ -87,6 +88,7 @@ export const toLibraryQueryImage = (image: IndexedImage): LibraryQueryImage => {
 /** Renderer-only view: expensive fields are evaluated only after cheaper predicates pass. */
 class LazyLibraryQueryImage implements LibraryQueryImage {
 constructor(private readonly image: IndexedImage) {}
+get workflowNodes() { return this.image.workflowNodes ?? []; }
 get id() {
 const image = this.image;
 

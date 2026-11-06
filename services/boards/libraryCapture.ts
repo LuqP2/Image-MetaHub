@@ -26,9 +26,9 @@ export async function captureLibraryForCanvas(): Promise<LibraryCanvasCapture> {
   const settings = useSettingsStore.getState();
   const hidden = getHiddenSensitiveTagSet(settings);
   const images = state.getScopedFilteredImages().filter(image => isVisibleWithSafeMode(image, hidden));
-  const snapshot = Boolean(state.semanticResult || state.activeImageScope || state.selectedNodes.length);
+  const snapshot = Boolean(state.semanticResult || state.activeImageScope);
   const captured = captureWorkerCriteria(state, settings);
-  const criteria = normalizeQueryCriteria({ ...captured, sortOrder: captured.sortOrder === 'relevance' ? 'date-desc' : captured.sortOrder });
+  const criteria = normalizeQueryCriteria({ ...captured, selectedNodes: [...state.selectedNodes], sortOrder: captured.sortOrder === 'relevance' ? 'date-desc' : captured.sortOrder });
   if (!snapshot) return { source: { kind: 'library' }, criteria, intentCriteria: criteria, mode: 'Dynamic', count: images.length };
   const baseline = await getBoardReferenceBaseline();
   if (useImageStore.getState().images !== state.images) throw new Error('The Library changed while capturing results. Try again.');

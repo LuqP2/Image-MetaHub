@@ -85,7 +85,9 @@ export function compileWorkerPredicate(criteria: LibraryWorkerCriteria): (image:
     sensitiveTags !== null;
 
   const folderPathCache = new Map<string, string>();
+  const selectedNodes = new Set((criteria.selectedNodes ?? []).map(node => node.toLowerCase()));
   return image => {
+    if (selectedNodes.size && !(image.workflowNodes ?? []).some(node => selectedNodes.has(node.toLowerCase()))) return false;
     // --- PHASE 1: CHEAPEST CHECKS FIRST ---
 
     // 1. Basic Directory and Visibility check

@@ -5,7 +5,7 @@ export const BOARD_COLORS = ['#fde68a', '#fbcfe8', '#bfdbfe', '#bbf7d0', '#ddd6f
 export default function BoardSelectionStyles({ boardId, editable }: { boardId: string; editable: boolean }) {
   const session = useBoardStore(state => state.sessions[boardId]);
   const selected = session.document.objects.filter(object => session.selectedObjectIds.includes(object.id));
-  const colored = selected.filter(object => object.type !== 'asset');
+  const colored = selected.filter(object => object.type !== 'asset' && object.type !== 'stack');
   const texts = selected.filter(object => object.type === 'text' || object.type === 'sticky' || object.type === 'shape');
   const shapes = selected.filter(object => object.type === 'shape');
   const color = colored.length && colored.every(object => object.color === colored[0].color) ? colored[0].color : '';

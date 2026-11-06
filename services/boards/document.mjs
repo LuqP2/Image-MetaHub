@@ -69,7 +69,7 @@ function normalizeReference(value) {
 // Reconstruct explicitly: imported runtime data, handles and unknown fields never reach disk.
 export function normalizeBoardDocument(input) {
   if (!record(input)) fail('Board document is required.');
-  if (![1, 2, 3].includes(input.schemaVersion)) throw new BoardError('BOARD_UNSUPPORTED_VERSION', 'Unsupported board version.');
+  if (![1, 2, 3, 4].includes(input.schemaVersion)) throw new BoardError('BOARD_UNSUPPORTED_VERSION', 'Unsupported board version.');
   if (!Array.isArray(input.objects) || !Array.isArray(input.connections)) fail('Objects and connections must be arrays.');
   if (!record(input.viewport)) fail('Viewport is required.');
   const ids = new Set();
@@ -81,8 +81,8 @@ export function normalizeBoardDocument(input) {
   };
   const queryBudget = { count: 0 };
   const objects = input.objects.map(value => {
-    if (!record(value) || !['asset', 'text', 'frame', 'smart-frame', 'sticky', 'shape', 'link'].includes(value.type)) fail('Invalid board object.');
-    if (['sticky', 'shape', 'link'].includes(value.type) && input.schemaVersion !== 3) fail('New objects require schema v3.');
+    if (!record(value) || !['asset', 'text', 'frame', 'smart-frame', 'sticky', 'shape', 'link', 'stack'].includes(value.type)) fail('Invalid board object.');
+    if (['sticky', 'shape', 'link'].includes(value.type) && input.schemaVersion < 3) fail('New objects require schema v3.');
     const base = {
       id: claim(value.id), type: value.type,
       x: number(value.x, 'X'), y: number(value.y, 'Y'),
@@ -91,6 +91,11 @@ export function normalizeBoardDocument(input) {
       zIndex: number(value.zIndex, 'Z index'),
       frameId: value.frameId === null ? null : string(value.frameId, 'Frame ID', true),
     };
+    if (value.type === 'stack') {
+      if (input.schemaVersion < 4) fail('Stacks require schema v4.');
+      if (!Array.isArray(value.memberIds) || value.memberIds.length < 2 || value.memberIds.some(id => typeof id !== 'string') || new Set(value.memberIds).size !== value.memberIds.length) fail('Invalid stack members.');
+      return { ...base, memberIds: [...value.memberIds], coverId: string(value.coverId, 'Stack cover', true) };
+    }
     if (value.type === 'smart-frame') {
       if (input.schemaVersion === 1 || base.frameId !== null) fail('Smart Frames require schema v2 and cannot be nested.');
       return { ...base, title: string(value.title, 'Smart Frame title'), color: color(value.color),
@@ -131,6 +136,15 @@ export function normalizeBoardDocument(input) {
   for (const object of objects) {
     if (object.frameId !== null && byId.get(object.frameId)?.type !== 'frame') fail('Frame reference does not point to a frame.');
   }
+  const claimedMembers = new Set();
+  for (const stack of objects.filter(object => object.type === 'stack')) {
+    if (!stack.memberIds.includes(stack.coverId)) fail('Stack cover must be a member.');
+    for (const id of stack.memberIds) {
+      const member = byId.get(id);
+      if (!member || member.type !== 'asset' || member.mediaType !== 'image' || member.frameId !== stack.frameId || claimedMembers.has(id)) fail('Invalid or shared stack member.');
+      claimedMembers.add(id);
+    }
+  }
   validateQueryGraph(objects);
   const connections = input.connections.map(value => {
     if (!record(value) || value.type !== 'manual') fail('Invalid connection.');
@@ -145,14 +159,14 @@ export function normalizeBoardDocument(input) {
   const zoom = number(input.viewport.zoom, 'Zoom', 0.1);
   if (zoom > 4) fail('Zoom cannot exceed 4.');
   return {
-    schemaVersion: 3, id: validateBoardId(input.id), revision: integer(input.revision, 'Revision'), name: string(input.name, 'Board name', true),
+    schemaVersion: 4, id: validateBoardId(input.id), revision: integer(input.revision, 'Revision'), name: string(input.name, 'Board name', true),
     createdAt: integer(input.createdAt, 'Creation time'), updatedAt: integer(input.updatedAt, 'Update time'),
     viewport: { x: number(input.viewport.x, 'Viewport X'), y: number(input.viewport.y, 'Viewport Y'), zoom }, objects, connections,
   };
 }
 
 export function createBoardDocument(name = 'Untitled board', id = crypto.randomUUID(), now = Date.now()) {
-  return normalizeBoardDocument({ schemaVersion: 3, id, revision: 0, name, createdAt: now, updatedAt: now, viewport: { x: 0, y: 0, zoom: 1 }, objects: [], connections: [] });
+  return normalizeBoardDocument({ schemaVersion: 4, id, revision: 0, name, createdAt: now, updatedAt: now, viewport: { x: 0, y: 0, zoom: 1 }, objects: [], connections: [] });
 }
 
 export function duplicateBoardDocument(document, name = `${document.name} (copy)`, id = crypto.randomUUID(), now = Date.now()) {

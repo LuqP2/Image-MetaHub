@@ -30,10 +30,12 @@ export type LibraryQueryImage = {
   rating: ImageRating | null;
   tags: string[];
   autoTags: string[];
+  workflowNodes?: string[];
 };
 
 export type LibraryWorkerCriteria = {
   searchQuery: string;
+  selectedNodes?: string[];
   selectedModels: string[];
   excludedModels: string[];
   selectedLoras: string[];
@@ -70,6 +72,8 @@ export type LibraryWorkerCriteria = {
 export interface LibraryQueryResult {
   filteredIds: string[];
   facets: {
+    availableNodes?: string[];
+    nodeFacetCounts?: Array<[string, number]>;
     availableModels: string[];
     availableLoras: string[];
     availableSamplers: string[];

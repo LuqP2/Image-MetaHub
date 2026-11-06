@@ -1,3 +1,7 @@
+import BoardVisualGroupingDialog from './BoardVisualGroupingDialog';
+import BoardStackNode from './BoardStackNode';
+import { hasStackCardDrag, getStackCardDrag, clearStackCardDrag } from '../../services/boards/stackDrag';
+import { extractStackMember } from '../../services/boards/stackOperations';
 import { useBoardSnapping } from '../../hooks/useBoardSnapping';
 import { useBoardConnections } from '../../hooks/useBoardConnections';
 import type { PointerEvent as ReactPointerEvent } from 'react';
@@ -19,6 +23,8 @@ import { applyBoardNodeRuntimeChanges, boardToFlow, flowGeometryUpdates, type Bo
 import { drawBoardObject, updateObjects } from '../../services/boards/operations';
 import { findContainingFrame, type BoardPoint } from '../../services/boards/layout';
 import BoardAssetNode from './BoardAssetNode';
+import BoardSmartFrameFilterPopover from './BoardSmartFrameFilterPopover';
+import BoardSelectionResizer from './BoardSelectionResizer';
 import BoardTextNode from './BoardTextNode';
 import BoardFrameNode from './BoardFrameNode';
 import BoardConnection from './BoardConnection';
@@ -26,7 +32,7 @@ import BoardViewportControls from './BoardViewportControls';
 import BoardCanvasHelp from './BoardCanvasHelp';
 import { useBoardEditor } from './BoardEditorContext';
 
-const nodeTypes = { sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode, 'smart-frame': BoardSmartFrameNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode };
+const nodeTypes = { stack: BoardStackNode, sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode, 'smart-frame': BoardSmartFrameNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode };
 const edgeTypes = { manual: BoardConnection, query: BoardQueryConnection };
 
 export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId: string; onFitAll?: () => void }) {
@@ -59,6 +65,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
   const [drawing, setDrawing] = useState<{ start: BoardPoint; end: BoardPoint } | null>(null);
   const drawingStart = useRef<BoardPoint | null>(null);
   const drawingTool = editor.editable && editor.tool && !['select', 'connect'].includes(editor.tool) ? editor.tool as Exclude<BoardTool, 'select' | 'connect'> : null;
+  const [grouping, setGrouping] = useState<{ ids?: string[] } | null>(null);
   const [menu, setMenu] = useState<BoardMenuPosition | null>(null);
   const closeMenu = useCallback(() => { setMenu(null); requestAnimationFrame(() => { if (!document.activeElement || document.activeElement === document.body || document.activeElement.closest('.board-context-menu')) stageRef.current?.closest<HTMLElement>('.board-workspace')?.focus({ preventScroll: true }); }); }, []);
   const createObject = useCallback((tool: BoardTool, point: BoardPoint, size?: { width: number; height: number }) => {
@@ -125,8 +132,20 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       setBoardPointer(boardId, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
       connections.pointerMove(event);
     }} onDoubleClick={event => { event.stopPropagation(); if (editor.editable && (event.target as HTMLElement).classList.contains('react-flow__pane')) setMenu({ x: event.clientX, y: event.clientY, point: flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }), kind: 'create' }); }}
-    onDragOver={event => { if (editor.editable && hasInternalImageDragType(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
+    onDragOver={event => { if (editor.editable && (hasStackCardDrag(event.dataTransfer) || hasInternalImageDragType(event.dataTransfer))) { event.preventDefault(); event.dataTransfer.dropEffect = hasStackCardDrag(event.dataTransfer) ? 'move' : 'copy'; } }}
     onDrop={event => {
+      if (hasStackCardDrag(event.dataTransfer)) {
+        event.preventDefault(); event.stopPropagation();
+        const source = getStackCardDrag(event.dataTransfer);
+        clearStackCardDrag(); clearInternalImageDragData();
+        if (!editor.editable || !source) return;
+        if (source.boardId !== boardId) { editor.reportError?.('Move stack cards within their original Canvas.'); return; }
+        if ((event.target as HTMLElement).closest<HTMLElement>('.react-flow__node')?.dataset.id === source.stackId) return;
+        const point = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        useBoardStore.getState().executeOperation(boardId, document => extractStackMember(document, source.stackId, source.objectId, point));
+        useBoardStore.getState().setSelection(boardId, [source.objectId]);
+        return;
+      }
       if (!editor.editable || !hasInternalImageDragType(event.dataTransfer)) return;
       event.preventDefault();
       const ids = getInternalImageDragIds(event.dataTransfer);
@@ -178,7 +197,10 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       </g></svg>
       <div className="board-connect-hint">Connect: drag or click a destination · Esc to cancel</div>
     </>}
-    {menu && <BoardContextMenu boardId={boardId} menu={menu} close={closeMenu} create={createObject} fit={onFitAll} />}
+    {grouping && <BoardVisualGroupingDialog boardId={boardId} ids={grouping.ids} close={() => setGrouping(null)} />}
+    <BoardSelectionResizer boardId={boardId} />
+    <BoardSmartFrameFilterPopover boardId={boardId} />
+    {menu && <BoardContextMenu boardId={boardId} menu={menu} close={closeMenu} create={createObject} fit={onFitAll} autoGroup={ids => setGrouping({ ids })} />}
     {!session.document.objects.length && editor.editable && <div className="board-empty-start nodrag nopan">
       <h2>Start your board</h2><p>Collect references or explore your library with a live query.</p>
       <div><button className="board-button" onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="Search canvas library"]')?.focus()); }}>Add references</button><small>Choose files from the side library and arrange them freely.</small></div>
