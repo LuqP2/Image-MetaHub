@@ -67,8 +67,10 @@ export function drawBoardObject(document: BoardDocument, type: Exclude<BoardTool
 }
 
 export type BoardObjectUpdate = { id: string } & Partial<BoardObject>;
-export function updateObjects(document: BoardDocument, updates: BoardObjectUpdate[]): BoardDocument {
+export function updateObjects(document: BoardDocument, updates: BoardObjectUpdate[], resizeStart = document.objects): BoardDocument {
   const byId = new Map(updates.map(update => [update.id, update]));
+  const initial = new Map(resizeStart.map(object => [object.id, object]));
+  const resizingFrames = new Set(document.objects.filter(object => object.type === 'frame' && (byId.get(object.id)?.width !== undefined || byId.get(object.id)?.height !== undefined)).map(object => object.id));
   const objects = document.objects.map(object => {
     const update = byId.get(object.id);
     let next = update ? { ...object, ...update, id: object.id, type: object.type } as BoardObject : object;
@@ -77,14 +79,19 @@ export function updateObjects(document: BoardDocument, updates: BoardObjectUpdat
     const parentUpdate = object.frameId ? byId.get(object.frameId) : null;
     const parent = parentUpdate ? document.objects.find(candidate => candidate.id === object.frameId) : null;
     if (parent && parentUpdate) {
+      // Pointer updates supply absolute frame bounds. Always scale from the
+      // gesture's starting geometry so axis changes and reversals cannot compound.
+      const fromStart = resizingFrames.has(parent.id);
+      const baseParent = fromStart ? initial.get(parent.id) ?? parent : parent;
+      const base = fromStart ? initial.get(object.id) ?? object : object;
       const scalable = object.type === 'stack' || (object.type === 'asset' && object.mediaType === 'image');
-      const scale = scalable ? Math.min((parentUpdate.width ?? parent.width) / parent.width, (parentUpdate.height ?? parent.height) / parent.height) : 1;
+      const scale = scalable ? Math.min((parentUpdate.width ?? parent.width) / baseParent.width, (parentUpdate.height ?? parent.height) / baseParent.height) : 1;
       next = {
         ...next,
-        x: update?.x ?? (parentUpdate.x ?? parent.x) + (object.x - parent.x) * scale,
-        y: update?.y ?? (parentUpdate.y ?? parent.y) + (object.y - parent.y) * scale,
-        width: update?.width ?? object.width * scale,
-        height: update?.height ?? object.height * scale,
+        x: update?.x ?? (parentUpdate.x ?? parent.x) + (base.x - baseParent.x) * scale,
+        y: update?.y ?? (parentUpdate.y ?? parent.y) + (base.y - baseParent.y) * scale,
+        width: update?.width ?? base.width * scale,
+        height: update?.height ?? base.height * scale,
       } as BoardObject;
     }
     return next;
@@ -92,8 +99,13 @@ export function updateObjects(document: BoardDocument, updates: BoardObjectUpdat
   const owners = stackMembership(document.objects);
   const nextById = new Map(objects.map(object => [object.id, object]));
   for (let index = 0; index < objects.length; index++) {
-    const object = document.objects[index], owner = owners.get(object.id);
+    let object = document.objects[index], owner = owners.get(object.id);
     if (!owner || object.type !== 'asset') continue;
+    if (owner.frameId && resizingFrames.has(owner.frameId)) {
+      object = initial.get(object.id) ?? object;
+      const initialOwner = initial.get(owner.id);
+      if (initialOwner?.type === 'stack') owner = initialOwner;
+    }
     const nextOwner = nextById.get(owner.id)!;
     const sx = nextOwner.width / owner.width, sy = nextOwner.height / owner.height;
     const explicit = byId.get(object.id);

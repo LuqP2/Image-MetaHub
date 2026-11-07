@@ -113,7 +113,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     const filtered = snapping.filterChanges(changes);
     const updatedNodes = applyNodeChanges(filtered, nodes);
     const updates = flowGeometryUpdates(updatedNodes, filtered);
-    if (updates.length) state.updateInteraction(boardId, document => updateObjects(document, updates));
+    if (updates.length) state.updateInteraction(boardId, document => updateObjects(document, updates, useBoardStore.getState().sessions[boardId].interaction?.objects));
     if (changes.some(change => change.type === 'dimensions' && change.resizing === false)) state.commitInteraction(boardId);
   }, [boardId, nodes, editor.editable, snapping.filterChanges]);
   const finishDrag = useCallback(() => {
