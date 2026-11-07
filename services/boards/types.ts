@@ -48,6 +48,9 @@ export interface BoardTextObject extends BoardObjectBase {
   fontSize: number;
   fontFamily?: string;
   backgroundColor?: string | null;
+  textAlign?: 'left' | 'center' | 'right';
+  /** Corner radius in CSS pixels; the editor uses 0–24 px. */
+  backgroundRoundness?: number;
   color: string;
 }
 
@@ -63,6 +66,12 @@ export interface BoardStickyObject extends BoardObjectBase {
 }
 export interface BoardShapeObject extends BoardObjectBase {
   type: 'shape'; shape: 'rectangle' | 'ellipse' | 'diamond'; text: string; fontSize: number; color: string; borderColor: string; borderWidth: number;
+  fontFamily?: string;
+  textColor?: string;
+  textAlign?: 'left' | 'center' | 'right';
+  backgroundColor?: string | null;
+  backgroundRoundness?: number;
+  cornerRadius?: number;
 }
 export interface BoardLinkObject extends BoardObjectBase {
   type: 'link'; title: string; url: string; color: string;

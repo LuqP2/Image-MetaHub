@@ -74,7 +74,7 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
     <button className="board-button" aria-pressed={Boolean(resolution.image.isFavorite)} onClick={() => { void useImageStore.getState().toggleFavorite(resolution.image.id).catch(cause => setError(String(cause))); }}><Star size={14} fill={resolution.image.isFavorite ? "currentColor" : "none"}/>Favorite</button></div>
     <RatingStars size={16} className="board-rating" rating={resolution.image.rating} onChange={rating => { void useImageStore.getState().setImageRating(resolution.image.id, rating).catch(cause => setError(String(cause))); }} />
   </> : null;
-  const metadata = resolution?.status === 'resolved' ? <ComparisonMetadataPanel image={resolution.image} isExpanded onToggleExpanded={() => {}} presentation="embedded" /> : null;
+  const metadata = resolution?.status === 'resolved' ? <ComparisonMetadataPanel className="board-embedded-metadata" image={resolution.image} isExpanded onToggleExpanded={() => {}} presentation="embedded" /> : null;
   const status = selectedAsset && resolution?.status !== 'resolved' ? <div className="board-asset-status"><p>{resolution?.status === 'loading' ? 'Library is loading…' : resolution?.status === 'ambiguous' ? 'Multiple files match this reference.' : 'This file is not available in the current library.'}</p>{(resolution?.status === 'missing' || resolution?.status === 'ambiguous') && <><p>Choose the library file for this board item to restore its reference.</p><button className="board-button" disabled={!editable} onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); setRelinkId(selectedAsset.id); }}>Locate missing file</button></>}</div> : null;
 
   const captureReferences = async (selected: IndexedImage[]): Promise<BoardAssetReference[]> => {
@@ -135,6 +135,6 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
       }}
       assetPanel={<BoardAssetBrowser images={images} directories={directories} editable={editable} onAdd={selected => { void add(selected); }} onPick={relinkId ? image => { void relink(image); } : undefined} onCancelPick={() => setRelinkId(null)} />}
       libraryLocked={Boolean(relinkId)} assetActions={inspector} assetMetadata={metadata} assetStatus={status}
-      selectionActions={selected.length > 0 && selected.every(item => item.type === 'asset' && item.mediaType === 'image') ? <div className="board-selection-actions"><button className="board-button" disabled={!compareEnabled} onClick={() => canUseComparison ? onCompareImages([...selectedImages.values()]) : showProModal('comparison')}>Compare selected images</button></div> : null} />
+      selectionActions={selected.length > 0 && selected.every(item => item.type === 'asset' && item.mediaType === 'image') ? <div className="board-selection-actions"><button className="board-button board-button--ghost" title={compareEnabled ? 'Compare selected images' : 'Select 2–4 available images to compare'} disabled={!compareEnabled} onClick={() => canUseComparison ? onCompareImages([...selectedImages.values()]) : showProModal('comparison')}>Compare selected images</button></div> : null} />
   </div></BoardQueryContext.Provider>;
 }

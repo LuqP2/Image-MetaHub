@@ -41,6 +41,22 @@ function LibraryFlowSmoke({ boardId }: { boardId: string }) {
 }
 
 Object.assign(window, { canvasSmoke: {
+  async verifyMenuPlacement() {
+    const pane = document.querySelector<HTMLElement>('.board-stage .react-flow__pane')!;
+    const stage = pane.getBoundingClientRect();
+    const click = { x: stage.left + 24, y: stage.top + 24 };
+    pane.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: click.x, clientY: click.y }));
+    await wait(() => !!document.querySelector('[aria-label="Canvas actions"]'));
+    const menu = document.querySelector<HTMLElement>('[aria-label="Canvas actions"]')!;
+    const bounds = menu.getBoundingClientRect();
+    check(menu.parentElement === document.body, 'Menu is inside the transformed Canvas layer');
+    check(Math.abs(bounds.left - click.x) < 1 && Math.abs(bounds.top - click.y) < 1, 'Menu is offset from the click');
+    const names = [...menu.querySelectorAll('[role="menuitem"]')].map(item => item.textContent?.trim());
+    check(names.join(',') === 'Sticky,Text,Rectangle,Ellipse,Diamond,Frame', 'Creation menu repeats Create');
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await wait(() => !document.querySelector('[aria-label="Canvas actions"]'), 'Escape did not close the creation menu');
+    return { anchoredAtClick: true, outsideTransformedCanvas: true, conciseLabels: true };
+  },
   async prepareCurvedConnections() {
     const state = useBoardStore.getState();
     const id = await state.createBoard('Curved connections');
@@ -74,6 +90,27 @@ Object.assign(window, { canvasSmoke: {
     await wait(() => useBoardStore.getState().sessions[id].document.connections.length === 0);
     button('Connect').click();
     await wait(() => button('Connect').getAttribute('aria-pressed') === 'true');
+  },
+  async edgeMarqueePoints() {
+    const path = document.querySelector<SVGPathElement>('.board-stage .react-flow__edge-manual .react-flow__edge-path')!;
+    const local = path.getPointAtLength(path.getTotalLength() / 2);
+    const point = local.matrixTransform(path.getScreenCTM()!);
+    return { from: { x: point.x - 12, y: point.y - 12 }, to: { x: point.x + 12, y: point.y + 12 } };
+  },
+  async verifyEdgeMarquee(id: string) {
+    await wait(() => useBoardStore.getState().sessions[id].selectedConnectionIds.length === 1, 'Marquee did not select the curve');
+    await wait(() => !!document.querySelector('[aria-label="Line thickness"]'), 'Marquee did not open the connection inspector');
+    check(!useBoardStore.getState().sessions[id].selectedObjectIds.length, 'Curve-only marquee selected endpoint nodes');
+    return true;
+  },
+  async verifyCtrlConnect(id: string) {
+    await wait(() => useBoardStore.getState().sessions[id].document.connections.length === 2, 'Ctrl-drag did not create a connection in Select');
+    await wait(() => button('Connect').getAttribute('aria-pressed') === 'true', 'Ctrl did not keep Connect active');
+    return true;
+  },
+  async verifyCtrlReleased() {
+    await wait(() => button('Select').getAttribute('aria-pressed') === 'true', 'Releasing Ctrl did not return to Select');
+    return true;
   },
   async prepareInteractionPolish() {
     const state = useBoardStore.getState();
@@ -187,7 +224,8 @@ Object.assign(window, { canvasSmoke: {
     button('Connect').click();
     await wait(() => button('Connect').getAttribute('aria-pressed') === 'true' && !document.querySelector('.board-stage textarea'));
     const source = document.querySelector<HTMLElement>('.board-stage .board-creative--sticky')!.getBoundingClientRect();
-    const target = document.querySelector<HTMLElement>('.board-stage .board-creative--shape')!.getBoundingClientRect();
+    // The first shape already has a connector from this sticky. Exercise a new pair.
+    const target = [...document.querySelectorAll<HTMLElement>('.board-stage .board-creative--shape')].at(-1)!.getBoundingClientRect();
     const id = useBoardStore.getState().activeBoardId!;
     return { from: { x: Math.round(source.x + source.width / 2), y: Math.round(source.y + 30) }, to: { x: Math.round(target.x + target.width / 2), y: Math.round(target.y + target.height / 2) }, count: useBoardStore.getState().sessions[id].document.connections.length };
   },
@@ -196,11 +234,9 @@ Object.assign(window, { canvasSmoke: {
     await wait(() => useBoardStore.getState().sessions[id].document.connections.length === count + 1, 'Body drag failed to create a connector');
     const edge = useBoardStore.getState().sessions[id].document.connections.at(-1)!;
     state.setSelection(id, [], [edge.id]);
-    await wait(() => !!document.querySelector('[aria-label="Connection thickness"]'));
-    const input = document.querySelector<HTMLInputElement>('[aria-label="Connection thickness"]')!;
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '6');
-    input.dispatchEvent(new Event('input', { bubbles: true })); input.focus(); input.blur();
-    await wait(() => useBoardStore.getState().sessions[id].document.connections.at(-1)!.width === 6);
+    await wait(() => !!document.querySelector('[aria-label="Line thickness"]'));
+    button('Thick').click();
+    await wait(() => useBoardStore.getState().sessions[id].document.connections.at(-1)!.width === 5);
     await state.flushAll();
     button('Select').click();
     return true;
@@ -233,10 +269,10 @@ Object.assign(window, { canvasSmoke: {
       let next = drawBoardObject(doc, 'sticky', { x: 60, y: 80, width: 240, height: 180 });
       next = updateObjects(next, [{ id: next.objects[0].id, text: 'Choose a direction\nExplore → compare → decide' }]);
       next = drawBoardObject(next, 'diamond', { x: 400, y: 100, width: 220, height: 180 });
-      next = updateObjects(next, [{ id: next.objects[1].id, text: 'Keep?' }]);
+      next = updateObjects(next, [{ id: next.objects[1].id, text: 'Keep?', fontFamily: 'serif', textAlign: 'right', textColor: '#ffffff', backgroundColor: '#334155', backgroundRoundness: 8 }]);
       next = drawBoardObject(next, 'ellipse', { x: 730, y: 100, width: 220, height: 180 });
       next = drawBoardObject(next, 'text', { x: 400, y: 360, width: 260, height: 150 });
-      next = updateObjects(next, [{ id: next.objects.at(-1)!.id, text: 'Reference: https://example.com/' }]);
+      next = updateObjects(next, [{ id: next.objects.at(-1)!.id, text: 'Reference: https://example.com/', textAlign: 'center', backgroundColor: '#1f2937', backgroundRoundness: 16 }]);
       next = { ...next, objects: [...next.objects, { id: crypto.randomUUID(), type: 'asset', x: 740, y: 350, width: 220, height: 180, zIndex: 4, frameId: null, name: 'Synthetic gradient', mediaType: 'image', visibleFields: [], reference: { kind: 'path', locator: { imageId: sampleImage.id, directoryPath: 'C:/synthetic', relativePath: 'gradient.png' } } }] };
       next = createFrame(next, next.objects.map(object => object.id));
       const members = next.objects.filter(object => object.type !== 'frame');
@@ -294,6 +330,9 @@ Object.assign(window, { canvasSmoke: {
     await exportImage('selection', 4, true);
     state.setSelection(a, []);
     await exportImage('board', 1, true);
+    const textScene = await serializeExportScene(document.querySelector<HTMLElement>('.board-stage .react-flow__viewport')!);
+    check(textScene.includes('text-align: center') && textScene.includes('border-radius: 16px'), 'PNG scene lost text alignment or rounded corners');
+    check(textScene.includes('text-align: right') && textScene.includes('font-family: serif'), 'PNG scene lost shape text styling');
     const savedTabs = localStorage.getItem('imh-board-tabs-v1');
     check(savedTabs?.includes(a) && savedTabs.includes(b), 'Tabs were not persisted');
     await state.closeBoard(b); check(useBoardStore.getState().activeBoardId === a, 'Closing an inactive tab changed the active board');

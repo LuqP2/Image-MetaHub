@@ -57,6 +57,16 @@ describe('Canvas stacks', () => {
     }
     expect(unstack(next, stack.id).objects).toEqual(next.objects.filter(object => object.id !== stack.id));
   });
+  it('scales stacked images once when their enclosing frame is resized', () => {
+    const { stacked, stack, ids } = fixture();
+    const framed = createFrame(stacked, [stack.id]);
+    const frame = framed.objects.find(object => object.type === 'frame')!;
+    const resized = updateObjects(framed, [{ id: frame.id, width: frame.width * 2, height: frame.height * 2 }]);
+    for (const id of [stack.id, ...ids]) {
+      const original = framed.objects.find(object => object.id === id)!;
+      expect(resized.objects.find(object => object.id === id)).toMatchObject({ x: frame.x + (original.x - frame.x) * 2, y: frame.y + (original.y - frame.y) * 2, width: original.width * 2, height: original.height * 2 });
+    }
+  });
   it('moves members once when their parent frame moves and keeps membership when reframing', () => {
     const { stacked, stack, ids } = fixture();
     const framed = createFrame(stacked, [stack.id]);

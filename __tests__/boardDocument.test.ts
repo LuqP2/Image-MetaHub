@@ -43,17 +43,17 @@ describe('board document boundary', () => {
 it('preserves text appearance and dashed lines through disk and clipboard', () => {
  const board = boardWithTexts();
  const styled = normalizeBoardDocument({...board,
-  objects:board.objects.map(object => ({...object,fontFamily:'Segoe UI',backgroundColor:'#123456'})),
+  objects:board.objects.map(object => ({...object,fontFamily:'Segoe UI',backgroundColor:'#123456',textAlign:'center',backgroundRoundness:16})),
   connections:[{id:'edge',type:'manual',sourceObjectId:board.objects[0].id,targetObjectId:board.objects[1].id,sourceSide:'right',targetSide:'left',label:'',color:'#112233',width:3,lineStyle:'dashed'}],
  });
  const disk = normalizeBoardDocument(JSON.parse(JSON.stringify(styled)));
  expect(disk).toEqual(styled);
  const pasted = pasteBoardFragment(createBoardDocument(), parseBoardFragment(copyBoardFragment(disk, disk.objects.map(object => object.id)))!, {x:0,y:0}).document;
- expect(pasted.objects[0]).toMatchObject({fontFamily:'Segoe UI',backgroundColor:'#123456'});
+ expect(pasted.objects[0]).toMatchObject({fontFamily:'Segoe UI',backgroundColor:'#123456',textAlign:'center',backgroundRoundness:16});
  expect(pasted.connections[0]).toMatchObject({width:3,lineStyle:'dashed'});
  expect(boardToFlow(pasted, [], [], true).edges[0].data).toMatchObject({lineStyle:'dashed'});
 });
-it.each([{fontFamily:42},{fontFamily:''},{backgroundColor:'red'}])('rejects invalid text appearance %s', patch => {
+it.each([{fontFamily:42},{fontFamily:''},{backgroundColor:'red'},{textAlign:'justify'},{backgroundRoundness:-1},{backgroundRoundness:101},{backgroundRoundness:NaN}])('rejects invalid text appearance %s', patch => {
  const board = boardWithTexts();
  expect(() => normalizeBoardDocument({...board,objects:[{...board.objects[0],...patch}]})).toThrow();
 });
