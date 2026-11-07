@@ -4,6 +4,8 @@ import { hasStackCardDrag, getStackCardDrag, clearStackCardDrag } from '../../se
 import { extractStackMember } from '../../services/boards/stackOperations';
 import { useBoardSnapping } from '../../hooks/useBoardSnapping';
 import { useBoardConnections } from '../../hooks/useBoardConnections';
+import { connectionPathIntersectsRect } from '../../services/boards/connectionSelection';
+import { useBoardConnectionStyleStore } from '../../store/useBoardConnectionStyleStore';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import BoardCreativeNode from './BoardCreativeNode';
 import BoardContextMenu, { type BoardMenuPosition } from './BoardContextMenu';
@@ -50,6 +52,8 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
   const snapping = useBoardSnapping(boardId);
   const stageRef = useRef<HTMLDivElement>(null);
   const connections = useBoardConnections(boardId, stageRef);
+  const connectionStyle = useBoardConnectionStyleStore(state => state.style);
+  const marquee = useRef<{ start: BoardPoint; active: boolean; additive: boolean; edges: string[] } | null>(null);
   useEffect(() => {
     const request = session.revealRequest;
     if (!request) return;
@@ -124,10 +128,13 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
   const beginPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
     connections.pointerDown(event);
     const target = event.target as HTMLElement;
+    if (!event.defaultPrevented && event.button === 0 && !drawingTool && !editor.connecting && target.classList.contains('react-flow__pane')) {
+      marquee.current = { start: { x: event.clientX, y: event.clientY }, active: false, additive: event.ctrlKey || event.metaKey || event.shiftKey, edges: [...useBoardStore.getState().sessions[boardId].selectedConnectionIds] };
+    }
     if (!event.defaultPrevented && !target.closest('input, textarea, button, a, [contenteditable="true"], [role="menu"]')) stageRef.current?.closest<HTMLElement>('.board-workspace')?.focus({ preventScroll: true });
   };
   return <div ref={stageRef} className="board-stage" data-connecting={editor.connecting || !!connections.preview} onPointerDownCapture={beginPointer} onPointerUpCapture={connections.pointerUp} onClickCapture={connections.click}
-    onPointerCancel={connections.cancel}
+    onPointerCancel={() => { marquee.current = null; connections.cancel(); }}
     onPointerMove={event => {
       setBoardPointer(boardId, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
       connections.pointerMove(event);
@@ -153,6 +160,23 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       if (ids.length) editor.dropAssets?.(ids, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
     }}>
     <ReactFlow<BoardFlowNode> key={boardId} nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+      onSelectionStart={() => { if (marquee.current) marquee.current.active = true; }}
+      onSelectionEnd={event => {
+        const gesture = marquee.current; marquee.current = null;
+        if (!gesture?.active || !stageRef.current) return;
+        const visible = stageRef.current.querySelector('.react-flow__selection')?.getBoundingClientRect();
+        const rect = visible && visible.width && visible.height ? { x: visible.left, y: visible.top, width: visible.width, height: visible.height }
+          : { x: Math.min(gesture.start.x, event.clientX), y: Math.min(gesture.start.y, event.clientY), width: Math.abs(event.clientX - gesture.start.x), height: Math.abs(event.clientY - gesture.start.y) };
+        const state = useBoardStore.getState(), current = state.sessions[boardId];
+        const manual = new Set(current.document.connections.map(edge => edge.id));
+        const ids = new Set(gesture.additive ? gesture.edges : []);
+        stageRef.current.querySelectorAll<SVGPathElement>('.react-flow__edge-path').forEach(path => {
+          const id = path.closest('.react-flow__edge')?.getAttribute('data-id');
+          if (id && manual.has(id) && connectionPathIntersectsRect(path, rect)) ids.add(id);
+        });
+        state.setSelection(boardId, current.selectedObjectIds, [...ids]);
+        if (ids.size) editor.inspectSelection?.();
+      }}
       onNodesChange={onNodesChange} onEdgesChange={changes => {
         const selected = new Set(useBoardStore.getState().sessions[boardId].selectedConnectionIds);
         changes.forEach(change => { if (change.type === 'select' && session.document.connections.some(connection => connection.id === change.id)) { if (change.selected) selected.add(change.id); else selected.delete(change.id); } });
@@ -192,7 +216,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     </svg>}
     {connections.preview && <>
       <svg className="board-connect-preview" aria-label="Connection preview"><g transform={`translate(${viewportX ?? 0}, ${viewportY ?? 0}) scale(${zoom})`}>
-        <path d={connections.preview.path} vectorEffect="non-scaling-stroke" />
+        <path d={connections.preview.path} style={{ stroke: connectionStyle.color, strokeWidth: connectionStyle.width, strokeDasharray: connectionStyle.lineStyle === 'dashed' ? `${connectionStyle.width * 4} ${connectionStyle.width * 3}` : 'none' }} vectorEffect="non-scaling-stroke" />
         {connections.preview.target && <rect className="board-connect-target" x={connections.preview.target.x - 3 / zoom} y={connections.preview.target.y - 3 / zoom} width={connections.preview.target.width + 6 / zoom} height={connections.preview.target.height + 6 / zoom} rx={8 / zoom} vectorEffect="non-scaling-stroke" />}
       </g></svg>
       <div className="board-connect-hint">Connect: drag or click a destination · Esc to cancel</div>
@@ -202,9 +226,10 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     <BoardSmartFrameFilterPopover boardId={boardId} />
     {menu && <BoardContextMenu boardId={boardId} menu={menu} close={closeMenu} create={createObject} fit={onFitAll} autoGroup={ids => setGrouping({ ids })} />}
     {!session.document.objects.length && editor.editable && <div className="board-empty-start nodrag nopan">
-      <h2>Start your board</h2><p>Collect references or explore your library with a live query.</p>
-      <div><button className="board-button" onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="Search canvas library"]')?.focus()); }}>Add references</button><small>Choose files from the side library and arrange them freely.</small></div>
-      <div><button className="board-button" onClick={() => queryActions?.create()}>Explore library</button><small>Create a Smart Frame to filter, group and branch results.</small></div>
+      <h2>Start your board</h2><p>Arrange selected references, or explore a source with a Smart Frame.</p>
+      <div><button className="board-button" onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="Search canvas library"]')?.focus()); }}>Add references</button><small>Select files in the side library, then drag them here or use Add to canvas.</small></div>
+      <div><button className="board-button" onClick={() => queryActions?.create()}>Explore library</button><small>Choose and filter a source in Library, then add it to this board. Dynamic results update; Snapshots keep a fixed set.</small></div>
+      <footer>Wheel to zoom · Space + drag to pan</footer>
     </div>}
     {drawingTool && <div className="board-drawing-hint">Drag to draw {drawingTool === 'text' ? 'a text box' : `a ${drawingTool}`} · Esc to cancel</div>}
     {drawingTool && <div className="board-draw-overlay" aria-label={`Draw ${drawingTool}`}

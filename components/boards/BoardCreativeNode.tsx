@@ -4,6 +4,8 @@ import type { NodeProps } from '@xyflow/react';
 import type { BoardFlowNode } from '../../services/boards/reactFlowAdapter';
 import BoardNodeControls from './BoardNodeControls';
 import { useBoardEditor } from './BoardEditorContext';
+import { boardFontFamily } from '../../services/boards/fontFamily';
+import { boardTextAlignment, boardTextColor } from '../../services/boards/textAppearance';
 
 export default memo(function BoardCreativeNode({ data, selected }: NodeProps<BoardFlowNode>) {
   const editor = useBoardEditor();
@@ -28,14 +30,16 @@ export default memo(function BoardCreativeNode({ data, selected }: NodeProps<Boa
     {object.type === 'shape' ? <svg className="board-shape-background" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
       {object.shape === 'ellipse' ? <ellipse cx="50" cy="50" rx="49" ry="49" fill={object.color} stroke={object.borderColor} strokeWidth={object.borderWidth} vectorEffect="non-scaling-stroke" />
         : object.shape === 'diamond' ? <polygon points="50,1 99,50 50,99 1,50" fill={object.color} stroke={object.borderColor} strokeWidth={object.borderWidth} vectorEffect="non-scaling-stroke" />
-          : <rect x="1" y="1" width="98" height="98" rx="2" fill={object.color} stroke={object.borderColor} strokeWidth={object.borderWidth} vectorEffect="non-scaling-stroke" />}
+          : <rect x="1" y="1" width="98" height="98" rx={Math.min(object.cornerRadius ?? 0, object.width / 2) / object.width * 100} ry={Math.min(object.cornerRadius ?? 0, object.height / 2) / object.height * 100} fill={object.color} stroke={object.borderColor} strokeWidth={object.borderWidth} vectorEffect="non-scaling-stroke" />}
     </svg> : <div className="board-creative-background" style={{ background: object.type === 'sticky' ? object.color : undefined, borderColor: object.color }} />}
-    <div className={`board-creative-content ${object.type === 'shape' ? `board-shape-text--${object.shape}` : ''}`}>
+    <div className={`board-creative-content ${object.type === 'shape' ? `board-shape-text--${object.shape}` : ''}`} style={object.type === 'shape' ? { fontFamily: boardFontFamily(object.fontFamily), color: boardTextColor(object), textAlign: boardTextAlignment(object) } : undefined}>
+      <div className="board-creative-label" style={object.type === 'shape' ? { backgroundColor: object.backgroundColor ?? undefined, borderRadius: `${Math.min(object.backgroundRoundness ?? 8, 24)}px` } : undefined}>
       {editing ? <>
         <textarea ref={textarea} className="board-creative-input nodrag nopan nowheel" autoFocus aria-label={object.type === 'link' ? 'Link title' : 'Note text'} value={object.type === 'link' ? object.title : object.text}
           onChange={event => editor.change({ id: object.id, ...(object.type === 'link' ? { title: event.target.value } : { text: event.target.value }) })}
           onBlur={() => finish()} onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape' && !event.nativeEvent.isComposing) finish(true); }} />
       </> : <div className="board-creative-text"><BoardRichText text={object.type === 'link' ? object.title : object.text || (selected ? 'Double-click to edit' : '')} /></div>}
+      </div>
       {object.type === 'link' && <a className="nodrag nopan board-link-url" href={object.url} target="_blank" rel="noreferrer" onDoubleClick={event => event.stopPropagation()}>{object.url}</a>}
     </div>
   </div>;

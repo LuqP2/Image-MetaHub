@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBezierPath, Position } from '@xyflow/react';
 import { useBoardConnections } from '../hooks/useBoardConnections';
+import { useBoardConnectionStyleStore, DEFAULT_BOARD_CONNECTION_STYLE } from '../store/useBoardConnectionStyleStore';
 import { BoardEditorContext } from '../components/boards/BoardEditorContext';
 import { useBoardStore } from '../store/useBoardStore';
 import { createBoardDocument } from '../services/boards/document.mjs';
@@ -13,6 +14,7 @@ vi.mock('@xyflow/react', async original => ({ ...await original<typeof import('@
 vi.mock('../services/boards/boardService', () => ({ boardService: { save: async (document, revision) => ({ ...document, revision: revision + 1 }), flush: async () => {} } }));
 let hit: Element | null;
 beforeEach(() => {
+  useBoardConnectionStyleStore.setState({ style: { ...DEFAULT_BOARD_CONNECTION_STYLE } });
   vi.stubGlobal('PointerEvent', MouseEvent); hit = null;
   Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => hit });
   useBoardStore.setState({ sessions: {}, activeBoardId: null, closing: false });
@@ -49,6 +51,38 @@ function setup(initialTool: BoardTool = 'connect', editable = true) {
   return { id: document.id, click, current: () => useBoardStore.getState().sessions[document.id] };
 }
 describe('curved connections and two-click creation', () => {
+  it('keeps Connect active while Ctrl is held, then returns to Select on release', () => {
+    const { current } = setup();
+    hit = screen.getByTestId('node-0'); fireEvent.pointerDown(hit, { button: 0, clientX: 20, clientY: 20, ctrlKey: true });
+    hit = screen.getByTestId('node-1'); fireEvent.pointerMove(screen.getByTestId('stage'), { clientX: 420, clientY: 220, ctrlKey: true });
+    fireEvent.pointerUp(screen.getByTestId('stage'), { clientX: 420, clientY: 220, ctrlKey: true });
+    expect(current().document.connections).toHaveLength(1);
+    expect(screen.getByTestId('tool').textContent).toBe('connect');
+    fireEvent.keyUp(window, { key: 'Control', ctrlKey: false });
+    expect(screen.getByTestId('tool').textContent).toBe('select');
+  });
+  it('supports Ctrl-drag in Select while preserving Ctrl-click multi-selection', () => {
+    const { current } = setup('select');
+    for (const i of [0, 1]) {
+      hit = screen.getByTestId(`node-${i}`);
+      fireEvent.pointerDown(hit, { button: 0, clientX: i ? 420 : 20, clientY: i ? 220 : 20, ctrlKey: true });
+      fireEvent.pointerUp(hit, { clientX: i ? 420 : 20, clientY: i ? 220 : 20, ctrlKey: true });
+    }
+    expect(current().selectedObjectIds).toHaveLength(2);
+    expect(current().document.connections).toHaveLength(0);
+    hit = screen.getByTestId('node-0'); fireEvent.pointerDown(hit, { button: 0, clientX: 20, clientY: 20, ctrlKey: true });
+    hit = screen.getByTestId('node-1'); fireEvent.pointerMove(screen.getByTestId('stage'), { clientX: 420, clientY: 220, ctrlKey: true });
+    fireEvent.pointerUp(screen.getByTestId('stage'), { clientX: 420, clientY: 220, ctrlKey: true });
+    expect(current().document.connections).toHaveLength(1);
+    expect(screen.getByTestId('tool').textContent).toBe('connect');
+  });
+  it('creates connections with the last used color, weight and pattern', () => {
+    const { click, current } = setup();
+    act(() => useBoardConnectionStyleStore.getState().setStyle({ color: '#00aa44', width: 5, lineStyle: 'dashed' }));
+    click(0); click(1);
+    expect(current().document.connections[0]).toMatchObject({ color: '#00aa44', width: 5, lineStyle: 'dashed' });
+    expect(JSON.parse(localStorage.getItem('imh-board-connection-style')!)).toMatchObject({ color: '#00aa44', width: 5, lineStyle: 'dashed' });
+  });
   it.each(['top', 'right', 'bottom', 'left'] as const)('honors the explicit %s destination dot in preview and on drag release', side => {
     const { current } = setup('select');
     const source = screen.getByTestId('handle-0');

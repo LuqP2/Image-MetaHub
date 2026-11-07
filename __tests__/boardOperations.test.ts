@@ -5,6 +5,18 @@ import { getBoardBounds, findContainingFrame, toBoardAbsolute, toFrameRelative }
 import { boardLocator, boardWithTexts } from './helpers/boardFixtures';
 
 describe('board composition operations', () => {
+  it('scales image sizes and positions uniformly with a frame, preserving explicit child geometry', () => {
+    const original = addAssets(createBoardDocument(), [{ name: 'image.png', mediaType: 'image', reference: { kind: 'path', locator: boardLocator('image.png') } }], { x: 100, y: 100 });
+    const framed = createFrame(original, [original.objects[0].id]);
+    const frame = framed.objects.find(object => object.type === 'frame')!;
+    const child = framed.objects.find(object => object.type === 'asset')!;
+    const next = updateObjects(framed, [{ id: frame.id, x: frame.x - 20, y: frame.y - 30, width: frame.width * 2, height: frame.height * 2 }]);
+    expect(next.objects.find(object => object.id === child.id)).toMatchObject({ x: frame.x - 20 + (child.x - frame.x) * 2, y: frame.y - 30 + (child.y - frame.y) * 2, width: child.width * 2, height: child.height * 2 });
+    const nonuniform = updateObjects(framed, [{ id: frame.id, width: frame.width * 2, height: frame.height / 2 }]);
+    expect(nonuniform.objects.find(object => object.id === child.id)).toMatchObject({ width: child.width / 2, height: child.height / 2 });
+    const explicit = updateObjects(framed, [{ id: frame.id, width: frame.width * 2, height: frame.height * 2 }, { id: child.id, x: 999, width: 400 }]);
+    expect(explicit.objects.find(object => object.id === child.id)).toMatchObject({ x: 999, width: 400, height: child.height * 2 });
+  });
   it('draws exact bounds and groups enclosed objects without moving them', () => {
     const original = boardWithTexts();
     const bounds = { x: -40, y: -40, width: 400, height: 250 };

@@ -115,17 +115,32 @@ export function normalizeBoardDocument(input) {
     }
     if (['text', 'sticky', 'shape'].includes(value.type)) {
       const text = { ...base, text: string(value.text, 'Text'), fontSize: number(value.fontSize, 'Font size', 1), color: color(value.color) };
-      if (value.type === 'text') {
+      if (value.type === 'text' || value.type === 'shape') {
         if (value.fontFamily !== undefined) {
           const family = string(value.fontFamily, 'Font family', true);
           if (family.length > 200 || Array.from(family).some(character => character.charCodeAt(0) < 32)) fail('Invalid font family.');
           text.fontFamily = family;
         }
         if (value.backgroundColor !== undefined) text.backgroundColor = value.backgroundColor === null ? null : color(value.backgroundColor);
+        if (value.textAlign !== undefined) {
+          if (!['left', 'center', 'right'].includes(value.textAlign)) fail('Invalid text alignment.');
+          text.textAlign = value.textAlign;
+        }
+        if (value.backgroundRoundness !== undefined) {
+          const roundness = number(value.backgroundRoundness, 'Background roundness', 0);
+          if (roundness > 100) fail('Background roundness must not exceed 100.');
+          text.backgroundRoundness = roundness;
+        }
       }
       if (value.type !== 'shape') return text;
       if (!['rectangle', 'ellipse', 'diamond'].includes(value.shape)) fail('Invalid shape.');
       if (![1, 2, 4].includes(value.borderWidth)) fail('Invalid border width.');
+      if (value.textColor !== undefined) text.textColor = color(value.textColor);
+      if (value.cornerRadius !== undefined) {
+        const radius = number(value.cornerRadius, 'Rectangle corner radius', 0);
+        if (radius > 24) fail('Rectangle corner radius must not exceed 24.');
+        text.cornerRadius = radius;
+      }
       return { ...text, shape: value.shape, borderColor: color(value.borderColor), borderWidth: value.borderWidth };
     }
     if (!['image', 'video', 'audio', 'model3d'].includes(value.mediaType)) fail('Invalid media type.');

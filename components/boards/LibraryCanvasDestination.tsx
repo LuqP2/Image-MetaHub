@@ -45,9 +45,9 @@ export default function LibraryCanvasDestination({ capture, error, busy, blocked
       {(error || loadError) && <p role="alert" className="mb-3 text-sm text-red-300">{error || loadError}</p>}
       {blocked && <p role="status" className="mb-2 text-xs">Wait for Library results to finish updating.</p>}
       <fieldset disabled={busy || blocked} className="flex flex-col gap-2">
-        {retrySave ? <button className="rounded bg-indigo-600 p-2" onClick={() => add()}>Retry saving Smart Frame</button> : <>
+        {retrySave ? <button className="rounded border border-accent/40 bg-accent/15 p-2 text-accent hover:bg-accent/25" onClick={() => add()}>Retry saving Smart Frame</button> : <>
           <label className="text-sm">New board…<input className="mt-1 w-full rounded border border-gray-700 bg-gray-800 p-2" aria-label="New board name" value={name} onChange={event => setName(event.target.value)}/></label>
-          <button className="rounded bg-indigo-600 p-2" onClick={() => add(undefined, name)}>Create board and add</button>
+          <button className="rounded border border-accent/40 bg-accent/15 p-2 text-accent hover:bg-accent/25" onClick={() => add(undefined, name)}>Create board and add</button>
           {summaries.filter(item => !item.error).map(item => <button key={item.id} className="rounded border border-gray-700 p-2 text-left" onClick={() => add(item.id)}>{item.name}</button>)}
         </>}
       </fieldset>

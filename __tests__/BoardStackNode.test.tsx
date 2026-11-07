@@ -9,6 +9,7 @@ import { createStack } from '../services/boards/stackOperations';
 import { createBoardDocument } from '../services/boards/document.mjs';
 import { boardLocator } from './helpers/boardFixtures';
 import type { BoardStackObject } from '../services/boards/types';
+import { ReactFlowProvider } from '@xyflow/react';
 
 vi.mock('../components/boards/BoardNodeControls', () => ({ default: () => null }));
 vi.mock('../components/boards/BoardResultThumbnail', () => ({ default: ({ image, open }) => <button onDoubleClick={open}>{image.name}</button> }));
@@ -25,15 +26,20 @@ it('navigates, persists a chosen cover, expands and unstacks with undo', () => {
     const object = useBoardStore(state => state.sessions[document.id].document.objects.find(object => object.id === stack.id));
     return object ? <BoardStackNode {...({ data: { object }, selected: true } as any)} /> : null;
   }
-  render(<BoardEditorContext.Provider value={{ editable: true, connecting: false, begin() {}, change() {}, commit() {}, cancel() {}, openAsset: open, resolveAsset: object => ({ status: 'resolved', image: { id: object.id, name: object.name } as any }) }}><Fixture /></BoardEditorContext.Provider>);
+  const view = render(<BoardEditorContext.Provider value={{ editable: true, connecting: false, begin() {}, change() {}, commit() {}, cancel() {}, openAsset: open, resolveAsset: object => ({ status: 'resolved', image: { id: object.id, name: object.name } as any }) }}><Fixture /></BoardEditorContext.Provider>, { wrapper: ReactFlowProvider });
   fireEvent.click(screen.getByLabelText('Next stack image'));
   expect(screen.getByText('b.png')).toBeTruthy();
   fireEvent.click(screen.getByText('Set cover'));
   expect((useBoardStore.getState().sessions[document.id].document.objects.find(object => object.id === stack.id) as BoardStackObject).coverId).toBe(base.objects[1].id);
   fireEvent.doubleClick(screen.getByText('b.png'));
   expect(open).toHaveBeenCalled();
+  Object.defineProperty(view.container.querySelector('.board-stack'), 'getBoundingClientRect', { value: () => ({ left: 900, right: 1000, top: 750 }) });
   fireEvent.click(screen.getByText('Expand'));
   expect(screen.getByText('a.png')).toBeTruthy();
+  const expanded = window.document.querySelector<HTMLElement>('.board-stack-expanded')!;
+  expect(parseFloat(expanded.style.left)).toBeGreaterThanOrEqual(12);
+  expect(parseFloat(expanded.style.left) + parseFloat(expanded.style.width)).toBeLessThanOrEqual(window.innerWidth - 12);
+  expect(parseFloat(expanded.style.top) + parseFloat(expanded.style.maxHeight)).toBeLessThanOrEqual(window.innerHeight - 12);
   fireEvent.click(screen.getByText('Unstack'));
   expect(useBoardStore.getState().sessions[document.id].document.objects).toHaveLength(2);
   expect(useBoardStore.getState().sessions[document.id].past).toHaveLength(2);

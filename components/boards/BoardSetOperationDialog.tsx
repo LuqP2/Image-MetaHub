@@ -43,7 +43,7 @@ export default function BoardSetOperationDialog({ frames, disabled, confirm, clo
     <h2>Difference</h2><p><strong>{left.title}</strong> minus <strong>{right.title}</strong></p>
     <p>Keep images in the first frame that are absent from the second.</p>
     <button className="board-button" disabled={disabled} onClick={() => setInverted(!inverted)}>Swap A and B</button>
-    <button className="board-button" disabled={disabled} onClick={() => confirm(left.id, right.id)}>Create difference</button>
-    <button className="board-button" onClick={close}>Cancel</button>
+    <div className="board-dialog-actions"><button className="board-button" disabled={disabled} onClick={() => confirm(left.id, right.id)}>Create difference</button>
+    <button className="board-button" onClick={close}>Cancel</button></div>
   </div></div>;
 }

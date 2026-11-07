@@ -72,14 +72,21 @@ export function updateObjects(document: BoardDocument, updates: BoardObjectUpdat
   const objects = document.objects.map(object => {
     const update = byId.get(object.id);
     let next = update ? { ...object, ...update, id: object.id, type: object.type } as BoardObject : object;
-    // A frame drag moves members once; explicit member positions win for multi-selection.
+    // Images and stacks follow a frame's resize with a uniform scale. Explicit
+    // member geometry wins, including a multi-selection resize in the same update.
     const parentUpdate = object.frameId ? byId.get(object.frameId) : null;
     const parent = parentUpdate ? document.objects.find(candidate => candidate.id === object.frameId) : null;
-    if (parent && parentUpdate) next = {
-      ...next,
-      x: update?.x ?? object.x + (parentUpdate.x ?? parent.x) - parent.x,
-      y: update?.y ?? object.y + (parentUpdate.y ?? parent.y) - parent.y,
-    };
+    if (parent && parentUpdate) {
+      const scalable = object.type === 'stack' || (object.type === 'asset' && object.mediaType === 'image');
+      const scale = scalable ? Math.min((parentUpdate.width ?? parent.width) / parent.width, (parentUpdate.height ?? parent.height) / parent.height) : 1;
+      next = {
+        ...next,
+        x: update?.x ?? (parentUpdate.x ?? parent.x) + (object.x - parent.x) * scale,
+        y: update?.y ?? (parentUpdate.y ?? parent.y) + (object.y - parent.y) * scale,
+        width: update?.width ?? object.width * scale,
+        height: update?.height ?? object.height * scale,
+      } as BoardObject;
+    }
     return next;
   });
   const owners = stackMembership(document.objects);
