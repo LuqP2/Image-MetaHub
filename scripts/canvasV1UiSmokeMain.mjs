@@ -23,8 +23,8 @@ try {
   if (process.argv.includes('--connections-only')) {
     const prepare = await window.webContents.executeJavaScript('window.canvasSmoke.prepareCurvedConnections()');
     window.webContents.debugger.attach('1.3');
-    const send = async (type, point, buttons) => {
-      await window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type, ...point, button: type === 'mouseMoved' ? 'none' : 'left', buttons, clickCount: type === 'mouseMoved' ? 0 : 1 });
+    const send = async (type, point, buttons, modifiers = 0) => {
+      await window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type, ...point, button: type === 'mouseMoved' ? 'none' : 'left', buttons, modifiers, clickCount: type === 'mouseMoved' ? 0 : 1 });
       await new Promise(resolve => setTimeout(resolve, 60));
     };
     await send('mousePressed', prepare.from, 1);
@@ -49,7 +49,18 @@ try {
     const dotPath = await window.webContents.executeJavaScript('window.canvasSmoke.readCurvedPreview()');
     await send('mousePressed', prepare.to, 1); await send('mouseReleased', prepare.to, 0);
     await window.webContents.executeJavaScript(`window.canvasSmoke.verifyCurvedConnection(${JSON.stringify(prepare.id)}, ${JSON.stringify(dotPath)}, 1)`);
-    const result = { curvedDrag: true, previewMatchesCommittedCurve: true, twoClicks: true, dotInSelectMode: true, automaticSelect: true };
+    const marquee = await window.webContents.executeJavaScript('window.canvasSmoke.edgeMarqueePoints()');
+    await send('mousePressed', marquee.from, 1);
+    await send('mouseMoved', marquee.to, 1);
+    await send('mouseReleased', marquee.to, 0);
+    const edgeMarquee = await window.webContents.executeJavaScript(`window.canvasSmoke.verifyEdgeMarquee(${JSON.stringify(prepare.id)})`);
+    await send('mousePressed', prepare.to, 1, 2);
+    await send('mouseMoved', prepare.from, 1, 2);
+    await send('mouseReleased', prepare.from, 0, 2);
+    const ctrlConnect = await window.webContents.executeJavaScript(`window.canvasSmoke.verifyCtrlConnect(${JSON.stringify(prepare.id)})`);
+    await window.webContents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Control', code: 'ControlLeft', windowsVirtualKeyCode: 17, modifiers: 0 });
+    await window.webContents.executeJavaScript('window.canvasSmoke.verifyCtrlReleased()');
+    const result = { curvedDrag: true, previewMatchesCommittedCurve: true, twoClicks: true, dotInSelectMode: true, automaticSelect: true, edgeMarquee, ctrlConnect };
     await fs.writeFile(path.join(output, 'connections-result.json'), JSON.stringify(result, null, 2));
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } else if (process.argv.includes('--interaction-only')) {
@@ -75,6 +86,7 @@ try {
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } else {
   const result = await window.webContents.executeJavaScript(`window.canvasSmoke.run()`);
+  result.contextMenu = await window.webContents.executeJavaScript('window.canvasSmoke.verifyMenuPlacement()');
   window.webContents.debugger.attach('1.3');
   const drag = async points => {
     const send = (type, point, buttons) => window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type, ...point, button: type === 'mouseMoved' ? 'none' : 'left', buttons, clickCount: type === 'mouseMoved' ? 0 : 1 });

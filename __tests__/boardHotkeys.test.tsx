@@ -10,12 +10,23 @@ vi.mock('../services/boards/boardService', () => ({ boardService: {
 } }));
 function Harness({ id, editable }: { id: string; editable: boolean }) {
   const onKeyDownCapture = useBoardHotkeys(id, editable);
-  return <section data-testid="canvas" tabIndex={0} onKeyDownCapture={onKeyDownCapture}><input aria-label="typing" /></section>;
+  return <section data-testid="canvas" tabIndex={0} onKeyDownCapture={onKeyDownCapture}><input aria-label="typing" /><div role="menu" onKeyDown={event => event.stopPropagation()}><button>Menu action</button></div></section>;
 }
 beforeEach(() => useBoardStore.setState({ sessions: {}, summaries: [], activeBoardId: null }));
 afterEach(async () => { await act(async () => useBoardStore.getState().flushAll()); cleanup(); });
 
 describe('canvas keyboard isolation', () => {
+  it('leaves Escape and Delete to the context menu without clearing or removing its selection', async () => {
+    const id = await useBoardStore.getState().createBoard();
+    useBoardStore.getState().executeOperation(id, document => addText(document, { x: 0, y: 0 }));
+    const object = useBoardStore.getState().sessions[id].document.objects[0];
+    useBoardStore.getState().setSelection(id, [object.id]);
+    render(<Harness id={id} editable/>);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Menu action' }), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Menu action' }), { key: 'Delete' });
+    expect(useBoardStore.getState().sessions[id].selectedObjectIds).toEqual([object.id]);
+    expect(useBoardStore.getState().sessions[id].document.objects).toHaveLength(1);
+  });
   it('removes objects locally and stops library-level Delete and Select All handlers', async () => {
     const id = await useBoardStore.getState().createBoard();
     useBoardStore.getState().executeOperation(id, document => addText(document, { x: 0, y: 0 }));

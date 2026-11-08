@@ -4,7 +4,8 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BoardWorkspace from '../components/BoardWorkspace';
-import { addText } from '../services/boards/operations';
+import { addText, addAssets, createFrame, updateObjects } from '../services/boards/operations';
+import { boardLocator } from './helpers/boardFixtures';
 import { useBoardStore } from '../store/useBoardStore';
 
 const mock = vi.hoisted(() => ({ documents: new Map(), exported: vi.fn(), setViewport: vi.fn() }));
@@ -25,8 +26,29 @@ vi.mock('../components/boards/BoardCanvas', () => ({ default: ({ boardId, onFitA
 } }));
 
 beforeEach(() => { useBoardUIStore.setState({ inspectorOpen: true, libraryOpen: true }); mock.documents.clear(); mock.exported.mockClear(); useBoardStore.setState({ sessions: {}, summaries: [], openBoardIds: [], activeBoardId: null }); });
-afterEach(async () => { await act(async () => { await useBoardStore.getState().flushAll(); }); cleanup(); });
+afterEach(async () => { await act(async () => { await useBoardStore.getState().flushAll(); }); cleanup(); vi.unstubAllGlobals(); });
 describe('board workspace flow', () => {
+  it('commits a frame resize and scaled images as one undo step and saves the resulting geometry', async () => {
+    const state = useBoardStore.getState();
+    const id = await state.createBoard('Scale references');
+    state.executeOperation(id, doc => {
+      const next = addAssets(doc, [{ name: 'image.png', mediaType: 'image', reference: { kind: 'path', locator: boardLocator('image.png') } }], { x: 80, y: 80 });
+      return createFrame(next, [next.objects[0].id]);
+    });
+    const before = useBoardStore.getState().sessions[id].document;
+    const frame = before.objects.find(object => object.type === 'frame')!;
+    const image = before.objects.find(object => object.type === 'asset')!;
+    const past = useBoardStore.getState().sessions[id].past.length;
+    for (const scale of [1.5, 2]) state.updateInteraction(id, doc => updateObjects(doc, [{ id: frame.id, width: frame.width * scale, height: frame.height * scale }]));
+    state.commitInteraction(id);
+    expect(useBoardStore.getState().sessions[id].past).toHaveLength(past + 1);
+    expect(useBoardStore.getState().sessions[id].document.objects.find(object => object.id === image.id)?.width).toBeCloseTo(image.width * 2);
+    state.undo(id);
+    expect(useBoardStore.getState().sessions[id].document.objects).toEqual(before.objects);
+    state.redo(id);
+    await state.flushBoard(id);
+    expect(mock.documents.get(id).objects.find(object => object.id === image.id).width).toBeCloseTo(image.width * 2);
+  });
   it('fits document geometry to the available stage and caps zoom at actual size', async () => {
     let id = '';
     await act(async () => { id = await useBoardStore.getState().createBoard('Fit'); });
@@ -113,4 +135,39 @@ it('keeps an explicitly open inspector visible on outside clicks and places the 
   expect(toolbar.firstElementChild).toBe(toggle);
   expect(toggle.closest('.board-toolbar-end')).toBeNull();
   fireEvent.click(toggle); expect(useBoardUIStore.getState().libraryOpen).toBe(false);
+});
+
+it('switches narrow side panels without overwriting widths and restores both on a wide window', async () => {
+  let resize: ResizeObserverCallback | undefined;
+  vi.stubGlobal('ResizeObserver', class { constructor(callback: ResizeObserverCallback) { resize = callback; } observe() {} disconnect() {} });
+  const id = await useBoardStore.getState().createBoard('Narrow panels');
+  useBoardStore.getState().executeOperation(id, doc => addText(doc, { x: 0, y: 0 }));
+  useBoardUIStore.setState({ libraryWidth: 320, inspectorWidth: 340 });
+  await act(async () => { render(<BoardWorkspace editable assetPanel={<p>Asset browser fixture</p>}/>); });
+  const setWidth = (width: number) => act(() => resize?.([{ contentRect: { width } } as ResizeObserverEntry], {} as ResizeObserver));
+  setWidth(786);
+  expect(screen.getByText('Asset browser fixture')).toBeTruthy();
+  expect(screen.queryByLabelText('Board inspector')).toBeNull();
+  fireEvent.click(screen.getByText('Select test item'));
+  expect(screen.getByLabelText('Board inspector')).toBeTruthy();
+  expect(screen.queryByText('Asset browser fixture')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle library' }));
+  expect(screen.getByText('Asset browser fixture')).toBeTruthy();
+  expect(screen.queryByLabelText('Board inspector')).toBeNull();
+  setWidth(1440);
+  expect(screen.getByLabelText('Board inspector')).toBeTruthy();
+  expect(screen.getByText('Asset browser fixture')).toBeTruthy();
+  expect(useBoardUIStore.getState()).toMatchObject({ libraryWidth: 320, inspectorWidth: 340 });
+});
+
+it('keeps the replacement library visible while a narrow inspector is requested', async () => {
+  let resize: ResizeObserverCallback | undefined;
+  vi.stubGlobal('ResizeObserver', class { constructor(callback: ResizeObserverCallback) { resize = callback; } observe() {} disconnect() {} });
+  await useBoardStore.getState().createBoard('Replacement');
+  await act(async () => { render(<BoardWorkspace editable libraryLocked assetPanel={<p>Replacement browser</p>}/>); });
+  act(() => resize?.([{ contentRect: { width: 786 } } as ResizeObserverEntry], {} as ResizeObserver));
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle inspector' }));
+  expect(screen.getByText('Replacement browser')).toBeTruthy();
+  expect(screen.queryByLabelText('Board inspector')).toBeNull();
+  expect((screen.getByRole('button', { name: 'Toggle library' }) as HTMLButtonElement).disabled).toBe(true);
 });

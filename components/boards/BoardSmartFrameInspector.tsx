@@ -35,7 +35,7 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
   const collectionId = frame.source.kind === 'collection' ? frame.source.collectionId : null;
   const sourceValue = frame.source.kind === 'collection' ? `collection:${frame.source.collectionId}` : frame.source.kind === 'frame' ? `frame:${frame.source.frameId}` : frame.source.kind;
   return <div onBlur={() => useBoardStore.getState().commitInteraction(boardId)}>
-    <label>Title<input className="board-input" value={frame.title} disabled={!editable} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateObjects(document, [{ id: frame.id, title: event.target.value }]))} /></label>
+    <div className="board-query-identity"><small>{frame.source.kind === 'snapshot' ? 'Snapshot · fixed files' : 'Dynamic · follows source changes'}{result?.status === 'ready' ? ` · ${result.totalCount.toLocaleString()} images` : ''}</small><label>Title<input className="board-input" value={frame.title} disabled={!editable} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateObjects(document, [{ id: frame.id, title: event.target.value }]))} /></label></div>
     {error && <p role="alert">{error}</p>}
     <Section title="Source" defaultOpen stateKey={`${boardId}:source`}>
     <label>Source<select className="board-input" disabled={!editable} value={sourceValue} onChange={event => {
@@ -49,8 +49,9 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
       {actions?.collections.map(collection => <option key={collection.id} value={`collection:${collection.id}`}>Collection: {collection.name}</option>)}
       {candidates.map(candidate => <option key={candidate.id} value={`frame:${candidate.id}`}>Frame: {frames.find(item => item.id === candidate.id)?.title}</option>)}
     </select></label>
-    <button className="board-button" disabled={!editable || result?.status !== 'ready'} onClick={() => actions?.snapshot(frame.id)}>Freeze as Snapshot</button>
-    <button className="board-button" disabled={!editable} onClick={() => actions?.useCurrentFilters(frame.id)}>Use current library view</button>
+    <div className="board-inspector-action-list"><button className="board-button" disabled={!editable || result?.status !== 'ready'} onClick={() => actions?.snapshot(frame.id)}>Freeze as Snapshot</button>
+    <button className="board-button" disabled={!editable} onClick={() => actions?.useCurrentFilters(frame.id)}>Use current library view</button></div>
+    <BoardInheritedQuerySummary source={frame.source} frames={frames} />
     </Section>
     <Section title="Filters" defaultOpen stateKey={`${boardId}:filters`}>
     {frame.groupConstraints.length > 0 && <section aria-label="Local group filters"><h3>Group filters</h3>
@@ -66,9 +67,8 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
     <BoardSmartFrameLayoutEditor layout={frame.layout} disabled={!editable} change={layout => run(document => updateSmartFrameLayout(document, frame.id, layout))} />
     </Section>
     <Section title="Relationships" defaultOpen stateKey={`${boardId}:relations`}>
-    <button className="board-button" disabled={!editable} onClick={() => run(document => branchSmartFrame(document, frame.id))}>Branch from results</button>
-    <button className="board-button" disabled={!editable} onClick={() => run(document => duplicateSmartFrameQuery(document, frame.id))}>Duplicate query independently</button>
-    <BoardInheritedQuerySummary source={frame.source} frames={frames} />
+    <div className="board-inspector-action-list"><button className="board-button" disabled={!editable} onClick={() => run(document => branchSmartFrame(document, frame.id))}>Branch from results</button>
+    <button className="board-button" disabled={!editable} onClick={() => run(document => duplicateSmartFrameQuery(document, frame.id))}>Duplicate query independently</button></div>
     </Section>
 
   </div>;

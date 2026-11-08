@@ -1,7 +1,7 @@
-import React, { FC, useMemo, useState } from 'react';
+import React, { FC, useState } from 'react';
 import { ChevronDown, ChevronRight, Copy, AlertTriangle, CheckCircle } from 'lucide-react';
-import { ComparisonMetadataPanelProps, BaseMetadata } from '../types';
-import { compareField, formatFieldValue, diffText, DiffToken } from '../utils/metadataComparison';
+import { ComparisonMetadataPanelProps } from '../types';
+import { compareField, formatFieldValue, diffText } from '../utils/metadataComparison';
 import { copyTextToClipboard } from '../utils/imageUtils';
 
 // Helper component for individual metadata fields
@@ -95,7 +95,7 @@ const MetadataField: FC<{
   };
 
   return (
-    <div className={`p-2 rounded border ${highlightClass}`}>
+    <div data-multiline={multiline || undefined} className={`metadata-field p-2 rounded border ${highlightClass}`}>
       <div className="flex justify-between items-start">
         <p className="text-gray-400 text-xs uppercase tracking-wider">{label}</p>
         {onCopy && (

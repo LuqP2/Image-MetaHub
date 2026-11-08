@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { BoardRepository } from '../electron/boardRepository.mjs';
-import { boardWithAsset, boardRemap } from './helpers/boardFixtures';
+import { boardWithAsset, boardWithTexts, boardRemap } from './helpers/boardFixtures';
 
 const directories: string[] = [];
 async function repository() {
@@ -16,6 +16,15 @@ async function repository() {
 afterEach(async () => { for (const directory of directories.splice(0)) await fs.rm(directory, { recursive: true, force: true }); });
 
 describe('desktop board repository', () => {
+  it('preserves text alignment and corner radius in save responses and after restart', async () => {
+    const { repo, directory } = await repository();
+    const board = boardWithTexts();
+    board.objects = board.objects.map(object => ({ ...object, textAlign: 'right', backgroundColor: '#123456', backgroundRoundness: 18 }));
+    const saved = await repo.save(board, 0);
+    expect(saved.objects[0]).toMatchObject({ textAlign: 'right', backgroundRoundness: 18 });
+    const reopened = await new BoardRepository({ directory }).load(board.id);
+    expect(reopened.objects[0]).toMatchObject({ textAlign: 'right', backgroundRoundness: 18 });
+  });
   it('serializes competing writes and preserves the committed revision', async () => {
     const { repo } = await repository();
     const board = boardWithAsset();

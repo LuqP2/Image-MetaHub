@@ -9,7 +9,11 @@ vi.mock('../components/boards/BoardMiniMap', () => ({ default: () => null }));
 import { BoardEditorContext } from '../components/boards/BoardEditorContext';
 import { useBoardStore } from '../store/useBoardStore';
 import { createBoardDocument } from '../services/boards/document.mjs';
-import { addText } from '../services/boards/operations';
+import { addText, addAssets, createFrame } from '../services/boards/operations';
+import { createStack } from '../services/boards/stackOperations';
+import { boardLocator } from './helpers/boardFixtures';
+import type { NodeChange } from '@xyflow/react';
+import type { BoardFlowNode } from '../services/boards/reactFlowAdapter';
 
 const flow = vi.hoisted(() => ({ fitView: vi.fn(), getViewport: vi.fn(), screenToFlowPosition: vi.fn() }));
 const rendered = vi.hoisted(() => ({ viewport: null as unknown, props: {} as Record<string, unknown> }));
@@ -46,6 +50,38 @@ function setup() {
 }
 
 describe('Canvas fit-selection request lifecycle', () => {
+  it.each([
+    { name: 'width then height', steps: [[2, 1], [2, 2]], scale: 2 },
+    { name: 'shrink then restore', steps: [[0.5, 1], [1, 1]], scale: 1 },
+  ])('resizes frame members from the starting geometry: $name', async ({ steps, scale }) => {
+    const assets = addAssets(createBoardDocument(), ['a.png', 'b.png', 'c.png'].map(name => ({ name, mediaType: 'image' as const, reference: { kind: 'path' as const, locator: boardLocator(name) } })), { x: 80, y: 80 });
+    const stacked = createStack(assets, assets.objects.slice(0, 2).map(object => object.id));
+    const before = createFrame(stacked, stacked.objects.map(object => object.id));
+    const frame = before.objects.find(object => object.type === 'frame')!;
+    const state = useBoardStore.getState();
+    state.adoptBoard(before);
+    render(<BoardEditorContext.Provider value={{ editable: true, connecting: false, begin: vi.fn(), change: vi.fn(), commit: vi.fn(), cancel: vi.fn() }}><BoardCanvas boardId={before.id} /></BoardEditorContext.Provider>);
+    for (const [width, height] of steps) act(() => {
+      (rendered.props.onNodesChange as (changes: NodeChange<BoardFlowNode>[]) => void)([{ id: frame.id, type: 'dimensions', resizing: true, setAttributes: true, dimensions: { width: frame.width * width, height: frame.height * height } }]);
+    });
+    act(() => {
+      (rendered.props.onNodesChange as (changes: NodeChange<BoardFlowNode>[]) => void)([{ id: frame.id, type: 'dimensions', resizing: false }]);
+    });
+    const result = useBoardStore.getState().sessions[before.id].document;
+    for (const original of before.objects.filter(object => object.type !== 'frame')) {
+      expect(result.objects.find(object => object.id === original.id)).toMatchObject({ x: frame.x + (original.x - frame.x) * scale, y: frame.y + (original.y - frame.y) * scale, width: original.width * scale, height: original.height * scale });
+    }
+    expect(useBoardStore.getState().sessions[before.id].past).toHaveLength(scale === 1 ? 0 : 1);
+    if (scale !== 1) {
+      act(() => state.undo(before.id));
+      expect(useBoardStore.getState().sessions[before.id].document.objects).toEqual(before.objects);
+      act(() => state.redo(before.id));
+      expect(useBoardStore.getState().sessions[before.id].document.objects).toEqual(result.objects);
+    }
+    await act(async () => state.flushBoard(before.id));
+    expect(useBoardStore.getState().sessions[before.id].saveStatus).toBe('saved');
+  });
+
   it('zooms with the wheel, selects intersecting objects, supports modifiers and collapses the map', () => {
     const { mount } = setup(); mount();
     expect(rendered.props.zoomOnScroll).toBe(true);
