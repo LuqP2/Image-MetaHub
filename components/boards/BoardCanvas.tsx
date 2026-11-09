@@ -1,3 +1,4 @@
+import { useSettingsStore } from '../../store/useSettingsStore';
 import BoardVisualGroupingDialog from './BoardVisualGroupingDialog';
 import BoardStackNode from './BoardStackNode';
 import { hasStackCardDrag, getStackCardDrag, clearStackCardDrag } from '../../services/boards/stackDrag';
@@ -50,6 +51,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
   const flow = useReactFlow<BoardFlowNode>();
   const { x: viewportX, y: viewportY, zoom } = useViewport();
   const snapping = useBoardSnapping(boardId);
+  const showGrid = useSettingsStore(state => state.canvasShowGrid);
   const stageRef = useRef<HTMLDivElement>(null);
   const connections = useBoardConnections(boardId, stageRef);
   const connectionStyle = useBoardConnectionStyleStore(state => state.style);
@@ -186,8 +188,8 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       connectionMode={ConnectionMode.Loose} nodesDraggable={editor.editable && !drawingTool && !editor.connecting && !connections.preview} nodesConnectable={editor.editable && !drawingTool}
       connectionRadius={20 / zoom} connectOnClick={false}
       defaultViewport={session.document.viewport} minZoom={0.1} maxZoom={4} deleteKeyCode={null} selectionKeyCode={null}
-      multiSelectionKeyCode={["Control", "Meta", "Shift"]} panActivationKeyCode="Space" panOnDrag={[1]} selectionOnDrag={!drawingTool && !editor.connecting && !connections.preview} selectionMode={SelectionMode.Partial} panOnScroll={false}
-      zoomOnScroll zoomOnPinch zoomActivationKeyCode={['Control', 'Meta']} zoomOnDoubleClick={false}
+      multiSelectionKeyCode={["Control", "Meta", "Shift"]} panActivationKeyCode="Space" panOnDrag={[1, 2]} selectionOnDrag={!drawingTool && !editor.connecting && !connections.preview} selectionMode={SelectionMode.Partial} panOnScroll
+      zoomOnScroll={false} zoomOnPinch zoomActivationKeyCode={['Control', 'Meta']} zoomOnDoubleClick={false}
       onMoveEnd={() => useBoardStore.getState().setViewport(boardId, flow.getViewport())}
       onNodeClick={() => editor.inspectSelection?.()} onEdgeClick={() => editor.inspectSelection?.()}
       onNodeContextMenu={(event, node) => {
@@ -204,7 +206,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       onlyRenderVisibleElements elevateNodesOnSelect={false}>
       <Panel position="bottom-right" className="board-minimap-panel"><BoardViewportControls boardId={boardId} onFitAll={onFitAll}/></Panel>
       <Panel position="bottom-left"><BoardCanvasHelp/></Panel>
-      <Background color="rgb(var(--gray-700) / .55)" gap={24} size={1} />
+      {showGrid && <Background color="rgb(var(--gray-700) / .55)" gap={24} size={1} />}
     </ReactFlow>
     {!!snapping.guides.length && <svg aria-label="Smart Guides" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1001, overflow: 'hidden' }}>
       <g transform={`translate(${viewportX ?? 0}, ${viewportY ?? 0}) scale(${zoom})`}>
@@ -229,7 +231,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       <h2>Start your board</h2><p>Arrange selected references, or explore a source with a Smart Frame.</p>
       <div><button className="board-button" onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="Search canvas library"]')?.focus()); }}>Add references</button><small>Select files in the side library, then drag them here or use Add to canvas.</small></div>
       <div><button className="board-button" onClick={() => queryActions?.create()}>Explore library</button><small>Choose and filter a source in Library, then add it to this board. Dynamic results update; Snapshots keep a fixed set.</small></div>
-      <footer>Wheel to zoom · Space + drag to pan</footer>
+      <footer>Ctrl + wheel to zoom · Wheel to scroll · Shift + wheel to scroll horizontally · Right drag or Space + drag to pan</footer>
     </div>}
     {drawingTool && <div className="board-drawing-hint">Drag to draw {drawingTool === 'text' ? 'a text box' : `a ${drawingTool}`} · Esc to cancel</div>}
     {drawingTool && <div className="board-draw-overlay" aria-label={`Draw ${drawingTool}`}

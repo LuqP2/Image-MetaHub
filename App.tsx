@@ -1,3 +1,4 @@
+import { useBoardUIStore } from './store/useBoardUIStore';
 import { useLibraryCanvas } from './hooks/useLibraryCanvas';
 import React, { startTransition, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { flushSync } from 'react-dom';
@@ -766,6 +767,7 @@ export default function App() {
   }, [activeImageScope, clusters, collections, safeImages, validateActiveImageScope]);
 
   const [comfyUIWorkspaceToolbarHost, setComfyUIWorkspaceToolbarHost] = useState<HTMLDivElement | null>(null);
+  const canvasUIHidden = useBoardUIStore(state => state.uiHidden) && libraryView === 'canvas';
   const globalHeaderRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const header = globalHeaderRef.current;
@@ -780,7 +782,7 @@ export default function App() {
   }, []);
 
   const hasLeftSidebar = hasDirectories && ['library', 'explore'].includes(libraryView);
-  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && !['prompts', 'models', 'comfyui', 'editor', 'canvas'].includes(libraryView)));
+  const hasRightSidebar = !canvasUIHidden && Boolean(isQueueOpen || (previewImage && !['prompts', 'models', 'comfyui', 'editor', 'canvas'].includes(libraryView)));
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
       resolveSidebarWidths({
@@ -4129,7 +4131,7 @@ export default function App() {
         restrictToRequestedSelection={!canUseBatchExport && (batchExportRequest?.imageIds?.length ?? 0) === 1}
       />
 
-      <div ref={globalHeaderRef} className="shrink-0">
+      <div ref={globalHeaderRef} className="shrink-0" hidden={canvasUIHidden}>
         <BrowserCompatibilityWarning />
         <Header
           workspaceToolbarRef={setComfyUIWorkspaceToolbarHost}
@@ -4212,7 +4214,7 @@ export default function App() {
         </Sidebar>
       )}
       
-      {isQueueOpen ? (
+      {isQueueOpen && !canvasUIHidden ? (
         <GenerationQueueSidebar
           onClose={() => setIsQueueOpen(false)}
           width={rightSidebarWidth}
@@ -4264,7 +4266,7 @@ export default function App() {
         className="flex min-h-0 flex-1 flex-col"
         style={{ marginLeft: mainContentMarginLeft, marginRight: mainContentMarginRight }}
       >
-        <TrialExpiredBanner />
+        {!canvasUIHidden && <TrialExpiredBanner />}
 
         <CollectionFormModal
           isOpen={isSaveFilteredCollectionModalOpen}
@@ -4282,7 +4284,7 @@ export default function App() {
         />
 
         <main className={`flex-1 flex flex-col min-h-0 w-full ${libraryView === 'comfyui' || libraryView === 'editor' || libraryView === 'canvas' ? 'p-0' : 'mx-auto p-4'}`}>
-          {showGeneratorSetupNotice && (
+          {showGeneratorSetupNotice && !canvasUIHidden && (
             <div className="my-4 flex items-center justify-between gap-3 rounded-lg border border-blue-700/40 bg-blue-900/30 p-3 text-blue-100">
               <div className="flex-1 text-sm">
                 <span className="font-medium">Launch Generator isn&apos;t set up yet.</span>{' '}
@@ -4729,7 +4731,7 @@ export default function App() {
                 ) : null}
               </div>
 
-              {(libraryView === 'library' || libraryView === 'comfyui' || libraryView === 'editor' || libraryView === 'canvas' || (libraryView === 'collections' && Boolean(activeCollection))) && (
+              {!canvasUIHidden && (libraryView === 'library' || libraryView === 'comfyui' || libraryView === 'editor' || libraryView === 'canvas' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                 <Footer
                   windowsOnly={libraryView === 'comfyui' || libraryView === 'canvas'}
                   currentPage={currentPage}

@@ -1,4 +1,4 @@
-import { Copy, Scissors, CopyPlus, Clipboard, Grid2X2, Frame, Download, Layers, Ungroup, Pencil, Trash2, Scan, MousePointer2, StickyNote, Type, Square, Circle, Diamond, Sparkles, type LucideIcon } from 'lucide-react';
+import { Copy, Scissors, CopyPlus, Clipboard, Grid2X2, Frame, Download, Layers, Ungroup, Pencil, Trash2, Scan, MousePointer2, StickyNote, Type, Square, Circle, Diamond, Sparkles, PanelTop, type LucideIcon } from 'lucide-react';
 import { visualGroupingCandidates } from '../../services/boards/visualGroupOperations';
 import { createStack, unstack } from '../../services/boards/stackOperations';
 import { stackableImages } from '../../services/boards/stackMembership';
@@ -17,6 +17,7 @@ export const creationTools = ['sticky', 'text', 'rectangle', 'ellipse', 'diamond
 export interface BoardMenuPosition { x: number; y: number; point: BoardPoint; kind: 'pane' | 'selection' | 'edge' | 'create' }
 export default function BoardContextMenu({ boardId, menu, close, create, fit, autoGroup }: { boardId: string; menu: BoardMenuPosition; close(): void; create(tool: BoardTool, point: BoardPoint): void; fit(): void; autoGroup?(ids?: string[]): void }) {
   const editor = useBoardEditor();
+  const uiHidden = useBoardUIStore(state => state.uiHidden);
   const root = useRef<HTMLDivElement>(null);
   const session = useBoardStore(state => state.sessions[boardId]);
   const [position, setPosition] = useState({ left: menu.x, top: menu.y });
@@ -39,7 +40,7 @@ export default function BoardContextMenu({ boardId, menu, close, create, fit, au
   const run = (action: () => unknown) => { try { Promise.resolve(action()).catch(error => editor.reportError?.(String(error.message ?? error))); } catch (error) { editor.reportError?.(error instanceof Error ? error.message : String(error)); } close(); };
   const shortcuts: Record<string, string> = { Copy: 'C', Cut: 'X', Duplicate: 'D', Paste: 'V', 'Select all': 'A' };
   const commandKey = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
-  const icons: Record<string, LucideIcon> = { Copy, Cut: Scissors, Duplicate: CopyPlus, Paste: Clipboard, 'Arrange in grid': Grid2X2, 'Create frame': Frame, 'Export selection as PNG': Download, 'Export board as PNG': Download, Stack: Layers, Unstack: Ungroup, 'Edit connection': Pencil, Delete: Trash2, 'Select all': MousePointer2, 'Fit board': Scan, 'Auto-group by visual similarity': Sparkles };
+  const icons: Record<string, LucideIcon> = { 'Hide UI': PanelTop, 'Show UI': PanelTop, Copy, Cut: Scissors, Duplicate: CopyPlus, Paste: Clipboard, 'Arrange in grid': Grid2X2, 'Create frame': Frame, 'Export selection as PNG': Download, 'Export board as PNG': Download, Stack: Layers, Unstack: Ungroup, 'Edit connection': Pencil, Delete: Trash2, 'Select all': MousePointer2, 'Fit board': Scan, 'Auto-group by visual similarity': Sparkles };
   const creationIcons = { sticky: StickyNote, text: Type, rectangle: Square, ellipse: Circle, diamond: Diamond, frame: Frame };
   const button = (label: string, action: () => unknown, disabled = false) => {
     const Icon = icons[label] ?? Pencil;
@@ -66,6 +67,7 @@ export default function BoardContextMenu({ boardId, menu, close, create, fit, au
     {(menu.kind === 'pane' || menu.kind === 'create') && <>{creationTools.map(tool => { const Icon = creationIcons[tool]; return <button role="menuitem" className="board-menu-item" disabled={!editor.editable} key={tool} onClick={() => run(() => create(tool, menu.point))}><Icon size={15} aria-hidden="true"/><span>{tool[0].toUpperCase() + tool.slice(1)}</span></button>; })}<hr role="separator"/>{menu.kind === 'pane' && <>{button('Select all', () => useBoardStore.getState().setSelection(boardId, session.document.objects.map(object => object.id)))}{button('Fit board', fit)}{button('Export board as PNG', () => editor.exportPng?.(false))}</>}</>}
     {(menu.kind === 'pane' || menu.kind === 'selection') && autoGroup && button('Auto-group by visual similarity', () => autoGroup(menu.kind === 'selection' ? [...session.selectedObjectIds] : undefined), !editor.editable || visualGroupingCandidates(session.document, menu.kind === 'selection' ? session.selectedObjectIds : undefined).length < 2)}
     {(menu.kind === 'selection' || menu.kind === 'edge') && <><hr role="separator"/>{button('Delete', () => deleteBoardSelection(boardId), !editor.editable)}</>}
+    <hr role="separator"/>{button(uiHidden ? 'Show UI' : 'Hide UI', () => useBoardUIStore.getState().setUIHidden(!uiHidden))}
     {menu.kind === 'selection' && <BoardSelectionStyles boardId={boardId} editable={editor.editable} />}
   </div>, document.body);
 }

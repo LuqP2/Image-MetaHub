@@ -16,7 +16,7 @@ import { getBoardBounds } from '../services/boards/layout';
 import { updateObjects } from '../services/boards/operations';
 import type { BoardAssetObject } from '../services/boards/types';
 import BoardList from './boards/BoardList';
-import BoardToolbar from './boards/BoardToolbar';
+import BoardToolbar, { BoardDocumentBar } from './boards/BoardToolbar';
 import BoardCanvas from './boards/BoardCanvas';
 import BoardInspector from './boards/BoardInspector';
 import { BoardEditorContext, type BoardEditorActions } from './boards/BoardEditorContext';
@@ -116,7 +116,7 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
     await useBoardStore.getState().flushBoard(boardId).catch(() => {});
     await exportBoardFile(useBoardStore.getState().sessions[boardId].document);
   });
-  return <section ref={root} data-compact={width < 1500} data-tool-labels={width >= 1100} data-editable={editable} className="board-workspace" data-board-editor="true" tabIndex={0} aria-label="Canvas workspace" onKeyDownCapture={event => { if (event.key === 'Escape') setTool('select'); onKeyDownCapture(event); }} aria-busy={busy}>
+  return <section ref={root} data-compact={width < 1500} data-tool-labels={width >= 1100} data-editable={editable} className="board-workspace" data-board-editor="true" data-ui-hidden={ui.uiHidden} tabIndex={0} aria-label="Canvas workspace" onKeyDownCapture={event => { if (event.key === 'Escape') setTool('select'); onKeyDownCapture(event); }} aria-busy={busy}>
     {(!session || !boardId) && <BoardTabs onError={setError} editable={editable} />}
     {error && <div role="alert" className="board-error">{error}<button className="board-button" onClick={() => setError(null)}>Dismiss</button></div>}
     {session?.saveStatus === 'error' && <div role="alert" className="board-error">{session.saveError}
@@ -134,10 +134,10 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
       : <BoardEditorContext.Provider value={actions}>
         {exportMenu && <BoardExportDialog close={() => setExportMenu(false)} exportDocument={() => { setExportMenu(false); exportCurrent(); }} exportPng={() => { setExportMenu(false); useBoardStore.getState().commitInteraction(boardId); setPngScope(false); }} />}
         {pngScope !== null && <BoardPngExport boardId={boardId} selection={pngScope} close={() => setPngScope(null)} />}
-        <BoardToolbar boardId={boardId} editable={editable} tool={tool} setTool={setTool}
+        <BoardDocumentBar boardId={boardId}
           libraryOpen={showLibrary} inspectorOpen={showInspector} libraryLocked={libraryLocked} onToggleLibrary={() => { setPreferredPanel('library'); ui.setLibraryOpen(!showLibrary); }} onToggleInspector={() => { if (showInspector) hideInspector(); else { setPreferredPanel('inspector'); dismissInspectorSelection(null); ui.setInspectorOpen(true); } }}
           tabs={<BoardTabs onError={setError} editable={editable} />} onExport={() => setExportMenu(!exportMenu)} />
-        <div className="board-editor-layout">{showLibrary && assetPanel && <div className="board-library-panel" style={{ width: libraryWidth }}><div className="board-panel-content">{assetPanel}</div><BoardPanelResizeHandle side="library" /></div>}<div className="board-stage-container" ref={stage}><BoardCanvas boardId={boardId} onFitAll={fitAll} /></div>{showInspector && <div className="board-inspector-panel" style={{ width: inspectorWidth }}><BoardPanelResizeHandle side="inspector" /><BoardInspector boardId={boardId} editable={editable} onHide={hideInspector} assetActions={assetActions} assetMetadata={assetMetadata} assetStatus={assetStatus} selectionActions={selectionActions} /></div>}</div>
+        <div className="board-editor-layout">{showLibrary && assetPanel && <div className="board-library-panel" style={{ width: libraryWidth }}><div className="board-panel-content">{assetPanel}</div><BoardPanelResizeHandle side="library" /></div>}<div className="board-stage-container" ref={stage}><BoardCanvas boardId={boardId} onFitAll={fitAll} /><BoardToolbar boardId={boardId} editable={editable} tool={tool} setTool={setTool} /></div>{showInspector && <div className="board-inspector-panel" style={{ width: inspectorWidth }}><BoardPanelResizeHandle side="inspector" /><BoardInspector boardId={boardId} editable={editable} onHide={hideInspector} assetActions={assetActions} assetMetadata={assetMetadata} assetStatus={assetStatus} selectionActions={selectionActions} /></div>}</div>
       </BoardEditorContext.Provider>}
   </section>;
 }
