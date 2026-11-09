@@ -33,6 +33,7 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; });
   vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
   flow.fitView.mockClear();
+  useBoardUIStore.setState({ uiHidden: false });
   useBoardStore.setState({ sessions: {}, activeBoardId: null });
 });
 afterEach(async () => { cleanup(); await useBoardStore.getState().flushAll(); vi.unstubAllGlobals(); });
@@ -82,16 +83,34 @@ describe('Canvas fit-selection request lifecycle', () => {
     expect(useBoardStore.getState().sessions[before.id].saveStatus).toBe('saved');
   });
 
-  it('zooms with the wheel, selects intersecting objects, supports modifiers and collapses the map', () => {
+  it('pans with the wheel and right drag, reserves zoom for modifiers and collapses the map', () => {
     const { mount } = setup(); mount();
-    expect(rendered.props.zoomOnScroll).toBe(true);
-    expect(rendered.props.panOnScroll).toBe(false);
+    expect(rendered.props.zoomOnScroll).toBe(false);
+    expect(rendered.props.zoomActivationKeyCode).toEqual(['Control', 'Meta']);
+    expect(rendered.props.panOnDrag).toEqual([1, 2]);
+    expect(rendered.props.panOnScroll).toBe(true);
     expect(rendered.props.selectionMode).toBe('partial');
     expect(rendered.props.multiSelectionKeyCode).toEqual(['Control', 'Meta', 'Shift']);
     fireEvent.click(screen.getByRole('button', { name: 'Viewport options' }));
     fireEvent.click(screen.getByRole('button', { name: 'Hide minimap' }));
     fireEvent.click(screen.getByRole('button', { name: 'Viewport options' }));
     expect(screen.getByRole('button', { name: 'Show minimap' })).toBeTruthy();
+  });
+
+  it('hides and restores UI through the context menu without changing panel preferences', () => {
+    const { mount } = setup();
+    mount();
+    const before = useBoardUIStore.getState();
+    const open = () => act(() => {
+      (rendered.props.onPaneContextMenu as (event: unknown) => void)({ preventDefault() {}, clientX: 120, clientY: 150 });
+    });
+    open();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide UI' }));
+    expect(useBoardUIStore.getState().uiHidden).toBe(true);
+    expect(screen.queryByRole('menu')).toBeNull();
+    open();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show UI' }));
+    expect(useBoardUIStore.getState()).toMatchObject({ uiHidden: false, libraryOpen: before.libraryOpen, inspectorOpen: before.inspectorOpen, libraryWidth: before.libraryWidth, inspectorWidth: before.inspectorWidth });
   });
 
   it('preserves a saved viewport on remount and still handles a later insertion', async () => {

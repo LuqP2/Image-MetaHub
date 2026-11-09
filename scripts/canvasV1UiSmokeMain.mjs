@@ -20,7 +20,51 @@ try {
   ipcMain.handle('get-settings', () => ({}));
   ipcMain.handle('copy-text-to-clipboard', (event, text) => { if (event.sender !== window.webContents) throw new Error('Denied'); clipboard.writeText(text); return { success: true }; });
   await window.loadFile(path.join(output, 'renderer/index.html'));
-  if (process.argv.includes('--connections-only')) {
+  if (process.argv.includes('--navigation-only')) {
+    await window.webContents.executeJavaScript('window.canvasSmoke.prepareNavigation()');
+    window.webContents.debugger.attach('1.3');
+    const read = () => window.webContents.executeJavaScript(`(() => {
+      const pane = document.querySelector('.board-stage .react-flow__pane');
+      const rect = pane.getBoundingClientRect();
+      const matrix = new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.react-flow__viewport')).transform);
+      return { x: matrix.e, y: matrix.f, zoom: matrix.a, point: { x: rect.left + 100, y: rect.top + 100 }, cursor: getComputedStyle(pane).cursor };
+    })()`);
+    const pause = () => new Promise(resolve => setTimeout(resolve, 250));
+    const wheel = async modifiers => {
+      const before = await read();
+      await window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', ...before.point, deltaX: 0, deltaY: 100, modifiers });
+      await pause();
+      return { before, after: await read() };
+    };
+    const vertical = await wheel(0);
+    if (vertical.after.y >= vertical.before.y || vertical.after.x !== vertical.before.x || vertical.after.zoom !== vertical.before.zoom) throw new Error('Wheel did not pan vertically');
+    const horizontal = await wheel(8);
+    if (horizontal.after.x >= horizontal.before.x || horizontal.after.y !== horizontal.before.y || horizontal.after.zoom !== horizontal.before.zoom) throw new Error('Shift+wheel did not pan horizontally');
+    const zoom = await wheel(2);
+    if (zoom.after.zoom >= zoom.before.zoom) throw new Error('Ctrl+wheel did not zoom');
+    const before = await read();
+    const to = { x: before.point.x + 60, y: before.point.y + 45 };
+    const mouse = (type, point, buttons) => window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type, ...point, button: 'right', buttons, clickCount: 1 });
+    await mouse('mousePressed', before.point, 2);
+    await mouse('mouseMoved', to, 2);
+    await pause();
+    const during = await read();
+    if (during.cursor !== 'grabbing' || during.x <= before.x || during.y <= before.y) throw new Error('Right drag did not pan with a closed hand');
+    await mouse('mouseReleased', to, 0);
+    await pause();
+    if (await window.webContents.executeJavaScript(`!!document.querySelector('[aria-label="Canvas actions"]')`)) throw new Error('Right drag opened a context menu');
+    await mouse('mousePressed', to, 2);
+    await mouse('mouseReleased', to, 0);
+    await pause();
+    await window.webContents.executeJavaScript('window.canvasSmoke.toggleNavigationUI(true)');
+    await fs.writeFile(path.join(output, 'navigation-ui-hidden.png'), (await window.webContents.capturePage()).toPNG());
+    await mouse('mousePressed', to, 2);
+    await mouse('mouseReleased', to, 0);
+    await pause();
+    await window.webContents.executeJavaScript('window.canvasSmoke.toggleNavigationUI(false)');
+    await fs.writeFile(path.join(output, 'navigation-ui-shown.png'), (await window.webContents.capturePage()).toPNG());
+    process.stdout.write(JSON.stringify({ wheelVertical: true, shiftWheelHorizontal: true, ctrlWheelZoom: true, rightDragClosedHand: true, rightClickMenu: true, hideRestoreUI: true }) + '\n');
+  } else if (process.argv.includes('--connections-only')) {
     const prepare = await window.webContents.executeJavaScript('window.canvasSmoke.prepareCurvedConnections()');
     window.webContents.debugger.attach('1.3');
     const send = async (type, point, buttons, modifiers = 0) => {

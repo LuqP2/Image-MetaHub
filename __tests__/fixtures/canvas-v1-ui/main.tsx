@@ -41,6 +41,21 @@ function LibraryFlowSmoke({ boardId }: { boardId: string }) {
 }
 
 Object.assign(window, { canvasSmoke: {
+  async prepareNavigation() {
+    await useBoardStore.getState().createBoard('Navigation');
+    await wait(() => !!document.querySelector('.board-stage .react-flow__pane'));
+  },
+  async toggleNavigationUI(hidden: boolean) {
+    await wait(() => !!document.querySelector('[aria-label="Canvas actions"]'));
+    button(hidden ? 'Hide UI' : 'Show UI').click();
+    await wait(() => useBoardUIStore.getState().uiHidden === hidden);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    for (const selector of ['.board-header', '.board-toolbar', '.board-library-panel', '.board-inspector-panel', '.board-minimap-panel', '.board-empty-start']) {
+      const element = document.querySelector<HTMLElement>(selector);
+      if (element) check((element.getClientRects().length === 0) === hidden, `Visibility mismatch for ${selector}`);
+    }
+    check(document.querySelector('.board-stage')!.getBoundingClientRect().width > 0, 'Canvas was hidden');
+  },
   async verifyMenuPlacement() {
     const pane = document.querySelector<HTMLElement>('.board-stage .react-flow__pane')!;
     const stage = pane.getBoundingClientRect();

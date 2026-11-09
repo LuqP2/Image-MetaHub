@@ -131,8 +131,8 @@ it('keeps an explicitly open inspector visible on outside clicks and places the 
   fireEvent.pointerDown(screen.getByText('Clear test selection'));
   expect(screen.getByLabelText('Board inspector')).toBeTruthy();
   const toggle = screen.getByRole('button', { name: 'Toggle library' });
-  const toolbar = screen.getByLabelText('Board tools');
-  expect(toolbar.firstElementChild).toBe(toggle);
+  const documentBar = toggle.closest('.board-document-bar');
+  expect(documentBar?.firstElementChild).toBe(toggle);
   expect(toggle.closest('.board-toolbar-end')).toBeNull();
   fireEvent.click(toggle); expect(useBoardUIStore.getState().libraryOpen).toBe(false);
 });

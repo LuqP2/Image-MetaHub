@@ -160,6 +160,7 @@ interface SettingsState {
   showFilenames: boolean;
   canvasSmartGuides: boolean;
   canvasSnapToGrid: boolean;
+  canvasShowGrid: boolean;
   showFullFilePath: boolean;
   globalAutoWatch: boolean;
   startupVerificationMode: StartupVerificationMode;
@@ -246,6 +247,7 @@ interface SettingsState {
   setShowFilenames: (value: boolean) => void;
   setCanvasSmartGuides: (value: boolean) => void;
   setCanvasSnapToGrid: (value: boolean) => void;
+  setCanvasShowGrid: (value: boolean) => void;
   setShowFullFilePath: (value: boolean) => void;
   toggleGlobalAutoWatch: () => void;
   setStartupVerificationMode: (value: StartupVerificationMode) => void;
@@ -318,6 +320,7 @@ export const useSettingsStore = create<SettingsState>()(
       showFilenames: false,
       canvasSmartGuides: true,
       canvasSnapToGrid: false,
+      canvasShowGrid: false,
       showFullFilePath: false,
       globalAutoWatch: true,
       startupVerificationMode: 'off',
@@ -392,6 +395,7 @@ export const useSettingsStore = create<SettingsState>()(
       setShowFilenames: (value) => set({ showFilenames: !!value }),
       setCanvasSmartGuides: (value) => set({ canvasSmartGuides: !!value }),
       setCanvasSnapToGrid: (value) => set({ canvasSnapToGrid: !!value }),
+      setCanvasShowGrid: (value) => set({ canvasShowGrid: !!value }),
       setShowFullFilePath: (value) => set({ showFullFilePath: !!value }),
       toggleGlobalAutoWatch: () => set((state) => ({ globalAutoWatch: !state.globalAutoWatch })),
       setStartupVerificationMode: (value) => set({ startupVerificationMode: value }),
@@ -491,6 +495,7 @@ export const useSettingsStore = create<SettingsState>()(
         showFilenames: false,
         canvasSmartGuides: true,
         canvasSnapToGrid: false,
+        canvasShowGrid: false,
         showFullFilePath: false,
         globalAutoWatch: true,
         startupVerificationMode: 'off',
@@ -546,6 +551,7 @@ export const useSettingsStore = create<SettingsState>()(
           ...persisted,
           canvasSmartGuides: typeof persisted.canvasSmartGuides === 'boolean' ? persisted.canvasSmartGuides : true,
           canvasSnapToGrid: typeof persisted.canvasSnapToGrid === 'boolean' ? persisted.canvasSnapToGrid : false,
+          canvasShowGrid: typeof persisted.canvasShowGrid === 'boolean' ? persisted.canvasShowGrid : false,
           keymap: mergeKeymapWithDefaults(persisted.keymap),
           libraryGridLayout: persisted.libraryGridLayout === 'masonry' ? 'masonry' : 'uniform',
         };

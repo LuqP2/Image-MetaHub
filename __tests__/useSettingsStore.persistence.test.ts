@@ -188,7 +188,7 @@ describe('Library grid layout persistence', () => {
 });
 
 
-it('persists global Canvas snapping preferences and defaults older settings', async () => {
+it('persists Canvas grid visibility independently of snapping and defaults older settings', async () => {
   const originalStorage = useSettingsStore.persist.getOptions().storage;
   type State = ReturnType<typeof useSettingsStore.getState>;
   let saved = { state: {} as State, version: 0 };
@@ -199,14 +199,16 @@ it('persists global Canvas snapping preferences and defaults older settings', as
   } });
   try {
     await useSettingsStore.persist.rehydrate();
-    expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: true, canvasSnapToGrid: false });
+    expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: true, canvasSnapToGrid: false, canvasShowGrid: false });
     useSettingsStore.getState().setCanvasSmartGuides(false);
     useSettingsStore.getState().setCanvasSnapToGrid(true);
+    expect(useSettingsStore.getState().canvasShowGrid).toBe(false);
+    useSettingsStore.getState().setCanvasShowGrid(true);
     const persisted = saved;
     useSettingsStore.getState().resetState();
     saved = persisted;
     await useSettingsStore.persist.rehydrate();
-    expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: false, canvasSnapToGrid: true });
+    expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: false, canvasSnapToGrid: true, canvasShowGrid: true });
   } finally {
     useSettingsStore.persist.setOptions({ storage: originalStorage });
     useSettingsStore.getState().resetState();

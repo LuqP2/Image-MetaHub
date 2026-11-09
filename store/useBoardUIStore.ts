@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 interface BoardUIState {
+  uiHidden: boolean;
+  setUIHidden(hidden: boolean): void;
   filterTarget: { boardId: string; frameId: string } | null;
   setFilterTarget(target: { boardId: string; frameId: string } | null): void;
   libraryWidth: number; inspectorWidth: number;
@@ -14,6 +16,7 @@ interface BoardUIState {
 export const useBoardUIStore = create<BoardUIState>(set => ({
   ...(() => { try { const saved = JSON.parse(localStorage.getItem('imh-board-panel-widths') ?? '{}'); return { libraryWidth: Math.max(220, Math.min(560, Number(saved.libraryWidth) || 264)), inspectorWidth: Math.max(260, Math.min(560, Number(saved.inspectorWidth) || 320)) }; } catch { return { libraryWidth: 264, inspectorWidth: 320 }; } })(),
   setPanelWidth(side, width) { if (!Number.isFinite(width)) return; set({ [side === 'library' ? 'libraryWidth' : 'inspectorWidth']: Math.round(Math.max(side === 'library' ? 220 : 260, Math.min(560, width))) }); },
+  uiHidden: false, setUIHidden: uiHidden => set({ uiHidden }),
   filterTarget: null, setFilterTarget: filterTarget => set({ filterTarget }),
   groupOrders: {}, setGroupOrder: (key, order) => set(state => ({ groupOrders: { ...state.groupOrders, [key]: order } })),
   sections: {}, setSection: (key, open) => set(state => ({ sections: { ...state.sections, [key]: open } })),
