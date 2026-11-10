@@ -18,9 +18,34 @@ try {
   ipcMain.handle = (channel, handler) => registerHandler(channel, async (event, ...args) => { if (channel === 'boards:export-png') await fs.writeFile(path.join(output, 'scene.html'), args[0].html); return handler(event, ...args); });
   const persistence = registerBoardIpc({ ipcMain, app, BrowserWindow, clipboard, getMainWindow: () => window, dialog: { showSaveDialog: async () => ({ canceled: false, filePath: path.join(output, 'canvas.png') }) } });
   ipcMain.handle('get-settings', () => ({}));
+  ipcMain.handle('save-settings', () => ({ success: true }));
   ipcMain.handle('copy-text-to-clipboard', (event, text) => { if (event.sender !== window.webContents) throw new Error('Denied'); clipboard.writeText(text); return { success: true }; });
   await window.loadFile(path.join(output, 'renderer/index.html'));
-  if (process.argv.includes('--navigation-only')) {
+  if (process.argv.includes('--background-only')) {
+    const { a, b } = await window.webContents.executeJavaScript('window.canvasSmoke.prepareBackground()');
+    await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+    await fs.writeFile(path.join(output, 'background-white.png'), (await window.webContents.capturePage()).toPNG());
+    await window.webContents.executeJavaScript('window.canvasSmoke.exportBackground()');
+    const png = nativeImage.createFromPath(path.join(output, 'canvas.png'));
+    if (png.isEmpty() || ![...png.toBitmap().subarray(0, 4)].every(value => value === 255)) throw new Error('PNG export did not preserve the white board background');
+    await persistence.flush();
+    const reloaded = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
+    window.webContents.reload(); await reloaded;
+    await window.webContents.executeJavaScript(`window.canvasSmoke.verifyBackgroundRestored(${JSON.stringify(a)}, ${JSON.stringify(b)})`);
+    await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+    await fs.writeFile(path.join(output, 'background-restored.png'), (await window.webContents.capturePage()).toPNG());
+    window.setContentSize(1920, 1080);
+    const wideDock = await window.webContents.executeJavaScript('window.canvasSmoke.verifyDockAlignment(false, 1600)');
+    await fs.writeFile(path.join(output, 'dock-alignment-wide.png'), (await window.webContents.capturePage()).toPNG());
+    window.setContentSize(1480, 900);
+    const mediumDock = await window.webContents.executeJavaScript('window.canvasSmoke.verifyDockAlignment(false, 1160)');
+    await fs.writeFile(path.join(output, 'dock-alignment-medium.png'), (await window.webContents.capturePage()).toPNG());
+    window.setContentSize(1100, 900);
+    const compactDock = await window.webContents.executeJavaScript('window.canvasSmoke.verifyDockAlignment(true, 780)');
+    await fs.writeFile(path.join(output, 'dock-alignment-compact.png'), (await window.webContents.capturePage()).toPNG());
+    process.stdout.write(JSON.stringify({ wideDock, mediumDock, compactDock }) + '\n');
+    process.stdout.write(JSON.stringify({ backgroundPalette: true, separateBoardColors: true, pngBackground: true, restartRestored: true }) + '\n');
+  } else if (process.argv.includes('--navigation-only')) {
     await window.webContents.executeJavaScript('window.canvasSmoke.prepareNavigation()');
     window.webContents.debugger.attach('1.3');
     const read = () => window.webContents.executeJavaScript(`(() => {

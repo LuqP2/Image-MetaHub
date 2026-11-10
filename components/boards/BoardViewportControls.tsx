@@ -1,17 +1,35 @@
 import { useSettingsStore } from '../../store/useSettingsStore';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useReactFlow, useViewport } from '@xyflow/react';
-import { Minus, Plus, MoreHorizontal } from 'lucide-react';
+import { Minus, Plus, MoreHorizontal, Grid2X2, AlignCenterHorizontal } from 'lucide-react';
 import { useBoardStore } from '../../store/useBoardStore';
 import { useBoardUIStore } from '../../store/useBoardUIStore';
 import BoardMiniMap from './BoardMiniMap';
-export default function BoardViewportControls({boardId,onFitAll}: {boardId:string;onFitAll():void}) {
+import BoardBackgroundControl from './BoardBackgroundControl';
+export default function BoardViewportControls({boardId,onFitAll,backgroundOpen,setBackgroundOpen,editable}: {boardId:string;onFitAll():void;backgroundOpen:boolean;setBackgroundOpen(open:boolean):void;editable:boolean}) {
  const flow=useReactFlow(); const {zoom}=useViewport(); const session=useBoardStore(s=>s.sessions[boardId]); const ui=useBoardUIStore();
  const smartGuides=useSettingsStore(s=>s.canvasSmartGuides); const snapToGrid=useSettingsStore(s=>s.canvasSnapToGrid);
  const showGrid=useSettingsStore(s=>s.canvasShowGrid);
  const [open,setOpen]=useState(false); const root=useRef<HTMLDivElement>(null); const trigger=useRef<HTMLButtonElement>(null);
+ useLayoutEffect(() => {
+   const controls = root.current;
+   const stage = controls?.closest<HTMLElement>('.board-stage-container');
+   const dock = stage?.querySelector<HTMLElement>('.board-toolbar');
+   if (!controls || !stage || !dock) return;
+   const align = () => {
+     const navigation = controls.getBoundingClientRect();
+     const toolbar = dock.getBoundingClientRect();
+     const overlaps = navigation.width > 0 && toolbar.width > 0 && navigation.left < toolbar.right + 12 && navigation.right > toolbar.left - 12;
+     stage.style.setProperty('--board-navigation-lift', `${overlaps ? toolbar.height + 12 : 0}px`);
+   };
+   const observer = new ResizeObserver(align);
+   observer.observe(stage); observer.observe(dock); observer.observe(controls);
+   align();
+   return () => { observer.disconnect(); stage.style.removeProperty('--board-navigation-lift'); };
+ }, []);
+ useEffect(()=>{if(backgroundOpen)setOpen(false);},[backgroundOpen]);
  useEffect(()=>{ if(!open)return; const pointer=(e:PointerEvent)=>{if(!root.current?.contains(e.target as Node))setOpen(false);}; const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setOpen(false);trigger.current?.focus();}}; document.addEventListener('pointerdown',pointer);document.addEventListener('keydown',key,true);return()=>{document.removeEventListener('pointerdown',pointer);document.removeEventListener('keydown',key,true);};},[open]);
  return <div ref={root} className="board-viewport-controls nodrag nopan nowheel">{ui.minimapOpen && <BoardMiniMap objects={session.document.objects}/>}
  {open && <div className="board-popover"><button className="board-menu-item" aria-pressed={showGrid} onClick={()=>{useSettingsStore.getState().setCanvasShowGrid(!showGrid);setOpen(false);}}>{showGrid ? 'Hide dot grid' : 'Show dot grid'}</button><button className="board-menu-item" onClick={()=>{onFitAll();setOpen(false);}}>Fit all</button><button className="board-menu-item" disabled={!session.selectedObjectIds.length} onClick={()=>{void flow.fitView({nodes:session.selectedObjectIds.map(id=>({id})),padding:0.12,maxZoom:1});setOpen(false);}}>Fit selection</button><button className="board-menu-item" onClick={()=>{ui.setMinimapOpen(!ui.minimapOpen);setOpen(false);}}>{ui.minimapOpen?'Hide minimap':'Show minimap'}</button></div>}
- <div className="board-zoom-row"><div className="board-snap-controls"><button className="board-button" aria-label="Smart Guides / Snap to Objects" aria-pressed={smartGuides} title="Snap to object edges and centers and show guides. Hold Shift while dragging to invert temporarily." onClick={()=>useSettingsStore.getState().setCanvasSmartGuides(!smartGuides)}>Smart Guides</button><button className="board-button" aria-label="Snap to Grid" aria-pressed={snapToGrid} title="Snap the selection's top-left corner to the 24 px grid. Independent of Smart Guides." onClick={()=>useSettingsStore.getState().setCanvasSnapToGrid(!snapToGrid)}>Snap to Grid</button></div><div className="board-zoom-controls"><button className="board-icon-button" aria-label="Zoom out" onClick={()=>void flow.zoomOut()}><Minus size={15}/></button><span>{Math.round(zoom*100)}%</span><button className="board-icon-button" aria-label="Zoom in" onClick={()=>void flow.zoomIn()}><Plus size={15}/></button><button ref={trigger} className="board-icon-button" aria-label="Viewport options" aria-expanded={open} onClick={()=>setOpen(!open)}><MoreHorizontal size={16}/></button></div></div></div>;
+ <div className="board-zoom-row"><div className="board-snap-controls"><button className="board-icon-button" aria-label="Smart Guides / Snap to Objects" aria-pressed={smartGuides} title="Smart Guides: snap to object edges and centers and show guides. Hold Shift while dragging to invert temporarily." onClick={()=>useSettingsStore.getState().setCanvasSmartGuides(!smartGuides)}><AlignCenterHorizontal size={16}/></button><button className="board-icon-button" aria-label="Snap to Grid" aria-pressed={snapToGrid} title="Snap the selection's top-left corner to the 24 px grid. Independent of Smart Guides." onClick={()=>useSettingsStore.getState().setCanvasSnapToGrid(!snapToGrid)}><Grid2X2 size={16}/></button></div><div className="board-zoom-controls"><button className="board-icon-button" aria-label="Zoom out" onClick={()=>void flow.zoomOut()}><Minus size={15}/></button><span>{Math.round(zoom*100)}%</span><button className="board-icon-button" aria-label="Zoom in" onClick={()=>void flow.zoomIn()}><Plus size={15}/></button><BoardBackgroundControl boardId={boardId} open={backgroundOpen} setOpen={setBackgroundOpen} editable={editable}/><button ref={trigger} className="board-icon-button" aria-label="Viewport options" aria-expanded={open} onClick={()=>{setBackgroundOpen(false);setOpen(!open);}}><MoreHorizontal size={16}/></button></div></div></div>;
 }

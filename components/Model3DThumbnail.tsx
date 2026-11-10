@@ -50,9 +50,10 @@ interface Model3DThumbnailProps {
   directoryPath?: string;
   className?: string;
   variant?: Model3DThumbnailVariant;
+  eager?: boolean;
 }
 
-const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPath, className = '', variant = 'grid' }) => {
+const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPath, className = '', variant = 'grid', eager = false }) => {
   const cacheKey = getModel3DThumbnailId(image, variant);
   const cacheSafe = isModel3DThumbnailCacheSafe(image.name);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -104,9 +105,7 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
     const node = rootRef.current;
     if (!cacheSafe || !node || !cacheChecked || thumbnailUrl || failed) return;
     let cancelled = false;
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      observer.disconnect();
+    const render = () => {
       void acquireRenderSlot().then((releaseSlot) => {
         if (cancelled) {
           releaseSlot();
@@ -115,15 +114,21 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
         releaseRef.current = releaseSlot;
         setShouldRender(true);
       });
+    };
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      render();
     }, { rootMargin: '160px' });
-    observer.observe(node);
+    if (eager) render();
+    else observer.observe(node);
     return () => {
       cancelled = true;
       observer.disconnect();
       releaseRef.current?.();
       releaseRef.current = null;
     };
-  }, [cacheChecked, cacheSafe, failed, thumbnailUrl]);
+  }, [cacheChecked, cacheSafe, eager, failed, thumbnailUrl]);
 
   useEffect(() => {
     if (!shouldRender) return;
@@ -153,7 +158,7 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
   }, [release]);
 
   return (
-    <div ref={rootRef} className={`relative h-full w-full overflow-hidden bg-gray-950 ${className}`}>
+    <div ref={rootRef} data-export-pending={cacheSafe && !thumbnailUrl && !failed} className={`relative h-full w-full overflow-hidden bg-gray-950 ${className}`}>
       {!cacheSafe ? (
         <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-gray-950 text-violet-300">
           <Box className="h-7 w-7" />

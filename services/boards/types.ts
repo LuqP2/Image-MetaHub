@@ -98,6 +98,7 @@ export interface BoardConnection {
 
 export interface BoardDocument {
   schemaVersion: 4;
+  backgroundColor?: string | null;
   id: string;
   revision: number;
   name: string;

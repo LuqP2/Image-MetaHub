@@ -1,7 +1,7 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
-import TransferImagesModal from '../components/TransferImagesModal';
+import TransferImagesModal, { resetTransferDestinationSession } from '../components/TransferImagesModal';
 import type { Directory } from '../types';
 
 const directory = {
@@ -24,6 +24,7 @@ describe('TransferImagesModal — Create New Folder', () => {
   let createSubfolder: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    resetTransferDestinationSession();
     createSubfolder = vi.fn().mockResolvedValue({
       success: true,
       folder: { name: 'Keepers', path: '/root/Renders/Keepers', realPath: '/root/Renders/Keepers' },
@@ -35,16 +36,18 @@ describe('TransferImagesModal — Create New Folder', () => {
   });
 
   afterEach(() => {
+    cleanup();
+    resetTransferDestinationSession();
     delete (window as any).electronAPI;
   });
 
   it('creates a subfolder under the selected destination and selects it', async () => {
     render(<TransferImagesModal {...baseProps} />);
 
-    // Wait for the root option to be present and selected.
+    // Root rows render before async loading finishes selecting a destination.
     await screen.findByText('Renders');
 
-    fireEvent.click(screen.getByText('New folder'));
+    fireEvent.click(await screen.findByRole('button', { name: 'New folder' }));
 
     const input = screen.getByPlaceholderText('Folder name') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'Keepers' } });
@@ -62,7 +65,7 @@ describe('TransferImagesModal — Create New Folder', () => {
     render(<TransferImagesModal {...baseProps} />);
     await screen.findByText('Renders');
 
-    fireEvent.click(screen.getByText('New folder'));
+    fireEvent.click(await screen.findByRole('button', { name: 'New folder' }));
     const input = screen.getByPlaceholderText('Folder name');
     fireEvent.change(input, { target: { value: 'bad/name' } });
     fireEvent.click(screen.getByText('Create'));
@@ -83,10 +86,10 @@ describe('TransferImagesModal — Create New Folder', () => {
     };
 
     render(<TransferImagesModal {...baseProps} />);
-    // Root option is available immediately, before the (still pending) scan.
-    await screen.findByText('Renders');
+    // Explicitly select the root while the scan is still pending.
+    fireEvent.click(await screen.findByText('Renders'));
 
-    fireEvent.click(screen.getByText('New folder'));
+    fireEvent.click(await screen.findByRole('button', { name: 'New folder' }));
     fireEvent.change(screen.getByPlaceholderText('Folder name'), { target: { value: 'Keepers' } });
     fireEvent.click(screen.getByText('Create'));
     await screen.findByText('Keepers');
@@ -111,7 +114,7 @@ describe('TransferImagesModal — Create New Folder', () => {
     render(<TransferImagesModal {...baseProps} />);
     await screen.findByText('Renders');
 
-    fireEvent.click(screen.getByText('New folder'));
+    fireEvent.click(await screen.findByRole('button', { name: 'New folder' }));
     fireEvent.change(screen.getByPlaceholderText('Folder name'), { target: { value: 'Keepers' } });
     fireEvent.click(screen.getByText('Create'));
 
@@ -125,7 +128,7 @@ describe('TransferImagesModal — Create New Folder', () => {
     render(<TransferImagesModal {...baseProps} />);
     await screen.findByText('Renders');
 
-    fireEvent.click(screen.getByText('New folder'));
+    fireEvent.click(await screen.findByRole('button', { name: 'New folder' }));
     fireEvent.change(screen.getByPlaceholderText('Folder name'), { target: { value: 'Keepers' } });
     fireEvent.click(screen.getByText('Create'));
 

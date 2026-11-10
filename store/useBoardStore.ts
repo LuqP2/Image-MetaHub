@@ -5,7 +5,7 @@ import { createBoardAutosave } from '../services/boards/autosave';
 import { applyBoardReferenceRemaps, createBoardDocument, duplicateBoardDocument, normalizeBoardDocument, summarizeBoard } from '../services/boards/document.mjs';
 import type { BoardDocument, BoardReferenceRemap, BoardRepository, BoardSummary } from '../services/boards/types';
 
-export type BoardContentSnapshot = Pick<BoardDocument, 'objects' | 'connections'>;
+export type BoardContentSnapshot = Pick<BoardDocument, 'objects' | 'connections' | 'backgroundColor'>;
 export interface BoardSession {
   document: BoardDocument;
   savedRevision: number;
@@ -63,7 +63,7 @@ interface BoardStore {
   applyReferenceRemaps(remaps: BoardReferenceRemap[]): void;
 }
 
-const content = (document: BoardDocument): BoardContentSnapshot => ({ objects: document.objects, connections: document.connections });
+const content = (document: BoardDocument): BoardContentSnapshot => ({ objects: document.objects, connections: document.connections, backgroundColor: document.backgroundColor ?? null });
 const sameContent = (a: BoardContentSnapshot, b: BoardContentSnapshot) => JSON.stringify(a) === JSON.stringify(b);
 const newSession = (document: BoardDocument): BoardSession => ({
   document, savedRevision: document.revision, changeSequence: 0, savedSequence: 0,

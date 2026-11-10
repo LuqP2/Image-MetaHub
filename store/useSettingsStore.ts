@@ -161,6 +161,7 @@ interface SettingsState {
   canvasSmartGuides: boolean;
   canvasSnapToGrid: boolean;
   canvasShowGrid: boolean;
+  canvasAutoplayVideos: boolean;
   showFullFilePath: boolean;
   globalAutoWatch: boolean;
   startupVerificationMode: StartupVerificationMode;
@@ -248,6 +249,7 @@ interface SettingsState {
   setCanvasSmartGuides: (value: boolean) => void;
   setCanvasSnapToGrid: (value: boolean) => void;
   setCanvasShowGrid: (value: boolean) => void;
+  setCanvasAutoplayVideos: (value: boolean) => void;
   setShowFullFilePath: (value: boolean) => void;
   toggleGlobalAutoWatch: () => void;
   setStartupVerificationMode: (value: StartupVerificationMode) => void;
@@ -321,6 +323,7 @@ export const useSettingsStore = create<SettingsState>()(
       canvasSmartGuides: true,
       canvasSnapToGrid: false,
       canvasShowGrid: false,
+      canvasAutoplayVideos: true,
       showFullFilePath: false,
       globalAutoWatch: true,
       startupVerificationMode: 'off',
@@ -396,6 +399,7 @@ export const useSettingsStore = create<SettingsState>()(
       setCanvasSmartGuides: (value) => set({ canvasSmartGuides: !!value }),
       setCanvasSnapToGrid: (value) => set({ canvasSnapToGrid: !!value }),
       setCanvasShowGrid: (value) => set({ canvasShowGrid: !!value }),
+      setCanvasAutoplayVideos: (value) => set({ canvasAutoplayVideos: !!value }),
       setShowFullFilePath: (value) => set({ showFullFilePath: !!value }),
       toggleGlobalAutoWatch: () => set((state) => ({ globalAutoWatch: !state.globalAutoWatch })),
       setStartupVerificationMode: (value) => set({ startupVerificationMode: value }),
@@ -496,6 +500,7 @@ export const useSettingsStore = create<SettingsState>()(
         canvasSmartGuides: true,
         canvasSnapToGrid: false,
         canvasShowGrid: false,
+        canvasAutoplayVideos: true,
         showFullFilePath: false,
         globalAutoWatch: true,
         startupVerificationMode: 'off',
@@ -552,6 +557,7 @@ export const useSettingsStore = create<SettingsState>()(
           canvasSmartGuides: typeof persisted.canvasSmartGuides === 'boolean' ? persisted.canvasSmartGuides : true,
           canvasSnapToGrid: typeof persisted.canvasSnapToGrid === 'boolean' ? persisted.canvasSnapToGrid : false,
           canvasShowGrid: typeof persisted.canvasShowGrid === 'boolean' ? persisted.canvasShowGrid : false,
+          canvasAutoplayVideos: typeof persisted.canvasAutoplayVideos === 'boolean' ? persisted.canvasAutoplayVideos : true,
           keymap: mergeKeymapWithDefaults(persisted.keymap),
           libraryGridLayout: persisted.libraryGridLayout === 'masonry' ? 'masonry' : 'uniform',
         };

@@ -15,7 +15,7 @@ import { useBoardUIStore } from '../../store/useBoardUIStore';
 
 export const creationTools = ['sticky', 'text', 'rectangle', 'ellipse', 'diamond', 'frame'] as const;
 export interface BoardMenuPosition { x: number; y: number; point: BoardPoint; kind: 'pane' | 'selection' | 'edge' | 'create' }
-export default function BoardContextMenu({ boardId, menu, close, create, fit, autoGroup }: { boardId: string; menu: BoardMenuPosition; close(): void; create(tool: BoardTool, point: BoardPoint): void; fit(): void; autoGroup?(ids?: string[]): void }) {
+export default function BoardContextMenu({ boardId, menu, close, create, fit, autoGroup, changeBackground }: { boardId: string; menu: BoardMenuPosition; close(): void; create(tool: BoardTool, point: BoardPoint): void; fit(): void; autoGroup?(ids?: string[]): void; changeBackground?(): void }) {
   const editor = useBoardEditor();
   const uiHidden = useBoardUIStore(state => state.uiHidden);
   const root = useRef<HTMLDivElement>(null);
@@ -66,6 +66,7 @@ export default function BoardContextMenu({ boardId, menu, close, create, fit, au
     {menu.kind !== 'create' && button('Paste', () => pasteBoardSelection(boardId, menu.point), !editor.editable)}
     {(menu.kind === 'pane' || menu.kind === 'create') && <>{creationTools.map(tool => { const Icon = creationIcons[tool]; return <button role="menuitem" className="board-menu-item" disabled={!editor.editable} key={tool} onClick={() => run(() => create(tool, menu.point))}><Icon size={15} aria-hidden="true"/><span>{tool[0].toUpperCase() + tool.slice(1)}</span></button>; })}<hr role="separator"/>{menu.kind === 'pane' && <>{button('Select all', () => useBoardStore.getState().setSelection(boardId, session.document.objects.map(object => object.id)))}{button('Fit board', fit)}{button('Export board as PNG', () => editor.exportPng?.(false))}</>}</>}
     {(menu.kind === 'pane' || menu.kind === 'selection') && autoGroup && button('Auto-group by visual similarity', () => autoGroup(menu.kind === 'selection' ? [...session.selectedObjectIds] : undefined), !editor.editable || visualGroupingCandidates(session.document, menu.kind === 'selection' ? session.selectedObjectIds : undefined).length < 2)}
+    {menu.kind === 'pane' && changeBackground && button('Change background…', changeBackground, !editor.editable)}
     {(menu.kind === 'selection' || menu.kind === 'edge') && <><hr role="separator"/>{button('Delete', () => deleteBoardSelection(boardId), !editor.editable)}</>}
     <hr role="separator"/>{button(uiHidden ? 'Show UI' : 'Hide UI', () => useBoardUIStore.getState().setUIHidden(!uiHidden))}
     {menu.kind === 'selection' && <BoardSelectionStyles boardId={boardId} editable={editor.editable} />}

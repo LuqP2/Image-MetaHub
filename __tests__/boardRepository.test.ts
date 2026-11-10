@@ -16,6 +16,15 @@ async function repository() {
 afterEach(async () => { for (const directory of directories.splice(0)) await fs.rm(directory, { recursive: true, force: true }); });
 
 describe('desktop board repository', () => {
+  it('persists different board backgrounds across repository restart', async () => {
+    const { repo, directory } = await repository();
+    const a = { ...boardWithTexts(), backgroundColor: '#ffffff' };
+    const b = { ...boardWithTexts(), backgroundColor: '#808080' };
+    await repo.save(a, 0); await repo.save(b, 0);
+    const restarted = new BoardRepository({ directory });
+    expect((await restarted.load(a.id)).backgroundColor).toBe('#ffffff');
+    expect((await restarted.load(b.id)).backgroundColor).toBe('#808080');
+  });
   it('preserves text alignment and corner radius in save responses and after restart', async () => {
     const { repo, directory } = await repository();
     const board = boardWithTexts();

@@ -51,6 +51,33 @@ function setup() {
 }
 
 describe('Canvas fit-selection request lifecycle', () => {
+  it('changes board backgrounds from the zoom swatch and pane menu, supports HEX and restores focus on Escape', () => {
+    const { id, mount } = setup();
+    const { container } = mount();
+    const trigger = screen.getByRole('button', { name: 'Board background' });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'White' }));
+    expect(useBoardStore.getState().sessions[id].document.backgroundColor).toBe('#ffffff');
+    expect(container.querySelector<HTMLElement>('.board-stage')?.style.background).toBe('rgb(255, 255, 255)');
+    expect(rendered.props.style).toEqual({ background: '#ffffff' });
+    fireEvent.change(screen.getByLabelText('Custom background color'), { target: { value: '#123456' } });
+    fireEvent.blur(screen.getByLabelText('Custom background color'));
+    expect(useBoardStore.getState().sessions[id].document.backgroundColor).toBe('#123456');
+    fireEvent.change(screen.getByLabelText('Background HEX'), { target: { value: '#abcdef' } });
+    fireEvent.blur(screen.getByLabelText('Background HEX'));
+    expect(useBoardStore.getState().sessions[id].document.backgroundColor).toBe('#abcdef');
+    fireEvent.change(screen.getByLabelText('Background HEX'), { target: { value: '#xyz' } });
+    fireEvent.blur(screen.getByLabelText('Background HEX'));
+    expect((screen.getByLabelText('Background HEX') as HTMLInputElement).value).toBe('#abcdef');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Board background' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    act(() => (rendered.props.onPaneContextMenu as (event: unknown) => void)({ preventDefault() {}, clientX: 100, clientY: 100 }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Change background…' }));
+    expect(screen.getByRole('dialog', { name: 'Board background' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Theme default' }));
+    expect(useBoardStore.getState().sessions[id].document.backgroundColor).toBeNull();
+  });
   it.each([
     { name: 'width then height', steps: [[2, 1], [2, 2]], scale: 2 },
     { name: 'shrink then restore', steps: [[0.5, 1], [1, 1]], scale: 1 },
@@ -165,6 +192,8 @@ it('exposes independent global snapping toggles beside zoom controls', () => {
   setup().mount();
   const objects = screen.getByRole('button', { name: 'Smart Guides / Snap to Objects' });
   const grid = screen.getByRole('button', { name: 'Snap to Grid' });
+  expect(objects.textContent).toBe('');
+  expect(grid.textContent).toBe('');
   expect(objects.getAttribute('aria-pressed')).toBe('true');
   expect(grid.getAttribute('aria-pressed')).toBe('false');
   fireEvent.click(grid);
