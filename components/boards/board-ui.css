@@ -177,7 +177,7 @@
 
 /* Share the dock baseline; lift navigation only when it would overlap the centered tools. */
 .board-stage .react-flow__panel.bottom:not(.react-flow__attribution) { bottom:var(--board-dock-bottom); margin:0 16px; }
-@container (max-width:1400px) { .board-stage .react-flow__panel.bottom.board-minimap-panel { bottom:calc(var(--board-dock-bottom) + 60px); } }
+.board-stage .react-flow__panel.bottom.board-minimap-panel { bottom:calc(var(--board-dock-bottom) + var(--board-navigation-lift, 0px)); }
 .board-drawing-hint { top:12px; bottom:auto; }
 .board-panel-resizer > span { opacity:0; transition:opacity .15s; }
 .board-panel-resizer:hover > span,.board-panel-resizer:focus-visible > span { opacity:1; }

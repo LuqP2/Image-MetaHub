@@ -192,6 +192,8 @@ it('exposes independent global snapping toggles beside zoom controls', () => {
   setup().mount();
   const objects = screen.getByRole('button', { name: 'Smart Guides / Snap to Objects' });
   const grid = screen.getByRole('button', { name: 'Snap to Grid' });
+  expect(objects.textContent).toBe('');
+  expect(grid.textContent).toBe('');
   expect(objects.getAttribute('aria-pressed')).toBe('true');
   expect(grid.getAttribute('aria-pressed')).toBe('false');
   fireEvent.click(grid);

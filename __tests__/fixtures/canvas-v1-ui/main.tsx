@@ -42,7 +42,7 @@ function LibraryFlowSmoke({ boardId }: { boardId: string }) {
 }
 
 Object.assign(window, { canvasSmoke: {
-  async verifyDockAlignment(compact: boolean) {
+  async verifyDockAlignment(compact: boolean, expectedWidth: number) {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     useBoardUIStore.setState({ libraryOpen: false, inspectorOpen: true });
     const rectangles = () => ({
@@ -50,9 +50,13 @@ Object.assign(window, { canvasSmoke: {
       dock: document.querySelector('.board-toolbar')!.getBoundingClientRect(),
       navigation: document.querySelector('.board-minimap-panel')!.getBoundingClientRect(),
     });
-    await wait(() => compact ? rectangles().stage.width < 1400 : rectangles().stage.width > 1400);
+    await wait(() => Math.abs(rectangles().stage.width - expectedWidth) < 1);
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const { stage, dock, navigation } = rectangles();
+    for (const label of ['Autoplay videos', 'Smart Guides / Snap to Objects', 'Snap to Grid']) {
+      const control = button(label);
+      check(!control.textContent?.trim() && control.getBoundingClientRect().width <= 34, `${label} should be an icon-sized control`);
+    }
     check(Math.abs(stage.bottom - dock.bottom - 16) < 1, 'Dock lost its bottom inset');
     if (compact) check(navigation.bottom <= dock.top - 11, 'Navigation overlaps the dock in a narrow Canvas');
     else {
