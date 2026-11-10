@@ -26,7 +26,7 @@ export default function BoardVideoPreview({ image, directoryPath, poster }: { im
     if (!visible) return;
     let cancelled = false;
     void mediaSourceCache.getOrLoad(image, directoryPath).then(url => {
-      if (!cancelled) setSource(url);
+      if (!cancelled) { setSource(url); setFailed(false); }
     }).catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
   }, [visible, image.id, image.handle, image.lastModified, directoryPath]);
@@ -47,7 +47,7 @@ export default function BoardVideoPreview({ image, directoryPath, poster }: { im
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => { active = false; element.pause(); document.removeEventListener('visibilitychange', onVisibility); };
-  }, [visible, paused, source]);
+  }, [visible, paused, source, failed]);
 
   useEffect(() => { if (!visible) setMuted(true); }, [visible]);
 

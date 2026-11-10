@@ -115,4 +115,35 @@ describe('Canvas asset media', () => {
     expect(screen.getByText('Playback unavailable')).toBeTruthy();
     expect(container.querySelector('img')?.src).toContain('poster.png');
   });
+
+  it('recovers from an unavailable source when the card becomes visible again', async () => {
+    mocks.load.mockRejectedValueOnce(new Error('Drive disconnected'));
+    const { container } = render(<BoardVideoPreview image={image} poster="poster.png" />);
+    const card = container.firstElementChild;
+    act(() => intersect([{ isIntersecting: true }]));
+    await screen.findByText('Playback unavailable');
+    expect(container.querySelector('video')).toBeNull();
+    act(() => intersect([{ isIntersecting: false }]));
+    act(() => intersect([{ isIntersecting: true }]));
+    await waitFor(() => expect(container.querySelector('video')?.src).toBe('imh-media://clip.mp4'));
+    expect(container.firstElementChild).toBe(card);
+    expect(screen.queryByText('Playback unavailable')).toBeNull();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Unmute video' })).toBeTruthy();
+  });
+
+  it('recovers playback for a new file revision even when its media URL is unchanged', async () => {
+    const { container, rerender } = render(<BoardVideoPreview image={image} />);
+    act(() => intersect([{ isIntersecting: true }]));
+    await waitFor(() => expect(container.querySelector('video')?.src).toBe('imh-media://clip.mp4'));
+    const firstVideo = container.querySelector('video')!;
+    fireEvent.error(firstVideo);
+    expect(screen.getByText('Playback unavailable')).toBeTruthy();
+    vi.mocked(HTMLMediaElement.prototype.play).mockClear();
+    rerender(<BoardVideoPreview image={{ ...image, lastModified: 2 }} />);
+    await waitFor(() => expect(container.querySelector('video')?.src).toBe('imh-media://clip.mp4'));
+    expect(container.querySelector('video')).not.toBe(firstVideo);
+    expect(screen.queryByText('Playback unavailable')).toBeNull();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+  });
 });
