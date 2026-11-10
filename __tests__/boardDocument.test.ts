@@ -5,6 +5,16 @@ import { createBoardDocument, duplicateBoardDocument, normalizeBoardDocument, no
 import { boardWithAsset, boardWithTexts, boardRemap } from './helpers/boardFixtures';
 
 describe('board document boundary', () => {
+  it('preserves board backgrounds through duplication and defaults older boards to the theme', () => {
+    const board = createBoardDocument();
+    const legacy = { ...board };
+    delete legacy.backgroundColor;
+    expect(normalizeBoardDocument(legacy).backgroundColor).toBeNull();
+    const colored = normalizeBoardDocument({ ...board, backgroundColor: '#808080' });
+    expect(normalizeBoardDocument(JSON.parse(JSON.stringify(colored))).backgroundColor).toBe('#808080');
+    expect(duplicateBoardDocument(colored).backgroundColor).toBe('#808080');
+    expect(() => normalizeBoardDocument({ ...board, backgroundColor: 'url(https://example.com)' })).toThrow();
+  });
   it('round-trips the persistent schema and strips runtime fields recursively', () => {
     const board = boardWithAsset();
     const normalized = normalizeBoardDocument({ ...board, selected: true, objects: [{ ...board.objects[0], thumbnailUrl: 'blob:private', metadata: { secret: 'not persisted' } }] });

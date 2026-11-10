@@ -8,6 +8,7 @@ import { createRoot } from 'react-dom/client';
 import BoardWorkspace from '../../../components/BoardWorkspace';
 import { useBoardStore } from '../../../store/useBoardStore';
 import { useBoardUIStore } from '../../../store/useBoardUIStore';
+import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useBoardQueryStore } from '../../../store/useBoardQueryStore';
 import { BoardQueryContext } from '../../../components/boards/BoardQueryContext';
 import { drawBoardObject, createFrame, addConnection, updateObjects } from '../../../services/boards/operations';
@@ -41,6 +42,53 @@ function LibraryFlowSmoke({ boardId }: { boardId: string }) {
 }
 
 Object.assign(window, { canvasSmoke: {
+  async prepareBackground() {
+    const state = useBoardStore.getState();
+    useSettingsStore.getState().setCanvasShowGrid(true);
+    const a = await state.createBoard('White reference board');
+    state.executeOperation(a, doc => drawBoardObject(doc, 'rectangle', { x: 200, y: 150, width: 240, height: 160 }));
+    const b = await state.createBoard('Black reference board');
+    useBoardUIStore.setState({ libraryOpen: false, inspectorOpen: false });
+    await wait(() => !!document.querySelector('.board-stage'));
+    button('Board background').click();
+    await wait(() => !!document.querySelector('.board-background-popover'));
+    button('Black').click();
+    await wait(() => getComputedStyle(document.querySelector('.board-stage .react-flow')!).backgroundColor === 'rgb(0, 0, 0)');
+    await state.openBoard(a);
+    await wait(() => !document.querySelector('.board-background-popover'));
+    button('Board background').click();
+    await wait(() => !!document.querySelector('.board-background-popover'));
+    button('White').click();
+    await wait(() => getComputedStyle(document.querySelector('.board-stage .react-flow')!).backgroundColor === 'rgb(255, 255, 255)');
+    check(getComputedStyle(document.querySelector('.react-flow__background')!).backgroundColor === 'rgb(255, 255, 255)', 'Dot grid obscures the board background');
+    const popover = document.querySelector('.board-background-popover')!.getBoundingClientRect();
+    check(popover.left >= 0 && popover.top >= 0 && popover.right <= innerWidth && popover.bottom <= innerHeight, 'Background palette is clipped');
+    await state.flushAll();
+    return { a, b };
+  },
+  async exportBackground() {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await wait(() => !document.querySelector('.board-background-popover'));
+    button('Export').click();
+    await wait(() => !!document.querySelector('[aria-label="PNG image"]'));
+    button('PNG image').click();
+    await wait(() => !!document.querySelector('[aria-label="Export PNG"]'));
+    button('Save PNG').click();
+    await wait(() => !document.querySelector('[aria-label="Export PNG"]'), 'PNG export did not finish');
+    return true;
+  },
+  async verifyBackgroundRestored(a: string, b: string) {
+    await wait(() => useBoardStore.getState().activeBoardId === a, 'Background board was not restored');
+    const state = useBoardStore.getState();
+    check(state.sessions[a].document.backgroundColor === '#ffffff', 'White background lost after reload');
+    await state.openBoard(b);
+    await wait(() => getComputedStyle(document.querySelector('.board-stage .react-flow')!).backgroundColor === 'rgb(0, 0, 0)');
+    await state.openBoard(a);
+    await wait(() => getComputedStyle(document.querySelector('.board-stage .react-flow')!).backgroundColor === 'rgb(255, 255, 255)');
+    button('Board background').click();
+    await wait(() => !!document.querySelector('.board-background-popover'));
+    return true;
+  },
   async prepareNavigation() {
     await useBoardStore.getState().createBoard('Navigation');
     await wait(() => !!document.querySelector('.board-stage .react-flow__pane'));

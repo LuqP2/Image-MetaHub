@@ -176,6 +176,7 @@ export function normalizeBoardDocument(input) {
   return {
     schemaVersion: 4, id: validateBoardId(input.id), revision: integer(input.revision, 'Revision'), name: string(input.name, 'Board name', true),
     createdAt: integer(input.createdAt, 'Creation time'), updatedAt: integer(input.updatedAt, 'Update time'),
+    backgroundColor: input.backgroundColor == null ? null : color(input.backgroundColor).toLowerCase(),
     viewport: { x: number(input.viewport.x, 'Viewport X'), y: number(input.viewport.y, 'Viewport Y'), zoom }, objects, connections,
   };
 }

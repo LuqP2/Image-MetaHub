@@ -33,6 +33,7 @@ import BoardFrameNode from './BoardFrameNode';
 import BoardConnection from './BoardConnection';
 import BoardViewportControls from './BoardViewportControls';
 import BoardCanvasHelp from './BoardCanvasHelp';
+import { boardBackground, boardGridColor } from '../../services/boards/background';
 import { useBoardEditor } from './BoardEditorContext';
 
 const nodeTypes = { stack: BoardStackNode, sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode, 'smart-frame': BoardSmartFrameNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode };
@@ -44,6 +45,7 @@ export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId:
 }
 
 function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: () => void }) {
+  const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [nodeRuntime, setNodeRuntime] = useState<ReadonlyMap<string, BoardNodeRuntime>>(() => new Map());
   const session = useBoardStore(state => state.sessions[boardId]);
   const queryActions = useBoardQueryActions();
@@ -135,7 +137,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     }
     if (!event.defaultPrevented && !target.closest('input, textarea, button, a, [contenteditable="true"], [role="menu"]')) stageRef.current?.closest<HTMLElement>('.board-workspace')?.focus({ preventScroll: true });
   };
-  return <div ref={stageRef} className="board-stage" data-connecting={editor.connecting || !!connections.preview} onPointerDownCapture={beginPointer} onPointerUpCapture={connections.pointerUp} onClickCapture={connections.click}
+  return <div ref={stageRef} className="board-stage" style={{ background: boardBackground(session.document.backgroundColor) }} data-connecting={editor.connecting || !!connections.preview} onPointerDownCapture={beginPointer} onPointerUpCapture={connections.pointerUp} onClickCapture={connections.click}
     onPointerCancel={() => { marquee.current = null; connections.cancel(); }}
     onPointerMove={event => {
       setBoardPointer(boardId, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
@@ -161,7 +163,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       clearInternalImageDragData();
       if (ids.length) editor.dropAssets?.(ids, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
     }}>
-    <ReactFlow<BoardFlowNode> key={boardId} nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+    <ReactFlow<BoardFlowNode> key={boardId} nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} style={{ background: boardBackground(session.document.backgroundColor) }}
       onSelectionStart={() => { if (marquee.current) marquee.current.active = true; }}
       onSelectionEnd={event => {
         const gesture = marquee.current; marquee.current = null;
@@ -204,9 +206,9 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       onPaneContextMenu={event => { event.preventDefault(); useBoardStore.getState().setSelection(boardId, []); setMenu({ x: event.clientX, y: event.clientY, point: flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }), kind: 'pane' }); }}
       onPaneClick={() => { closeMenu(); useBoardStore.getState().setSelection(boardId, []); }}
       onlyRenderVisibleElements elevateNodesOnSelect={false}>
-      <Panel position="bottom-right" className="board-minimap-panel"><BoardViewportControls boardId={boardId} onFitAll={onFitAll}/></Panel>
+      <Panel position="bottom-right" className="board-minimap-panel"><BoardViewportControls boardId={boardId} onFitAll={onFitAll} backgroundOpen={backgroundOpen} setBackgroundOpen={setBackgroundOpen} editable={editor.editable}/></Panel>
       <Panel position="bottom-left"><BoardCanvasHelp/></Panel>
-      {showGrid && <Background color="rgb(var(--gray-700) / .55)" gap={24} size={1} />}
+      {showGrid && <Background bgColor={boardBackground(session.document.backgroundColor)} color={boardGridColor(session.document.backgroundColor)} gap={24} size={1} />}
     </ReactFlow>
     {!!snapping.guides.length && <svg aria-label="Smart Guides" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1001, overflow: 'hidden' }}>
       <g transform={`translate(${viewportX ?? 0}, ${viewportY ?? 0}) scale(${zoom})`}>
@@ -226,7 +228,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     {grouping && <BoardVisualGroupingDialog boardId={boardId} ids={grouping.ids} close={() => setGrouping(null)} />}
     <BoardSelectionResizer boardId={boardId} />
     <BoardSmartFrameFilterPopover boardId={boardId} />
-    {menu && <BoardContextMenu boardId={boardId} menu={menu} close={closeMenu} create={createObject} fit={onFitAll} autoGroup={ids => setGrouping({ ids })} />}
+    {menu && <BoardContextMenu boardId={boardId} menu={menu} close={closeMenu} create={createObject} fit={onFitAll} changeBackground={() => { useBoardUIStore.getState().setUIHidden(false); setBackgroundOpen(true); }} autoGroup={ids => setGrouping({ ids })} />}
     {!session.document.objects.length && editor.editable && <div className="board-empty-start nodrag nopan">
       <h2>Start your board</h2><p>Arrange selected references, or explore a source with a Smart Frame.</p>
       <div><button className="board-button" onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="Search canvas library"]')?.focus()); }}>Add references</button><small>Select files in the side library, then drag them here or use Add to canvas.</small></div>

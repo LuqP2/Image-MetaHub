@@ -21,6 +21,28 @@ function fixture() {
 }
 
 describe('board sessions and history', () => {
+  it('saves each board background independently and includes color changes in undo/redo', async () => {
+    const { store, documents } = fixture();
+    const a = await store.getState().createBoard('White board');
+    const b = await store.getState().createBoard('Black board');
+    store.getState().executeOperation(a, document => ({ ...document, backgroundColor: '#ffffff' }));
+    store.getState().executeOperation(b, document => ({ ...document, backgroundColor: '#000000' }));
+    store.getState().undo(a);
+    expect(store.getState().sessions[a].document.backgroundColor).toBeNull();
+    expect(store.getState().sessions[b].document.backgroundColor).toBe('#000000');
+    store.getState().redo(a);
+    store.getState().updateInteraction(a, document => ({ ...document, backgroundColor: '#123456' }));
+    store.getState().updateInteraction(a, document => ({ ...document, backgroundColor: '#654321' }));
+    store.getState().commitInteraction(a);
+    store.getState().undo(a);
+    expect(store.getState().sessions[a].document.backgroundColor).toBe('#ffffff');
+    await store.getState().flushAll();
+    expect(documents.get(a)?.backgroundColor).toBe('#ffffff');
+    expect(documents.get(b)?.backgroundColor).toBe('#000000');
+    await store.getState().closeBoard(a);
+    await store.getState().openBoard(a);
+    expect(store.getState().sessions[a].document.backgroundColor).toBe('#ffffff');
+  });
   it('freezes a recovering session until its replacement is saved and makes close wait', async () => {
     const { store, repository } = fixture();
     const id = await store.getState().createBoard('Recovery');

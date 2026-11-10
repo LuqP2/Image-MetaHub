@@ -61,6 +61,18 @@
 .board-compare-bar span { font-size:11px; color:rgb(var(--gray-400)); }
 
 .board-stage { position:relative; }
+.board-background-control { position:relative; display:flex; }
+.board-background-swatch { display:block; width:16px; height:16px; border:1px solid #808080; border-radius:3px; }
+.board-popover.board-background-popover { position:absolute; right:0; bottom:calc(100% + 8px); z-index:15; width:224px; padding:12px; gap:12px; border:1px solid rgb(var(--gray-700)); border-radius:10px; background:rgb(var(--gray-900)); color:rgb(var(--gray-100)); box-shadow:0 8px 24px #0005; }
+.board-help>.board-icon-button { background:rgb(var(--gray-900)); color:rgb(var(--gray-100)); border:1px solid rgb(var(--gray-700)); }
+.board-background-popover>strong { font-size:12px; }
+.board-background-presets { display:flex; justify-content:space-between; gap:8px; }
+.board-background-presets button { width:32px; height:32px; display:flex; align-items:center; justify-content:center; border:1px solid #808080; border-radius:6px; }
+.board-background-presets button[aria-pressed=true] { outline:2px solid rgb(var(--accent)); outline-offset:2px; }
+.board-background-custom { display:flex; align-items:end; gap:10px; }
+.board-background-custom label { display:flex; flex-direction:column; gap:6px; font-size:11px; white-space:nowrap; }
+.board-background-custom input[type=color] { width:40px; height:30px; padding:2px; background:transparent; cursor:pointer; }
+.board-background-custom .board-input { width:104px; font-family:monospace; }
 .board-frame { cursor:grab; }
 .board-minimap-panel { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
 .board-minimap-panel .react-flow__minimap { position:relative; margin:0; background:rgb(var(--gray-900)); border:1px solid rgb(var(--gray-600) / .5); border-radius:6px; overflow:hidden; }

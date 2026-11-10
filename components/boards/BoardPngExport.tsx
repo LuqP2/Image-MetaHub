@@ -14,6 +14,7 @@ import BoardSmartFrameNode from './BoardSmartFrameNode';
 import BoardCreativeNode from './BoardCreativeNode';
 import BoardConnection from './BoardConnection';
 import BoardQueryConnection from './BoardQueryConnection';
+import { boardBackground } from '../../services/boards/background';
 
 const nodeTypes = { stack: BoardStackNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode, 'smart-frame': BoardSmartFrameNode, sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode };
 const edgeTypes = { manual: BoardConnection, query: BoardQueryConnection };
@@ -60,7 +61,7 @@ export default function BoardPngExport({ boardId, selection, close }: { boardId:
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };
-  const bg = transparent ? 'transparent' : getComputedStyle(document.documentElement).getPropertyValue('--gray-950').trim() ? 'rgb(var(--gray-950))' : 'rgb(var(--gray-900))';
+  const bg = boardBackground(snapshot.backgroundColor, transparent);
   return <>
     <div ref={dialog} role="dialog" aria-modal="true" aria-label="Export PNG" className="board-export-backdrop" onKeyDown={event => {
       event.stopPropagation();
