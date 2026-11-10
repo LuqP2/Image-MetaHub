@@ -2,15 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import type { IndexedImage } from '../../types';
 import { mediaSourceCache } from '../../services/mediaSourceCache';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 export default function BoardVideoPreview({ image, directoryPath, poster }: { image: IndexedImage; directoryPath?: string; poster?: string }) {
+  const autoplay = useSettingsStore(state => state.canvasAutoplayVideos);
   const root = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const [visible, setVisible] = useState(false);
   const [source, setSource] = useState<string>();
   const [muted, setMuted] = useState(true);
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState(!autoplay);
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => { setPaused(!autoplay); }, [autoplay]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(entries => setVisible(entries.some(entry => entry.isIntersecting)));

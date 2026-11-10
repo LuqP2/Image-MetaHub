@@ -3,6 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BoardAssetNode from '../components/boards/BoardAssetNode';
 import BoardVideoPreview from '../components/boards/BoardVideoPreview';
+import BoardToolbar from '../components/boards/BoardToolbar';
+import { useBoardStore } from '../store/useBoardStore';
 import { BoardEditorContext, type BoardEditorActions } from '../components/boards/BoardEditorContext';
 import { addAssets } from '../services/boards/operations';
 import { createBoardDocument } from '../services/boards/document.mjs';
@@ -25,7 +27,7 @@ let intersect: (entries: { isIntersecting: boolean }[]) => void;
 beforeEach(() => {
   mocks.load.mockReset().mockResolvedValue('imh-media://clip.mp4');
   mocks.thumbnail.mockClear();
-  useSettingsStore.setState({ disableThumbnails: false, enableSafeMode: false });
+  useSettingsStore.setState({ disableThumbnails: false, enableSafeMode: false, canvasAutoplayVideos: true });
   useImageStore.setState({ directories: [{ id: 'library', path: 'C:/models' }] as never });
   vi.stubGlobal('IntersectionObserver', class {
     constructor(callback: typeof intersect) { intersect = callback; }
@@ -44,6 +46,34 @@ function mountAsset(mediaType: 'video' | 'model3d', exporting = false) {
 }
 
 describe('Canvas asset media', () => {
+  it('toggles autoplay from the toolbar and preserves manual playback when disabled', async () => {
+    useSettingsStore.getState().setCanvasAutoplayVideos(false);
+    const board = createBoardDocument();
+    useBoardStore.getState().adoptBoard(board);
+    const { container } = render(<><BoardToolbar boardId={board.id} editable tool="select" setTool={vi.fn()} /><BoardVideoPreview image={image} /></>);
+    act(() => intersect([{ isIntersecting: true }]));
+    await waitFor(() => expect(container.querySelector('video')?.src).toBe('imh-media://clip.mp4'));
+    const video = container.querySelector('video')!;
+    const toggle = screen.getByRole('button', { name: 'Autoplay videos' });
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(video.play).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Play video' }));
+    expect(video.play).toHaveBeenCalled();
+    fireEvent.click(toggle);
+    expect(useSettingsStore.getState().canvasAutoplayVideos).toBe(true);
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    video.currentTime = 7;
+    fireEvent.click(toggle);
+    expect(useSettingsStore.getState().canvasAutoplayVideos).toBe(false);
+    expect(screen.getByRole('button', { name: 'Play video' })).toBeTruthy();
+    expect(video.pause).toHaveBeenCalled();
+    expect(video.currentTime).toBe(7);
+    expect(container.querySelector('video')).toBe(video);
+    cleanup();
+    render(<BoardVideoPreview image={image} />);
+    expect(screen.getByRole('button', { name: 'Play video' })).toBeTruthy();
+  });
+
   it('renders 3D with the model renderer and live library directory instead of requesting a raster thumbnail', () => {
     mountAsset('model3d');
     expect(screen.getByTestId('model-preview').textContent).toBe('C:/models');

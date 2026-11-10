@@ -28,6 +28,7 @@
 .board-asset:hover .board-video-controls,.board-video-preview:focus-within .board-video-controls { opacity:1; pointer-events:auto; }
 .board-video-controls button { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:6px; background:#0f172acc; color:white; }
 .board-video-controls button:focus-visible { outline:2px solid #a78bfa; }
+.board-autoplay-toggle[aria-pressed=true] { border-color:rgb(var(--accent)); background:rgb(var(--accent) / .15); color:rgb(var(--accent)); }
 .board-video-error { position:absolute; left:8px; bottom:8px; padding:4px; background:#0f172acc; }
 .board-asset-picture span { color:rgb(var(--gray-400)); font-size:13px; }
 .board-asset-caption { flex-shrink:0; height:32px; padding:6px 8px; font-size:11px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border-top:1px solid rgb(var(--gray-700)); }
