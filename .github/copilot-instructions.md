@@ -449,7 +449,7 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 ## Key Files to Reference
 
 ### Architecture Understanding
-- `ARCHITECTURE.md` - Detailed technical documentation
+- `docs/ARCHITECTURE.md` - Detailed technical documentation
 - `README.md` - Feature overview and setup instructions
 - `types.ts` - Core data structures and interfaces
 

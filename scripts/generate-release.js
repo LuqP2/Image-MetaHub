@@ -99,7 +99,7 @@ Choose the appropriate installer for your operating system:
 ## Documentation
 
 - [README](https://github.com/LuqP2/image-metahub/blob/main/README.md)
-- [Architecture](https://github.com/LuqP2/image-metahub/blob/main/ARCHITECTURE.md)
+- [Architecture](https://github.com/LuqP2/image-metahub/blob/main/docs/ARCHITECTURE.md)
 - [Changelog](https://github.com/LuqP2/image-metahub/blob/CHANGELOG.md)
 
 ## Known Issues

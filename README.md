@@ -6,7 +6,7 @@ Image MetaHub turns your output folders into a searchable desktop library. Find 
 
 **[Download the app](https://github.com/LuqP2/Image-MetaHub/releases/latest)** · [Website](https://www.imagemetahub.com?src=readme) · [Get Pro](https://www.imagemetahub.com/pro?src=readme) · [Discord](https://discord.gg/2MXWxjKyJ5)
 
-![Image MetaHub Library with the Ayu theme and Masonry layout](assets/screenshot-hero-grid.webp)
+![Image MetaHub Library with the Ayu theme and Masonry layout](docs/assets/screenshot-hero-grid.webp)
 
 ## Get started
 
@@ -32,7 +32,7 @@ Browse in grid, Masonry, or table view. Use favorites, ratings, manual tags, and
 
 **Find Similar** searches for visually related images, including files with no generation metadata. It runs locally after a separate, explicit model download, with pausable indexing and optional GPU acceleration. Text-to-image visual queries are also available as an experimental option.
 
-![Library filters combining ratings and included or excluded LoRAs](assets/screenshot-gallery.webp)
+![Library filters combining ratings and included or excluded LoRAs](docs/assets/screenshot-gallery.webp)
 
 ## Inspect an image and recover how it was made
 
@@ -40,7 +40,7 @@ Open an image to read its prompt, model, LoRAs, seed, and other available genera
 
 For related generations, lineage can show source images and transformation chains such as img2img, inpaint, and outpaint. Provenance summarizes available source evidence and offers an optional SHA-256 fingerprint. Shadow metadata lets you edit information while keeping the original available to restore.
 
-![Image viewer with prompts, auto-tags, and generation details](assets/screenshot-imagemodal.webp)
+![Image viewer with prompts, auto-tags, and generation details](docs/assets/screenshot-imagemodal.webp)
 
 ## Keep your best prompts ready to reuse
 
@@ -48,7 +48,7 @@ Save a prompt from any image into **Prompt Library**, then search, favorite, cop
 
 With Pro, turn useful fragments into reusable **blocks**, compose positive and negative prompts, and create **templates** with fillable fields. Saved compositions keep their own block snapshots, so later edits to a block won't silently change your earlier work.
 
-![Prompt Library with saved prompts and a source-image preview](assets/screenshot-prompt-library.webp)
+![Prompt Library with saved prompts and a source-image preview](docs/assets/screenshot-prompt-library.webp)
 
 ## Manage your local AI models · Pro
 
@@ -58,7 +58,7 @@ Identify versions through Civitai, link files to Hugging Face, and follow new re
 
 See which library images use a model, inspect it in a detached window, or open **Storage** to review file sizes, locations, and verified duplicate copies. File removal lets you review the selected paths before moving them to the system Trash.
 
-![Model Manager showing installed versions and available Civitai releases](assets/screenshot-model-updates.webp)
+![Model Manager showing installed versions and available Civitai releases](docs/assets/screenshot-model-updates.webp)
 
 ## Continue creating in ComfyUI or Automatic1111 · Pro
 
@@ -80,11 +80,11 @@ Compare up to **four images**, with synchronized zoom and metadata differences. 
 
 The built-in **Image Editor** provides adjustments, crop, rotation, resizing, sharpening, and annotations, with metadata-preserving exports.
 
-![Compare View with two images and highlighted metadata differences](assets/screenshot-compare.webp)
+![Compare View with two images and highlighted metadata differences](docs/assets/screenshot-compare.webp)
 
 **Analytics Explorer** shows which models, LoRAs, samplers, and generators you use, across the full library or current results. Images with MetaHub Save Node telemetry can also contribute generation-time, speed, GPU, and VRAM metrics.
 
-![Analytics Explorer showing LoRA and sampler usage](assets/screenshot-analytics.webp)
+![Analytics Explorer showing LoRA and sampler usage](docs/assets/screenshot-analytics.webp)
 
 ## Images, video, audio, and 3D in one library
 
@@ -101,7 +101,7 @@ Browse and play media, or inspect 3D assets in the interactive viewer and export
 
 For renders, [EXR / OpenColorIO](docs/EXR-OCIO.md) adds color-managed previews, render passes, individual channels, and non-destructive exposure. Install the optional component from **Settings → General → Optional components**; processing then works offline. EXR originals are preserved, and EXR editing/export and deep images are outside this first version.
 
-![Interactive local 3D model viewer](assets/screenshot-3d-model-library.webp)
+![Interactive local 3D model viewer](docs/assets/screenshot-3d-model-library.webp)
 
 ## Free and Pro
 
@@ -141,7 +141,7 @@ npm install
 npm run dev:app
 ```
 
-Developer references: [Architecture](ARCHITECTURE.md) · [CLI](docs/CLI-README.md) · [Prompt Library](docs/PROMPT_LIBRARY.md) · [ComfyUI context tools](docs/COMFYUI_CONTEXT_TOOLS.md) · [Release guide](docs/RELEASE-GUIDE.md)
+Developer references: [Architecture](docs/ARCHITECTURE.md) · [CLI](docs/CLI-README.md) · [Prompt Library](docs/PROMPT_LIBRARY.md) · [ComfyUI context tools](docs/COMFYUI_CONTEXT_TOOLS.md) · [Release guide](docs/RELEASE-GUIDE.md)
 
 Built and maintained by **Lucas (LuqP2)** with community feedback and contributions.
 

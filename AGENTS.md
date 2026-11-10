@@ -36,7 +36,7 @@ Image MetaHub is a desktop application (Electron + React + TypeScript) for brows
 ## Important Documentation
 
 - **README.md**: User-facing documentation and features
-- **ARCHITECTURE.md**: Technical architecture and design decisions
+- **docs/ARCHITECTURE.md**: Technical architecture and design decisions
 - **CHANGELOG.md**: Version history and changes
 - **RELEASE-GUIDE.md**: Release workflow for maintainers
 - **CLI-README.md**: CLI tool documentation
@@ -847,7 +847,7 @@ This is an Electron desktop app with a robust multi-platform release pipeline co
 **Files to sync:**
 
 - `package.json` - version field
-- `ARCHITECTURE.md` - version field
+- `docs/ARCHITECTURE.md` - version field
 - Git tags - format `v{VERSION}` (e.g., `v0.9.6`)
 
 **Prerelease Support:**
@@ -869,7 +869,7 @@ Executes complete pipeline:
 
 - Runs `npm run build` (compile + test)
 - Updates `package.json` version
-- Updates `ARCHITECTURE.md` version
+- Updates `docs/ARCHITECTURE.md` version
 - Generates release notes via `scripts/generate-release.js`
 - Creates git commit with standardized message
 - Creates git tag `v{VERSION}`
@@ -988,7 +988,7 @@ Format must match exactly for parser to extract correct section.
 2. TRIGGER RELEASE
    └─ npm run release-workflow 0.9.6
       (or npm run auto-release 0.9.6 to skip manual testing)
-      ├─ Updates package.json and ARCHITECTURE.md
+      ├─ Updates package.json and docs/ARCHITECTURE.md
       ├─ Generates release-v0.9.6.md
       ├─ Creates git commit
       ├─ Creates git tag v0.9.6
@@ -1112,7 +1112,7 @@ Located in `electron.mjs`, used for metadata cache invalidation:
 **Version mismatch across files:**
 
 - Always use `npm run release-workflow` (updates both files)
-- Or manually sync: `package.json`, `ARCHITECTURE.md`, git tag
+- Or manually sync: `package.json`, `docs/ARCHITECTURE.md`, git tag
 - Check with: `npm run build` before final push
 
 See RELEASE-GUIDE.md and `.github/workflows/publish.yml` for additional details.

@@ -26,7 +26,7 @@ execSync(`node scripts/generate-release.js ${VERSION}`, { stdio: 'inherit' });
 
 // Step 3: Commit changes
 console.log('💾 Committing version changes...');
-execSync('git add package.json ARCHITECTURE.md', { stdio: 'inherit' });
+execSync('git add package.json docs/ARCHITECTURE.md', { stdio: 'inherit' });
 execSync(`git commit -m "chore: bump version to v${VERSION}"`, { stdio: 'inherit' });
 console.log('✅ Changes committed');
 
