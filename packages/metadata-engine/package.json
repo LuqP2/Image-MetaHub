@@ -44,7 +44,7 @@
     "directory": "packages/metadata-engine"
   },
   "author": "LuqP2",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MPL-2.0",
   "engines": {
     "node": ">=16.0.0"
   },

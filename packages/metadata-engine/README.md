@@ -218,7 +218,7 @@ The engine reads metadata from multiple sources:
 
 ## License
 
-[PolyForm Perimeter License 1.0.1](LICENSE) (source-available; competing products are not permitted under the covered code license). Previously distributed Apache 2.0 versions remain under their original license; see [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0) in the repository.
+[Mozilla Public License 2.0 (MPL 2.0)](LICENSE). Previously distributed Apache 2.0 versions retain their original license grants; see [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0) in the repository. Previously distributed PolyForm Perimeter versions also retain their original license grants.
 
 ## Repository
 
