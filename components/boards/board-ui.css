@@ -23,7 +23,7 @@
 .board-tab { display:flex; align-items:center; border:0; border-radius:5px; background:transparent; padding:0 3px; flex-shrink:0; overflow:hidden; }
 .board-tab[data-active=true] { background:rgb(var(--accent) / .1); color:rgb(var(--accent)); }
 .board-tab-name { min-width:60px; max-width:190px; height:28px; padding:3px 6px; border:0; background:transparent; color:inherit; font-size:12px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.board-toolbar { position:absolute; z-index:10; bottom:16px; left:50%; transform:translateX(-50%); display:flex; align-items:center; width:max-content; max-width:calc(100% - 24px); min-height:48px; padding:6px; border:1px solid rgb(var(--gray-700) / .3); border-radius:12px; background:rgb(var(--gray-900) / .96); box-shadow:0 6px 24px #0003; }
+.board-toolbar { position:absolute; z-index:10; bottom:var(--board-dock-bottom); left:50%; transform:translateX(-50%); display:flex; align-items:center; width:max-content; max-width:calc(100% - 24px); min-height:48px; padding:6px; border:1px solid rgb(var(--gray-700) / .3); border-radius:12px; background:rgb(var(--gray-900) / .96); box-shadow:0 6px 24px #0003; }
 .board-toolbar-group { display:flex; align-items:center; flex-wrap:nowrap; gap:3px; padding:0; border:0; flex:1; min-width:0; overflow-x:auto; }
 .board-toolbar-group>button { flex-shrink:0; white-space:nowrap; min-height:34px; border-radius:7px; }
 .board-toolbar .board-tool { width:34px; padding:0; }
@@ -31,10 +31,10 @@
 .board-toolbar-group>.board-icon-button { width:30px; }
 .board-toolbar-group>[aria-label=Undo] { margin-left:6px; }
 .board-smart-frame-tool { margin-left:4px; }
-@container (max-width:600px) { .board-smart-frame-label { display:none; } .board-toolbar-group { gap:1px; } .board-toolbar { bottom:12px; } }
+@container (max-width:600px) { .board-smart-frame-label { display:none; } .board-toolbar-group { gap:1px; } .board-toolbar,.board-stage .react-flow__panel.bottom { --board-dock-bottom:12px; } }
 .board-library-panel,.board-inspector-panel { max-width:none; }
 .board-editor-layout { position:relative; }
-.board-stage-container { container-type:inline-size; }
+.board-stage-container { container-type:inline-size; --board-dock-bottom:16px; }
 .board-browser { padding:0 10px 10px; gap:8px; border-color:transparent; background:rgb(var(--gray-900) / .4); }
 .board-browser-heading { min-height:40px; font-size:12px; }
 .board-browser-filters { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:6px; }
@@ -175,8 +175,9 @@
 @container (max-width:300px) { .board-minimap-svg { width:140px; height:105px; } }
 @media(max-width:850px) { .board-save-status { display:none; } .board-document-actions { gap:4px; } .board-document-bar>.board-tabs { flex:1; } .board-toolbar { gap:4px; } }
 
-/* Keep navigation and drawing hints clear of the floating tools at every panel width. */
-.board-stage .react-flow__panel.bottom { bottom:76px; }
+/* Share the dock baseline; lift navigation only when it would overlap the centered tools. */
+.board-stage .react-flow__panel.bottom:not(.react-flow__attribution) { bottom:var(--board-dock-bottom); margin:0 16px; }
+@container (max-width:1400px) { .board-stage .react-flow__panel.bottom.board-minimap-panel { bottom:calc(var(--board-dock-bottom) + 60px); } }
 .board-drawing-hint { top:12px; bottom:auto; }
 .board-panel-resizer > span { opacity:0; transition:opacity .15s; }
 .board-panel-resizer:hover > span,.board-panel-resizer:focus-visible > span { opacity:1; }

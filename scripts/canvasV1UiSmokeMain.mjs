@@ -34,6 +34,13 @@ try {
     await window.webContents.executeJavaScript(`window.canvasSmoke.verifyBackgroundRestored(${JSON.stringify(a)}, ${JSON.stringify(b)})`);
     await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
     await fs.writeFile(path.join(output, 'background-restored.png'), (await window.webContents.capturePage()).toPNG());
+    window.setContentSize(1920, 1080);
+    const wideDock = await window.webContents.executeJavaScript('window.canvasSmoke.verifyDockAlignment(false)');
+    await fs.writeFile(path.join(output, 'dock-alignment-wide.png'), (await window.webContents.capturePage()).toPNG());
+    window.setContentSize(1100, 900);
+    const compactDock = await window.webContents.executeJavaScript('window.canvasSmoke.verifyDockAlignment(true)');
+    await fs.writeFile(path.join(output, 'dock-alignment-compact.png'), (await window.webContents.capturePage()).toPNG());
+    process.stdout.write(JSON.stringify({ wideDock, compactDock }) + '\n');
     process.stdout.write(JSON.stringify({ backgroundPalette: true, separateBoardColors: true, pngBackground: true, restartRestored: true }) + '\n');
   } else if (process.argv.includes('--navigation-only')) {
     await window.webContents.executeJavaScript('window.canvasSmoke.prepareNavigation()');

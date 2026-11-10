@@ -42,6 +42,25 @@ function LibraryFlowSmoke({ boardId }: { boardId: string }) {
 }
 
 Object.assign(window, { canvasSmoke: {
+  async verifyDockAlignment(compact: boolean) {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    useBoardUIStore.setState({ libraryOpen: false, inspectorOpen: true });
+    const rectangles = () => ({
+      stage: document.querySelector('.board-stage-container')!.getBoundingClientRect(),
+      dock: document.querySelector('.board-toolbar')!.getBoundingClientRect(),
+      navigation: document.querySelector('.board-minimap-panel')!.getBoundingClientRect(),
+    });
+    await wait(() => compact ? rectangles().stage.width < 1400 : rectangles().stage.width > 1400);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const { stage, dock, navigation } = rectangles();
+    check(Math.abs(stage.bottom - dock.bottom - 16) < 1, 'Dock lost its bottom inset');
+    if (compact) check(navigation.bottom <= dock.top - 11, 'Navigation overlaps the dock in a narrow Canvas');
+    else {
+      check(Math.abs(navigation.bottom - dock.bottom) < 1, 'Minimap controls are not aligned with the dock baseline');
+      check(navigation.left >= dock.right + 12, 'Navigation overlaps the dock horizontally');
+    }
+    return { stageWidth: stage.width, dockBottom: dock.bottom, navigationBottom: navigation.bottom };
+  },
   async prepareBackground() {
     const state = useBoardStore.getState();
     useSettingsStore.getState().setCanvasShowGrid(true);
