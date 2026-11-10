@@ -22,6 +22,13 @@
 .board-asset { height:100%; display:flex; flex-direction:column; border:1px solid rgb(var(--gray-600)); border-radius:8px; background:rgb(var(--gray-900)); color:rgb(var(--gray-100)); }
 .board-asset-picture { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
 .board-asset-picture img { width:100%; height:100%; object-fit:contain; }
+.board-video-preview { position:relative; width:100%; height:100%; }
+.board-video-preview video { width:100%; height:100%; object-fit:contain; }
+.board-video-controls { position:absolute; right:8px; bottom:8px; display:flex; gap:4px; opacity:0; pointer-events:none; }
+.board-asset:hover .board-video-controls,.board-video-preview:focus-within .board-video-controls { opacity:1; pointer-events:auto; }
+.board-video-controls button { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:6px; background:#0f172acc; color:white; }
+.board-video-controls button:focus-visible { outline:2px solid #a78bfa; }
+.board-video-error { position:absolute; left:8px; bottom:8px; padding:4px; background:#0f172acc; }
 .board-asset-picture span { color:rgb(var(--gray-400)); font-size:13px; }
 .board-asset-caption { flex-shrink:0; height:32px; padding:6px 8px; font-size:11px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border-top:1px solid rgb(var(--gray-700)); }
 .board-asset-caption span { float:right; color:rgb(var(--gray-400)); margin-left:8px; }

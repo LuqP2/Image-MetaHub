@@ -6,6 +6,7 @@ import type { BoardObjectUpdate } from '../../services/boards/operations';
 import type { BoardPoint } from '../../services/boards/layout';
 
 export interface BoardEditorActions {
+  exporting?: boolean;
   editable: boolean;
   connecting: boolean;
   tool?: BoardTool;
