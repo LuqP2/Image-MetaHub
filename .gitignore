@@ -83,3 +83,6 @@ packages/license-server/.wrangler/
 
 # ONNX Runtime binaries staged from node_modules by vite.config.ts (see stageOnnxRuntime)
 public/ort/
+
+# Local licensing notes
+/LICENSING.md

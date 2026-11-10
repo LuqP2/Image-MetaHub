@@ -147,4 +147,4 @@ Built and maintained by **Lucas (LuqP2)** with community feedback and contributi
 
 ## License
 
-Image MetaHub is **source-available** under the [PolyForm Perimeter License 1.0.1](LICENSE), which permits use, modification, and redistribution for permitted purposes while prohibiting competing products. See [LICENSING.md](LICENSING.md) for details.
+Image MetaHub is **open source** under the [Mozilla Public License 2.0 (MPL 2.0)](LICENSE).

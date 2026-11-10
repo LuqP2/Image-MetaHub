@@ -310,7 +310,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
                   feature={feature}
                 />
                 <p className="text-center text-xs text-gray-500">
-                  14-day refund, no questions asked · Source-available (PolyForm Perimeter)
+                  14-day refund, no questions asked · Open source (MPL 2.0)
                 </p>
               </>
             )}
