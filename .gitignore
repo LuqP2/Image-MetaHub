@@ -21,6 +21,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-electron
+/dist-electron-*/
 /build/canvas-smoke/
 /build/canvas-smoke-local/
 /build/canvas-smoke-final/
@@ -86,3 +87,7 @@ public/ort/
 
 # Local licensing notes
 /LICENSING.md
+
+# Retired Jules agent files
+/.jules/
+/.Jules/

@@ -13,7 +13,7 @@ npm run update-version 0.11.2
 
 Este script atualiza automaticamente:
 - ✅ `package.json` - campo version
-- ✅ `ARCHITECTURE.md` - seção Current Version
+- ✅ `docs/ARCHITECTURE.md` - seção Current Version
 - ✅ `components/Header.tsx` - título do cabeçalho
 - ✅ `components/FolderSelector.tsx` - tela de boas-vindas (3 ocorrências)
 - ✅ `index.html` - título da página
@@ -188,4 +188,4 @@ npm run auto-release 0.11.2
 ## Suporte
 
 - Issues: https://github.com/LuqP2/image-metahub/issues
-- Documentação: README.md, ARCHITECTURE.md, AGENTS.md
+- Documentação: README.md, docs/ARCHITECTURE.md, AGENTS.md

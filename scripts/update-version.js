@@ -65,13 +65,13 @@ updateFile(
 );
 
 // ============================================================
-// 2. ARCHITECTURE.md - Current Version section
+// 2. docs/ARCHITECTURE.md - Current Version section
 // ============================================================
 updateFile(
-  'ARCHITECTURE.md',
+  'docs/ARCHITECTURE.md',
   /- \*\*Version:\*\*\s*\d+\.\d+\.\d+(-[a-z0-9.-]+)?/,
   `- **Version:** ${NEW_VERSION}`,
-  'ARCHITECTURE.md current version'
+  'docs/ARCHITECTURE.md current version'
 );
 
 // ============================================================

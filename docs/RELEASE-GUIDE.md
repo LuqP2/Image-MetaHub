@@ -18,7 +18,7 @@ npm run generate-release 1.7.4
 ### `npm run release-workflow <version>`
 Complete automated workflow that:
 - Updates package.json version
-- Updates ARCHITECTURE.md version
+- Updates docs/ARCHITECTURE.md version
 - Generates release notes
 - Commits changes
 - Creates and pushes git tag
@@ -46,7 +46,7 @@ npm run release-workflow 1.7.4
    # Update package.json
    npm version 1.7.4 --no-git-tag-version
 
-   # Update ARCHITECTURE.md manually
+   # Update docs/ARCHITECTURE.md manually
    ```
 
 2. **Generate release notes**:
@@ -124,7 +124,7 @@ Keep your CHANGELOG.md following this structure:
 
 ### Files Updated Automatically:
 - `package.json` - Version number
-- `ARCHITECTURE.md` - Version number
+- `docs/ARCHITECTURE.md` - Version number
 
 ### Files to Update Manually:
 - `CHANGELOG.md` - Add new version section before release

@@ -27,7 +27,7 @@ export function verifyAppVersionConsistency(root = repositoryRoot) {
   }
 
   const expectedMarkers = [
-    ['ARCHITECTURE.md', `**Version:** ${version}`],
+    ['docs/ARCHITECTURE.md', `**Version:** ${version}`],
     ['cli.ts', `.version('${version}')`],
     ['components/FolderSelector.tsx', `Welcome to Image MetaHub v${major}.${minor}`],
     ['components/Header.tsx', `>v${version}</span>`],
