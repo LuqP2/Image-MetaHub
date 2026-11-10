@@ -146,4 +146,31 @@ describe('Canvas asset media', () => {
     expect(screen.queryByText('Playback unavailable')).toBeNull();
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
   });
+
+  it.each([true, false])('replaces a playable video for an overwritten revision with autoplay %s', async autoplay => {
+    useSettingsStore.getState().setCanvasAutoplayVideos(autoplay);
+    const { container, rerender } = render(<BoardVideoPreview image={image} />);
+    const card = container.firstElementChild;
+    act(() => intersect([{ isIntersecting: true }]));
+    await waitFor(() => expect(container.querySelector('video')?.src).toBe('imh-media://clip.mp4'));
+    const original = container.querySelector('video')!;
+    original.currentTime = 7;
+    vi.mocked(HTMLMediaElement.prototype.play).mockClear();
+    const updated = { ...image, lastModified: 2 };
+    rerender(<BoardVideoPreview image={updated} />);
+    await waitFor(() => expect(container.querySelector('video')).not.toBe(original));
+    const replacement = container.querySelector('video')!;
+    expect(replacement.src).toBe(original.src);
+    expect(replacement.currentTime).toBe(0);
+    expect(container.firstElementChild).toBe(card);
+    if (autoplay) expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+    else {
+      expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Play video' })).toBeTruthy();
+    }
+    rerender(<BoardVideoPreview image={{ ...updated, name: 'Updated label' }} />);
+    expect(container.querySelector('video')).toBe(replacement);
+    rerender(<BoardVideoPreview image={{ ...updated, contentModifiedMs: 3 }} />);
+    await waitFor(() => expect(container.querySelector('video')).not.toBe(replacement));
+  });
 });
