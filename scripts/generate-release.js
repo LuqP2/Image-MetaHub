@@ -83,7 +83,7 @@ Choose the appropriate installer for your operating system:
 - **Intel Macs**: \`ImageMetaHub-${VERSION}.dmg\`
 - **Apple Silicon**: \`ImageMetaHub-${VERSION}-arm64.dmg\`
 - **Format**: DMG packages with proper entitlements
-- **Requirements**: macOS 10.15+
+- **Requirements**: macOS 13 (Ventura) or later
 
 ###  Linux
 - **Universal**: \`ImageMetaHub-${VERSION}.AppImage\`
@@ -92,7 +92,7 @@ Choose the appropriate installer for your operating system:
 
 ## System Requirements
 
-- **OS**: Windows 10+, macOS 10.15+, Ubuntu 18.04+ (or equivalent)
+- **OS**: Windows 10+, macOS 13 (Ventura) or later, Ubuntu 18.04+ (or equivalent)
 - **RAM**: 4GB minimum, 8GB recommended
 - **Storage**: 100MB for application + space for your image collections
 

@@ -53,7 +53,7 @@ export async function runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root,
   })()`);
   // Exercise the native bridge without changing the operator's clipboard.
   const clipboardText = await window.webContents.executeJavaScript('window.electronAPI.boardsReadClipboard()');
-  if (!clipboardText.success || clipboardText.data !== clipboard.readText()) throw new Error('System clipboard bridge failed');
+  if (!clipboardText.success || clipboardText.data !== await clipboard.readText()) throw new Error('System clipboard bridge failed');
   const pngResult = await window.webContents.executeJavaScript(`window.electronAPI.boardsExportPng(${JSON.stringify({ name: 'Packaged PNG', width: 2304, height: 256, scale: 1,
     html: '<div style="position:relative;width:2304px;height:256px"><div style="position:absolute;left:2090px;top:20px;width:100px;height:100px;background:#ff0000"></div></div>' })})`);
   if (!pngResult.success) throw new Error(pngResult.error);
