@@ -34,7 +34,7 @@ import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
 import { prepareLargeLibraryWatcherSmoke } from './electron/libraryWatcherPackagedSmoke.mjs';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import {
   buildLauncherScriptContent,
   normalizeLauncherCommand,
@@ -8691,7 +8691,7 @@ function setupFileOperationHandlers() {
       const isCanceled = () => progressId ? activeCanceledExportIds.has(progressId) : false;
 
       const output = fsSync.createWriteStream(destZipPath);
-      const archive = archiver('zip', { zlib: { level: 9 } });
+      const archive = new ZipArchive({ zlib: { level: 9 } });
 
       const finalizePromise = new Promise((resolve, reject) => {
         output.on('close', resolve);

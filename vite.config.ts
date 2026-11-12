@@ -8,10 +8,8 @@ import { resolve } from 'path'
 // Staging them in public/ makes them available at /ort/ in dev and dist/ort/ in
 // a packaged build, which is what the embedding worker points wasmPaths at.
 const ORT_RUNTIME_FILES = [
-  'ort-wasm-simd-threaded.mjs',
-  'ort-wasm-simd-threaded.wasm',
-  'ort-wasm-simd-threaded.jsep.mjs',
-  'ort-wasm-simd-threaded.jsep.wasm',
+  'ort-wasm-simd-threaded.asyncify.mjs',
+  'ort-wasm-simd-threaded.asyncify.wasm',
 ]
 
 const stageOnnxRuntime = () => {
@@ -24,7 +22,6 @@ const stageOnnxRuntime = () => {
   mkdirSync(target, { recursive: true })
   for (const file of ORT_RUNTIME_FILES) {
     const from = resolve(source, file)
-    if (!existsSync(from)) continue
     copyFileSync(from, resolve(target, file))
   }
 }
