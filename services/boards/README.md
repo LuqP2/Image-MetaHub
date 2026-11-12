@@ -8,9 +8,9 @@ Canvas v1 is split into three dependent PRs. The complete user workflow ships af
 
 ## Persistence contract
 
-### Creative tools, Explorer and stacks (schema v4)
+### Creative tools, Explorer, stacks and prompt cards (schema v5)
 
-The shared document boundary reads schemas v1 through v4 and returns v4 in memory. Loading an older file preserves its revision and does not write it back; the next explicit save writes v4 using the existing expected-revision contract. File envelopes are exported as version 4. Sticky notes and shapes require v3. URLs are plain editable text with clickable HTTP/HTTPS links in display mode; the editor has no Link creation tool. Existing v3 link cards remain readable.
+The shared document boundary reads schemas v1 through v5 and returns v5 in memory. Loading an older file preserves its revision and does not write it back; the next explicit save writes v5 using the existing expected-revision contract. File envelopes are exported as version 5. Sticky notes and shapes require v3. URLs are plain editable text with clickable HTTP/HTTPS links in display mode; the editor has no Link creation tool. Existing v3 link cards remain readable.
 
 Clipboard fragments use a separate versioned envelope and carry frame members, internal connectors and transitive Smart Frame dependencies. Paste remaps IDs and missing dependency IDs; cut deletes only after a successful system clipboard write. All editor shortcuts defer to text inputs, composition and dialogs.
 
@@ -98,3 +98,7 @@ Use synthetic images in a test library; visual acceptance belongs to the user.
 5. Repeat grouping with a CPU-only configuration and a failed WebGPU adapter to verify the existing WASM fallback. Change a candidate or model after preview and verify Apply requires recalculation. Confirm Library Find Similar results are preserved.
 
 Production bundling and automated tests do not establish this packaged-app/manual acceptance.
+
+Prompt cards (schema v5) store an independent title, positive/negative text and optional Library revision or image reference. Matching compares the full positive, trims outer whitespace and normalizes CRLF/CR to LF. Correspondence outlines and counts are derived UI state. Prompt index construction depends on library metadata and Safe Mode visibility, not Canvas geometry.
+
+Packaged prompt UI smoke: run `node scripts/buildCanvasPromptSmoke.mjs` after the production Vite build and before packaging, then `node scripts/runPackagedCanvasSmoke.mjs <packaged executable> --prompt-cards`. The optional fixture is included under `dist/canvas-prompt-smoke` and exercises native DOM drag events, exact highlighting, separate object selection and native prompt persistence in a hidden window with synthetic data.

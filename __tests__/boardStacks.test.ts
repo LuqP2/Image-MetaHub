@@ -35,7 +35,7 @@ describe('Canvas stacks', () => {
     const { document, stacked } = fixture();
     expect(normalizeBoardDocument({ ...document, schemaVersion: version })).toEqual(document);
     expect(importBoard(exportBoard(stacked)).objects).toEqual(stacked.objects);
-    expect(JSON.parse(exportBoard(stacked)).version).toBe(4);
+    expect(JSON.parse(exportBoard(stacked)).version).toBe(5);
   });
   it('validates missing, shared, nested, cross-frame members and covers', () => {
     const { stacked, stack, ids } = fixture();

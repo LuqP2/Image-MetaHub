@@ -29,7 +29,7 @@ describe('board document boundary', () => {
     expect(copy.objects).toEqual(board.objects);
   });
   it.each([
-    ['unsupported version', (board) => ({ ...board, schemaVersion: 5 })],
+    ['unsupported version', (board) => ({ ...board, schemaVersion: 6 })],
     ['duplicate IDs', (board) => ({ ...board, objects: [board.objects[0], board.objects[0]] })],
     ['non-finite position', (board) => ({ ...board, objects: [{ ...board.objects[0], x: Infinity }] })],
     ['zero dimension', (board) => ({ ...board, objects: [{ ...board.objects[0], width: 0 }] })],

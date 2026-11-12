@@ -1,3 +1,4 @@
+import BoardPromptNode from './BoardPromptNode';
 import BoardStackNode from './BoardStackNode';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -16,7 +17,7 @@ import BoardConnection from './BoardConnection';
 import BoardQueryConnection from './BoardQueryConnection';
 import { boardBackground } from '../../services/boards/background';
 
-const nodeTypes = { stack: BoardStackNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode, 'smart-frame': BoardSmartFrameNode, sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode };
+const nodeTypes = { prompt: BoardPromptNode, stack: BoardStackNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode, 'smart-frame': BoardSmartFrameNode, sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode };
 const edgeTypes = { manual: BoardConnection, query: BoardQueryConnection };
 
 export default function BoardPngExport({ boardId, selection, close }: { boardId: string; selection: boolean; close(): void }) {

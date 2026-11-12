@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getPreviewValues, rememberPreviewValues } from '../../services/promptLibrary/sessionDraft';
 import { Heart, MoreHorizontal, Pencil, X, ChevronLeft, ChevronRight, Search, Plus, Trash2 } from 'lucide-react';
-import type { IndexedImage, PromptEditorData, PromptLibraryItem } from '../../types';
+import type { IndexedImage, PromptEditorData, PromptLibraryItem, SavedPrompt } from '../../types';
 import { allVariables, compilePrompt, normalizeEditor } from '../../services/promptLibrary/core.mjs';
 import { usePromptLibraryPreview } from '../../hooks/usePromptLibraryPreview';
 import { selectedPromptText, usePromptBlockExtraction } from '../../hooks/usePromptBlockExtraction';
@@ -19,9 +19,10 @@ import { buildSavedPromptSource } from '../../hooks/useSavePrompt';
 import { linkSessionPreview, removeSessionPreview, sessionPreviewFile } from '../../services/promptLibrary/sessionPreviews';
 import PromptPreviewPicker from './PromptPreviewPicker';
 
-export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDuplicate, onRemove, onDuplicates, onViewSource, onFindImages, onPendingSave, onSuggestionDraftChange, renderActions, renderSecondaryActions, workspace = false, onSendSelection, onPrevious, onNext, position }: {
+export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDuplicate, onRemove, onDuplicates, onViewSource, onFindImages, onPendingSave, onSuggestionDraftChange, renderActions, renderSecondaryActions, onAddToCanvas, workspace = false, onSendSelection, onPrevious, onNext, position }: {
   item: PromptLibraryItem; onEdit: (latest: PromptLibraryItem) => void; onClose: () => void; onFavorite: (latest: PromptLibraryItem) => void;
   onDuplicate: () => void; onRemove: () => void; onDuplicates: () => void; onViewSource: (path: string) => void | Promise<void>;
+  onAddToCanvas?: (item: SavedPrompt, values: Record<string, string>) => void;
   renderActions?: (result: ReturnType<typeof compilePrompt>) => React.ReactNode;
   renderSecondaryActions?: () => React.ReactNode;
   onFindImages?: (prompt: string) => void;
@@ -174,6 +175,7 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
       {block && !workspace && <BlockFieldSuggestions block={item} beforeSave={() => pendingSave.current} onPending={trackPendingSave} onDraftChange={onSuggestionDraftChange} />}
       <div draggable={canDragBlock} onDragStart={event => { if (block) { if (canDragBlock) startComfyTextDrag(event, compileBlockForUse(item).positivePrompt); else event.preventDefault(); } }} onContextMenu={e => { const text = selectedPromptText(); if (text) { e.preventDefault(); setSelection({ text, x: Math.min(e.clientX, window.innerWidth - 240), y: Math.min(e.clientY, window.innerHeight - (onSendSelection ? 150 : 100)) }); } }}><PromptPreview onEditContent={() => void afterPendingSave(() => onEdit(latestItem()))} compact={workspace} channel={block ? 'block' : undefined} result={result} heading={block ? 'Preview' : 'Prompt'} /></div>
       {block && workspace && <p className="text-xs text-gray-400">Drag to a node to pick a random suggested value for each field.</p>}
+      {!block && onAddToCanvas && <button className={buttonClass} onClick={() => void afterPendingSave(() => { const latest = latestItem(); if (!('text' in latest)) onAddToCanvas(latest, values); })}>Add to Canvas...</button>}
       {!workspace && renderActions?.(result)}
       {onFindImages && <button className={buttonClass} disabled={findResult.errors.length > 0 || !(findResult.positivePrompt.trim() || findResult.negativePrompt.trim())} onClick={findImages}><Search size={14} />Find images</button>}
       {renderSecondaryActions?.()}

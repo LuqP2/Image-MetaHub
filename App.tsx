@@ -1,3 +1,4 @@
+import { useSavedPromptStore } from './store/useSavedPromptStore';
 import { useBoardUIStore } from './store/useBoardUIStore';
 import { useLibraryCanvas } from './hooks/useLibraryCanvas';
 import React, { startTransition, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
@@ -4581,7 +4582,7 @@ export default function App() {
                         />
                   )
                 ) : libraryView === 'prompts' ? (
-                  <PromptLibrary onViewSource={handleOpenFileFromDeepLink} onFindImages={prompt => {
+                  <PromptLibrary onOpenCanvas={() => setLibraryView('canvas')} onViewSource={handleOpenFileFromDeepLink} onFindImages={prompt => {
                     const query = prompt.trim();
                     handleClearAllFilters();
                     useImageStore.getState().clearFolderSelection();
@@ -4688,7 +4689,7 @@ export default function App() {
                     }}
                   />
                 ) : libraryView === 'canvas' ? (
-                  <React.Suspense fallback={<div className="p-6">Loading Canvas…</div>}><CanvasWorkspace onExploreLibrary={libraryCanvas.explore} loading={isStartupHydrating || isLoading} onOpenImage={handleOpenBoardImage} onCompareImages={handleOpenFindSimilarCompare} /></React.Suspense>
+                  <React.Suspense fallback={<div className="p-6">Loading Canvas…</div>}><CanvasWorkspace onOpenPromptLibrary={id => { useSavedPromptStore.getState().select(id); setLibraryView('prompts'); }} onExploreLibrary={libraryCanvas.explore} loading={isStartupHydrating || isLoading} onOpenImage={handleOpenBoardImage} onCompareImages={handleOpenFindSimilarCompare} /></React.Suspense>
                 ) : libraryView === 'editor' ? (
                   editorImage ? (
                     <ImageEditorWorkspace

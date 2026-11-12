@@ -69,7 +69,7 @@ function normalizeReference(value) {
 // Reconstruct explicitly: imported runtime data, handles and unknown fields never reach disk.
 export function normalizeBoardDocument(input) {
   if (!record(input)) fail('Board document is required.');
-  if (![1, 2, 3, 4].includes(input.schemaVersion)) throw new BoardError('BOARD_UNSUPPORTED_VERSION', 'Unsupported board version.');
+  if (![1, 2, 3, 4, 5].includes(input.schemaVersion)) throw new BoardError('BOARD_UNSUPPORTED_VERSION', 'Unsupported board version.');
   if (!Array.isArray(input.objects) || !Array.isArray(input.connections)) fail('Objects and connections must be arrays.');
   if (!record(input.viewport)) fail('Viewport is required.');
   const ids = new Set();
@@ -81,7 +81,7 @@ export function normalizeBoardDocument(input) {
   };
   const queryBudget = { count: 0 };
   const objects = input.objects.map(value => {
-    if (!record(value) || !['asset', 'text', 'frame', 'smart-frame', 'sticky', 'shape', 'link', 'stack'].includes(value.type)) fail('Invalid board object.');
+    if (!record(value) || !['asset', 'text', 'frame', 'smart-frame', 'sticky', 'shape', 'link', 'stack', 'prompt'].includes(value.type)) fail('Invalid board object.');
     if (['sticky', 'shape', 'link'].includes(value.type) && input.schemaVersion < 3) fail('New objects require schema v3.');
     const base = {
       id: claim(value.id), type: value.type,
@@ -91,6 +91,17 @@ export function normalizeBoardDocument(input) {
       zIndex: number(value.zIndex, 'Z index'),
       frameId: value.frameId === null ? null : string(value.frameId, 'Frame ID', true),
     };
+    if (value.type === 'prompt') {
+      if (input.schemaVersion < 5) fail('Prompt cards require schema v5.');
+      let origin;
+      if (value.origin !== undefined) {
+        if (!record(value.origin)) fail('Invalid prompt origin.');
+        if (value.origin.kind === 'library') origin = { kind: 'library', id: string(value.origin.id, 'Prompt ID', true), revision: integer(value.origin.revision, 'Prompt revision') };
+        else if (value.origin.kind === 'image') origin = { kind: 'image', reference: normalizeReference(value.origin.reference) };
+        else fail('Invalid prompt origin.');
+      }
+      return { ...base, title: string(value.title, 'Prompt title'), positivePrompt: string(value.positivePrompt, 'Positive prompt'), negativePrompt: string(value.negativePrompt, 'Negative prompt'), ...(origin ? { origin } : {}) };
+    }
     if (value.type === 'stack') {
       if (input.schemaVersion < 4) fail('Stacks require schema v4.');
       if (!Array.isArray(value.memberIds) || value.memberIds.length < 2 || value.memberIds.some(id => typeof id !== 'string') || new Set(value.memberIds).size !== value.memberIds.length) fail('Invalid stack members.');
@@ -174,7 +185,7 @@ export function normalizeBoardDocument(input) {
   const zoom = number(input.viewport.zoom, 'Zoom', 0.1);
   if (zoom > 4) fail('Zoom cannot exceed 4.');
   return {
-    schemaVersion: 4, id: validateBoardId(input.id), revision: integer(input.revision, 'Revision'), name: string(input.name, 'Board name', true),
+    schemaVersion: 5, id: validateBoardId(input.id), revision: integer(input.revision, 'Revision'), name: string(input.name, 'Board name', true),
     createdAt: integer(input.createdAt, 'Creation time'), updatedAt: integer(input.updatedAt, 'Update time'),
     backgroundColor: input.backgroundColor == null ? null : color(input.backgroundColor).toLowerCase(),
     viewport: { x: number(input.viewport.x, 'Viewport X'), y: number(input.viewport.y, 'Viewport Y'), zoom }, objects, connections,
@@ -182,7 +193,7 @@ export function normalizeBoardDocument(input) {
 }
 
 export function createBoardDocument(name = 'Untitled board', id = crypto.randomUUID(), now = Date.now()) {
-  return normalizeBoardDocument({ schemaVersion: 4, id, revision: 0, name, createdAt: now, updatedAt: now, viewport: { x: 0, y: 0, zoom: 1 }, objects: [], connections: [] });
+  return normalizeBoardDocument({ schemaVersion: 5, id, revision: 0, name, createdAt: now, updatedAt: now, viewport: { x: 0, y: 0, zoom: 1 }, objects: [], connections: [] });
 }
 
 export function duplicateBoardDocument(document, name = `${document.name} (copy)`, id = crypto.randomUUID(), now = Date.now()) {
@@ -227,6 +238,7 @@ export function applyBoardReferenceRemaps(document, remaps) {
     }
       return { ...reference, appliedRemapIds: [...observed] };
     };
+    if (object.type === 'prompt' && object.origin?.kind === 'image') return { ...object, origin: { ...object.origin, reference: remapReference(object.origin.reference) } };
     if (object.type === 'asset') return { ...object, reference: remapReference(object.reference) };
     if (object.type === 'smart-frame') return { ...object, source: mapSetExpression(object.source, source => source.kind === 'snapshot'
       ? { ...source, references: source.references.map(remapReference) } : source) };

@@ -7,7 +7,7 @@ export const BOARD_COLORS = ['#fde68a', '#fbcfe8', '#bfdbfe', '#bbf7d0', '#ddd6f
 export default function BoardSelectionStyles({ boardId, editable, includeText = true, includeTypography = true }: { boardId: string; editable: boolean; includeText?: boolean; includeTypography?: boolean }) {
   const session = useBoardStore(state => state.sessions[boardId]);
   const selected = session.document.objects.filter(object => session.selectedObjectIds.includes(object.id));
-  const colored = selected.filter((object): object is Exclude<BoardObject, { type: 'asset' | 'stack' }> => object.type !== 'asset' && object.type !== 'stack' && (includeText || object.type !== 'text'));
+  const colored = selected.filter((object): object is Exclude<BoardObject, { type: 'asset' | 'stack' | 'prompt' }> => object.type !== 'asset' && object.type !== 'stack' && object.type !== 'prompt' && (includeText || object.type !== 'text'));
   const texts = colored.filter((object): object is Extract<BoardObject, { type: 'text' | 'sticky' | 'shape' }> => object.type === 'sticky' || (includeTypography && (object.type === 'text' || object.type === 'shape')));
   const shapes = colored.filter(object => object.type === 'shape');
   const rectangles = shapes.filter(object => object.shape === 'rectangle');

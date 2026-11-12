@@ -1,3 +1,4 @@
+import { useBoardPrompts } from './BoardPromptContext';
 import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, GripHorizontal } from 'lucide-react';
@@ -19,6 +20,7 @@ function StackImage({ object, stackId }: { object: BoardAssetObject; stackId: st
 export default memo(function BoardStackNode({ data, selected }: NodeProps<BoardFlowNode>) {
   const editor = useBoardEditor();
   const boardId = useBoardStore(state => state.activeBoardId);
+  const prompts = useBoardPrompts();
   const objects = useBoardStore(state => boardId ? state.sessions[boardId]?.document.objects : undefined);
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState(false);
@@ -51,6 +53,7 @@ export default memo(function BoardStackNode({ data, selected }: NodeProps<BoardF
     <header className="board-stack-drag-handle" data-editable={editor.editable} title="Drag to move stack" aria-label="Move stack" onDoubleClick={event => event.stopPropagation()}>
       <GripHorizontal size={16} aria-hidden="true" />
       <span>Stack</span>
+      {!editor.exporting && members.some(member => prompts.matchedObjectIds.has(member.id)) && <span className="board-prompt-stack-count">{members.filter(member => prompts.matchedObjectIds.has(member.id)).length} matches</span>}
       <span className="board-stack-count" aria-label={`Image ${current ? stack.memberIds.indexOf(current.id) + 1 : 0} of ${stack.memberIds.length}`}>{current ? stack.memberIds.indexOf(current.id) + 1 : 0}/{stack.memberIds.length}</span>
     </header>
     <div className="board-stack-picture">{current ? <StackImage object={current} stackId={stack.id} /> : <span>Unavailable</span>}</div>

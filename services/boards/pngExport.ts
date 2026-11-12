@@ -53,6 +53,9 @@ export async function serializeExportScene(root: HTMLElement): Promise<string> {
     const live = id ? document.querySelector<HTMLElement>(`.board-stage .react-flow__node[data-id="${CSS.escape(id)}"] .board-smart-frame`) : null;
     if (live) node.querySelector('.board-smart-frame')?.replaceWith(await freezeElement(live));
   }
+  // Live Smart Frame snapshots may include correspondence outlines. Exports omit transient highlights.
+  for (const element of clone.querySelectorAll<HTMLElement>('[data-prompt-match]')) { element.removeAttribute('data-prompt-match'); element.style.outline = 'none'; }
+  clone.querySelectorAll('.board-prompt-stack-count').forEach(element => element.remove());
   clone.style.position = 'relative'; clone.style.left = '0'; clone.style.top = '0'; clone.style.opacity = '1';
   clone.querySelectorAll('.react-flow__handle,.react-flow__resize-control,.react-flow__attribution,button:not(.board-result-thumb)').forEach(element => element.remove());
   return clone.outerHTML;
