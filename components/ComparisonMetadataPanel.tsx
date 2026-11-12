@@ -1,3 +1,4 @@
+import { imagePromptText } from '../services/boards/promptMatching';
 import React, { FC, useState } from 'react';
 import { ChevronDown, ChevronRight, Copy, AlertTriangle, CheckCircle } from 'lucide-react';
 import { ComparisonMetadataPanelProps } from '../types';
@@ -13,7 +14,8 @@ const MetadataField: FC<{
   otherValue?: unknown;
   isDiffMode?: boolean;
   field?: string;
-}> = ({ label, value, onCopy, multiline, otherValue, isDiffMode, field }) => {
+  actions?: React.ReactNode;
+}> = ({ label, value, onCopy, multiline, otherValue, isDiffMode, field, actions }) => {
   const [copied, setCopied] = useState(false);
   // Check if value exists
   const hasValue = value !== undefined && value !== null && value !== '';
@@ -98,6 +100,7 @@ const MetadataField: FC<{
     <div data-multiline={multiline || undefined} className={`metadata-field p-2 rounded border ${highlightClass}`}>
       <div className="flex justify-between items-start">
         <p className="text-gray-400 text-xs uppercase tracking-wider">{label}</p>
+        {actions}
         {onCopy && (
           <button
             onClick={handleCopy}
@@ -116,6 +119,7 @@ const MetadataField: FC<{
 
 const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   image,
+  promptActions,
   isExpanded,
   onToggleExpanded,
   viewMode = 'standard',
@@ -224,7 +228,8 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
             <MetadataField
               label="Prompt"
               field="prompt"
-              value={metadata.prompt}
+              value={imagePromptText(image).positivePrompt}
+              actions={promptActions}
               otherValue={otherImageMetadata?.prompt}
               isDiffMode={isDiffMode}
               onCopy={metadata.prompt ? () => copyToClipboard(metadata.prompt, 'Prompt') : undefined}

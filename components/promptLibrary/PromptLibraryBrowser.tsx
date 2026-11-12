@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Bookmark, Blocks, Heart, LayoutGrid, List, SlidersHorizontal } from 'lucide-react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, type ListChildComponentProps } from 'react-window';
-import type { PromptBlock, PromptLibraryItem } from '../../types';
+import type { PromptBlock, PromptLibraryItem, SavedPrompt } from '../../types';
 import { itemTitle, itemType, type PromptLibraryFilters } from '../../services/promptLibrary/search';
 import { usePromptLibraryPreview } from '../../hooks/usePromptLibraryPreview';
 import { buttonClass, fieldClass } from './PromptVariables';
@@ -13,6 +13,7 @@ import { compileBlockForUse } from '../../services/promptLibrary/blockFields';
 import { startComfyTextDrag } from '../comfyui/ComfyTextDrag';
 
 type Rows = {
+  onAddToCanvas?: (item: SavedPrompt) => void;
   onAddToCompose?: (block: PromptBlock) => void;
   onFindImages?: (item: PromptLibraryItem) => void;
   onCopyItem?: (item: PromptLibraryItem) => void;
@@ -69,7 +70,7 @@ function Row({ index, style, data }: ListChildComponentProps<RowData>) {
     {data.items.slice(index * data.columns, (index + 1) * data.columns).map(item => <Card key={item.id} item={item} data={data} grid={data.grid} />)}
   </div></div>;
 }
-export default function PromptLibraryBrowser({ all, visible, filters, onFilters, selected, activeId, onOpen, onSelect, onFavorite, selectionMode, onSelectionMode, showFilters, onToggleFilters, compact = false, scrollOffset = 0, onScrollOffset, onUse, directBlocks, directPrompts, useBusy, textDrag, onContextAction, onCopyItem, onFindImages, onAddToCompose, contextNodeActions = true, onContextOpen, canReplaceSelection = false }: Rows & {
+export default function PromptLibraryBrowser({ onAddToCanvas, all, visible, filters, onFilters, selected, activeId, onOpen, onSelect, onFavorite, selectionMode, onSelectionMode, showFilters, onToggleFilters, compact = false, scrollOffset = 0, onScrollOffset, onUse, directBlocks, directPrompts, useBusy, textDrag, onContextAction, onCopyItem, onFindImages, onAddToCompose, contextNodeActions = true, onContextOpen, canReplaceSelection = false }: Rows & {
   all: PromptLibraryItem[]; visible: PromptLibraryItem[]; filters: PromptLibraryFilters;
   onFilters: (filters: PromptLibraryFilters) => void; onSelectionMode: () => void;
   showFilters: boolean; onToggleFilters: () => void;
@@ -85,6 +86,7 @@ export default function PromptLibraryBrowser({ all, visible, filters, onFilters,
   return <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
     {context && createPortal(<><button className="fixed inset-0 z-[11000] cursor-default" aria-label="Close card menu" onClick={() => setContext(null)} onContextMenu={e => { e.preventDefault(); setContext(null); }} /><div role="menu" aria-label="Saved item actions" className="fixed z-[11001] max-h-[calc(100vh-16px)] w-56 overflow-y-auto rounded-lg border border-gray-700 bg-gray-900 p-1 text-xs text-gray-100 shadow-xl" style={{ left: Math.max(8, Math.min(context.x, window.innerWidth - 232)), top: Math.max(8, Math.min(context.y, window.innerHeight - (contextChannels.length > 1 ? 280 : 210))) }}>
       {(['edit', 'duplicate', 'remove'] as const).map(action => <button key={action} role="menuitem" className={`block w-full rounded px-3 py-2 text-left hover:bg-gray-800 ${action === 'remove' ? 'text-red-400' : ''}`} onClick={() => { onContextAction?.(context.item, action); setContext(null); }}>{action === 'edit' ? 'Edit' : action === 'duplicate' ? 'Duplicate' : 'Delete'}</button>)}
+      {onAddToCanvas && !('text' in context.item) && <button role="menuitem" className="block w-full rounded p-2 text-left hover:bg-gray-800" onClick={() => { if (!('text' in context.item)) onAddToCanvas(context.item); setContext(null); }}>Add to Canvas...</button>}
       {onCopyItem && <button role="menuitem" className="block w-full rounded px-3 py-2 text-left hover:bg-gray-800" onClick={() => { onCopyItem(context.item); setContext(null); }}>Copy text</button>}
       {onAddToCompose && 'text' in context.item && <button role="menuitem" className="block w-full rounded px-3 py-2 text-left hover:bg-gray-800" onClick={() => { if ('text' in context.item) onAddToCompose(context.item); setContext(null); }}>Add to Compose</button>}
       {onFindImages && <button role="menuitem" className="block w-full rounded px-3 py-2 text-left hover:bg-gray-800" disabled={!('text' in context.item ? context.item.text.trim() : contextText?.positivePrompt?.trim() || contextText?.negativePrompt?.trim())} onClick={() => { onFindImages(context.item); setContext(null); }}>Find images</button>}

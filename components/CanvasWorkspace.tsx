@@ -1,3 +1,6 @@
+import BoardPromptIntegration from './boards/BoardPromptIntegration';
+import BoardPromptLibrary from './boards/BoardPromptLibrary';
+import BoardImagePromptActions from './boards/BoardImagePromptActions';
 import { captureLibraryForCanvas } from '../services/boards/libraryCapture';
 import { getHiddenSensitiveTagSet, isVisibleWithSafeMode } from '../utils/safeModeVisibility';
 import { useBoardQueries } from '../hooks/useBoardQueries';
@@ -25,7 +28,7 @@ import { updateObjects } from '../services/boards/operations';
 import type { BoardAssetObject } from '../services/boards/types';
 import type { BoardPoint } from '../services/boards/layout';
 
-export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages, onExploreLibrary }: { onExploreLibrary?(boardId: string): void; loading: boolean; onOpenImage(image: IndexedImage, navigationImages: IndexedImage[]): void; onCompareImages(images: IndexedImage[]): void }) {
+export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages, onExploreLibrary, onOpenPromptLibrary }: { onOpenPromptLibrary?(id: string): void; onExploreLibrary?(boardId: string): void; loading: boolean; onOpenImage(image: IndexedImage, navigationImages: IndexedImage[]): void; onCompareImages(images: IndexedImage[]): void }) {
   const { images, directories, resolve } = useBoardAssets(loading);
   const boardId = useBoardStore(state => state.activeBoardId);
   const session = useBoardStore(state => boardId ? state.sessions[boardId] : undefined);
@@ -36,6 +39,7 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
   const { canUseCanvas, canUseComparison, showProModal } = useFeatureAccess();
   const editable = canUseCanvas && !closing && !session?.recovering;
   const [error, setError] = useState<string | null>(null);
+  const [libraryTab, setLibraryTab] = useState<'images' | 'prompts'>('images');
   const [relinkId, setRelinkId] = useState<string | null>(null);
   const navigation = useMemo(() => {
     const byId = new Map<string, IndexedImage>();
@@ -74,7 +78,7 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
     <button className="board-button" aria-pressed={Boolean(resolution.image.isFavorite)} onClick={() => { void useImageStore.getState().toggleFavorite(resolution.image.id).catch(cause => setError(String(cause))); }}><Star size={14} fill={resolution.image.isFavorite ? "currentColor" : "none"}/>Favorite</button></div>
     <RatingStars size={16} className="board-rating" rating={resolution.image.rating} onChange={rating => { void useImageStore.getState().setImageRating(resolution.image.id, rating).catch(cause => setError(String(cause))); }} />
   </> : null;
-  const metadata = resolution?.status === 'resolved' ? <ComparisonMetadataPanel className="board-embedded-metadata" image={resolution.image} isExpanded onToggleExpanded={() => {}} presentation="embedded" /> : null;
+  const metadata = resolution?.status === 'resolved' ? <ComparisonMetadataPanel promptActions={selectedAsset ? <BoardImagePromptActions image={resolution.image} object={selectedAsset} editable={editable} /> : undefined} className="board-embedded-metadata" image={resolution.image} isExpanded onToggleExpanded={() => {}} presentation="embedded" /> : null;
   const status = selectedAsset && resolution?.status !== 'resolved' ? <div className="board-asset-status"><p>{resolution?.status === 'loading' ? 'Library is loading…' : resolution?.status === 'ambiguous' ? 'Multiple files match this reference.' : 'This file is not available in the current library.'}</p>{(resolution?.status === 'missing' || resolution?.status === 'ambiguous') && <><p>Choose the library file for this board item to restore its reference.</p><button className="board-button" disabled={!editable} onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); setRelinkId(selectedAsset.id); }}>Locate missing file</button></>}</div> : null;
 
   const captureReferences = async (selected: IndexedImage[]): Promise<BoardAssetReference[]> => {
@@ -124,7 +128,7 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
       }
     },
   };
-  return <BoardQueryContext.Provider value={queryActions}><div className="flex h-full min-h-0 flex-col">
+  return <BoardPromptIntegration key={boardId ?? "list"} images={images} loading={loading} resolve={resolve} editable={editable} onOpenLibrary={onOpenPromptLibrary}><BoardQueryContext.Provider value={queryActions}><div className="flex h-full min-h-0 flex-col">
 
     {!canUseCanvas && <div className="border-b border-gray-700 p-2 text-sm"><button onClick={() => showProModal('canvas')}>Enable Canvas editing with Pro or trial</button></div>}
     {error && <div role="alert" className="border-b border-red-500/40 p-2 text-sm text-red-300">{error}<button className="ml-3 underline" onClick={() => setError(null)}>Dismiss</button></div>}
@@ -133,8 +137,8 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
         const byId = new Map(images.map(image => [image.id, image]));
         void add(ids.map(id => byId.get(id)).filter((image): image is IndexedImage => Boolean(image)), anchor);
       }}
-      assetPanel={<BoardAssetBrowser images={images} directories={directories} editable={editable} onAdd={selected => { void add(selected); }} onPick={relinkId ? image => { void relink(image); } : undefined} onCancelPick={() => setRelinkId(null)} />}
+      assetPanel={<div className="flex h-full min-h-0 min-w-0 flex-1 flex-col"><div role="tablist" aria-label="Canvas library" className="flex gap-2 p-2"><button role="tab" aria-selected={libraryTab === 'images' || !!relinkId} className="board-button" onClick={() => setLibraryTab('images')}>Images</button><button role="tab" aria-selected={libraryTab === 'prompts' && !relinkId} className="board-button" disabled={!!relinkId} onClick={() => setLibraryTab('prompts')}>Prompts</button></div><div className="flex min-h-0 flex-1 flex-col">{libraryTab === 'prompts' && !relinkId ? <BoardPromptLibrary editable={editable} /> : <BoardAssetBrowser images={images} directories={directories} editable={editable} onAdd={selected => { void add(selected); }} onPick={relinkId ? image => { void relink(image); } : undefined} onCancelPick={() => setRelinkId(null)} />}</div></div>}
       libraryLocked={Boolean(relinkId)} assetActions={inspector} assetMetadata={metadata} assetStatus={status}
       selectionActions={selected.length > 0 && selected.every(item => item.type === 'asset' && item.mediaType === 'image') ? <div className="board-selection-actions"><button className="board-button board-button--ghost" title={compareEnabled ? 'Compare selected images' : 'Select 2–4 available images to compare'} disabled={!compareEnabled} onClick={() => canUseComparison ? onCompareImages([...selectedImages.values()]) : showProModal('comparison')}>Compare selected images</button></div> : null} />
-  </div></BoardQueryContext.Provider>;
+  </div></BoardQueryContext.Provider></BoardPromptIntegration>;
 }

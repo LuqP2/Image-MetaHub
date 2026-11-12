@@ -78,7 +78,7 @@ describe('Canvas identification and first use', () => {
     expect(child.groupConstraints).toEqual([layout.groups[0].constraint]);
     expect(boardSourceLabel(child.source, restored.objects)).toBe('Refines “My saved title”');
     expect(boardSourceMode(child.source)).toBe('Linked');
-    expect(restored.schemaVersion).toBe(4);
+    expect(restored.schemaVersion).toBe(5);
   });
   it('loads only visible saved boards, resolves manual references and releases thumbnails offscreen', async () => {
     const image = boardImage('manual.png');

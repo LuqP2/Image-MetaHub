@@ -1,3 +1,6 @@
+import { PROMPT_DRAG_TYPE, readPromptDrag } from '../../services/boards/prompts';
+import { useBoardPrompts } from './BoardPromptContext';
+import BoardPromptNode from './BoardPromptNode';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import BoardVisualGroupingDialog from './BoardVisualGroupingDialog';
 import BoardStackNode from './BoardStackNode';
@@ -36,7 +39,7 @@ import BoardCanvasHelp from './BoardCanvasHelp';
 import { boardBackground, boardGridColor } from '../../services/boards/background';
 import { useBoardEditor } from './BoardEditorContext';
 
-const nodeTypes = { stack: BoardStackNode, sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode, 'smart-frame': BoardSmartFrameNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode };
+const nodeTypes = { prompt: BoardPromptNode, stack: BoardStackNode, sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode, 'smart-frame': BoardSmartFrameNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode };
 const edgeTypes = { manual: BoardConnection, query: BoardQueryConnection };
 
 export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId: string; onFitAll?: () => void }) {
@@ -46,6 +49,7 @@ export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId:
 
 function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: () => void }) {
   const [backgroundOpen, setBackgroundOpen] = useState(false);
+  const prompts = useBoardPrompts();
   const [nodeRuntime, setNodeRuntime] = useState<ReadonlyMap<string, BoardNodeRuntime>>(() => new Map());
   const session = useBoardStore(state => state.sessions[boardId]);
   const queryActions = useBoardQueryActions();
@@ -143,8 +147,13 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       setBoardPointer(boardId, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
       connections.pointerMove(event);
     }} onDoubleClick={event => { event.stopPropagation(); if (editor.editable && (event.target as HTMLElement).classList.contains('react-flow__pane')) setMenu({ x: event.clientX, y: event.clientY, point: flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }), kind: 'create' }); }}
-    onDragOver={event => { if (editor.editable && (hasStackCardDrag(event.dataTransfer) || hasInternalImageDragType(event.dataTransfer))) { event.preventDefault(); event.dataTransfer.dropEffect = hasStackCardDrag(event.dataTransfer) ? 'move' : 'copy'; } }}
+    onDragOver={event => { if (editor.editable && (event.dataTransfer.types.includes(PROMPT_DRAG_TYPE) || hasStackCardDrag(event.dataTransfer) || hasInternalImageDragType(event.dataTransfer))) { event.preventDefault(); event.dataTransfer.dropEffect = hasStackCardDrag(event.dataTransfer) ? 'move' : 'copy'; } }}
     onDrop={event => {
+      if (event.dataTransfer.types.includes(PROMPT_DRAG_TYPE)) {
+        event.preventDefault(); event.stopPropagation();
+        if (editor.editable) { try { prompts.add(readPromptDrag(event.dataTransfer), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch (cause) { editor.reportError?.(cause instanceof Error ? cause.message : 'Could not add prompt.'); } }
+        return;
+      }
       if (hasStackCardDrag(event.dataTransfer)) {
         event.preventDefault(); event.stopPropagation();
         const source = getStackCardDrag(event.dataTransfer);

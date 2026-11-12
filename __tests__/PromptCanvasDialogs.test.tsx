@@ -1,0 +1,100 @@
+import React from 'react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import PromptCardDialog from '../components/boards/PromptCardDialog';
+import BoardPromptLibrary from '../components/boards/BoardPromptLibrary';
+import { BoardPromptContext } from '../components/boards/BoardPromptContext';
+import { useSavedPromptStore } from '../store/useSavedPromptStore';
+import { useBoardStore } from '../store/useBoardStore';
+import { emptyEditor, makeDocument } from '../services/promptLibrary/core.mjs';
+import { createBoardDocument } from '../services/boards/document.mjs';
+import type { SavedPrompt } from '../types';
+import type { BoardDocument } from '../services/boards/types';
+
+const access = vi.hoisted(() => ({ canUseCanvas: true, showProModal: vi.fn() }));
+vi.mock('../hooks/useFeatureAccess', () => ({ useFeatureAccess: () => access }));
+vi.mock('../services/boards/boardService', () => ({ boardService: { list: async () => [], save: async (document: BoardDocument, revision: number) => ({ ...document, revision: revision + 1 }), flush: async () => {} } }));
+function prompt(template = false): SavedPrompt {
+  const editor = emptyEditor(); editor.title = 'Portrait';
+  if (template) editor.document = { ...makeDocument('portrait of {{subject}}', 'blur'), mode: 'template', variables: [{ name: 'subject', label: 'Subject', type: 'text', required: true, options: [], defaultValue: '' }] };
+  return { id: 'prompt', positivePrompt: 'portrait', negativePrompt: 'blur', revision: 1, createdAt: 1, sourceCreatedAt: null, source: null, textBasis: 'authored', editor };
+}
+beforeEach(() => { access.canUseCanvas = true; access.showProModal.mockClear(); useBoardStore.setState({ sessions: {}, activeBoardId: null, closing: false, summaries: [] }); });
+afterEach(async () => { cleanup(); delete window.electronAPI; await useBoardStore.getState().flushAll(); vi.restoreAllMocks(); });
+it('confirms filled template values before materializing a card', async () => {
+  const prepared = vi.fn();
+  render(<PromptCardDialog item={prompt(true)} onPrepared={prepared} onClose={() => {}} />);
+  expect(screen.getByText('Confirm values').matches(':disabled')).toBe(true);
+  fireEvent.change(screen.getByLabelText('Subject *'), { target: { value: 'cat' } });
+  fireEvent.click(screen.getByText('Confirm values'));
+  await waitFor(() => expect(prepared).toHaveBeenCalledWith(expect.objectContaining({ positivePrompt: 'portrait of cat', negativePrompt: 'blur' })));
+});
+it('retains values already filled in Library details', async () => {
+  const prepared = vi.fn();
+  render(<PromptCardDialog item={prompt(true)} initialValues={{ subject: 'fox' }} onPrepared={prepared} onClose={() => {}} />);
+  expect((screen.getByLabelText('Subject *') as HTMLInputElement).value).toBe('fox');
+  fireEvent.click(screen.getByText('Confirm values'));
+  await waitFor(() => expect(prepared).toHaveBeenCalledWith(expect.objectContaining({ positivePrompt: 'portrait of fox' })));
+});
+it('adds to a new board and retries a failed save without duplicating the card', async () => {
+  const prepared = vi.fn();
+  const flush = vi.spyOn(useBoardStore.getState(), 'flushBoard').mockRejectedValueOnce(new Error('Disk busy')).mockResolvedValue();
+  render(<PromptCardDialog item={prompt()} destination onPrepared={prepared} onClose={() => {}} />);
+  fireEvent.click(screen.getByText('Create board and add'));
+  await screen.findByText('Retry saving card');
+  const id = useBoardStore.getState().activeBoardId!;
+  expect(useBoardStore.getState().sessions[id].document.objects).toHaveLength(1);
+  fireEvent.click(screen.getByText('Retry saving card'));
+  await waitFor(() => expect(prepared).toHaveBeenCalledTimes(1));
+  expect(flush).toHaveBeenCalledTimes(2);
+  expect(useBoardStore.getState().sessions[id].document.objects).toHaveLength(1);
+});
+it('requires Canvas access when preparing a prompt', () => {
+  access.canUseCanvas = false;
+  const prepared = vi.fn();
+  render(<PromptCardDialog item={prompt()} onPrepared={prepared} onClose={() => {}} />);
+  fireEvent.click(screen.getByText('Confirm values'));
+  expect(access.showProModal).toHaveBeenCalledWith('canvas');
+  expect(prepared).not.toHaveBeenCalled();
+});
+it('searches side-panel prompts and invalidates resolved template text after a Library revision changes', async () => {
+  const item = prompt(true);
+  const loadLibrary = vi.spyOn(useSavedPromptStore.getState(), 'loadLibrary').mockResolvedValue();
+  useSavedPromptStore.setState({ prompts: [item], isLoading: false, error: null });
+  useBoardStore.getState().adoptBoard(createBoardDocument());
+  const add = vi.fn();
+  render(<BoardPromptContext.Provider value={{ loading: false, matchedIds: new Set(), matchedObjectIds: new Set(), counts: () => ({ canvas: 0, library: 0 }), add, bring() {}, save() {}, openLibrary() {} }}><BoardPromptLibrary editable /></BoardPromptContext.Provider>);
+  await waitFor(() => expect(loadLibrary).toHaveBeenCalled());
+  fireEvent.change(screen.getByLabelText('Search canvas prompts'), { target: { value: 'missing' } });
+  expect(screen.getByText('No matching saved prompts.')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Search canvas prompts'), { target: { value: '' } });
+  fireEvent.click(screen.getByText('Fill template values…'));
+  fireEvent.change(screen.getByLabelText('Subject *'), { target: { value: 'cat' } });
+  fireEvent.click(screen.getByText('Confirm values'));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  fireEvent.click(screen.getByText('Add to canvas'));
+  expect(add).toHaveBeenCalledWith(expect.objectContaining({ positivePrompt: 'portrait of cat' }));
+  act(() => useSavedPromptStore.setState({ prompts: [{ ...item, revision: 2 }] }));
+  expect(screen.getByText('Fill template values…')).toBeTruthy();
+});
+it('shows linked prompt thumbnails in the Canvas sidebar and respects hidden previews', async () => {
+  const linked = prompt();
+  linked.source = { kind: 'path', pathAtSave: { directoryPath: 'C:/synthetic', relativePath: 'portrait.png', fileSize: 1, contentModifiedMs: 1 } };
+  const hidden = { ...prompt(), id: 'hidden', editor: { ...emptyEditor(), title: 'Hidden preview', preview: 'hidden' as const } };
+  const resolve = vi.fn().mockResolvedValue({ success: true, data: { status: 'available', absolutePath: 'C:/synthetic/portrait.png' } });
+  const generate = vi.fn().mockResolvedValue({ success: true, data: new Uint8Array([1]), mimeType: 'image/png' });
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:prompt-preview') });
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+  window.electronAPI = { promptLibraryResolvePreview: resolve, generateThumbnailFromPath: generate } as unknown as typeof window.electronAPI;
+  vi.spyOn(useSavedPromptStore.getState(), 'loadLibrary').mockResolvedValue();
+  useSavedPromptStore.setState({ prompts: [linked, hidden], isLoading: false, error: null });
+  const view = render(<BoardPromptLibrary editable />);
+  const thumbnail = await screen.findByAltText('Preview for Portrait');
+  expect(thumbnail.getAttribute('src')).toBe('blob:prompt-preview');
+  expect(thumbnail.getAttribute('draggable')).toBe('false');
+  expect(resolve).toHaveBeenCalledWith('prompt', linked.id);
+  expect(resolve).not.toHaveBeenCalledWith('prompt', hidden.id);
+  expect(screen.queryByAltText('Preview for Hidden preview')).toBeNull();
+  view.unmount();
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:prompt-preview');
+});

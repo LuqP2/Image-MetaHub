@@ -1,3 +1,5 @@
+import { BoardPromptContext } from '../components/boards/BoardPromptContext';
+import { PROMPT_DRAG_TYPE } from '../services/boards/prompts';
 import { useBoardHotkeys } from '../hooks/useBoardHotkeys';
 import { addText } from '../services/boards/operations';
 import React from 'react';
@@ -107,4 +109,17 @@ it.each(['ellipse', 'rectangle', 'diamond', 'frame'] as const)('deletes a freshl
   expect(document.activeElement).toBe(view.getByTestId('drawing-workspace'));
   fireEvent.keyDown(document.activeElement!, { key: 'Delete' });
   expect(useBoardStore.getState().sessions[board.id].document.objects).toHaveLength(0);
+});
+
+it('drops a prompt at converted coordinates and reports invalid payloads without replacing existing cards', () => {
+  const doc = createBoardDocument(); useBoardStore.getState().adoptBoard(doc);
+  const add = vi.fn(), reportError = vi.fn();
+  const prompt = { title: 'Test', positivePrompt: 'cat', negativePrompt: 'blur' };
+  const view = render(<BoardPromptContext.Provider value={{ loading: false, matchedIds: new Set(), matchedObjectIds: new Set(), counts: () => ({ canvas: 0, library: 0 }), add, bring() {}, save() {}, openLibrary() {} }}><BoardEditorContext.Provider value={{ editable: true, connecting: false, begin() {}, change() {}, commit() {}, cancel() {}, reportError }}><BoardCanvas boardId={doc.id} /></BoardEditorContext.Provider></BoardPromptContext.Provider>);
+  const stage = view.container.querySelector('.board-stage')!;
+  fireEvent.drop(stage, { clientX: 500, clientY: 300, dataTransfer: { types: [PROMPT_DRAG_TYPE], getData: () => JSON.stringify({ version: 1, prompt }) } });
+  expect(add).toHaveBeenCalledWith(prompt, { x: 75, y: -20 });
+  fireEvent.drop(stage, { dataTransfer: { types: [PROMPT_DRAG_TYPE], getData: () => 'invalid' } });
+  expect(reportError).toHaveBeenCalledWith('Invalid prompt drag data.');
+  expect(add).toHaveBeenCalledTimes(1);
 });

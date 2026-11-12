@@ -29,6 +29,7 @@ export async function runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root,
   document.objects.push({ id: 'sticky', type: 'sticky', x: 350, y: 20, width: 240, height: 180, zIndex: 2, frameId: null, text: 'Packaged note', fontSize: 24, color: '#fde68a' },
     { id: 'shape', type: 'shape', shape: 'diamond', x: 650, y: 20, width: 240, height: 180, zIndex: 3, frameId: null, text: 'Decision', fontSize: 24, color: '#bfdbfe', borderColor: '#112233', borderWidth: 2 },
     { id: 'link', type: 'link', x: 950, y: 20, width: 240, height: 180, zIndex: 4, frameId: null, title: 'Example', url: 'https://example.com/', color: '#93c5fd' });
+  document.objects.push({ id: 'prompt', type: 'prompt', x: 50, y: 350, width: 320, height: 240, zIndex: 5, frameId: null, title: 'Packaged prompt', positivePrompt: 'cat, soft light', negativePrompt: 'blur', origin: { kind: 'image', reference: { kind: 'path', locator: locator('b.png') } } });
   const remaps = [['a.png', 'temp.png'], ['b.png', 'a.png'], ['temp.png', 'b.png']].map(([from, to]) => ({ operationId: crypto.randomUUID(), oldLocator: locator(from), newLocator: locator(to) }));
   const result = await window.webContents.executeJavaScript(`(async () => {
     const api = window.electronAPI;
@@ -44,7 +45,7 @@ export async function runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root,
     if (conflict.success || conflict.code !== 'BOARD_REVISION_CONFLICT') throw new Error('Revision conflict was not enforced');
     unwrap(await api.boardsExport(saved));
     const imported = unwrap(await api.boardsImport());
-    if (imported.id === saved.id || imported.objects.length !== 4 || imported.schemaVersion !== 3) throw new Error('Import did not preserve independent v3 objects');
+    if (imported.id === saved.id || imported.objects.length !== 5 || imported.schemaVersion !== 5) throw new Error('Import did not preserve independent v5 objects');
     const baseline = unwrap(await api.boardsReferenceBaseline());
     if (baseline.length !== 3) throw new Error('Reference baseline is missing');
     unwrap(await api.boardsFlush());
@@ -69,10 +70,22 @@ export async function runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root,
   await fs.writeFile(path.join(resetRoot, 'discardable-cache.json'), '{}');
   await resetUserDataContents({ userDataDir: resetRoot });
   await new BoardRepository({ directory: path.join(resetRoot, 'boards') }).load(result.boardId);
+  let promptUi;
+  if (process.env.IMH_CANVAS_PROMPT_UI_SMOKE === '1') {
+    window.setContentSize(1440, 1000);
+    window.webContents.setBackgroundThrottling(false);
+    const promptRenderer = path.join(appPath, 'dist/canvas-prompt-smoke/index.html');
+    await fs.access(promptRenderer);
+    await window.loadFile(promptRenderer);
+    promptUi = await window.webContents.executeJavaScript('window.canvasPromptSmoke.run()');
+    await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+    const screenshot = await window.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true });
+    await fs.writeFile(path.join(root, 'prompt-cards.png'), screenshot.toPNG());
+  }
   const other = new BrowserWindow({ show: false, webPreferences: { preload: path.join(appPath, 'preload.js'), contextIsolation: true, nodeIntegration: false } });
   await other.loadURL('data:text/html,<html><body>Unauthorized smoke caller</body></html>');
   const denied = await other.webContents.executeJavaScript('window.electronAPI.boardsList()');
   other.destroy();
   if (denied.success || denied.code !== 'BOARD_ACCESS_DENIED') throw new Error('Non-main window could access board documents');
-  return { success: true, coverage: 'packaged-main-preload-ipc-and-board-persistence', repeatedSaves: 3, nativeImportExport: true, schemaV3: true, systemClipboardRead: true, pngTransparencyAndTiles: true, resetPreserved: true, unauthorizedWindowRejected: true };
+  return { success: true, coverage: 'packaged-main-preload-ipc-and-board-persistence', repeatedSaves: 3, nativeImportExport: true, schemaV5: true, promptUi, systemClipboardRead: true, pngTransparencyAndTiles: true, resetPreserved: true, unauthorizedWindowRejected: true };
 }

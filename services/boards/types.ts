@@ -1,6 +1,6 @@
 import type { BoardSmartFrameObject } from './queryTypes';
 export type { BoardSmartFrameObject } from './queryTypes';
-export type BoardObjectType = 'stack' | 'asset' | 'text' | 'frame' | 'smart-frame' | 'sticky' | 'shape' | 'link';
+export type BoardObjectType = 'stack' | 'asset' | 'text' | 'frame' | 'smart-frame' | 'sticky' | 'shape' | 'link' | 'prompt';
 export type BoardTool = 'select' | 'text' | 'frame' | 'connect' | 'sticky' | 'rectangle' | 'ellipse' | 'diamond';
 export type BoardSide = 'top' | 'right' | 'bottom' | 'left';
 export type BoardMediaType = 'image' | 'video' | 'audio' | 'model3d';
@@ -81,7 +81,15 @@ export interface BoardStackObject extends BoardObjectBase {
   memberIds: string[];
   coverId: string;
 }
-export type BoardObject = BoardStackObject | BoardAssetObject | BoardTextObject | BoardFrameObject | BoardSmartFrameObject | BoardStickyObject | BoardShapeObject | BoardLinkObject;
+export interface BoardPromptObject extends BoardObjectBase {
+  type: 'prompt';
+  title: string;
+  positivePrompt: string;
+  negativePrompt: string;
+  origin?: { kind: 'library'; id: string; revision: number } | { kind: 'image'; reference: BoardAssetReference };
+}
+export type BoardPromptInput = Pick<BoardPromptObject, 'title' | 'positivePrompt' | 'negativePrompt' | 'origin'>;
+export type BoardObject = BoardPromptObject | BoardStackObject | BoardAssetObject | BoardTextObject | BoardFrameObject | BoardSmartFrameObject | BoardStickyObject | BoardShapeObject | BoardLinkObject;
 
 export interface BoardConnection {
   id: string;
@@ -97,7 +105,7 @@ export interface BoardConnection {
 }
 
 export interface BoardDocument {
-  schemaVersion: 4;
+  schemaVersion: 5;
   backgroundColor?: string | null;
   id: string;
   revision: number;

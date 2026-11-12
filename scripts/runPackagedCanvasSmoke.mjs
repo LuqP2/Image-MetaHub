@@ -56,6 +56,7 @@ try {
       ...process.env, IMH_PACKAGED_CANVAS_SMOKE: '1', IMH_PACKAGED_CANVAS_SMOKE_ROOT: root, IMH_PACKAGED_CANVAS_SMOKE_RESULT: resultPath,
       IMH_CANVAS_SMOKE_PROFILE: profile,
       IMH_DISABLE_GPU: '1',
+      ...(process.argv.includes('--prompt-cards') ? { IMH_CANVAS_PROMPT_UI_SMOKE: '1' } : {}),
       ...(process.platform === 'win32' ? { PORTABLE_EXECUTABLE_DIR: profile, PORTABLE_EXECUTABLE_FILE: resolved } : {}),
     };
     delete env.ELECTRON_RUN_AS_NODE;
@@ -70,6 +71,12 @@ try {
   });
   const result = JSON.parse(await fs.readFile(resultPath, 'utf8'));
   if (!result.success) throw new Error(JSON.stringify(result));
+  if (result.promptUi) {
+    const screenshot = path.resolve('build/canvas-smoke-local/prompt-cards.png');
+    await fs.mkdir(path.dirname(screenshot), { recursive: true });
+    await fs.copyFile(path.join(root, 'prompt-cards.png'), screenshot);
+    result.screenshot = screenshot;
+  }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 } finally {
   await removeSmokeRoot();

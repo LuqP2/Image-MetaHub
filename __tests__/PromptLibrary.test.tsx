@@ -742,6 +742,33 @@ describe('integrated Prompt Library', () => {
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'draft only' } }); view.unmount(); render(<PromptLibrary onViewSource={vi.fn()} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Open Studio portrait' })).toBeTruthy()); expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe('draft only'); expect(mocks.mutate).not.toHaveBeenCalled();
   });
+  it.each(['Save', 'Discard', 'Cancel'] as const)('guards a restored block draft when opening a Canvas source: %s', async action => {
+    data.blocks = [fieldBlock()];
+    const view = render(<PromptLibrary onViewSource={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Open Studio portrait' });
+    fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
+    await editItem('Hair and clothes');
+    fireEvent.change(screen.getByLabelText('Block text'), { target: { value: 'Unsaved block text' } });
+    view.unmount();
+
+    render(<PromptLibrary onViewSource={vi.fn()} sourcePromptId="two" />);
+    const dialog = await screen.findByRole('dialog', { name: 'Unsaved changes' });
+    expect((screen.getByLabelText('Block text') as HTMLTextAreaElement).value).toBe('Unsaved block text');
+    expect(useSavedPromptStore.getState().selectedPromptId).toBe('fields');
+    fireEvent.click(within(dialog).getByRole('button', { name: action }));
+
+    if (action === 'Cancel') {
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(getDraft()?.draft.text).toBe('Unsaved block text');
+      expect(useSavedPromptStore.getState().selectedPromptId).toBe('fields');
+    } else {
+      await screen.findByRole('region', { name: 'Prompt details' });
+      expect(useSavedPromptStore.getState().selectedPromptId).toBe('two');
+      expect(getDraft()).toBeNull();
+    }
+    expect(data.blocks[0].text).toBe(action === 'Save' ? 'Unsaved block text' : fieldBlock().text);
+    expect(mocks.mutate).toHaveBeenCalledTimes(action === 'Save' ? 1 : 0);
+  });
   it('reveals a save failure while preserving the draft and cancelling pending navigation', async () => {
     render(<PromptLibrary onViewSource={vi.fn()} />); await editItem('Studio portrait');
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Draft' } });

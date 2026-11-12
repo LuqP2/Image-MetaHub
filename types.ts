@@ -1684,6 +1684,7 @@ export interface ComparisonModalProps {
 }
 
 export interface ComparisonMetadataPanelProps {
+  promptActions?: React.ReactNode;
   presentation?: 'panel' | 'embedded';
   image: IndexedImage;
   isExpanded: boolean;
