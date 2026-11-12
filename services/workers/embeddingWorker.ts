@@ -77,9 +77,13 @@ const configureEnvironment = (modelPath: string, wasmPath: string, numThreads?: 
   env.allowLocalModels = true;
   env.localModelPath = modelPath;
   env.useBrowserCache = false;
+  env.useWasmCache = false;
   // The ORT runtime binaries ship with the app; without this transformers.js
   // would fetch them from a CDN at first inference.
-  env.backends.onnx.wasm.wasmPaths = wasmPath;
+  env.backends.onnx.wasm.wasmPaths = {
+    mjs: new URL('ort-wasm-simd-threaded.asyncify.mjs', wasmPath).href,
+    wasm: new URL('ort-wasm-simd-threaded.asyncify.wasm', wasmPath).href,
+  };
   env.backends.onnx.wasm.proxy = false;
   if (numThreads && Number.isFinite(numThreads)) {
     env.backends.onnx.wasm.numThreads = Math.max(1, Math.floor(numThreads));
@@ -87,8 +91,7 @@ const configureEnvironment = (modelPath: string, wasmPath: string, numThreads?: 
 };
 
 // dtype must match the *.onnx file the downloader fetched for this backend:
-// WASM runs q8 (*_quantized), WebGPU runs fp16 (*_fp16). transformers.js v3
-// otherwise defaults to fp32 (model.onnx), which was never downloaded.
+// WASM runs q8 (*_quantized) and WebGPU runs fp16 (*_fp16).
 const dtypeForDevice = (d: Device): 'q8' | 'fp16' => (d === 'webgpu' ? 'fp16' : 'q8');
 
 const LOAD_OPTIONS = () => ({ device, dtype: dtypeForDevice(device) });
