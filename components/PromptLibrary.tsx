@@ -24,12 +24,12 @@ function UnsavedDialog({ onSave, onDiscard, onCancel }: { onSave: () => void; on
   const ref = usePromptDialogFocus(onCancel);
   return <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 p-4"><section ref={ref} role="dialog" aria-modal="true" aria-label="Unsaved changes" className="space-y-4 rounded-xl border border-gray-700 bg-gray-900 p-5"><h3 className="font-semibold">Save your changes before leaving?</h3><p className="text-xs text-gray-400">Your saved item has not been changed yet.</p><div className="flex justify-end gap-2"><button className={buttonClass} onClick={onCancel}>Cancel</button><button className={buttonClass} onClick={onDiscard}>Discard</button><button className={buttonClass + ' !border-accent/40 !bg-accent/15'} onClick={onSave}>Save</button></div></section></div>;
 }
-export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas }: { onOpenCanvas?(): void; onViewSource: (path: string) => void | Promise<void>; onFindImages?: (prompt: string) => void }) {
+export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas, sourcePromptId, onSourcePromptHandled }: { sourcePromptId?: string | null; onSourcePromptHandled?(): void; onOpenCanvas?(): void; onViewSource: (path: string) => void | Promise<void>; onFindImages?: (prompt: string) => void }) {
   const { prompts, blocks, folders = [], loadLibrary, mutate, error, isLoading, selectedPromptId, select } = useSavedPromptStore();
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
   const [canvasValues, setCanvasValues] = useState<Record<string, string>>({});
   const [canvasPrompt, setCanvasPrompt] = useState<SavedPrompt | null>(null);
-  const [kind, setKind] = useState<'prompt' | 'block'>(prompts.some(item => item.id === selectedPromptId) ? 'prompt' : sessionDraft?.kind || 'prompt');
+  const [kind, setKind] = useState<'prompt' | 'block'>(sessionDraft?.kind ?? 'prompt');
   const [removingFolder, setRemovingFolder] = useState(false);
   const [folderId, setFolderId] = useState('all');
   const [filters, setFilters] = useState<PromptLibraryFilters>(emptyFilters);
@@ -59,7 +59,7 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
   const all: PromptLibraryItem[] = kind === 'prompt' ? prompts : blocks;
   const visible = useMemo(() => filterItems(all, filters).filter(item => folderId === 'all' || (folderId === 'none' ? !item.editor?.folderId : item.editor?.folderId === folderId)), [all, filters, folderId]);
   const active = all.find(item => item.id === selectedPromptId);
-  const change = (action: () => void) => {
+  const change = useCallback((action: () => void) => {
     const request = ++navigationRequest.current;
     const id = selectedPromptId;
     const navigate = () => {
@@ -79,7 +79,21 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
     })().catch(cause => {
       if (request === navigationRequest.current) setActionError(cause instanceof Error ? cause.message : 'Could not save changes.');
     });
-  };
+  }, [selectedPromptId]);
+  const handledSource = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sourcePromptId) { handledSource.current = null; return; }
+    if (handledSource.current === sourcePromptId) return;
+    handledSource.current = sourcePromptId;
+    onSourcePromptHandled?.();
+    change(() => {
+      setEditing(null);
+      setKind('prompt');
+      select(sourcePromptId);
+      setShowDuplicates(false);
+      dirty.current = false;
+    });
+  }, [sourcePromptId, onSourcePromptHandled, change, select]);
   const open = (item: PromptLibraryItem) => change(() => { setEditing(null); select(item.id); setShowDuplicates(false); dirty.current = false; });
   const copyItem = async (item: PromptLibraryItem) => {
     const result = 'text' in item ? { positivePrompt: item.text, negativePrompt: '', errors: [] } : compilePrompt(item);

@@ -1,4 +1,3 @@
-import { useSavedPromptStore } from './store/useSavedPromptStore';
 import { useBoardUIStore } from './store/useBoardUIStore';
 import { useLibraryCanvas } from './hooks/useLibraryCanvas';
 import React, { startTransition, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
@@ -577,6 +576,7 @@ export default function App() {
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [libraryView, setLibraryView] = useState<LibraryView>('library');
+  const [sourcePromptId, setSourcePromptId] = useState<string | null>(null);
   const modelManager = useModelManager();
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
@@ -4582,7 +4582,7 @@ export default function App() {
                         />
                   )
                 ) : libraryView === 'prompts' ? (
-                  <PromptLibrary onOpenCanvas={() => setLibraryView('canvas')} onViewSource={handleOpenFileFromDeepLink} onFindImages={prompt => {
+                  <PromptLibrary sourcePromptId={sourcePromptId} onSourcePromptHandled={() => setSourcePromptId(null)} onOpenCanvas={() => setLibraryView('canvas')} onViewSource={handleOpenFileFromDeepLink} onFindImages={prompt => {
                     const query = prompt.trim();
                     handleClearAllFilters();
                     useImageStore.getState().clearFolderSelection();
@@ -4689,7 +4689,7 @@ export default function App() {
                     }}
                   />
                 ) : libraryView === 'canvas' ? (
-                  <React.Suspense fallback={<div className="p-6">Loading Canvas…</div>}><CanvasWorkspace onOpenPromptLibrary={id => { useSavedPromptStore.getState().select(id); setLibraryView('prompts'); }} onExploreLibrary={libraryCanvas.explore} loading={isStartupHydrating || isLoading} onOpenImage={handleOpenBoardImage} onCompareImages={handleOpenFindSimilarCompare} /></React.Suspense>
+                  <React.Suspense fallback={<div className="p-6">Loading Canvas…</div>}><CanvasWorkspace onOpenPromptLibrary={id => { setSourcePromptId(id); setLibraryView('prompts'); }} onExploreLibrary={libraryCanvas.explore} loading={isStartupHydrating || isLoading} onOpenImage={handleOpenBoardImage} onCompareImages={handleOpenFindSimilarCompare} /></React.Suspense>
                 ) : libraryView === 'editor' ? (
                   editorImage ? (
                     <ImageEditorWorkspace
