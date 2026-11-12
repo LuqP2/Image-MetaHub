@@ -18,7 +18,7 @@ There is no need to move your files or change your folder structure. Enable fold
 
 **Windows:** choose Setup for a standard installation or Portable to keep the app's settings and data beside the executable. When updating Portable, replace only the executable and keep its `ImageMetaHubData` folder.
 
-**macOS:** current builds are unsigned. Update notifications open [GitHub Releases](https://github.com/LuqP2/Image-MetaHub/releases/latest), where you can download the latest DMG and install it manually. If macOS blocks the app after you move it to Applications, run this in Terminal:
+**macOS:** builds using Electron 45 require macOS 13 (Ventura) or later. The app is unsigned. Update notifications open [GitHub Releases](https://github.com/LuqP2/Image-MetaHub/releases/latest), where you can download the latest DMG and install it manually. If macOS blocks the app after you move it to Applications, run this in Terminal:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Image MetaHub.app"
