@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, clipboard, nativeImage } from 'electron';
+import { app, BrowserWindow, ClipboardItem, ipcMain, clipboard, nativeImage } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { registerBoardIpc } from '../electron/boardIpc.mjs';
@@ -10,7 +10,7 @@ app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
 process.stdout.write('Canvas UI runtime ready\n');
 let window;
-const priorClipboard = { text: clipboard.readText(), html: clipboard.readHTML(), rtf: clipboard.readRTF(), image: clipboard.readImage() };
+let priorClipboard;
 try {
   window = new BrowserWindow({ show: false, width: 1440, height: 1000, webPreferences: { preload: path.resolve('preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   window.webContents.on('console-message', (_event, _level, message) => { if (message.includes('Error')) process.stderr.write(`${message}\n`); });
@@ -19,7 +19,15 @@ try {
   const persistence = registerBoardIpc({ ipcMain, app, BrowserWindow, clipboard, getMainWindow: () => window, dialog: { showSaveDialog: async () => ({ canceled: false, filePath: path.join(output, 'canvas.png') }) } });
   ipcMain.handle('get-settings', () => ({}));
   ipcMain.handle('save-settings', () => ({ success: true }));
-  ipcMain.handle('copy-text-to-clipboard', (event, text) => { if (event.sender !== window.webContents) throw new Error('Denied'); clipboard.writeText(text); return { success: true }; });
+  ipcMain.handle('copy-text-to-clipboard', async (event, text) => {
+    if (event.sender !== window.webContents) throw new Error('Denied');
+    priorClipboard ??= await Promise.all((await clipboard.read()).map(async item => {
+      const entries = await Promise.all(item.types.map(async type => [type, await item.getType(type)]));
+      return new ClipboardItem(Object.fromEntries(entries));
+    }));
+    await clipboard.writeText(text);
+    return { success: true };
+  });
   await window.loadFile(path.join(output, 'renderer/index.html'));
   if (process.argv.includes('--background-only')) {
     const { a, b } = await window.webContents.executeJavaScript('window.canvasSmoke.prepareBackground()');
@@ -202,6 +210,11 @@ try {
   process.stdout.write(`${JSON.stringify(result)}\n`);
   }
 } catch (error) { if (window && !window.isDestroyed()) await fs.writeFile(path.join(output, 'failure.png'), (await window.webContents.capturePage()).toPNG()); console.error(error); process.exitCode = 1; }
-finally { clipboard.write(priorClipboard); if (window && !window.isDestroyed()) window.destroy(); app.exit(process.exitCode ?? 0); }
+finally {
+  if (priorClipboard?.length) await clipboard.write(priorClipboard);
+  else if (priorClipboard) clipboard.clear();
+  if (window && !window.isDestroyed()) window.destroy();
+  app.exit(process.exitCode ?? 0);
+}
 
 }).catch(error => { console.error(error); app.exit(1); });

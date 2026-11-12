@@ -8305,7 +8305,8 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'Failed to load image from path' };
       }
 
-      electron.clipboard.writeImage(image);
+      const png = new Blob([image.toPNG()], { type: 'image/png' });
+      await electron.clipboard.write([new electron.ClipboardItem({ 'image/png': png })]);
       return { success: true };
     } catch (error) {
       console.error('Error copying image to clipboard:', error);
@@ -8320,7 +8321,7 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No text provided' };
       }
 
-      electron.clipboard.writeText(text);
+      await electron.clipboard.writeText(text);
       return { success: true };
     } catch (error) {
       console.error('Error copying text to clipboard:', error);
